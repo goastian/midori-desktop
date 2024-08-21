@@ -6,8 +6,6 @@ import sys
 
 from mozwebidlcodegen import create_build_system_manager
 
-from mozbuild.action.util import log_build_task
-
 
 def main(argv):
     """Perform WebIDL code generation required by the build system."""
@@ -16,4 +14,10 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(log_build_task(main, sys.argv[1:]))
+    # When run from the CLI, we know we have a rather short duration so it's
+    # fine to disable gc in order to shave a few milliseconds.
+    import gc
+
+    gc.disable()
+
+    sys.exit(main(sys.argv[1:]))

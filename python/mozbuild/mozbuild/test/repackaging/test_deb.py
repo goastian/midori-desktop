@@ -33,7 +33,6 @@ _APPLICATION_INI_CONTENT_DATA = {
     "vendor": "Mozilla",
     "remoting_name": "firefox-nightly-try",
     "build_id": "20230222000000",
-    "timestamp": datetime.datetime(2023, 2, 22),
 }
 
 
@@ -74,85 +73,220 @@ def test_extract_application_ini_data_from_directory():
 
 
 @pytest.mark.parametrize(
-    "version, build_number, package_name_suffix, description_suffix, expected",
+    "version, build_number, package_name_suffix, description_suffix, release_product, application_ini_data, expected, raises",
     (
         (
             "112.0a1",
             1,
             "",
             "",
+            "firefox",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-nightly-try",
+                "build_id": "20230222000000",
+            },
             {
                 "DEB_DESCRIPTION": "Mozilla Firefox",
                 "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-nightly-try",
                 "DEB_PKG_NAME": "firefox-nightly-try",
                 "DEB_PKG_VERSION": "112.0a1~20230222000000",
             },
+            does_not_raise(),
         ),
         (
             "112.0a1",
             1,
             "-l10n-fr",
             " - Language pack for Firefox Nightly for fr",
+            "firefox",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-nightly-try",
+                "build_id": "20230222000000",
+            },
             {
                 "DEB_DESCRIPTION": "Mozilla Firefox - Language pack for Firefox Nightly for fr",
                 "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-nightly-try",
                 "DEB_PKG_NAME": "firefox-nightly-try-l10n-fr",
                 "DEB_PKG_VERSION": "112.0a1~20230222000000",
             },
+            does_not_raise(),
         ),
         (
             "112.0b1",
             1,
             "",
             "",
+            "firefox",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-nightly-try",
+                "build_id": "20230222000000",
+            },
             {
                 "DEB_DESCRIPTION": "Mozilla Firefox",
                 "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-nightly-try",
                 "DEB_PKG_NAME": "firefox-nightly-try",
                 "DEB_PKG_VERSION": "112.0b1~build1",
             },
+            does_not_raise(),
         ),
         (
             "112.0",
             2,
             "",
             "",
+            "firefox",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-nightly-try",
+                "build_id": "20230222000000",
+            },
             {
                 "DEB_DESCRIPTION": "Mozilla Firefox",
                 "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-nightly-try",
                 "DEB_PKG_NAME": "firefox-nightly-try",
                 "DEB_PKG_VERSION": "112.0~build2",
             },
+            does_not_raise(),
+        ),
+        (
+            "120.0b9",
+            1,
+            "",
+            "",
+            "devedition",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox Developer Edition",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-aurora",
+                "build_id": "20230222000000",
+            },
+            {
+                "DEB_DESCRIPTION": "Mozilla Firefox Developer Edition",
+                "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-devedition",
+                "DEB_PKG_NAME": "firefox-devedition",
+                "DEB_PKG_VERSION": "120.0b9~build1",
+            },
+            does_not_raise(),
+        ),
+        (
+            "120.0b9",
+            1,
+            "-l10n-ach",
+            " - Firefox Developer Edition Language Pack for Acholi (ach) – Acoli",
+            "devedition",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox Developer Edition",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-aurora",
+                "build_id": "20230222000000",
+            },
+            {
+                "DEB_DESCRIPTION": "Mozilla Firefox Developer Edition - Firefox Developer Edition Language Pack for Acholi (ach) – Acoli",
+                "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-devedition",
+                "DEB_PKG_NAME": "firefox-devedition-l10n-ach",
+                "DEB_PKG_VERSION": "120.0b9~build1",
+            },
+            does_not_raise(),
+        ),
+        (
+            "120.0b9",
+            1,
+            "-l10n-ach",
+            " - Firefox Developer Edition Language Pack for Acholi (ach) – Acoli",
+            "devedition",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox Developer Edition",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-aurora",
+                "build_id": "20230222000000",
+            },
+            {
+                "DEB_DESCRIPTION": "Mozilla Firefox Developer Edition - Firefox Developer Edition Language Pack for Acholi (ach) – Acoli",
+                "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-devedition",
+                "DEB_PKG_NAME": "firefox-devedition-l10n-ach",
+                "DEB_PKG_VERSION": "120.0b9~build1",
+            },
+            does_not_raise(),
+        ),
+        (
+            "120.0b9",
+            1,
+            "-l10n-ach",
+            " - Firefox Developer Edition Language Pack for Acholi (ach) – Acoli",
+            "devedition",
+            {
+                "name": "Firefox",
+                "display_name": "Firefox Developer Edition",
+                "vendor": "Mozilla",
+                "remoting_name": "firefox-aurora",
+                "build_id": "20230222000000",
+            },
+            {
+                "DEB_DESCRIPTION": "Mozilla Firefox Developer Edition - Firefox Developer Edition Language Pack for Acholi (ach) – Acoli",
+                "DEB_PKG_INSTALL_PATH": "usr/lib/firefox-aurora",
+                "DEB_PKG_NAME": "firefox-aurora-l10n-ach",
+                "DEB_PKG_VERSION": "120.0b9~build1",
+            },
+            pytest.raises(AssertionError),
         ),
     ),
 )
 def test_get_build_variables(
-    version, build_number, package_name_suffix, description_suffix, expected
+    version,
+    build_number,
+    package_name_suffix,
+    description_suffix,
+    release_product,
+    application_ini_data,
+    expected,
+    raises,
 ):
-    application_ini_data = {
-        "name": "Firefox",
-        "display_name": "Firefox",
-        "vendor": "Mozilla",
-        "remoting_name": "firefox-nightly-try",
-        "build_id": "20230222000000",
-        "timestamp": datetime.datetime(2023, 2, 22),
-    }
-    assert deb._get_build_variables(
+    application_ini_data = deb._parse_application_ini_data(
         application_ini_data,
-        "x86",
         version,
         build_number,
-        depends="${shlibs:Depends},",
-        package_name_suffix=package_name_suffix,
-        description_suffix=description_suffix,
-    ) == {
-        **{
-            "DEB_CHANGELOG_DATE": "Wed, 22 Feb 2023 00:00:00 -0000",
-            "DEB_ARCH_NAME": "i386",
-            "DEB_DEPENDS": "${shlibs:Depends},",
-        },
-        **expected,
-    }
+    )
+    with raises:
+        if not package_name_suffix:
+            depends = "${shlibs:Depends},"
+        elif release_product == "devedition":
+            depends = (
+                f"firefox-devedition (= {application_ini_data['deb_pkg_version']})"
+            )
+        else:
+            depends = f"{application_ini_data['remoting_name']} (= {application_ini_data['deb_pkg_version']})"
+
+        build_variables = deb._get_build_variables(
+            application_ini_data,
+            "x86",
+            depends=depends,
+            package_name_suffix=package_name_suffix,
+            description_suffix=description_suffix,
+            release_product=release_product,
+        )
+
+        assert build_variables == {
+            **{
+                "DEB_CHANGELOG_DATE": "Wed, 22 Feb 2023 00:00:00 -0000",
+                "DEB_ARCH_NAME": "i386",
+                "DEB_DEPENDS": depends,
+            },
+            **expected,
+        }
 
 
 def test_copy_plain_deb_config(monkeypatch):
@@ -256,7 +390,7 @@ desktop-action-new-window-name = 開新視窗
 desktop-action-new-private-window-name = 開新隱私視窗
 """
 
-DESKTOP_ENTRY_FILE_TEXT = """\
+NIGHTLY_DESKTOP_ENTRY_FILE_TEXT = """\
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -266,7 +400,7 @@ X-MultipleArgs=false
 Icon=firefox-nightly
 StartupWMClass=firefox-nightly
 Categories=GNOME;GTK;Network;WebBrowser;
-MimeType=application/json;application/pdf;application/rdf+xml;application/rss+xml;application/x-xpinstall;application/xhtml+xml;application/xml;audio/flac;audio/ogg;audio/webm;image/avif;image/gif;image/jpeg;image/png;image/svg+xml;image/webp;text/html;text/xml;video/ogg;video/webm;x-scheme-handler/chrome;x-scheme-handler/http;x-scheme-handler/https;
+MimeType=application/json;application/pdf;application/rdf+xml;application/rss+xml;application/x-xpinstall;application/xhtml+xml;application/xml;audio/flac;audio/ogg;audio/webm;image/avif;image/gif;image/jpeg;image/png;image/svg+xml;image/webp;text/html;text/xml;video/ogg;video/webm;x-scheme-handler/chrome;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/mailto;
 StartupNotify=true
 Actions=new-window;new-private-window;open-profile-manager;
 Name=en-US-desktop-entry-name
@@ -296,17 +430,56 @@ Name=en-US-desktop-action-open-profile-manager
 Name[zh_TW]=zh-TW-desktop-action-open-profile-manager
 """
 
+DEVEDITION_DESKTOP_ENTRY_FILE_TEXT = """\
+[Desktop Entry]
+Version=1.0
+Type=Application
+Exec=firefox-devedition %u
+Terminal=false
+X-MultipleArgs=false
+Icon=firefox-devedition
+StartupWMClass=firefox-aurora
+Categories=GNOME;GTK;Network;WebBrowser;
+MimeType=application/json;application/pdf;application/rdf+xml;application/rss+xml;application/x-xpinstall;application/xhtml+xml;application/xml;audio/flac;audio/ogg;audio/webm;image/avif;image/gif;image/jpeg;image/png;image/svg+xml;image/webp;text/html;text/xml;video/ogg;video/webm;x-scheme-handler/chrome;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/mailto;
+StartupNotify=true
+Actions=new-window;new-private-window;open-profile-manager;
+Name=en-US-desktop-entry-name
+Name[zh_TW]=zh-TW-desktop-entry-name
+Comment=en-US-desktop-entry-comment
+Comment[zh_TW]=zh-TW-desktop-entry-comment
+GenericName=en-US-desktop-entry-generic-name
+GenericName[zh_TW]=zh-TW-desktop-entry-generic-name
+Keywords=en-US-desktop-entry-keywords
+Keywords[zh_TW]=zh-TW-desktop-entry-keywords
+X-GNOME-FullName=en-US-desktop-entry-x-gnome-full-name
+X-GNOME-FullName[zh_TW]=zh-TW-desktop-entry-x-gnome-full-name
+
+[Desktop Action new-window]
+Exec=firefox-devedition --new-window %u
+Name=en-US-desktop-action-new-window-name
+Name[zh_TW]=zh-TW-desktop-action-new-window-name
+
+[Desktop Action new-private-window]
+Exec=firefox-devedition --private-window %u
+Name=en-US-desktop-action-new-private-window-name
+Name[zh_TW]=zh-TW-desktop-action-new-private-window-name
+
+[Desktop Action open-profile-manager]
+Exec=firefox-devedition --ProfileManager
+Name=en-US-desktop-action-open-profile-manager
+Name[zh_TW]=zh-TW-desktop-action-open-profile-manager
+"""
+
 
 def test_generate_deb_desktop_entry_file_text(monkeypatch):
     def responsive(url):
-        if "zh-TW" in url:
-            return Mock(
-                **{
-                    "status_code": 200,
-                    "text": ZH_TW_FTL,
-                }
-            )
-        return Mock(**{"status_code": 404})
+        assert "zh-TW" in url
+        return Mock(
+            **{
+                "status_code": 200,
+                "text": ZH_TW_FTL,
+            }
+        )
 
     monkeypatch.setattr(deb.requests, "get", responsive)
 
@@ -323,12 +496,6 @@ def test_generate_deb_desktop_entry_file_text(monkeypatch):
             extra={"action": action, "params": params},
         )
 
-    build_variables = {
-        "DEB_PKG_NAME": "firefox-nightly",
-    }
-    release_product = "firefox"
-    release_type = "nightly"
-
     def fluent_localization(locales, resources, loader):
         def format_value(resource):
             return f"{locales[0]}-{resource}"
@@ -336,6 +503,18 @@ def test_generate_deb_desktop_entry_file_text(monkeypatch):
         return Mock(**{"format_value": format_value})
 
     fluent_resource_loader = Mock()
+
+    monkeypatch.setattr(
+        deb.json,
+        "load",
+        lambda f: {"zh-TW": {"platforms": ["linux"], "revision": "default"}},
+    )
+
+    build_variables = {
+        "DEB_PKG_NAME": "firefox-nightly",
+    }
+    release_product = "firefox"
+    release_type = "nightly"
 
     desktop_entry_file_text = deb._generate_browser_desktop_entry_file_text(
         log,
@@ -346,7 +525,24 @@ def test_generate_deb_desktop_entry_file_text(monkeypatch):
         fluent_resource_loader,
     )
 
-    assert desktop_entry_file_text == DESKTOP_ENTRY_FILE_TEXT
+    assert desktop_entry_file_text == NIGHTLY_DESKTOP_ENTRY_FILE_TEXT
+
+    build_variables = {
+        "DEB_PKG_NAME": "firefox-devedition",
+    }
+    release_product = "devedition"
+    release_type = "beta"
+
+    desktop_entry_file_text = deb._generate_browser_desktop_entry_file_text(
+        log,
+        build_variables,
+        release_product,
+        release_type,
+        fluent_localization,
+        fluent_resource_loader,
+    )
+
+    assert desktop_entry_file_text == DEVEDITION_DESKTOP_ENTRY_FILE_TEXT
 
     def outage(url):
         return Mock(**{"status_code": 500})
@@ -545,6 +741,64 @@ def test_extract_langpack_metadata():
             zip.writestr("manifest.json", json.dumps(_MANIFEST_JSON_DATA))
 
         assert deb._extract_langpack_metadata(langpack_path) == _MANIFEST_JSON_DATA
+
+
+@pytest.mark.parametrize(
+    "version, build_number, expected",
+    (
+        (
+            "112.0a1",
+            1,
+            {
+                "build_id": "20230222000000",
+                "deb_pkg_version": "112.0a1~20230222000000",
+                "display_name": "Firefox Nightly",
+                "name": "Firefox",
+                "remoting_name": "firefox-nightly-try",
+                "timestamp": datetime.datetime(2023, 2, 22, 0, 0),
+                "vendor": "Mozilla",
+            },
+        ),
+        (
+            "112.0b1",
+            1,
+            {
+                "build_id": "20230222000000",
+                "deb_pkg_version": "112.0b1~build1",
+                "display_name": "Firefox Nightly",
+                "name": "Firefox",
+                "remoting_name": "firefox-nightly-try",
+                "timestamp": datetime.datetime(2023, 2, 22, 0, 0),
+                "vendor": "Mozilla",
+            },
+        ),
+        (
+            "112.0",
+            2,
+            {
+                "build_id": "20230222000000",
+                "deb_pkg_version": "112.0~build2",
+                "display_name": "Firefox Nightly",
+                "name": "Firefox",
+                "remoting_name": "firefox-nightly-try",
+                "timestamp": datetime.datetime(2023, 2, 22, 0, 0),
+                "vendor": "Mozilla",
+            },
+        ),
+    ),
+)
+def test_load_application_ini_data(version, build_number, expected):
+    with tempfile.TemporaryDirectory() as d:
+        tar_path = os.path.join(d, "input.tar")
+        with tarfile.open(tar_path, "w") as tar:
+            application_ini_path = os.path.join(d, "application.ini")
+            with open(application_ini_path, "w") as application_ini_file:
+                application_ini_file.write(_APPLICATION_INI_CONTENT)
+            tar.add(application_ini_path)
+        application_ini_data = deb._load_application_ini_data(
+            tar_path, version, build_number
+        )
+        assert application_ini_data == expected
 
 
 if __name__ == "__main__":

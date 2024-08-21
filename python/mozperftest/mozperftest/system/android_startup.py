@@ -1,28 +1,27 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import os
+import pathlib
 import re
 import statistics
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import mozdevice
+
+from mozperftest.utils import ON_TRY
 
 from .android import AndroidDevice
 
 DATETIME_FORMAT = "%Y.%m.%d"
-PAGE_START = re.compile("GeckoSession: handleMessage GeckoView:PageStart uri=")
+PAGE_START_MOZ = re.compile("GeckoSession: handleMessage GeckoView:PageStart uri=")
 
 PROD_FENIX = "fenix"
 PROD_FOCUS = "focus"
-PROC_GVEX = "geckoview_example"
-
-KEY_NAME = "name"
-KEY_PRODUCT = "product"
-KEY_DATETIME = "date"
-KEY_COMMIT = "commit"
-KEY_ARCHITECTURE = "architecture"
-KEY_TEST_NAME = "test_name"
+PROD_GVEX = "geckoview_example"
+PROD_CHRM = "chrome-m"
+MOZILLA_PRODUCTS = [PROD_FENIX, PROD_FOCUS, PROD_GVEX]
 
 MEASUREMENT_DATA = ["mean", "median", "standard_deviation"]
 OLD_VERSION_FOCUS_PAGE_START_LINE_COUNT = 3
@@ -35,41 +34,6 @@ TEST_COLD_VIEW_FF = "cold_view_first_frame"
 TEST_COLD_VIEW_NAV_START = "cold_view_nav_start"
 TEST_URI = "https://example.com"
 
-BASE_URL_DICT = {
-    PROD_FENIX: (
-        "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/"
-        "mobile.v3.firefox-android.apks.fenix-nightly.{date}.latest.{architecture}/artifacts/"
-        "public%2Fbuild%2Ffenix%2F{architecture}%2Ftarget.apk"
-    ),
-    PROD_FENIX
-    + "-latest": (
-        "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/"
-        "mobile.v3.firefox-android.apks.fenix-nightly.latest.{architecture}/artifacts/"
-        "public%2Fbuild%2Ffenix%2F{architecture}%2Ftarget.apk"
-    ),
-    PROD_FOCUS: (
-        "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/"
-        "mobile.v3.firefox-android.apks.focus-nightly.{date}.latest.{architecture}"
-        "/artifacts/public%2Fbuild%2Ffocus%2F{architecture}%2Ftarget.apk"
-    ),
-    PROD_FOCUS
-    + "-latest": (
-        "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/"
-        "mobile.v3.firefox-android.apks.focus-nightly.latest.{architecture}"
-        "/artifacts/public%2Fbuild%2Ffocus%2F{architecture}%2Ftarget.apk"
-    ),
-    PROC_GVEX: (
-        "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/"
-        "gecko.v2.mozilla-central.pushdate.{date}.latest.mobile.android-"
-        "{architecture}-debug/artifacts/public%2Fbuild%2Fgeckoview_example.apk"
-    ),
-    PROC_GVEX
-    + "-latest": (
-        "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/"
-        "gecko.v2.mozilla-central.shippable.latest.mobile.android-"
-        "{architecture}-opt/artifacts/public/build/geckoview_example.apk"
-    ),
-}
 PROD_TO_CHANNEL_TO_PKGID = {
     PROD_FENIX: {
         "nightly": "org.mozilla.fenix",
@@ -83,8 +47,13 @@ PROD_TO_CHANNEL_TO_PKGID = {
         "release": "org.mozilla.focus",
         "debug": "org.mozilla.focus.debug",
     },
-    PROC_GVEX: {
+    PROD_GVEX: {
         "nightly": "org.mozilla.geckoview_example",
+        "release": "org.mozilla.geckoview_example",
+    },
+    PROD_CHRM: {
+        "nightly": "com.android.chrome",
+        "release": "com.android.chrome",
     },
 }
 TEST_LIST = [
@@ -150,22 +119,12 @@ class AndroidStartUp(AndroidDevice):
         "test-name": {
             "type": str,
             "default": "",
-            "help": "This is the startup android test that will be run on the a51",
-        },
-        "apk_metadata": {
-            "type": str,
-            "default": "",
-            "help": "This is the startup android test that will be run on the a51",
+            "help": "This is the startup android test that will be run on the mobile device",
         },
         "product": {
             "type": str,
             "default": "",
-            "help": "This is the startup android test that will be run on the a51",
-        },
-        "release-channel": {
-            "type": str,
-            "default": "",
-            "help": "This is the startup android test that will be run on the a51",
+            "help": "This is the product that you are testing the startup of(ex. chrome, fenix, focus)",
         },
     }
 
@@ -178,9 +137,9 @@ class AndroidStartUp(AndroidDevice):
     def run(self, metadata):
         options = metadata.script["options"]
         self.test_name = self.get_arg("test-name")
-        self.apk_metadata = self.get_arg("apk-metadata")
         self.product = self.get_arg("product")
-        self.release_channel = self.get_arg("release_channel")
+        self.release_channel = options["test_parameters"]["release_channel"]
+        self.architecture = options["test_parameters"]["architecture"]
         self.single_date = options["test_parameters"]["single_date"]
         self.date_range = options["test_parameters"]["date_range"]
         self.startup_cache = options["test_parameters"]["startup_cache"]
@@ -189,27 +148,19 @@ class AndroidStartUp(AndroidDevice):
         self.proc_start = re.compile(
             rf"ActivityManager: Start proc \d+:{self.package_id}/"
         )
+        self.key_name = f"{self.product}_nightly_{self.architecture}.apk"
 
-        apk_metadata = self.apk_metadata
-        self.get_measurements(apk_metadata, metadata)
+        self.get_measurements(metadata)
 
         # Cleanup
-        self.device.shell(f"rm {apk_metadata[KEY_NAME]}")
+        if self.product in MOZILLA_PRODUCTS:
+            self.device.uninstall_app(self.package_id)
 
         return metadata
 
-    def get_measurements(self, apk_metadata, metadata):
-        measurements = self.run_performance_analysis(apk_metadata)
+    def get_measurements(self, metadata):
+        measurements = self.install_apk_onto_device_and_run()
         self.add_to_metadata(measurements, metadata)
-
-    def get_date_array_for_range(self, start, end):
-        startdate = datetime.strptime(start, DATETIME_FORMAT)
-        enddate = datetime.strptime(end, DATETIME_FORMAT)
-        delta_dates = (enddate - startdate).days + 1
-        return [
-            (startdate + timedelta(days=i)).strftime("%Y.%m.%d")
-            for i in range(delta_dates)
-        ]
 
     def add_to_metadata(self, measurements, metadata):
         if measurements is not None:
@@ -230,29 +181,35 @@ class AndroidStartUp(AndroidDevice):
                     }
                 )
 
-    def run_performance_analysis(self, apk_metadata):
-        # Installing the application on the device and getting ready to run the tests
-        install_path = apk_metadata[KEY_NAME]
-        if self.custom_apk_exists():
-            install_path = self.custom_apk_path
-
-        self.device.uninstall_app(self.package_id)
-        self.info(f"Installing {install_path}...")
-        app_name = self.device.install_app(install_path)
-        if self.device.is_app_installed(app_name):
-            self.info(f"Successfully installed {app_name}")
-        else:
-            raise AndroidStartUpInstallError("The android app was not installed")
-        self.apk_name = apk_metadata[KEY_NAME].split(".")[0]
-
+    def install_apk_onto_device_and_run(self):
+        if self.product in MOZILLA_PRODUCTS and ON_TRY:
+            # Installing the application on the device and getting ready to run the tests
+            if self.custom_apk_exists():
+                install_path = self.custom_apk_path
+            else:
+                install_path = str(self.get_install_path())
+            self.install_application([install_path], self.package_id)
+        elif not self.device.is_app_installed(self.package_id):
+            raise AndroidStartUpInstallError("Please verify your apk is installed")
         return self.run_tests()
+
+    def get_install_path(self):
+        prefix = pathlib.Path(os.getenv("MOZ_FETCHES_DIR", ""))
+        if self.product == "fenix":
+            return prefix / "target.arm64-v8a.apk"
+        elif self.product == "geckoview_example":
+            return prefix / "geckoview_example.apk"
+        elif self.product == "focus":
+            return prefix / "target.arm64-v8a.apk"
+        else:
+            raise AndroidStartUpInstallError("Unknown product")
 
     def run_tests(self):
         measurements = {}
         # Iterate through the tests in the test list
-        self.info(f"Running {self.test_name} on {self.apk_name}...")
-        self.skip_onboarding(self.test_name)
+        self.info(f"Running {self.test_name} on {self.package_id}...")
         time.sleep(self.get_warmup_delay_seconds())
+        self.skip_onboarding(self.test_name)
         test_measurements = []
 
         for i in range(self.test_cycles):
@@ -265,6 +222,7 @@ class AndroidStartUp(AndroidDevice):
             process = self.device.shell_output(start_cmd_args).splitlines()
             test_measurements.append(self.get_measurement(self.test_name, process))
 
+        self.device.stop_application(self.package_id)
         self.info(f"{self.test_name}: {str(test_measurements)}")
         measurements[f"{self.test_name}.{MEASUREMENT_DATA[0]}"] = statistics.mean(
             test_measurements
@@ -285,12 +243,21 @@ class AndroidStartUp(AndroidDevice):
     def get_measurement(self, test_name, stdout):
         if test_name in [TEST_COLD_MAIN_FF, TEST_COLD_VIEW_FF]:
             return self.get_measurement_from_am_start_log(stdout)
-        elif test_name in [TEST_COLD_VIEW_NAV_START, TEST_COLD_MAIN_RESTORE]:
+        elif (
+            test_name in [TEST_COLD_VIEW_NAV_START, TEST_COLD_MAIN_RESTORE]
+            and self.product in MOZILLA_PRODUCTS
+        ):
             # We must sleep until the Navigation::Start event occurs. If we don't
             # the script will fail. This can take up to 14s on the G5
             time.sleep(17)
             proc = self.device.shell_output("logcat -d")
             return self.get_measurement_from_nav_start_logcat(proc)
+        else:
+            raise Exception(
+                "invalid test settings selected, please double check that "
+                "the test name is valid and that the test is supported for "
+                "the browser you are testing"
+            )
 
     def get_measurement_from_am_start_log(self, stdout):
         total_time_prefix = "TotalTime: "
@@ -321,7 +288,7 @@ class AndroidStartUp(AndroidDevice):
             return __line_to_datetime(proc_start_lines[0])
 
         def __get_page_start_datetime():
-            page_start_lines = [line for line in lines if PAGE_START.search(line)]
+            page_start_lines = [line for line in lines if PAGE_START_MOZ.search(line)]
             page_start_line_count = len(page_start_lines)
             page_start_assert_msg = "found len=" + str(page_start_line_count)
 
@@ -391,24 +358,19 @@ class AndroidStartUp(AndroidDevice):
         result_output = self.device.shell_output(resolve_component_args)
         stdout = result_output.splitlines()
         if len(stdout) != STDOUT_LINE_COUNT:  # Should be 2
+            if "No activity found" in stdout:
+                raise AndroidStartUpInstallError("Please verify your apk is installed")
             raise AndroidStartUpMatchingError(f"expected 2 lines. Got: {stdout}")
         return stdout[1]
 
     def skip_onboarding(self, test_name):
-        """
-        We skip onboarding for focus in measure_start_up.py because it's stateful
-        and needs to be called for every cold start intent.
-        Onboarding only visibly gets in the way of our MAIN test results.
-        """
+        self.enable_notifications(self.package_id)
+
         if self.product == PROD_FOCUS or test_name not in {
             TEST_COLD_MAIN_FF,
             TEST_COLD_MAIN_RESTORE,
         }:
             return
 
-        # This sets mutable state so we only need to pass this flag once, before we start the test
-        self.device.shell(
-            f"am start-activity -W -a android.intent.action.MAIN --ez "
-            f"performancetest true -n{self.package_id}/org.mozilla.fenix.App"
-        )
-        time.sleep(4)  # ensure skip onboarding call has time to propagate.
+        if self.product in MOZILLA_PRODUCTS:
+            self.skip_app_onboarding(self.package_id)

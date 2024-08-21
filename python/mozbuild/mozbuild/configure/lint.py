@@ -4,7 +4,6 @@
 
 import inspect
 import re
-import sys
 import types
 from dis import Bytecode
 from functools import wraps
@@ -25,27 +24,9 @@ from .help import HelpFormatter
 
 
 def code_replace(code, co_filename, co_name, co_firstlineno):
-    if sys.version_info < (3, 8):
-        codetype_args = [
-            code.co_argcount,
-            code.co_kwonlyargcount,
-            code.co_nlocals,
-            code.co_stacksize,
-            code.co_flags,
-            code.co_code,
-            code.co_consts,
-            code.co_names,
-            code.co_varnames,
-            co_filename,
-            co_name,
-            co_firstlineno,
-            code.co_lnotab,
-        ]
-        return types.CodeType(*codetype_args)
-    else:
-        return code.replace(
-            co_filename=co_filename, co_name=co_name, co_firstlineno=co_firstlineno
-        )
+    return code.replace(
+        co_filename=co_filename, co_name=co_name, co_firstlineno=co_firstlineno
+    )
 
 
 class LintSandbox(ConfigureSandbox):
@@ -219,17 +200,15 @@ class LintSandbox(ConfigureSandbox):
         return result
 
     def _check_option(self, option, *args, **kwargs):
-        if "default" not in kwargs:
-            return
         if len(args) == 0:
             return
 
         self._check_prefix_for_bool_option(*args, **kwargs)
-        self._check_help_for_option_with_func_default(option, *args, **kwargs)
+        self._check_help_for_option(option, *args, **kwargs)
 
     def _check_prefix_for_bool_option(self, *args, **kwargs):
         name = args[0]
-        default = kwargs["default"]
+        default = kwargs.get("default")
 
         if type(default) != bool:
             return
@@ -261,17 +240,27 @@ class LintSandbox(ConfigureSandbox):
                 )
                 self._raise_from(e, frame.f_back if frame else None)
 
-    def _check_help_for_option_with_func_default(self, option, *args, **kwargs):
-        default = kwargs["default"]
-
-        if not isinstance(default, SandboxDependsFunction):
-            return
-
+    def _check_help_for_option(self, option, *args, **kwargs):
         if not option.prefix:
             return
 
-        default = self._resolve(default)
-        if type(default) is str:
+        check = None
+
+        default = kwargs.get("default")
+        if isinstance(default, SandboxDependsFunction):
+            default = self._resolve(default)
+            if type(default) is not str:
+                check = "of non-constant default"
+
+        if (
+            option.default
+            and len(option.default) == 0
+            and option.choices
+            and option.nargs in ("?", "*")
+        ):
+            check = "it can be both disabled and enabled with an optional value"
+
+        if not check:
             return
 
         help = kwargs["help"]
@@ -287,9 +276,7 @@ class LintSandbox(ConfigureSandbox):
         frame = inspect.currentframe()
         while frame and frame.f_code.co_name != self.option_impl.__name__:
             frame = frame.f_back
-        e = ConfigureError(
-            '`help` should contain "{}" because of non-constant default'.format(rule)
-        )
+        e = ConfigureError('`help` should contain "{}" because {}'.format(rule, check))
         self._raise_from(e, frame.f_back if frame else None)
 
     def unwrap(self, func):

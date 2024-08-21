@@ -33,8 +33,8 @@ from mozpack.mozjar import JarReader
 from mozpack.packager.unpack import UnpackFinder
 from six.moves import shlex_quote
 
+from mozbuild.dirutils import ensureParentDir
 from mozbuild.repackaging.application_ini import get_application_ini_values
-from mozbuild.util import ensureParentDir
 
 
 def log_copy_result(log, elapsed, destdir, result):
@@ -198,9 +198,8 @@ def get_branding(use_official, topsrcdir, build_app, finder, log=None):
     conf_vars = mozpath.join(topsrcdir, build_app, "confvars.sh")
 
     def conf_vars_value(key):
-        lines = open(conf_vars).readlines()
+        lines = [line.strip() for line in open(conf_vars).readlines()]
         for line in lines:
-            line = line.strip()
             if line and line[0] == "#":
                 continue
             if key not in line:
@@ -814,7 +813,7 @@ def _sign_msix_win(output, force, log, verbose):
             thumbprint.strip()
             for thumbprint in powershell(
                 (
-                    "Get-ChildItem -Path Cert:\CurrentUser\My"
+                    r"Get-ChildItem -Path Cert:\CurrentUser\My"
                     '| Where-Object {{$_.Subject -Match "{}"}}'
                     '| Where-Object {{$_.FriendlyName -Match "{}"}}'
                     "| Select-Object -ExpandProperty Thumbprint"
@@ -833,13 +832,13 @@ def _sign_msix_win(output, force, log, verbose):
         else:
             thumbprint = None
 
-        if not thumbprint:
+        if force or not thumbprint:
             thumbprint = (
                 powershell(
                     (
                         'New-SelfSignedCertificate -Type Custom -Subject "{}" '
                         '-KeyUsage DigitalSignature -FriendlyName "{}"'
-                        " -CertStoreLocation Cert:\CurrentUser\My"
+                        r" -CertStoreLocation Cert:\CurrentUser\My"
                         ' -TextExtension @("2.5.29.37={{text}}1.3.6.1.5.5.7.3.3", '
                         '"2.5.29.19={{text}}")'
                         "| Select-Object -ExpandProperty Thumbprint"
@@ -857,7 +856,7 @@ def _sign_msix_win(output, force, log, verbose):
             )
 
         powershell(
-            'Export-Certificate -Cert Cert:\CurrentUser\My\{} -FilePath "{}"'.format(
+            r'Export-Certificate -Cert Cert:\CurrentUser\My\{} -FilePath "{}"'.format(
                 thumbprint, crt_path
             )
         )
@@ -870,7 +869,7 @@ def _sign_msix_win(output, force, log, verbose):
 
         powershell(
             (
-                'Export-PfxCertificate -Cert Cert:\CurrentUser\My\{} -FilePath "{}"'
+                r'Export-PfxCertificate -Cert Cert:\CurrentUser\My\{} -FilePath "{}"'
                 ' -Password (ConvertTo-SecureString -String "{}" -Force -AsPlainText)'
             ).format(thumbprint, pfx_path, password)
         )
@@ -941,7 +940,7 @@ def _sign_msix_win(output, force, log, verbose):
         root_thumbprints = [
             root_thumbprint.strip()
             for root_thumbprint in powershell(
-                "Get-ChildItem -Path Cert:\LocalMachine\Root\{} "
+                r"Get-ChildItem -Path Cert:\LocalMachine\Root\{} "
                 "| Select-Object -ExpandProperty Thumbprint".format(thumbprint),
                 check=False,
             ).splitlines()

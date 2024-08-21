@@ -8,8 +8,14 @@ import os
 import re
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import (
+    Iterator,
+    List,
+    Optional,
+    Union,
+)
 
 from mach.util import to_optional_path
 from mozfile import which
@@ -91,7 +97,7 @@ class Repository(object):
     def __exit__(self, exc_type, exc_value, exc_tb):
         pass
 
-    def _run(self, *args, **runargs):
+    def _run(self, *args, encoding="utf-8", **runargs):
         return_codes = runargs.get("return_codes", [])
 
         cmd = (str(self._tool),) + args
@@ -104,7 +110,10 @@ class Repository(object):
         else:
             try:
                 return subprocess.check_output(
-                    cmd, cwd=self.path, env=self._env, universal_newlines=True
+                    cmd,
+                    cwd=self.path,
+                    env=self._env,
+                    encoding=encoding,
                 )
             except subprocess.CalledProcessError as e:
                 if e.returncode in return_codes:
@@ -117,7 +126,7 @@ class Repository(object):
         if self._version:
             return self._version
         info = self._run("--version").strip()
-        match = re.search("version ([^\+\)]+)", info)
+        match = re.search(r"version ([^+)]+)", info)
         if not match:
             raise Exception("Unable to identify tool version.")
 
@@ -310,7 +319,37 @@ class Repository(object):
         if process.returncode != 0:
             for line in process.stderr or []:
                 print(line)
-            raise subprocess.CalledProcessError("Failed to push-to-try")
+            raise subprocess.CalledProcessError(
+                returncode=process.returncode,
+                cmd=cmd,
+                output="Failed to push-to-try",
+                stderr=process.stderr,
+            )
+
+    @abc.abstractmethod
+    def get_branch_nodes(self) -> List[str]:
+        """Return a list of commit SHAs for nodes on the current branch."""
+
+    @abc.abstractmethod
+    def get_commit_patches(self, nodes: str) -> List[bytes]:
+        """Return the contents of the patch `node` in the VCS's standard format."""
+
+    @abc.abstractmethod
+    def create_try_commit(self, commit_message: str):
+        """Create a temporary try commit.
+
+        Create a new commit using `commit_message` as the commit message. The commit
+        may be empty, for example when only including try syntax.
+        """
+
+    @abc.abstractmethod
+    def remove_current_commit(self):
+        """Remove the currently checked out commit from VCS history."""
+
+    @abc.abstractmethod
+    def get_last_modified_time_for_file(self, path: Path):
+        """Return last modified in VCS time for the specified file."""
+        pass
 
 
 class HgRepository(Repository):
@@ -543,6 +582,13 @@ class HgRepository(Repository):
     def update(self, ref):
         return self._run("update", "--check", ref)
 
+    def raise_for_missing_extension(self, extension: str):
+        """Raise `MissingVCSExtension` if `extension` is not installed and enabled."""
+        try:
+            self._run("showconfig", f"extensions.{extension}")
+        except subprocess.CalledProcessError:
+            raise MissingVCSExtension(extension)
+
     def push_to_try(self, message, allow_log_capture=False):
         try:
             cmd = (str(self._tool), "push-to-try", "-m", message)
@@ -565,13 +611,87 @@ class HgRepository(Repository):
                     env=self._env,
                 )
         except subprocess.CalledProcessError:
-            try:
-                self._run("showconfig", "extensions.push-to-try")
-            except subprocess.CalledProcessError:
-                raise MissingVCSExtension("push-to-try")
+            self.raise_for_missing_extension("push-to-try")
             raise
         finally:
             self._run("revert", "-a")
+
+    def get_branch_nodes(self, base_ref: Optional[str] = None) -> List[str]:
+        """Return a list of commit SHAs for nodes on the current branch."""
+        if not base_ref:
+            base_ref = self.base_ref
+
+        head_ref = self.head_ref
+
+        return self._run(
+            "log",
+            "-r",
+            f"{base_ref}::{head_ref} and not {base_ref}",
+            "-T",
+            "{node}\n",
+        ).splitlines()
+
+    def get_commit_patches(self, nodes: List[str]) -> List[bytes]:
+        """Return the contents of the patch `node` in the VCS' standard format."""
+        # Running `hg export` once for each commit in a large stack is
+        # slow, so instead we run it once and parse the output for each
+        # individual patch.
+        args = ["export"]
+
+        for node in nodes:
+            args.extend(("-r", node))
+
+        output = self._run(*args).encode("utf-8")
+
+        patches = []
+
+        current_patch = []
+        for i, line in enumerate(output.splitlines()):
+            if i != 0 and line == b"# HG changeset patch":
+                # When we see the first line of a new patch, add the patch we have been
+                # building to the patches list and start building a new patch.
+                patches.append(b"\n".join(current_patch))
+                current_patch = [line]
+            else:
+                # Add a new line to the patch being built.
+                current_patch.append(line)
+
+        # Add the last patch to the stack.
+        patches.append(b"\n".join(current_patch))
+
+        return patches
+
+    def create_try_commit(self, commit_message: str):
+        """Create a temporary try commit.
+
+        Create a new commit using `commit_message` as the commit message. The commit
+        may be empty, for example when only including try syntax.
+        """
+        # Allow empty commit messages in case we only use try-syntax.
+        self._run("--config", "ui.allowemptycommit=1", "commit", "-m", commit_message)
+
+    def remove_current_commit(self):
+        """Remove the currently checked out commit from VCS history."""
+        try:
+            self._run("prune", ".")
+        except subprocess.CalledProcessError:
+            # The `evolve` extension is required for `uncommit` and `prune`.
+            self.raise_for_missing_extension("evolve")
+            raise
+
+    def get_last_modified_time_for_file(self, path: Path):
+        """Return last modified in VCS time for the specified file."""
+        out = self._run(
+            "log",
+            "--template",
+            "{date|isodatesec}",
+            "--limit",
+            "1",
+            "--follow",
+            str(path),
+        )
+
+        return datetime.strptime(out.strip(), "%Y-%m-%d %H:%M:%S %z")
 
 
 class GitRepository(Repository):
@@ -588,10 +708,41 @@ class GitRepository(Repository):
     def head_ref(self):
         return self._run("rev-parse", "HEAD").strip()
 
+    def get_mozilla_upstream_remotes(self) -> Iterator[str]:
+        """Return the Mozilla-official upstream remotes for this repo."""
+        out = self._run("remote", "-v")
+        if not out:
+            return
+
+        remotes = out.splitlines()
+        if not remotes:
+            return
+
+        for line in remotes:
+            name, url, action = line.split()
+
+            # Only consider fetch sources.
+            if action != "(fetch)":
+                continue
+
+            # Return any `hg.mozilla.org` remotes, ignoring `try`.
+            if "hg.mozilla.org" in url and not url.endswith("hg.mozilla.org/try"):
+                yield name
+
+    def get_mozilla_remote_args(self) -> List[str]:
+        """Return a list of `--remotes` arguments to limit commits to official remotes."""
+        official_remotes = [
+            f"--remotes={remote}" for remote in self.get_mozilla_upstream_remotes()
+        ]
+
+        return official_remotes if official_remotes else ["--remotes"]
+
     @property
     def base_ref(self):
+        remote_args = self.get_mozilla_remote_args()
+
         refs = self._run(
-            "rev-list", "HEAD", "--topo-order", "--boundary", "--not", "--remotes"
+            "rev-list", "HEAD", "--topo-order", "--boundary", "--not", *remote_args
         ).splitlines()
         if refs:
             return refs[-1][1:]  # boundary starts with a prefix `-`
@@ -600,7 +751,7 @@ class GitRepository(Repository):
     def base_ref_as_hg(self):
         base_ref = self.base_ref
         try:
-            return self._run("cinnabar", "git2hg", base_ref)
+            return self._run("cinnabar", "git2hg", base_ref).strip()
         except subprocess.CalledProcessError:
             return
 
@@ -722,9 +873,7 @@ class GitRepository(Repository):
         if not self.has_git_cinnabar:
             raise MissingVCSExtension("cinnabar")
 
-        self._run(
-            "-c", "commit.gpgSign=false", "commit", "--allow-empty", "-m", message
-        )
+        self.create_try_commit(message)
         try:
             cmd = (
                 str(self._tool),
@@ -746,10 +895,52 @@ class GitRepository(Repository):
             else:
                 subprocess.check_call(cmd, cwd=self.path)
         finally:
-            self._run("reset", "HEAD~")
+            self.remove_current_commit()
 
     def set_config(self, name, value):
         self._run("config", name, value)
+
+    def get_branch_nodes(self) -> List[str]:
+        """Return a list of commit SHAs for nodes on the current branch."""
+        remote_args = self.get_mozilla_remote_args()
+
+        return self._run(
+            "log",
+            "HEAD",
+            "--reverse",
+            "--not",
+            *remote_args,
+            "--pretty=%H",
+        ).splitlines()
+
+    def get_commit_patches(self, nodes: List[str]) -> List[bytes]:
+        """Return the contents of the patch `node` in the VCS' standard format."""
+        return [
+            self._run("format-patch", node, "-1", "--always", "--stdout").encode(
+                "utf-8"
+            )
+            for node in nodes
+        ]
+
+    def create_try_commit(self, message: str):
+        """Create a temporary try commit.
+
+        Create a new commit using `commit_message` as the commit message. The commit
+        may be empty, for example when only including try syntax.
+        """
+        self._run(
+            "-c", "commit.gpgSign=false", "commit", "--allow-empty", "-m", message
+        )
+
+    def remove_current_commit(self):
+        """Remove the currently checked out commit from VCS history."""
+        self._run("reset", "HEAD~")
+
+    def get_last_modified_time_for_file(self, path: Path):
+        """Return last modified in VCS time for the specified file."""
+        out = self._run("log", "-1", "--format=%ad", "--date=iso", path)
+
+        return datetime.strptime(out.strip(), "%Y-%m-%d %H:%M:%S %z")
 
 
 class SrcRepository(Repository):
@@ -794,10 +985,10 @@ class SrcRepository(Repository):
         pass
 
     def get_changed_files(self, diff_filter="ADM", mode="unstaged", rev=None):
-        pass
+        return []
 
     def get_outgoing_files(self, diff_filter="ADM", upstream=None):
-        pass
+        return []
 
     def add_remove_files(self, *paths: Union[str, Path]):
         pass
@@ -871,6 +1062,10 @@ class SrcRepository(Repository):
 
     def set_config(self, name, value):
         pass
+
+    def get_last_modified_time_for_file(self, path: Path):
+        """Return last modified in VCS time for the specified file."""
+        raise MissingVCSTool
 
 
 def get_repository_object(

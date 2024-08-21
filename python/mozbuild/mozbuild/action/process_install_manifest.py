@@ -12,7 +12,6 @@ from mozpack.errors import errors
 from mozpack.files import BaseFile, FileFinder
 from mozpack.manifests import InstallManifest
 
-from mozbuild.action.util import log_build_task
 from mozbuild.util import DefinesAction
 
 COMPLETE = (
@@ -23,7 +22,6 @@ COMPLETE = (
 
 
 def process_manifest(destdir, paths, track, no_symlinks=False, defines={}):
-
     if os.path.exists(track):
         # We use the same format as install manifests for the tracking
         # data.
@@ -122,4 +120,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    log_build_task(main, sys.argv[1:])
+    main(sys.argv[1:])

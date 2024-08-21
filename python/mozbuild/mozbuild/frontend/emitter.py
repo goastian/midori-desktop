@@ -17,7 +17,7 @@ from mach.mixin.logging import LoggingMixin
 from mozpack.chrome.manifest import Manifest
 
 from mozbuild.base import ExecutionSummary
-from mozbuild.util import OrderedDefaultDict, memoize
+from mozbuild.util import memoize
 
 from ..testing import REFTEST_FLAVORS, TEST_MANIFESTS, SupportFilesConverter
 from .context import Context, ObjDirPath, Path, SourcePath, SubContext
@@ -92,7 +92,7 @@ class TreeMetadataEmitter(LoggingMixin):
 
         self.info = dict(mozinfo.info)
 
-        self._libs = OrderedDefaultDict(list)
+        self._libs = defaultdict(list)
         self._binaries = OrderedDict()
         self._compile_dirs = set()
         self._host_compile_dirs = set()
@@ -172,7 +172,6 @@ class TreeMetadataEmitter(LoggingMixin):
                 yield o
 
     def _emit_libs_derived(self, contexts):
-
         # First aggregate idl sources.
         webidl_attrs = [
             ("GENERATED_EVENTS_WEBIDL_FILES", lambda c: c.generated_events_sources),
@@ -388,6 +387,8 @@ class TreeMetadataEmitter(LoggingMixin):
                     context, obj, variable, self.STDCXXCOMPAT_NAME[obj.KIND]
                 )
             if obj.KIND == "target":
+                if "pure_virtual" in self._libs:
+                    self._link_library(context, obj, variable, "pure_virtual")
                 for lib in context.config.substs.get("STLPORT_LIBS", []):
                     obj.link_system_library(lib)
 
@@ -507,7 +508,7 @@ class TreeMetadataEmitter(LoggingMixin):
         else:
             return ExternalSharedLibrary(context, name)
 
-    def _parse_cargo_file(self, context):
+    def _parse_and_check_cargo_file(self, context):
         """Parse the Cargo.toml file in context and return a Python object
         representation of it.  Raise a SandboxValidationError if the Cargo.toml
         file does not exist.  Return a tuple of (config, cargo_file)."""
@@ -517,7 +518,38 @@ class TreeMetadataEmitter(LoggingMixin):
                 "No Cargo.toml file found in %s" % cargo_file, context
             )
         with open(cargo_file, "r") as f:
-            return toml.load(f), cargo_file
+            content = toml.load(f)
+
+        crate_name = content.get("package", {}).get("name")
+        if not crate_name:
+            raise SandboxValidationError(
+                f"{cargo_file} doesn't contain a crate name?!?", context
+            )
+
+        hack_name = "mozilla-central-workspace-hack"
+        dep = f'{hack_name} = {{ version = "0.1", features = ["{crate_name}"], optional = true }}'
+        dep_dict = toml.loads(dep)[hack_name]
+        hint = (
+            "\n\nYou may also need to adjust the build/workspace-hack/Cargo.toml"
+            f" file to add the {crate_name} feature."
+        )
+
+        workspace_hack = content.get("dependencies", {}).get(hack_name)
+        if not workspace_hack:
+            raise SandboxValidationError(
+                f"{cargo_file} doesn't contain the workspace hack.\n\n"
+                f"Add the following to dependencies:\n{dep}{hint}",
+                context,
+            )
+
+        if workspace_hack != dep_dict:
+            raise SandboxValidationError(
+                f"{cargo_file} needs an update to its {hack_name} dependency.\n\n"
+                f"Adjust the dependency to:\n{dep}{hint}",
+                context,
+            )
+
+        return content, cargo_file
 
     def _verify_deps(
         self, context, crate_dir, crate_name, dependencies, description="Dependency"
@@ -562,7 +594,7 @@ class TreeMetadataEmitter(LoggingMixin):
         self, context, libname, static_args, is_gkrust=False, cls=RustLibrary
     ):
         # We need to note any Rust library for linking purposes.
-        config, cargo_file = self._parse_cargo_file(context)
+        config, cargo_file = self._parse_and_check_cargo_file(context)
         crate_name = config["package"]["name"]
 
         if crate_name != libname:
@@ -660,7 +692,7 @@ class TreeMetadataEmitter(LoggingMixin):
 
         # Verify Rust program definitions.
         if all_rust_programs:
-            config, cargo_file = self._parse_cargo_file(context)
+            config, cargo_file = self._parse_and_check_cargo_file(context)
             bin_section = config.get("bin", None)
             if not bin_section:
                 raise SandboxValidationError(
@@ -679,6 +711,13 @@ class TreeMetadataEmitter(LoggingMixin):
 
                     check_unique_binary(program, kind)
                     self._binaries[program] = cls(context, program, cargo_file)
+                    self._linkage.append(
+                        (
+                            context,
+                            self._binaries[program],
+                            kind.replace("RUST_PROGRAMS", "USE_LIBS"),
+                        )
+                    )
                     add_program(self._binaries[program], kind)
 
         for kind, cls in [
@@ -1203,6 +1242,7 @@ class TreeMetadataEmitter(LoggingMixin):
             "RCINCLUDE",
             "WIN32_EXE_LDFLAGS",
             "USE_EXTENSION_MANIFEST",
+            "WASM_LIBS",
         ]
         for v in varlist:
             if v in context and context[v]:
@@ -1257,10 +1297,10 @@ class TreeMetadataEmitter(LoggingMixin):
             else:
                 path = deffile.target_basename
 
-            if context.config.substs.get("GNU_CC"):
-                computed_link_flags.resolve_flags("DEFFILE", [path])
-            else:
+            if context.config.substs.get("CC_TYPE") == "clang-cl":
                 computed_link_flags.resolve_flags("DEFFILE", ["-DEF:" + path])
+            else:
+                computed_link_flags.resolve_flags("DEFFILE", [path])
 
         dist_install = context["DIST_INSTALL"]
         if dist_install is True:
@@ -1272,9 +1312,10 @@ class TreeMetadataEmitter(LoggingMixin):
         # the moment because USE_STATIC_LIBS can be set after a template
         # returns. Eventually, with context-based templates, it will be
         # possible.
-        if context.config.substs.get(
-            "OS_ARCH"
-        ) == "WINNT" and not context.config.substs.get("GNU_CC"):
+        if (
+            context.config.substs.get("OS_ARCH") == "WINNT"
+            and context.config.substs.get("CC_TYPE") == "clang-cl"
+        ):
             use_static_lib = context.get(
                 "USE_STATIC_LIBS"
             ) and not context.config.substs.get("MOZ_ASAN")
@@ -1428,15 +1469,11 @@ class TreeMetadataEmitter(LoggingMixin):
                 if mozpath.split(base)[0] == "res":
                     has_resources = True
                 for f in files:
-                    if (
-                        var
-                        in (
-                            "FINAL_TARGET_PP_FILES",
-                            "OBJDIR_PP_FILES",
-                            "LOCALIZED_PP_FILES",
-                        )
-                        and not isinstance(f, SourcePath)
-                    ):
+                    if var in (
+                        "FINAL_TARGET_PP_FILES",
+                        "OBJDIR_PP_FILES",
+                        "LOCALIZED_PP_FILES",
+                    ) and not isinstance(f, SourcePath):
                         raise SandboxValidationError(
                             ("Only source directory paths allowed in " + "%s: %s")
                             % (var, f),
@@ -1646,7 +1683,7 @@ class TreeMetadataEmitter(LoggingMixin):
         if not (generated_files or localized_generated_files):
             return
 
-        for (localized, gen) in (
+        for localized, gen in (
             (False, generated_files),
             (True, localized_generated_files),
         ):

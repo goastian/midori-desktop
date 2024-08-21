@@ -47,9 +47,9 @@ CARGO_CONFIG_TEMPLATE = """\
 
 # Take advantage of the fact that cargo will treat lines starting with #
 # as comments to add preprocessing directives. This file can thus by copied
-# as-is to $topsrcdir/.cargo/config with no preprocessing to be used there
+# as-is to $topsrcdir/.cargo/config.toml with no preprocessing to be used there
 # (for e.g. independent tasks building rust code), or be preprocessed by
-# the build system to produce a .cargo/config with the right content.
+# the build system to produce a .cargo/config.toml with the right content.
 #define REPLACE_NAME {replace_name}
 #define VENDORED_DIRECTORY {directory}
 # We explicitly exclude the following section when preprocessing because
@@ -75,26 +75,14 @@ Cargo.lock to the HEAD version, run `git checkout -- Cargo.lock` or
 """
 
 
-WINDOWS_UNDESIRABLE_REASON = """\
-The windows and windows-sys crates and their dependencies are too big to \
-vendor, and is a risk of version duplication due to its current update \
-cadence. Until this is worked out with upstream, we prefer to avoid them.\
-"""
-
-PACKAGES_WE_DONT_WANT = {
-    "windows-sys": WINDOWS_UNDESIRABLE_REASON,
-    "windows": WINDOWS_UNDESIRABLE_REASON,
-    "windows_aarch64_msvc": WINDOWS_UNDESIRABLE_REASON,
-    "windows_i686_gnu": WINDOWS_UNDESIRABLE_REASON,
-    "windows_i686_msvc": WINDOWS_UNDESIRABLE_REASON,
-    "windows_x86_64_gnu": WINDOWS_UNDESIRABLE_REASON,
-    "windows_x86_64_msvc": WINDOWS_UNDESIRABLE_REASON,
-}
+PACKAGES_WE_DONT_WANT = {}
 
 PACKAGES_WE_ALWAYS_WANT_AN_OVERRIDE_OF = [
     "autocfg",
     "cmake",
     "vcpkg",
+    "windows",
+    "windows-targets",
 ]
 
 
@@ -102,7 +90,6 @@ PACKAGES_WE_ALWAYS_WANT_AN_OVERRIDE_OF = [
 # If you do need to make changes increasing the number of duplicates, please
 # add a comment as to why.
 TOLERATED_DUPES = {
-    "mio": 2,
     # Transition from time 0.1 to 0.3 underway, but chrono is stuck on 0.1
     # and hasn't been updated in 1.5 years (an hypothetical update is
     # expected to remove the dependency on time altogether).
@@ -172,12 +159,12 @@ class VendorRust(MozbuildObject):
         if not out.startswith("cargo"):
             return False
         version = LooseVersion(out.split()[1])
-        # Cargo 1.68.0 changed vendoring in a way that creates a lot of noise
+        # Cargo 1.71.0 changed vendoring in a way that creates a lot of noise
         # if we go back and forth between vendoring with an older version and
         # a newer version. Only allow the newer versions.
         minimum_rust_version = MINIMUM_RUST_VERSION
-        if LooseVersion("1.68.0") >= MINIMUM_RUST_VERSION:
-            minimum_rust_version = "1.68.0"
+        if LooseVersion("1.71.0") >= MINIMUM_RUST_VERSION:
+            minimum_rust_version = "1.71.0"
         if version < minimum_rust_version:
             self.log(
                 logging.ERROR,
@@ -287,6 +274,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
         "ISC",
         "MIT",
         "MPL-2.0",
+        "Unicode-3.0",
         "Unicode-DFS-2016",
         "Unlicense",
         "Zlib",
@@ -310,12 +298,12 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
     RUNTIME_LICENSE_PACKAGE_WHITELIST = {
         "BSD-2-Clause": [
             "arrayref",
-            "cloudabi",
-            "Inflector",
             "mach",
             "qlog",
         ],
-        "BSD-3-Clause": [],
+        "BSD-3-Clause": [
+            "subtle",
+        ],
     }
 
     # ICU4X is distributed as individual crates that all share the same LICENSE
@@ -323,7 +311,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
     # define the SHA256 once here, to make the review process easier as new
     # ICU4X crates are vendored into the tree.
     ICU4X_LICENSE_SHA256 = (
-        "02420cc1b4c26d9a3318d60fd57048d015831249a5b776a1ada75cd227e78630"
+        "853f87c96f3d249f200fec6db1114427bc8bdf4afddc93c576956d78152ce978"
     )
 
     # This whitelist should only be used for packages that use a
@@ -340,9 +328,26 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
         # we're whitelisting this fuchsia crate because it doesn't get built in the final
         # product but has a license-file that needs ignoring
         "fuchsia-cprng": "03b114f53e6587a398931762ee11e2395bfdba252a329940e2c8c9e81813845b",
-        # Old ICU4X crates for ICU4X 1.0, see comment above.
+        # ICU4X uses Unicode v3 license
+        "icu_collections": ICU4X_LICENSE_SHA256,
+        "icu_locid": ICU4X_LICENSE_SHA256,
+        "icu_locid_transform": ICU4X_LICENSE_SHA256,
+        "icu_locid_transform_data": ICU4X_LICENSE_SHA256,
+        "icu_properties": ICU4X_LICENSE_SHA256,
+        "icu_properties_data": ICU4X_LICENSE_SHA256,
+        "icu_provider": ICU4X_LICENSE_SHA256,
+        "icu_provider_adapters": ICU4X_LICENSE_SHA256,
+        "icu_provider_macros": ICU4X_LICENSE_SHA256,
+        "icu_segmenter": ICU4X_LICENSE_SHA256,
+        "litemap": ICU4X_LICENSE_SHA256,
+        "tinystr": ICU4X_LICENSE_SHA256,
+        "writeable": ICU4X_LICENSE_SHA256,
+        "yoke": ICU4X_LICENSE_SHA256,
         "yoke-derive": ICU4X_LICENSE_SHA256,
+        "zerofrom": ICU4X_LICENSE_SHA256,
         "zerofrom-derive": ICU4X_LICENSE_SHA256,
+        "zerovec": ICU4X_LICENSE_SHA256,
+        "zerovec-derive": ICU4X_LICENSE_SHA256,
     }
 
     @staticmethod
@@ -556,7 +561,7 @@ license file's hash.
         for path in Path(self.topsrcdir).glob("build/rust/**/Cargo.toml"):
             with open(path) as fh:
                 cargo_toml = toml.load(fh)
-                path = path.relative_to(self.topsrcdir)
+                relative_path = path.relative_to(self.topsrcdir)
                 package = cargo_toml["package"]
                 key = (package["name"], package["version"])
                 if key in crates:
@@ -565,21 +570,21 @@ license file's hash.
                         "build_rust",
                         {
                             "path": crates[key],
-                            "path2": path,
+                            "path2": relative_path,
                             "crate": key[0],
                             "version": key[1],
                         },
                         "{path} and {path2} both contain {crate} {version}",
                     )
                     ret = False
-                crates[key] = path
+                crates[key] = relative_path
 
         for package in cargo_lock["package"]:
             key = (package["name"], package["version"])
             if key in crates and "source" not in package:
                 crates.pop(key)
 
-        for ((name, version), path) in crates.items():
+        for (name, version), path in crates.items():
             self.log(
                 logging.ERROR,
                 "build_rust",
@@ -589,9 +594,7 @@ license file's hash.
             ret = False
         return ret
 
-    def vendor(
-        self, ignore_modified=False, build_peers_said_large_imports_were_ok=False
-    ):
+    def vendor(self, ignore_modified=False, force=False):
         from mozbuild.mach_commands import cargo_vet
 
         self.populate_logger()
@@ -831,7 +834,7 @@ license file's hash.
 
         # If we failed when checking the crates list and/or running `cargo vet`,
         # stop before invoking `cargo vendor`.
-        if failed:
+        if failed and not force:
             return False
 
         res = subprocess.run(
@@ -843,7 +846,7 @@ license file's hash.
         output = res.stdout.decode("UTF-8")
 
         # Get the snippet of configuration that cargo vendor outputs, and
-        # update .cargo/config with it.
+        # update .cargo/config.toml with it.
         # XXX(bug 1576765): Hopefully do something better after
         # https://github.com/rust-lang/cargo/issues/7280 is addressed.
         config = "\n".join(
@@ -877,7 +880,7 @@ license file's hash.
             mozpath.normsep(os.path.normcase(self.topsrcdir)),
         )
 
-        cargo_config = os.path.join(self.topsrcdir, ".cargo", "config.in")
+        cargo_config = os.path.join(self.topsrcdir, ".cargo", "config.toml.in")
         with open(cargo_config, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(
                 CARGO_CONFIG_TEMPLATE.format(
@@ -887,7 +890,7 @@ license file's hash.
                 )
             )
 
-        if not self._check_licenses(vendor_dir):
+        if not self._check_licenses(vendor_dir) and not force:
             self.log(
                 logging.ERROR,
                 "license_check_failed",
@@ -916,7 +919,7 @@ license file's hash.
 
         # Forcefully complain about large files being added, as history has
         # shown that large-ish files typically are not needed.
-        if large_files and not build_peers_said_large_imports_were_ok:
+        if large_files:
             self.log(
                 logging.ERROR,
                 "filesize_check",
@@ -939,7 +942,8 @@ The changes from `mach vendor rust` will NOT be added to version control.
             )
             self.repository.forget_add_remove_files(vendor_dir)
             self.repository.clean_directory(vendor_dir)
-            return False
+            if not force:
+                return False
 
         # Only warn for large imports, since we may just have large code
         # drops from time to time (e.g. importing features into m-c).
@@ -958,4 +962,15 @@ a pull request upstream to ignore those files when publishing.""".format(
                     size=cumulative_added_size
                 ),
             )
+        if "MOZ_AUTOMATION" in os.environ:
+            changed = self.repository.get_changed_files(mode="staged")
+            for file in changed:
+                self.log(
+                    logging.ERROR,
+                    "vendor-change",
+                    {"file": file},
+                    "File was modified by vendor: {file}",
+                )
+            if changed:
+                return False
         return True

@@ -40,18 +40,33 @@ class HgServerError(Exception):
         super().__init__(msg)
 
 
+# Maps our CI/release pipeline's architecture names (e.g., "x86_64")
+# into architectures ("amd64") compatible with Debian's dpkg-buildpackage tool.
+# This is the target architecture we are building the .deb package for.
 _DEB_ARCH = {
     "all": "all",
     "x86": "i386",
     "x86_64": "amd64",
+    "aarch64": "arm64",
 }
-# At the moment the Firefox build baseline is jessie.
-# The debian-repackage image defined in taskcluster/docker/debian-repackage/Dockerfile
-# bootstraps the /srv/jessie-i386 and /srv/jessie-amd64 chroot environments we use to
-# create the `.deb` repackages. By running the repackage using chroot we generate shared
-# library dependencies that match the Firefox build baseline
-# defined in taskcluster/scripts/misc/build-sysroot.sh
-_DEB_DIST = "jessie"
+
+# Defines the sysroot (build host's) architecture for each target architecture in the pipeline.
+# It defines the architecture dpkg-buildpackage runs on.
+_DEB_SYSROOT_ARCH = {
+    "all": "amd64",
+    "x86": "i386",
+    "x86_64": "amd64",
+    "aarch64": "amd64",
+}
+
+# Assigns the Debian distribution version for the sysroot based on the target architecture.
+# It defines the Debian distribution dpkg-buildpackage runs on.
+_DEB_SYSROOT_DIST = {
+    "all": "jessie",
+    "x86": "jessie",
+    "x86_64": "jessie",
+    "aarch64": "buster",
+}
 
 
 def repackage_deb(
@@ -74,17 +89,21 @@ def repackage_deb(
     source_dir = os.path.join(tmpdir, "source")
     try:
         mozfile.extract_tarball(infile, source_dir)
-        application_ini_data = _extract_application_ini_data(infile)
+        application_ini_data = _load_application_ini_data(infile, version, build_number)
         build_variables = _get_build_variables(
             application_ini_data,
             arch,
-            version,
-            build_number,
             depends="${shlibs:Depends},",
+            release_product=release_product,
         )
 
         _copy_plain_deb_config(template_dir, source_dir)
-        _render_deb_templates(template_dir, source_dir, build_variables)
+        _render_deb_templates(
+            template_dir,
+            source_dir,
+            build_variables,
+            exclude_file_names=["package-prefs.js"],
+        )
 
         app_name = application_ini_data["name"]
         with open(
@@ -102,6 +121,7 @@ def repackage_deb(
             fluent_localization,
             fluent_resource_loader,
         )
+        _inject_deb_prefs_file(source_dir, app_name, template_dir)
         _generate_deb_archive(
             source_dir,
             target_dir=tmpdir,
@@ -115,7 +135,13 @@ def repackage_deb(
 
 
 def repackage_deb_l10n(
-    input_xpi_file, input_tar_file, output, template_dir, version, build_number
+    input_xpi_file,
+    input_tar_file,
+    output,
+    template_dir,
+    version,
+    build_number,
+    release_product,
 ):
     arch = "all"
 
@@ -124,17 +150,24 @@ def repackage_deb_l10n(
     try:
         langpack_metadata = _extract_langpack_metadata(input_xpi_file)
         langpack_dir = mozpath.join(source_dir, "firefox", "distribution", "extensions")
-        application_ini_data = _extract_application_ini_data(input_tar_file)
+        application_ini_data = _load_application_ini_data(
+            input_tar_file, version, build_number
+        )
         langpack_id = langpack_metadata["langpack_id"]
+        if release_product == "devedition":
+            depends = (
+                f"firefox-devedition (= {application_ini_data['deb_pkg_version']})"
+            )
+        else:
+            depends = f"{application_ini_data['remoting_name']} (= {application_ini_data['deb_pkg_version']})"
         build_variables = _get_build_variables(
             application_ini_data,
             arch,
-            version,
-            build_number,
-            depends=application_ini_data["remoting_name"],
+            depends=depends,
             # Debian package names are only lowercase
             package_name_suffix=f"-l10n-{langpack_id.lower()}",
             description_suffix=f" - {langpack_metadata['description']}",
+            release_product=release_product,
         )
         _copy_plain_deb_config(template_dir, source_dir)
         _render_deb_templates(template_dir, source_dir, build_variables)
@@ -178,7 +211,43 @@ def _extract_application_ini_data(input_tar_file):
 
             tar.extract(application_ini_files[0], path=d)
 
-        return _extract_application_ini_data_from_directory(d)
+        application_ini_data = _extract_application_ini_data_from_directory(d)
+
+        return application_ini_data
+
+
+def _load_application_ini_data(infile, version, build_number):
+    extracted_application_ini_data = _extract_application_ini_data(infile)
+    parsed_application_ini_data = _parse_application_ini_data(
+        extracted_application_ini_data, version, build_number
+    )
+    return parsed_application_ini_data
+
+
+def _parse_application_ini_data(application_ini_data, version, build_number):
+    application_ini_data["timestamp"] = datetime.datetime.strptime(
+        application_ini_data["build_id"], "%Y%m%d%H%M%S"
+    )
+
+    application_ini_data["remoting_name"] = application_ini_data[
+        "remoting_name"
+    ].lower()
+
+    application_ini_data["deb_pkg_version"] = _get_deb_pkg_version(
+        version, application_ini_data["build_id"], build_number
+    )
+
+    return application_ini_data
+
+
+def _get_deb_pkg_version(version, build_id, build_number):
+    gecko_version = GeckoVersion.parse(version)
+    deb_pkg_version = (
+        f"{gecko_version}~{build_id}"
+        if gecko_version.is_nightly
+        else f"{gecko_version}~build{build_number}"
+    )
+    return deb_pkg_version
 
 
 def _extract_application_ini_data_from_directory(application_directory):
@@ -198,7 +267,6 @@ def _extract_application_ini_data_from_directory(application_directory):
         "remoting_name": next(values),
         "build_id": next(values),
     }
-    data["timestamp"] = datetime.datetime.strptime(data["build_id"], "%Y%m%d%H%M%S")
 
     return data
 
@@ -206,27 +274,23 @@ def _extract_application_ini_data_from_directory(application_directory):
 def _get_build_variables(
     application_ini_data,
     arch,
-    version_string,
-    build_number,
     depends,
     package_name_suffix="",
     description_suffix="",
+    release_product="",
 ):
-    version = GeckoVersion.parse(version_string)
-    # Nightlies don't have build numbers
-    deb_pkg_version = (
-        f"{version}~{application_ini_data['build_id']}"
-        if version.is_nightly
-        else f"{version}~build{build_number}"
-    )
-    remoting_name = application_ini_data["remoting_name"].lower()
-
+    if release_product == "devedition":
+        deb_pkg_install_path = "usr/lib/firefox-devedition"
+        deb_pkg_name = f"firefox-devedition{package_name_suffix}"
+    else:
+        deb_pkg_install_path = f"usr/lib/{application_ini_data['remoting_name']}"
+        deb_pkg_name = f"{application_ini_data['remoting_name']}{package_name_suffix}"
     return {
         "DEB_DESCRIPTION": f"{application_ini_data['vendor']} {application_ini_data['display_name']}"
         f"{description_suffix}",
-        "DEB_PKG_INSTALL_PATH": f"usr/lib/{remoting_name}",
-        "DEB_PKG_NAME": f"{remoting_name}{package_name_suffix}",
-        "DEB_PKG_VERSION": deb_pkg_version,
+        "DEB_PKG_INSTALL_PATH": deb_pkg_install_path,
+        "DEB_PKG_NAME": deb_pkg_name,
+        "DEB_PKG_VERSION": application_ini_data["deb_pkg_version"],
         "DEB_CHANGELOG_DATE": format_datetime(application_ini_data["timestamp"]),
         "DEB_ARCH_NAME": _DEB_ARCH[arch],
         "DEB_DEPENDS": depends,
@@ -238,7 +302,7 @@ def _copy_plain_deb_config(input_template_dir, source_dir):
     plain_filenames = [
         mozpath.basename(filename)
         for filename in template_dir_filenames
-        if not filename.endswith(".in")
+        if not filename.endswith(".in") and not filename.endswith(".js")
     ]
     os.makedirs(mozpath.join(source_dir, "debian"), exist_ok=True)
 
@@ -283,6 +347,12 @@ def _inject_deb_distribution_folder(source_dir, app_name):
             mozpath.join(git_clone_dir, "desktop/deb/distribution"),
             mozpath.join(source_dir, app_name.lower(), "distribution"),
         )
+
+
+def _inject_deb_prefs_file(source_dir, app_name, template_dir):
+    src = mozpath.join(template_dir, "package-prefs.js")
+    dst = mozpath.join(source_dir, app_name.lower(), "defaults/pref")
+    shutil.copy(src, dst)
 
 
 def _inject_deb_desktop_entry_file(
@@ -355,7 +425,7 @@ def _create_fluent_localizations(
         )
         if locale == "en-US":
             en_US_desktop_entry_fluent_filename = os.path.join(
-                "browser/locales/en-US/browser", desktop_entry_fluent_filename
+                "browser", "locales", "en-US", "browser", desktop_entry_fluent_filename
             )
             shutil.copyfile(
                 en_US_desktop_entry_fluent_filename,
@@ -422,10 +492,14 @@ def _get_en_US_brand_fluent_filename(
     )
     if release_type == "nightly":
         return branding_fluent_filename_template.format(brand="nightly")
+    elif release_type == "release" or release_type == "release-rc":
+        return branding_fluent_filename_template.format(brand="official")
     elif release_type == "beta" and release_product == "firefox":
         return branding_fluent_filename_template.format(brand="official")
     elif release_type == "beta" and release_product == "devedition":
         return branding_fluent_filename_template.format(brand="aurora")
+    elif release_type.startswith("esr"):
+        return branding_fluent_filename_template.format(brand="official")
     else:
         return branding_fluent_filename_template.format(brand="unofficial")
 
@@ -465,6 +539,7 @@ def _generate_browser_desktop_entry(build_variables, localizations):
         "x-scheme-handler/chrome",
         "x-scheme-handler/http",
         "x-scheme-handler/https",
+        "x-scheme-handler/mailto",
     ]
 
     categories = [
@@ -521,7 +596,9 @@ def _generate_browser_desktop_entry(build_variables, localizations):
             },
             {
                 "key": "StartupWMClass",
-                "value": build_variables["DEB_PKG_NAME"],
+                "value": "firefox-aurora"
+                if build_variables["DEB_PKG_NAME"] == "firefox-devedition"
+                else build_variables["DEB_PKG_NAME"],
             },
             {
                 "key": "Categories",
@@ -669,8 +746,15 @@ def _is_chroot_available(arch):
 
 
 def _get_chroot_path(arch):
-    deb_arch = "amd64" if arch == "all" else _DEB_ARCH[arch]
-    return f"/srv/{_DEB_DIST}-{deb_arch}"
+    # At the moment the Firefox build baseline for i386 and amd64 is jessie and the baseline for arm64 is buster.
+    # These baselines are defined in taskcluster/scripts/misc/build-sysroot.sh
+    # The debian-repackage image defined in taskcluster/docker/debian-repackage/Dockerfile
+    # bootstraps /srv/jessie-i386, /srv/jessie-amd64, and /srv/buster-amd64 roots.
+    # We use these roots to run the repackage step and generate shared
+    # library dependencies that match the Firefox build baseline.
+    deb_sysroot_dist = _DEB_SYSROOT_DIST[arch]
+    deb_sysroot_arch = _DEB_SYSROOT_ARCH[arch]
+    return f"/srv/{deb_sysroot_dist}-{deb_sysroot_arch}"
 
 
 _MANIFEST_FILE_NAME = "manifest.json"

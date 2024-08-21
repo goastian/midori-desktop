@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mozbuild.util import mozilla_build_version
+from mozbuild.buildversion import mozilla_build_version
 from packaging.version import Version
 
 from mozboot.base import BaseBootstrapper
@@ -118,14 +118,6 @@ class MozillaBuildBootstrapper(BaseBootstrapper):
         )
 
     def validate_environment(self):
-        if self.application.startswith("mobile_android"):
-            print(
-                "WARNING!!! Building Firefox for Android on Windows is not "
-                "fully supported. See https://bugzilla.mozilla.org/show_bug."
-                "cgi?id=1169873 for details.",
-                file=sys.stderr,
-            )
-
         if is_windefender_affecting_srcdir(self.srcdir):
             print(
                 "Warning: the Firefox checkout directory is currently not in the "

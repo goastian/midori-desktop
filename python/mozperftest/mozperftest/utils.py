@@ -4,8 +4,11 @@
 import contextlib
 import functools
 import importlib
+import inspect
 import logging
 import os
+import pathlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -26,6 +29,63 @@ MULTI_REVISION_ROOT = f"{API_ROOT}/namespaces"
 MULTI_TASK_ROOT = f"{API_ROOT}/tasks"
 ON_TRY = "MOZ_AUTOMATION" in os.environ
 DOWNLOAD_TIMEOUT = 30
+METRICS_MATCHER = re.compile(r"(perfMetrics\s.*)")
+PRETTY_APP_NAMES = {
+    "org.mozilla.fenix": "fenix",
+    "org.mozilla.firefox": "fenix",
+    "org.mozilla.geckoview_example": "geckoview",
+}
+
+
+class NoPerfMetricsError(Exception):
+    """Raised when perfMetrics were not found, or were not output
+    during a test run."""
+
+    def __init__(self, flavor):
+        super().__init__(
+            f"No perftest results were found in the {flavor} test. Results must be "
+            'reported using:\n info("perfMetrics", { metricName: metricValue });'
+        )
+
+
+class LogProcessor:
+    def __init__(self, matcher):
+        self.buf = ""
+        self.stdout = sys.__stdout__
+        self.matcher = matcher
+        self._match = []
+
+    @property
+    def match(self):
+        return self._match
+
+    def write(self, buf):
+        while buf:
+            try:
+                newline_index = buf.index("\n")
+            except ValueError:
+                # No newline, wait for next call
+                self.buf += buf
+                break
+
+            # Get data up to next newline and combine with previously buffered data
+            data = self.buf + buf[: newline_index + 1]
+            buf = buf[newline_index + 1 :]
+
+            # Reset buffer then output line
+            self.buf = ""
+            if data.strip() == "":
+                continue
+            self.stdout.write(data.strip("\n") + "\n")
+
+            # Check if a temporary commit wa created
+            match = self.matcher.match(data)
+            if match:
+                # Last line found is the revision we want
+                self._match.append(match.group(1))
+
+    def flush(self):
+        pass
 
 
 @contextlib.contextmanager
@@ -90,7 +150,7 @@ def simple_platform():
 
 
 def host_platform():
-    is_64bits = sys.maxsize > 2 ** 32
+    is_64bits = sys.maxsize > 2**32
 
     if sys.platform.startswith("win"):
         if is_64bits:
@@ -172,12 +232,72 @@ def install_package(virtualenv_manager, package, ignore_failure=False):
     return False
 
 
+def install_requirements_file(
+    virtualenv_manager, requirements_file, ignore_failure=False
+):
+    """Installs a package using the virtualenv manager.
+
+    Makes sure the package is really installed when the user already has it
+    in their local installation.
+
+    Returns True on success, or re-raise the error. If ignore_failure
+    is set to True, ignore the error and return False
+    """
+
+    # Ensure that we are looking in the right places for packages. This
+    # is required in CI because pip installs in an area that is not in
+    # the search path.
+    venv_site_lib = str(Path(virtualenv_manager.bin_path, "..", "lib").resolve())
+    venv_site_packages = Path(
+        venv_site_lib,
+        f"python{sys.version_info.major}.{sys.version_info.minor}",
+        "site-packages",
+    )
+    if not venv_site_packages.exists():
+        venv_site_packages = Path(
+            venv_site_lib,
+            "site-packages",
+        )
+
+    venv_site_packages = str(venv_site_packages)
+    if venv_site_packages not in sys.path and ON_TRY:
+        sys.path.insert(0, venv_site_packages)
+
+    with silence():
+        cwd = os.getcwd()
+        try:
+            os.chdir(Path(requirements_file).parent)
+            subprocess.check_call(
+                [
+                    virtualenv_manager.python_path,
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    requirements_file,
+                    "--no-index",
+                    "--find-links",
+                    "https://pypi.pub.build.mozilla.org/pub/",
+                ]
+            )
+            return True
+        except Exception:
+            if not ignore_failure:
+                raise
+        finally:
+            os.chdir(cwd)
+    return False
+
+
 # on try, we create tests packages where tests, like
 # xpcshell tests, don't have the same path.
 # see - python/mozbuild/mozbuild/action/test_archive.py
 # this mapping will map paths when running there.
 # The key is the source path, and the value the ci path
-_TRY_MAPPING = {Path("netwerk"): Path("xpcshell", "tests", "netwerk")}
+_TRY_MAPPING = {
+    Path("netwerk"): Path("xpcshell", "tests", "netwerk"),
+    Path("dom"): Path("mochitest", "tests", "dom"),
+}
 
 
 def build_test_list(tests):
@@ -204,20 +324,20 @@ def build_test_list(tests):
         if ON_TRY and not p_test.resolve().exists():
             # until we have pathlib.Path.is_relative_to() (3.9)
             for src_path, ci_path in _TRY_MAPPING.items():
-                src_path, ci_path = str(src_path), str(ci_path)
+                src_path, ci_path = str(src_path), str(ci_path)  # noqa
                 if test.startswith(src_path):
                     p_test = Path(test.replace(src_path, ci_path))
                     break
 
-        test = p_test.resolve()
+        resolved_test = p_test.resolve()
 
-        if test.is_file():
-            res.append(str(test))
-        elif test.is_dir():
-            for file in test.rglob("perftest_*.js"):
+        if resolved_test.is_file():
+            res.append(str(resolved_test))
+        elif resolved_test.is_dir():
+            for file in resolved_test.rglob("perftest_*.js"):
                 res.append(str(file))
         else:
-            raise FileNotFoundError(str(test))
+            raise FileNotFoundError(str(resolved_test))
     res.sort()
     return res, temp_dir
 
@@ -349,6 +469,34 @@ def load_class(path):
     return klass
 
 
+def load_class_from_path(klass_name, path):
+    """This function returns a Transformer class with the given path.
+
+    :param str path: The path points to the custom transformer.
+    :param bool ret_members: If true then return inspect.getmembers().
+    :return Transformer if not ret_members else inspect.getmembers().
+    """
+    file = pathlib.Path(path)
+
+    if not file.exists():
+        raise ImportError(f"The class path {path} does not exist.")
+
+    # Importing a source file directly
+    spec = importlib.util.spec_from_file_location(name=file.name, location=path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    members = inspect.getmembers(
+        module,
+        lambda c: inspect.isclass(c) and c.__name__ == klass_name,
+    )
+
+    if not members:
+        raise ImportError(f"The path {path} was found but it was not a valid class.")
+
+    return members[0][-1]
+
+
 def run_script(cmd, cmd_args=None, verbose=False, display=False, label=None):
     """Used to run a command in a subprocess."""
     if isinstance(cmd, str):
@@ -476,3 +624,10 @@ def create_path(path):
         create_path(path.parent)
         path.mkdir(exist_ok=True)
         return path
+
+
+def get_pretty_app_name(app):
+    # XXX See bug 1712337, we need a singluar point of entry
+    # for the binary to allow us to get the version/app info
+    # so that we can get a pretty name on desktop.
+    return PRETTY_APP_NAMES[app]

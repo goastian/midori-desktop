@@ -22,11 +22,18 @@ from mozperftest.system import get_layers as system_layers  # noqa
 from mozperftest.test import get_layers as test_layers  # noqa
 from mozperftest.utils import convert_day  # noqa
 
-FLAVORS = "desktop-browser", "mobile-browser", "doc", "xpcshell", "webpagetest"
+FLAVORS = (
+    "desktop-browser",
+    "mobile-browser",
+    "doc",
+    "xpcshell",
+    "webpagetest",
+    "mochitest",
+    "custom-script",
+)
 
 
 class Options:
-
     general_args = {
         "--flavor": {
             "choices": FLAVORS,
@@ -68,7 +75,7 @@ class Options:
             "type": str,
             "default": "linux",
             "help": "Platform to use on try",
-            "choices": ["g5", "pixel2", "linux", "mac", "win"],
+            "choices": ["linux", "mac", "win"],
         },
         "--on-try": {
             "action": "store_true",
@@ -80,6 +87,32 @@ class Options:
             "default": "today",
             "help": "Used in multi-commit testing, it specifies the day to get test builds from. "
             "Must follow the format `YYYY.MM.DD` or be `today` or `yesterday`.",
+        },
+        "--binary": {
+            "type": str,
+            "default": None,
+            "help": (
+                "The binary that needs to be tested (note that some layers "
+                "may use a custom approach for the binary specification)."
+            ),
+        },
+        "--app": {
+            "type": str,
+            "default": "firefox",
+            "choices": [
+                "firefox",
+                "chrome-m",
+                "chrome",
+                "fennec",
+                "geckoview",
+                "fenix",
+                "refbrow",
+            ],
+            "help": (
+                "Shorthand name of application that is being tested. "
+                "Used in perfherder data, and other layers such as the "
+                "BinarySetup layer for getting the binary path, and version."
+            ),
         },
     }
 
@@ -102,10 +135,10 @@ for layer in system_layers() + test_layers() + metrics_layers():
     }
 
     for option, value in layer.arguments.items():
-        option = "--%s-%s" % (layer.name, option.replace("_", "-"))
-        if option in Options.args:
-            raise KeyError("%s option already defined!" % option)
-        Options.args[option] = value
+        parsed_option = "--%s-%s" % (layer.name, option.replace("_", "-"))
+        if parsed_option in Options.args:
+            raise KeyError("%s option already defined!" % parsed_option)
+        Options.args[parsed_option] = value
 
 
 class PerftestArgumentParser(ArgumentParser):

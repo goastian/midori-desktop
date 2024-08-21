@@ -227,7 +227,7 @@ class TestEmitterBasic(unittest.TestCase):
     def test_debug_flags(self):
         reader = self.reader(
             "compile-flags",
-            extra_substs={"MOZ_DEBUG_FLAGS": "-g", "MOZ_DEBUG_SYMBOLS": "1"},
+            extra_substs={"MOZ_DEBUG_FLAGS": ["-g"], "MOZ_DEBUG_SYMBOLS": "1"},
         )
         sources, ldflags, lib, flags = self.read_topsrcdir(reader)
         self.assertIsInstance(flags, ComputedFlags)
@@ -236,7 +236,7 @@ class TestEmitterBasic(unittest.TestCase):
     def test_disable_debug_flags(self):
         reader = self.reader(
             "compile-flags",
-            extra_substs={"MOZ_DEBUG_FLAGS": "-g", "MOZ_DEBUG_SYMBOLS": ""},
+            extra_substs={"MOZ_DEBUG_FLAGS": ["-g"], "MOZ_DEBUG_SYMBOLS": ""},
         )
         sources, ldflags, lib, flags = self.read_topsrcdir(reader)
         self.assertIsInstance(flags, ComputedFlags)
@@ -277,7 +277,7 @@ class TestEmitterBasic(unittest.TestCase):
             "link-flags",
             extra_substs={
                 "OS_ARCH": "WINNT",
-                "GNU_CC": "",
+                "CC_TYPE": "clang-cl",
                 "MOZ_OPTIMIZE": "1",
                 "MOZ_DEBUG_LDFLAGS": ["-DEBUG"],
                 "MOZ_DEBUG_SYMBOLS": "1",
@@ -295,7 +295,7 @@ class TestEmitterBasic(unittest.TestCase):
             "link-flags",
             extra_substs={
                 "OS_ARCH": "WINNT",
-                "GNU_CC": "",
+                "CC_TYPE": "clang-cl",
                 "MOZ_DMD": "1",
                 "MOZ_DEBUG_LDFLAGS": ["-DEBUG"],
                 "MOZ_DEBUG_SYMBOLS": "1",
@@ -335,7 +335,7 @@ class TestEmitterBasic(unittest.TestCase):
     def test_host_no_optimize_flags(self):
         reader = self.reader(
             "host-compile-flags",
-            extra_substs={"MOZ_OPTIMIZE": "", "MOZ_OPTIMIZE_FLAGS": ["-O2"]},
+            extra_substs={"MOZ_OPTIMIZE": "1", "MOZ_OPTIMIZE_FLAGS": ["-O2"]},
         )
         sources, ldflags, flags, lib, target_flags = self.read_topsrcdir(reader)
         self.assertIsInstance(flags, ComputedFlags)
@@ -344,7 +344,7 @@ class TestEmitterBasic(unittest.TestCase):
     def test_host_optimize_flags(self):
         reader = self.reader(
             "host-compile-flags",
-            extra_substs={"MOZ_OPTIMIZE": "1", "MOZ_OPTIMIZE_FLAGS": ["-O2"]},
+            extra_substs={"HOST_OPTIMIZE_FLAGS": ["-O2"]},
         )
         sources, ldflags, flags, lib, target_flags = self.read_topsrcdir(reader)
         self.assertIsInstance(flags, ComputedFlags)
@@ -366,7 +366,12 @@ class TestEmitterBasic(unittest.TestCase):
 
     def test_host_rtl_flag(self):
         reader = self.reader(
-            "host-compile-flags", extra_substs={"OS_ARCH": "WINNT", "MOZ_DEBUG": "1"}
+            "host-compile-flags",
+            extra_substs={
+                "OS_ARCH": "WINNT",
+                "MOZ_DEBUG": "1",
+                "CC_TYPE": "clang-cl",
+            },
         )
         sources, ldflags, flags, lib, target_flags = self.read_topsrcdir(reader)
         self.assertIsInstance(flags, ComputedFlags)
@@ -710,7 +715,7 @@ class TestEmitterBasic(unittest.TestCase):
 
         expected = {
             "mochitest": ["runtests.py", "utils.py"],
-            "testing/mochitest": ["mochitest.py", "mochitest.ini"],
+            "testing/mochitest": ["mochitest.py", "mochitest.toml"],
         }
 
         for path, strings in objs[0].files.walk():
@@ -782,6 +787,22 @@ class TestEmitterBasic(unittest.TestCase):
             ],
         )
 
+    def test_shared_lib_paths(self):
+        """Various moz.build settings that change the destination of SHARED_LIBRARY
+        should be accurately reflected in Program.output_path."""
+        reader = self.reader("shared-lib-paths")
+        objs = self.read_topsrcdir(reader)
+        prog_paths = [o.output_path for o in objs if isinstance(o, SharedLibrary)]
+        self.assertEqual(
+            prog_paths,
+            [
+                "!/dist/bin/libdist-bin.so",
+                "!/dist/bin/foo/libdist-subdir.so",
+                "!/final/target/libfinal-target.so",
+                "!libnot-installed.so",
+            ],
+        )
+
     def test_host_program_paths(self):
         """The destination of a HOST_PROGRAM (almost always dist/host/bin)
         should be accurately reflected in Program.output_path."""
@@ -842,7 +863,7 @@ class TestEmitterBasic(unittest.TestCase):
         self.assertEqual(len(o.installs), 3)
         expected = [
             mozpath.normpath(mozpath.join(o.install_prefix, "../.well-known/foo.txt")),
-            mozpath.join(o.install_prefix, "absolute-support.ini"),
+            mozpath.join(o.install_prefix, "absolute-support.toml"),
             mozpath.join(o.install_prefix, "test_file.js"),
         ]
         paths = sorted([v[0] for v in o.installs.values()])
@@ -879,18 +900,18 @@ class TestEmitterBasic(unittest.TestCase):
             self.read_topsrcdir(reader)
 
     def test_test_manifest_install_includes(self):
-        """Ensure that any [include:foo.ini] are copied to the objdir."""
+        """Ensure that any [include:foo.toml] are copied to the objdir."""
         reader = self.reader("test-manifest-install-includes")
 
         objs = self.read_topsrcdir(reader)
         self.assertEqual(len(objs), 1)
         o = objs[0]
         self.assertEqual(len(o.installs), 3)
-        self.assertEqual(o.manifest_relpath, "mochitest.ini")
-        self.assertEqual(o.manifest_obj_relpath, "mochitest.ini")
+        self.assertEqual(o.manifest_relpath, "mochitest.toml")
+        self.assertEqual(o.manifest_obj_relpath, "mochitest.toml")
         expected = [
-            mozpath.normpath(mozpath.join(o.install_prefix, "common.ini")),
-            mozpath.normpath(mozpath.join(o.install_prefix, "mochitest.ini")),
+            mozpath.normpath(mozpath.join(o.install_prefix, "common.toml")),
+            mozpath.normpath(mozpath.join(o.install_prefix, "mochitest.toml")),
             mozpath.normpath(mozpath.join(o.install_prefix, "test_foo.html")),
         ]
         paths = sorted([v[0] for v in o.installs.values()])
@@ -921,34 +942,34 @@ class TestEmitterBasic(unittest.TestCase):
         self.assertEqual(len(objs), 8)
 
         metadata = {
-            "a11y.ini": {
+            "a11y.toml": {
                 "flavor": "a11y",
-                "installs": {"a11y.ini": False, "test_a11y.js": True},
+                "installs": {"a11y.toml": False, "test_a11y.js": True},
                 "pattern-installs": 1,
             },
-            "browser.ini": {
+            "browser.toml": {
                 "flavor": "browser-chrome",
                 "installs": {
-                    "browser.ini": False,
+                    "browser.toml": False,
                     "test_browser.js": True,
                     "support1": False,
                     "support2": False,
                 },
             },
-            "mochitest.ini": {
+            "mochitest.toml": {
                 "flavor": "mochitest",
-                "installs": {"mochitest.ini": False, "test_mochitest.js": True},
+                "installs": {"mochitest.toml": False, "test_mochitest.js": True},
                 "external": {"external1", "external2"},
             },
-            "chrome.ini": {
+            "chrome.toml": {
                 "flavor": "chrome",
-                "installs": {"chrome.ini": False, "test_chrome.js": True},
+                "installs": {"chrome.toml": False, "test_chrome.js": True},
             },
-            "xpcshell.ini": {
+            "xpcshell.toml": {
                 "flavor": "xpcshell",
                 "dupe": True,
                 "installs": {
-                    "xpcshell.ini": False,
+                    "xpcshell.toml": False,
                     "test_xpcshell.js": True,
                     "head1": False,
                     "head2": False,
@@ -956,7 +977,7 @@ class TestEmitterBasic(unittest.TestCase):
             },
             "reftest.list": {"flavor": "reftest", "installs": {}},
             "crashtest.list": {"flavor": "crashtest", "installs": {}},
-            "python.ini": {"flavor": "python", "installs": {"python.ini": False}},
+            "python.toml": {"flavor": "python", "installs": {"python.toml": False}},
         }
 
         for o in objs:
@@ -1454,7 +1475,6 @@ class TestEmitterBasic(unittest.TestCase):
 
             # Unified sources are not required
             if sources.have_unified_mapping:
-
                 for f in dict(sources.unified_source_mapping).keys():
                     self.assertIn(
                         mozpath.join(
@@ -1501,7 +1521,7 @@ class TestEmitterBasic(unittest.TestCase):
         with self.assertRaisesRegex(
             SandboxValidationError,
             "Test.cpp from SOURCES would have the same object name as"
-            " Test.c from SOURCES\.",
+            " Test.c from SOURCES\\.",
         ):
             self.read_topsrcdir(reader)
 
@@ -1509,7 +1529,7 @@ class TestEmitterBasic(unittest.TestCase):
         with self.assertRaisesRegex(
             SandboxValidationError,
             "Test.cpp from SOURCES would have the same object name as"
-            " subdir/Test.cpp from SOURCES\.",
+            " subdir/Test.cpp from SOURCES\\.",
         ):
             self.read_topsrcdir(reader)
 
@@ -1517,7 +1537,7 @@ class TestEmitterBasic(unittest.TestCase):
         with self.assertRaisesRegex(
             SandboxValidationError,
             "Test.cpp from UNIFIED_SOURCES would have the same object name as"
-            " Test.c from SOURCES in non-unified builds\.",
+            " Test.c from SOURCES in non-unified builds\\.",
         ):
             self.read_topsrcdir(reader)
 
@@ -1525,7 +1545,7 @@ class TestEmitterBasic(unittest.TestCase):
         with self.assertRaisesRegex(
             SandboxValidationError,
             "Test.cpp from UNIFIED_SOURCES would have the same object name as"
-            " Test.c from UNIFIED_SOURCES in non-unified builds\.",
+            " Test.c from UNIFIED_SOURCES in non-unified builds\\.",
         ):
             self.read_topsrcdir(reader)
 
@@ -1802,6 +1822,24 @@ class TestEmitterBasic(unittest.TestCase):
         self.assertIsInstance(cflags, ComputedFlags)
         self.assertIsInstance(host_cflags, ComputedFlags)
         self.assertIsInstance(lib, RustLibrary)
+
+    def test_missing_workspace_hack(self):
+        """Test detection of a missing workspace hack."""
+        reader = self.reader("rust-no-workspace-hack")
+        with six.assertRaisesRegex(
+            self, SandboxValidationError, "doesn't contain the workspace hack"
+        ):
+            self.read_topsrcdir(reader)
+
+    def test_old_workspace_hack(self):
+        """Test detection of an old workspace hack."""
+        reader = self.reader("rust-old-workspace-hack")
+        with six.assertRaisesRegex(
+            self,
+            SandboxValidationError,
+            "needs an update to its mozilla-central-workspace-hack dependency",
+        ):
+            self.read_topsrcdir(reader)
 
     def test_install_shared_lib(self):
         """Test that we can install a shared library with TEST_HARNESS_FILES"""

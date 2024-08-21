@@ -42,6 +42,11 @@ EXCLUSIVE_COMPONENTS = [
     "linux",
     "macosx",
     "windows",
+    "ios",
+    # application
+    "firefox",
+    "fenix",
+    "focus-android",
     # broad test harness categories
     "awsy",
     "condprofile",

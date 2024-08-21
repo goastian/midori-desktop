@@ -24,7 +24,9 @@ from mozperftest.utils import (
     get_revision_namespace_url,
     host_platform,
     install_package,
+    install_requirements_file,
     load_class,
+    load_class_from_path,
     silence,
 )
 
@@ -41,7 +43,7 @@ def test_host_platform():
     if sys.platform.startswith("darwin"):
         assert plat == "darwin"
     else:
-        if sys.maxsize > 2 ** 32:
+        if sys.maxsize > 2**32:
             assert "64" in plat
         else:
             assert "64" not in plat
@@ -92,6 +94,28 @@ def test_install_package():
                 "pip",
                 "install",
                 "foo",
+            ]
+        )
+
+
+def test_install_requirements_file():
+    vem = mock.Mock()
+    vem.bin_path = "someplace"
+    with mock.patch("subprocess.check_call") as mock_check_call, mock.patch(
+        "mozperftest.utils.os"
+    ):
+        assert install_requirements_file(vem, "foo")
+        mock_check_call.assert_called_once_with(
+            [
+                vem.python_path,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                "foo",
+                "--no-index",
+                "--find-links",
+                "https://pypi.pub.build.mozilla.org/pub/",
             ]
         )
 
@@ -166,7 +190,6 @@ class ImportMe:
 
 
 def test_load_class():
-
     with pytest.raises(ImportError):
         load_class("notimportable")
 
@@ -181,6 +204,19 @@ def test_load_class():
 
     klass = load_class("mozperftest.tests.test_utils:ImportMe")
     assert klass is ImportMe
+
+
+def test_load_class_from_path():
+    with pytest.raises(ImportError) as exc:
+        load_class_from_path("nonexistent", __file__)
+    assert "found but it was not a valid class" in exc.value.args[0]
+
+    with pytest.raises(ImportError) as exc:
+        load_class_from_path("nonexistent", "nonexistent-file")
+    assert "does not exist." in exc.value.args[0]
+
+    klass = load_class_from_path("ImportMe", __file__)
+    assert klass.__name__ is ImportMe.__name__
 
 
 class _Venv:

@@ -13,6 +13,7 @@ import six
 from mozpack.chrome.manifest import parse_manifest_line
 
 from mozbuild.backend.base import BuildBackend
+from mozbuild.dirutils import mkdir
 from mozbuild.frontend.context import (
     VARIABLES,
     Context,
@@ -44,7 +45,6 @@ from mozbuild.frontend.data import (
 )
 from mozbuild.jar import DeprecatedJarManifest, JarManifestParser
 from mozbuild.preprocessor import Preprocessor
-from mozbuild.util import mkdir
 
 
 class XPIDLManager(object):
@@ -174,12 +174,18 @@ class CommonBackend(BuildBackend):
             return False
 
         elif isinstance(obj, GeneratedFile):
-            if obj.required_during_compile or obj.required_before_compile:
-                for f in itertools.chain(
-                    obj.required_before_compile, obj.required_during_compile
-                ):
-                    fullpath = ObjDirPath(obj._context, "!" + f).full_path
-                    self._handle_generated_sources([fullpath])
+            for f in obj.outputs:
+                if f == "cbindgen-metadata.json":
+                    # FIXME (bug 1865785)
+                    #
+                    # The content of cbindgen-metadata.json is not sorted and
+                    # the order is not consistent across multiple runs.
+                    #
+                    # Exclude this file in order to avoid breaking the
+                    # taskcluster/kinds/diffoscope/reproducible.yml jobs.
+                    continue
+                fullpath = ObjDirPath(obj._context, "!" + f).full_path
+                self._handle_generated_sources([fullpath])
             return False
 
         elif isinstance(obj, Exports):
@@ -286,6 +292,23 @@ class CommonBackend(BuildBackend):
 
         return (objs, shared_libs, os_libs, static_libs)
 
+    def _make_ar_response_file(self, objdir, objs, name):
+        if not objs:
+            return None
+
+        if not self.environment.substs.get("AR_SUPPORTS_RESPONSE_FILE"):
+            return None
+
+        response_file_path = mozpath.join(objdir, name)
+        ref = "@" + response_file_path
+        content = "\n".join(objs)
+
+        mkdir(objdir)
+        with self._write_file(response_file_path) as fh:
+            fh.write(content)
+
+        return ref
+
     def _make_list_file(self, kind, objdir, objs, name):
         if not objs:
             return None
@@ -302,15 +325,13 @@ class CommonBackend(BuildBackend):
             list_style = "list"
         list_file_path = mozpath.join(objdir, name)
         objs = [os.path.relpath(o, objdir) for o in objs]
-        if list_style == "linkerscript":
-            ref = list_file_path
-            content = "\n".join('INPUT("%s")' % o for o in objs)
-        elif list_style == "filelist":
+        content = "\n".join(objs)
+        if list_style == "filelist":
             ref = "-Wl,-filelist," + list_file_path
-            content = "\n".join(objs)
+        elif list_style == "linkerlist":
+            ref = "-Wl,@" + list_file_path
         elif list_style == "list":
             ref = "@" + list_file_path
-            content = "\n".join(objs)
         else:
             return None
 
@@ -346,7 +367,6 @@ class CommonBackend(BuildBackend):
         )
 
     def _handle_webidl_collection(self, webidls):
-
         bindings_dir = mozpath.join(self.environment.topobjdir, "dom", "bindings")
 
         all_inputs = set(webidls.all_static_sources())

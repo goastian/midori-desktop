@@ -48,11 +48,7 @@ TEST_MANIFESTS = dict(
         ".",
         False,
     ),
-    # marionette tests are run from the srcdir
-    # TODO(ato): make packaging work as for other test suites
     MARIONETTE=("marionette", "marionette", ".", False),
-    MARIONETTE_UNIT=("marionette", "marionette", ".", False),
-    MARIONETTE_WEBAPI=("marionette", "marionette", ".", False),
     MOCHITEST=("mochitest", "testing/mochitest", "tests", True),
     MOCHITEST_CHROME=("chrome", "testing/mochitest", "chrome", True),
     WEBRTC_SIGNALLING_TEST=("steeplechase", "steeplechase", ".", True),
@@ -124,7 +120,6 @@ class SupportFilesConverter(object):
         for field, seen in self._fields:
             value = test.get(field, "")
             for pattern in value.split():
-
                 # We track uniqueness locally (per test) where duplicates are forbidden,
                 # and globally, where they are permitted. If a support file appears multiple
                 # times for a single test, there are unnecessary entries in the manifest. But

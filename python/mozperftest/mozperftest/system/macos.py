@@ -16,6 +16,7 @@ from mozperftest.layers import Layer
 POTENTIAL_DMGS = {
     "browsertime-binary": "Contents/MacOS/firefox",
     "xpcshell-xre-path": "Contents/MacOS",
+    "mochitest-binary": "Contents/MacOS/firefox",
 }
 
 
@@ -112,6 +113,7 @@ class MacosDevice(Layer):
             # ... and swap the browsertime argument
             self.info(f"Using {path} for {option}")
             self.env.set_arg(option, str(path))
+            metadata.binary = str(path)
         return metadata
 
     def teardown(self):

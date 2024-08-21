@@ -14,10 +14,10 @@
 import sys
 
 major, minor = sys.version_info[:2]
-if (major < 3) or (major == 3 and minor < 6):
+if (major < 3) or (major == 3 and minor < 8):
     print(
-        "Bootstrap currently only runs on Python 3.6+."
-        "Please try re-running with python3.6+."
+        "Bootstrap currently only runs on Python 3.8+."
+        "Please try re-running with python3.8+."
     )
     sys.exit(1)
 
@@ -204,6 +204,8 @@ def git_clone_firefox(git: Path, dest: Path, watchman: Path, head_repo, head_rev
         subprocess.check_call(
             [
                 str(git),
+                "-c",
+                "fetch.prune=true",
                 "clone",
                 "--no-checkout",
                 "hg::https://hg.mozilla.org/mozilla-unified",
@@ -226,7 +228,12 @@ def git_clone_firefox(git: Path, dest: Path, watchman: Path, head_repo, head_rev
             )
 
         subprocess.check_call(
-            [str(git), "checkout", "FETCH_HEAD" if head_rev else "bookmarks/central"],
+            [
+                str(git),
+                "checkout",
+                "FETCH_HEAD" if head_rev else "bookmarks/central",
+                "--",
+            ],
             cwd=str(dest),
             env=env,
         )

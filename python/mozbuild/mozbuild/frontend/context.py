@@ -390,12 +390,10 @@ class HostCompileFlags(BaseCompileFlags):
         BaseCompileFlags.__init__(self, context)
 
     def _optimize_flags(self):
-        optimize_flags = []
-        if self._context.config.substs.get("CROSS_COMPILE"):
-            optimize_flags += self._context.config.substs.get("HOST_OPTIMIZE_FLAGS")
-        elif self._context.config.substs.get("MOZ_OPTIMIZE"):
-            optimize_flags += self._context.config.substs.get("MOZ_OPTIMIZE_FLAGS")
-        return optimize_flags
+        # We don't use MOZ_OPTIMIZE here because we don't want
+        # --disable-optimize to make in-tree host tools slow. Doing so can
+        # potentially make build times significantly worse.
+        return self._context.config.substs.get("HOST_OPTIMIZE_FLAGS") or []
 
 
 class AsmFlags(BaseCompileFlags):
@@ -421,16 +419,16 @@ class AsmFlags(BaseCompileFlags):
                     debug_flags += ["-F", "cv8"]
                 elif self._context.config.substs.get("OS_ARCH") != "Darwin":
                     debug_flags += ["-F", "dwarf"]
-            elif (
-                self._context.config.substs.get("OS_ARCH") == "WINNT"
-                and self._context.config.substs.get("CPU_ARCH") == "aarch64"
-            ):
-                # armasm64 accepts a paucity of options compared to ml/ml64.
-                pass
+            elif self._context.config.substs.get("CC_TYPE") == "clang-cl":
+                if self._context.config.substs.get("TARGET_CPU") == "aarch64":
+                    # armasm64 accepts a paucity of options compared to ml/ml64.
+                    pass
+                else:
+                    # Unintuitively, -Zi for ml/ml64 is equivalent to -Z7 for cl.exe.
+                    # -Zi for cl.exe has a different purpose, so this is only used here.
+                    debug_flags += ["-Zi"]
             else:
-                debug_flags += self._context.config.substs.get(
-                    "MOZ_DEBUG_FLAGS", ""
-                ).split()
+                debug_flags += self._context.config.substs.get("MOZ_DEBUG_FLAGS", [])
         return debug_flags
 
 
@@ -486,11 +484,10 @@ class LinkFlags(BaseCompileFlags):
         if all(
             [
                 self._context.config.substs.get("OS_ARCH") == "WINNT",
-                not self._context.config.substs.get("GNU_CC"),
+                self._context.config.substs.get("CC_TYPE") == "clang-cl",
                 not self._context.config.substs.get("MOZ_DEBUG"),
             ]
         ):
-
             if self._context.config.substs.get("MOZ_OPTIMIZE"):
                 flags.append("-OPT:REF,ICF")
 
@@ -506,7 +503,7 @@ class TargetCompileFlags(BaseCompileFlags):
         if self._context.config.substs.get(
             "MOZ_DEBUG"
         ) or self._context.config.substs.get("MOZ_DEBUG_SYMBOLS"):
-            return self._context.config.substs.get("MOZ_DEBUG_FLAGS", "").split()
+            return self._context.config.substs.get("MOZ_DEBUG_FLAGS", [])
         return []
 
     def _warnings_as_errors(self):
@@ -1226,8 +1223,8 @@ class Files(SubContext):
 
     ``foo.html``
        Will match only the ``foo.html`` file in the current directory.
-    ``*.jsm``
-       Will match all ``.jsm`` files in the current directory.
+    ``*.mjs``
+       Will match all ``.mjs`` files in the current directory.
     ``**/*.cpp``
        Will match all ``.cpp`` files in this and all child directories.
     ``foo/*.css``
@@ -2182,7 +2179,7 @@ VARIABLES = {
         """Names of example WebIDL interfaces to build as part of the build.
 
         Names in this list correspond to WebIDL interface names defined in
-        WebIDL files included in the build from one of the \*WEBIDL_FILES
+        WebIDL files included in the build from one of the *WEBIDL_FILES
         variables.
         """,
     ),
@@ -2211,16 +2208,10 @@ VARIABLES = {
         """List of manifest files defining firefox-ui-functional tests.
         """,
     ),
-    "MARIONETTE_LAYOUT_MANIFESTS": (
+    "MARIONETTE_MANIFESTS": (
         ManifestparserManifestList,
         list,
-        """List of manifest files defining marionette-layout tests.
-        """,
-    ),
-    "MARIONETTE_UNIT_MANIFESTS": (
-        ManifestparserManifestList,
-        list,
-        """List of manifest files defining marionette-unit tests.
+        """List of manifest files defining marionette tests.
         """,
     ),
     "METRO_CHROME_MANIFESTS": (
@@ -2482,6 +2473,14 @@ VARIABLES = {
         dict,
         """Dictionary of compiler defines to declare for wasm compilation.
         See ``DEFINES`` for specifics.
+        """,
+    ),
+    "WASM_LIBS": (
+        List,
+        list,
+        """Wasm system link libraries.
+
+        This variable contains a list of wasm system libaries to link against.
         """,
     ),
     "CMFLAGS": (
@@ -2944,13 +2943,13 @@ SPECIAL_VARIABLES = {
         list,
         """JavaScript modules to install in the test-only destination.
 
-        Some JavaScript modules (JSMs) are test-only and not distributed
+        Some JavaScript modules are test-only and not distributed
         with Firefox. This variable defines them.
 
         To install modules in a subdirectory, use properties of this
         variable to control the final destination. e.g.
 
-        ``TESTING_JS_MODULES.foo += ['module.jsm']``.
+        ``TESTING_JS_MODULES.foo += ['module.sys.mjs']``.
         """,
     ),
     "TEST_DIRS": (

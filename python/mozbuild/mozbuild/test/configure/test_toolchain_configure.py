@@ -173,8 +173,8 @@ CLANG_3_3 = CLANG("3.3.0") + DEFAULT_C99
 CLANGXX_3_3 = CLANGXX("3.3.0")
 CLANG_4_0 = CLANG("4.0.2") + DEFAULT_C11
 CLANGXX_4_0 = CLANGXX("4.0.2") + SUPPORTS_GNUXX1Z
-CLANG_7_0 = CLANG("7.0.0") + DEFAULT_C11
-CLANGXX_7_0 = CLANGXX("7.0.0") + DEFAULT_CXX_14 + SUPPORTS_GNUXX17
+CLANG_8_0 = CLANG("8.0.0") + DEFAULT_C11
+CLANGXX_8_0 = CLANGXX("8.0.0") + DEFAULT_CXX_14 + SUPPORTS_GNUXX17
 XCODE_CLANG_3_3 = (
     CLANG("5.0")
     + DEFAULT_C99
@@ -188,12 +188,12 @@ XCODE_CLANG_4_0 = CLANG("9.0.0") + DEFAULT_C11 + {"__apple_build_version__": "1"
 XCODE_CLANGXX_4_0 = (
     CLANGXX("9.0.0") + SUPPORTS_GNUXX1Z + {"__apple_build_version__": "1"}
 )
-XCODE_CLANG_7_0 = CLANG("10.0.1") + DEFAULT_C11 + {"__apple_build_version__": "1"}
-XCODE_CLANGXX_7_0 = (
-    CLANGXX("10.0.1") + SUPPORTS_GNUXX17 + {"__apple_build_version__": "1"}
+XCODE_CLANG_8_0 = CLANG("11.0.1") + DEFAULT_C11 + {"__apple_build_version__": "1"}
+XCODE_CLANGXX_8_0 = (
+    CLANGXX("11.0.1") + SUPPORTS_GNUXX17 + {"__apple_build_version__": "1"}
 )
-DEFAULT_CLANG = CLANG_7_0
-DEFAULT_CLANGXX = CLANGXX_7_0
+DEFAULT_CLANG = CLANG_8_0
+DEFAULT_CLANGXX = CLANGXX_8_0
 
 
 def CLANG_PLATFORM(gcc_platform):
@@ -445,8 +445,8 @@ class LinuxToolchainTest(BaseToolchainTest):
         "/usr/bin/g++-10": GXX_10 + GCC_PLATFORM_X86_64_LINUX,
         "/usr/bin/clang": DEFAULT_CLANG + CLANG_PLATFORM_X86_64_LINUX,
         "/usr/bin/clang++": DEFAULT_CLANGXX + CLANG_PLATFORM_X86_64_LINUX,
-        "/usr/bin/clang-7.0": CLANG_7_0 + CLANG_PLATFORM_X86_64_LINUX,
-        "/usr/bin/clang++-7.0": CLANGXX_7_0 + CLANG_PLATFORM_X86_64_LINUX,
+        "/usr/bin/clang-8.0": CLANG_8_0 + CLANG_PLATFORM_X86_64_LINUX,
+        "/usr/bin/clang++-8.0": CLANGXX_8_0 + CLANG_PLATFORM_X86_64_LINUX,
         "/usr/bin/clang-4.0": CLANG_4_0 + CLANG_PLATFORM_X86_64_LINUX,
         "/usr/bin/clang++-4.0": CLANGXX_4_0 + CLANG_PLATFORM_X86_64_LINUX,
         "/usr/bin/clang-3.3": CLANG_3_3 + CLANG_PLATFORM_X86_64_LINUX,
@@ -481,33 +481,33 @@ class LinuxToolchainTest(BaseToolchainTest):
     DEFAULT_GXX_RESULT = GXX_8_RESULT + {"compiler": "/usr/bin/g++"}
 
     CLANG_3_3_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 3.3.0)."
+        "Only clang/llvm 8.0 or newer is supported (found version 3.3.0)."
     )
     CLANGXX_3_3_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 3.3.0)."
+        "Only clang/llvm 8.0 or newer is supported (found version 3.3.0)."
     )
     CLANG_4_0_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 4.0.2)."
+        "Only clang/llvm 8.0 or newer is supported (found version 4.0.2)."
     )
     CLANGXX_4_0_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 4.0.2)."
+        "Only clang/llvm 8.0 or newer is supported (found version 4.0.2)."
     )
-    CLANG_7_0_RESULT = CompilerResult(
+    CLANG_8_0_RESULT = CompilerResult(
         flags=["-std=gnu99"],
-        version="7.0.0",
+        version="8.0.0",
         type="clang",
-        compiler="/usr/bin/clang-7.0",
+        compiler="/usr/bin/clang-8.0",
         language="C",
     )
-    CLANGXX_7_0_RESULT = CompilerResult(
+    CLANGXX_8_0_RESULT = CompilerResult(
         flags=["-std=gnu++17"],
-        version="7.0.0",
+        version="8.0.0",
         type="clang",
-        compiler="/usr/bin/clang++-7.0",
+        compiler="/usr/bin/clang++-8.0",
         language="C++",
     )
-    DEFAULT_CLANG_RESULT = CLANG_7_0_RESULT + {"compiler": "/usr/bin/clang"}
-    DEFAULT_CLANGXX_RESULT = CLANGXX_7_0_RESULT + {"compiler": "/usr/bin/clang++"}
+    DEFAULT_CLANG_RESULT = CLANG_8_0_RESULT + {"compiler": "/usr/bin/clang"}
+    DEFAULT_CLANGXX_RESULT = CLANGXX_8_0_RESULT + {"compiler": "/usr/bin/clang++"}
 
     def test_default(self):
         # We'll try clang and gcc, and find clang first.
@@ -657,10 +657,10 @@ class LinuxToolchainTest(BaseToolchainTest):
         self.do_toolchain_test(
             self.PATHS,
             {
-                "c_compiler": self.CLANG_7_0_RESULT,
-                "cxx_compiler": self.CLANGXX_7_0_RESULT,
+                "c_compiler": self.CLANG_8_0_RESULT,
+                "cxx_compiler": self.CLANGXX_8_0_RESULT,
             },
-            environ={"CC": "clang-7.0"},
+            environ={"CC": "clang-8.0"},
         )
 
     def test_unsupported_clang(self):
@@ -845,8 +845,8 @@ class OSXToolchainTest(BaseToolchainTest):
         "/usr/bin/g++-5": GXX_5 + GCC_PLATFORM_X86_64_OSX,
         "/usr/bin/gcc-8": GCC_8 + GCC_PLATFORM_X86_64_OSX,
         "/usr/bin/g++-8": GXX_8 + GCC_PLATFORM_X86_64_OSX,
-        "/usr/bin/clang": XCODE_CLANG_7_0 + CLANG_PLATFORM_X86_64_OSX,
-        "/usr/bin/clang++": XCODE_CLANGXX_7_0 + CLANG_PLATFORM_X86_64_OSX,
+        "/usr/bin/clang": XCODE_CLANG_8_0 + CLANG_PLATFORM_X86_64_OSX,
+        "/usr/bin/clang++": XCODE_CLANGXX_8_0 + CLANG_PLATFORM_X86_64_OSX,
         "/usr/bin/clang-4.0": XCODE_CLANG_4_0 + CLANG_PLATFORM_X86_64_OSX,
         "/usr/bin/clang++-4.0": XCODE_CLANGXX_4_0 + CLANG_PLATFORM_X86_64_OSX,
         "/usr/bin/clang-3.3": XCODE_CLANG_3_3 + CLANG_PLATFORM_X86_64_OSX,
@@ -854,27 +854,27 @@ class OSXToolchainTest(BaseToolchainTest):
         "/usr/bin/xcrun": xcrun,
     }
     CLANG_3_3_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 4.0.0.or.less)."
+        "Only clang/llvm 8.0 or newer is supported (found version 4.0.0.or.less)."
     )
     CLANGXX_3_3_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 4.0.0.or.less)."
+        "Only clang/llvm 8.0 or newer is supported (found version 4.0.0.or.less)."
     )
     CLANG_4_0_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 4.0.0.or.less)."
+        "Only clang/llvm 8.0 or newer is supported (found version 4.0.0.or.less)."
     )
     CLANGXX_4_0_RESULT = (
-        "Only clang/llvm 7.0 or newer is supported (found version 4.0.0.or.less)."
+        "Only clang/llvm 8.0 or newer is supported (found version 4.0.0.or.less)."
     )
     DEFAULT_CLANG_RESULT = CompilerResult(
         flags=["-std=gnu99"],
-        version="7.0.0",
+        version="8.0.0",
         type="clang",
         compiler="/usr/bin/clang",
         language="C",
     )
     DEFAULT_CLANGXX_RESULT = CompilerResult(
         flags=["-stdlib=libc++", "-std=gnu++17"],
-        version="7.0.0",
+        version="8.0.0",
         type="clang",
         compiler="/usr/bin/clang++",
         language="C++",
@@ -888,7 +888,7 @@ class OSXToolchainTest(BaseToolchainTest):
             [
                 "-isysroot",
                 xcrun("", ("--show-sdk-path",))[1],
-                "-mmacosx-version-min=10.12",
+                "-mmacosx-version-min=10.15",
             ]
         )
     }
@@ -973,8 +973,8 @@ class MingwToolchainTest(BaseToolchainTest):
         "/usr/bin/g++-7": GXX_7 + GCC_PLATFORM_X86_WIN + MINGW32,
         "/usr/bin/clang": DEFAULT_CLANG + CLANG_PLATFORM_X86_WIN,
         "/usr/bin/clang++": DEFAULT_CLANGXX + CLANG_PLATFORM_X86_WIN,
-        "/usr/bin/clang-7.0": CLANG_7_0 + CLANG_PLATFORM_X86_WIN,
-        "/usr/bin/clang++-7.0": CLANGXX_7_0 + CLANG_PLATFORM_X86_WIN,
+        "/usr/bin/clang-8.0": CLANG_8_0 + CLANG_PLATFORM_X86_WIN,
+        "/usr/bin/clang++-8.0": CLANGXX_8_0 + CLANG_PLATFORM_X86_WIN,
         "/usr/bin/clang-4.0": CLANG_4_0 + CLANG_PLATFORM_X86_WIN,
         "/usr/bin/clang++-4.0": CLANGXX_4_0 + CLANG_PLATFORM_X86_WIN,
         "/usr/bin/clang-3.3": CLANG_3_3 + CLANG_PLATFORM_X86_WIN,
@@ -1111,8 +1111,8 @@ class Mingw64ToolchainTest(MingwToolchainTest):
         "/usr/bin/g++-7": GXX_7 + GCC_PLATFORM_X86_64_WIN + MINGW32,
         "/usr/bin/clang": DEFAULT_CLANG + CLANG_PLATFORM_X86_64_WIN,
         "/usr/bin/clang++": DEFAULT_CLANGXX + CLANG_PLATFORM_X86_64_WIN,
-        "/usr/bin/clang-7.0": CLANG_7_0 + CLANG_PLATFORM_X86_64_WIN,
-        "/usr/bin/clang++-7.0": CLANGXX_7_0 + CLANG_PLATFORM_X86_64_WIN,
+        "/usr/bin/clang-8.0": CLANG_8_0 + CLANG_PLATFORM_X86_64_WIN,
+        "/usr/bin/clang++-8.0": CLANGXX_8_0 + CLANG_PLATFORM_X86_64_WIN,
         "/usr/bin/clang-4.0": CLANG_4_0 + CLANG_PLATFORM_X86_64_WIN,
         "/usr/bin/clang++-4.0": CLANGXX_4_0 + CLANG_PLATFORM_X86_64_WIN,
         "/usr/bin/clang-3.3": CLANG_3_3 + CLANG_PLATFORM_X86_64_WIN,
@@ -1561,20 +1561,20 @@ class OSXCrossToolchainTest(BaseToolchainTest):
     PATHS = dict(LinuxToolchainTest.PATHS)
     PATHS.update(
         {
-            "/usr/bin/clang": CLANG_7_0 + CLANG_PLATFORM_X86_64_LINUX,
-            "/usr/bin/clang++": CLANGXX_7_0 + CLANG_PLATFORM_X86_64_LINUX,
+            "/usr/bin/clang": CLANG_8_0 + CLANG_PLATFORM_X86_64_LINUX,
+            "/usr/bin/clang++": CLANGXX_8_0 + CLANG_PLATFORM_X86_64_LINUX,
         }
     )
     DEFAULT_CLANG_RESULT = CompilerResult(
         flags=["-std=gnu99"],
-        version="7.0.0",
+        version="8.0.0",
         type="clang",
         compiler="/usr/bin/clang",
         language="C",
     )
     DEFAULT_CLANGXX_RESULT = CompilerResult(
         flags=["-std=gnu++17"],
-        version="7.0.0",
+        version="8.0.0",
         type="clang",
         compiler="/usr/bin/clang++",
         language="C++",
@@ -1678,43 +1678,84 @@ def gen_invoke_rustc(version, rustup_wrapper=False):
                 "",
             )
         if args == ("--print", "target-list"):
-            # Raw list returned by rustc version 1.32, + ios, which somehow
-            # don't appear in the default list.
-            # https://github.com/rust-lang/rust/issues/36156
+            # Raw list returned by rustc version 1.70
             rust_targets = [
+                "aarch64-apple-darwin",
                 "aarch64-apple-ios",
+                "aarch64-apple-ios-macabi",
+                "aarch64-apple-ios-sim",
+                "aarch64-apple-tvos",
+                "aarch64-apple-watchos-sim",
                 "aarch64-fuchsia",
+                "aarch64-kmc-solid_asp3",
                 "aarch64-linux-android",
+                "aarch64-nintendo-switch-freestanding",
+                "aarch64-pc-windows-gnullvm",
                 "aarch64-pc-windows-msvc",
-                "aarch64-unknown-cloudabi",
                 "aarch64-unknown-freebsd",
+                "aarch64-unknown-fuchsia",
                 "aarch64-unknown-hermit",
                 "aarch64-unknown-linux-gnu",
+                "aarch64-unknown-linux-gnu_ilp32",
                 "aarch64-unknown-linux-musl",
+                "aarch64-unknown-linux-ohos",
                 "aarch64-unknown-netbsd",
                 "aarch64-unknown-none",
+                "aarch64-unknown-none-softfloat",
+                "aarch64-unknown-nto-qnx710",
                 "aarch64-unknown-openbsd",
+                "aarch64-unknown-redox",
+                "aarch64-unknown-uefi",
+                "aarch64-uwp-windows-msvc",
+                "aarch64-wrs-vxworks",
+                "aarch64_be-unknown-linux-gnu",
+                "aarch64_be-unknown-linux-gnu_ilp32",
                 "arm-linux-androideabi",
                 "arm-unknown-linux-gnueabi",
                 "arm-unknown-linux-gnueabihf",
                 "arm-unknown-linux-musleabi",
                 "arm-unknown-linux-musleabihf",
+                "arm64_32-apple-watchos",
+                "armeb-unknown-linux-gnueabi",
                 "armebv7r-none-eabi",
                 "armebv7r-none-eabihf",
+                "armv4t-none-eabi",
                 "armv4t-unknown-linux-gnueabi",
+                "armv5te-none-eabi",
                 "armv5te-unknown-linux-gnueabi",
                 "armv5te-unknown-linux-musleabi",
+                "armv5te-unknown-linux-uclibceabi",
+                "armv6-unknown-freebsd",
                 "armv6-unknown-netbsd-eabihf",
+                "armv6k-nintendo-3ds",
+                "armv7-apple-ios",
                 "armv7-linux-androideabi",
-                "armv7-unknown-cloudabi-eabihf",
+                "armv7-sony-vita-newlibeabihf",
+                "armv7-unknown-freebsd",
+                "armv7-unknown-linux-gnueabi",
                 "armv7-unknown-linux-gnueabihf",
+                "armv7-unknown-linux-musleabi",
                 "armv7-unknown-linux-musleabihf",
+                "armv7-unknown-linux-ohos",
+                "armv7-unknown-linux-uclibceabi",
+                "armv7-unknown-linux-uclibceabihf",
                 "armv7-unknown-netbsd-eabihf",
+                "armv7-wrs-vxworks-eabihf",
+                "armv7a-kmc-solid_asp3-eabi",
+                "armv7a-kmc-solid_asp3-eabihf",
+                "armv7a-none-eabi",
+                "armv7a-none-eabihf",
+                "armv7k-apple-watchos",
                 "armv7r-none-eabi",
                 "armv7r-none-eabihf",
                 "armv7s-apple-ios",
                 "asmjs-unknown-emscripten",
+                "avr-unknown-gnu-atmega328",
+                "bpfeb-unknown-none",
+                "bpfel-unknown-none",
+                "hexagon-unknown-linux-musl",
                 "i386-apple-ios",
+                "i586-pc-nto-qnx700",
                 "i586-pc-windows-msvc",
                 "i586-unknown-linux-gnu",
                 "i586-unknown-linux-musl",
@@ -1722,140 +1763,187 @@ def gen_invoke_rustc(version, rustup_wrapper=False):
                 "i686-linux-android",
                 "i686-pc-windows-gnu",
                 "i686-pc-windows-msvc",
-                "i686-unknown-cloudabi",
-                "i686-unknown-dragonfly",
                 "i686-unknown-freebsd",
                 "i686-unknown-haiku",
                 "i686-unknown-linux-gnu",
                 "i686-unknown-linux-musl",
                 "i686-unknown-netbsd",
                 "i686-unknown-openbsd",
+                "i686-unknown-uefi",
+                "i686-uwp-windows-gnu",
+                "i686-uwp-windows-msvc",
+                "i686-wrs-vxworks",
+                "loongarch64-unknown-linux-gnu",
+                "m68k-unknown-linux-gnu",
                 "mips-unknown-linux-gnu",
                 "mips-unknown-linux-musl",
                 "mips-unknown-linux-uclibc",
+                "mips64-openwrt-linux-musl",
                 "mips64-unknown-linux-gnuabi64",
+                "mips64-unknown-linux-muslabi64",
                 "mips64el-unknown-linux-gnuabi64",
+                "mips64el-unknown-linux-muslabi64",
+                "mipsel-sony-psp",
+                "mipsel-sony-psx",
                 "mipsel-unknown-linux-gnu",
                 "mipsel-unknown-linux-musl",
                 "mipsel-unknown-linux-uclibc",
+                "mipsel-unknown-none",
+                "mipsisa32r6-unknown-linux-gnu",
+                "mipsisa32r6el-unknown-linux-gnu",
+                "mipsisa64r6-unknown-linux-gnuabi64",
+                "mipsisa64r6el-unknown-linux-gnuabi64",
                 "msp430-none-elf",
+                "nvptx64-nvidia-cuda",
+                "powerpc-unknown-freebsd",
                 "powerpc-unknown-linux-gnu",
                 "powerpc-unknown-linux-gnuspe",
                 "powerpc-unknown-linux-musl",
                 "powerpc-unknown-netbsd",
+                "powerpc-unknown-openbsd",
+                "powerpc-wrs-vxworks",
+                "powerpc-wrs-vxworks-spe",
+                "powerpc64-ibm-aix",
+                "powerpc64-unknown-freebsd",
                 "powerpc64-unknown-linux-gnu",
                 "powerpc64-unknown-linux-musl",
+                "powerpc64-unknown-openbsd",
+                "powerpc64-wrs-vxworks",
+                "powerpc64le-unknown-freebsd",
                 "powerpc64le-unknown-linux-gnu",
                 "powerpc64le-unknown-linux-musl",
+                "riscv32gc-unknown-linux-gnu",
+                "riscv32gc-unknown-linux-musl",
+                "riscv32i-unknown-none-elf",
+                "riscv32im-unknown-none-elf",
                 "riscv32imac-unknown-none-elf",
+                "riscv32imac-unknown-xous-elf",
+                "riscv32imc-esp-espidf",
                 "riscv32imc-unknown-none-elf",
+                "riscv64gc-unknown-freebsd",
+                "riscv64gc-unknown-fuchsia",
+                "riscv64gc-unknown-linux-gnu",
+                "riscv64gc-unknown-linux-musl",
+                "riscv64gc-unknown-none-elf",
+                "riscv64gc-unknown-openbsd",
+                "riscv64imac-unknown-none-elf",
                 "s390x-unknown-linux-gnu",
+                "s390x-unknown-linux-musl",
                 "sparc-unknown-linux-gnu",
                 "sparc64-unknown-linux-gnu",
                 "sparc64-unknown-netbsd",
+                "sparc64-unknown-openbsd",
                 "sparcv9-sun-solaris",
+                "thumbv4t-none-eabi",
+                "thumbv5te-none-eabi",
                 "thumbv6m-none-eabi",
                 "thumbv7a-pc-windows-msvc",
+                "thumbv7a-uwp-windows-msvc",
                 "thumbv7em-none-eabi",
                 "thumbv7em-none-eabihf",
                 "thumbv7m-none-eabi",
+                "thumbv7neon-linux-androideabi",
+                "thumbv7neon-unknown-linux-gnueabihf",
+                "thumbv7neon-unknown-linux-musleabihf",
                 "thumbv8m.base-none-eabi",
-                "wasm32-experimental-emscripten",
+                "thumbv8m.main-none-eabi",
+                "thumbv8m.main-none-eabihf",
                 "wasm32-unknown-emscripten",
                 "wasm32-unknown-unknown",
+                "wasm32-wasi",
+                "wasm64-unknown-unknown",
                 "x86_64-apple-darwin",
                 "x86_64-apple-ios",
+                "x86_64-apple-ios-macabi",
+                "x86_64-apple-tvos",
+                "x86_64-apple-watchos-sim",
                 "x86_64-fortanix-unknown-sgx",
                 "x86_64-fuchsia",
                 "x86_64-linux-android",
+                "x86_64-pc-nto-qnx710",
+                "x86_64-pc-solaris",
                 "x86_64-pc-windows-gnu",
+                "x86_64-pc-windows-gnullvm",
                 "x86_64-pc-windows-msvc",
-                "x86_64-rumprun-netbsd",
                 "x86_64-sun-solaris",
-                "x86_64-unknown-bitrig",
-                "x86_64-unknown-cloudabi",
                 "x86_64-unknown-dragonfly",
                 "x86_64-unknown-freebsd",
+                "x86_64-unknown-fuchsia",
                 "x86_64-unknown-haiku",
                 "x86_64-unknown-hermit",
+                "x86_64-unknown-illumos",
                 "x86_64-unknown-l4re-uclibc",
                 "x86_64-unknown-linux-gnu",
                 "x86_64-unknown-linux-gnux32",
                 "x86_64-unknown-linux-musl",
                 "x86_64-unknown-netbsd",
+                "x86_64-unknown-none",
                 "x86_64-unknown-openbsd",
                 "x86_64-unknown-redox",
+                "x86_64-unknown-uefi",
+                "x86_64-uwp-windows-gnu",
+                "x86_64-uwp-windows-msvc",
+                "x86_64-wrs-vxworks",
             ]
-            # Additional targets from 1.33
-            if Version(version) >= "1.33.0":
+            # Additional targets from 1.71
+            if Version(version) >= "1.71.0":
                 rust_targets += [
-                    "thumbv7neon-linux-androideabi",
-                    "thumbv7neon-unknown-linux-gnueabihf",
-                    "x86_64-unknown-uefi",
-                    "thumbv8m.main-none-eabi",
-                    "thumbv8m.main-none-eabihf",
+                    "x86_64h-apple-darwin",
                 ]
-            # Additional targets from 1.34
-            if Version(version) >= "1.34.0":
+            # Additional targets from 1.72
+            if Version(version) >= "1.72.0":
                 rust_targets += [
-                    "nvptx64-nvidia-cuda",
-                    "powerpc64-unknown-freebsd",
-                    "riscv64gc-unknown-none-elf",
-                    "riscv64imac-unknown-none-elf",
+                    "aarch64_be-unknown-netbsd",
+                    "loongarch64-unknown-none",
+                    "loongarch64-unknown-none-softfloat",
+                    "riscv32imac-esp-espidf",
+                    "riscv64gc-unknown-netbsd",
                 ]
-            # Additional targets from 1.35
-            if Version(version) >= "1.35.0":
+            # Additional targets from 1.73
+            if Version(version) >= "1.73.0":
                 rust_targets += [
-                    "armv6-unknown-freebsd",
-                    "armv7-unknown-freebsd",
-                    "mipsisa32r6-unknown-linux-gnu",
-                    "mipsisa32r6el-unknown-linux-gnu",
-                    "mipsisa64r6-unknown-linux-gnuabi64",
-                    "mipsisa64r6el-unknown-linux-gnuabi64",
-                    "wasm32-unknown-wasi",
+                    "aarch64-unknown-teeos",
+                    "csky-unknown-linux-gnuabiv2",
+                    "riscv64-linux-android",
+                    "riscv64gc-unknown-hermit",
+                    "sparc-unknown-none-elf",
+                    "wasm32-wasi-preview1-threads",
+                    "x86_64-unikraft-linux-musl",
+                    "x86_64-unknown-linux-ohos",
                 ]
-            # Additional targets from 1.36
-            if Version(version) >= "1.36.0":
-                rust_targets += ["wasm32-wasi"]
-                rust_targets.remove("wasm32-unknown-wasi")
-                rust_targets.remove("x86_64-unknown-bitrig")
-            # Additional targets from 1.37
-            if Version(version) >= "1.37.0":
-                rust_targets += ["x86_64-pc-solaris"]
-            # Additional targets from 1.38
-            if Version(version) >= "1.38.0":
+            # Additional targets from 1.74
+            if Version(version) >= "1.74.0":
                 rust_targets += [
-                    "aarch64-unknown-redox",
-                    "aarch64-wrs-vxworks",
-                    "armv7-unknown-linux-gnueabi",
-                    "armv7-unknown-linux-musleabi",
-                    "armv7-wrs-vxworks",
-                    "hexagon-unknown-linux-musl",
-                    "i586-wrs-vxworks",
-                    "i686-uwp-windows-gnu",
-                    "i686-wrs-vxworks",
-                    "powerpc-wrs-vxworks",
-                    "powerpc-wrs-vxworks-spe",
-                    "powerpc64-wrs-vxworks",
-                    "riscv32i-unknown-none-elf",
-                    "x86_64-uwp-windows-gnu",
-                    "x86_64-wrs-vxworks",
+                    "i686-pc-windows-gnullvm",
+                    "i686-unknown-hurd-gnu",
                 ]
-            # Additional targets from 1.38
-            if Version(version) >= "1.39.0":
+                rust_targets.remove("armv7-apple-ios")
+            # Additional targets from 1.75
+            if Version(version) >= "1.75.0":
                 rust_targets += [
-                    "aarch64-uwp-windows-msvc",
-                    "armv7-wrs-vxworks-eabihf",
-                    "i686-unknown-uefi",
-                    "i686-uwp-windows-msvc",
-                    "mips64-unknown-linux-muslabi64",
-                    "mips64el-unknown-linux-muslabi64",
-                    "sparc64-unknown-openbsd",
-                    "x86_64-linux-kernel",
-                    "x86_64-uwp-windows-msvc",
+                    "aarch64-apple-tvos-sim",
+                    "csky-unknown-linux-gnuabiv2hf",
+                    "i586-unknown-netbsd",
+                    "mipsel-unknown-netbsd",
                 ]
-                rust_targets.remove("armv7-wrs-vxworks")
-                rust_targets.remove("i586-wrs-vxworks")
+            # Additional targets from 1.76
+            if Version(version) >= "1.76.0":
+                rust_targets += [
+                    "aarch64-apple-watchos",
+                    "arm64e-apple-darwin",
+                    "arm64e-apple-ios",
+                    "i686-win7-windows-msvc",
+                    "riscv32imafc-unknown-none-elf",
+                    "x86_64-win7-windows-msvc",
+                ]
+                rust_targets.remove("asmjs-unknown-emscripten")
+                rust_targets.remove("x86_64-sun-solaris")
+            # Additional targets from 1.77
+            if Version(version) >= "1.77.0":
+                rust_targets += [
+                    "aarch64-unknown-illumos",
+                    "hexagon-unknown-none-elf",
+                ]
 
             return 0, "\n".join(sorted(rust_targets)), ""
         if (
@@ -1873,16 +1961,16 @@ def gen_invoke_rustc(version, rustup_wrapper=False):
 
 
 class RustTest(BaseConfigureTest):
-    def get_rust_target(
-        self, target, compiler_type="gcc", version=MINIMUM_RUST_VERSION, arm_target=None
-    ):
+    VERSION = MINIMUM_RUST_VERSION
+
+    def get_rust_target(self, target, compiler_type="gcc", arm_target=None):
         environ = {
             "PATH": os.pathsep.join(mozpath.abspath(p) for p in ("/bin", "/usr/bin"))
         }
 
         paths = {
-            mozpath.abspath("/usr/bin/cargo"): gen_invoke_cargo(version),
-            mozpath.abspath("/usr/bin/rustc"): gen_invoke_rustc(version),
+            mozpath.abspath("/usr/bin/cargo"): gen_invoke_cargo(self.VERSION),
+            mozpath.abspath("/usr/bin/rustc"): gen_invoke_rustc(self.VERSION),
         }
 
         self.TARGET = target
@@ -1936,15 +2024,25 @@ class RustTest(BaseConfigureTest):
         # Cases where the output of config.sub is different
         for autoconf, rust in (
             ("aarch64-unknown-linux-android", "aarch64-linux-android"),
+            ("aarch64-unknown-linux-android21", "aarch64-linux-android"),
+            ("aarch64-apple-darwin23.3.0", "aarch64-apple-darwin"),
             ("arm-unknown-linux-androideabi", "armv7-linux-androideabi"),
             ("armv7-unknown-linux-androideabi", "armv7-linux-androideabi"),
+            ("armv7-unknown-linux-androideabi21", "armv7-linux-androideabi"),
             ("i386-unknown-linux-android", "i686-linux-android"),
-            ("i686-unknown-linux-android", "i686-linux-android"),
+            ("i686-unknown-linux-android21", "i686-linux-android"),
             ("i686-pc-linux-gnu", "i686-unknown-linux-gnu"),
             ("x86_64-unknown-linux-android", "x86_64-linux-android"),
+            ("x86_64-unknown-linux-android21", "x86_64-linux-android"),
             ("x86_64-pc-linux-gnu", "x86_64-unknown-linux-gnu"),
             ("sparcv9-sun-solaris2", "sparcv9-sun-solaris"),
-            ("x86_64-sun-solaris2", "x86_64-sun-solaris"),
+            (
+                "x86_64-sun-solaris2",
+                "x86_64-sun-solaris"
+                if Version(self.VERSION) < "1.76.0"
+                else "x86_64-pc-solaris",
+            ),
+            ("x86_64-apple-darwin23.3.0", "x86_64-apple-darwin"),
         ):
             self.assertEqual(self.get_rust_target(autoconf), rust)
 
@@ -2050,6 +2148,10 @@ class RustTest(BaseConfigureTest):
             ),
             "armv4t-unknown-linux-gnueabi",
         )
+
+
+class Rust177Test(RustTest):
+    VERSION = "1.77.0"
 
 
 if __name__ == "__main__":

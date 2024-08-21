@@ -17,8 +17,8 @@ import mozpack.path as mozpath
 import six
 
 from mozbuild.bootstrap import bootstrap_toolchain
+from mozbuild.dirutils import mkdir
 from mozbuild.frontend.sandbox import alphabetical_sorted
-from mozbuild.util import mkdir
 
 license_header = """# This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -194,7 +194,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
     mozbuild_args = {
         "MOZ_DEBUG": "1" if input_vars.get("is_debug") else None,
         "OS_TARGET": oses[input_vars["target_os"]],
-        "CPU_ARCH": cpus.get(input_vars["target_cpu"], input_vars["target_cpu"]),
+        "TARGET_CPU": cpus.get(input_vars["target_cpu"], input_vars["target_cpu"]),
     }
     if "use_x11" in input_vars:
         mozbuild_args["MOZ_X11"] = "1" if input_vars["use_x11"] else None
@@ -297,7 +297,6 @@ def process_gn_config(
 
     # Process all targets from the given gn project and its dependencies.
     for target_fullname, spec in six.iteritems(targets):
-
         target_path, target_name = target_info(target_fullname)
         context_attrs = {}
 
@@ -396,7 +395,7 @@ def process_gn_config(
             ".mm": ("CMMFLAGS", ["cflags", "cflags_objcc"]),
         }
         variables = (suffix_map[e] for e in extensions if e in suffix_map)
-        for (var, flag_keys) in variables:
+        for var, flag_keys in variables:
             flags = [
                 _f for _k in flag_keys for _f in spec.get(_k, []) if _f in mozilla_flags
             ]
@@ -522,7 +521,6 @@ def write_mozbuild(
     mozilla_flags,
     write_mozbuild_variables,
 ):
-
     all_mozbuild_results = []
 
     for gn_config in gn_configs:
@@ -564,6 +562,16 @@ def write_mozbuild(
                     mb.write('    CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]\n')
             except KeyError:
                 pass
+            try:
+                if (
+                    relsrcdir
+                    in write_mozbuild_variables["INCLUDE_SYSTEM_LIBVPX_HANDLING"]
+                ):
+                    mb.write('if not CONFIG["MOZ_SYSTEM_LIBVPX"]:\n')
+                    mb.write('    LOCAL_INCLUDES += [ "/media/libvpx/libvpx/" ]\n')
+                    mb.write('    CXXFLAGS += CONFIG["MOZ_LIBVPX_CFLAGS"]\n')
+            except KeyError:
+                pass
 
             all_args = [args for args, _ in configs]
 
@@ -575,13 +583,13 @@ def write_mozbuild(
                 (),
                 ("MOZ_DEBUG",),
                 ("OS_TARGET",),
-                ("CPU_ARCH",),
+                ("TARGET_CPU",),
                 ("MOZ_DEBUG", "OS_TARGET"),
                 ("OS_TARGET", "MOZ_X11"),
-                ("OS_TARGET", "CPU_ARCH"),
-                ("OS_TARGET", "CPU_ARCH", "MOZ_X11"),
-                ("OS_TARGET", "CPU_ARCH", "MOZ_DEBUG"),
-                ("OS_TARGET", "CPU_ARCH", "MOZ_DEBUG", "MOZ_X11"),
+                ("OS_TARGET", "TARGET_CPU"),
+                ("OS_TARGET", "TARGET_CPU", "MOZ_X11"),
+                ("OS_TARGET", "TARGET_CPU", "MOZ_DEBUG"),
+                ("OS_TARGET", "TARGET_CPU", "MOZ_DEBUG", "MOZ_X11"),
             ):
                 conditions = set()
                 for args in all_args:
@@ -623,10 +631,9 @@ def write_mozbuild(
         for attrs in (
             (),
             ("OS_TARGET",),
-            ("OS_TARGET", "CPU_ARCH"),
-            ("OS_TARGET", "CPU_ARCH", "MOZ_X11"),
+            ("OS_TARGET", "TARGET_CPU"),
+            ("OS_TARGET", "TARGET_CPU", "MOZ_X11"),
         ):
-
             conditions = set()
             for args in dirs_by_config.keys():
                 cond = tuple(((k, dict(args).get(k) or "") for k in attrs))
@@ -743,8 +750,10 @@ def main():
                 target_cpus.append("arm")
             if target_os in ("android", "linux", "win"):
                 target_cpus.append("x86")
+            if target_os in ("linux", "openbsd"):
+                target_cpus.append("riscv64")
             if target_os == "linux":
-                target_cpus.extend(["ppc64", "riscv64", "mipsel", "mips64el"])
+                target_cpus.extend(["ppc64", "mipsel", "mips64el"])
             for target_cpu in target_cpus:
                 vars = {
                     "host_cpu": "x64",

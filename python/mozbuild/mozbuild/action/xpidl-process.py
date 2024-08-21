@@ -14,13 +14,12 @@ import sys
 import six
 from buildconfig import topsrcdir
 from mozpack import path as mozpath
-from xpidl import jsonxpt
+from xpidl import jsonxpt, typescript
 from xpidl.header import print_header
 from xpidl.rust import print_rust_bindings
 from xpidl.rust_macros import print_rust_macros_bindings
 from xpidl.xpidl import IDLParser
 
-from mozbuild.action.util import log_build_task
 from mozbuild.makeutil import Makefile
 from mozbuild.pythonutil import iter_modules_in_path
 from mozbuild.util import FileAvoidWrite
@@ -40,6 +39,8 @@ def process(
     p = IDLParser()
 
     xpts = []
+    ts_data = []
+
     mk = Makefile()
     rule = mk.create_rule()
 
@@ -64,6 +65,7 @@ def process(
         rs_bt_path = os.path.join(xpcrs_dir, "bt", "%s.rs" % stem)
 
         xpts.append(jsonxpt.build_typelib(idl))
+        ts_data.append(typescript.ts_source(idl))
 
         rule.add_dependencies(six.ensure_text(s) for s in idl.deps)
 
@@ -94,6 +96,13 @@ def process(
     xpt_path = os.path.join(xpt_dir, "%s.xpt" % module)
     with open(xpt_path, "w", encoding="utf-8", newline="\n") as fh:
         jsonxpt.write(jsonxpt.link(xpts), fh)
+
+    # NOTE: Make doesn't know about .d.json files, but we can piggy-back
+    # on XPT generation for now, as conceptually they contain the same
+    # information, and should be built together in all cases.
+    ts_path = os.path.join(xpt_dir, f"{module}.d.json")
+    with open(ts_path, "w", encoding="utf-8", newline="\n") as fh:
+        typescript.write(ts_data, fh)
 
     rule.add_targets([six.ensure_text(xpt_path)])
     if deps_dir:
@@ -150,4 +159,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    log_build_task(main, sys.argv[1:])
+    main(sys.argv[1:])

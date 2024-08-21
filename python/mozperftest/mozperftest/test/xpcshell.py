@@ -7,14 +7,10 @@ from distutils.dir_util import copy_tree
 from pathlib import Path
 
 from mozperftest.layers import Layer
-from mozperftest.utils import temp_dir
+from mozperftest.utils import NoPerfMetricsError, temp_dir
 
 
 class XPCShellTestError(Exception):
-    pass
-
-
-class NoPerfMetricsError(Exception):
     pass
 
 
@@ -83,7 +79,9 @@ class XPCShell(Layer):
         # let's grab the manifest
         manifest = Path(test.parent, "xpcshell.ini")
         if not manifest.exists():
-            raise FileNotFoundError(str(manifest))
+            manifest = Path(test.parent, "xpcshell.toml")
+            if not manifest.exists():
+                raise FileNotFoundError(str(manifest))
 
         nodejs = self.get_arg("nodejs")
         if nodejs is not None:
@@ -96,7 +94,7 @@ class XPCShell(Layer):
         kwargs = {}
         kwargs["testPaths"] = test.name
         kwargs["verbose"] = verbose
-        binary = self.get_arg("binary")
+        binary = self.get_arg("xpcshell_binary")
         if binary is None:
             binary = self.mach_cmd.get_binary_path("xpcshell")
         kwargs["xpcshell"] = binary
@@ -153,10 +151,7 @@ class XPCShell(Layer):
                 results[key].append(val)
 
         if len(results.items()) == 0:
-            raise NoPerfMetricsError(
-                "No perftest results were found in the xpcshell test. Results must be "
-                'reported using:\n info("perfMetrics", { metricName: metricValue });'
-            )
+            raise NoPerfMetricsError("xpcshell")
 
         metadata.add_result(
             {

@@ -6,14 +6,8 @@
 
 import codecs
 import re
-import sys
 
 import six
-
-if sys.version_info[0] == 3:
-    str_type = str
-else:
-    str_type = basestring
 
 
 class DotProperties:
@@ -29,7 +23,7 @@ class DotProperties:
 
         Ignores empty lines and comment lines."""
 
-        if isinstance(file, str_type):
+        if isinstance(file, str):
             f = codecs.open(file, "r", "utf-8")
         else:
             f = file
@@ -38,7 +32,7 @@ class DotProperties:
             line = l.strip()
             if not line or line.startswith("#"):
                 continue
-            (k, v) = re.split("\s*=\s*", line, 1)
+            (k, v) = re.split(r"\s*=\s*", line, 1)
             self._properties[k] = v
 
     def get(self, key, default=None):

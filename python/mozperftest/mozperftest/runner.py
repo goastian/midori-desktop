@@ -41,7 +41,7 @@ if "SHELL" not in os.environ:
     os.environ["SHELL"] = "/bin/bash"
 
 
-def _activate_mach_virtualenv():
+def _activate_virtualenvs(flavor):
     """Adds all available dependencies in the path.
 
     This is done so the runner can be used with no prior
@@ -49,23 +49,23 @@ def _activate_mach_virtualenv():
     """
 
     # We need the "mach" module to access the logic to parse virtualenv
-    # requirements. Since that depends on "packaging" (and, transitively,
-    # "pyparsing"), we add those to the path too.
+    # requirements. Since that depends on "packaging", we add that to the path too.
     sys.path[0:0] = [
         os.path.join(SRC_ROOT, module)
         for module in (
             os.path.join("python", "mach"),
             os.path.join("third_party", "python", "packaging"),
-            os.path.join("third_party", "python", "pyparsing"),
         )
     ]
 
     from mach.site import (
+        CommandSiteManager,
         ExternalPythonSite,
         MachSiteManager,
         SitePackagesSource,
         resolve_requirements,
     )
+    from mach.util import get_state_dir, get_virtualenv_base_dir
 
     mach_site = MachSiteManager(
         str(SRC_ROOT),
@@ -76,10 +76,27 @@ def _activate_mach_virtualenv():
     )
     mach_site.activate()
 
+    command_site_manager = CommandSiteManager.from_environment(
+        str(SRC_ROOT),
+        lambda: os.path.normpath(get_state_dir(True, topsrcdir=str(SRC_ROOT))),
+        "common",
+        get_virtualenv_base_dir(str(SRC_ROOT)),
+    )
+
+    command_site_manager.activate()
+
     if TASKCLUSTER:
         # In CI, the directory structure is different: xpcshell code is in
-        # "$topsrcdir/xpcshell/" rather than "$topsrcdir/testing/xpcshell".
-        sys.path.append("xpcshell")
+        # "$topsrcdir/xpcshell/" rather than "$topsrcdir/testing/xpcshell". The
+        # same is true for mochitest. It also needs additional settings for some
+        # dependencies.
+        if flavor == "xpcshell":
+            print("Setting up xpcshell python paths...")
+            sys.path.append("xpcshell")
+        elif flavor == "mochitest":
+            print("Setting up mochitest python paths...")
+            sys.path.append("mochitest")
+            sys.path.append(str(Path("tools", "geckoprocesstypes_generator")))
 
 
 def _create_artifacts_dir(kwargs, artifacts):
@@ -188,10 +205,9 @@ def run_tools(mach_cmd, kwargs):
     from mozperftest.utils import ON_TRY, install_package
 
     mach_cmd.activate_virtualenv()
-    install_package(mach_cmd.virtualenv_manager, "opencv-python==4.5.4.60")
     install_package(
         mach_cmd.virtualenv_manager,
-        "mozperftest-tools==0.2.6",
+        "mozperftest-tools==0.3.2",
     )
 
     log_level = logging.INFO
@@ -221,7 +237,10 @@ def run_tools(mach_cmd, kwargs):
 
 def main(argv=sys.argv[1:]):
     """Used when the runner is directly called from the shell"""
-    _activate_mach_virtualenv()
+    flavor = "desktop-browser"
+    if "--flavor" in argv:
+        flavor = argv[argv.index("--flavor") + 1]
+    _activate_virtualenvs(flavor)
 
     from mach.logging import LoggingManager
     from mach.util import get_state_dir

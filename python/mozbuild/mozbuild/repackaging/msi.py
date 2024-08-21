@@ -11,7 +11,7 @@ from xml.dom import minidom
 
 import mozpack.path as mozpath
 
-from mozbuild.util import ensureParentDir
+from mozbuild.dirutils import ensureParentDir
 
 _MSI_ARCH = {
     "x86": "x86",
@@ -20,7 +20,6 @@ _MSI_ARCH = {
 
 
 def update_wsx(wfile, pvalues):
-
     parsed = minidom.parse(wfile)
 
     # construct a dictinary for the pre-processing options

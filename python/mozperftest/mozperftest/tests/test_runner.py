@@ -19,20 +19,23 @@ def test_main():
 
 def test_tools():
     with mock.patch(
-        "mozperftest.runner._activate_mach_virtualenv", return_value="fake_path"
+        "mozperftest.runner._activate_virtualenvs", return_value="fake_path"
     ) as _:
         with pytest.raises(SystemExit), silence():
             main(["tools"])
 
 
+@mock.patch("mozperftest.utils.install_package")
 @mock.patch("mozperftest.PerftestToolsArgumentParser")
 def test_side_by_side(arg, patched_mozperftest_tools):
     with mock.patch(
-        "mozperftest.runner._activate_mach_virtualenv", return_value="fake_path"
+        "mozperftest.runner._activate_virtualenvs", return_value="fake_path"
     ) as _, mock.patch(
         "mozperftest.runner._create_artifacts_dir", return_value="fake_path"
     ) as _, mock.patch(
         "mozperftest.runner._save_params", return_value="fake_path"
+    ) as _, mock.patch(
+        "sys.modules", return_value=mock.MagicMock()
     ) as _:
         main(
             [

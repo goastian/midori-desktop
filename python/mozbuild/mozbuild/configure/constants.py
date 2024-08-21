@@ -6,38 +6,60 @@ from collections import OrderedDict
 
 from mozbuild.util import EnumString
 
-CompilerType = EnumString.subclass(
-    "clang",
-    "clang-cl",
-    "gcc",
-    "msvc",
-)
 
-OS = EnumString.subclass(
-    "Android",
-    "DragonFly",
-    "FreeBSD",
-    "GNU",
-    "NetBSD",
-    "OpenBSD",
-    "OSX",
-    "SunOS",
-    "WINNT",
-    "WASI",
-)
+class RaiseErrorOnUse(str):
+    def __init__(self, msg):
+        self.msg = msg
 
-Kernel = EnumString.subclass(
-    "Darwin",
-    "DragonFly",
-    "FreeBSD",
-    "kFreeBSD",
-    "Linux",
-    "NetBSD",
-    "OpenBSD",
-    "SunOS",
-    "WINNT",
-    "WASI",
-)
+    def __eq__(self, other):
+        raise RuntimeError(self.msg)
+
+    def __ne__(self, other):
+        self.__eq__(other)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.msg!r})"
+
+
+class CompilerType(EnumString):
+    POSSIBLE_VALUES = (
+        "clang",
+        "clang-cl",
+        "gcc",
+        "msvc",
+    )
+
+
+class OS(EnumString):
+    POSSIBLE_VALUES = (
+        "Android",
+        "DragonFly",
+        "FreeBSD",
+        "GNU",
+        "iOS",
+        "NetBSD",
+        "OpenBSD",
+        "OSX",
+        "SunOS",
+        "WINNT",
+        "WASI",
+    )
+
+
+class Kernel(EnumString):
+    POSSIBLE_VALUES = (
+        "Darwin",
+        "DragonFly",
+        "FreeBSD",
+        "kFreeBSD",
+        "Linux",
+        "NetBSD",
+        "OpenBSD",
+        "SunOS",
+        "WINNT",
+        "WASI",
+    )
+
 
 CPU_bitness = {
     "aarch64": 64,
@@ -62,22 +84,31 @@ CPU_bitness = {
     "wasm32": 32,
 }
 
-CPU = EnumString.subclass(*CPU_bitness.keys())
 
-Endianness = EnumString.subclass(
-    "big",
-    "little",
-)
+class CPU(EnumString):
+    POSSIBLE_VALUES = CPU_bitness.keys()
 
-WindowsBinaryType = EnumString.subclass(
-    "win32",
-    "win64",
-)
 
-Abi = EnumString.subclass(
-    "msvc",
-    "mingw",
-)
+class Endianness(EnumString):
+    POSSIBLE_VALUES = (
+        "big",
+        "little",
+    )
+
+
+class WindowsBinaryType(EnumString):
+    POSSIBLE_VALUES = (
+        "win32",
+        "win64",
+    )
+
+
+class Abi(EnumString):
+    POSSIBLE_VALUES = (
+        "msvc",
+        "mingw",
+    )
+
 
 # The order of those checks matter
 CPU_preprocessor_checks = OrderedDict(

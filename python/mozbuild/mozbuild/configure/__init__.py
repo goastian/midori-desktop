@@ -30,7 +30,6 @@ from mozbuild.configure.util import ConfigureOutputHandler, LineIO, getpreferred
 from mozbuild.util import (
     ReadOnlyDict,
     ReadOnlyNamespace,
-    exec_,
     memoize,
     memoized_property,
     system_encoding,
@@ -50,6 +49,7 @@ class SandboxDependsFunction(object):
     def __init__(self, unsandboxed):
         self._or = unsandboxed.__or__
         self._and = unsandboxed.__and__
+        self._invert = unsandboxed.__invert__
         self._getattr = unsandboxed.__getattr__
 
     def __call__(self, *arg, **kwargs):
@@ -70,6 +70,9 @@ class SandboxDependsFunction(object):
                 "with another @depends function."
             )
         return self._and(other).sandboxed
+
+    def __invert__(self):
+        return self._invert().sandboxed
 
     def __cmp__(self, other):
         raise ConfigureError("Cannot compare @depends functions.")
@@ -118,8 +121,6 @@ class DependsFunction(object):
         assert not inspect.isgeneratorfunction(func)
         # Allow non-functions when there are no dependencies. This is equivalent
         # to passing a lambda that returns the given value.
-        if not (inspect.isroutine(func) or not dependencies):
-            print(func)
         assert inspect.isroutine(func) or not dependencies
         self._func = func
         self._name = getattr(func, "__name__", None)
@@ -190,6 +191,9 @@ class DependsFunction(object):
         assert isinstance(other, DependsFunction)
         assert self.sandbox is other.sandbox
         return CombinedDependsFunction(self.sandbox, self.and_impl, (self, other))
+
+    def __invert__(self):
+        return TrivialDependsFunction(self.sandbox, lambda x: not x, [self])
 
     @staticmethod
     def and_impl(iterable):
@@ -490,11 +494,15 @@ class ConfigureSandbox(dict):
         with open(path, "rb") as fh:
             source = fh.read()
 
-        code = compile(source, path, "exec")
-
-        exec_(code, self)
+        code = self.get_compiled_source(source, path)
+        exec(code, self)
 
         self._paths.pop(-1)
+
+    @staticmethod
+    @memoize
+    def get_compiled_source(source, path):
+        return compile(source, path, "exec")
 
     def run(self, path=None):
         """Executes the given file within the sandbox, as well as everything
@@ -526,8 +534,8 @@ class ConfigureSandbox(dict):
                         "`%s`, emitted from `%s` line %d, is unknown."
                         % (
                             implied_option.option,
+                            implied_option.caller[0],
                             implied_option.caller[1],
-                            implied_option.caller[2],
                         )
                     )
                 # If the option is known, check that the implied value doesn't
@@ -665,7 +673,7 @@ class ConfigureSandbox(dict):
         if value.origin == "implied":
             recursed_value = getattr(self, "__value_for_option").get((option,))
             if recursed_value is not None:
-                _, filename, line, _, _, _ = implied[value.format(option.option)].caller
+                filename, line = implied[value.format(option.option)].caller
                 raise ConfigureError(
                     "'%s' appears somewhere in the direct or indirect dependencies when "
                     "resolving imply_option at %s:%d" % (option.option, filename, line)
@@ -928,7 +936,7 @@ class ConfigureSandbox(dict):
     def wraps(self, func):
         return wraps(func)
 
-    RE_MODULE = re.compile("^[a-zA-Z0-9_\.]+$")
+    RE_MODULE = re.compile(r"^[a-zA-Z0-9_.]+$")
 
     def imports_impl(self, _import, _from=None, _as=None):
         """Implementation of @imports.
@@ -940,7 +948,6 @@ class ConfigureSandbox(dict):
             @imports(_from='mozpack', _import='path', _as='mozpath')
         """
         for value, required in ((_import, True), (_from, False), (_as, False)):
-
             if not isinstance(value, six.string_types) and (
                 required or value is not None
             ):
@@ -1014,13 +1021,13 @@ class ConfigureSandbox(dict):
     @memoized_property
     def _wrapped_os(self):
         wrapped_os = {}
-        exec_("from os import *", {}, wrapped_os)
+        exec("from os import *", {}, wrapped_os)
         # Special case os and os.environ so that os.environ is our copy of
         # the environment.
         wrapped_os["environ"] = self._environ
         # Also override some os.path functions with ours.
         wrapped_path = {}
-        exec_("from os.path import *", {}, wrapped_path)
+        exec("from os.path import *", {}, wrapped_path)
         wrapped_path.update(self.OS.path.__dict__)
         wrapped_os["path"] = ReadOnlyNamespace(**wrapped_path)
         return ReadOnlyNamespace(**wrapped_os)
@@ -1028,7 +1035,7 @@ class ConfigureSandbox(dict):
     @memoized_property
     def _wrapped_subprocess(self):
         wrapped_subprocess = {}
-        exec_("from subprocess import *", {}, wrapped_subprocess)
+        exec("from subprocess import *", {}, wrapped_subprocess)
 
         def wrap(function):
             def wrapper(*args, **kwargs):
@@ -1052,11 +1059,11 @@ class ConfigureSandbox(dict):
         if six.PY3:
             return six
         wrapped_six = {}
-        exec_("from six import *", {}, wrapped_six)
+        exec("from six import *", {}, wrapped_six)
         wrapped_six_moves = {}
-        exec_("from six.moves import *", {}, wrapped_six_moves)
+        exec("from six.moves import *", {}, wrapped_six_moves)
         wrapped_six_moves_builtins = {}
-        exec_("from six.moves.builtins import *", {}, wrapped_six_moves_builtins)
+        exec("from six.moves.builtins import *", {}, wrapped_six_moves_builtins)
 
         # Special case for the open() builtin, because otherwise, using it
         # fails with "IOError: file() constructor not accessible in
@@ -1101,7 +1108,7 @@ class ConfigureSandbox(dict):
             _import,
             (" as %s" % _as) if _as else "",
         )
-        exec_(import_line, {}, glob)
+        exec(import_line, {}, glob)
 
     def _resolve_and_set(self, data, name, value, when=None):
         # Don't set anything when --help was on the command line
@@ -1219,12 +1226,14 @@ class ConfigureSandbox(dict):
             if len(possible_reasons) == 1:
                 if isinstance(possible_reasons[0], Option):
                     reason = possible_reasons[0]
+        frame = inspect.currentframe()
+        line = frame.f_back.f_lineno
+        filename = frame.f_back.f_code.co_filename
         if not reason and (
             isinstance(value, (bool, tuple)) or isinstance(value, six.string_types)
         ):
             # A reason can be provided automatically when imply_option
             # is called with an immediate value.
-            _, filename, line, _, _, _ = inspect.stack()[1]
             reason = "imply_option at %s:%s" % (filename, line)
 
         if not reason:
@@ -1243,7 +1252,7 @@ class ConfigureSandbox(dict):
                 prefix=prefix,
                 name=name,
                 value=value,
-                caller=inspect.stack()[1],
+                caller=(filename, line),
                 reason=reason,
                 when=when,
             )
@@ -1261,8 +1270,8 @@ class ConfigureSandbox(dict):
         glob = SandboxedGlobal(
             (k, v)
             for k, v in six.iteritems(func.__globals__)
-            if (inspect.isfunction(v) and v not in self._templates)
-            or (inspect.isclass(v) and issubclass(v, Exception))
+            if (isinstance(v, types.FunctionType) and v not in self._templates)
+            or (isinstance(v, type) and issubclass(v, Exception))
         )
         glob.update(
             __builtins__=self.BUILTINS,

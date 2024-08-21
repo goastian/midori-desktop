@@ -357,7 +357,6 @@ def run(
     result = None
 
     try:
-
         lint.read(linters_info["lint_paths"])
 
         if check_exclude_list:
@@ -439,7 +438,11 @@ def run(
     return result.returncode
 
 
-if __name__ == "__main__":
+def main() -> int:
     parser = MozlintParser()
     args = vars(parser.parse_args())
-    sys.exit(run(**args))
+    return run(**args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

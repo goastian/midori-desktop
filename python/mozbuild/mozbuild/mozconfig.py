@@ -10,7 +10,6 @@ import traceback
 from pathlib import Path
 from textwrap import dedent
 
-import six
 from mozboot.mozconfig import find_mozconfig
 from mozpack import path as mozpath
 
@@ -57,7 +56,7 @@ class MozconfigLoadException(Exception):
 
             {output}
             """
-            ).format(output="\n".join([six.ensure_text(s) for s in self.output]))
+            ).format(output="\n".join(self.output))
 
         Exception.__init__(self, message)
 
@@ -66,7 +65,7 @@ class MozconfigLoader(object):
     """Handles loading and parsing of mozconfig files."""
 
     RE_MAKE_VARIABLE = re.compile(
-        """
+        r"""
         ^\s*                    # Leading whitespace
         (?P<var>[a-zA-Z_0-9]+)  # Variable name
         \s* [?:]?= \s*          # Assignment operator surrounded by optional
@@ -162,16 +161,15 @@ class MozconfigLoader(object):
         try:
             # We need to capture stderr because that's where the shell sends
             # errors if execution fails.
-            output = six.ensure_text(
-                subprocess.check_output(
-                    command,
-                    stderr=subprocess.STDOUT,
-                    cwd=self.topsrcdir,
-                    env=env,
-                    universal_newlines=True,
-                    encoding="utf-8",
-                )
+            output = subprocess.check_output(
+                command,
+                stderr=subprocess.STDOUT,
+                cwd=self.topsrcdir,
+                env=env,
+                universal_newlines=True,
+                encoding="utf-8",
             )
+
         except subprocess.CalledProcessError as e:
             lines = e.output.splitlines()
 
@@ -286,7 +284,6 @@ class MozconfigLoader(object):
         in_variable = None
 
         for line in output.splitlines():
-
             if not line:
                 continue
 

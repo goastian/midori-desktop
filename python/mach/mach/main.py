@@ -6,25 +6,17 @@
 # (mach). It is packaged as a module because everything is a library.
 
 import argparse
-import codecs
-import errno
 import logging
 import os
 import sys
 import traceback
-import types
-import uuid
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, List, Union
-
-from mozfile import load_source
+from typing import List
 
 from .base import (
     CommandContext,
     FailedCommandError,
     MachError,
-    MissingFileError,
     NoCommandError,
     UnknownCommandError,
     UnrecognizedArgumentError,
@@ -103,17 +95,6 @@ It looks like you passed an unrecognized argument into mach.
 The %s command does not accept the arguments: %s
 """.lstrip()
 
-INVALID_ENTRY_POINT = r"""
-Entry points should return a list of command providers or directories
-containing command providers. The following entry point is invalid:
-
-    %s
-
-You are seeing this because there is an error in an external module attempting
-to implement a mach command. Please fix the error, or uninstall the module from
-your system.
-""".lstrip()
-
 
 class ArgumentParser(argparse.ArgumentParser):
     """Custom implementation argument parser to make things look pretty."""
@@ -174,18 +155,6 @@ class ContextWrapper(object):
         setattr(object.__getattribute__(self, "_context"), key, value)
 
 
-class MachCommandReference:
-    """A reference to a mach command.
-
-    Holds the metadata for a mach command.
-    """
-
-    module: Path
-
-    def __init__(self, module: Union[str, Path]):
-        self.module = Path(module)
-
-
 class Mach(object):
     """Main mach driver type.
 
@@ -236,99 +205,14 @@ To see more help for a specific command, run:
         self.logger = logging.getLogger(__name__)
         self.settings = ConfigSettings()
         self.settings_paths = []
+        self.settings_loaded = False
+        self.command_site_manager = None
 
         if "MACHRC" in os.environ:
             self.settings_paths.append(os.environ["MACHRC"])
 
         self.log_manager.register_structured_logger(self.logger)
         self.populate_context_handler = None
-
-    def load_commands_from_directory(self, path: Path):
-        """Scan for mach commands from modules in a directory.
-
-        This takes a path to a directory, loads the .py files in it, and
-        registers and found mach command providers with this mach instance.
-        """
-        for f in sorted(path.iterdir()):
-            if not f.suffix == ".py" or f.name == "__init__.py":
-                continue
-
-            full_path = path / f
-            module_name = f"mach.commands.{str(f)[0:-3]}"
-
-            self.load_commands_from_file(full_path, module_name=module_name)
-
-    def load_commands_from_file(self, path: Union[str, Path], module_name=None):
-        """Scan for mach commands from a file.
-
-        This takes a path to a file and loads it as a Python module under the
-        module name specified. If no name is specified, a random one will be
-        chosen.
-        """
-        if module_name is None:
-            # Ensure parent module is present otherwise we'll (likely) get
-            # an error due to unknown parent.
-            if "mach.commands" not in sys.modules:
-                mod = types.ModuleType("mach.commands")
-                sys.modules["mach.commands"] = mod
-
-            module_name = f"mach.commands.{uuid.uuid4().hex}"
-
-        try:
-            load_source(module_name, str(path))
-        except IOError as e:
-            if e.errno != errno.ENOENT:
-                raise
-
-            raise MissingFileError(f"{path} does not exist")
-
-    def load_commands_from_spec(
-        self, spec: Dict[str, MachCommandReference], topsrcdir: str, missing_ok=False
-    ):
-        """Load mach commands based on the given spec.
-
-        Takes a dictionary mapping command names to their metadata.
-        """
-        modules = set(spec[command].module for command in spec)
-
-        for path in modules:
-            try:
-                self.load_commands_from_file(topsrcdir / path)
-            except MissingFileError:
-                if not missing_ok:
-                    raise
-
-    def load_commands_from_entry_point(self, group="mach.providers"):
-        """Scan installed packages for mach command provider entry points. An
-        entry point is a function that returns a list of paths to files or
-        directories containing command providers.
-
-        This takes an optional group argument which specifies the entry point
-        group to use. If not specified, it defaults to 'mach.providers'.
-        """
-        try:
-            import pkg_resources
-        except ImportError:
-            print(
-                "Could not find setuptools, ignoring command entry points",
-                file=sys.stderr,
-            )
-            return
-
-        for entry in pkg_resources.iter_entry_points(group=group, name=None):
-            paths = entry.load()()
-            if not isinstance(paths, Iterable):
-                print(INVALID_ENTRY_POINT % entry)
-                sys.exit(1)
-
-            for path in paths:
-                path = Path(path)
-                if path.is_file():
-                    self.load_commands_from_file(path)
-                elif path.is_dir():
-                    self.load_commands_from_directory(path)
-                else:
-                    print(f"command provider '{path}' does not exist")
 
     def define_category(self, name, title, description, priority=50):
         """Provide a description for a named command category."""
@@ -371,23 +255,7 @@ To see more help for a specific command, run:
         orig_env = dict(os.environ)
 
         try:
-            # Load settings as early as possible so things in dispatcher.py
-            # can use them.
-            for provider in Registrar.settings_providers:
-                self.settings.register_provider(provider)
-
-            setting_paths_to_pass = [Path(path) for path in self.settings_paths]
-            self.load_settings(setting_paths_to_pass)
-
-            if sys.version_info < (3, 0):
-                if stdin.encoding is None:
-                    sys.stdin = codecs.getreader("utf-8")(stdin)
-
-                if stdout.encoding is None:
-                    sys.stdout = codecs.getwriter("utf-8")(stdout)
-
-                if stderr.encoding is None:
-                    sys.stderr = codecs.getwriter("utf-8")(stderr)
+            self.load_settings()
 
             # Allow invoked processes (which may not have a handle on the
             # original stdout file descriptor) to know if the original stdout
@@ -445,7 +313,7 @@ To see more help for a specific command, run:
         if self.populate_context_handler:
             context = ContextWrapper(context, self.populate_context_handler)
 
-        parser = self.get_argument_parser(context)
+        parser = get_argument_parser(context)
         context.global_parser = parser
 
         if not len(argv):
@@ -515,12 +383,13 @@ To see more help for a specific command, run:
         if args.settings_file:
             # Argument parsing has already happened, so settings that apply
             # to command line handling (e.g alias, defaults) will be ignored.
-            self.load_settings([Path(args.settings_file)])
+            self.load_settings_by_file([Path(args.settings_file)])
 
         try:
             return Registrar._run_command_handler(
                 handler,
                 context,
+                self.command_site_manager,
                 debug_command=args.debug_command,
                 profile_command=args.profile_command,
                 **vars(args.command_args),
@@ -600,7 +469,7 @@ To see more help for a specific command, run:
     def _print_error_header(self, argv, fh):
         fh.write("Error running mach:\n\n")
         fh.write("    ")
-        fh.write(repr(argv))
+        fh.write("mach " + " ".join(argv))
         fh.write("\n\n")
 
     def _print_exception(self, fh, exc_type, exc_value, stack, sentry_event_id=None):
@@ -619,7 +488,18 @@ To see more help for a specific command, run:
 
         fh.write("\nSentry event ID: {}\n".format(sentry_event_id))
 
-    def load_settings(self, paths: List[Path]):
+    def load_settings(self):
+        if not self.settings_loaded:
+            import mach.settings  # noqa need @SettingsProvider hook to execute
+
+            for provider in Registrar.settings_providers:
+                self.settings.register_provider(provider)
+
+            setting_paths_to_pass = [Path(path) for path in self.settings_paths]
+            self.load_settings_by_file(setting_paths_to_pass)
+            self.settings_loaded = True
+
+    def load_settings_by_file(self, paths: List[Path]):
         """Load the specified settings files.
 
         If a directory is specified, the following basenames will be
@@ -643,95 +523,99 @@ To see more help for a specific command, run:
 
         self.settings.load_files(list(files))
 
-    def get_argument_parser(self, context):
-        """Returns an argument parser for the command-line interface."""
 
-        parser = ArgumentParser(
-            add_help=False,
-            usage="%(prog)s [global arguments] " "command [command arguments]",
-        )
+def get_argument_parser(context=None, action=CommandAction, topsrcdir=None):
+    """Returns an argument parser for the command-line interface."""
 
-        # WARNING!!! If you add a global argument here, also add it to the
-        # global argument handling in the top-level `mach` script.
-        # Order is important here as it dictates the order the auto-generated
-        # help messages are printed.
-        global_group = parser.add_argument_group("Global Arguments")
+    parser = ArgumentParser(
+        add_help=False,
+        usage="%(prog)s [global arguments] " "command [command arguments]",
+    )
 
-        global_group.add_argument(
-            "-v",
-            "--verbose",
-            dest="verbose",
-            action="store_true",
-            default=False,
-            help="Print verbose output.",
-        )
-        global_group.add_argument(
-            "-l",
-            "--log-file",
-            dest="logfile",
-            metavar="FILENAME",
-            type=argparse.FileType("a"),
-            help="Filename to write log data to.",
-        )
-        global_group.add_argument(
-            "--log-interval",
-            dest="log_interval",
-            action="store_true",
-            default=False,
-            help="Prefix log line with interval from last message rather "
-            "than relative time. Note that this is NOT execution time "
-            "if there are parallel operations.",
-        )
-        global_group.add_argument(
-            "--no-interactive",
-            dest="is_interactive",
-            action="store_false",
-            help="Automatically selects the default option on any "
-            "interactive prompts. If the output is not a terminal, "
-            "then --no-interactive is assumed.",
-        )
-        suppress_log_by_default = False
-        if "INSIDE_EMACS" in os.environ:
-            suppress_log_by_default = True
-        global_group.add_argument(
-            "--log-no-times",
-            dest="log_no_times",
-            action="store_true",
-            default=suppress_log_by_default,
-            help="Do not prefix log lines with times. By default, "
-            "mach will prefix each output line with the time since "
-            "command start.",
-        )
-        global_group.add_argument(
-            "-h",
-            "--help",
-            dest="help",
-            action="store_true",
-            default=False,
-            help="Show this help message.",
-        )
-        global_group.add_argument(
-            "--debug-command",
-            action="store_true",
-            help="Start a Python debugger when command is dispatched.",
-        )
-        global_group.add_argument(
-            "--profile-command",
-            action="store_true",
-            help="Capture a Python profile of the mach process as command is dispatched.",
-        )
-        global_group.add_argument(
-            "--settings",
-            dest="settings_file",
-            metavar="FILENAME",
-            default=None,
-            help="Path to settings file.",
-        )
+    # WARNING!!! If you add a global argument here, also add it to the
+    # global argument handling in the top-level `mach` script.
+    # Order is important here as it dictates the order the auto-generated
+    # help messages are printed.
+    global_group = parser.add_argument_group("Global Arguments")
 
+    global_group.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        default=False,
+        help="Print verbose output.",
+    )
+    global_group.add_argument(
+        "-l",
+        "--log-file",
+        dest="logfile",
+        metavar="FILENAME",
+        type=argparse.FileType("a"),
+        help="Filename to write log data to.",
+    )
+    global_group.add_argument(
+        "--log-interval",
+        dest="log_interval",
+        action="store_true",
+        default=False,
+        help="Prefix log line with interval from last message rather "
+        "than relative time. Note that this is NOT execution time "
+        "if there are parallel operations.",
+    )
+    global_group.add_argument(
+        "--no-interactive",
+        dest="is_interactive",
+        action="store_false",
+        help="Automatically selects the default option on any "
+        "interactive prompts. If the output is not a terminal, "
+        "then --no-interactive is assumed.",
+    )
+    suppress_log_by_default = False
+    if "INSIDE_EMACS" in os.environ:
+        suppress_log_by_default = True
+    global_group.add_argument(
+        "--log-no-times",
+        dest="log_no_times",
+        action="store_true",
+        default=suppress_log_by_default,
+        help="Do not prefix log lines with times. By default, "
+        "mach will prefix each output line with the time since "
+        "command start.",
+    )
+    global_group.add_argument(
+        "-h",
+        "--help",
+        dest="help",
+        action="store_true",
+        default=False,
+        help="Show this help message.",
+    )
+    global_group.add_argument(
+        "--debug-command",
+        action="store_true",
+        help="Start a Python debugger when command is dispatched.",
+    )
+    global_group.add_argument(
+        "--profile-command",
+        action="store_true",
+        help="Capture a Python profile of the mach process as command is dispatched.",
+    )
+    global_group.add_argument(
+        "--settings",
+        dest="settings_file",
+        metavar="FILENAME",
+        default=None,
+        help="Path to settings file.",
+    )
+
+    if context:
         # We need to be last because CommandAction swallows all remaining
         # arguments and argparse parses arguments in the order they were added.
         parser.add_argument(
             "command", action=CommandAction, registrar=Registrar, context=context
         )
+    else:
+        parser.add_argument("command", topsrcdir=topsrcdir, action=action)
 
-        return parser
+    return parser

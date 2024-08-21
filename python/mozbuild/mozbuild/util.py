@@ -4,56 +4,32 @@
 
 # This file contains miscellaneous utility functions that don't belong anywhere
 # in particular.
-
 import argparse
 import collections
 import collections.abc
 import copy
-import ctypes
 import difflib
-import errno
 import functools
 import hashlib
 import io
 import itertools
 import os
 import re
-import stat
 import sys
-import time
-from collections import OrderedDict
 from io import BytesIO, StringIO
-from pathlib import Path
 
 import six
-from packaging.version import Version
+
+from mozbuild.dirutils import ensureParentDir
 
 MOZBUILD_METRICS_PATH = os.path.abspath(
     os.path.join(__file__, "..", "..", "metrics.yaml")
 )
 
 if sys.platform == "win32":
-    _kernel32 = ctypes.windll.kernel32
-    _FILE_ATTRIBUTE_NOT_CONTENT_INDEXED = 0x2000
     system_encoding = "mbcs"
 else:
     system_encoding = "utf-8"
-
-
-def exec_(object, globals=None, locals=None):
-    """Wrapper around the exec statement to avoid bogus errors like:
-
-    SyntaxError: unqualified exec is not allowed in function ...
-    it is a nested function.
-
-    or
-
-    SyntaxError: unqualified exec is not allowed in function ...
-    it contains a nested function with free variable
-
-    which happen with older versions of python 2.7.
-    """
-    exec(object, globals, locals)
 
 
 def _open(path, mode):
@@ -143,6 +119,13 @@ class ReadOnlyDict(dict):
 
         return ReadOnlyDict(**result)
 
+    def __reduce__(self, *args, **kwargs):
+        """
+        Support for `pickle`.
+        """
+
+        return (self.__class__, (dict(self),))
+
 
 class undefined_default(object):
     """Represents an undefined argument value that isn't None."""
@@ -162,42 +145,6 @@ class ReadOnlyDefaultDict(ReadOnlyDict):
         value = self._default_factory()
         dict.__setitem__(self, key, value)
         return value
-
-
-def ensureParentDir(path):
-    """Ensures the directory parent to the given file exists."""
-    d = os.path.dirname(path)
-    if d and not os.path.exists(path):
-        try:
-            os.makedirs(d)
-        except OSError as error:
-            if error.errno != errno.EEXIST:
-                raise
-
-
-def mkdir(path, not_indexed=False):
-    """Ensure a directory exists.
-
-    If ``not_indexed`` is True, an attribute is set that disables content
-    indexing on the directory.
-    """
-    try:
-        os.makedirs(path)
-    except OSError as e:
-        if e.errno != errno.EEXIST:
-            raise
-
-    if not_indexed:
-        if sys.platform == "win32":
-            if isinstance(path, six.string_types):
-                fn = _kernel32.SetFileAttributesW
-            else:
-                fn = _kernel32.SetFileAttributesA
-
-            fn(path, _FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
-        elif sys.platform == "darwin":
-            with open(os.path.join(path, ".metadata_never_index"), "a"):
-                pass
 
 
 def simple_diff(filename, old_lines, new_lines):
@@ -921,105 +868,6 @@ class HierarchicalStringList(object):
                 )
 
 
-class LockFile(object):
-    """LockFile is used by the lock_file method to hold the lock.
-
-    This object should not be used directly, but only through
-    the lock_file method below.
-    """
-
-    def __init__(self, lockfile):
-        self.lockfile = lockfile
-
-    def __del__(self):
-        while True:
-            try:
-                os.remove(self.lockfile)
-                break
-            except OSError as e:
-                if e.errno == errno.EACCES:
-                    # Another process probably has the file open, we'll retry.
-                    # Just a short sleep since we want to drop the lock ASAP
-                    # (but we need to let some other process close the file
-                    # first).
-                    time.sleep(0.1)
-                else:
-                    # Re-raise unknown errors
-                    raise
-
-
-def lock_file(lockfile, max_wait=600):
-    """Create and hold a lockfile of the given name, with the given timeout.
-
-    To release the lock, delete the returned object.
-    """
-
-    # FUTURE This function and object could be written as a context manager.
-
-    while True:
-        try:
-            fd = os.open(lockfile, os.O_EXCL | os.O_RDWR | os.O_CREAT)
-            # We created the lockfile, so we're the owner
-            break
-        except OSError as e:
-            if e.errno == errno.EEXIST or (
-                sys.platform == "win32" and e.errno == errno.EACCES
-            ):
-                pass
-            else:
-                # Should not occur
-                raise
-
-        try:
-            # The lock file exists, try to stat it to get its age
-            # and read its contents to report the owner PID
-            f = open(lockfile, "r")
-            s = os.stat(lockfile)
-        except EnvironmentError as e:
-            if e.errno == errno.ENOENT or e.errno == errno.EACCES:
-                # We didn't create the lockfile, so it did exist, but it's
-                # gone now. Just try again
-                continue
-
-            raise Exception(
-                "{0} exists but stat() failed: {1}".format(lockfile, e.strerror)
-            )
-
-        # We didn't create the lockfile and it's still there, check
-        # its age
-        now = int(time.time())
-        if now - s[stat.ST_MTIME] > max_wait:
-            pid = f.readline().rstrip()
-            raise Exception(
-                "{0} has been locked for more than "
-                "{1} seconds (PID {2})".format(lockfile, max_wait, pid)
-            )
-
-        # It's not been locked too long, wait a while and retry
-        f.close()
-        time.sleep(1)
-
-    # if we get here. we have the lockfile. Convert the os.open file
-    # descriptor into a Python file object and record our PID in it
-    f = os.fdopen(fd, "w")
-    f.write("{0}\n".format(os.getpid()))
-    f.close()
-
-    return LockFile(lockfile)
-
-
-class OrderedDefaultDict(OrderedDict):
-    """A combination of OrderedDict and defaultdict."""
-
-    def __init__(self, default_factory, *args, **kwargs):
-        OrderedDict.__init__(self, *args, **kwargs)
-        self._default_factory = default_factory
-
-    def __missing__(self, key):
-        value = self[key] = self._default_factory()
-        return value
-
-
 class KeyedDefaultDict(dict):
     """Like a defaultdict, but the default_factory function takes the key as
     argument"""
@@ -1252,7 +1100,7 @@ def pairwise(iterable):
     return zip(a, b)
 
 
-VARIABLES_RE = re.compile("\$\((\w+)\)")
+VARIABLES_RE = re.compile(r"\$\((\w+)\)")
 
 
 def expand_variables(s, variables):
@@ -1326,12 +1174,8 @@ class EnumString(six.text_type):
     def __hash__(self):
         return super(EnumString, self).__hash__()
 
-    @staticmethod
-    def subclass(*possible_values):
-        class EnumStringSubclass(EnumString):
-            POSSIBLE_VALUES = possible_values
-
-        return EnumStringSubclass
+    def __repr__(self):
+        return f"{self.__class__.__name__}({str(self)!r})"
 
 
 def _escape_char(c):
@@ -1352,13 +1196,6 @@ def ensure_unicode(value, encoding="utf-8"):
     if isinstance(value, six.binary_type):
         return value.decode(encoding)
     return value
-
-
-def process_time():
-    if six.PY2:
-        return time.clock()
-    else:
-        return time.process_time()
 
 
 def hexdump(buf):
@@ -1390,18 +1227,3 @@ def hexdump(buf):
         line += "|\n"
         lines.append(line)
     return lines
-
-
-def mozilla_build_version():
-    mozilla_build = os.environ.get("MOZILLABUILD")
-
-    version_file = Path(mozilla_build) / "VERSION"
-
-    assert version_file.exists(), (
-        f'The MozillaBuild VERSION file was not found at "{version_file}".\n'
-        "Please check if MozillaBuild is installed correctly and that the"
-        "`MOZILLABUILD` environment variable is to the correct path."
-    )
-
-    with version_file.open() as file:
-        return Version(file.readline().rstrip("\n"))

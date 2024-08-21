@@ -62,7 +62,7 @@ def vendor(
     add_to_exports=False,
     force=False,
     verify=False,
-    patch_mode="",
+    patch_mode=None,
 ):
     """
     Vendor third-party dependencies into the source repository.
@@ -92,22 +92,21 @@ def vendor(
             "Cannot perform update actions if we don't have a 'vendoring' section in the moz.yaml"
         )
 
-    if patch_mode and patch_mode not in ["none", "only"]:
+    patch_modes = "none", "only", "check"
+    if patch_mode and patch_mode not in patch_modes:
         print(
             "Unknown patch mode given '%s'. Please use one of: 'none' or 'only'."
             % patch_mode
         )
         sys.exit(1)
-    if (
-        manifest["vendoring"].get("patches", [])
-        and not patch_mode
-        and not check_for_update
-    ):
+
+    patches = manifest["vendoring"].get("patches")
+    if patches and not patch_mode and not check_for_update:
         print(
             "Patch mode was not given when required. Please use one of: 'none' or 'only'"
         )
         sys.exit(1)
-    if patch_mode == "only" and not manifest["vendoring"].get("patches", []):
+    if patch_mode == "only" and not patches:
         print(
             "Patch import was specified for %s but there are no vendored patches defined."
             % library
@@ -182,13 +181,9 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
     default=False,
 )
 @CommandArgument(
-    "--build-peers-said-large-imports-were-ok",
+    "--force",
     action="store_true",
-    help=(
-        "Permit overly-large files to be added to the repository. "
-        "To get permission to set this, raise a question in the #build "
-        "channel at https://chat.mozilla.org."
-    ),
+    help=("Ignore any kind of error that happens during vendoring"),
     default=False,
 )
 @CommandArgument(
@@ -204,7 +199,11 @@ def vendor_rust(command_context, **kwargs):
     if issues_json:
         with open(issues_json, "w") as fh:
             fh.write(vendor_command.serialize_issues_json())
-    sys.exit(0 if ok else 1)
+    if ok:
+        sys.exit(0)
+    else:
+        print("Errors occured; new rust crates were not vendored.")
+        sys.exit(1)
 
 
 # =====================================================================

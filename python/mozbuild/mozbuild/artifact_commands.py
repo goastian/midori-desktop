@@ -12,13 +12,17 @@ import os
 import shutil
 from collections import OrderedDict
 
+# As a result of the selective module loading changes, this import has to be
+# done here. It is not explicitly used, but it has an implicit side-effect
+# (bringing in TASKCLUSTER_ROOT_URL) which is necessary.
+import gecko_taskgraph.main  # noqa: F401
 import mozversioncontrol
 import six
 from mach.decorators import Command, CommandArgument, SubCommand
 
 from mozbuild.artifact_builds import JOB_CHOICES
 from mozbuild.base import MachCommandConditions as conditions
-from mozbuild.util import ensureParentDir
+from mozbuild.dirutils import ensureParentDir
 
 _COULD_NOT_FIND_ARTIFACTS_TEMPLATE = (
     "ERROR!!!!!! Could not find artifacts for a toolchain build named "
@@ -132,7 +136,11 @@ def _make_artifacts(
     return artifacts
 
 
-@ArtifactSubCommand("artifact", "install", "Install a good pre-built artifact.")
+@ArtifactSubCommand(
+    "artifact",
+    "install",
+    "Install a good pre-built artifact.",
+)
 @CommandArgument(
     "source",
     metavar="SRC",
@@ -200,7 +208,10 @@ def artifact_clear_cache(command_context, tree=None, job=None, verbose=False):
     return 0
 
 
-@SubCommand("artifact", "toolchain")
+@SubCommand(
+    "artifact",
+    "toolchain",
+)
 @CommandArgument("--verbose", "-v", action="store_true", help="Print verbose output.")
 @CommandArgument(
     "--cache-dir",
@@ -375,7 +386,7 @@ def artifact_toolchain(
                 "should be determined in the decision task.",
             )
             return 1
-        from gecko_taskgraph.optimize.strategies import IndexSearch
+        from taskgraph.optimize.strategies import IndexSearch
 
         from mozbuild.toolchains import toolchain_task_definitions
 
@@ -502,7 +513,6 @@ def artifact_toolchain(
                 requests.exceptions.ChunkedEncodingError,
                 requests.exceptions.ConnectionError,
             ) as e:
-
                 if isinstance(e, requests.exceptions.HTTPError):
                     # The relengapi proxy likes to return error 400 bad request
                     # which seems improbably to be due to our (simple) GET

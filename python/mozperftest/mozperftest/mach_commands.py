@@ -10,7 +10,6 @@ from mach.decorators import Command, CommandArgument, SubCommand
 from mozbuild.base import MachCommandConditions as conditions
 
 _TRY_PLATFORMS = {
-    "g5-browsertime": "perftest-android-hw-g5-browsertime",
     "linux-xpcshell": "perftest-linux-try-xpcshell",
     "mac-xpcshell": "perftest-macosx-try-xpcshell",
     "linux-browsertime": "perftest-linux-try-browsertime",
@@ -125,8 +124,8 @@ def run_perftest(command_context, **kwargs):
 
         for plat in platform:
             if plat not in _TRY_PLATFORMS:
-                # we can extend platform support here: linux, win, macOs, pixel2
-                # by adding more jobs in taskcluster/ci/perftest/kind.yml
+                # we can extend platform support here: linux, win, macOs
+                # by adding more jobs in taskcluster/kinds/perftest/kind.yml
                 # then picking up the right one here
                 raise NotImplementedError(
                     "%r doesn't exist or is not yet supported" % plat
@@ -187,10 +186,20 @@ def run_perftest(command_context, **kwargs):
 @CommandArgument(
     "-v", "--verbose", action="store_true", default=False, help="Verbose mode"
 )
+@CommandArgument(
+    "-r",
+    "--raptor",
+    action="store_true",
+    default=False,
+    help="Run raptor tests",
+)
 def run_tests(command_context, **kwargs):
     from pathlib import Path
 
     from mozperftest.utils import temporary_env
+
+    if "raptor" in kwargs:
+        print("Running raptor unit tests through mozperftest")
 
     with temporary_env(
         COVERAGE_RCFILE=str(Path(HERE, ".coveragerc")), RUNNING_TESTS="YES"
@@ -207,7 +216,7 @@ def _run_tests(command_context, **kwargs):
     skip_linters = kwargs.get("skip_linters", False)
     verbose = kwargs.get("verbose", False)
 
-    if not ON_TRY and not skip_linters:
+    if not ON_TRY and not skip_linters and not kwargs.get("raptor"):
         cmd = "./mach lint "
         if verbose:
             cmd += " -v"
@@ -221,6 +230,7 @@ def _run_tests(command_context, **kwargs):
     # 2/ coverage run pytest ... => run the tests and collect info
     # 3/ coverage report => generate the report
     tests_dir = Path(HERE, "tests").resolve()
+
     tests = kwargs.get("tests", [])
     if tests == []:
         tests = str(tests_dir)
@@ -245,11 +255,19 @@ def _run_tests(command_context, **kwargs):
     if kwargs.get("verbose"):
         options += "v"
 
+    # If we run mozperftest with the --raptor argument,
+    # then only run the raptor unit tests
+    if kwargs.get("raptor"):
+        run_coverage_check = True
+        tests = str(Path(command_context.topsrcdir, "testing", "raptor", "test"))
+
     if run_coverage_check:
         assert checkout_python_script(
             venv, "coverage", ["erase"], label="remove old coverage data"
         )
+
     args = ["run", "-m", "pytest", options, "--durations", "10", tests]
+
     assert checkout_python_script(
         venv, "coverage", args, label="running tests", verbose=verbose
     )
@@ -279,7 +297,6 @@ def run_tools(command_context, **kwargs):
     "comparing  the task `test-linux64-shippable-qr/opt-browsertime-tp6-firefox-linkedin-e10s` "
     "between two revisions, then use `browsertime-tp6-firefox-linkedin-e10s` as the suite name "
     "and `test-linux64-shippable-qr/opt` as the platform.",
-    virtualenv_name="perftest-side-by-side",
     parser=get_perftest_tools_parser("side-by-side"),
 )
 def run_side_by_side(command_context, **kwargs):
@@ -295,7 +312,6 @@ def run_side_by_side(command_context, **kwargs):
     description="This tool can be used to determine if there are differences between two "
     "revisions. It can do either direct comparisons, or searching for regressions in between "
     "two revisions (with a maximum or autocomputed depth).",
-    virtualenv_name="perftest-side-by-side",
     parser=get_perftest_tools_parser("change-detector"),
 )
 def run_change_detector(command_context, **kwargs):

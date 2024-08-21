@@ -79,7 +79,7 @@ class DebianBootstrapper(LinuxBootstrapper, BaseBootstrapper):
         if self.no_interactive:
             command.append("-y")
         command.extend(packages)
-    
+
         self.run_as_root(command)
 
     def apt_update(self):

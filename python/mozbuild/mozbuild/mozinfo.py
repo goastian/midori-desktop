@@ -7,7 +7,6 @@
 
 import json
 import os
-import platform
 import re
 
 import six
@@ -30,6 +29,7 @@ def build_dict(config, env=os.environ):
 
     d = {}
     d["topsrcdir"] = config.topsrcdir
+    d["topobjdir"] = config.topobjdir
 
     if config.mozconfig:
         d["mozconfig"] = config.mozconfig
@@ -100,6 +100,7 @@ def build_dict(config, env=os.environ):
     d["isolated_process"] = (
         substs.get("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS") == "1"
     )
+    d["automation"] = substs.get("MOZ_AUTOMATION") == "1"
 
     def guess_platform():
         if d["buildapp"] == "browser":
@@ -126,6 +127,12 @@ def build_dict(config, env=os.environ):
             return "android-arm"
 
     def guess_buildtype():
+        if d["asan"]:
+            return "asan"
+        if d["tsan"]:
+            return "tsan"
+        if d["ccov"]:
+            return "ccov"
         if d["debug"]:
             return "debug"
         if d["pgo"]:
@@ -137,14 +144,13 @@ def build_dict(config, env=os.environ):
     if "buildapp" in d and (d["os"] == "mac" or "bits" in d):
         d["platform_guess"] = guess_platform()
         d["buildtype_guess"] = guess_buildtype()
+    d["buildtype"] = guess_buildtype()
 
     if (
         d.get("buildapp", "") == "mobile/android"
         and "MOZ_ANDROID_MIN_SDK_VERSION" in substs
     ):
         d["android_min_sdk"] = substs["MOZ_ANDROID_MIN_SDK_VERSION"]
-
-    d["is_ubuntu"] = "Ubuntu" in platform.version()
 
     return d
 

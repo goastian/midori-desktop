@@ -15,7 +15,7 @@ import time
 
 import blessed
 import six
-from mozbuild.util import mozilla_build_version
+from mozbuild.buildversion import mozilla_build_version
 from packaging.version import Version
 
 IS_WINDOWS = sys.platform.startswith("win")
@@ -78,6 +78,25 @@ def format_seconds(total):
     return "%2d:%05.2f" % (minutes, seconds)
 
 
+def format_level(level, terminal=None):
+    levels = {
+        logging.NOTSET: ("N", "bright_white"),
+        logging.DEBUG: ("D", "blue"),
+        logging.INFO: (None, None),
+        logging.WARNING: ("W", "yellow"),
+        logging.ERROR: ("E", "red"),
+        logging.CRITICAL: ("C", "black_on_red"),
+    }
+    try:
+        s, color = levels[level]
+    except KeyError:
+        raise ValueError(f"unsupported log level: {level}")
+    if s is None:
+        return ""
+    colorfunc = getattr(terminal, color) if terminal else lambda x: x
+    return colorfunc(s) + " "
+
+
 class ConvertToStructuredFilter(logging.Filter):
     """Filter that converts unstructured records into structured ones."""
 
@@ -114,10 +133,14 @@ class StructuredHumanFormatter(logging.Formatter):
     unstructured record is passed or if the structured message is malformed.
     """
 
-    def __init__(self, start_time, write_interval=False, write_times=True):
+    def __init__(
+        self, start_time, write_interval=False, write_times=True, write_level=None
+    ):
         self.start_time = start_time
         self.write_interval = write_interval
         self.write_times = write_times
+        # Default to the same value as `write_times` if `write_level` is unset.
+        self.write_level = write_level if write_level is not None else write_times
         self.last_time = None
 
     def format(self, record):
@@ -127,7 +150,9 @@ class StructuredHumanFormatter(logging.Formatter):
             format_seconds(self._time(record)) + " " if self.write_times else ""
         )
 
-        rv = elapsed_time + formatted_msg
+        level = format_level(record.levelno) if self.write_level else ""
+
+        rv = elapsed_time + level + formatted_msg
         formatted_stack_trace_result = formatted_stack_trace(record, self)
 
         if formatted_stack_trace_result != "":
@@ -162,7 +187,9 @@ class StructuredTerminalFormatter(StructuredHumanFormatter):
             else ""
         )
 
-        rv = elapsed_time + self._colorize(formatted_msg) + self._sgr0
+        level = format_level(record.levelno, self.terminal) if self.write_level else ""
+
+        rv = elapsed_time + level + self._colorize(formatted_msg) + self._sgr0
         formatted_stack_trace_result = formatted_stack_trace(record, self)
 
         if formatted_stack_trace_result != "":

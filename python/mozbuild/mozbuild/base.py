@@ -254,7 +254,7 @@ class MozbuildObject(ProcessExecutionMixin):
     @property
     def virtualenv_manager(self):
         from mach.site import CommandSiteManager
-        from mozboot.util import get_state_dir
+        from mach.util import get_state_dir, get_virtualenv_base_dir
 
         if self._virtualenv_manager is None:
             self._virtualenv_manager = CommandSiteManager.from_environment(
@@ -263,10 +263,14 @@ class MozbuildObject(ProcessExecutionMixin):
                     specific_to_topsrcdir=True, topsrcdir=self.topsrcdir
                 ),
                 self._virtualenv_name,
-                os.path.join(self.topobjdir, "_virtualenvs"),
+                get_virtualenv_base_dir(self.topsrcdir),
             )
 
         return self._virtualenv_manager
+
+    @virtualenv_manager.setter
+    def virtualenv_manager(self, command_site_manager):
+        self._virtualenv_manager = command_site_manager
 
     @staticmethod
     @memoize
@@ -747,7 +751,7 @@ class MozbuildObject(ProcessExecutionMixin):
             if not psutil or not job_size:
                 num_jobs = cpus
             else:
-                mem_gb = psutil.virtual_memory().total / 1024 ** 3
+                mem_gb = psutil.virtual_memory().total / 1024**3
                 from_mem = round(mem_gb / job_size)
                 num_jobs = max(1, min(cpus, from_mem))
                 print(

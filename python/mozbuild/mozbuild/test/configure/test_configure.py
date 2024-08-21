@@ -14,11 +14,12 @@ from six import StringIO
 
 from mozbuild.configure import ConfigureError, ConfigureSandbox
 from mozbuild.configure.options import (
+    ConflictingOptionError,
     InvalidOptionError,
     NegativeOptionValue,
     PositiveOptionValue,
 )
-from mozbuild.util import ReadOnlyNamespace, exec_, memoized_property
+from mozbuild.util import ReadOnlyNamespace, memoized_property
 
 test_data_path = mozpath.abspath(mozpath.dirname(__file__))
 test_data_path = mozpath.join(test_data_path, "data")
@@ -57,6 +58,9 @@ class TestConfigure(unittest.TestCase):
                     NegativeOptionValue(),
                     NegativeOptionValue(),
                     NegativeOptionValue(),
+                    NegativeOptionValue(),
+                    NegativeOptionValue(),
+                    PositiveOptionValue(),
                 ),
                 "SIMPLE": NegativeOptionValue(),
                 "VALUES": NegativeOptionValue(),
@@ -79,21 +83,69 @@ class TestConfigure(unittest.TestCase):
             "  Help options:\n"
             "    --help                    print this message\n"
             "\n"
+            "  Options from python/mozbuild/mozbuild/test/configure/data/moz.configure:\n"
+            "    --enable-simple           Enable simple\n"
+            "    --enable-with-env         Enable with env\n"
+            "    --enable-values           Enable values\n"
+            "    --enable-choices={a,b,c}  Enable choices\n"
+            "    --without-thing           Build without thing\n"
+            "    --with-stuff              Build with stuff\n"
+            "    --option                  Option\n"
+            "    --with-returned-default   Returned default [not-simple]\n"
+            "    --with-other-default      With other default\n"
+            "    --returned-choices        Choices\n"
+            "    --enable-foo={x,y}        Enable Foo\n"
+            "    --disable-foo             Disable Foo\n"
+            "    --enable-include          Include\n"
+            "    --with-imports            Imports\n"
+            "    --indirect-option         Indirectly defined option\n"
+            "\n"
             "  Options from python/mozbuild/mozbuild/test/configure/data/included.configure:\n"
-            "    --enable-imports-in-template\n                              Imports in template\n"
+            "    --enable-imports-in-template\n"
+            "                              Imports in template\n"
+            "\n"
+            "\n"
+            "Environment variables:\n"
+            "  Options from python/mozbuild/mozbuild/test/configure/data/moz.configure:\n"
+            "    CC                        C Compiler\n"
+            "\n",
+            help.replace("\\", "/"),
+        )
+
+        help, config = self.get_config(
+            ["--help", "--enable-simple", "--enable-values=numeric"], prog="configure"
+        )
+
+        self.assertEqual({}, config)
+        self.maxDiff = None
+        self.assertEqual(
+            "Usage: configure [options]\n"
+            "\n"
+            "Options: [defaults in brackets after descriptions]\n"
+            "  Help options:\n"
+            "    --help                    print this message\n"
             "\n"
             "  Options from python/mozbuild/mozbuild/test/configure/data/moz.configure:\n"
-            "    --enable-include          Include\n"
             "    --enable-simple           Enable simple\n"
-            "    --enable-values           Enable values\n"
             "    --enable-with-env         Enable with env\n"
-            "    --indirect-option         Indirectly defined option\n"
-            "    --option                  Option\n"
-            "    --returned-choices        Choices\n"
-            "    --with-imports            Imports\n"
-            "    --with-returned-default   Returned default [not-simple]\n"
-            "    --with-stuff              Build with stuff\n"
+            "    --enable-values           Enable values\n"
+            "    --enable-choices={a,b,c}  Enable choices\n"
             "    --without-thing           Build without thing\n"
+            "    --with-stuff              Build with stuff\n"
+            "    --option                  Option\n"
+            "    --with-returned-default   Returned default [simple]\n"
+            "    --without-other-default   Without other default\n"
+            "    --returned-choices={0,1,2}\n"
+            "                              Choices\n"
+            "    --enable-foo={x,y}        Enable Foo\n"
+            "    --disable-foo             Disable Foo\n"
+            "    --enable-include          Include\n"
+            "    --with-imports            Imports\n"
+            "    --indirect-option         Indirectly defined option\n"
+            "\n"
+            "  Options from python/mozbuild/mozbuild/test/configure/data/included.configure:\n"
+            "    --enable-imports-in-template\n"
+            "                              Imports in template\n"
             "\n"
             "\n"
             "Environment variables:\n"
@@ -245,7 +297,7 @@ class TestConfigure(unittest.TestCase):
         sandbox = ConfigureSandbox(config, {}, ["configure"], out, out)
 
         with self.assertRaises(ImportError):
-            exec_(
+            exec(
                 textwrap.dedent(
                     """
                 @template
@@ -256,7 +308,7 @@ class TestConfigure(unittest.TestCase):
                 sandbox,
             )
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -271,11 +323,11 @@ class TestConfigure(unittest.TestCase):
 
         # os.path after an import is a mix of vanilla os.path and sandbox os.path.
         os_path = {}
-        exec_("from os.path import *", {}, os_path)
+        exec("from os.path import *", {}, os_path)
         os_path.update(sandbox.OS.path.__dict__)
         os_path = ReadOnlyNamespace(**os_path)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -288,7 +340,7 @@ class TestConfigure(unittest.TestCase):
 
         self.assertEqual(sandbox["foo"](), os_path)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -301,7 +353,7 @@ class TestConfigure(unittest.TestCase):
 
         self.assertEqual(sandbox["foo"](), os_path)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -316,7 +368,7 @@ class TestConfigure(unittest.TestCase):
             sandbox["foo"]()
         self.assertEqual(str(e.exception), "Importing __builtin__ is forbidden")
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -333,7 +385,7 @@ class TestConfigure(unittest.TestCase):
         f.close()
 
         # This used to unlock the sandbox
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -349,7 +401,7 @@ class TestConfigure(unittest.TestCase):
             sandbox["foo"]()
         self.assertEqual(str(e.exception), "Importing __builtin__ is forbidden")
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -362,7 +414,7 @@ class TestConfigure(unittest.TestCase):
 
         self.assertIs(sandbox["foo"](), sandbox)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -379,7 +431,7 @@ class TestConfigure(unittest.TestCase):
         self.assertEqual(list(sandbox), ["__builtins__", "foo"])
         self.assertEqual(sandbox["__builtins__"], ConfigureSandbox.BUILTINS)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -411,7 +463,7 @@ class TestConfigure(unittest.TestCase):
         out = StringIO()
         sandbox = CountApplyImportsSandbox(config, {}, ["configure"], out, out)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -439,7 +491,7 @@ class TestConfigure(unittest.TestCase):
         out = StringIO()
         sandbox = BasicWrappingSandbox(config, {}, ["configure"], out, out)
 
-        exec_(
+        exec(
             textwrap.dedent(
                 """
             @template
@@ -1082,6 +1134,49 @@ class TestConfigure(unittest.TestCase):
 
             self.assertEqual(str(e.exception), message)
 
+    def test_imply_option_conflict(self):
+        moz_configure = """
+            option('--with-foo', help='foo')
+            option('--with-env-foo', help='foo')
+            imply_option('--with-qux', True)
+            imply_option('QUX', "FOO", when='--with-env-foo')
+            imply_option('--with-qux', "FOO", when='--with-foo')
+            option('--with-qux', env="QUX", nargs='*', help='qux')
+            set_config('QUX', depends('--with-qux')(lambda x: x))
+        """
+        with self.assertRaises(ConflictingOptionError) as e:
+            with self.moz_configure(moz_configure):
+                self.get_config(["--with-foo"])
+
+        self.assertEqual(
+            str(e.exception),
+            "Cannot add '--with-qux=FOO' to the implied set because it conflicts"
+            " with '--with-qux' that was added earlier",
+        )
+
+        with self.assertRaises(InvalidOptionError) as e:
+            with self.moz_configure(moz_configure):
+                self.get_config(["--with-env-foo"])
+
+        config_path = mozpath.abspath(mozpath.join(test_data_path, "moz.configure"))
+
+        # TODO: the error message is weird.
+        self.assertEqual(
+            str(e.exception),
+            "'QUX=FOO' implied by 'imply_option at %s:5' conflicts "
+            "with '--with-qux' from the implied" % config_path,
+        )
+
+        with self.assertRaises(InvalidOptionError) as e:
+            with self.moz_configure(moz_configure):
+                self.get_config(["--with-foo", "--with-env-foo"])
+
+        self.assertEqual(
+            str(e.exception),
+            "Cannot add '--with-qux=FOO' to the implied set because it conflicts"
+            " with '--with-qux' that was added earlier",
+        )
+
     def test_option_failures(self):
         with self.assertRaises(ConfigureError) as e:
             with self.moz_configure('option("--with-foo", help="foo")'):
@@ -1228,8 +1323,6 @@ class TestConfigure(unittest.TestCase):
                   Options from python/mozbuild/mozbuild/test/configure/data/moz.configure:
                     --with-foo                foo
 
-
-                Environment variables:
             """
                 ),
             )
@@ -1249,8 +1342,6 @@ class TestConfigure(unittest.TestCase):
                     --with-foo                foo
                     --with-qux                qux
 
-
-                Environment variables:
             """
                 ),
             )
@@ -1874,6 +1965,72 @@ class TestConfigure(unittest.TestCase):
         ):
             self.get_config(["--enable-when"])
 
+    def test_depends_unary_ops_func(self):
+        with self.moz_configure(
+            """
+            option('--foo', nargs=1, help='foo')
+            @depends('--foo')
+            def foo(value):
+                return value
+            set_config('Foo', foo)
+            set_config('notFoo', depends(foo)(lambda x: not x))
+            set_config('invFoo', ~foo)
+        """
+        ):
+            foo_opt, foo_value = "--foo=foo", PositiveOptionValue(("foo",))
+
+            config = self.get_config([foo_opt])
+            self.assertEqual(
+                config,
+                {
+                    "Foo": foo_value,
+                    "notFoo": not foo_value,
+                    "invFoo": not foo_value,
+                },
+            )
+
+            foo_value = False
+            config = self.get_config([])
+            self.assertEqual(
+                config,
+                {
+                    "Foo": foo_value,
+                    "notFoo": not foo_value,
+                    "invFoo": not foo_value,
+                },
+            )
+
+    def test_depends_unary_ops_val(self):
+        with self.moz_configure(
+            """
+            option("--cond", help="condition")
+            cond = depends("--cond")(lambda c: c)
+            foo = depends(when=cond)("foo")
+            set_config('Foo', foo)
+            set_config('notFoo', depends(foo)(lambda x: not x))
+            set_config('invFoo', ~foo)
+
+            bar = depends(when=~cond)("bar")
+            bar2 = depends(when=depends(cond)(lambda c: not c))("bar2")
+            set_config('Bar', bar)
+            set_config('Bar2', bar2)
+        """
+        ):
+            config = self.get_config(["--cond"])
+            self.assertEqual(
+                config,
+                {
+                    "Foo": "foo",
+                    "notFoo": not "foo",
+                    "invFoo": not "foo",
+                },
+            )
+            config = self.get_config([])
+            self.assertEqual(
+                config,
+                {"notFoo": True, "invFoo": True, "Bar": "bar", "Bar2": "bar2"},
+            )
+
     def test_depends_binary_ops(self):
         with self.moz_configure(
             """
@@ -1928,10 +2085,6 @@ class TestConfigure(unittest.TestCase):
     def test_depends_getattr(self):
         with self.moz_configure(
             """
-            @imports(_from='mozbuild.util', _import='ReadOnlyNamespace')
-            def namespace(**kwargs):
-                return ReadOnlyNamespace(**kwargs)
-
             option('--foo', nargs=1, help='foo')
             @depends('--foo')
             def foo(value):

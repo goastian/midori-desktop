@@ -86,7 +86,13 @@ class MachRegistrar(object):
         return fail_conditions
 
     def _run_command_handler(
-        self, handler, context, debug_command=False, profile_command=False, **kwargs
+        self,
+        handler,
+        context,
+        command_site_manager=None,
+        debug_command=False,
+        profile_command=False,
+        **kwargs,
     ):
         instance = MachRegistrar._instance(handler, context, **kwargs)
         fail_conditions = MachRegistrar._fail_conditions(handler, instance)
@@ -99,7 +105,10 @@ class MachRegistrar(object):
         self.command_depth += 1
         fn = handler.func
         if handler.virtualenv_name:
-            instance.activate_virtualenv()
+            if command_site_manager:
+                instance.virtualenv_manager = command_site_manager
+            else:
+                instance.activate_virtualenv()
 
         profile = None
         if profile_command:
@@ -155,7 +164,17 @@ class MachRegistrar(object):
 
         Commands can use this to call other commands.
         """
-        handler = self.command_handlers[name]
+        from mach.command_util import load_command_module_from_command_name
+
+        handler = self.command_handlers.get(name)
+
+        if not handler:
+            load_command_module_from_command_name(name, context.topdir)
+            handler = self.command_handlers.get(name)
+            if not handler:
+                raise MachError(
+                    f"Mach was not able to load the module for the '{name}' command."
+                )
 
         if subcommand:
             handler = handler.subcommand_handlers[subcommand]

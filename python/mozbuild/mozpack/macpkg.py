@@ -13,9 +13,8 @@ import lzma
 import os
 import struct
 import zlib
+from collections import deque, namedtuple
 from xml.etree.ElementTree import XML
-
-from mozbuild.util import ReadOnlyNamespace
 
 
 class ZlibFile(object):
@@ -70,7 +69,10 @@ def unxar(fileobj):
     if len(toc) != uncompressed_toc_len:
         raise Exception("Corrupted XAR?")
     toc = XML(toc).find("toc")
-    for f in toc.findall("file"):
+    queue = deque(toc.findall("file"))
+    while queue:
+        f = queue.pop()
+        queue.extend(f.iterfind("file"))
         if f.find("type").text != "file":
             continue
         filename = f.find("name").text
@@ -170,6 +172,9 @@ class Take(object):
         return result
 
 
+CpioInfo = namedtuple("CpioInfo", ["mode", "nlink", "dev", "ino"])
+
+
 def uncpio(fileobj):
     while True:
         magic = fileobj.read(6)
@@ -211,7 +216,7 @@ def uncpio(fileobj):
         if name.startswith(b"/"):
             name = name[1:]
         content = Take(fileobj, filesize)
-        yield name, ReadOnlyNamespace(mode=mode, nlink=nlink, dev=dev, ino=ino), content
+        yield name, CpioInfo(mode=mode, nlink=nlink, dev=dev, ino=ino), content
         # Ensure the content is totally consumed
         while content.read(4096):
             pass

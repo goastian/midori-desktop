@@ -13,7 +13,6 @@ from six import StringIO
 from test_toolchain_helpers import FakeCompiler
 
 from common import ConfigureTestSandbox
-from mozbuild.util import exec_
 
 
 class BaseCompileChecks(unittest.TestCase):
@@ -40,7 +39,6 @@ class BaseCompileChecks(unittest.TestCase):
         return mock_compiler
 
     def do_compile_test(self, command, expected_test_content=None, expected_flags=None):
-
         paths = {
             os.path.abspath("/usr/bin/mockcc"): self.get_mock_compiler(
                 expected_test_content=expected_test_content,
@@ -133,12 +131,12 @@ class BaseCompileChecks(unittest.TestCase):
         sandbox = ConfigureTestSandbox(paths, config, {}, ["/bin/configure"], out, out)
         sandbox.include_file(os.path.join(base_dir, "util.configure"))
         sandbox.include_file(os.path.join(base_dir, "checks.configure"))
-        exec_(mock_compiler_defs, sandbox)
+        exec(mock_compiler_defs, sandbox)
         sandbox.include_file(os.path.join(base_dir, "compile-checks.configure"))
 
         status = 0
         try:
-            exec_(command, sandbox)
+            exec(command, sandbox)
             sandbox.run()
         except SystemExit as e:
             status = e.code
@@ -350,7 +348,6 @@ class TestHeaderChecks(BaseCompileChecks):
         )
 
     def test_check_headers_not_found(self):
-
         cmd = textwrap.dedent(
             """\
             baz_bar, quux_bar = check_headers('baz/foo-bar.h', 'baz-quux/foo-bar.h',
