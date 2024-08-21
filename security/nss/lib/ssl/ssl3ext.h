@@ -137,6 +137,10 @@ struct TLSExtensionDataStr {
     /* ECH working state. Non-null when a valid Encrypted Client Hello extension
      * was received. */
     sslEchXtnState *ech;
+
+    /* The compression algorithm that will be used to encode certificates. */
+    SSLCertificateCompressionAlgorithmID compressionAlg;
+    PRBool certificateCompressionAdvertised;
 };
 
 typedef struct TLSExtensionStr {

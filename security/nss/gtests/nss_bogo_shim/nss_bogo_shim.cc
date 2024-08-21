@@ -79,8 +79,8 @@ class TestAgent {
   }
 
   bool ConnectTcp() {
-    // Try IPv6 first, then IPv4 in case of failure.
-    if (!OpenConnection("::1") && !OpenConnection("127.0.0.1")) {
+    if (!(cfg_.get<bool>("ipv6") && OpenConnection("::1")) &&
+        !OpenConnection("127.0.0.1")) {
       return false;
     }
 
@@ -112,6 +112,18 @@ class TestAgent {
     if (prv != PR_SUCCESS) {
       return false;
     }
+
+    uint64_t shim_id = cfg_.get<int>("shim-id");
+    uint8_t buf[8] = {0};
+    for (size_t i = 0; i < 8; i++) {
+      buf[i] = shim_id & 0xff;
+      shim_id >>= 8;
+    }
+    int sent = PR_Write(pr_fd_.get(), buf, sizeof(buf));
+    if (sent != sizeof(buf)) {
+      return false;
+    }
+
     return true;
   }
 
@@ -404,7 +416,33 @@ class TestAgent {
       if (rv != SECSuccess) return false;
     }
 
+    if (!ConfigureGroups()) return false;
+
     if (!ConfigureCiphers()) return false;
+
+    return true;
+  }
+
+  bool ConfigureGroups() {
+    auto curves = cfg_.get<std::vector<int>>("curves");
+    if (curves.size() > 0) {
+      std::vector<SSLNamedGroup> groups;
+      std::transform(
+          curves.begin(), curves.end(), std::back_inserter(groups),
+          [](int curve) { return static_cast<SSLNamedGroup>(curve); });
+      SECStatus rv =
+          SSL_NamedGroupConfig(ssl_fd_.get(), &groups[0], groups.size());
+      if (rv != SECSuccess) {
+        return false;
+      }
+      // Xyber768 is disabled by policy by default, so if it's requested
+      // we need to update the policy flags as well.
+      for (auto group : groups) {
+        if (group == ssl_grp_kem_xyber768d00) {
+          NSS_SetAlgorithmPolicy(SEC_OID_XYBER768D00, NSS_USE_ALG_IN_SSL_KX, 0);
+        }
+      }
+    }
 
     return true;
   }
@@ -576,6 +614,183 @@ class TestAgent {
         alpn.size());
   }
 
+  /* Certificate Encoding/Decoding Shrinking functions
+   * See
+   * https://boringssl.googlesource.com/boringssl/+/master/ssl/test/runner/runner.go#16168
+   */
+  static SECStatus certCompressionShrinkEncode(const SECItem* input,
+                                               SECItem* output) {
+    if (input == NULL || input->data == NULL) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    if (input->len < 2) {
+      std::cerr << "Certificate is too short. " << std::endl;
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    SECITEM_AllocItem(NULL, output, input->len - 2);
+    if (output == NULL || output->data == NULL) {
+      return SECFailure;
+    }
+
+    /* The shrinking encoding primitive expects the first two bytes of a
+     * certificate to be equal to 0. */
+    if (input->data[0] != 0 || input->data[1] != 0) {
+      std::cerr << "Cannot compress certificate message." << std::endl;
+      return SECFailure;
+    }
+
+    for (size_t i = 0; i < output->len; i++) {
+      output->data[i] = input->data[i + 2];
+    }
+    return SECSuccess;
+  }
+
+  static SECStatus certCompressionShrinkDecode(const SECItem* input,
+                                               unsigned char* output,
+                                               size_t outputLen,
+                                               size_t* usedLen) {
+    if (input == NULL || input->data == NULL) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    if (output == NULL || outputLen != input->len + 2) {
+      return SECFailure;
+    }
+
+    output[0] = 0;
+    output[1] = 0;
+    for (size_t i = 0; i < input->len; i++) {
+      output[i + 2] = input->data[i];
+    }
+
+    *usedLen = outputLen;
+    return SECSuccess;
+  }
+
+  /* Certificate Encoding/Decoding Expanding functions
+   * See
+   * https://boringssl.googlesource.com/boringssl/+/master/ssl/test/runner/runner.go#16186
+   */
+  static SECStatus certCompressionExpandEncode(const SECItem* input,
+                                               SECItem* output) {
+    if (input == NULL || input->data == NULL) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    SECITEM_AllocItem(NULL, output, input->len + 4);
+
+    if (output == NULL || output->data == NULL) {
+      return SECFailure;
+    }
+
+    output->data[0] = 1;
+    output->data[1] = 2;
+    output->data[2] = 3;
+    output->data[3] = 4;
+    for (size_t i = 0; i < input->len; i++) {
+      output->data[i + 4] = input->data[i];
+    }
+
+    return SECSuccess;
+  }
+
+  static SECStatus certCompressionExpandDecode(const SECItem* input,
+                                               unsigned char* output,
+                                               size_t outputLen,
+                                               size_t* usedLen) {
+    if (input == NULL || input->data == NULL) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    if (input->len < 4) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      std::cerr << "Certificate is too short. " << std::endl;
+      return SECFailure;
+    }
+
+    if (output == NULL || outputLen != input->len - 4) {
+      return SECFailure;
+    }
+
+    /* See the corresponding compression function. */
+    if (input->data[0] != 1 || input->data[1] != 2 || input->data[2] != 3 ||
+        input->data[3] != 4) {
+      std::cerr << "Cannot decompress certificate message." << std::endl;
+      return SECFailure;
+    }
+
+    for (size_t i = 0; i < outputLen; i++) {
+      output[i] = input->data[i + 4];
+    }
+
+    *usedLen = outputLen;
+    return SECSuccess;
+  }
+
+  /* Certificate Encoding/Decoding Random functions
+   * See
+   * https://boringssl.googlesource.com/boringssl/+/master/ssl/test/runner/runner.go#16201
+   */
+  static SECStatus certCompressionRandomEncode(const SECItem* input,
+                                               SECItem* output) {
+    if (input == NULL || input->data == NULL) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    SECITEM_AllocItem(NULL, output, input->len + 1);
+
+    if (output == NULL || output->data == NULL) {
+      return SECFailure;
+    }
+
+    SECStatus rv = PK11_GenerateRandom(output->data, 1);
+
+    if (rv != SECSuccess) {
+      std::cerr << "Failed to generate randomness. " << std::endl;
+      return SECFailure;
+    }
+
+    for (size_t i = 0; i < input->len; i++) {
+      output->data[i + 1] = input->data[i];
+    }
+    return SECSuccess;
+  }
+
+  static SECStatus certCompressionRandomDecode(const SECItem* input,
+                                               unsigned char* output,
+                                               size_t outputLen,
+                                               size_t* usedLen) {
+    if (input == NULL || input->data == NULL) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      return SECFailure;
+    }
+
+    if (input->len < 1) {
+      PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+      std::cerr << "Certificate is too short. " << std::endl;
+      return SECFailure;
+    }
+
+    if (output == NULL || outputLen != input->len - 1) {
+      return SECFailure;
+    }
+
+    for (size_t i = 0; i < outputLen; i++) {
+      output[i] = input->data[i + 1];
+    }
+
+    *usedLen = outputLen;
+    return SECSuccess;
+  }
+
   SECStatus DoExchange(bool resuming) {
     SECStatus rv;
     int earlyDataSent = 0;
@@ -583,6 +798,25 @@ class TestAgent {
     sslSocket* ss = ssl_FindSocket(ssl_fd_.get());
     if (!ss) {
       return SECFailure;
+    }
+    if (cfg_.get<bool>("install-cert-compression-algs")) {
+      SSLCertificateCompressionAlgorithm t = {
+          (SSLCertificateCompressionAlgorithmID)0xff01,
+          "shrinkingCompressionAlg", certCompressionShrinkEncode,
+          certCompressionShrinkDecode};
+
+      SSLCertificateCompressionAlgorithm t1 = {
+          (SSLCertificateCompressionAlgorithmID)0xff02,
+          "expandingCompressionAlg", certCompressionExpandEncode,
+          certCompressionExpandDecode};
+
+      SSLCertificateCompressionAlgorithm t2 = {
+          (SSLCertificateCompressionAlgorithmID)0xff03, "randomCompressionAlg",
+          certCompressionRandomEncode, certCompressionRandomDecode};
+
+      SSLExp_SetCertificateCompressionAlgorithm(ssl_fd_.get(), t);
+      SSLExp_SetCertificateCompressionAlgorithm(ssl_fd_.get(), t1);
+      SSLExp_SetCertificateCompressionAlgorithm(ssl_fd_.get(), t2);
     }
 
     /* Apply resumption SSL options (if any). */
@@ -775,6 +1009,16 @@ class TestAgent {
       }
     }
 
+    auto curve_id = cfg_.get<int>("expect-curve-id");
+    if (curve_id) {
+      auto expected = static_cast<SSLNamedGroup>(curve_id);
+      if (info.keaGroup != expected && !(info.keaGroup == ssl_grp_none &&
+                                         info.originalKeaGroup == expected)) {
+        std::cerr << "Unexpected named group" << std::endl;
+        return SECFailure;
+      }
+    }
+
     if (cfg_.get<bool>("expect-ech-accept")) {
       if (!info.echAccepted) {
         std::cerr << "Expected ECH" << std::endl;
@@ -876,6 +1120,8 @@ std::unique_ptr<const Config> ReadConfig(int argc, char** argv) {
   std::unique_ptr<Config> cfg(new Config());
 
   cfg->AddEntry<int>("port", 0);
+  cfg->AddEntry<bool>("ipv6", false);
+  cfg->AddEntry<int>("shim-id", 0);
   cfg->AddEntry<bool>("server", false);
   cfg->AddEntry<int>("resume-count", 0);
   cfg->AddEntry<std::string>("key-file", "");
@@ -929,6 +1175,9 @@ std::unique_ptr<const Config> ReadConfig(int argc, char** argv) {
   /* NSS does not support earlydata rejection reason logging => Ignore. */
   cfg->AddEntry<std::string>("on-resume-expect-early-data-reason", "none");
   cfg->AddEntry<std::string>("on-retry-expect-early-data-reason", "none");
+  cfg->AddEntry<std::vector<int>>("curves", std::vector<int>());
+  cfg->AddEntry<int>("expect-curve-id", 0);
+  cfg->AddEntry<bool>("install-cert-compression-algs", false);
 
   auto rv = cfg->ParseArgs(argc, argv);
   switch (rv) {

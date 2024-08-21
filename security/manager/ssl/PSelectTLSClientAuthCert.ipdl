@@ -5,16 +5,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-include protocol PBackground;
 include PSMIPCTypes;
 
 namespace mozilla {
 namespace psm {
 
+[ChildProc=Socket]
 protocol PSelectTLSClientAuthCert
 {
-  manager PBackground;
-
 child:
   async TLSClientAuthCertSelected(ByteArray aSelectedCertBytes,
                                   ByteArray[] aSelectedCertChainBytes);

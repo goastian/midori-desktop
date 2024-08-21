@@ -10,11 +10,18 @@
 #define ANSI_X962_CURVE_OID_TOTAL_LEN 10
 #define SECG_CURVE_OID_TOTAL_LEN 7
 #define PKIX_NEWCURVES_OID_TOTAL_LEN 11
+#define ED25519_OID_TOTAL_LEN 5
+#define Ed25519_PRIVATE_KEYLEN 32
+#define Ed25519_PUBLIC_KEYLEN 32
+#define Ed25519_SIGN_LEN 64
 
 struct ECMethodStr {
     ECCurveName name;
-    SECStatus (*mul)(SECItem *result, SECItem *scalar, SECItem *point);
-    SECStatus (*validate)(const SECItem *point);
+    SECStatus (*pt_mul)(SECItem *result, SECItem *scalar, SECItem *point);
+    SECStatus (*pt_validate)(const SECItem *point);
+    SECStatus (*scalar_validate)(const SECItem *scalar);
+    SECStatus (*sign_digest)(ECPrivateKey *key, SECItem *signature, const SECItem *digest, const unsigned char *kb, const unsigned int kblen);
+    SECStatus (*verify_digest)(ECPublicKey *key, const SECItem *signature, const SECItem *digest);
 };
 typedef struct ECMethodStr ECMethod;
 

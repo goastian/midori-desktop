@@ -17,6 +17,13 @@ var ERROR_HISTOGRAM = Services.telemetry.getKeyedHistogramById(
   "CONTENT_SIGNATURE_VERIFICATION_ERRORS"
 );
 
+// Enable the collection (during test) for all products so even products
+// that don't collect the data will be able to run the test without failure.
+Services.prefs.setBoolPref(
+  "toolkit.telemetry.testing.overrideProductsCheck",
+  true
+);
+
 function getSignatureVerifier() {
   return Cc["@mozilla.org/security/contentsignatureverifier;1"].getService(
     Ci.nsIContentSignatureVerifier

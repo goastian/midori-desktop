@@ -8,6 +8,13 @@
 // locally) with and without OCSP stapling enabled to determine that good
 // things happen and bad things don't.
 
+// Enable the collection (during test) for all products so even products
+// that don't collect the data will be able to run the test without failure.
+Services.prefs.setBoolPref(
+  "toolkit.telemetry.testing.overrideProductsCheck",
+  true
+);
+
 var gExpectOCSPRequest;
 
 function add_ocsp_test(

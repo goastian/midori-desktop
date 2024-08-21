@@ -9,12 +9,8 @@
 #endif
 
 #include "ecl-priv.h"
-#include "ecp.h"
-#include "mpi.h"
-#include "mplogic.h"
-#include "mpi-priv.h"
-#include "secmpi.h"
 #include "secitem.h"
+#include "secerr.h"
 #include "secport.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -91,6 +87,24 @@ ec_Curve25519_pt_validate(const SECItem *px)
         }
     }
 
+    return SECSuccess;
+}
+
+/*
+ * scalar validation is not necessary. 
+ */
+SECStatus
+ec_Curve25519_scalar_validate(const SECItem *scalar)
+{
+    if (!scalar || !scalar->data) {
+        PORT_SetError(SEC_ERROR_INVALID_ARGS);
+        return SECFailure;
+    }
+
+    if (scalar->len != 32) {
+        PORT_SetError(SEC_ERROR_BAD_KEY);
+        return SECFailure;
+    }
     return SECSuccess;
 }
 

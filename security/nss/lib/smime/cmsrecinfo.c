@@ -15,6 +15,7 @@
 #include "secoid.h"
 #include "pk11func.h"
 #include "secerr.h"
+#include "smime.h"
 
 PRBool
 nss_cmsrecipientinfo_usessubjectkeyid(NSSCMSRecipientInfo *ri)
@@ -118,6 +119,8 @@ nss_cmsrecipientinfo_create(NSSCMSMessage *cmsg,
     certalgtag = SECOID_GetAlgorithmTag(&(spki->algorithm));
 
     rid = &ri->ri.keyTransRecipientInfo.recipientIdentifier;
+
+    // This switch must match the switch in NSS_CMSRecipient_IsSupported.
     switch (certalgtag) {
         case SEC_OID_PKCS1_RSA_ENCRYPTION:
             ri->recipientInfoType = NSSCMSRecipientInfoID_KeyTrans;
@@ -155,7 +158,7 @@ nss_cmsrecipientinfo_create(NSSCMSMessage *cmsg,
                 rv = SECFailure;
             }
             break;
-        case SEC_OID_X942_DIFFIE_HELMAN_KEY: /* dh-public-number */
+        case SEC_OID_ANSIX962_EC_PUBLIC_KEY:
             PORT_Assert(type == NSSCMSRecipientID_IssuerSN);
             if (type != NSSCMSRecipientID_IssuerSN) {
                 rv = SECFailure;
@@ -164,10 +167,6 @@ nss_cmsrecipientinfo_create(NSSCMSMessage *cmsg,
             /* a key agreement op */
             ri->recipientInfoType = NSSCMSRecipientInfoID_KeyAgree;
 
-            if (ri->ri.keyTransRecipientInfo.recipientIdentifier.id.issuerAndSN == NULL) {
-                rv = SECFailure;
-                break;
-            }
             /* we do not support the case where multiple recipients
              * share the same KeyAgreeRecipientInfo and have multiple RecipientEncryptedKeys
              * in this case, we would need to walk all the recipientInfos, take the
@@ -255,6 +254,28 @@ loser:
         NSS_CMSMessage_Destroy(cmsg);
     }
     return NULL;
+}
+
+/*
+ * NSS_CMSRecipient_IsSupported - checks for a support certificate
+ *
+ * Use this function to confirm that the given certificate will be
+ * accepted by NSS_CMSRecipientInfo_Create, which means that the
+ * certificate can be used with a supported encryption algorithm.
+ */
+PRBool
+NSS_CMSRecipient_IsSupported(CERTCertificate *cert)
+{
+    CERTSubjectPublicKeyInfo *spki = &(cert->subjectPublicKeyInfo);
+    SECOidTag certalgtag = SECOID_GetAlgorithmTag(&(spki->algorithm));
+
+    switch (certalgtag) {
+        case SEC_OID_PKCS1_RSA_ENCRYPTION:
+        case SEC_OID_ANSIX962_EC_PUBLIC_KEY:
+            return PR_TRUE;
+        default:
+            return PR_FALSE;
+    }
 }
 
 /*
@@ -432,6 +453,7 @@ NSS_CMSRecipientInfo_WrapBulkKey(NSSCMSRecipientInfo *ri, PK11SymKey *bulkkey,
     PLArenaPool *poolp;
     NSSCMSKeyTransRecipientInfoEx *extra = NULL;
     PRBool usesSubjKeyID;
+    void *wincx = NULL;
 
     poolp = ri->cmsg->poolp;
     cert = ri->cert;
@@ -456,6 +478,11 @@ NSS_CMSRecipientInfo_WrapBulkKey(NSSCMSRecipientInfo *ri, PK11SymKey *bulkkey,
     /* or should we look if it's been set already ? */
 
     certalgtag = SECOID_GetAlgorithmTag(&spki->algorithm);
+    if (!NSS_SMIMEUtil_KeyEncodingAllowed(&spki->algorithm, cert, extra ? extra->pubKey : NULL)) {
+        PORT_SetError(SEC_ERROR_BAD_EXPORT_ALGORITHM);
+        rv = SECFailure;
+        goto loser;
+    }
     switch (certalgtag) {
         case SEC_OID_PKCS1_RSA_ENCRYPTION:
             /* wrap the symkey */
@@ -474,7 +501,7 @@ NSS_CMSRecipientInfo_WrapBulkKey(NSSCMSRecipientInfo *ri, PK11SymKey *bulkkey,
 
             rv = SECOID_SetAlgorithmID(poolp, &(ri->ri.keyTransRecipientInfo.keyEncAlg), certalgtag, NULL);
             break;
-        case SEC_OID_X942_DIFFIE_HELMAN_KEY: /* dh-public-number */
+        case SEC_OID_ANSIX962_EC_PUBLIC_KEY:
             rek = ri->ri.keyAgreeRecipientInfo.recipientEncryptedKeys[0];
             if (rek == NULL) {
                 rv = SECFailure;
@@ -486,7 +513,7 @@ NSS_CMSRecipientInfo_WrapBulkKey(NSSCMSRecipientInfo *ri, PK11SymKey *bulkkey,
 
             /* see RFC2630 12.3.1.1 */
             if (SECOID_SetAlgorithmID(poolp, &oiok->id.originatorPublicKey.algorithmIdentifier,
-                                      SEC_OID_X942_DIFFIE_HELMAN_KEY, NULL) != SECSuccess) {
+                                      certalgtag, NULL) != SECSuccess) {
                 rv = SECFailure;
                 break;
             }
@@ -494,12 +521,27 @@ NSS_CMSRecipientInfo_WrapBulkKey(NSSCMSRecipientInfo *ri, PK11SymKey *bulkkey,
             /* this will generate a key pair, compute the shared secret, */
             /* derive a key and ukm for the keyEncAlg out of it, encrypt the bulk key with */
             /* the keyEncAlg, set encKey, keyEncAlg, publicKey etc. */
-            rv = NSS_CMSUtil_EncryptSymKey_ESDH(poolp, cert, bulkkey,
-                                                &rek->encKey,
-                                                &ri->ri.keyAgreeRecipientInfo.ukm,
-                                                &ri->ri.keyAgreeRecipientInfo.keyEncAlg,
-                                                &oiok->id.originatorPublicKey.publicKey);
+            switch (certalgtag) {
+                case SEC_OID_ANSIX962_EC_PUBLIC_KEY:
+                    if (ri->cmsg) {
+                        wincx = ri->cmsg->pwfn_arg;
+                    } else {
+                        wincx = PK11_GetWindow(bulkkey);
+                    }
+                    rv = NSS_CMSUtil_EncryptSymKey_ESECDH(poolp, cert, bulkkey,
+                                                          &rek->encKey,
+                                                          PR_TRUE,
+                                                          &ri->ri.keyAgreeRecipientInfo.ukm,
+                                                          &ri->ri.keyAgreeRecipientInfo.keyEncAlg,
+                                                          &oiok->id.originatorPublicKey.publicKey,
+                                                          wincx);
+                    break;
 
+                default:
+                    /* Not reached. Added to silence enum warnings. */
+                    PORT_Assert(0);
+                    break;
+            }
             break;
         default:
             /* other algorithms not supported yet */
@@ -507,6 +549,7 @@ NSS_CMSRecipientInfo_WrapBulkKey(NSSCMSRecipientInfo *ri, PK11SymKey *bulkkey,
             PORT_SetError(SEC_ERROR_INVALID_ALGORITHM);
             rv = SECFailure;
     }
+loser:
     if (freeSpki)
         SECKEY_DestroySubjectPublicKeyInfo(freeSpki);
 
@@ -518,56 +561,87 @@ NSS_CMSRecipientInfo_UnwrapBulkKey(NSSCMSRecipientInfo *ri, int subIndex,
                                    CERTCertificate *cert, SECKEYPrivateKey *privkey, SECOidTag bulkalgtag)
 {
     PK11SymKey *bulkkey = NULL;
+    SECAlgorithmID *algid;
     SECOidTag encalgtag;
-    SECItem *enckey;
+    SECItem *enckey = NULL, *ukm = NULL, *parameters = NULL;
+    NSSCMSOriginatorIdentifierOrKey *oiok = NULL;
     int error;
+    void *wincx = NULL;
 
     ri->cert = CERT_DupCertificate(cert);
     /* mark the recipientInfo so we can find it later */
 
     switch (ri->recipientInfoType) {
         case NSSCMSRecipientInfoID_KeyTrans:
-            encalgtag = SECOID_GetAlgorithmTag(&(ri->ri.keyTransRecipientInfo.keyEncAlg));
+            algid = &(ri->ri.keyTransRecipientInfo.keyEncAlg);
+            parameters = &(ri->ri.keyTransRecipientInfo.keyEncAlg.parameters);
             enckey = &(ri->ri.keyTransRecipientInfo.encKey); /* ignore subIndex */
-            switch (encalgtag) {
-                case SEC_OID_PKCS1_RSA_ENCRYPTION:
-                    /* RSA encryption algorithm: */
-                    /* get the symmetric (bulk) key by unwrapping it using our private key */
-                    bulkkey = NSS_CMSUtil_DecryptSymKey_RSA(privkey, enckey, bulkalgtag);
-                    break;
-                default:
-                    error = SEC_ERROR_UNSUPPORTED_KEYALG;
-                    goto loser;
-            }
             break;
         case NSSCMSRecipientInfoID_KeyAgree:
-            encalgtag = SECOID_GetAlgorithmTag(&(ri->ri.keyAgreeRecipientInfo.keyEncAlg));
+            algid = &(ri->ri.keyAgreeRecipientInfo.keyEncAlg);
+            parameters = &(ri->ri.keyAgreeRecipientInfo.keyEncAlg.parameters);
             enckey = &(ri->ri.keyAgreeRecipientInfo.recipientEncryptedKeys[subIndex]->encKey);
-            switch (encalgtag) {
-                case SEC_OID_X942_DIFFIE_HELMAN_KEY:
-                    /* Diffie-Helman key exchange */
-                    /* XXX not yet implemented */
-                    /* XXX problem: SEC_OID_X942_DIFFIE_HELMAN_KEY points to a PKCS3 mechanism! */
-                    /* we support ephemeral-static DH only, so if the recipientinfo */
-                    /* has originator stuff in it, we punt (or do we? shouldn't be that hard...) */
-                    /* first, we derive the KEK (a symkey!) using a Derive operation, then we get the */
-                    /* content encryption key using a Unwrap op */
-                    /* the derive operation has to generate the key using the algorithm in RFC2631 */
-                    error = SEC_ERROR_UNSUPPORTED_KEYALG;
-                    goto loser;
-                    break;
-                default:
-                    error = SEC_ERROR_UNSUPPORTED_KEYALG;
-                    goto loser;
-            }
+            oiok = &(ri->ri.keyAgreeRecipientInfo.originatorIdentifierOrKey);
+            ukm = &(ri->ri.keyAgreeRecipientInfo.ukm);
             break;
         case NSSCMSRecipientInfoID_KEK:
-            encalgtag = SECOID_GetAlgorithmTag(&(ri->ri.kekRecipientInfo.keyEncAlg));
+            algid = &(ri->ri.kekRecipientInfo.keyEncAlg);
+            parameters = &(ri->ri.kekRecipientInfo.keyEncAlg.parameters);
             enckey = &(ri->ri.kekRecipientInfo.encKey);
             /* not supported yet */
+        default:
             error = SEC_ERROR_UNSUPPORTED_KEYALG;
             goto loser;
             break;
+    }
+    if (!NSS_SMIMEUtil_KeyDecodingAllowed(algid, privkey)) {
+        error = SEC_ERROR_BAD_EXPORT_ALGORITHM;
+        goto loser;
+    }
+    encalgtag = SECOID_GetAlgorithmTag(algid);
+    switch (encalgtag) {
+        case SEC_OID_PKCS1_RSA_ENCRYPTION:
+            /* RSA encryption algorithm: */
+            if (ri->recipientInfoType != NSSCMSRecipientInfoID_KeyTrans) {
+                error = SEC_ERROR_UNSUPPORTED_KEYALG;
+                goto loser;
+            }
+            /* get the symmetric (bulk) key by unwrapping it using our private key */
+            bulkkey = NSS_CMSUtil_DecryptSymKey_RSA(privkey, enckey, bulkalgtag);
+            break;
+        case SEC_OID_PKCS1_RSA_OAEP_ENCRYPTION:
+            /* RSA OAEP encryption algorithm: */
+            if (ri->recipientInfoType != NSSCMSRecipientInfoID_KeyTrans) {
+                error = SEC_ERROR_UNSUPPORTED_KEYALG;
+                goto loser;
+            }
+            /* get the symmetric (bulk) key by unwrapping it using our private key */
+            bulkkey = NSS_CMSUtil_DecryptSymKey_RSA_OAEP(privkey, parameters, enckey,
+                                                         bulkalgtag);
+            break;
+        case SEC_OID_DHSINGLEPASS_STDDH_SHA1KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_STDDH_SHA224KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_STDDH_SHA256KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_STDDH_SHA384KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_STDDH_SHA512KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_COFACTORDH_SHA1KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_COFACTORDH_SHA224KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_COFACTORDH_SHA256KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_COFACTORDH_SHA384KDF_SCHEME:
+        case SEC_OID_DHSINGLEPASS_COFACTORDH_SHA512KDF_SCHEME:
+            if (ri->recipientInfoType != NSSCMSRecipientInfoID_KeyAgree) {
+                error = SEC_ERROR_UNSUPPORTED_KEYALG;
+                goto loser;
+            }
+            if (ri->cmsg) {
+                wincx = ri->cmsg->pwfn_arg;
+            }
+            bulkkey = NSS_CMSUtil_DecryptSymKey_ECDH(privkey, enckey, algid,
+                                                     bulkalgtag, ukm, oiok, wincx);
+            break;
+        default:
+            error = SEC_ERROR_UNSUPPORTED_KEYALG;
+            goto loser;
     }
     /* XXXX continue here */
     return bulkkey;

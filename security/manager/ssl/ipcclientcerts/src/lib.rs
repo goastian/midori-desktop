@@ -455,7 +455,7 @@ extern "C" fn C_GetAttributeValue(
         return CKR_DEVICE_ERROR;
     }
     for i in 0..ulCount as usize {
-        let mut attr = unsafe { &mut *pTemplate.offset(i as isize) };
+        let attr = unsafe { &mut *pTemplate.offset(i as isize) };
         // NB: the safety of this array access depends on the length check above
         if let Some(attr_value) = &values[i] {
             if attr.pValue.is_null() {
@@ -957,7 +957,7 @@ extern "C" fn C_WaitForSlotEvent(
 
 /// To be a valid PKCS #11 module, this list of functions must be supported. At least cryptoki 2.2
 /// must be supported for this module to work in NSS.
-static mut FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
+static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     version: CK_VERSION { major: 2, minor: 2 },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
@@ -1038,10 +1038,15 @@ pub extern "C" fn IPCCC_GetFunctionList(ppFunctionList: CK_FUNCTION_LIST_PTR_PTR
         return CKR_ARGUMENTS_BAD;
     }
     unsafe {
-        *ppFunctionList = &mut FUNCTION_LIST;
+        // CK_FUNCTION_LIST_PTR is a *mut CK_FUNCTION_LIST, but as per the
+        // specification, the caller must treat it as *const CK_FUNCTION_LIST.
+        *ppFunctionList = std::ptr::addr_of!(FUNCTION_LIST) as CK_FUNCTION_LIST_PTR;
     }
     CKR_OK
 }
 
-#[cfg_attr(target_os = "macos", link(name = "Security", kind = "framework"))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "ios"),
+    link(name = "Security", kind = "framework")
+)]
 extern "C" {}

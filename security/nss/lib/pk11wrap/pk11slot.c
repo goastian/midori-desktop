@@ -36,6 +36,7 @@ const PK11DefaultArrayEntry PK11_DefaultArray[] = {
     { "RSA", SECMOD_RSA_FLAG, CKM_RSA_PKCS },
     { "DSA", SECMOD_DSA_FLAG, CKM_DSA },
     { "ECC", SECMOD_ECC_FLAG, CKM_ECDSA },
+    { "EDDSA", SECMOD_ECC_FLAG, CKM_EDDSA },
     { "DH", SECMOD_DH_FLAG, CKM_DH_PKCS_DERIVE },
     { "RC2", SECMOD_RC2_FLAG, CKM_RC2_CBC },
     { "RC4", SECMOD_RC4_FLAG, CKM_RC4 },
@@ -394,6 +395,8 @@ PK11_NewSlotInfo(SECMODModule *mod)
     slot->isThreadSafe = PR_FALSE;
     slot->disabled = PR_FALSE;
     slot->series = 1;
+    slot->flagSeries = 0;
+    slot->flagState = PR_FALSE;
     slot->wrapKey = 0;
     slot->wrapMechanism = CKM_INVALID_MECHANISM;
     slot->refKeys[0] = CK_INVALID_HANDLE;
@@ -911,9 +914,13 @@ PK11_GetSlotList(CK_MECHANISM_TYPE type)
             return &pk11_sha1SlotList;
         case CKM_SHA224:
         case CKM_SHA256:
+        case CKM_SHA3_224:
+        case CKM_SHA3_256:
             return &pk11_sha256SlotList;
         case CKM_SHA384:
         case CKM_SHA512:
+        case CKM_SHA3_384:
+        case CKM_SHA3_512:
             return &pk11_sha512SlotList;
         case CKM_MD5:
             return &pk11_md5SlotList;
@@ -931,10 +938,14 @@ PK11_GetSlotList(CK_MECHANISM_TYPE type)
         case CKM_DH_PKCS_KEY_PAIR_GEN:
         case CKM_DH_PKCS_DERIVE:
             return &pk11_dhSlotList;
+        case CKM_EDDSA:
+        case CKM_EC_EDWARDS_KEY_PAIR_GEN:
         case CKM_ECDSA:
         case CKM_ECDSA_SHA1:
         case CKM_EC_KEY_PAIR_GEN: /* aka CKM_ECDSA_KEY_PAIR_GEN */
         case CKM_ECDH1_DERIVE:
+        case CKM_NSS_KYBER_KEY_PAIR_GEN: /* Bug 1893029 */
+        case CKM_NSS_KYBER:
             return &pk11_ecSlotList;
         case CKM_SSL3_PRE_MASTER_KEY_GEN:
         case CKM_SSL3_MASTER_KEY_DERIVE:

@@ -51,6 +51,8 @@ class NSSSocketControl final : public CommonSocketControl {
   // From nsITLSSocketControl.
   NS_IMETHOD ProxyStartSSL(void) override;
   NS_IMETHOD StartTLS(void) override;
+  NS_IMETHOD AsyncStartTLS(JSContext* aCx,
+                           mozilla::dom::Promise** aPromise) override;
   NS_IMETHOD SetNPNList(nsTArray<nsCString>& aNPNList) override;
   NS_IMETHOD GetAlpnEarlySelection(nsACString& _retval) override;
   NS_IMETHOD GetEarlyDataAccepted(bool* aEarlyDataAccepted) override;
@@ -71,6 +73,8 @@ class NSSSocketControl final : public CommonSocketControl {
   NS_IMETHOD SetHandshakeCallbackListener(
       nsITlsHandshakeCallbackListener* callback) override;
   NS_IMETHOD Claim() override;
+  NS_IMETHOD SetBrowserId(uint64_t browserId) override;
+  NS_IMETHOD GetBrowserId(uint64_t* browserId) override;
 
   PRStatus CloseSocketAndDestroy();
 
@@ -111,6 +115,26 @@ class NSSSocketControl final : public CommonSocketControl {
   EchExtensionStatus GetEchExtensionStatus() const {
     COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
     return mEchExtensionStatus;
+  }
+
+  void WillSendXyberShare() {
+    COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
+    mSentXyberShare = true;
+  }
+
+  bool SentXyberShare() {
+    COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
+    return mSentXyberShare;
+  }
+
+  void SetHasTls13HandshakeSecrets() {
+    COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
+    mHasTls13HandshakeSecrets = true;
+  }
+
+  bool HasTls13HandshakeSecrets() {
+    COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
+    return mHasTls13HandshakeSecrets;
   }
 
   bool GetJoined() {
@@ -283,6 +307,8 @@ class NSSSocketControl final : public CommonSocketControl {
   bool mIsFullHandshake;
   bool mNotedTimeUntilReady;
   EchExtensionStatus mEchExtensionStatus;  // Currently only used for telemetry.
+  bool mSentXyberShare;
+  bool mHasTls13HandshakeSecrets;
 
   // True when SSL layer has indicated an "SSL short write", i.e. need
   // to call on send one or more times to push all pending data to write.
@@ -335,6 +361,8 @@ class NSSSocketControl final : public CommonSocketControl {
   RefPtr<mozilla::psm::SharedSSLState> mOwningSharedRef;
 
   nsCOMPtr<nsITlsHandshakeCallbackListener> mTlsHandshakeCallback;
+
+  uint64_t mBrowserId;
 };
 
 #endif  // NSSSocketControl_h

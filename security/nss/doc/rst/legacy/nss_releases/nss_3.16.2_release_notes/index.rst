@@ -11,7 +11,7 @@ NSS 3.16.2 release notes
    Network Security Services (NSS) 3.16.2 is a patch release for NSS 3.16. The bug fixes in NSS
    3.16.2 are described in the "Bugs Fixed" section below.
 
-.. _distribution_information:
+
 
 `Distribution Information <#distribution_information>`__
 --------------------------------------------------------
@@ -110,5 +110,4 @@ NSS 3.16.2 release notes
 .. container::
 
    This Bugzilla query returns all the bugs fixed in NSS 3.16.2:
-
-   | https://bugzilla.mozilla.org/buglist.cgi?resolution=FIXED&classification=Components&query_format=advanced&product=NSS&target_milestone=3.16.2
+   https://bugzilla.mozilla.org/buglist.cgi?resolution=FIXED&classification=Components&query_format=advanced&product=NSS&target_milestone=3.16.2

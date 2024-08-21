@@ -29,6 +29,8 @@
 
 #define DES_KEY_LENGTH 8 /* Bytes */
 
+#define ED25519_SIGN_LEN 64U /* Bytes */
+
 /* AES operation modes */
 #define NSS_AES 0
 #define NSS_AES_CBC 1
@@ -81,6 +83,9 @@ typedef int __BLAPI_DEPRECATED __attribute__((deprecated));
 #define EC_MAX_KEY_BITS 521 /* in bits */
 #define EC_MIN_KEY_BITS 256 /* in bits */
 
+#define ECD_MAX_KEY_BITS 255 /* in bits */
+#define ECD_MIN_KEY_BITS 255 /* in bits */
+
 /* EC point compression format */
 #define EC_POINT_FORM_COMPRESSED_Y0 0x02
 #define EC_POINT_FORM_COMPRESSED_Y1 0x03
@@ -97,6 +102,10 @@ typedef int __BLAPI_DEPRECATED __attribute__((deprecated));
 #define SHA256_LENGTH 32     /* bytes */
 #define SHA384_LENGTH 48     /* bytes */
 #define SHA512_LENGTH 64     /* bytes */
+#define SHA3_224_LENGTH 28   /* bytes */
+#define SHA3_256_LENGTH 32   /* bytes */
+#define SHA3_384_LENGTH 48   /* bytes */
+#define SHA3_512_LENGTH 64   /* bytes */
 #define BLAKE2B512_LENGTH 64 /* Bytes */
 #define HASH_LENGTH_MAX SHA512_LENGTH
 
@@ -104,15 +113,19 @@ typedef int __BLAPI_DEPRECATED __attribute__((deprecated));
  * Input block size for each hash algorithm.
  */
 
-#define MD2_BLOCK_LENGTH 64      /* bytes */
-#define MD5_BLOCK_LENGTH 64      /* bytes */
-#define SHA1_BLOCK_LENGTH 64     /* bytes */
-#define SHA224_BLOCK_LENGTH 64   /* bytes */
-#define SHA256_BLOCK_LENGTH 64   /* bytes */
-#define SHA384_BLOCK_LENGTH 128  /* bytes */
-#define SHA512_BLOCK_LENGTH 128  /* bytes */
-#define BLAKE2B_BLOCK_LENGTH 128 /* Bytes */
-#define HASH_BLOCK_LENGTH_MAX SHA512_BLOCK_LENGTH
+#define MD2_BLOCK_LENGTH 64       /* bytes */
+#define MD5_BLOCK_LENGTH 64       /* bytes */
+#define SHA1_BLOCK_LENGTH 64      /* bytes */
+#define SHA224_BLOCK_LENGTH 64    /* bytes */
+#define SHA256_BLOCK_LENGTH 64    /* bytes */
+#define SHA384_BLOCK_LENGTH 128   /* bytes */
+#define SHA512_BLOCK_LENGTH 128   /* bytes */
+#define SHA3_224_BLOCK_LENGTH 144 /* bytes */
+#define SHA3_256_BLOCK_LENGTH 136 /* bytes */
+#define SHA3_384_BLOCK_LENGTH 104 /* bytes */
+#define SHA3_512_BLOCK_LENGTH 72  /* bytes */
+#define BLAKE2B_BLOCK_LENGTH 128  /* Bytes */
+#define HASH_BLOCK_LENGTH_MAX SHA3_224_BLOCK_LENGTH
 
 #define AES_BLOCK_SIZE 16 /* bytes */
 #define AES_KEY_WRAP_BLOCK_SIZE (AES_BLOCK_SIZE / 2)
@@ -140,6 +153,10 @@ typedef int __BLAPI_DEPRECATED __attribute__((deprecated));
 #define RSA_MAX_EXPONENT_BITS 64
 #define DH_MIN_P_BITS 128
 #define DH_MAX_P_BITS 16384
+
+/* max signature for all our supported signatures */
+/* currently RSA is the biggest */
+#define MAX_SIGNATURE_LEN ((RSA_MAX_MODULUS_BITS + 7) / 8)
 
 /*
  * The FIPS 186-1 algorithm for generating primes P and Q allows only 9
@@ -247,6 +264,8 @@ struct MD5ContextStr;
 struct SHA1ContextStr;
 struct SHA256ContextStr;
 struct SHA512ContextStr;
+struct SHA3ContextStr;
+struct SHAKEContextStr;
 struct AESKeyWrapContextStr;
 struct SEEDContextStr;
 struct ChaCha20ContextStr;
@@ -268,6 +287,13 @@ typedef struct SHA256ContextStr SHA224Context;
 typedef struct SHA512ContextStr SHA512Context;
 /* SHA384Context is really a SHA512ContextStr.  This is not a mistake. */
 typedef struct SHA512ContextStr SHA384Context;
+/* All SHA3_*Contexts are the same.  This is not a mistake. */
+typedef struct SHA3ContextStr SHA3_224Context;
+typedef struct SHA3ContextStr SHA3_256Context;
+typedef struct SHA3ContextStr SHA3_384Context;
+typedef struct SHA3ContextStr SHA3_512Context;
+typedef struct SHAKEContextStr SHAKE_128Context;
+typedef struct SHAKEContextStr SHAKE_256Context;
 typedef struct AESKeyWrapContextStr AESKeyWrapContext;
 typedef struct SEEDContextStr SEEDContext;
 typedef struct ChaCha20ContextStr ChaCha20Context;
@@ -375,7 +401,9 @@ typedef struct DHPrivateKeyStr DHPrivateKey;
 */
 
 typedef enum { ec_params_explicit,
-               ec_params_named
+               ec_params_named,
+               ec_params_edwards_named,
+               ec_params_montgomery_named,
 } ECParamsType;
 
 typedef enum { ec_field_GFp = 1,

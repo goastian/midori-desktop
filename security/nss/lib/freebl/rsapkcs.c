@@ -235,6 +235,7 @@ rsa_FormatOneBlock(unsigned modulusLen,
     return block;
 }
 
+/* modulusLen has to be larger than RSA_BLOCK_MIN_PAD_LEN + 3, and data has to be smaller than modulus - (RSA_BLOCK_MIN_PAD_LEN + 3) */
 static SECStatus
 rsa_FormatBlock(SECItem *result,
                 unsigned modulusLen,
@@ -250,7 +251,7 @@ rsa_FormatBlock(SECItem *result,
              * The "3" below is the first octet + the second octet + the 0x00
              * octet that always comes just before the ActualData.
              */
-            if (data->len > (modulusLen - (3 + RSA_BLOCK_MIN_PAD_LEN))) {
+            if (modulusLen < (3 + RSA_BLOCK_MIN_PAD_LEN) || data->len > (modulusLen - (3 + RSA_BLOCK_MIN_PAD_LEN))) {
                 return SECFailure;
             }
             result->data = rsa_FormatOneBlock(modulusLen, blockType, data);
@@ -1233,15 +1234,15 @@ loser:
  * emBits from the RFC is just modBits - 1, see section 8.1.1.
  * We only support MGF1 as the MGF.
  */
-static SECStatus
-emsa_pss_encode(unsigned char *em,
-                unsigned int emLen,
-                unsigned int emBits,
-                const unsigned char *mHash,
-                HASH_HashType hashAlg,
-                HASH_HashType maskHashAlg,
-                const unsigned char *salt,
-                unsigned int saltLen)
+SECStatus
+RSA_EMSAEncodePSS(unsigned char *em,
+                  unsigned int emLen,
+                  unsigned int emBits,
+                  const unsigned char *mHash,
+                  HASH_HashType hashAlg,
+                  HASH_HashType maskHashAlg,
+                  const unsigned char *salt,
+                  unsigned int saltLen)
 {
     const SECHashObject *hash;
     void *hash_context;
@@ -1457,8 +1458,8 @@ RSA_SignPSS(RSAPrivateKey *key,
         emLen--;
         em++;
     }
-    rv = emsa_pss_encode(em, emLen, modulusBits - 1, input, hashAlg,
-                         maskHashAlg, salt, saltLength);
+    rv = RSA_EMSAEncodePSS(em, emLen, modulusBits - 1, input, hashAlg,
+                           maskHashAlg, salt, saltLength);
     if (rv != SECSuccess)
         goto done;
 

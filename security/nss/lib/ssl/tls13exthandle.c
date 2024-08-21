@@ -49,60 +49,62 @@ tls13_ServerSendStatusRequestXtn(const sslSocket *ss, TLSExtensionData *xtnData,
 }
 
 /*
- *     [draft-ietf-tls-tls13-11] Section 6.3.2.3.
+ *     [RFC 8446] Section 4.2.8.
  *
  *     struct {
  *         NamedGroup group;
  *         opaque key_exchange<1..2^16-1>;
  *     } KeyShareEntry;
  *
- *     struct {
- *         select (role) {
- *             case client:
- *                 KeyShareEntry client_shares<4..2^16-1>;
- *
- *             case server:
- *                 KeyShareEntry server_share;
- *         }
- *     } KeyShare;
- *
- * DH is Section 6.3.2.3.1.
- *
- *     opaque dh_Y<1..2^16-1>;
- *
- * ECDH is Section 6.3.2.3.2.
- *
- *     opaque point <1..2^8-1>;
  */
 PRUint32
-tls13_SizeOfKeyShareEntry(const SECKEYPublicKey *pubKey)
+tls13_SizeOfKeyShareEntry(const sslEphemeralKeyPair *keyPair)
 {
     /* Size = NamedGroup(2) + length(2) + opaque<?> share */
+    PRUint32 size = 2 + 2;
+
+    const SECKEYPublicKey *pubKey = keyPair->keys->pubKey;
     switch (pubKey->keyType) {
         case ecKey:
-            return 2 + 2 + pubKey->u.ec.publicValue.len;
+            size += pubKey->u.ec.publicValue.len;
+            break;
         case dhKey:
-            return 2 + 2 + pubKey->u.dh.prime.len;
+            size += pubKey->u.dh.prime.len;
+            break;
         default:
             PORT_Assert(0);
+            return 0;
     }
-    return 0;
+
+    if (keyPair->kemKeys) {
+        PORT_Assert(!keyPair->kemCt);
+        PORT_Assert(keyPair->group->name == ssl_grp_kem_xyber768d00);
+        pubKey = keyPair->kemKeys->pubKey;
+        size += pubKey->u.kyber.publicValue.len;
+    }
+    if (keyPair->kemCt) {
+        PORT_Assert(!keyPair->kemKeys);
+        PORT_Assert(keyPair->group->name == ssl_grp_kem_xyber768d00);
+        size += keyPair->kemCt->len;
+    }
+
+    return size;
 }
 
 SECStatus
-tls13_EncodeKeyShareEntry(sslBuffer *buf, SSLNamedGroup group,
-                          SECKEYPublicKey *pubKey)
+tls13_EncodeKeyShareEntry(sslBuffer *buf, sslEphemeralKeyPair *keyPair)
 {
     SECStatus rv;
-    unsigned int size = tls13_SizeOfKeyShareEntry(pubKey);
+    unsigned int size = tls13_SizeOfKeyShareEntry(keyPair);
 
-    rv = sslBuffer_AppendNumber(buf, group, 2);
+    rv = sslBuffer_AppendNumber(buf, keyPair->group->name, 2);
     if (rv != SECSuccess)
         return rv;
     rv = sslBuffer_AppendNumber(buf, size - 4, 2);
     if (rv != SECSuccess)
         return rv;
 
+    const SECKEYPublicKey *pubKey = keyPair->keys->pubKey;
     switch (pubKey->keyType) {
         case ecKey:
             rv = sslBuffer_Append(buf, pubKey->u.ec.publicValue.data,
@@ -115,6 +117,22 @@ tls13_EncodeKeyShareEntry(sslBuffer *buf, SSLNamedGroup group,
             PORT_Assert(0);
             PORT_SetError(SEC_ERROR_LIBRARY_FAILURE);
             break;
+    }
+
+    if (rv != SECSuccess) {
+        return rv;
+    }
+
+    if (keyPair->kemKeys) {
+        PORT_Assert(!keyPair->kemCt);
+        PORT_Assert(keyPair->group->name == ssl_grp_kem_xyber768d00);
+        pubKey = keyPair->kemKeys->pubKey;
+        rv = sslBuffer_Append(buf, pubKey->u.kyber.publicValue.data, pubKey->u.kyber.publicValue.len);
+    }
+    if (keyPair->kemCt) {
+        PORT_Assert(!keyPair->kemKeys);
+        PORT_Assert(keyPair->group->name == ssl_grp_kem_xyber768d00);
+        rv = sslBuffer_Append(buf, keyPair->kemCt->data, keyPair->kemCt->len);
     }
 
     return rv;
@@ -147,9 +165,7 @@ tls13_ClientSendKeyShareXtn(const sslSocket *ss, TLSExtensionData *xtnData,
          cursor != &ss->ephemeralKeyPairs;
          cursor = PR_NEXT_LINK(cursor)) {
         sslEphemeralKeyPair *keyPair = (sslEphemeralKeyPair *)cursor;
-        rv = tls13_EncodeKeyShareEntry(buf,
-                                       keyPair->group->name,
-                                       keyPair->keys->pubKey);
+        rv = tls13_EncodeKeyShareEntry(buf, keyPair);
         if (rv != SECSuccess) {
             return SECFailure;
         }
@@ -392,8 +408,7 @@ tls13_ServerSendKeyShareXtn(const sslSocket *ss, TLSExtensionData *xtnData,
 
     keyPair = (sslEphemeralKeyPair *)PR_NEXT_LINK(&ss->ephemeralKeyPairs);
 
-    rv = tls13_EncodeKeyShareEntry(buf, keyPair->group->name,
-                                   keyPair->keys->pubKey);
+    rv = tls13_EncodeKeyShareEntry(buf, keyPair);
     if (rv != SECSuccess) {
         return SECFailure;
     }
@@ -1799,4 +1814,148 @@ tls13_SendGreaseXtn(const sslSocket *ss,
 
     *added = PR_TRUE;
     return SECSuccess;
+}
+
+SECStatus
+ssl3_SendCertificateCompressionXtn(const sslSocket *ss,
+                                   TLSExtensionData *xtnData,
+                                   sslBuffer *buf, PRBool *added)
+{
+    /* enum {
+     *  zlib(1),
+     *  brotli(2),
+     *  zstd(3),
+     *  (65535)
+     * } CertificateCompressionAlgorithm;
+     *
+     * struct {
+     *      CertificateCompressionAlgorithm algorithms<2..2^8-2>;
+     *  } CertificateCompressionAlgorithms;
+     */
+
+    SECStatus rv = SECFailure;
+    if (ss->ssl3.cwSpec->version < SSL_LIBRARY_VERSION_TLS_1_3) {
+        SSL_TRC(50, ("%d: TLS13[%d]: certificate_compression_algorithm extension requires TLS1.3 and above",
+                     SSL_GETPID(), ss->fd));
+        return SECSuccess;
+    }
+
+    size_t certificateCompressionAlgorithmsLen = ss->ssl3.supportedCertCompressionAlgorithmsCount;
+    if (certificateCompressionAlgorithmsLen == 0) {
+        SSL_TRC(30, ("%d: TLS13[%d]: %s does not support any certificate compression algorithm",
+                     SSL_GETPID(), ss->fd, SSL_ROLE(ss)));
+        return SECSuccess;
+    }
+
+    SSL_TRC(30, ("%d: TLS13[%d]: %s sends certificate_compression_algorithm extension",
+                 SSL_GETPID(), ss->fd, SSL_ROLE(ss)));
+    PORT_Assert(certificateCompressionAlgorithmsLen < (0x1u << 8) - 1);
+
+    rv = sslBuffer_AppendNumber(buf, certificateCompressionAlgorithmsLen << 1, 1);
+    if (rv != SECSuccess) {
+        return SECFailure;
+    }
+
+    for (size_t i = 0; i < certificateCompressionAlgorithmsLen; i++) {
+        rv = sslBuffer_AppendNumber(buf, ss->ssl3.supportedCertCompressionAlgorithms[i].id, 2);
+        if (rv != SECSuccess) {
+            return SECFailure;
+        }
+    }
+
+    xtnData->certificateCompressionAdvertised = PR_TRUE;
+    *added = PR_TRUE;
+    return SECSuccess;
+}
+
+const char *
+ssl3_mapCertificateCompressionAlgorithmToName(const sslSocket *ss, SSLCertificateCompressionAlgorithmID alg)
+{
+    for (int i = 0; i < ss->ssl3.supportedCertCompressionAlgorithmsCount; i++) {
+        if (ss->ssl3.supportedCertCompressionAlgorithms[i].id == alg) {
+            return ss->ssl3.supportedCertCompressionAlgorithms[i].name;
+        }
+    }
+    return "unknown";
+}
+
+SECStatus
+ssl3_HandleCertificateCompressionXtn(const sslSocket *ss,
+                                     TLSExtensionData *xtnData,
+                                     SECItem *data)
+{
+    /* This extension is only supported with TLS 1.3 [RFC8446] and newer; 
+     * if TLS 1.2 [RFC5246] or earlier is negotiated, the peers MUST ignore this extension.
+     */
+    if (ss->version < SSL_LIBRARY_VERSION_TLS_1_3) {
+        SSL_TRC(50, ("%d: TLS13[%d]: ignore certificate_compression extension",
+                     SSL_GETPID(), ss->fd));
+        return SECSuccess;
+    }
+
+    SECStatus rv = SECFailure;
+    PRUint32 lengthSupportedAlgorithms = 0;
+    PRUint32 certComprAlgId = 0;
+
+    SSL_TRC(30, ("%d: TLS13[%d]: %s handles certificate_compression_algorithm extension",
+                 SSL_GETPID(), ss->fd, SSL_ROLE(ss)));
+
+    rv = ssl3_ExtConsumeHandshakeNumber(ss, &lengthSupportedAlgorithms, 1, &data->data, &data->len);
+    if (rv != SECSuccess) {
+        goto alert_loser;
+    }
+
+    /* Each of the algorithm is 2 bytes. */
+    if (lengthSupportedAlgorithms % 2 != 0) {
+        goto alert_loser;
+    }
+
+    if (data->len != lengthSupportedAlgorithms) {
+        goto alert_loser;
+    }
+
+    SECStatus algFound = SECFailure;
+
+    /* We use the first common algorithm we found. */
+    for (int i = 0; i < lengthSupportedAlgorithms / 2; i++) {
+        rv = ssl3_ExtConsumeHandshakeNumber(ss, &certComprAlgId, 2, &data->data, &data->len);
+        if (rv != SECSuccess) {
+            goto alert_loser;
+        }
+
+        SSLCertificateCompressionAlgorithmID alg = (SSLCertificateCompressionAlgorithmID)certComprAlgId;
+        if (alg == 0) {
+            SSL_TRC(50, ("%d: TLS13[%d]: certificate compression ignores reserved algorithm %02x",
+                         SSL_GETPID(), ss->fd, alg));
+            continue;
+        }
+
+        for (int j = 0; j < ss->ssl3.supportedCertCompressionAlgorithmsCount; j++) {
+            if (ss->ssl3.supportedCertCompressionAlgorithms[j].id == alg) {
+                xtnData->compressionAlg = alg;
+                xtnData->negotiated[xtnData->numNegotiated++] = ssl_certificate_compression_xtn;
+                algFound = SECSuccess;
+                break;
+            }
+        }
+
+        if (algFound == SECSuccess) {
+            break;
+        }
+    }
+
+    if (algFound == SECSuccess) {
+        SSL_TRC(30, ("%d: TLS13[%d]: %s established certificate compression algorithm %s",
+                     SSL_GETPID(), ss->fd, SSL_ROLE(ss),
+                     ssl3_mapCertificateCompressionAlgorithmToName(ss, xtnData->compressionAlg)));
+    } else {
+        SSL_TRC(30, ("%d: TLS13[%d]: no common certificate compression algorithms found on the %s side",
+                     SSL_GETPID(), ss->fd, SSL_ROLE(ss)));
+    }
+
+    return SECSuccess;
+
+alert_loser:
+    ssl3_ExtDecodeError(ss);
+    return SECFailure;
 }

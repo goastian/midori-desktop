@@ -20,6 +20,7 @@
 #include "mozilla/AppShutdown.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/Base64.h"
 #include "mozilla/Casting.h"
 #include "mozilla/EndianUtils.h"
 #include "mozilla/FilePreferences.h"
@@ -60,7 +61,6 @@
 #include "nsIWindowWatcher.h"
 #include "nsIXULRuntime.h"
 #include "nsLiteralString.h"
-#include "nsNSSCertificateDB.h"
 #include "nsNSSHelper.h"
 #include "nsNetCID.h"
 #include "nsPK11TokenDB.h"
@@ -84,14 +84,7 @@
 #endif
 
 #ifdef XP_WIN
-#  include "mozilla/WindowsVersion.h"
 #  include "nsILocalFileWin.h"
-
-#  include "windows.h"  // this needs to be before the following includes
-#  include "lmcons.h"
-#  include "sddl.h"
-#  include "wincrypt.h"
-#  include "nsIWindowsRegKey.h"
 #endif
 
 using namespace mozilla;
@@ -310,245 +303,6 @@ nsNSSComponent::~nsNSSComponent() {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("nsNSSComponent::dtor finished\n"));
 }
 
-#ifdef XP_WIN
-static bool GetUserSid(nsAString& sidString) {
-  // UNLEN is the maximum user name length (see Lmcons.h). +1 for the null
-  // terminator.
-  WCHAR lpAccountName[UNLEN + 1];
-  DWORD lcAccountName = sizeof(lpAccountName) / sizeof(lpAccountName[0]);
-  BOOL success = GetUserName(lpAccountName, &lcAccountName);
-  if (!success) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("GetUserName failed"));
-    return false;
-  }
-  char sid_buffer[SECURITY_MAX_SID_SIZE];
-  SID* sid = BitwiseCast<SID*, char*>(sid_buffer);
-  DWORD cbSid = ArrayLength(sid_buffer);
-  SID_NAME_USE eUse;
-  // There doesn't appear to be a defined maximum length for the domain name
-  // here. To deal with this, we start with a reasonable buffer length and
-  // see if that works. If it fails and the error indicates insufficient length,
-  // we use the indicated required length and try again.
-  DWORD cchReferencedDomainName = 128;
-  auto ReferencedDomainName(MakeUnique<WCHAR[]>(cchReferencedDomainName));
-  success = LookupAccountName(nullptr, lpAccountName, sid, &cbSid,
-                              ReferencedDomainName.get(),
-                              &cchReferencedDomainName, &eUse);
-  if (!success && GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("LookupAccountName failed"));
-    return false;
-  }
-  if (!success) {
-    ReferencedDomainName = MakeUnique<WCHAR[]>(cchReferencedDomainName);
-    success = LookupAccountName(nullptr, lpAccountName, sid, &cbSid,
-                                ReferencedDomainName.get(),
-                                &cchReferencedDomainName, &eUse);
-  }
-  if (!success) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("LookupAccountName failed"));
-    return false;
-  }
-  LPTSTR StringSid;
-  success = ConvertSidToStringSid(sid, &StringSid);
-  if (!success) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("ConvertSidToStringSid failed"));
-    return false;
-  }
-  sidString.Assign(StringSid);
-  LocalFree(StringSid);
-  return true;
-}
-
-// This is a specialized helper function to read the value of a registry key
-// that might not be present. If it is present, returns (via the output
-// parameter) its value. Otherwise, returns the given default value.
-// This function handles one level of nesting. That is, if the desired value
-// is actually in a direct child of the given registry key (where the child
-// and/or the value being sought may not actually be present), this function
-// will handle that. In the normal case, though, optionalChildName will be
-// null.
-static nsresult ReadRegKeyValueWithDefault(nsCOMPtr<nsIWindowsRegKey> regKey,
-                                           uint32_t flags,
-                                           const wchar_t* optionalChildName,
-                                           const wchar_t* valueName,
-                                           uint32_t defaultValue,
-                                           uint32_t& valueOut) {
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("ReadRegKeyValueWithDefault"));
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-          ("attempting to read '%S%s%S' with default '%u'",
-           optionalChildName ? optionalChildName : L"",
-           optionalChildName ? "\\" : "", valueName, defaultValue));
-  if (optionalChildName) {
-    nsDependentString childNameString(optionalChildName);
-    bool hasChild;
-    nsresult rv = regKey->HasChild(childNameString, &hasChild);
-    if (NS_FAILED(rv)) {
-      MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-              ("failed to determine if child key is present"));
-      return rv;
-    }
-    if (!hasChild) {
-      valueOut = defaultValue;
-      return NS_OK;
-    }
-    nsCOMPtr<nsIWindowsRegKey> childRegKey;
-    rv = regKey->OpenChild(childNameString, flags, getter_AddRefs(childRegKey));
-    if (NS_FAILED(rv)) {
-      MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't open child key"));
-      return rv;
-    }
-    return ReadRegKeyValueWithDefault(childRegKey, flags, nullptr, valueName,
-                                      defaultValue, valueOut);
-  }
-  nsDependentString valueNameString(valueName);
-  bool hasValue;
-  nsresult rv = regKey->HasValue(valueNameString, &hasValue);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("failed to determine if value is present"));
-    return rv;
-  }
-  if (!hasValue) {
-    valueOut = defaultValue;
-    return NS_OK;
-  }
-  rv = regKey->ReadIntValue(valueNameString, &valueOut);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("failed to read value"));
-    return rv;
-  }
-  return NS_OK;
-}
-
-static nsresult AccountHasFamilySafetyEnabled(bool& enabled) {
-  enabled = false;
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("AccountHasFamilySafetyEnabled?"));
-  nsCOMPtr<nsIWindowsRegKey> parentalControlsKey(
-      do_CreateInstance("@mozilla.org/windows-registry-key;1"));
-  if (!parentalControlsKey) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't create nsIWindowsRegKey"));
-    return NS_ERROR_FAILURE;
-  }
-  uint32_t flags = nsIWindowsRegKey::ACCESS_READ | nsIWindowsRegKey::WOW64_64;
-  constexpr auto familySafetyPath =
-      u"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Parental Controls"_ns;
-  nsresult rv = parentalControlsKey->Open(
-      nsIWindowsRegKey::ROOT_KEY_LOCAL_MACHINE, familySafetyPath, flags);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't open parentalControlsKey"));
-    return rv;
-  }
-  constexpr auto usersString = u"Users"_ns;
-  bool hasUsers;
-  rv = parentalControlsKey->HasChild(usersString, &hasUsers);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("HasChild(Users) failed"));
-    return rv;
-  }
-  if (!hasUsers) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("Users subkey not present - Parental Controls not enabled"));
-    return NS_OK;
-  }
-  nsCOMPtr<nsIWindowsRegKey> usersKey;
-  rv = parentalControlsKey->OpenChild(usersString, flags,
-                                      getter_AddRefs(usersKey));
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("failed to open Users subkey"));
-    return rv;
-  }
-  nsAutoString sid;
-  if (!GetUserSid(sid)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't get sid"));
-    return NS_ERROR_FAILURE;
-  }
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-          ("our sid is '%S'", static_cast<const wchar_t*>(sid.get())));
-  bool hasSid;
-  rv = usersKey->HasChild(sid, &hasSid);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("HasChild(sid) failed"));
-    return rv;
-  }
-  if (!hasSid) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("sid not present in Family Safety Users"));
-    return NS_OK;
-  }
-  nsCOMPtr<nsIWindowsRegKey> sidKey;
-  rv = usersKey->OpenChild(sid, flags, getter_AddRefs(sidKey));
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't open sid key"));
-    return rv;
-  }
-  // There are three keys we're interested in: "Parental Controls On",
-  // "Logging Required", and "Web\\Filter On". These keys will have value 0
-  // or 1, indicating a particular feature is disabled or enabled,
-  // respectively. So, if "Parental Controls On" is not 1, Family Safety is
-  // disabled and we don't care about anything else. If both "Logging
-  // Required" and "Web\\Filter On" are 0, the proxy will not be running,
-  // so for our purposes we can consider Family Safety disabled in that
-  // case.
-  // By default, "Logging Required" is 1 and "Web\\Filter On" is 0,
-  // reflecting the initial settings when Family Safety is enabled for an
-  // account for the first time, However, these sub-keys are not created
-  // unless they are switched away from the default value.
-  uint32_t parentalControlsOn;
-  rv = sidKey->ReadIntValue(u"Parental Controls On"_ns, &parentalControlsOn);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("couldn't read Parental Controls On"));
-    return rv;
-  }
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-          ("Parental Controls On: %u", parentalControlsOn));
-  if (parentalControlsOn != 1) {
-    return NS_OK;
-  }
-  uint32_t loggingRequired;
-  rv = ReadRegKeyValueWithDefault(sidKey, flags, nullptr, L"Logging Required",
-                                  1, loggingRequired);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("failed to read value of Logging Required"));
-    return rv;
-  }
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-          ("Logging Required: %u", loggingRequired));
-  uint32_t webFilterOn;
-  rv = ReadRegKeyValueWithDefault(sidKey, flags, L"Web", L"Filter On", 0,
-                                  webFilterOn);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("failed to read value of Web\\Filter On"));
-    return rv;
-  }
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("Web\\Filter On: %u", webFilterOn));
-  enabled = loggingRequired == 1 || webFilterOn == 1;
-  return NS_OK;
-}
-#endif  // XP_WIN
-
-bool nsNSSComponent::ShouldEnableEnterpriseRootsForFamilySafety(
-    uint32_t familySafetyMode) {
-#ifdef XP_WIN
-  if (!(IsWin8Point1OrLater() && !IsWin10OrLater())) {
-    return false;
-  }
-  if (familySafetyMode != 2) {
-    return false;
-  }
-  bool familySafetyEnabled;
-  nsresult rv = AccountHasFamilySafetyEnabled(familySafetyEnabled);
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-  return familySafetyEnabled;
-#else
-  return false;
-#endif  // XP_WIN
-}
-
 void nsNSSComponent::UnloadEnterpriseRoots() {
   MOZ_ASSERT(NS_IsMainThread());
   if (!NS_IsMainThread()) {
@@ -556,7 +310,7 @@ void nsNSSComponent::UnloadEnterpriseRoots() {
   }
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("UnloadEnterpriseRoots"));
   MutexAutoLock lock(mMutex);
-  mEnterpriseCerts.clear();
+  mEnterpriseCerts.Clear();
   setValidationOptions(false, lock);
   ClearSSLExternalAndInternalSessionCache();
 }
@@ -591,12 +345,6 @@ void nsNSSComponent::MaybeImportEnterpriseRoots() {
     return;
   }
   bool importEnterpriseRoots = StaticPrefs::security_enterprise_roots_enabled();
-  uint32_t familySafetyMode = StaticPrefs::security_family_safety_mode();
-  // If we've been configured to detect the Family Safety TLS interception
-  // feature, see if it's enabled. If so, we want to import enterprise roots.
-  if (ShouldEnableEnterpriseRootsForFamilySafety(familySafetyMode)) {
-    importEnterpriseRoots = true;
-  }
   if (importEnterpriseRoots) {
     RefPtr<BackgroundImportEnterpriseCertsTask> task =
         new BackgroundImportEnterpriseCertsTask(this);
@@ -610,7 +358,7 @@ void nsNSSComponent::ImportEnterpriseRoots() {
     return;
   }
 
-  Vector<EnterpriseCert> enterpriseCerts;
+  nsTArray<EnterpriseCert> enterpriseCerts;
   nsresult rv = GatherEnterpriseCerts(enterpriseCerts);
   if (NS_SUCCEEDED(rv)) {
     MutexAutoLock lock(mMutex);
@@ -627,18 +375,13 @@ nsresult nsNSSComponent::CommonGetEnterpriseCerts(
     return rv;
   }
 
-  MutexAutoLock nsNSSComponentLock(mMutex);
   enterpriseCerts.Clear();
+  MutexAutoLock nsNSSComponentLock(mMutex);
   for (const auto& cert : mEnterpriseCerts) {
     nsTArray<uint8_t> certCopy;
     // mEnterpriseCerts includes both roots and intermediates.
     if (cert.GetIsRoot() == getRoots) {
-      nsresult rv = cert.CopyBytes(certCopy);
-      if (NS_FAILED(rv)) {
-        return rv;
-      }
-      // XXX(Bug 1631371) Check if this should use a fallible operation as it
-      // pretended earlier.
+      cert.CopyBytes(certCopy);
       enterpriseCerts.AppendElement(std::move(certCopy));
     }
   }
@@ -651,10 +394,58 @@ nsNSSComponent::GetEnterpriseRoots(
   return CommonGetEnterpriseCerts(enterpriseRoots, true);
 }
 
+nsresult BytesArrayToPEM(const nsTArray<nsTArray<uint8_t>>& bytesArray,
+                         nsACString& pemArray) {
+  for (const auto& bytes : bytesArray) {
+    nsAutoCString base64;
+    nsresult rv = Base64Encode(reinterpret_cast<const char*>(bytes.Elements()),
+                               bytes.Length(), base64);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    if (!pemArray.IsEmpty()) {
+      pemArray.AppendLiteral("\n");
+    }
+    pemArray.AppendLiteral("-----BEGIN CERTIFICATE-----\n");
+    for (size_t i = 0; i < base64.Length() / 64; i++) {
+      pemArray.Append(Substring(base64, i * 64, 64));
+      pemArray.AppendLiteral("\n");
+    }
+    if (base64.Length() % 64 != 0) {
+      size_t chunks = base64.Length() / 64;
+      pemArray.Append(Substring(base64, chunks * 64));
+      pemArray.AppendLiteral("\n");
+    }
+    pemArray.AppendLiteral("-----END CERTIFICATE-----");
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSComponent::GetEnterpriseRootsPEM(nsACString& enterpriseRootsPEM) {
+  nsTArray<nsTArray<uint8_t>> enterpriseRoots;
+  nsresult rv = GetEnterpriseRoots(enterpriseRoots);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  return BytesArrayToPEM(enterpriseRoots, enterpriseRootsPEM);
+}
+
 NS_IMETHODIMP
 nsNSSComponent::GetEnterpriseIntermediates(
     nsTArray<nsTArray<uint8_t>>& enterpriseIntermediates) {
   return CommonGetEnterpriseCerts(enterpriseIntermediates, false);
+}
+
+NS_IMETHODIMP
+nsNSSComponent::GetEnterpriseIntermediatesPEM(
+    nsACString& enterpriseIntermediatesPEM) {
+  nsTArray<nsTArray<uint8_t>> enterpriseIntermediates;
+  nsresult rv = GetEnterpriseIntermediates(enterpriseIntermediates);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  return BytesArrayToPEM(enterpriseIntermediates, enterpriseIntermediatesPEM);
 }
 
 NS_IMETHODIMP
@@ -664,18 +455,11 @@ nsNSSComponent::AddEnterpriseIntermediate(
   if (NS_FAILED(rv)) {
     return rv;
   }
-  EnterpriseCert intermediate;
-  rv = intermediate.Init(intermediateBytes.Elements(),
-                         intermediateBytes.Length(), false);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
+  EnterpriseCert intermediate(intermediateBytes.Elements(),
+                              intermediateBytes.Length(), false);
   {
     MutexAutoLock nsNSSComponentLock(mMutex);
-    if (!mEnterpriseCerts.append(std::move(intermediate))) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
+    mEnterpriseCerts.AppendElement(std::move(intermediate));
   }
 
   UpdateCertVerifierWithEnterpriseRoots();
@@ -685,13 +469,12 @@ nsNSSComponent::AddEnterpriseIntermediate(
 class LoadLoadableCertsTask final : public Runnable {
  public:
   LoadLoadableCertsTask(nsNSSComponent* nssComponent,
-                        bool importEnterpriseRoots, uint32_t familySafetyMode,
+                        bool importEnterpriseRoots,
                         Vector<nsCString>&& possibleLoadableRootsLocations,
                         Maybe<nsCString>&& osClientCertsModuleLocation)
       : Runnable("LoadLoadableCertsTask"),
         mNSSComponent(nssComponent),
         mImportEnterpriseRoots(importEnterpriseRoots),
-        mFamilySafetyMode(familySafetyMode),
         mPossibleLoadableRootsLocations(
             std::move(possibleLoadableRootsLocations)),
         mOSClientCertsModuleLocation(std::move(osClientCertsModuleLocation)) {
@@ -707,7 +490,6 @@ class LoadLoadableCertsTask final : public Runnable {
   nsresult LoadLoadableRoots();
   RefPtr<nsNSSComponent> mNSSComponent;
   bool mImportEnterpriseRoots;
-  uint32_t mFamilySafetyMode;
   Vector<nsCString> mPossibleLoadableRootsLocations;  // encoded in UTF-8
   Maybe<nsCString> mOSClientCertsModuleLocation;      // encoded in UTF-8
 };
@@ -748,12 +530,6 @@ LoadLoadableCertsTask::Run() {
     }
   }
 
-  // If we've been configured to detect the Family Safety TLS interception
-  // feature, see if it's enabled. If so, we want to import enterprise roots.
-  if (mNSSComponent->ShouldEnableEnterpriseRootsForFamilySafety(
-          mFamilySafetyMode)) {
-    mImportEnterpriseRoots = true;
-  }
   if (mImportEnterpriseRoots) {
     mNSSComponent->ImportEnterpriseRoots();
     mNSSComponent->UpdateCertVerifierWithEnterpriseRoots();
@@ -1305,6 +1081,15 @@ void SetDeprecatedTLS1CipherPrefs() {
   }
 }
 
+// static
+void SetKyberPolicy() {
+  if (StaticPrefs::security_tls_enable_kyber()) {
+    NSS_SetAlgorithmPolicy(SEC_OID_XYBER768D00, NSS_USE_ALG_IN_SSL_KX, 0);
+  } else {
+    NSS_SetAlgorithmPolicy(SEC_OID_XYBER768D00, 0, NSS_USE_ALG_IN_SSL_KX);
+  }
+}
+
 nsresult CipherSuiteChangeObserver::Observe(nsISupports* /*aSubject*/,
                                             const char* aTopic,
                                             const char16_t* someData) {
@@ -1321,6 +1106,7 @@ nsresult CipherSuiteChangeObserver::Observe(nsISupports* /*aSubject*/,
       }
     }
     SetDeprecatedTLS1CipherPrefs();
+    SetKyberPolicy();
     nsNSSComponent::DoClearSSLExternalAndInternalSessionCache();
   } else if (nsCRT::strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0) {
     Preferences::RemoveObserver(this, "security.");
@@ -1417,8 +1203,7 @@ void nsNSSComponent::setValidationOptions(
 
 void nsNSSComponent::UpdateCertVerifierWithEnterpriseRoots() {
   MutexAutoLock lock(mMutex);
-  MOZ_ASSERT(mDefaultCertVerifier);
-  if (NS_WARN_IF(!mDefaultCertVerifier)) {
+  if (!mDefaultCertVerifier) {
     return;
   }
 
@@ -1899,7 +1684,6 @@ nsresult nsNSSComponent::InitializeNSS() {
 
     bool importEnterpriseRoots =
         StaticPrefs::security_enterprise_roots_enabled();
-    uint32_t familySafetyMode = StaticPrefs::security_family_safety_mode();
     Vector<nsCString> possibleLoadableRootsLocations;
     rv = ListPossibleLoadableRootsLocations(possibleLoadableRootsLocations);
     MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
@@ -1917,7 +1701,7 @@ nsresult nsNSSComponent::InitializeNSS() {
       }
     }
     RefPtr<LoadLoadableCertsTask> loadLoadableCertsTask(
-        new LoadLoadableCertsTask(this, importEnterpriseRoots, familySafetyMode,
+        new LoadLoadableCertsTask(this, importEnterpriseRoots,
                                   std::move(possibleLoadableRootsLocations),
                                   std::move(maybeOSClientCertsModuleLocation)));
     rv = loadLoadableCertsTask->Dispatch();
@@ -2225,8 +2009,7 @@ nsNSSComponent::Observe(nsISupports* aSubject, const char* aTopic,
       Preferences::GetCString("security.test.built_in_root_hash",
                               mTestBuiltInRootHash);
 #endif  // DEBUG
-    } else if (prefName.Equals("security.enterprise_roots.enabled") ||
-               prefName.Equals("security.family_safety.mode")) {
+    } else if (prefName.Equals("security.enterprise_roots.enabled")) {
       UnloadEnterpriseRoots();
       MaybeImportEnterpriseRoots();
     } else if (prefName.Equals("security.osclientcerts.autoload")) {
@@ -2501,7 +2284,8 @@ UniqueCERTCertList FindClientCertificatesWithPrivateKeys() {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
           ("FindClientCertificatesWithPrivateKeys"));
 
-  BlockUntilLoadableCertsLoaded();
+  (void)BlockUntilLoadableCertsLoaded();
+  (void)CheckForSmartCardChanges();
 
   UniqueCERTCertList certsWithPrivateKeys(CERT_NewCertList());
   if (!certsWithPrivateKeys) {
@@ -2756,6 +2540,8 @@ nsresult InitializeCipherSuite() {
   // devices like wifi routers with woefully small keys (they would have to add
   // an override to do so, but they already do for such devices).
   NSS_OptionSet(NSS_RSA_MIN_KEY_SIZE, 512);
+
+  SetKyberPolicy();
 
   // Observe preference change around cipher suite setting.
   return CipherSuiteChangeObserver::StartObserve();

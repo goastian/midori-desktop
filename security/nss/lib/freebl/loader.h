@@ -10,7 +10,7 @@
 
 #include "blapi.h"
 
-#define FREEBL_VERSION 0x0325
+#define FREEBL_VERSION 0x0327
 
 struct FREEBLVectorStr {
 
@@ -338,8 +338,8 @@ struct FREEBLVectorStr {
     /* Version 3.006 came to here */
 
     /* no modification to FREEBLVectorStr itself
-   * but ECParamStr was modified
-   */
+     * but ECParamStr was modified
+     */
 
     /* Version 3.007 came to here */
 
@@ -832,6 +832,99 @@ struct FREEBLVectorStr {
 
     /* Version 3.025 came to here */
 
+    SHA3_224Context *(*p_SHA3_224_NewContext)(void);
+    void (*p_SHA3_224_DestroyContext)(SHA3_224Context *cx, PRBool freeit);
+    unsigned int (*p_SHA3_224_FlattenSize)(SHA3_224Context *cx);
+    void (*p_SHA3_224_Begin)(SHA3_224Context *cx);
+    void (*p_SHA3_224_Update)(SHA3_224Context *cx, const unsigned char *input,
+                              unsigned int inputLen);
+    void (*p_SHA3_224_End)(SHA3_224Context *cx, unsigned char *digest,
+                           unsigned int *digestLen, unsigned int maxDigestLen);
+
+    SECStatus (*p_SHA3_224_HashBuf)(unsigned char *dest, const unsigned char *src,
+                                    PRUint32 src_length);
+    SECStatus (*p_SHA3_224_Hash)(unsigned char *dest, const char *src);
+
+    SHA3_256Context *(*p_SHA3_256_NewContext)(void);
+    void (*p_SHA3_256_DestroyContext)(SHA3_256Context *cx, PRBool freeit);
+    unsigned int (*p_SHA3_256_FlattenSize)(SHA3_256Context *cx);
+    void (*p_SHA3_256_Begin)(SHA3_256Context *cx);
+    void (*p_SHA3_256_Update)(SHA3_256Context *cx, const unsigned char *input,
+                              unsigned int inputLen);
+    void (*p_SHA3_256_End)(SHA3_256Context *cx, unsigned char *digest,
+                           unsigned int *digestLen, unsigned int maxDigestLen);
+
+    SECStatus (*p_SHA3_256_HashBuf)(unsigned char *dest, const unsigned char *src,
+                                    PRUint32 src_length);
+    SECStatus (*p_SHA3_256_Hash)(unsigned char *dest, const char *src);
+
+    SHA3_384Context *(*p_SHA3_384_NewContext)(void);
+    void (*p_SHA3_384_DestroyContext)(SHA3_384Context *cx, PRBool freeit);
+    unsigned int (*p_SHA3_384_FlattenSize)(SHA3_384Context *cx);
+    void (*p_SHA3_384_Begin)(SHA3_384Context *cx);
+    void (*p_SHA3_384_Update)(SHA3_384Context *cx, const unsigned char *input,
+                              unsigned int inputLen);
+    void (*p_SHA3_384_End)(SHA3_384Context *cx, unsigned char *digest,
+                           unsigned int *digestLen, unsigned int maxDigestLen);
+
+    SECStatus (*p_SHA3_384_HashBuf)(unsigned char *dest, const unsigned char *src,
+                                    PRUint32 src_length);
+    SECStatus (*p_SHA3_384_Hash)(unsigned char *dest, const char *src);
+
+    SHA3_512Context *(*p_SHA3_512_NewContext)(void);
+    void (*p_SHA3_512_DestroyContext)(SHA3_512Context *cx, PRBool freeit);
+    unsigned int (*p_SHA3_512_FlattenSize)(SHA3_512Context *cx);
+    void (*p_SHA3_512_Begin)(SHA3_512Context *cx);
+    void (*p_SHA3_512_Update)(SHA3_512Context *cx, const unsigned char *input,
+                              unsigned int inputLen);
+    void (*p_SHA3_512_End)(SHA3_512Context *cx, unsigned char *digest,
+                           unsigned int *digestLen, unsigned int maxDigestLen);
+
+    SECStatus (*p_SHA3_512_HashBuf)(unsigned char *dest, const unsigned char *src,
+                                    PRUint32 src_length);
+    SECStatus (*p_SHA3_512_Hash)(unsigned char *dest, const char *src);
+
+    SHAKE_128Context *(*p_SHAKE_128_NewContext)(void);
+    void (*p_SHAKE_128_DestroyContext)(SHAKE_128Context *cx, PRBool freeit);
+    void (*p_SHAKE_128_Begin)(SHAKE_128Context *cx);
+    void (*p_SHAKE_128_Absorb)(SHAKE_128Context *cx, const unsigned char *input,
+                               unsigned int inputLen);
+    void (*p_SHAKE_128_SqueezeEnd)(SHAKE_128Context *cx, unsigned char *digest,
+                                   unsigned int digestLen);
+
+    SECStatus (*p_SHAKE_128_HashBuf)(unsigned char *dest, PRUint32 dest_length,
+                                     const unsigned char *src, PRUint32 src_length);
+    SECStatus (*p_SHAKE_128_Hash)(unsigned char *dest, PRUint32 dest_length, const char *src);
+
+    SHAKE_256Context *(*p_SHAKE_256_NewContext)(void);
+    void (*p_SHAKE_256_DestroyContext)(SHAKE_256Context *cx, PRBool freeit);
+    void (*p_SHAKE_256_Begin)(SHAKE_256Context *cx);
+    void (*p_SHAKE_256_Absorb)(SHAKE_256Context *cx, const unsigned char *input,
+                               unsigned int inputLen);
+    void (*p_SHAKE_256_SqueezeEnd)(SHAKE_256Context *cx, unsigned char *digest,
+                                   unsigned int digestLen);
+
+    SECStatus (*p_SHAKE_256_HashBuf)(unsigned char *dest, PRUint32 dest_length,
+                                     const unsigned char *src, PRUint32 src_length);
+    SECStatus (*p_SHAKE_256_Hash)(unsigned char *dest, PRUint32 dest_length, const char *src);
+
+    /* Version 3.026 came to here */
+
+    SECStatus (*p_Kyber_NewKey)(KyberParams params, const SECItem *seed, SECItem *privKey, SECItem *pubKey);
+
+    SECStatus (*p_Kyber_Encapsulate)(KyberParams params, const SECItem *seed, const SECItem *pubKey, SECItem *ciphertext, SECItem *secret);
+
+    SECStatus (*p_Kyber_Decapsulate)(KyberParams params, const SECItem *privKey, const SECItem *ciphertext, SECItem *secret);
+
+    /* Version 3.027 came to here */
+
+    SECStatus (*p_ED_SignMessage)(ECPrivateKey *key, SECItem *signature, const SECItem *msg);
+    SECStatus (*p_ED_VerifyMessage)(ECPublicKey *key, const SECItem *signature,
+                                    const SECItem *msg);
+
+    SECStatus (*p_ED_DerivePublicKey)(const SECItem *privateKey, SECItem *publicKey);
+    /* Version 3.028 came to here */
+
     /* Add new function pointers at the end of this struct and bump
      * FREEBL_VERSION at the beginning of this file. */
 };
@@ -934,3 +1027,9 @@ typedef SECStatus (*F_RC2_InitContext)(RC2Context *cx,
 
 typedef RC2Context *(*F_RC2_AllocateContext)(void);
 #endif
+
+typedef SECStatus (*F_Kyber_NewKey)(KyberParams params, const SECItem *seed, SECItem *privKey, SECItem *pubKey);
+
+typedef SECStatus (*F_Kyber_Encapsulate)(KyberParams params, const SECItem *seed, const SECItem *pubKey, SECItem *ciphertext, SECItem *secret);
+
+typedef SECStatus (*F_Kyber_Decapsulate)(KyberParams params, const SECItem *privKey, const SECItem *ciphertext, SECItem *secret);

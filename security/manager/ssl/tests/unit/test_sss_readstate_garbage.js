@@ -3,17 +3,46 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-// The purpose of this test is to create a mostly bogus site security service
-// state file and see that the site security service handles it properly.
+// The purpose of this test is to create a mostly bogus old site security
+// service state file and see that the site security service migrates it
+// to the new format properly, discarding invalid data.
 
-var gSSService = null;
+function run_test() {
+  let profileDir = do_get_profile();
+  let stateFile = profileDir.clone();
+  stateFile.append(SSS_STATE_OLD_FILE_NAME);
+  // Assuming we're working with a clean slate, the file shouldn't exist
+  // until we create it.
+  ok(!stateFile.exists());
+  let outputStream = FileUtils.openFileOutputStream(stateFile);
+  let expiryTime = Date.now() + 100000;
+  let lines = [
+    // General state file entry tests.
+    `example1.example.com\t0\t0\t${expiryTime},1,0`,
+    "I'm a lumberjack and I'm okay; I work all night and I sleep all day!",
+    "This is a totally bogus entry\t",
+    "0\t0\t0\t0\t",
+    "\t\t\t\t\t\t\t",
+    "example.com\t\t\t\t\t\t\t",
+    "example3.example.com\t0\t\t\t\t\t\t",
+    `example2.example.com\t0\t0\t${expiryTime},1,0`,
+    // HSTS state string parsing tests
+    `extra.comma.example.com\t0\t0\t${expiryTime},,1,0`,
+    "empty.statestring.example.com\t0\t0\t",
+    "rubbish.statestring.example.com\t0\t0\tfoobar",
+    `spaces.statestring.example.com\t0\t0\t${expiryTime}, 1,0 `,
+    `invalid.expirytime.example.com\t0\t0\t${expiryTime}foo123,1,0`,
+    `text.securitypropertystate.example.com\t0\t0\t${expiryTime},1foo,0`,
+    `invalid.securitypropertystate.example.com\t0\t0\t${expiryTime},999,0`,
+    `text.includesubdomains.example.com\t0\t0\t${expiryTime},1,1foo`,
+    `invalid.includesubdomains.example.com\t0\t0\t${expiryTime},1,0foo`,
+  ];
+  writeLinesAndClose(lines, outputStream);
 
-function checkStateRead(aSubject, aTopic, aData) {
-  if (aData == CLIENT_AUTH_FILE_NAME) {
-    return;
-  }
-
-  equal(aData, SSS_STATE_FILE_NAME);
+  let siteSecurityService = Cc["@mozilla.org/ssservice;1"].getService(
+    Ci.nsISiteSecurityService
+  );
+  notEqual(siteSecurityService, null);
 
   const HSTS_HOSTS = [
     "https://example1.example.com",
@@ -21,7 +50,7 @@ function checkStateRead(aSubject, aTopic, aData) {
   ];
   for (let host of HSTS_HOSTS) {
     ok(
-      gSSService.isSecureURI(Services.io.newURI(host)),
+      siteSecurityService.isSecureURI(Services.io.newURI(host)),
       `${host} should be HSTS enabled`
     );
   }
@@ -41,55 +70,8 @@ function checkStateRead(aSubject, aTopic, aData) {
   ];
   for (let host of NOT_HSTS_HOSTS) {
     ok(
-      !gSSService.isSecureURI(Services.io.newURI(host)),
+      !siteSecurityService.isSecureURI(Services.io.newURI(host)),
       `${host} should not be HSTS enabled`
     );
   }
-
-  do_test_finished();
-}
-
-function run_test() {
-  Services.prefs.setBoolPref("security.cert_pinning.hpkp.enabled", true);
-  let profileDir = do_get_profile();
-  let stateFile = profileDir.clone();
-  stateFile.append(SSS_STATE_FILE_NAME);
-  // Assuming we're working with a clean slate, the file shouldn't exist
-  // until we create it.
-  ok(!stateFile.exists());
-  let outputStream = FileUtils.openFileOutputStream(stateFile);
-  let expiryTime = Date.now() + 100000;
-  let lines = [
-    // General state file entry tests.
-    `example1.example.com:HSTS\t0\t0\t${expiryTime},1,0`,
-    "I'm a lumberjack and I'm okay; I work all night and I sleep all day!",
-    "This is a totally bogus entry\t",
-    "0\t0\t0\t0\t",
-    "\t\t\t\t\t\t\t",
-    "example.com:HSTS\t\t\t\t\t\t\t",
-    "example3.example.com:HSTS\t0\t\t\t\t\t\t",
-    `example2.example.com:HSTS\t0\t0\t${expiryTime},1,0`,
-    // HSTS state string parsing tests
-    `extra.comma.example.com:HSTS\t0\t0\t${expiryTime},,1,0`,
-    "empty.statestring.example.com:HSTS\t0\t0\t",
-    "rubbish.statestring.example.com:HSTS\t0\t0\tfoobar",
-    `spaces.statestring.example.com:HSTS\t0\t0\t${expiryTime}, 1,0 `,
-    `invalid.expirytime.example.com:HSTS\t0\t0\t${expiryTime}foo123,1,0`,
-    `text.securitypropertystate.example.com:HSTS\t0\t0\t${expiryTime},1foo,0`,
-    `invalid.securitypropertystate.example.com:HSTS\t0\t0\t${expiryTime},999,0`,
-    `text.includesubdomains.example.com:HSTS\t0\t0\t${expiryTime},1,1foo`,
-    `invalid.includesubdomains.example.com:HSTS\t0\t0\t${expiryTime},1,0foo`,
-  ];
-  writeLinesAndClose(lines, outputStream);
-  Services.obs.addObserver(checkStateRead, "data-storage-ready");
-  do_test_pending();
-  gSSService = Cc["@mozilla.org/ssservice;1"].getService(
-    Ci.nsISiteSecurityService
-  );
-  notEqual(gSSService, null);
-
-  Services.prefs.setIntPref("security.cert_pinning.enforcement_level", 2);
-  registerCleanupFunction(() => {
-    Services.prefs.clearUserPref("security.cert_pinning.enforcement_level");
-  });
 }

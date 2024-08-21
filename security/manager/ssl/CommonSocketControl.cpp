@@ -31,9 +31,7 @@ CommonSocketControl::CommonSocketControl(const nsCString& aHostName,
                                          int32_t aPort, uint32_t aProviderFlags)
     : mHostName(aHostName),
       mPort(aPort),
-      mOriginAttributes(),
       mCanceled(false),
-      mSessionCacheInfo(),
       mHandshakeCompleted(false),
       mJoined(false),
       mSentClientCert(false),
@@ -42,26 +40,14 @@ CommonSocketControl::CommonSocketControl(const nsCString& aHostName,
       mProviderFlags(aProviderFlags),
       mSecurityState(0),
       mErrorCode(0),
-      mFailedCertChain(),
       mServerCert(nullptr),
-      mSucceededCertChain(),
-      mCipherSuite(),
-      mKeaGroupName(),
-      mSignatureSchemeName(),
-      mProtocolVersion(),
       mCertificateTransparencyStatus(0),
-      mIsAcceptedEch(),
-      mIsDelegatedCredential(),
-      mOverridableErrorCategory(),
       mMadeOCSPRequests(false),
       mUsedPrivateDNS(false),
-      mIsEV(),
       mNPNCompleted(false),
-      mNegotiatedNPN(),
       mResumed(false),
-      mIsBuiltCertChainRootBuiltInRoot(false),
-      mPeerId() {
-#ifdef DEBUG
+      mIsBuiltCertChainRootBuiltInRoot(false) {
+#if defined(MOZ_DIAGNOSTIC_ASSERT_ENABLED)
   mOwningThread = PR_GetCurrentThread();
 #endif
 }
@@ -137,6 +123,12 @@ CommonSocketControl::ProxyStartSSL(void) { return NS_ERROR_NOT_IMPLEMENTED; }
 
 NS_IMETHODIMP
 CommonSocketControl::StartTLS(void) { return NS_ERROR_NOT_IMPLEMENTED; }
+
+NS_IMETHODIMP
+CommonSocketControl::AsyncStartTLS(JSContext* aCx,
+                                   mozilla::dom::Promise** aPromise) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
 
 NS_IMETHODIMP
 CommonSocketControl::SetNPNList(nsTArray<nsCString>& aNPNList) {
@@ -523,3 +515,11 @@ CommonSocketControl::AsyncGetSecurityInfo(JSContext* aCx,
 }
 
 NS_IMETHODIMP CommonSocketControl::Claim() { return NS_ERROR_NOT_IMPLEMENTED; }
+
+NS_IMETHODIMP CommonSocketControl::SetBrowserId(uint64_t) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP CommonSocketControl::GetBrowserId(uint64_t*) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}

@@ -51,7 +51,7 @@ async function check_some_enterprise_roots_imported(nssComponent, certDB) {
   for (let certDer of enterpriseRoots) {
     let cert = certDB.constructX509(certDer);
     notEqual(cert, null, "should be able to decode cert from DER");
-    if (!cert.isBuiltInRoot && !savedDBKey) {
+    if (!savedDBKey) {
       foundNonBuiltIn = true;
       savedDBKey = cert.dbKey;
       info("saving dbKey from " + cert.commonName);
@@ -69,6 +69,7 @@ add_task(async function run_test() {
     Ci.nsIX509CertDB
   );
   nssComponent.getEnterpriseRoots(); // blocks until roots are loaded
+  await check_some_enterprise_roots_imported(nssComponent, certDB);
   Services.prefs.setBoolPref("security.enterprise_roots.enabled", false);
   await check_no_enterprise_roots_imported(nssComponent, certDB);
   Services.prefs.setBoolPref("security.enterprise_roots.enabled", true);

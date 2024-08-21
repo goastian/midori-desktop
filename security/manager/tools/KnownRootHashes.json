@@ -1257,7 +1257,92 @@
       "label": "Security_Communication_ECC_RootCA1",
       "binNumber": 250,
       "sha256Fingerprint": "50+9pVvVZMRzo2tEGqeZyKaOB3RA6CiLn6HlDku6yhE="
+    },
+    {
+      "label": "BJCA_Global_Root_CA2",
+      "binNumber": 251,
+      "sha256Fingerprint": "V032kx4ngDlme3IK/cFgD8J+tm3TCSl5+3OFZIchKII="
+    },
+    {
+      "label": "BJCA_Global_Root_CA1",
+      "binNumber": 252,
+      "sha256Fingerprint": "84lviP58CognZqf6atJ0n7V6fz6Y+3acH6ewnCxE1a4="
+    },
+    {
+      "label": "Sectigo_Public_Server_Authentication_Root_R46",
+      "binNumber": 253,
+      "sha256Fingerprint": "e7ZHpirurIi/JXqlItAf/qOV4KtFxz+T9lZU7DjyWgY="
+    },
+    {
+      "label": "Sectigo_Public_Server_Authentication_Root_E46",
+      "binNumber": 254,
+      "sha256Fingerprint": "yQ8m8PsbQBiyIidRm1yitT4spbO+XPGO/hvvRzgMU4M="
+    },
+    {
+      "label": "SSL_com_TLS_RSA_Root_CA_2022",
+      "binNumber": 255,
+      "sha256Fingerprint": "j699Liy0cJu44LM2Zr91pd1Ftd5ID46o1L/mvrwX8u0="
+    },
+    {
+      "label": "SSL_com_TLS_ECC_Root_CA_2022",
+      "binNumber": 256,
+      "sha256Fingerprint": "wy/9n0b5NtFsNnOZCVlDS5rWCq+7nnzzNlTxRMwboUM="
+    },
+    {
+      "label": "Atos_TrustedRoot_Root_CA_RSA_TLS_2021",
+      "binNumber": 257,
+      "sha256Fingerprint": "gakIjqWfs2TFSKb4VVkJm28EBe+/GOUyTsn0V7oAES8="
+    },
+    {
+      "label": "Atos_TrustedRoot_Root_CA_ECC_TLS_2021",
+      "binNumber": 258,
+      "sha256Fingerprint": "svrlPhTM16uSEgZHAa4nnB2JiPrLd1+ooAiRTmY5iKg="
+    },
+    {
+      "label": "TrustAsia_Global_Root_CA_G4",
+      "binNumber": 259,
+      "sha256Fingerprint": "vktWy1BWwBNqUm30RFCNqjagtU9C5Kw49yr0cOR5ZUw="
+    },
+    {
+      "label": "TrustAsia_Global_Root_CA_G3",
+      "binNumber": 260,
+      "sha256Fingerprint": "4NMiausRY8Lkj/m+O1C0xkMb57serMXDa11exQkDmgg="
+    },
+    {
+      "label": "CommScope_Public_Trust_RSA_Root_02",
+      "binNumber": 261,
+      "sha256Fingerprint": "/+lD15NCS098RAwcPWSNU2PzS4Lch6p6nxGPxd7hAfE="
+    },
+    {
+      "label": "CommScope_Public_Trust_RSA_Root_01",
+      "binNumber": 262,
+      "sha256Fingerprint": "Ar35bipF3Zvxj8fh298hoDebo8nCYQNEz9jWBv7B7YE="
+    },
+    {
+      "label": "CommScope_Public_Trust_ECC_Root_02",
+      "binNumber": 263,
+      "sha256Fingerprint": "L/t/gTu7s8iatOgWLQ8W1xUJqDDMnXPCYuUUCHXRrUo="
+    },
+    {
+      "label": "CommScope_Public_Trust_ECC_Root_01",
+      "binNumber": 264,
+      "sha256Fingerprint": "EUN82nu0XkE2X0WzmjiYaw3gDe80jgx7sIc2M4ALw4s="
+    },
+    {
+      "label": "Telekom_Security_TLS_RSA_Root_2023",
+      "binNumber": 265,
+      "sha256Fingerprint": "78ZcrbtZrbbv6E2iIxGzViS3GzseoNqLZlUXTsiXhkY="
+    },
+    {
+      "label": "Telekom_Security_TLS_ECC_Root_2020",
+      "binNumber": 266,
+      "sha256Fingerprint": "V4r03tCFP05ZmNtK6vnL6o2UX2C2IKONGjwTsrx7qOE="
+    },
+    {
+      "label": "FIRMAPROFESIONAL_CA_ROOT_A_WEB",
+      "binNumber": 267,
+      "sha256Fingerprint": "vvJW2vJunGm97BYCNZeY88r3GCGgPgGCV8U8ZWF/PUo="
     }
   ],
-  "maxBin": 250
+  "maxBin": 267
 }

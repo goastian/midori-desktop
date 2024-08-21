@@ -40,8 +40,6 @@
 #   policy.sh    - Crypto Policy tests
 #   bogo.sh      - Bogo interop tests (disabled by default)
 #                  https://boringssl.googlesource.com/boringssl/+/master/ssl/test/PORTING.md
-#   interop.sh   - Interoperability tests (disabled by default)
-#                  https://github.com/ekr/tls_interop
 #   tlsfuzzer.sh - tlsfuzzer interop tests (disabled by default)
 #                  https://github.com/tomato42/tlsfuzzer/
 #
@@ -145,6 +143,9 @@ run_cycle_standard()
 {
     TEST_MODE=STANDARD
 
+    NSS_DISABLE_LIBPKIX_VERIFY="1"
+    export NSS_DISABLE_LIBPKIX_VERIFY
+
     TESTS="${ALL_TESTS}"
     TESTS_SKIP="libpkix pkits"
 
@@ -152,6 +153,8 @@ run_cycle_standard()
     export NSS_DEFAULT_DB_TYPE
 
     run_tests
+
+    unset NSS_DISABLE_LIBPKIX_VERIFY
 }
 
 ############################ run_cycle_pkix ############################
@@ -168,9 +171,6 @@ run_cycle_pkix()
     HOSTDIR="${HOSTDIR}/pkix"
     mkdir -p "${HOSTDIR}"
     init_directories
-
-    NSS_ENABLE_PKIX_VERIFY="1"
-    export NSS_ENABLE_PKIX_VERIFY
 
     TESTS="${ALL_TESTS}"
     TESTS_SKIP="cipher dbtests sdr crmf smime merge multinit"

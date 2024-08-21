@@ -225,7 +225,8 @@ PrintParameterUsage()
         "-Q enables ALPN for HTTP/1.1 [RFC7301]\n"
         "-I comma separated list of enabled groups for TLS key exchange.\n"
         "   The following values are valid:\n"
-        "   P256, P384, P521, x25519, FF2048, FF3072, FF4096, FF6144, FF8192\n"
+        "   P256, P384, P521, x25519, FF2048, FF3072, FF4096, FF6144, FF8192,\n"
+        "   xyber768d00\n"
         "-J comma separated list of enabled signature schemes in preference order.\n"
         "   The following values are valid:\n"
         "     rsa_pkcs1_sha1, rsa_pkcs1_sha256, rsa_pkcs1_sha384, rsa_pkcs1_sha512,\n"
@@ -1720,7 +1721,7 @@ getBoundListenSocket(unsigned short port)
     prStatus = PR_GetPrefLoopbackAddrInfo(&addr, port);
     if (prStatus == PR_FAILURE) {
         addr.inet.family = PR_AF_INET;
-        addr.inet.ip = PR_INADDR_ANY;
+        addr.inet.ip = PR_htonl(PR_INADDR_ANY);
         addr.inet.port = PR_htons(port);
     }
 
@@ -1936,7 +1937,7 @@ configureEchWithPublicName(PRFileDesc *model_sock, const char *public_name)
         goto loser;
     }
 
-    rv = SSL_EncodeEchConfigId(configId, echParamsStr, 100,
+    rv = SSL_EncodeEchConfigId(configId, public_name, 100,
                                HpkeDhKemX25519Sha256, pubKey,
                                &echCipherSuite, 1,
                                configBuf, &len, sizeof(configBuf));

@@ -12,6 +12,7 @@
 #include "hasht.h"
 #include "cmac.h"
 #include "alghmac.h"
+#include "kyber.h"
 
 SEC_BEGIN_PROTOS
 
@@ -281,7 +282,7 @@ RSA_CheckSignRecover(RSAPublicKey *key,
 */
 
 /* Generate a new random value within the interval [2, q-1].
-*/
+ */
 extern SECStatus DSA_NewRandom(PLArenaPool *arena, const SECItem *q,
                                SECItem *random);
 
@@ -433,7 +434,7 @@ JPAKE_Verify(PLArenaPool *arena, const PQGParams *pqg,
  * base and x2s will be allocated in the arena. The arena is *not* optional so
  * do not pass NULL for the arena parameter. The arena should be zeroed when it
  * is freed.
-*/
+ */
 SECStatus
 JPAKE_Round2(PLArenaPool *arena, const SECItem *p, const SECItem *q,
              const SECItem *gx1, const SECItem *gx3, const SECItem *gx4,
@@ -1370,6 +1371,12 @@ extern void SHA1_Clone(SHA1Context *dest, SHA1Context *src);
 
 /******************************************/
 
+/******************************************/
+/*
+** SHA-2 secure hash function
+** The SHA-2 family includes SHA224, SHA256, SHA384, and SHA512
+*/
+
 extern SHA224Context *SHA224_NewContext(void);
 extern void SHA224_DestroyContext(SHA224Context *cx, PRBool freeit);
 extern void SHA224_Begin(SHA224Context *cx);
@@ -1483,6 +1490,100 @@ extern unsigned int SHA384_FlattenSize(SHA384Context *cx);
 extern SECStatus SHA384_Flatten(SHA384Context *cx, unsigned char *space);
 extern SHA384Context *SHA384_Resurrect(unsigned char *space, void *arg);
 extern void SHA384_Clone(SHA384Context *dest, SHA384Context *src);
+
+/******************************************/
+/*
+** SHA-3 secure hash function
+** The SHA-3 family includes SHA3_224, SHA3_256, SHA3_384, and SHA3_512
+*/
+
+extern SHA3_224Context *SHA3_224_NewContext(void);
+extern void SHA3_224_DestroyContext(SHA3_224Context *cx, PRBool freeit);
+extern unsigned int SHA3_224_FlattenSize(SHA3_224Context *cx);
+extern void SHA3_224_Begin(SHA3_224Context *cx);
+extern void SHA3_224_Update(SHA3_224Context *cx, const unsigned char *input,
+                            unsigned int inputLen);
+extern void SHA3_224_End(SHA3_224Context *cx, unsigned char *digest,
+                         unsigned int *digestLen, unsigned int maxDigestLen);
+
+extern SECStatus SHA3_224_HashBuf(unsigned char *dest, const unsigned char *src,
+                                  PRUint32 src_length);
+extern SECStatus SHA3_224_Hash(unsigned char *dest, const char *src);
+
+/******************************************/
+
+extern SHA3_256Context *SHA3_256_NewContext(void);
+extern void SHA3_256_DestroyContext(SHA3_256Context *cx, PRBool freeit);
+extern unsigned int SHA3_256_FlattenSize(SHA3_256Context *cx);
+extern void SHA3_256_Begin(SHA3_256Context *cx);
+extern void SHA3_256_Update(SHA3_256Context *cx, const unsigned char *input,
+                            unsigned int inputLen);
+extern void SHA3_256_End(SHA3_256Context *cx, unsigned char *digest,
+                         unsigned int *digestLen, unsigned int maxDigestLen);
+
+extern SECStatus SHA3_256_HashBuf(unsigned char *dest, const unsigned char *src,
+                                  PRUint32 src_length);
+extern SECStatus SHA3_256_Hash(unsigned char *dest, const char *src);
+
+/******************************************/
+
+extern SHA3_384Context *SHA3_384_NewContext(void);
+extern void SHA3_384_DestroyContext(SHA3_384Context *cx, PRBool freeit);
+extern unsigned int SHA3_384_FlattenSize(SHA3_384Context *cx);
+extern void SHA3_384_Begin(SHA3_384Context *cx);
+extern void SHA3_384_Update(SHA3_384Context *cx, const unsigned char *input,
+                            unsigned int inputLen);
+extern void SHA3_384_End(SHA3_384Context *cx, unsigned char *digest,
+                         unsigned int *digestLen, unsigned int maxDigestLen);
+
+extern SECStatus SHA3_384_HashBuf(unsigned char *dest, const unsigned char *src,
+                                  PRUint32 src_length);
+extern SECStatus SHA3_384_Hash(unsigned char *dest, const char *src);
+
+/******************************************/
+
+extern SHA3_512Context *SHA3_512_NewContext(void);
+extern void SHA3_512_DestroyContext(SHA3_512Context *cx, PRBool freeit);
+extern unsigned int SHA3_512_FlattenSize(SHA3_512Context *cx);
+extern void SHA3_512_Begin(SHA3_512Context *cx);
+extern void SHA3_512_Update(SHA3_512Context *cx, const unsigned char *input,
+                            unsigned int inputLen);
+extern void SHA3_512_End(SHA3_512Context *cx, unsigned char *digest,
+                         unsigned int *digestLen, unsigned int maxDigestLen);
+
+extern SECStatus SHA3_512_HashBuf(unsigned char *dest, const unsigned char *src,
+                                  PRUint32 src_length);
+extern SECStatus SHA3_512_Hash(unsigned char *dest, const char *src);
+
+/******************************************/
+/*
+** SHAKE XOF functions from SHA-3
+** The SHAKE family includes SHAKE_128 and SHAKE_256
+*/
+
+extern SHAKE_128Context *SHAKE_128_NewContext(void);
+extern void SHAKE_128_DestroyContext(SHAKE_128Context *cx, PRBool freeit);
+extern void SHAKE_128_Begin(SHAKE_128Context *cx);
+extern void SHAKE_128_Absorb(SHAKE_128Context *cx, const unsigned char *input,
+                             unsigned int inputLen);
+extern void SHAKE_128_SqueezeEnd(SHAKE_128Context *cx, unsigned char *digest,
+                                 unsigned int digestLen);
+extern SECStatus SHAKE_128_HashBuf(unsigned char *dest, unsigned int dest_len,
+                                   const unsigned char *src, PRUint32 src_length);
+extern SECStatus SHAKE_128_Hash(unsigned char *dest, unsigned int dest_len, const char *src);
+
+/******************************************/
+
+extern SHAKE_256Context *SHAKE_256_NewContext(void);
+extern void SHAKE_256_DestroyContext(SHAKE_256Context *cx, PRBool freeit);
+extern void SHAKE_256_Begin(SHAKE_256Context *cx);
+extern void SHAKE_256_Absorb(SHAKE_256Context *cx, const unsigned char *input,
+                             unsigned int inputLen);
+extern void SHAKE_256_SqueezeEnd(SHAKE_256Context *cx, unsigned char *digest,
+                                 unsigned int digestLen);
+extern SECStatus SHAKE_256_HashBuf(unsigned char *dest, unsigned int dest_len,
+                                   const unsigned char *src, PRUint32 src_length);
+extern SECStatus SHAKE_256_Hash(unsigned char *dest, unsigned int dest_len, const char *src);
 
 /****************************************
  * implement TLS 1.0 Pseudo Random Function (PRF) and TLS P_hash function
@@ -1778,7 +1879,7 @@ extern void BL_SetForkState(PRBool forked);
 
 /*
 ** pepare an ECParam structure from DEREncoded params
- */
+*/
 extern SECStatus EC_FillParams(PLArenaPool *arena,
                                const SECItem *encodedParams, ECParams *params);
 extern SECStatus EC_DecodeParams(const SECItem *encodedParams,
@@ -1790,6 +1891,56 @@ extern SECStatus EC_CopyParams(PLArenaPool *arena, ECParams *dstParams,
  * use the internal table to get the size in bytes of a single EC point
  */
 extern int EC_GetPointSize(const ECParams *params);
+
+/*
+ * use the internal table to get the size in bytes of a single EC coordinate
+ */
+extern int EC_GetScalarSize(const ECParams *params);
+
+/* Generate a Kyber key pair with parameters given by |params|. If |seed| is
+ * null this function generates its own randomness internally, otherwise the
+ * key is derived from |seed| using the method defined by |params|. The caller
+ * is responsible for allocating appropriately sized `privKey` and `pubKey`
+ * items.
+ */
+extern SECStatus Kyber_NewKey(KyberParams params, const SECItem *seed, SECItem *privKey, SECItem *pubKey);
+
+/* Encapsulate a random secret to the Kyber public key `pubKey`. If `seed` is
+ * null this function generates its own randomness internally, otherwise the
+ * secret is derived from `seed` using the method defined by `params`. The
+ * caller is responsible for allocating appropriately sized `ciphertext` and
+ * `secret` items. Returns an error if any arguments' length is incompatible
+ * with `params`.
+ */
+extern SECStatus Kyber_Encapsulate(KyberParams params, const SECItem *seed, const SECItem *pubKey, SECItem *ciphertext, SECItem *secret);
+
+/* Decapsulate a secret from a Kyber ciphertext `ciphertext` using the private
+ * key `privKey`. The caller is responsible for allocating an appropriately sized
+ * `secret` item. Returns an error if any arguments' length is incompatible
+ * with `params`.
+ */
+extern SECStatus Kyber_Decapsulate(KyberParams params, const SECItem *privKey, const SECItem *ciphertext, SECItem *secret);
+
+/* EdDSA (only ed25519)
+** On input,  msg == buffer containing message to be signed.
+**            key == key to be used for signature.
+** Output, signature == Buffer containing the signature.
+*/
+extern SECStatus ED_SignMessage(ECPrivateKey *key, SECItem *signature,
+                                const SECItem *msg);
+
+/* On input,  signature == buffer holding the signature.
+**            msg == buffer holding the message.
+**            key == key used to verify the signature.
+** Output, whether the signature is valid or not.
+*/
+extern SECStatus ED_VerifyMessage(ECPublicKey *key, const SECItem *signature,
+                                  const SECItem *msg);
+
+/* EdDSA (only ed25519)
+ * Derive the public key `publicKey` from the private key `privateKey`.
+ */
+extern SECStatus ED_DerivePublicKey(const SECItem *privateKey, SECItem *publicKey);
 
 SEC_END_PROTOS
 

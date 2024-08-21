@@ -87,9 +87,8 @@ SECStatus tls13_ServerSendHrrCookieXtn(const sslSocket *ss,
                                        TLSExtensionData *xtnData,
                                        sslBuffer *buf, PRBool *added);
 SECStatus tls13_DecodeKeyShareEntry(sslReader *rdr, TLS13KeyShareEntry **ksp);
-PRUint32 tls13_SizeOfKeyShareEntry(const SECKEYPublicKey *pubKey);
-SECStatus tls13_EncodeKeyShareEntry(sslBuffer *buf, SSLNamedGroup group,
-                                    SECKEYPublicKey *pubKey);
+PRUint32 tls13_SizeOfKeyShareEntry(const sslEphemeralKeyPair *keyPair);
+SECStatus tls13_EncodeKeyShareEntry(sslBuffer *buf, sslEphemeralKeyPair *keyPair);
 SECStatus tls13_ServerHandleInnerEchXtn(const sslSocket *ss, TLSExtensionData *xtnData,
                                         SECItem *data);
 SECStatus tls13_ServerHandleOuterEchXtn(const sslSocket *ss, TLSExtensionData *xtnData,
@@ -124,4 +123,13 @@ SECStatus tls13_SendGreaseXtn(const sslSocket *ss,
                               TLSExtensionData *xtnData,
                               sslBuffer *buf, PRBool *added);
 
+const char *ssl3_mapCertificateCompressionAlgorithmToName(const sslSocket *ss,
+                                                          SSLCertificateCompressionAlgorithmID alg);
+
+SECStatus ssl3_SendCertificateCompressionXtn(const sslSocket *ss,
+                                             TLSExtensionData *xtnData,
+                                             sslBuffer *buf, PRBool *added);
+SECStatus ssl3_HandleCertificateCompressionXtn(const sslSocket *ss,
+                                               TLSExtensionData *xtnData,
+                                               SECItem *data);
 #endif

@@ -10,6 +10,7 @@
 #include "NSSCertDBTrustDomain.h"
 #include "SharedSSLState.h"
 #include "certdb.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Base64.h"
 #include "mozilla/Casting.h"
@@ -54,6 +55,24 @@ using namespace mozilla::psm;
 extern LazyLogModule gPIPNSSLog;
 
 NS_IMPL_ISUPPORTS(nsNSSCertificateDB, nsIX509CertDB)
+
+NS_IMETHODIMP
+nsNSSCertificateDB::CountTrustObjects(uint32_t* aCount) {
+  UniquePK11SlotInfo slot(PK11_GetInternalKeySlot());
+  PK11GenericObject* objects =
+      PK11_FindGenericObjects(slot.get(), CKO_NSS_TRUST);
+  int count = 0;
+  for (PK11GenericObject* cursor = objects; cursor;
+       cursor = PK11_GetNextGenericObject(cursor)) {
+    count++;
+  }
+  PK11_DestroyGenericObjects(objects);
+
+  mozilla::glean::cert_verifier::trust_obj_count.Set(count);
+
+  *aCount = count;
+  return NS_OK;
+}
 
 NS_IMETHODIMP
 nsNSSCertificateDB::FindCertByDBKey(const nsACString& aDBKey,
@@ -1166,6 +1185,25 @@ nsNSSCertificateDB::GetCerts(nsTArray<RefPtr<nsIX509Cert>>& _retval) {
                                                                   _retval);
 }
 
+nsresult IsCertBuiltInRoot(const RefPtr<nsIX509Cert>& cert,
+                           bool& isBuiltInRoot) {
+  nsTArray<uint8_t> der;
+  nsresult rv = cert->GetRawDER(der);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  pkix::Input certInput;
+  pkix::Result result = certInput.Init(der.Elements(), der.Length());
+  if (result != pkix::Result::Success) {
+    return NS_ERROR_FAILURE;
+  }
+  result = IsCertBuiltInRoot(certInput, isBuiltInRoot);
+  if (result != pkix::Result::Success) {
+    return NS_ERROR_FAILURE;
+  }
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsNSSCertificateDB::AsyncHasThirdPartyRoots(nsIAsyncBoolCallback* aCallback) {
   NS_ENSURE_ARG_POINTER(aCallback);
@@ -1198,7 +1236,7 @@ nsNSSCertificateDB::AsyncHasThirdPartyRoots(nsIAsyncBoolCallback* aCallback) {
                 }
 
                 bool isBuiltInRoot = false;
-                rv = cert->GetIsBuiltInRoot(&isBuiltInRoot);
+                rv = IsCertBuiltInRoot(cert, isBuiltInRoot);
                 if (NS_FAILED(rv)) {
                   return false;
                 }

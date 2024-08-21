@@ -54,6 +54,13 @@ enum class OCSPFetchStatus : uint16_t {
   Fetched = 1,
 };
 
+// Helper struct to associate the DER bytes of a potential issuer certificate
+// with its source (i.e. where it came from).
+struct IssuerCandidateWithSource {
+  mozilla::pkix::Input mDER;  // non-owning
+  IssuerSource mIssuerSource;
+};
+
 SECStatus InitializeNSS(const nsACString& dir, NSSDBConfig nssDbConfig,
                         PKCS11DBConfig pkcs11DbConfig);
 
@@ -149,8 +156,8 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
       unsigned int minRSABits, ValidityCheckingMode validityCheckingMode,
       NetscapeStepUpPolicy netscapeStepUpPolicy, CRLiteMode crliteMode,
       const OriginAttributes& originAttributes,
-      const Vector<mozilla::pkix::Input>& thirdPartyRootInputs,
-      const Vector<mozilla::pkix::Input>& thirdPartyIntermediateInputs,
+      const nsTArray<mozilla::pkix::Input>& thirdPartyRootInputs,
+      const nsTArray<mozilla::pkix::Input>& thirdPartyIntermediateInputs,
       const Maybe<nsTArray<nsTArray<uint8_t>>>& extraCertificates,
       /*out*/ nsTArray<nsTArray<uint8_t>>& builtChain,
       /*optional*/ PinningTelemetryInfo* pinningTelemetryInfo = nullptr,
@@ -245,6 +252,7 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
   bool GetIsErrorDueToDistrustedCAPolicy() const;
 
   OCSPFetchStatus GetOCSPFetchStatus() { return mOCSPFetchStatus; }
+  IssuerSources GetIssuerSources() { return mIssuerSources; }
 
  private:
   Result CheckCRLiteStash(
@@ -264,8 +272,7 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
   Result VerifyAndMaybeCacheEncodedOCSPResponse(
       const mozilla::pkix::CertID& certID, mozilla::pkix::Time time,
       uint16_t maxLifetimeInDays, mozilla::pkix::Input encodedResponse,
-      EncodedResponseSource responseSource, /*out*/ bool& expired,
-      /*out*/ uint32_t& ageInHours);
+      EncodedResponseSource responseSource, /*out*/ bool& expired);
   TimeDuration GetOCSPTimeout() const;
 
   Result CheckRevocationByCRLite(const mozilla::pkix::CertID& certID,
@@ -290,6 +297,12 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
                            const Result error,
                            /*out*/ bool& softFailure);
 
+  bool ShouldSkipSelfSignedNonTrustAnchor(mozilla::pkix::Input certDER);
+  Result CheckCandidates(IssuerChecker& checker,
+                         nsTArray<IssuerCandidateWithSource>& candidates,
+                         mozilla::pkix::Input* nameConstraintsInputPtr,
+                         bool& keepGoing);
+
   const SECTrustType mCertDBTrustType;
   const OCSPFetching mOCSPFetching;
   OCSPCache& mOCSPCache;  // non-owning!
@@ -303,8 +316,8 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
   CRLiteMode mCRLiteMode;
   bool mSawDistrustedCAByPolicyError;
   const OriginAttributes& mOriginAttributes;
-  const Vector<mozilla::pkix::Input>& mThirdPartyRootInputs;  // non-owning
-  const Vector<mozilla::pkix::Input>&
+  const nsTArray<mozilla::pkix::Input>& mThirdPartyRootInputs;  // non-owning
+  const nsTArray<mozilla::pkix::Input>&
       mThirdPartyIntermediateInputs;                             // non-owning
   const Maybe<nsTArray<nsTArray<uint8_t>>>& mExtraCertificates;  // non-owning
   nsTArray<nsTArray<uint8_t>>& mBuiltChain;                      // non-owning
@@ -321,6 +334,7 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
   UniqueSECMODModule mBuiltInRootsModule;
 
   OCSPFetchStatus mOCSPFetchStatus;
+  IssuerSources mIssuerSources;
 };
 
 }  // namespace psm

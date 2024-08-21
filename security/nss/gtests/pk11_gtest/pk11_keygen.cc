@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "kyber.h"
 #include "pk11_keygen.h"
 
 #include "pk11pub.h"
@@ -81,9 +82,11 @@ class DhParamHolder : public PqgParamHolder {
   SECKEYDHParams params_;
 };
 
+/* Also used for EdDSA. */
 class EcParamHolder : public ParamHolder {
  public:
   EcParamHolder(SECOidTag curve_oid) {
+    /* For the case of ED curve_oid contains a EdDSA OID. */
     SECOidData* curve = SECOID_FindOIDByTag(curve_oid);
     EXPECT_NE(nullptr, curve);
 
@@ -102,6 +105,15 @@ class EcParamHolder : public ParamHolder {
  private:
   SECKEYECParams ec_params_;
   std::unique_ptr<uint8_t[]> extra_;
+};
+
+class KyberParamHolder : public ParamHolder {
+ public:
+  KyberParamHolder(CK_NSS_KEM_PARAMETER_SET_TYPE aParams) : mParams(aParams) {}
+  void* get() override { return &mParams; }
+
+ private:
+  CK_NSS_KEM_PARAMETER_SET_TYPE mParams;
 };
 
 std::unique_ptr<ParamHolder> Pkcs11KeyPairGenerator::MakeParams() const {
@@ -132,9 +144,19 @@ std::unique_ptr<ParamHolder> Pkcs11KeyPairGenerator::MakeParams() const {
       return std::unique_ptr<ParamHolder>(new DhParamHolder(pqg_params));
     }
 
+    case CKM_EC_EDWARDS_KEY_PAIR_GEN:
+      std::cerr << "Generate ED pair on " << curve_ << std::endl;
+      return std::unique_ptr<ParamHolder>(
+          new EcParamHolder(SEC_OID_ED25519_PUBLIC_KEY));
+
     case CKM_EC_KEY_PAIR_GEN:
       std::cerr << "Generate EC pair on " << curve_ << std::endl;
       return std::unique_ptr<ParamHolder>(new EcParamHolder(curve_));
+
+    case CKM_NSS_KYBER_KEY_PAIR_GEN:
+      std::cerr << "Generate Kyber768 pair" << std::endl;
+      return std::unique_ptr<ParamHolder>(
+          new KyberParamHolder(CKP_NSS_KYBER_768_ROUND3));
 
     default:
       ADD_FAILURE() << "unknown OID " << mech_;

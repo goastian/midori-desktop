@@ -241,6 +241,7 @@ int PK11_GetIVLength(CK_MECHANISM_TYPE type);
 SECItem *PK11_ParamFromIV(CK_MECHANISM_TYPE type, SECItem *iv);
 unsigned char *PK11_IVFromParam(CK_MECHANISM_TYPE type, SECItem *param, int *len);
 SECItem *PK11_BlockData(SECItem *data, unsigned long size);
+int PK11_GetMaxKeyLength(CK_MECHANISM_TYPE type);
 
 /* PKCS #11 to DER mapping functions */
 SECItem *PK11_ParamFromAlgid(SECAlgorithmID *algid);
@@ -423,6 +424,11 @@ PK11SymKey *PK11_PubDeriveWithKDF(SECKEYPrivateKey *privKey,
                                   CK_MECHANISM_TYPE derive, CK_MECHANISM_TYPE target,
                                   CK_ATTRIBUTE_TYPE operation, int keySize,
                                   CK_ULONG kdf, SECItem *sharedData, void *wincx);
+
+/*
+ * Concatenate a pair of symmetric keys.
+ */
+PK11SymKey *PK11_ConcatSymKeys(PK11SymKey *left, PK11SymKey *right, CK_MECHANISM_TYPE target, CK_ATTRIBUTE_TYPE operation);
 
 /*
  * unwrap a new key with a symetric key.
@@ -813,6 +819,42 @@ SECStatus PK11_VerifyWithMechanism(SECKEYPublicKey *key,
                                    const SECItem *hash, void *wincx);
 
 /**********************************************************************
+ * Key Encapsulation Mechanisms
+ **********************************************************************/
+
+/*
+ * Using the given |pubKey|, generate a shared secret in |outKey| and an
+ * encapsulation of it in |ciphertext|. |outKey| will have usage attributes as
+ * specified in |attrFlags| and operation attributes as specified in |opFlags|.
+ *
+ * The function asserts that |pubKey|, |outKey|, and |ciphertext| are not NULL.
+
+ * If an error occurs, no allocations are made to |outKey| and |ciphertext|;
+ * otherwise (if SECSuccess is returned) allocations are made to |outKey| and
+ * |ciphertext| and the caller is responsible for freeing the memory occupied
+ * by these structures.
+ */
+SECStatus PK11_Encapsulate(SECKEYPublicKey *pubKey, CK_MECHANISM_TYPE target,
+                           PK11AttrFlags attrFlags, CK_FLAGS opFlags,
+                           PK11SymKey **outKey, SECItem **outCiphertext);
+
+/*
+ * Using the given |privKey|, decapsulate |ciphertext| and put the resulting
+ * shared secret in |outKey|. |outKey| will have usage attributes as specified
+ * in |attrFlags| and operation attributes as specified in |opFlags|.
+ *
+ * The function asserts that |privKey|, |ciphertext|, and |outKey| are not NULL.
+
+ * If an error occurs, |outKey| is not allocated; otherwise (if SECSuccess is
+ * returned) |outKey| is allocated and the caller is responsible for freeing
+ * the memory occupied by it.
+ */
+SECStatus
+PK11_Decapsulate(SECKEYPrivateKey *privKey, const SECItem *ciphertext,
+                 CK_MECHANISM_TYPE target, PK11AttrFlags attrFlags,
+                 CK_FLAGS opFlags, PK11SymKey **outKey);
+
+/**********************************************************************
  *                   Crypto Contexts
  **********************************************************************/
 void PK11_DestroyContext(PK11Context *context, PRBool freeit);
@@ -981,6 +1023,24 @@ SECStatus PK11_WriteRawAttribute(PK11ObjectType type, void *object,
 /* get the PKCS #11 handle and slot for a generic object */
 CK_OBJECT_HANDLE PK11_GetObjectHandle(PK11ObjectType objType, void *objSpec,
                                       PK11SlotInfo **slotp);
+
+/* PK11_ReadDistrustAfterAttribute reads either the
+ * CKA_NSS_SERVER_DISTRUST_AFTER or the CKA_NSS_EMAIL_DISTRUST_AFTER attribute
+ * from the specified object. The "CK_ATTRIBUTE_TYPE type" input must be one of
+ * these. If this function returns SECSuccess, then an attribute of the
+ * requested type was found and it was either:
+ *      (1) a single zero byte (indicating no distrust after date), or
+ *      (2) a valid 13 byte UTCTime.
+ * In case (1), the value *distrusted is set to PR_FALSE and the value *time
+ * is undefined. In case (2), the value *distrusted is set to PR_TRUE and the
+ * value *time is set by DER_UTCTimeToTime(). Neither *distrusted nor *time
+ * is defined if this function returns SECFailure.
+ */
+SECStatus PK11_ReadDistrustAfterAttribute(PK11SlotInfo *slot,
+                                          CK_OBJECT_HANDLE object,
+                                          CK_ATTRIBUTE_TYPE type,
+                                          /* out */ PRBool *distrusted,
+                                          /* out */ PRTime *time);
 
 /*
  * PK11_GetAllSlotsForCert returns all the slots that a given certificate

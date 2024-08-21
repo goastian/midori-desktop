@@ -110,8 +110,6 @@ class nsNSSComponent final : public nsINSSComponent, public nsIObserver {
   nsresult CommonGetEnterpriseCerts(
       nsTArray<nsTArray<uint8_t>>& enterpriseCerts, bool getRoots);
 
-  bool ShouldEnableEnterpriseRootsForFamilySafety(uint32_t familySafetyMode);
-
   nsresult MaybeEnableIntermediatePreloadingHealer();
 
   // mLoadableCertsLoadedMonitor protects mLoadableCertsLoaded.
@@ -132,7 +130,7 @@ class nsNSSComponent final : public nsINSSComponent, public nsIObserver {
       MOZ_GUARDED_BY(mMutex);
   nsString mMitmCanaryIssuer MOZ_GUARDED_BY(mMutex);
   bool mMitmDetecionEnabled MOZ_GUARDED_BY(mMutex);
-  mozilla::Vector<EnterpriseCert> mEnterpriseCerts MOZ_GUARDED_BY(mMutex);
+  nsTArray<EnterpriseCert> mEnterpriseCerts MOZ_GUARDED_BY(mMutex);
 
   // The following members are accessed only on the main thread:
   static int mInstanceCount;

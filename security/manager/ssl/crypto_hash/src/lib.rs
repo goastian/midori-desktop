@@ -103,11 +103,13 @@ impl CryptoHash {
             Some(digest) => digest,
             None => return Err(NS_ERROR_NOT_INITIALIZED),
         };
-        // Safety: this is safe as long as xpcom gave us valid arguments.
-        let data = unsafe {
-            std::slice::from_raw_parts(data, len.try_into().map_err(|_| NS_ERROR_INVALID_ARG)?)
-        };
-        digest.update(data);
+        if len > 0 {
+            // Safety: this is safe as long as xpcom gave us valid arguments.
+            let data = unsafe {
+                std::slice::from_raw_parts(data, len.try_into().map_err(|_| NS_ERROR_INVALID_ARG)?)
+            };
+            digest.update(data);
+        }
         Ok(())
     }
 
@@ -120,14 +122,22 @@ impl CryptoHash {
         };
         let mut available = 0u64;
         unsafe { stream.Available(&mut available as *mut u64).to_result()? };
-        let mut to_read = if len == u32::MAX { available } else { len as u64 };
+        let mut to_read = if len == u32::MAX {
+            available
+        } else {
+            len as u64
+        };
         if available == 0 || available < to_read {
             return Err(NS_ERROR_NOT_AVAILABLE);
         }
         let mut buf = vec![0u8; 4096];
         let buf_len = buf.len() as u64;
         while to_read > 0 {
-            let chunk_len = if to_read >= buf_len { buf_len as u32 } else { to_read as u32 };
+            let chunk_len = if to_read >= buf_len {
+                buf_len as u32
+            } else {
+                to_read as u32
+            };
             let mut read = 0u32;
             unsafe {
                 stream

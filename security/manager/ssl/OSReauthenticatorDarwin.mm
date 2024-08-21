@@ -6,7 +6,7 @@
 
 #include "OSReauthenticator.h"
 
-#include "nsCocoaUtils.h"
+#include "mozilla/MacStringHelpers.h"
 
 using namespace mozilla;
 
@@ -23,7 +23,7 @@ nsresult ReauthenticateUserMacOS(const nsAString& aPrompt,
   // password. If they correctly enter it, we'll set aReauthenticated to true.
 
   LAContext* context = [[LAContext alloc] init];
-  NSString* prompt = nsCocoaUtils::ToNSString(aPrompt);
+  NSString* prompt = mozilla::XPCOMStringToNSString(aPrompt);
 
   dispatch_semaphore_t sema = dispatch_semaphore_create(0);
 
@@ -35,12 +35,15 @@ nsresult ReauthenticateUserMacOS(const nsAString& aPrompt,
           localizedReason:prompt
                     reply:^(BOOL success, NSError* error) {
                       dispatch_async(dispatch_get_main_queue(), ^{
-                        // error is not particularly useful in this context, and we have no
-                        // mechanism to really return it. We could use it to set the nsresult,
-                        // but this is a best-effort mechanism and there's no particular case for
-                        // propagating up XPCOM. The one exception being a user account that
-                        // has no passcode set, which we handle below.
-                        errorPasswordNotSet = error && [error code] == kPasswordNotSetErrorCode;
+                        // error is not particularly useful in this context, and
+                        // we have no mechanism to really return it. We could
+                        // use it to set the nsresult, but this is a best-effort
+                        // mechanism and there's no particular case for
+                        // propagating up XPCOM. The one exception being a user
+                        // account that has no passcode set, which we handle
+                        // below.
+                        errorPasswordNotSet =
+                            error && [error code] == kPasswordNotSetErrorCode;
                         biometricSuccess = success || errorPasswordNotSet;
                         dispatch_semaphore_signal(sema);
                       });

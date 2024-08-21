@@ -15,9 +15,6 @@
 #include "tls_filter.h"
 #include "tls_parser.h"
 
-// This is an internal header, used to get DTLS_1_3_DRAFT_VERSION.
-#include "ssl3prot.h"
-
 extern "C" {
 // This is not something that should make you happy.
 #include "libssl_internals.h"
@@ -493,16 +490,19 @@ void TlsAgent::DisableAllCiphers() {
   }
 }
 
-// Not actually all groups, just the onece that we are actually willing
+// Not actually all groups, just the ones that we are actually willing
 // to use.
 const std::vector<SSLNamedGroup> kAllDHEGroups = {
-    ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
-    ssl_grp_ec_secp521r1,  ssl_grp_ffdhe_2048,   ssl_grp_ffdhe_3072,
-    ssl_grp_ffdhe_4096,    ssl_grp_ffdhe_6144,   ssl_grp_ffdhe_8192};
+    ssl_grp_ec_curve25519,   ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
+    ssl_grp_ec_secp521r1,    ssl_grp_ffdhe_2048,   ssl_grp_ffdhe_3072,
+    ssl_grp_ffdhe_4096,      ssl_grp_ffdhe_6144,   ssl_grp_ffdhe_8192,
+    ssl_grp_kem_xyber768d00,
+};
 
 const std::vector<SSLNamedGroup> kECDHEGroups = {
-    ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
-    ssl_grp_ec_secp521r1};
+    ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1,    ssl_grp_ec_secp384r1,
+    ssl_grp_ec_secp521r1,  ssl_grp_kem_xyber768d00,
+};
 
 const std::vector<SSLNamedGroup> kFFDHEGroups = {
     ssl_grp_ffdhe_2048, ssl_grp_ffdhe_3072, ssl_grp_ffdhe_4096,
@@ -511,7 +511,12 @@ const std::vector<SSLNamedGroup> kFFDHEGroups = {
 // Defined because the big DHE groups are ridiculously slow.
 const std::vector<SSLNamedGroup> kFasterDHEGroups = {
     ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
-    ssl_grp_ffdhe_2048, ssl_grp_ffdhe_3072};
+    ssl_grp_ffdhe_2048,    ssl_grp_ffdhe_3072,   ssl_grp_kem_xyber768d00,
+};
+
+const std::vector<SSLNamedGroup> kEcdhHybridGroups = {
+    ssl_grp_kem_xyber768d00,
+};
 
 void TlsAgent::EnableCiphersByKeyExchange(SSLKEAType kea) {
   EXPECT_TRUE(EnsureTlsSetup());
@@ -538,6 +543,9 @@ void TlsAgent::EnableGroupsByKeyExchange(SSLKEAType kea) {
       break;
     case ssl_kea_ecdh:
       ConfigNamedGroups(kECDHEGroups);
+      break;
+    case ssl_kea_ecdh_hybrid:
+      ConfigNamedGroups(kEcdhHybridGroups);
       break;
     default:
       break;
@@ -675,6 +683,7 @@ void TlsAgent::CheckKEA(SSLKEAType kea, SSLNamedGroup kea_group,
   if (kea_size == 0) {
     switch (kea_group) {
       case ssl_grp_ec_curve25519:
+      case ssl_grp_kem_xyber768d00:
         kea_size = 255;
         break;
       case ssl_grp_ec_secp256r1:
@@ -1116,8 +1125,11 @@ void TlsAgent::Handshake() {
     return;
   }
 
-  LOG("Handshake failed with error " << PORT_ErrorToName(err) << ": "
-                                     << PORT_ErrorToString(err));
+  if (err != 0) {
+    LOG("Handshake failed with error " << PORT_ErrorToName(err) << ": "
+                                       << PORT_ErrorToString(err));
+  }
+
   error_code_ = err;
   SetState(STATE_ERROR);
 }
@@ -1236,9 +1248,14 @@ void TlsAgent::ReadBytes(size_t amount) {
       PRErrorCode err = 0;
       if (rv < 0) {
         err = PR_GetError();
-        LOG("Read error " << PORT_ErrorToName(err) << ": "
-                          << PORT_ErrorToString(err));
+        if (err != 0) {
+          LOG("Read error " << PORT_ErrorToName(err) << ": "
+                            << PORT_ErrorToString(err));
+        }
         if (err != PR_WOULD_BLOCK_ERROR && expect_readwrite_error_) {
+          if (ErrorIsFatal(err)) {
+            SetState(STATE_ERROR);
+          }
           error_code_ = err;
           expect_readwrite_error_ = false;
         }
@@ -1424,7 +1441,7 @@ DataBuffer TlsAgentTestBase::MakeCannedTls13ServerHello() {
     uint32_t v;
     EXPECT_TRUE(sh.Read(sh.len() - 2, 2, &v));
     EXPECT_EQ(static_cast<uint32_t>(SSL_LIBRARY_VERSION_TLS_1_3), v);
-    sh.Write(sh.len() - 2, 0x7f00 | DTLS_1_3_DRAFT_VERSION, 2);
+    sh.Write(sh.len() - 2, SSL_LIBRARY_VERSION_DTLS_1_3_WIRE, 2);
   }
   return sh;
 }

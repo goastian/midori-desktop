@@ -7,8 +7,8 @@
 // This test makes sure that adding certificate exceptions behaves correctly
 // when done from the prefs window
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
+ChromeUtils.defineESModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
 });
 
 function test() {
@@ -20,7 +20,7 @@ function test() {
 
   function testAddCertificate() {
     win.removeEventListener("load", testAddCertificate);
-    Services.obs.addObserver(async function onCertUI(aSubject, aTopic, aData) {
+    Services.obs.addObserver(async function onCertUI() {
       Services.obs.removeObserver(onCertUI, "cert-exception-ui-ready");
       ok(win.gCert, "The certificate information should be available now");
 
@@ -39,7 +39,7 @@ function test() {
         certOverrideService.clearValidityOverride(INVALID_CERT_DOMAIN, -1, {});
       });
 
-      BrowserTestUtils.loadURIString(gBrowser, INVALID_CERT_LOCATION);
+      BrowserTestUtils.startLoadingURIString(gBrowser, INVALID_CERT_LOCATION);
       let loaded = await BrowserTestUtils.browserLoaded(
         gBrowser,
         false,

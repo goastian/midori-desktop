@@ -35,6 +35,7 @@
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/StaticPrefs_security.h"
 #include "mozilla/Unused.h"
+#include "mozilla/ipc/UtilityProcessSandboxing.h"
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
 #include "nsIGfxInfo.h"
@@ -219,44 +220,28 @@ static void AttachSandboxReporter(base::file_handle_mapping_vector* aFdMap) {
   aFdMap->push_back({srcFd, dstFd});
 }
 
-class SandboxFork : public base::LaunchOptions::ForkDelegate {
- public:
-  explicit SandboxFork(int aFlags, bool aChroot, int aServerFd = -1,
-                       int aClientFd = -1);
-  virtual ~SandboxFork();
-
-  void PrepareMapping(base::file_handle_mapping_vector* aMap);
-  pid_t Fork() override;
-
- private:
-  int mFlags;
-  int mChrootServer;
-  int mChrootClient;
-
-  void StartChrootServer();
-  SandboxFork(const SandboxFork&) = delete;
-  SandboxFork& operator=(const SandboxFork&) = delete;
-};
-
-static int GetEffectiveSandboxLevel(GeckoProcessType aType) {
+static int GetEffectiveSandboxLevel(GeckoProcessType aType,
+                                    ipc::SandboxingKind aKind) {
   auto info = SandboxInfo::Get();
   switch (aType) {
-    case GeckoProcessType_GMPlugin:
-      if (info.Test(SandboxInfo::kEnabledForMedia)) {
-        return 1;
-      }
-      return 0;
-    case GeckoProcessType_Content:
 #ifdef MOZ_ENABLE_FORKSERVER
       // With this env MOZ_SANDBOXED will be set, and mozsandbox will
-      // be preloaded for the fork server.  The content processes rely
-      // on wrappers defined by mozsandbox to work properly.
+      // be preloaded for the fork server.  Sandboxed child processes
+      // rely on wrappers defined by mozsandbox to work properly.
     case GeckoProcessType_ForkServer:
+      return 1;
+      break;
 #endif
+    case GeckoProcessType_Content:
       // GetEffectiveContentSandboxLevel is main-thread-only due to prefs.
       MOZ_ASSERT(NS_IsMainThread());
       if (info.Test(SandboxInfo::kEnabledForContent)) {
         return GetEffectiveContentSandboxLevel();
+      }
+      return 0;
+    case GeckoProcessType_GMPlugin:
+      if (info.Test(SandboxInfo::kEnabledForMedia)) {
+        return 1;
       }
       return 0;
     case GeckoProcessType_RDD:
@@ -266,14 +251,16 @@ static int GetEffectiveSandboxLevel(GeckoProcessType aType) {
       MOZ_ASSERT(NS_IsMainThread());
       return GetEffectiveSocketProcessSandboxLevel();
     case GeckoProcessType_Utility:
-      return PR_GetEnv("MOZ_DISABLE_UTILITY_SANDBOX") == nullptr ? 1 : 0;
+      return IsUtilitySandboxEnabled(aKind);
     default:
       return 0;
   }
 }
 
-void SandboxLaunchPrepare(GeckoProcessType aType,
-                          base::LaunchOptions* aOptions) {
+// static
+void SandboxLaunch::Configure(GeckoProcessType aType, SandboxingKind aKind,
+                              LaunchOptions* aOptions) {
+  MOZ_ASSERT(aOptions->fork_flags == 0 && !aOptions->sandbox_chroot);
   auto info = SandboxInfo::Get();
 
   // We won't try any kind of sandboxing without seccomp-bpf.
@@ -282,7 +269,7 @@ void SandboxLaunchPrepare(GeckoProcessType aType,
   }
 
   // Check prefs (and env vars) controlling sandbox use.
-  int level = GetEffectiveSandboxLevel(aType);
+  int level = GetEffectiveSandboxLevel(aType, aKind);
   if (level == 0) {
     return;
   }
@@ -332,6 +319,13 @@ void SandboxLaunchPrepare(GeckoProcessType aType,
         flags |= CLONE_NEWNET;
       }
       break;
+    case GeckoProcessType_Utility:
+      if (level >= 1) {
+        canChroot = true;
+        flags |= CLONE_NEWIPC;
+        flags |= CLONE_NEWNET;
+      }
+      break;
     case GeckoProcessType_Content:
       if (level >= 4) {
         canChroot = true;
@@ -362,88 +356,49 @@ void SandboxLaunchPrepare(GeckoProcessType aType,
 
   if (canChroot || flags != 0) {
     flags |= CLONE_NEWUSER;
-    auto forker = MakeUnique<SandboxFork>(flags, canChroot);
-    forker->PrepareMapping(&aOptions->fds_to_remap);
-    aOptions->fork_delegate = std::move(forker);
-    // Pass to |SandboxLaunchForkServerPrepare()| in the fork server.
-    aOptions->env_map[kSandboxChrootEnvFlag] =
-        std::to_string(canChroot ? 1 : 0) + std::to_string(flags);
   }
+
+  aOptions->env_map[kSandboxChrootEnvFlag] = std::to_string(canChroot ? 1 : 0);
+
+  aOptions->sandbox_chroot = canChroot;
+  aOptions->fork_flags = flags;
 }
 
-#if defined(MOZ_ENABLE_FORKSERVER)
-/**
- * Called by the fork server to install a fork delegator.
- *
- * In the case of fork server, the value of the flags of |SandboxFork|
- * are passed as an env variable to the fork server so that we can
- * recreate a |SandboxFork| as a fork delegator at the fork server.
- */
-void SandboxLaunchForkServerPrepare(const std::vector<std::string>& aArgv,
-                                    base::LaunchOptions& aOptions) {
-  auto chroot = std::find_if(
-      aOptions.env_map.begin(), aOptions.env_map.end(),
-      [](auto& elt) { return elt.first == kSandboxChrootEnvFlag; });
-  if (chroot == aOptions.env_map.end()) {
-    return;
-  }
-  bool canChroot = chroot->second.c_str()[0] == '1';
-  int flags = atoi(chroot->second.c_str() + 1);
-  MOZ_ASSERT(flags || canChroot);
+SandboxLaunch::SandboxLaunch()
+    : mFlags(0), mChrootServer(-1), mChrootClient(-1) {}
 
-  // Find chroot server fd.  It is supposed to be map to
-  // kSandboxChrootServerFd so that we find it out from the mapping.
-  auto fdmap = std::find_if(
-      aOptions.fds_to_remap.begin(), aOptions.fds_to_remap.end(),
-      [](auto& elt) { return elt.second == kSandboxChrootServerFd; });
-  MOZ_ASSERT(fdmap != aOptions.fds_to_remap.end(),
-             "ChrootServerFd is not found with sandbox chroot");
-  int chrootserverfd = fdmap->first;
-  aOptions.fds_to_remap.erase(fdmap);
-
-  // Set only the chroot server fd, not the client fd.  Because, the
-  // client fd is already in |fds_to_remap|, we don't need the forker
-  // to do it again.  And, the forker need only the server fd, that
-  // chroot server uses it to sync with the client (content).  See
-  // |SandboxFox::StartChrootServer()|.
-  auto forker = MakeUnique<SandboxFork>(flags, canChroot, chrootserverfd);
-  aOptions.fork_delegate = std::move(forker);
-}
-#endif
-
-SandboxFork::SandboxFork(int aFlags, bool aChroot, int aServerFd, int aClientFd)
-    : mFlags(aFlags), mChrootServer(aServerFd), mChrootClient(aClientFd) {
-  if (aChroot && mChrootServer < 0) {
-    int fds[2];
-    int rv = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
-    if (rv != 0) {
-      SANDBOX_LOG_ERRNO("socketpair");
-      MOZ_CRASH("socketpair failed");
-    }
-    mChrootClient = fds[0];
-    mChrootServer = fds[1];
-  }
-}
-
-void SandboxFork::PrepareMapping(base::file_handle_mapping_vector* aMap) {
-  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_ForkServer);
-  if (mChrootClient >= 0) {
-    aMap->push_back({mChrootClient, kSandboxChrootClientFd});
-  }
-#if defined(MOZ_ENABLE_FORKSERVER)
-  if (mChrootServer >= 0) {
-    aMap->push_back({mChrootServer, kSandboxChrootServerFd});
-  }
-#endif
-}
-
-SandboxFork::~SandboxFork() {
+SandboxLaunch::~SandboxLaunch() {
   if (mChrootClient >= 0) {
     close(mChrootClient);
   }
   if (mChrootServer >= 0) {
     close(mChrootServer);
   }
+}
+
+bool SandboxLaunch::Prepare(LaunchOptions* aOptions) {
+  MOZ_ASSERT(mChrootClient < 0 && mChrootServer < 0);
+
+  mFlags = aOptions->fork_flags;
+
+  // Create the socket for communication between the child process and
+  // the chroot helper process.  The client end is passed to the child
+  // via `fds_to_remap` and the server end is inherited and used in
+  // `StartChrootServer`.
+  if (aOptions->sandbox_chroot) {
+    int fds[2];
+    int rv = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
+    if (rv != 0) {
+      SANDBOX_LOG_ERRNO("socketpair");
+      return false;
+    }
+    mChrootClient = fds[0];
+    mChrootServer = fds[1];
+
+    aOptions->fds_to_remap.push_back({mChrootClient, kSandboxChrootClientFd});
+  }
+
+  return true;
 }
 
 static void BlockAllSignals(sigset_t* aOldSigs) {
@@ -563,6 +518,8 @@ static pid_t ForkWithFlags(int aFlags) {
   return ret;
 }
 
+// Returns true for success, or returns false and sets errno on
+// failure.  Intended only for procfs pseudo-files.
 static bool WriteStringToFile(const char* aPath, const char* aStr,
                               const size_t aLen) {
   int fd = open(aPath, O_WRONLY);
@@ -571,6 +528,11 @@ static bool WriteStringToFile(const char* aPath, const char* aStr,
   }
   ssize_t written = write(fd, aStr, aLen);
   if (close(fd) != 0 || written != ssize_t(aLen)) {
+    // procfs shouldn't ever cause a short write, but ensure that
+    // errno is set to something distinctive if it does
+    if (written >= 0) {
+      errno = EMSGSIZE;
+    }
     return false;
   }
   return true;
@@ -589,6 +551,7 @@ static void ConfigureUserNamespace(uid_t uid, gid_t gid) {
   len = static_cast<size_t>(SafeSPrintf(buf, "%d %d 1", uid, uid));
   MOZ_RELEASE_ASSERT(len < sizeof(buf));
   if (!WriteStringToFile("/proc/self/uid_map", buf, len)) {
+    SANDBOX_LOG_ERRNO("writing /proc/self/uid_map");
     MOZ_CRASH("Failed to write /proc/self/uid_map");
   }
 
@@ -601,6 +564,7 @@ static void ConfigureUserNamespace(uid_t uid, gid_t gid) {
   len = static_cast<size_t>(SafeSPrintf(buf, "%d %d 1", gid, gid));
   MOZ_RELEASE_ASSERT(len < sizeof(buf));
   if (!WriteStringToFile("/proc/self/gid_map", buf, len)) {
+    SANDBOX_LOG_ERRNO("writing /proc/self/gid_map");
     MOZ_CRASH("Failed to write /proc/self/gid_map");
   }
 }
@@ -611,7 +575,7 @@ static void DropAllCaps() {
   }
 }
 
-pid_t SandboxFork::Fork() {
+pid_t SandboxLaunch::Fork() {
   if (mFlags == 0) {
     MOZ_ASSERT(mChrootServer < 0);
     return fork();
@@ -647,16 +611,28 @@ pid_t SandboxFork::Fork() {
 
   if (mChrootServer >= 0) {
     StartChrootServer();
+    // Don't close the client fd when this object is destroyed.  At
+    // this point we're in the child process proper, so it's "owned"
+    // by the FileDescriptorShuffle / CloseSuperfluous code (i.e.,
+    // that's what will consume it and close it).
+    mChrootClient = -1;
   }
 
-  // execve() will drop capabilities, but it seems best to also drop
-  // them here in case they'd do something unexpected in the generic
-  // post-fork code.
+  // execve() will drop capabilities, but the fork server case doesn't
+  // exec so we need to do this directly.  (Also, it's a good idea to
+  // follow the principle of least privilege even when not strictly
+  // necessary.)
+  //
+  // Note that, while capabilities within an unprivileged user
+  // namespace are constrained in theory, in practice they expose a
+  // lot of attack surface and there have been exploitable kernel bugs
+  // related to that in the past, so we really want to drop them
+  // before doing anything that needs sandboxing.
   DropAllCaps();
   return 0;
 }
 
-void SandboxFork::StartChrootServer() {
+void SandboxLaunch::StartChrootServer() {
   // Run the rest of this function in a separate process that can
   // chroot() on behalf of this process after it's sandboxed.
   pid_t pid = ForkWithFlags(CLONE_FS);
@@ -681,6 +657,9 @@ void SandboxFork::StartChrootServer() {
 
   char msg;
   ssize_t msgLen = HANDLE_EINTR(read(mChrootServer, &msg, 1));
+  if (msgLen < 0) {
+    SANDBOX_LOG_ERRNO("chroot server couldn't read request");
+  }
   if (msgLen == 0) {
     // Process exited before chrooting (or chose not to chroot?).
     _exit(0);
@@ -693,7 +672,10 @@ void SandboxFork::StartChrootServer() {
   // exits at the end of this function, and which is always
   // unwriteable.
   int rv = chroot("/proc/self/fdinfo");
-  MOZ_RELEASE_ASSERT(rv == 0);
+  if (rv != 0) {
+    SANDBOX_LOG_ERRNO("chroot");
+    MOZ_CRASH("chroot failed");
+  }
 
   // Drop CAP_SYS_CHROOT ASAP.  This must happen before responding;
   // the main child won't be able to waitpid(), so it could start
@@ -704,10 +686,16 @@ void SandboxFork::StartChrootServer() {
   // remove that.  (Note: if the process can obtain directory fds, for
   // example via SandboxBroker, it must be blocked from using fchdir.)
   rv = chdir("/");
-  MOZ_RELEASE_ASSERT(rv == 0);
+  if (rv != 0) {
+    SANDBOX_LOG_ERRNO("chdir(\"/\")");
+    MOZ_CRASH("chdir(\"/\") failed");
+  }
 
   msg = kSandboxChrootResponse;
   msgLen = HANDLE_EINTR(write(mChrootServer, &msg, 1));
+  if (msgLen < 0) {
+    SANDBOX_LOG_ERRNO("chroot server couldn't send response");
+  }
   MOZ_RELEASE_ASSERT(msgLen == 1);
   _exit(0);
 }

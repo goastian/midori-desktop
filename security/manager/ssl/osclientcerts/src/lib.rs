@@ -6,11 +6,11 @@
 #![allow(non_snake_case)]
 
 extern crate byteorder;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[macro_use]
 extern crate core_foundation;
 extern crate env_logger;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[macro_use]
 extern crate lazy_static;
 #[cfg(target_os = "macos")]
@@ -30,12 +30,12 @@ use std::ffi::CStr;
 use std::sync::Mutex;
 use std::thread;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod backend_macos;
 #[cfg(target_os = "windows")]
 mod backend_windows;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use crate::backend_macos::Backend;
 #[cfg(target_os = "windows")]
 use crate::backend_windows::Backend;
@@ -143,7 +143,7 @@ extern "C" fn C_Initialize(pInitArgs: CK_VOID_PTR) -> CK_RV {
         mechanisms,
     }) {
         Some(_unexpected_previous_module_state) => {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
                 log_with_thread_id!(info, "C_Initialize: module state previously set (this is expected on macOS - replacing it)");
             }
@@ -534,7 +534,7 @@ extern "C" fn C_GetAttributeValue(
         return CKR_DEVICE_ERROR;
     }
     for (i, value) in values.iter().enumerate().take(ulCount as usize) {
-        let mut attr = unsafe { &mut *pTemplate.add(i) };
+        let attr = unsafe { &mut *pTemplate.add(i) };
         if let Some(attr_value) = value {
             if attr.pValue.is_null() {
                 attr.ulValueLen = attr_value.len() as CK_ULONG;
@@ -1145,7 +1145,7 @@ extern "C" fn C_WaitForSlotEvent(
 
 /// To be a valid PKCS #11 module, this list of functions must be supported. At least cryptoki 2.2
 /// must be supported for this module to work in NSS.
-static mut FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
+static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     version: CK_VERSION { major: 2, minor: 2 },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
@@ -1227,9 +1227,14 @@ pub unsafe extern "C" fn C_GetFunctionList(ppFunctionList: CK_FUNCTION_LIST_PTR_
     if ppFunctionList.is_null() {
         return CKR_ARGUMENTS_BAD;
     }
-    *ppFunctionList = &mut FUNCTION_LIST;
+    // CK_FUNCTION_LIST_PTR is a *mut CK_FUNCTION_LIST, but as per the
+    // specification, the caller must treat it as *const CK_FUNCTION_LIST.
+    *ppFunctionList = std::ptr::addr_of!(FUNCTION_LIST) as CK_FUNCTION_LIST_PTR;
     CKR_OK
 }
 
-#[cfg_attr(target_os = "macos", link(name = "Security", kind = "framework"))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "ios"),
+    link(name = "Security", kind = "framework")
+)]
 extern "C" {}

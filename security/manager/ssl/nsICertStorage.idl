@@ -6,10 +6,6 @@
 #include "nsISupports.idl"
 #include "nsIVariant.idl"
 
-%{C++
-#define NS_CERTSTORAGE_CONTRACTID "@mozilla.org/security/certstorage;1"
-%}
-
 /**
  * Callback type used to notify callers that an operation performed by
  * nsICertStorage has completed. Indicates the result of the requested
@@ -178,7 +174,7 @@ interface nsICertStorage : nsISupports {
    *    - STATE_NO_FILTER if there is no (usable) CRLite filter.
    * No lookup is performed in the STATE_NOT_ENROLLED and STATE_NOT_COVERED cases.
    */
-  [must_use]
+  [must_use, noscript]
   short getCRLiteRevocationState(in Array<octet> issuer,
                                  in Array<octet> issuerSPKI,
                                  in Array<octet> serialNumber,
@@ -207,8 +203,8 @@ interface nsICertStorage : nsISupports {
    * this issuer SPKI and serial number is revoked according to the current set of stashed CRLite
    * revocation information.
    */
-  [must_use]
-  bool isCertRevokedByStash(in Array<octet> issuerSPKI, in Array<octet> serialNumber);
+  [must_use, noscript]
+  boolean isCertRevokedByStash(in Array<octet> issuerSPKI, in Array<octet> serialNumber);
 
   /**
    * Trust flags to use when adding a adding a certificate.

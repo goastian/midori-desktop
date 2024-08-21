@@ -21,6 +21,7 @@ enum FaultType {
   None = 0,
   ZeroRtt,
   UnknownSNI,
+  Xyber,
 };
 
 struct FaultyServerHost {
@@ -37,6 +38,10 @@ const char* kHostZeroRttAlertVersion =
 const char* kHostZeroRttAlertUnexpected = "0rtt-alert-unexpected.example.com";
 const char* kHostZeroRttAlertDowngrade = "0rtt-alert-downgrade.example.com";
 
+const char* kHostXyberNetInterrupt = "xyber-net-interrupt.example.com";
+const char* kHostXyberAlertAfterServerHello =
+    "xyber-alert-after-server-hello.example.com";
+
 const char* kCertWildcard = "default-ee";
 
 /* Each type of failure gets a different SNI.
@@ -50,6 +55,8 @@ const FaultyServerHost sFaultyServerHosts[]{
     {kHostZeroRttAlertVersion, kCertWildcard, ZeroRtt},
     {kHostZeroRttAlertUnexpected, kCertWildcard, ZeroRtt},
     {kHostZeroRttAlertDowngrade, kCertWildcard, ZeroRtt},
+    {kHostXyberNetInterrupt, kCertWildcard, Xyber},
+    {kHostXyberAlertAfterServerHello, kCertWildcard, Xyber},
     {nullptr, nullptr},
 };
 
@@ -150,17 +157,53 @@ void SecretCallbackFailZeroRtt(PRFileDesc* fd, PRUint16 epoch,
     } else if (!strcmp(host->mHostName, kHostZeroRttAlertVersion)) {
       SSL3_SendAlert(ss, alert_fatal, protocol_version);
     } else if (!strcmp(host->mHostName, kHostZeroRttAlertUnexpected)) {
-      SSL3_SendAlert(ss, alert_fatal, no_alert);
+      SSL3_SendAlert(ss, alert_fatal, unexpected_message);
     }
   }
 }
 
-/* An SSLRecordWriteCallback can replace the TLS record layer. */
-SECStatus WriteCallbackExample(PRFileDesc* fd, PRUint16 epoch,
+SECStatus FailingWriteCallback(PRFileDesc* fd, PRUint16 epoch,
                                SSLContentType contentType, const PRUint8* data,
                                unsigned int len, void* arg) {
-  /* do something */
-  return SECSuccess;
+  return SECFailure;
+}
+
+void SecretCallbackFailXyber(PRFileDesc* fd, PRUint16 epoch,
+                             SSLSecretDirection dir, PK11SymKey* secret,
+                             void* arg) {
+  fprintf(stderr, "Xyber handler epoch=%d dir=%d\n", epoch, (uint32_t)dir);
+  FaultyServerHost* host = static_cast<FaultyServerHost*>(arg);
+
+  if (epoch == 2 && dir == ssl_secret_write) {
+    sslSocket* ss = ssl_FindSocket(fd);
+    if (!ss) {
+      fprintf(stderr, "Xyber handler, no ss!\n");
+      return;
+    }
+
+    if (!ss->sec.keaGroup) {
+      fprintf(stderr, "Xyber handler, no ss->sec.keaGroup!\n");
+      return;
+    }
+
+    char path[256];
+    SprintfLiteral(path, "/callback/%u", ss->sec.keaGroup->name);
+    DoCallback(path);
+
+    if (ss->sec.keaGroup->name != ssl_grp_kem_xyber768d00) {
+      return;
+    }
+
+    fprintf(stderr, "Xyber handler, configuring alert\n");
+    if (strcmp(host->mHostName, kHostXyberNetInterrupt) == 0) {
+      // Install a record write callback that causes the next write to fail.
+      // The client will see this as a PR_END_OF_FILE / NS_ERROR_NET_INTERRUPT
+      // error.
+      ss->recordWriteCallback = FailingWriteCallback;
+    } else if (!strcmp(host->mHostName, kHostXyberAlertAfterServerHello)) {
+      SSL3_SendAlert(ss, alert_fatal, close_notify);
+    }
+  }
 }
 
 int32_t DoSNISocketConfig(PRFileDesc* aFd, const SECItem* aSrvNameArr,
@@ -176,9 +219,17 @@ int32_t DoSNISocketConfig(PRFileDesc* aFd, const SECItem* aSrvNameArr,
     fprintf(stderr, "found pre-defined host '%s'\n", host->mHostName);
   }
 
+  const SSLNamedGroup xyberTestNamedGroups[] = {ssl_grp_kem_xyber768d00,
+                                                ssl_grp_ec_curve25519};
+
   switch (host->mFaultType) {
     case ZeroRtt:
       SSL_SecretCallback(aFd, &SecretCallbackFailZeroRtt, (void*)host);
+      break;
+    case Xyber:
+      SSL_SecretCallback(aFd, &SecretCallbackFailXyber, (void*)host);
+      SSL_NamedGroupConfig(aFd, xyberTestNamedGroups,
+                           mozilla::ArrayLength(xyberTestNamedGroups));
       break;
     case None:
       break;

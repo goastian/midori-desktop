@@ -28,8 +28,7 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_security.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/ipc/BackgroundChild.h"
-#include "mozilla/ipc/PBackgroundChild.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/net/SSLTokensCache.h"
 #include "mozilla/net/SocketProcessChild.h"
 #include "mozilla/psm/IPCClientCertsChild.h"
@@ -43,9 +42,7 @@
 #include "nsCharSeparatedTokenizer.h"
 #include "nsClientAuthRemember.h"
 #include "nsContentUtils.h"
-#include "nsIClientAuthDialogs.h"
 #include "nsISocketProvider.h"
-#include "nsISocketTransport.h"
 #include "nsIWebProgressListener.h"
 #include "nsNSSCertHelper.h"
 #include "nsNSSComponent.h"
@@ -60,6 +57,12 @@
 #include "sslerr.h"
 #include "sslexp.h"
 #include "sslproto.h"
+#include "zlib.h"
+#include "brotli/decode.h"
+
+#if defined(__arm__)
+#  include "mozilla/arm.h"
+#endif
 
 using namespace mozilla;
 using namespace mozilla::psm;
@@ -444,6 +447,18 @@ bool retryDueToTLSIntolerance(PRErrorCode err, NSSSocketControl* socketInfo) {
     return true;
   }
 
+  if (!socketInfo->IsPreliminaryHandshakeDone() &&
+      !socketInfo->HasTls13HandshakeSecrets() && socketInfo->SentXyberShare()) {
+    nsAutoCString errorName;
+    const char* prErrorName = PR_ErrorToName(err);
+    if (prErrorName) {
+      errorName.AppendASCII(prErrorName);
+    }
+    mozilla::glean::tls::xyber_intolerance_reason.Get(errorName).Add(1);
+    // Don't record version intolerance if we sent Xyber, just force a retry.
+    return true;
+  }
+
   SSLVersionRange range = socketInfo->GetTLSVersionRange();
   nsSSLIOLayerHelpers& helpers = socketInfo->SharedState().IOLayerHelpers();
 
@@ -757,7 +772,6 @@ static int16_t nsSSLIOLayerPoll(PRFileDesc* fd, int16_t in_flags,
 
 nsSSLIOLayerHelpers::nsSSLIOLayerHelpers(uint32_t aTlsFlags)
     : mTreatUnsafeNegotiationAsBroken(false),
-      mTLSIntoleranceInfo(),
       mVersionFallbackLimit(SSL_LIBRARY_VERSION_TLS_1_0),
       mutex("nsSSLIOLayerHelpers.mutex"),
       mTlsFlags(aTlsFlags) {}
@@ -1267,6 +1281,9 @@ static PRFileDesc* nsSSLIOLayerImportFD(PRFileDesc* fd,
       SECSuccess) {
     return nullptr;
   }
+  if (SSL_SecretCallback(sslSock, SecretCallback, infoObject) != SECSuccess) {
+    return nullptr;
+  }
   if (SSL_SetCanFalseStartCallback(sslSock, CanFalseStartCallback,
                                    infoObject) != SECSuccess) {
     return nullptr;
@@ -1313,6 +1330,113 @@ static const SSLSignatureScheme sEnabledSignatureSchemes[] = {
 #endif
     ssl_sig_rsa_pkcs1_sha1,
 };
+
+enum CertificateCompressionAlgorithms {
+  zlib = 0x01,
+  brotli = 0x2,
+};
+
+void GatherCertificateCompressionTelemetry(SECStatus rv,
+                                           CertificateCompressionAlgorithms alg,
+                                           PRUint64 actualCertLen,
+                                           PRUint64 encodedCertLen) {
+  nsAutoCString decoder;
+
+  switch (alg) {
+    case zlib:
+      decoder.AssignLiteral("zlib");
+      break;
+    case brotli:
+      decoder.AssignLiteral("brotli");
+      break;
+  }
+
+  mozilla::glean::cert_compression::used.Get(decoder).Add(1);
+
+  if (rv != SECSuccess) {
+    mozilla::glean::cert_compression::failures.Get(decoder).Add(1);
+    return;
+  }
+
+  if (actualCertLen >= encodedCertLen) {
+    switch (alg) {
+      case zlib:
+        mozilla::glean::cert_compression::zlib_saved_bytes
+            .AccumulateSingleSample(actualCertLen - encodedCertLen);
+        break;
+
+      case brotli:
+        mozilla::glean::cert_compression::brotli_saved_bytes
+            .AccumulateSingleSample(actualCertLen - encodedCertLen);
+        break;
+    }
+  }
+}
+
+SECStatus zlibCertificateDecode(const SECItem* input, unsigned char* output,
+                                size_t outputLen, size_t* usedLen) {
+  SECStatus rv = SECFailure;
+  if (!input || !input->data || input->len == 0 || !output || outputLen == 0) {
+    PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+    return rv;
+  }
+
+  z_stream strm = {};
+
+  if (inflateInit(&strm) != Z_OK) {
+    PR_SetError(SEC_ERROR_LIBRARY_FAILURE, 0);
+    return rv;
+  }
+
+  auto cleanup = MakeScopeExit([&] {
+    GatherCertificateCompressionTelemetry(rv, zlib, *usedLen, input->len);
+    (void)inflateEnd(&strm);
+  });
+
+  strm.avail_in = input->len;
+  strm.next_in = input->data;
+
+  strm.avail_out = outputLen;
+  strm.next_out = output;
+
+  int ret = inflate(&strm, Z_FINISH);
+  bool ok = ret == Z_STREAM_END && strm.avail_in == 0 && strm.avail_out == 0;
+  if (!ok) {
+    PR_SetError(SEC_ERROR_BAD_DATA, 0);
+    return rv;
+  }
+
+  *usedLen = strm.total_out;
+  rv = SECSuccess;
+  return rv;
+}
+
+SECStatus brotliCertificateDecode(const SECItem* input, unsigned char* output,
+                                  size_t outputLen, size_t* usedLen) {
+  SECStatus rv = SECFailure;
+
+  if (!input || !input->data || input->len == 0 || !output || outputLen == 0) {
+    PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+    return rv;
+  }
+
+  auto cleanup = MakeScopeExit([&] {
+    GatherCertificateCompressionTelemetry(rv, brotli, *usedLen, input->len);
+  });
+
+  size_t uncompressedSize = outputLen;
+  BrotliDecoderResult result = BrotliDecoderDecompress(
+      input->len, input->data, &uncompressedSize, output);
+
+  if (result != BROTLI_DECODER_RESULT_SUCCESS) {
+    PR_SetError(SEC_ERROR_BAD_DATA, 0);
+    return rv;
+  }
+
+  *usedLen = uncompressedSize;
+  rv = SECSuccess;
+  return rv;
+}
 
 static nsresult nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
                                        bool haveProxy, const char* host,
@@ -1409,7 +1533,7 @@ static nsresult nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
   // Enable ECH GREASE if suitable. Has no impact if 'real' ECH is being used.
   if (range.max >= SSL_LIBRARY_VERSION_TLS_1_3 &&
       !(infoObject->GetProviderFlags() & (nsISocketProvider::BE_CONSERVATIVE |
-                                          nsISocketTransport::DONT_TRY_ECH)) &&
+                                          nsISocketProvider::DONT_TRY_ECH)) &&
       StaticPrefs::security_tls_ech_grease_probability()) {
     if ((RandomUint64().valueOr(0) % 100) >=
         100 - StaticPrefs::security_tls_ech_grease_probability()) {
@@ -1430,19 +1554,61 @@ static nsresult nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
   }
 
   // Include a modest set of named groups.
-  // Please change getKeaGroupName in nsNSSCallbacks.cpp when changing the list
+  // Please change getKeaGroupName in nsNSSCallbacks.cpp when changing the lists
   // here.
-  const SSLNamedGroup namedGroups[] = {
-      ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
-      ssl_grp_ec_secp521r1,  ssl_grp_ffdhe_2048,   ssl_grp_ffdhe_3072};
-  if (SECSuccess != SSL_NamedGroupConfig(fd, namedGroups,
-                                         mozilla::ArrayLength(namedGroups))) {
-    return NS_ERROR_FAILURE;
+  if (StaticPrefs::security_tls_enable_kyber() &&
+      range.max >= SSL_LIBRARY_VERSION_TLS_1_3 &&
+      !(infoObject->GetProviderFlags() &
+        (nsISocketProvider::BE_CONSERVATIVE | nsISocketProvider::IS_RETRY))) {
+    const SSLNamedGroup namedGroups[] = {
+        ssl_grp_kem_xyber768d00, ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1,
+        ssl_grp_ec_secp384r1,    ssl_grp_ec_secp521r1,  ssl_grp_ffdhe_2048,
+        ssl_grp_ffdhe_3072};
+    if (SECSuccess != SSL_NamedGroupConfig(fd, namedGroups,
+                                           mozilla::ArrayLength(namedGroups))) {
+      return NS_ERROR_FAILURE;
+    }
+    // This ensures that we send key shares for Xyber768D00, X25519, and P-256
+    // in TLS 1.3, so that servers are less likely to use HelloRetryRequest.
+    if (SECSuccess != SSL_SendAdditionalKeyShares(fd, 2)) {
+      return NS_ERROR_FAILURE;
+    }
+    infoObject->WillSendXyberShare();
+  } else {
+    const SSLNamedGroup namedGroups[] = {
+        ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
+        ssl_grp_ec_secp521r1,  ssl_grp_ffdhe_2048,   ssl_grp_ffdhe_3072};
+    // Skip the |ssl_grp_kem_xyber768d00| entry.
+    if (SECSuccess != SSL_NamedGroupConfig(fd, namedGroups,
+                                           mozilla::ArrayLength(namedGroups))) {
+      return NS_ERROR_FAILURE;
+    }
+    // This ensures that we send key shares for X25519 and P-256 in TLS 1.3, so
+    // that servers are less likely to use HelloRetryRequest.
+    if (SECSuccess != SSL_SendAdditionalKeyShares(fd, 1)) {
+      return NS_ERROR_FAILURE;
+    }
   }
-  // This ensures that we send key shares for X25519 and P-256 in TLS 1.3, so
-  // that servers are less likely to use HelloRetryRequest.
-  if (SECSuccess != SSL_SendAdditionalKeyShares(fd, 1)) {
-    return NS_ERROR_FAILURE;
+
+  // Enabling Certificate Compression Decoding mechanisms.
+  if (range.max >= SSL_LIBRARY_VERSION_TLS_1_3 &&
+      !(infoObject->GetProviderFlags() &
+        (nsISocketProvider::BE_CONSERVATIVE | nsISocketProvider::IS_RETRY))) {
+    SSLCertificateCompressionAlgorithm zlibAlg = {1, "zlib", nullptr,
+                                                  zlibCertificateDecode};
+
+    SSLCertificateCompressionAlgorithm brotliAlg = {2, "brotli", nullptr,
+                                                    brotliCertificateDecode};
+
+    if (StaticPrefs::security_tls_enable_certificate_compression_zlib() &&
+        SSL_SetCertificateCompressionAlgorithm(fd, zlibAlg) != SECSuccess) {
+      return NS_ERROR_FAILURE;
+    }
+
+    if (StaticPrefs::security_tls_enable_certificate_compression_brotli() &&
+        SSL_SetCertificateCompressionAlgorithm(fd, brotliAlg) != SECSuccess) {
+      return NS_ERROR_FAILURE;
+    }
   }
 
   // NOTE: Should this list ever include ssl_sig_rsa_pss_pss_sha* (or should
@@ -1472,31 +1638,33 @@ static nsresult nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
     return NS_ERROR_FAILURE;
   }
 
-#if defined(__arm__) && not defined(__ARM_FEATURE_CRYPTO)
-  unsigned int enabledCiphers = 0;
-  std::vector<uint16_t> ciphers(SSL_GetNumImplementedCiphers());
+#if defined(__arm__)
+  if (!mozilla::supports_arm_aes()) {
+    unsigned int enabledCiphers = 0;
+    std::vector<uint16_t> ciphers(SSL_GetNumImplementedCiphers());
 
-  // Returns only the enabled (reflecting prefs) ciphers, ordered
-  // by their occurence in
-  // https://hg.mozilla.org/projects/nss/file/a75ea4cdacd95282c6c245ebb849c25e84ccd908/lib/ssl/ssl3con.c#l87
-  if (SSL_CipherSuiteOrderGet(fd, ciphers.data(), &enabledCiphers) !=
-      SECSuccess) {
-    return NS_ERROR_FAILURE;
-  }
+    // Returns only the enabled (reflecting prefs) ciphers, ordered
+    // by their occurence in
+    // https://hg.mozilla.org/projects/nss/file/a75ea4cdacd95282c6c245ebb849c25e84ccd908/lib/ssl/ssl3con.c#l87
+    if (SSL_CipherSuiteOrderGet(fd, ciphers.data(), &enabledCiphers) !=
+        SECSuccess) {
+      return NS_ERROR_FAILURE;
+    }
 
-  // On ARM, prefer (TLS_CHACHA20_POLY1305_SHA256) over AES when hardware
-  // support for AES isn't available. However, it may be disabled. If enabled,
-  // it will either be element [0] or [1]*. If [0], we're done. If [1], swap it
-  // with [0] (TLS_AES_128_GCM_SHA256).
-  // *(assuming the compile-time order remains unchanged)
-  if (enabledCiphers > 1) {
-    if (ciphers[0] != TLS_CHACHA20_POLY1305_SHA256 &&
-        ciphers[1] == TLS_CHACHA20_POLY1305_SHA256) {
-      std::swap(ciphers[0], ciphers[1]);
+    // On ARM, prefer (TLS_CHACHA20_POLY1305_SHA256) over AES when hardware
+    // support for AES isn't available. However, it may be disabled. If enabled,
+    // it will either be element [0] or [1]*. If [0], we're done. If [1], swap
+    // it with [0] (TLS_AES_128_GCM_SHA256).
+    // *(assuming the compile-time order remains unchanged)
+    if (enabledCiphers > 1) {
+      if (ciphers[0] != TLS_CHACHA20_POLY1305_SHA256 &&
+          ciphers[1] == TLS_CHACHA20_POLY1305_SHA256) {
+        std::swap(ciphers[0], ciphers[1]);
 
-      if (SSL_CipherSuiteOrderSet(fd, ciphers.data(), enabledCiphers) !=
-          SECSuccess) {
-        return NS_ERROR_FAILURE;
+        if (SSL_CipherSuiteOrderSet(fd, ciphers.data(), enabledCiphers) !=
+            SECSuccess) {
+          return NS_ERROR_FAILURE;
+        }
       }
     }
   }
@@ -1681,24 +1849,6 @@ nsresult nsSSLIOLayerAddToSocket(int32_t family, const char* host, int32_t port,
   return NS_OK;
 }
 
-already_AddRefed<IPCClientCertsChild> GetIPCClientCertsActor() {
-  PBackgroundChild* backgroundActor =
-      BackgroundChild::GetOrCreateForSocketParentBridgeForCurrentThread();
-  if (!backgroundActor) {
-    return nullptr;
-  }
-  RefPtr<PIPCClientCertsChild> actor =
-      SingleManagedOrNull(backgroundActor->ManagedPIPCClientCertsChild());
-  if (!actor) {
-    actor = backgroundActor->SendPIPCClientCertsConstructor(
-        new IPCClientCertsChild());
-    if (!actor) {
-      return nullptr;
-    }
-  }
-  return actor.forget().downcast<IPCClientCertsChild>();
-}
-
 extern "C" {
 
 const uint8_t kIPCClientCertsObjectTypeCert = 1;
@@ -1709,7 +1859,14 @@ const uint8_t kIPCClientCertsObjectTypeECKey = 3;
 // parent process to find certificates and keys and send identifying
 // information about them over IPC.
 void DoFindObjects(FindObjectsCallback cb, void* ctx) {
-  RefPtr<IPCClientCertsChild> ipcClientCertsActor(GetIPCClientCertsActor());
+  net::SocketProcessChild* socketChild =
+      net::SocketProcessChild::GetSingleton();
+  if (!socketChild) {
+    return;
+  }
+
+  RefPtr<IPCClientCertsChild> ipcClientCertsActor(
+      socketChild->GetIPCClientCertsActor());
   if (!ipcClientCertsActor) {
     return;
   }
@@ -1753,7 +1910,14 @@ void DoFindObjects(FindObjectsCallback cb, void* ctx) {
 void DoSign(size_t cert_len, const uint8_t* cert, size_t data_len,
             const uint8_t* data, size_t params_len, const uint8_t* params,
             SignCallback cb, void* ctx) {
-  RefPtr<IPCClientCertsChild> ipcClientCertsActor(GetIPCClientCertsActor());
+  net::SocketProcessChild* socketChild =
+      net::SocketProcessChild::GetSingleton();
+  if (!socketChild) {
+    return;
+  }
+
+  RefPtr<IPCClientCertsChild> ipcClientCertsActor(
+      socketChild->GetIPCClientCertsActor());
   if (!ipcClientCertsActor) {
     return;
   }

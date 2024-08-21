@@ -13,13 +13,14 @@ const { ctypes } = ChromeUtils.importESModule(
 const { FileUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/FileUtils.sys.mjs"
 );
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 const { MockRegistrar } = ChromeUtils.importESModule(
   "resource://testing-common/MockRegistrar.sys.mjs"
 );
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-const { PromiseUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PromiseUtils.sys.mjs"
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
 );
 const { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
@@ -29,15 +30,16 @@ const { X509 } = ChromeUtils.importESModule(
   "resource://gre/modules/psm/X509.sys.mjs"
 );
 
-const isDebugBuild = Cc["@mozilla.org/xpcom/debug;1"].getService(
+const gIsDebugBuild = Cc["@mozilla.org/xpcom/debug;1"].getService(
   Ci.nsIDebug2
 ).isDebugBuild;
 
 // The test EV roots are only enabled in debug builds as a security measure.
-const gEVExpected = isDebugBuild;
+const gEVExpected = gIsDebugBuild;
 
-const CLIENT_AUTH_FILE_NAME = "ClientAuthRememberList.txt";
-const SSS_STATE_FILE_NAME = "SiteSecurityServiceState.txt";
+const CLIENT_AUTH_FILE_NAME = "ClientAuthRememberList.bin";
+const SSS_STATE_FILE_NAME = "SiteSecurityServiceState.bin";
+const SSS_STATE_OLD_FILE_NAME = "SiteSecurityServiceState.txt";
 const CERT_OVERRIDE_FILE_NAME = "cert_override.txt";
 
 const SEC_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
@@ -298,7 +300,7 @@ function checkCertErrorGenericAtTime(
   /* optional */ hostname,
   /* optional */ flags = NO_FLAGS
 ) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let result = new CertVerificationExpectedErrorResult(
       cert.commonName,
       expectedError,
@@ -540,7 +542,7 @@ async function asyncConnectTo(
   function Connection(host) {
     this.host = host;
     this.thread = Services.tm.currentThread;
-    this.defer = PromiseUtils.defer();
+    this.defer = Promise.withResolvers();
     let sts = Cc["@mozilla.org/network/socket-transport-service;1"].getService(
       Ci.nsISocketTransportService
     );
@@ -568,7 +570,7 @@ async function asyncConnectTo(
 
   Connection.prototype = {
     // nsITransportEventSink
-    onTransportStatus(aTransport, aStatus, aProgress, aProgressMax) {
+    onTransportStatus(aTransport, aStatus) {
       if (
         !this.connected &&
         aStatus == Ci.nsISocketTransport.STATUS_CONNECTED_TO
@@ -594,7 +596,7 @@ async function asyncConnectTo(
     },
 
     // nsIOutputStreamCallback
-    onOutputStreamReady(aStream) {
+    onOutputStreamReady() {
       if (aAfterStreamOpen) {
         aAfterStreamOpen(this.transport);
       }
@@ -772,7 +774,7 @@ function generateOCSPResponses(ocspRespArray, nssDBlocation) {
 // serverIdentities.
 function getFailingHttpServer(serverPort, serverIdentities) {
   let httpServer = new HttpServer();
-  httpServer.registerPrefixHandler("/", function (request, response) {
+  httpServer.registerPrefixHandler("/", function () {
     Assert.ok(false, "HTTP responder should not have been queried");
   });
   httpServer.identity.setPrimary("http", serverIdentities.shift(), serverPort);
@@ -900,7 +902,7 @@ function startOCSPResponder(
 // Given an OCSP responder (see startOCSPResponder), returns a promise that
 // resolves when the responder has successfully stopped.
 function stopOCSPResponder(responder) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     responder.stop(resolve);
   });
 }
@@ -975,7 +977,7 @@ class CertVerificationResult {
     this.resolve = resolve;
   }
 
-  verifyCertFinished(aPRErrorCode, aVerifiedChain, aHasEVPolicy) {
+  verifyCertFinished(aPRErrorCode) {
     if (this.successExpected) {
       equal(
         aPRErrorCode,
@@ -1015,7 +1017,7 @@ function asyncTestCertificateUsages(certdb, cert, expectedUsages) {
   let now = new Date().getTime() / 1000;
   let promises = [];
   Object.keys(allCertificateUsages).forEach(usageString => {
-    let promise = new Promise((resolve, reject) => {
+    let promise = new Promise(resolve => {
       let usage = allCertificateUsages[usageString];
       let successExpected = expectedUsages.includes(usage);
       let result = new CertVerificationResult(
@@ -1189,4 +1191,57 @@ function run_certutil_on_directory(directory, args, expectSuccess = true) {
   if (expectSuccess) {
     Assert.equal(process.exitValue, 0, "certutil should succeed");
   }
+}
+
+function get_data_storage_contents(dataStorageFileName) {
+  let stateFile = do_get_profile();
+  stateFile.append(dataStorageFileName);
+  if (!stateFile.exists()) {
+    return undefined;
+  }
+  return readFile(stateFile);
+}
+
+function u16_to_big_endian_bytes(u16) {
+  Assert.less(u16, 65536);
+  return [u16 / 256, u16 % 256];
+}
+
+// Appends a line to the given data storage file (as an nsIOutputStream).
+// score is an integer representing the number of unique days the item has been accessed.
+// lastAccessed is the day since the epoch the item was last accessed.
+// key and value are strings representing the key and value of the item.
+function append_line_to_data_storage_file(
+  outputStream,
+  score,
+  lastAccessed,
+  key,
+  value,
+  valueLength = 24,
+  useBadChecksum = false
+) {
+  let line = arrayToString(u16_to_big_endian_bytes(score));
+  line = line + arrayToString(u16_to_big_endian_bytes(lastAccessed));
+  line = line + key;
+  let keyPadding = [];
+  for (let i = 0; i < 256 - key.length; i++) {
+    keyPadding.push(0);
+  }
+  line = line + arrayToString(keyPadding);
+  line = line + value;
+  let valuePadding = [];
+  for (let i = 0; i < valueLength - value.length; i++) {
+    valuePadding.push(0);
+  }
+  line = line + arrayToString(valuePadding);
+  let checksum = 0;
+  Assert.equal(line.length % 2, 0);
+  for (let i = 0; i < line.length; i += 2) {
+    checksum ^= (line.charCodeAt(i) << 8) + line.charCodeAt(i + 1);
+  }
+  line =
+    arrayToString(
+      u16_to_big_endian_bytes(useBadChecksum ? ~checksum & 0xffff : checksum)
+    ) + line;
+  outputStream.write(line, line.length);
 }

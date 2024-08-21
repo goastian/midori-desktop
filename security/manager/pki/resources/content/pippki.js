@@ -127,7 +127,7 @@ async function exportToFile(parent, cert) {
   );
 
   var fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-  fp.init(parent, saveCertAs, Ci.nsIFilePicker.modeSave);
+  fp.init(parent.browsingContext, saveCertAs, Ci.nsIFilePicker.modeSave);
   fp.defaultString = certToFilename(cert);
   fp.defaultExtension = DEFAULT_CERT_EXTENSION;
   for (let format of Object.values(formats)) {
@@ -225,7 +225,7 @@ function asyncDetermineUsages(cert) {
   );
   Object.keys(certificateUsages).forEach(usageString => {
     promises.push(
-      new Promise((resolve, reject) => {
+      new Promise(resolve => {
         let usage = certificateUsages[usageString];
         certdb.asyncVerifyCertAtTime(
           cert,
@@ -233,7 +233,7 @@ function asyncDetermineUsages(cert) {
           0,
           null,
           now,
-          (aPRErrorCode, aVerifiedChain, aHasEVPolicy) => {
+          (aPRErrorCode, aVerifiedChain) => {
             resolve({
               usageString,
               errorCode: aPRErrorCode,

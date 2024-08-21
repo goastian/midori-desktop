@@ -67,9 +67,21 @@ using namespace sandbox::bpf_dsl;
 #  define PR_SET_PTRACER 0x59616d61
 #endif
 
-// The headers define O_LARGEFILE as 0 on x86_64, but we need the
+// Linux 5.17+
+#ifndef PR_SET_VMA
+#  define PR_SET_VMA 0x53564d41
+#endif
+#ifndef PR_SET_VMA_ANON_NAME
+#  define PR_SET_VMA_ANON_NAME 0
+#endif
+
+// The GNU libc headers define O_LARGEFILE as 0 on x86_64, but we need the
 // actual value because it shows up in file flags.
-#define O_LARGEFILE_REAL 00100000
+#if !defined(O_LARGEFILE) || O_LARGEFILE == 0
+#  define O_LARGEFILE_REAL 00100000
+#else
+#  define O_LARGEFILE_REAL O_LARGEFILE
+#endif
 
 // Not part of UAPI, but userspace sees it in F_GETFL; see bug 1650751.
 #define FMODE_NONOTIFY 0x4000000
@@ -712,11 +724,11 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
   }
 
   virtual ResultExpr PrctlPolicy() const {
-    // Note: this will probably need PR_SET_VMA if/when it's used on
-    // Android without being overridden by an allow-all policy, and
-    // the constant will need to be defined locally.
     Arg<int> op(0);
+    Arg<int> arg2(1);
     return Switch(op)
+        .CASES((PR_SET_VMA),  // Tagging of anonymous memory mappings
+               If(arg2 == PR_SET_VMA_ANON_NAME, Allow()).Else(InvalidSyscall()))
         .CASES((PR_GET_SECCOMP,   // BroadcastSetThreadSandbox, etc.
                 PR_SET_NAME,      // Thread creation
                 PR_SET_DUMPABLE,  // Crash reporting
@@ -882,8 +894,11 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
       // In the absence of a broker we still need to handle the
       // fstat-equivalent subset of fstatat; see bug 1673770.
       switch (sysno) {
-      CASES_FOR_fstatat:
-        return Trap(StatAtTrap, nullptr);
+        // statx may be used for fstat (bug 1867673)
+        case __NR_statx:
+          return Error(ENOSYS);
+        CASES_FOR_fstatat:
+          return Trap(StatAtTrap, nullptr);
       }
     }
 
@@ -901,7 +916,7 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
 
       CASES_FOR_clock_gettime:
       CASES_FOR_clock_getres:
-      CASES_FOR_clock_nanosleep : {
+      CASES_FOR_clock_nanosleep: {
         // clockid_t can encode a pid or tid to monitor another
         // process or thread's CPU usage (see CPUCLOCK_PID and related
         // definitions in include/linux/posix-timers.h in the kernel
@@ -956,7 +971,7 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
       CASES_FOR_fstat:
         return Allow();
 
-      CASES_FOR_fcntl : {
+      CASES_FOR_fcntl: {
         Arg<int> cmd(1);
         Arg<int> flags(2);
         // Typical use of F_SETFL is to modify the flags returned by
@@ -1021,6 +1036,13 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
         // that might use brk.
       case __NR_brk:
         return Allow();
+
+        // Similarly, mremap (bugs: 1047620, 1286119, 1860267)
+      case __NR_mremap: {
+        Arg<int> flags(3);
+        return If((flags & ~MREMAP_MAYMOVE) == 0, Allow())
+            .Else(SandboxPolicyBase::EvaluateSyscall(sysno));
+      }
 #endif
 
         // madvise hints used by malloc; see bug 1303813 and bug 1364533
@@ -1217,6 +1239,13 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
       CASES_FOR_statfs:
         return Trap(StatFsTrap, nullptr);
 
+        // GTK's theme parsing tries to getcwd() while sandboxed, but
+        // only during Talos runs.
+        // Also, Rust panics call getcwd to try to print relative paths
+        // in backtraces.
+      case __NR_getcwd:
+        return Error(ENOENT);
+
       default:
         return SandboxPolicyBase::EvaluateSyscall(sysno);
     }
@@ -1364,11 +1393,6 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
       case __NR_getppid:
         return Trap(GetPPidTrap, nullptr);
 
-        // GTK's theme parsing tries to getcwd() while sandboxed, but
-        // only during Talos runs.
-      case __NR_getcwd:
-        return Error(ENOENT);
-
 #  ifdef MOZ_PULSEAUDIO
       CASES_FOR_fchown:
       case __NR_fchmod:
@@ -1424,7 +1448,7 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
             .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
       }
 
-      CASES_FOR_fcntl : {
+      CASES_FOR_fcntl: {
         Arg<int> cmd(1);
         return Switch(cmd)
             // Nvidia GL and fontconfig (newer versions) use fcntl file locking.
@@ -1447,10 +1471,14 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
         // FIXME(bug 1510861) are we using any hints that aren't allowed
         // in SandboxPolicyCommon now?
       case __NR_madvise:
-        // libc's realloc uses mremap (Bug 1286119); wasm does too (bug
-        // 1342385).
-      case __NR_mremap:
         return Allow();
+
+        // wasm uses mremap (always with zero flags)
+      case __NR_mremap: {
+        Arg<int> flags(3);
+        return If(flags == 0, Allow())
+            .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
+      }
 
         // Bug 1462640: Mesa libEGL uses mincore to test whether values
         // are pointers, for reasons.
@@ -1573,9 +1601,6 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
       case __NR_clone:
         return ClonePolicy(Error(EPERM));
 
-      case __NR_clone3:
-        return Error(ENOSYS);
-
 #  ifdef __NR_fadvise64
       case __NR_fadvise64:
         return Allow();
@@ -1675,7 +1700,7 @@ class GMPSandboxPolicy : public SandboxPolicyCommon {
     strcpy(buf->sysname, "Linux");
     strcpy(buf->version, "3");
     return 0;
-  };
+  }
 
   static intptr_t FcntlTrap(const sandbox::arch_seccomp_data& aArgs,
                             void* aux) {
@@ -1820,10 +1845,24 @@ class RDDSandboxPolicy final : public SandboxPolicyCommon {
                                        bool aHasArgs) const override {
     switch (aCall) {
       // These are for X11.
+      //
+      // FIXME (bug 1884449): X11 is blocked now so we probably don't
+      // need these, but they're relatively harmless.
       case SYS_GETSOCKNAME:
       case SYS_GETPEERNAME:
       case SYS_SHUTDOWN:
         return Some(Allow());
+
+      case SYS_SOCKET:
+        // Hardware-accelerated decode uses EGL to manage hardware surfaces.
+        // When initialised it tries to connect to the Wayland server over a
+        // UNIX socket. It still works fine if it can't connect to Wayland, so
+        // don't let it create the socket (but don't kill the process for
+        // trying).
+        //
+        // We also see attempts to connect to an X server on desktop
+        // Linux sometimes (bug 1882598).
+        return Some(Error(EACCES));
 
       default:
         return SandboxPolicyCommon::EvaluateSocketCall(aCall, aHasArgs);
@@ -1843,15 +1882,23 @@ class RDDSandboxPolicy final : public SandboxPolicyCommon {
         // Note: 'b' is also the Binder device on Android.
         static constexpr unsigned long kDmaBufType =
             static_cast<unsigned long>('b') << _IOC_TYPESHIFT;
+#ifdef MOZ_ENABLE_V4L2
+        // Type 'V' for V4L2, used for hw accelerated decode
+        static constexpr unsigned long kVideoType =
+            static_cast<unsigned long>('V') << _IOC_TYPESHIFT;
+#endif
         // nvidia uses some ioctls from this range (but not actual
         // fbdev ioctls; nvidia uses values >= 200 for the NR field
         // (low 8 bits))
         static constexpr unsigned long kFbDevType =
             static_cast<unsigned long>('F') << _IOC_TYPESHIFT;
 
-        // Allow DRI and DMA-Buf for VA-API
+        // Allow DRI and DMA-Buf for VA-API. Also allow V4L2 if enabled
         return If(shifted_type == kDrmType, Allow())
             .ElseIf(shifted_type == kDmaBufType, Allow())
+#ifdef MOZ_ENABLE_V4L2
+            .ElseIf(shifted_type == kVideoType, Allow())
+#endif
             // Hack for nvidia, which isn't supported yet:
             .ElseIf(shifted_type == kFbDevType, Error(ENOTTY))
             .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
@@ -1881,6 +1928,11 @@ class RDDSandboxPolicy final : public SandboxPolicyCommon {
         return If(pid == 0, Allow()).Else(Trap(SchedTrap, nullptr));
       }
 
+        // The priority bounds are also used, sometimes (bug 1838675):
+      case __NR_sched_get_priority_min:
+      case __NR_sched_get_priority_max:
+        return Allow();
+
         // Mesa sometimes wants to know the OS version.
       case __NR_uname:
         return Allow();
@@ -1899,6 +1951,10 @@ class RDDSandboxPolicy final : public SandboxPolicyCommon {
         // process.)
       CASES_FOR_fstatfs:
         return Allow();
+
+        // nvidia drivers may attempt to spawn nvidia-modprobe
+      case __NR_clone:
+        return ClonePolicy(Error(EPERM));
 
         // Pass through the common policy.
       default:
@@ -1965,7 +2021,10 @@ class SocketProcessSandboxPolicy final : public SandboxPolicyCommon {
 
   ResultExpr PrctlPolicy() const override {
     Arg<int> op(0);
+    Arg<int> arg2(1);
     return Switch(op)
+        .CASES((PR_SET_VMA),  // Tagging of anonymous memory mappings
+               If(arg2 == PR_SET_VMA_ANON_NAME, Allow()).Else(InvalidSyscall()))
         .CASES((PR_SET_NAME,      // Thread creation
                 PR_SET_DUMPABLE,  // Crash reporting
                 PR_SET_PTRACER),  // Debug-mode crash handling
@@ -1994,7 +2053,7 @@ class SocketProcessSandboxPolicy final : public SandboxPolicyCommon {
             .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
       }
 
-      CASES_FOR_fcntl : {
+      CASES_FOR_fcntl: {
         Arg<int> cmd(1);
         return Switch(cmd)
             .Case(F_DUPFD_CLOEXEC, Allow())
@@ -2056,7 +2115,10 @@ class UtilitySandboxPolicy : public SandboxPolicyCommon {
 
   ResultExpr PrctlPolicy() const override {
     Arg<int> op(0);
+    Arg<int> arg2(1);
     return Switch(op)
+        .CASES((PR_SET_VMA),  // Tagging of anonymous memory mappings
+               If(arg2 == PR_SET_VMA_ANON_NAME, Allow()).Else(InvalidSyscall()))
         .CASES((PR_SET_NAME,        // Thread creation
                 PR_SET_DUMPABLE,    // Crash reporting
                 PR_SET_PTRACER,     // Debug-mode crash handling

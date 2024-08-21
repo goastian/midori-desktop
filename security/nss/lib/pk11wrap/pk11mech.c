@@ -198,6 +198,8 @@ PK11_GetKeyMechanism(CK_KEY_TYPE type)
             return CKM_KEA_KEY_DERIVE;
         case CKK_EC: /* CKK_ECDSA is deprecated */
             return CKM_ECDSA;
+        case CKK_EC_EDWARDS:
+            return CKM_EDDSA;
         case CKK_HKDF:
             return CKM_HKDF_DERIVE;
         case CKK_GENERIC_SECRET:
@@ -388,6 +390,9 @@ PK11_GetKeyType(CK_MECHANISM_TYPE type, unsigned long len)
         case CKM_EC_KEY_PAIR_GEN: /* aka CKM_ECDSA_KEY_PAIR_GEN */
         case CKM_ECDH1_DERIVE:
             return CKK_EC; /* CKK_ECDSA is deprecated */
+        case CKM_EC_EDWARDS_KEY_PAIR_GEN:
+        case CKM_EDDSA:
+            return CKK_EC_EDWARDS;
         case CKM_HKDF_KEY_GEN:
         case CKM_HKDF_DERIVE:
         case CKM_HKDF_DATA:
@@ -424,6 +429,8 @@ PK11_GetKeyType(CK_MECHANISM_TYPE type, unsigned long len)
         case CKM_TLS_PRF_GENERAL:
         case CKM_NSS_TLS_PRF_GENERAL_SHA256:
             return CKK_GENERIC_SECRET;
+        case CKM_NSS_KYBER_KEY_PAIR_GEN:
+            return CKK_NSS_KYBER;
         default:
             return pk11_lookup(type)->keyType;
     }
@@ -601,6 +608,8 @@ PK11_GetKeyGenWithSize(CK_MECHANISM_TYPE type, int size)
         case CKM_EC_KEY_PAIR_GEN: /* aka CKM_ECDSA_KEY_PAIR_GEN */
         case CKM_ECDH1_DERIVE:
             return CKM_EC_KEY_PAIR_GEN;
+        case CKM_EDDSA:
+            return CKM_EC_EDWARDS_KEY_PAIR_GEN;
         case CKM_SSL3_PRE_MASTER_KEY_GEN:
         case CKM_SSL3_MASTER_KEY_DERIVE:
         case CKM_SSL3_KEY_AND_MAC_DERIVE:
@@ -1915,6 +1924,8 @@ PK11_MapSignKeyType(KeyType keyType)
             return CKM_DSA;
         case ecKey:
             return CKM_ECDSA;
+        case edKey:
+            return CKM_EDDSA;
         case dhKey:
         default:
             break;

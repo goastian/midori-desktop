@@ -1,6 +1,7 @@
 /* MIT License
  *
- * Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation
+ * Copyright (c) 2016-2022 INRIA, CMU and Microsoft Corporation
+ * Copyright (c) 2022-2023 HACL* Contributors
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,13 +28,14 @@
 #include "internal/Hacl_Krmllib.h"
 #include "config.h"
 #include "curve25519-inline.h"
+
 static inline void
 add_scalar0(uint64_t *out, uint64_t *f1, uint64_t f2)
 {
 #if HACL_CAN_COMPILE_INLINE_ASM
     add_scalar(out, f1, f2);
 #else
-    uint64_t uu____0 = add_scalar_e(out, f1, f2);
+    KRML_HOST_IGNORE(add_scalar_e(out, f1, f2));
 #endif
 }
 
@@ -43,7 +45,7 @@ fadd0(uint64_t *out, uint64_t *f1, uint64_t *f2)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fadd(out, f1, f2);
 #else
-    uint64_t uu____0 = fadd_e(out, f1, f2);
+    KRML_HOST_IGNORE(fadd_e(out, f1, f2));
 #endif
 }
 
@@ -53,7 +55,7 @@ fsub0(uint64_t *out, uint64_t *f1, uint64_t *f2)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fsub(out, f1, f2);
 #else
-    uint64_t uu____0 = fsub_e(out, f1, f2);
+    KRML_HOST_IGNORE(fsub_e(out, f1, f2));
 #endif
 }
 
@@ -63,7 +65,7 @@ fmul0(uint64_t *out, uint64_t *f1, uint64_t *f2, uint64_t *tmp)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fmul(out, f1, f2, tmp);
 #else
-    uint64_t uu____0 = fmul_e(tmp, f1, out, f2);
+    KRML_HOST_IGNORE(fmul_e(tmp, f1, out, f2));
 #endif
 }
 
@@ -73,7 +75,7 @@ fmul20(uint64_t *out, uint64_t *f1, uint64_t *f2, uint64_t *tmp)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fmul2(out, f1, f2, tmp);
 #else
-    uint64_t uu____0 = fmul2_e(tmp, f1, out, f2);
+    KRML_HOST_IGNORE(fmul2_e(tmp, f1, out, f2));
 #endif
 }
 
@@ -83,7 +85,7 @@ fmul_scalar0(uint64_t *out, uint64_t *f1, uint64_t f2)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fmul_scalar(out, f1, f2);
 #else
-    uint64_t uu____0 = fmul_scalar_e(out, f1, f2);
+    KRML_HOST_IGNORE(fmul_scalar_e(out, f1, f2));
 #endif
 }
 
@@ -93,7 +95,7 @@ fsqr0(uint64_t *out, uint64_t *f1, uint64_t *tmp)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fsqr(out, f1, tmp);
 #else
-    uint64_t uu____0 = fsqr_e(tmp, f1, out);
+    KRML_HOST_IGNORE(fsqr_e(tmp, f1, out));
 #endif
 }
 
@@ -103,7 +105,7 @@ fsqr20(uint64_t *out, uint64_t *f, uint64_t *tmp)
 #if HACL_CAN_COMPILE_INLINE_ASM
     fsqr2(out, f, tmp);
 #else
-    uint64_t uu____0 = fsqr2_e(tmp, f, out);
+    KRML_HOST_IGNORE(fsqr2_e(tmp, f, out));
 #endif
 }
 
@@ -113,7 +115,7 @@ cswap20(uint64_t bit, uint64_t *p1, uint64_t *p2)
 #if HACL_CAN_COMPILE_INLINE_ASM
     cswap2(bit, p1, p2);
 #else
-    uint64_t uu____0 = cswap2_e(bit, p1, p2);
+    KRML_HOST_IGNORE(cswap2_e(bit, p1, p2));
 #endif
 }
 
@@ -341,6 +343,13 @@ encode_point(uint8_t *o, uint64_t *i)
                     store64_le(o + i0 * (uint32_t)8U, u64s[i0]););
 }
 
+/**
+Compute the scalar multiple of a point.
+
+@param out Pointer to 32 bytes of memory, allocated by the caller, where the resulting point is written to.
+@param priv Pointer to 32 bytes of memory where the secret/private key is read from.
+@param pub Pointer to 32 bytes of memory where the public point is read from.
+*/
 void
 Hacl_Curve25519_64_scalarmult(uint8_t *out, uint8_t *priv, uint8_t *pub)
 {
@@ -372,6 +381,14 @@ Hacl_Curve25519_64_scalarmult(uint8_t *out, uint8_t *priv, uint8_t *pub)
     encode_point(out, init);
 }
 
+/**
+Calculate a public point from a secret/private key.
+
+This computes a scalar multiplication of the secret/private key with the curve's basepoint.
+
+@param pub Pointer to 32 bytes of memory, allocated by the caller, where the resulting point is written to.
+@param priv Pointer to 32 bytes of memory where the secret/private key is read from.
+*/
 void
 Hacl_Curve25519_64_secret_to_public(uint8_t *pub, uint8_t *priv)
 {
@@ -384,6 +401,13 @@ Hacl_Curve25519_64_secret_to_public(uint8_t *pub, uint8_t *priv)
     Hacl_Curve25519_64_scalarmult(pub, priv, basepoint);
 }
 
+/**
+Execute the diffie-hellmann key exchange.
+
+@param out Pointer to 32 bytes of memory, allocated by the caller, where the resulting point is written to.
+@param priv Pointer to 32 bytes of memory where **our** secret/private key is read from.
+@param pub Pointer to 32 bytes of memory where **their** public point is read from.
+*/
 bool
 Hacl_Curve25519_64_ecdh(uint8_t *out, uint8_t *priv, uint8_t *pub)
 {

@@ -28,10 +28,6 @@ class AbstractOSKeyStore {
                                const nsACString& label) = 0;
   // Delete the secret with the given label.
   virtual nsresult DeleteSecret(const nsACString& label) = 0;
-  // Lock the key store.
-  virtual nsresult Lock() = 0;
-  // Unlock the key store.
-  virtual nsresult Unlock() = 0;
   virtual ~AbstractOSKeyStore() = default;
 
   // Returns true if the secret with the given label is available in the key
@@ -85,6 +81,8 @@ class OSKeyStore final : public nsIOSKeyStore {
   nsresult RecoverSecret(const nsACString& aLabel,
                          const nsACString& aRecoveryPhrase);
   nsresult DeleteSecret(const nsACString& aLabel);
+  nsresult RetrieveRecoveryPhrase(const nsACString& aLabel,
+                                  /* out */ nsACString& aRecoveryPhrase);
   nsresult EncryptBytes(const nsACString& aLabel,
                         const std::vector<uint8_t>& aInBytes,
                         /*out*/ nsACString& aEncryptedBase64Text);
@@ -92,14 +90,11 @@ class OSKeyStore final : public nsIOSKeyStore {
                         const nsACString& aEncryptedBase64Text,
                         /*out*/ uint32_t* outLen,
                         /*out*/ uint8_t** outBytes);
-  nsresult Lock();
-  nsresult Unlock();
 
  private:
   ~OSKeyStore() = default;
 
   std::unique_ptr<AbstractOSKeyStore> mKs;
-  bool mKsIsNSSKeyStore;
 };
 
 #endif  // OSKeyStore_h

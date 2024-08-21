@@ -1,6 +1,7 @@
 /* MIT License
  *
- * Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation
+ * Copyright (c) 2016-2022 INRIA, CMU and Microsoft Corporation
+ * Copyright (c) 2022-2023 HACL* Contributors
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +26,7 @@
 
 #include "internal/Hacl_Chacha20.h"
 #include "libintvector.h"
+
 static inline void
 double_round_128(Lib_IntVector_Intrinsics_vec128 *st)
 {
@@ -366,9 +368,8 @@ Hacl_Chacha20_Vec128_chacha20_encrypt_128(
     }
     if (rem1 > (uint32_t)0U) {
         uint8_t *uu____2 = out + nb * (uint32_t)256U;
-        uint8_t *uu____3 = text + nb * (uint32_t)256U;
         uint8_t plain[256U] = { 0U };
-        memcpy(plain, uu____3, rem * sizeof(uint8_t));
+        memcpy(plain, text + nb * (uint32_t)256U, rem * sizeof(uint8_t));
         KRML_PRE_ALIGN(16)
         Lib_IntVector_Intrinsics_vec128 k[16U] KRML_POST_ALIGN(16) = { 0U };
         chacha20_core_128(k, ctx, nb);
@@ -672,9 +673,8 @@ Hacl_Chacha20_Vec128_chacha20_decrypt_128(
     }
     if (rem1 > (uint32_t)0U) {
         uint8_t *uu____2 = out + nb * (uint32_t)256U;
-        uint8_t *uu____3 = cipher + nb * (uint32_t)256U;
         uint8_t plain[256U] = { 0U };
-        memcpy(plain, uu____3, rem * sizeof(uint8_t));
+        memcpy(plain, cipher + nb * (uint32_t)256U, rem * sizeof(uint8_t));
         KRML_PRE_ALIGN(16)
         Lib_IntVector_Intrinsics_vec128 k[16U] KRML_POST_ALIGN(16) = { 0U };
         chacha20_core_128(k, ctx, nb);

@@ -112,6 +112,7 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
 #include "nsICertOverrideService.h"
@@ -162,9 +163,10 @@ void InitializeSSLServerCertVerificationThreads() {
   gCertVerificationThreadPool = new nsThreadPool();
   NS_ADDREF(gCertVerificationThreadPool);
 
-  (void)gCertVerificationThreadPool->SetIdleThreadLimit(5);
-  (void)gCertVerificationThreadPool->SetIdleThreadTimeout(30 * 1000);
   (void)gCertVerificationThreadPool->SetThreadLimit(5);
+  (void)gCertVerificationThreadPool->SetIdleThreadLimit(1);
+  (void)gCertVerificationThreadPool->SetIdleThreadMaximumTimeout(30 * 1000);
+  (void)gCertVerificationThreadPool->SetIdleThreadGraceTimeout(500);
   (void)gCertVerificationThreadPool->SetName("SSL Cert"_ns);
 }
 
@@ -503,27 +505,6 @@ void GatherCertificateTransparencyTelemetry(
   // but it failed to parse (e.g. due to unsupported CT protocol version).
   Telemetry::Accumulate(Telemetry::SSL_SCTS_PER_CONNECTION, sctsCount);
 
-  // Report CT Policy compliance of EV certificates.
-  if (isEV) {
-    uint32_t evCompliance = 0;
-    switch (info.policyCompliance) {
-      case ct::CTPolicyCompliance::Compliant:
-        evCompliance = 1;
-        break;
-      case ct::CTPolicyCompliance::NotEnoughScts:
-        evCompliance = 2;
-        break;
-      case ct::CTPolicyCompliance::NotDiverseScts:
-        evCompliance = 3;
-        break;
-      case ct::CTPolicyCompliance::Unknown:
-      default:
-        MOZ_ASSERT_UNREACHABLE("Unexpected CTPolicyCompliance type");
-    }
-    Telemetry::Accumulate(Telemetry::SSL_CT_POLICY_COMPLIANCE_OF_EV_CERTS,
-                          evCompliance);
-  }
-
   // Report CT Policy compliance by CA.
   switch (info.policyCompliance) {
     case ct::CTPolicyCompliance::Compliant:
@@ -550,7 +531,8 @@ static void CollectCertTelemetry(
     KeySizeStatus aKeySizeStatus,
     const PinningTelemetryInfo& aPinningTelemetryInfo,
     const nsTArray<nsTArray<uint8_t>>& aBuiltCertChain,
-    const CertificateTransparencyInfo& aCertificateTransparencyInfo) {
+    const CertificateTransparencyInfo& aCertificateTransparencyInfo,
+    const IssuerSources& issuerSources) {
   uint32_t evStatus = (aCertVerificationResult != Success) ? 0  // 0 = Failure
                       : (aEVStatus != EVStatus::EV)        ? 1  // 1 = DV
                                                            : 2;        // 2 = EV
@@ -583,6 +565,28 @@ static void CollectCertTelemetry(
                                  rootCert);
     GatherCertificateTransparencyTelemetry(rootCert, aEVStatus == EVStatus::EV,
                                            aCertificateTransparencyInfo);
+
+    mozilla::glean::tls::certificate_verifications.Add(1);
+    if (issuerSources.contains(IssuerSource::TLSHandshake)) {
+      mozilla::glean::verification_used_cert_from::tls_handshake.AddToNumerator(
+          1);
+    }
+    if (issuerSources.contains(IssuerSource::PreloadedIntermediates)) {
+      mozilla::glean::verification_used_cert_from::preloaded_intermediates
+          .AddToNumerator(1);
+    }
+    if (issuerSources.contains(IssuerSource::ThirdPartyCertificates)) {
+      mozilla::glean::verification_used_cert_from::third_party_certificates
+          .AddToNumerator(1);
+    }
+    if (issuerSources.contains(IssuerSource::NSSCertDB)) {
+      mozilla::glean::verification_used_cert_from::nss_cert_db.AddToNumerator(
+          1);
+    }
+    if (issuerSources.contains(IssuerSource::BuiltInRootsModule)) {
+      mozilla::glean::verification_used_cert_from::built_in_roots_module
+          .AddToNumerator(1);
+    }
   }
 }
 
@@ -615,17 +619,18 @@ Result AuthCertificate(
         [](const auto& elementArray) { return elementArray.Clone(); });
   }
 
+  IssuerSources issuerSources;
   Result rv = certVerifier.VerifySSLServerCert(
       certBytes, time, aPinArg, aHostName, builtCertChain, certVerifierFlags,
       Some(std::move(peerCertsBytes)), stapledOCSPResponse,
       sctsFromTLSExtension, dcInfo, aOriginAttributes, &evStatus,
       &ocspStaplingStatus, &keySizeStatus, &pinningTelemetryInfo,
       &certificateTransparencyInfo, &aIsBuiltCertChainRootBuiltInRoot,
-      &aMadeOCSPRequests);
+      &aMadeOCSPRequests, &issuerSources);
 
   CollectCertTelemetry(rv, evStatus, ocspStaplingStatus, keySizeStatus,
                        pinningTelemetryInfo, builtCertChain,
-                       certificateTransparencyInfo);
+                       certificateTransparencyInfo, issuerSources);
 
   return rv;
 }
@@ -761,6 +766,9 @@ SSLServerCertVerificationJob::Run() {
   RefPtr<SharedCertVerifier> certVerifier(GetDefaultCertVerifier());
   if (!certVerifier) {
     PR_SetError(SEC_ERROR_NOT_INITIALIZED, 0);
+    // We can't release this off the STS thread because some parts of it
+    // are not threadsafe. Just leak the mResultTask
+    Unused << mResultTask.forget();
     return NS_OK;
   }
 
@@ -810,7 +818,11 @@ SSLServerCertVerificationJob::Run() {
   mResultTask->Dispatch(
       std::move(builtChainBytesArray), std::move(mPeerCertChain),
       nsITransportSecurityInfo::CERTIFICATE_TRANSPARENCY_NOT_APPLICABLE,
-      EVStatus::NotEV, false, finalError, overridableErrorCategory, false,
+      EVStatus::NotEV, false, finalError, overridableErrorCategory,
+      // If the certificate verifier returned Result::ERROR_BAD_CERT_DOMAIN, a
+      // chain was built, so isCertChainRootBuiltInRoot is valid and
+      // potentially useful. Otherwise, assume no chain was built.
+      rv == Result::ERROR_BAD_CERT_DOMAIN ? isCertChainRootBuiltInRoot : false,
       mProviderFlags, madeOCSPRequests);
   return NS_OK;
 }
@@ -1055,15 +1067,22 @@ void SSLServerCertVerificationResult::Dispatch(
   mProviderFlags = aProviderFlags;
   mMadeOCSPRequests = aMadeOCSPRequests;
 
-  if (mSucceeded && mBuiltChain.IsEmpty()) {
+  if (mSucceeded &&
+      (mBuiltChain.IsEmpty() || mFinalError != 0 ||
+       mOverridableErrorCategory !=
+           nsITransportSecurityInfo::OverridableErrorCategory::ERROR_UNSET)) {
     MOZ_ASSERT_UNREACHABLE(
-        "if the handshake succeeded, the built chain shouldn't be empty");
+        "if certificate verification succeeded without overridden errors, the "
+        "built chain shouldn't be empty and any error bits should be unset");
     mSucceeded = false;
     mFinalError = SEC_ERROR_LIBRARY_FAILURE;
   }
+  // Note that mSucceeded can be false while mFinalError is 0, in which case
+  // the connection will proceed.
   if (!mSucceeded && mPeerCertChain.IsEmpty()) {
     MOZ_ASSERT_UNREACHABLE(
-        "if the handshake failed, the peer chain shouldn't be empty");
+        "if certificate verification failed, the peer chain shouldn't be "
+        "empty");
     mFinalError = SEC_ERROR_LIBRARY_FAILURE;
   }
 
@@ -1071,6 +1090,11 @@ void SSLServerCertVerificationResult::Dispatch(
   nsCOMPtr<nsIEventTarget> stsTarget =
       do_GetService(NS_SOCKETTRANSPORTSERVICE_CONTRACTID, &rv);
   MOZ_ASSERT(stsTarget, "Failed to get socket transport service event target");
+  if (!stsTarget) {
+    // This has to be released on STS; just leak it
+    Unused << mSocketControl.forget();
+    return;
+  }
   rv = stsTarget->Dispatch(this, NS_DISPATCH_NORMAL);
   MOZ_ASSERT(NS_SUCCEEDED(rv),
              "Failed to dispatch SSLServerCertVerificationResult");
@@ -1097,6 +1121,8 @@ SSLServerCertVerificationResult::Run() {
   }
 
   mSocketControl->SetMadeOCSPRequests(mMadeOCSPRequests);
+  mSocketControl->SetIsBuiltCertChainRootBuiltInRoot(
+      mIsBuiltCertChainRootBuiltInRoot);
 
   if (mSucceeded) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
@@ -1105,9 +1131,6 @@ SSLServerCertVerificationResult::Run() {
     nsCOMPtr<nsIX509Cert> cert(new nsNSSCertificate(std::move(certBytes)));
     mSocketControl->SetServerCert(cert, mEVStatus);
     mSocketControl->SetSucceededCertChain(std::move(mBuiltChain));
-
-    mSocketControl->SetIsBuiltCertChainRootBuiltInRoot(
-        mIsBuiltCertChainRootBuiltInRoot);
     mSocketControl->SetCertificateTransparencyStatus(
         mCertificateTransparencyStatus);
   } else {

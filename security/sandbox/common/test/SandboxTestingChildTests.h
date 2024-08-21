@@ -8,9 +8,6 @@
 
 #include "mozilla/StaticPrefs_security.h"
 #include "mozilla/ipc/UtilityProcessSandboxing.h"
-#ifdef XP_MACOSX
-#  include "nsCocoaFeatures.h"
-#endif
 #include "nsXULAppAPI.h"
 
 #ifdef XP_UNIX
@@ -20,6 +17,7 @@
 #    include <linux/mempolicy.h>
 #    include <sched.h>
 #    include <sys/ioctl.h>
+#    include <sys/mman.h>
 #    include <sys/prctl.h>
 #    include <sys/resource.h>
 #    include <sys/socket.h>
@@ -71,6 +69,10 @@ namespace ApplicationServices {
 // Defined in <linux/watch_queue.h> which was added in 5.8
 #  ifndef O_NOTIFICATION_PIPE
 #    define O_NOTIFICATION_PIPE O_EXCL
+#  endif
+// Added in 5.7.
+#  ifndef MREMAP_DONTUNMAP
+#    define MREMAP_DONTUNMAP 4
 #  endif
 #endif
 
@@ -246,12 +248,7 @@ void RunMacTestLaunchProcess(SandboxTestingChild* child,
   });
 
   // Test that launching an application using LSOpenCFURLRef fails
-  char* uri;
-  if (nsCocoaFeatures::OnCatalinaOrLater()) {
-    uri = const_cast<char*>("/System/Applications/Utilities/Console.app");
-  } else {
-    uri = const_cast<char*>("/Applications/Utilities/Console.app");
-  }
+  char* uri = const_cast<char*>("/System/Applications/Utilities/Console.app");
   CFStringRef filePath = ::CFStringCreateWithCString(kCFAllocatorDefault, uri,
                                                      kCFStringEncodingUTF8);
   CFURLRef urlRef = ::CFURLCreateWithFileSystemPath(
@@ -515,6 +512,50 @@ void RunTestsContent(SandboxTestingChild* child) {
     return realpath("/etc/localtime", buf) ? 0 : -1;
   });
 
+  // Check that readlink truncates results longer than the buffer
+  // (rather than failing) and returns the total number of bytes
+  // actually written (not the size of the link or anything else).
+  {
+    char buf;
+    ssize_t rv = readlink("/etc/localtime", &buf, 1);
+    int err = errno;
+    if (rv == 1) {
+      child->SendReportTestResults("readlink truncate"_ns, true,
+                                   "expected 1, got 1"_ns);
+    } else if (rv < 0) {
+      nsPrintfCString msg("expected 1, got error: %s", strerror(err));
+      child->SendReportTestResults("readlink truncate"_ns, false, msg);
+    } else {
+      nsPrintfCString msg("expected 1, got %zd", rv);
+      child->SendReportTestResults("readlink truncate"_ns, false, msg);
+    }
+  }
+
+  {
+    static constexpr size_t kMapSize = 65536;
+    void* mapping = mmap(nullptr, kMapSize, PROT_READ | PROT_WRITE,
+                         MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    MOZ_ASSERT(mapping != MAP_FAILED);
+    child->ErrnoTest("mremap-zero"_ns, true, [&] {
+      void* rv = mremap(mapping, kMapSize, kMapSize, 0);
+      if (rv == MAP_FAILED) {
+        return -1;
+      }
+      MOZ_ASSERT(rv == mapping);
+      return 0;
+    });
+
+    child->ErrnoValueTest("mremap-forbidden"_ns, ENOSYS, [&] {
+      void* rv = mremap(mapping, kMapSize, kMapSize, MREMAP_DONTUNMAP);
+      // This is an invalid flag combination (DONTUNMAP requires
+      // MAYMOVE) so it will always fail with *something*.
+      MOZ_ASSERT(rv == MAP_FAILED);
+      return -1;
+    });
+
+    munmap(mapping, kMapSize);
+  }
+
 #  endif  // XP_LINUX
 
 #  ifdef XP_MACOSX
@@ -639,11 +680,11 @@ void RunTestsRDD(SandboxTestingChild* child) {
 
   RunTestsSched(child);
 
-  child->ErrnoTest("socket_inet"_ns, false,
-                   [] { return socket(AF_INET, SOCK_STREAM, 0); });
+  child->ErrnoValueTest("socket_inet"_ns, EACCES,
+                        [] { return socket(AF_INET, SOCK_STREAM, 0); });
 
-  child->ErrnoTest("socket_unix"_ns, false,
-                   [] { return socket(AF_UNIX, SOCK_STREAM, 0); });
+  child->ErrnoValueTest("socket_unix"_ns, EACCES,
+                        [] { return socket(AF_UNIX, SOCK_STREAM, 0); });
 
   child->ErrnoTest("uname"_ns, true, [] {
     struct utsname uts;
@@ -670,6 +711,13 @@ void RunTestsRDD(SandboxTestingChild* child) {
     return mknod("/dev/null", S_IFCHR | 0666, makedev(1, 3));
   });
 
+  // Rust panics call getcwd to try to print relative paths in
+  // backtraces.
+  child->ErrnoValueTest("getcwd"_ns, ENOENT, [] {
+    char buf[4096];
+    return (getcwd(buf, sizeof(buf)) == nullptr) ? -1 : 0;
+  });
+
   // nvidia defines some ioctls with the type 0x46 ('F', otherwise
   // used by fbdev) and numbers starting from 200 (0xc8).
   child->ErrnoValueTest("ioctl_nvidia"_ns, ENOTTY,
@@ -678,6 +726,16 @@ void RunTestsRDD(SandboxTestingChild* child) {
   child->ErrnoTest("statfs"_ns, true, [] {
     struct statfs sf;
     return statfs("/usr/share", &sf);
+  });
+
+  child->ErrnoValueTest("fork"_ns, EPERM, [] {
+    pid_t pid = fork();
+    if (pid == 0) {
+      // Success: shouldn't happen, and parent will report a test
+      // failure.
+      _exit(0);
+    }
+    return pid;
   });
 
 #  elif XP_MACOSX
@@ -759,6 +817,36 @@ void RunTestsGMPlugin(SandboxTestingChild* child) {
     errno = savedErrno;
     return rv;
   });
+
+  {
+    static constexpr size_t kMapSize = 65536;
+    void* mapping = mmap(nullptr, kMapSize, PROT_READ | PROT_WRITE,
+                         MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    MOZ_ASSERT(mapping != MAP_FAILED);
+
+#    ifndef MOZ_MEMORY
+    child->ErrnoTest("mremap-move"_ns, true, [&] {
+      void* rv = mremap(mapping, kMapSize, kMapSize, MREMAP_MAYMOVE);
+      if (rv == MAP_FAILED) {
+        return -1;
+      }
+      // It *may* move the mapping, but when the size doesn't change
+      // it's not expected to:
+      MOZ_ASSERT(rv == mapping);
+      return 0;
+    });
+#    endif
+
+    child->ErrnoValueTest("mremap-forbidden"_ns, ENOSYS, [&] {
+      void* rv = mremap(mapping, kMapSize, kMapSize, MREMAP_DONTUNMAP);
+      // This is an invalid flag combination (DONTUNMAP requires
+      // MAYMOVE) so it will always fail with *something*.
+      MOZ_ASSERT(rv == MAP_FAILED);
+      return -1;
+    });
+
+    munmap(mapping, kMapSize);
+  }
 
 #  elif XP_MACOSX  // XP_LINUX
   RunMacTestLaunchProcess(child);

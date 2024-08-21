@@ -18,6 +18,8 @@ USE_LIBS += [
     "nspr",
 ]
 
+OS_LIBS += CONFIG["DL_LIBS"]
+
 EXPORTS.mozilla += [
     "Sandbox.h",
     "SandboxInfo.h",
@@ -45,14 +47,6 @@ UNIFIED_SOURCES += [
     "../chromium/base/synchronization/lock.cc",
     "../chromium/base/synchronization/lock_impl_posix.cc",
     "../chromium/base/synchronization/waitable_event_posix.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/bignum-dtoa.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/bignum.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/cached-powers.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/double-to-string.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/fast-dtoa.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/fixed-dtoa.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/string-to-double.cc",
-    "../chromium/base/third_party/double_conversion/double-conversion/strtod.cc",
     "../chromium/base/threading/platform_thread.cc",
     "../chromium/base/threading/platform_thread_internal_posix.cc",
     "../chromium/base/threading/platform_thread_posix.cc",
@@ -72,6 +66,7 @@ UNIFIED_SOURCES += [
     "../chromium/sandbox/linux/bpf_dsl/syscall_set.cc",
     "../chromium/sandbox/linux/seccomp-bpf/die.cc",
     "../chromium/sandbox/linux/seccomp-bpf/syscall.cc",
+    "/ipc/glue/UtilityProcessSandboxing.cpp",
     "broker/SandboxBrokerCommon.cpp",
     "Sandbox.cpp",
     "SandboxBrokerClient.cpp",

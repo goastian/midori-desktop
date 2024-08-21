@@ -23,8 +23,15 @@ interface nsIX509Cert;
 // thread (except for asyncGetSecurityInfo);
 [scriptable, builtinclass, uuid(418265c8-654e-4fbb-ba62-4eed27de1f03)]
 interface nsITLSSocketControl : nsISupports {
-    void proxyStartSSL();
-    void StartTLS();
+    [noscript] void proxyStartSSL();
+    [noscript] void StartTLS();
+
+    /**
+     * Calls StartTLS on the socket thread, and resolves with the nsresult
+     * return value of that call.
+     */
+    [implicit_jscontext,must_use]
+    Promise asyncStartTLS();
 
     /* NPN (Next Protocol Negotiation) is a mechanism for
        negotiating the protocol to be spoken inside the SSL
@@ -46,7 +53,7 @@ interface nsITLSSocketControl : nsISupports {
     /* If 0RTT handshake was applied and some data has been sent, as soon as
      * the handshake finishes this attribute will be set to appropriate value.
      */
-    readonly attribute bool earlyDataAccepted;
+    readonly attribute boolean earlyDataAccepted;
 
     /* When 0RTT is performed, PR_Write will not drive the handshake forward.
      * It must be forced by calling this function.
@@ -184,4 +191,12 @@ interface nsITLSSocketControl : nsISupports {
      * Claim a speculative connection.
      */
     void claim();
+
+    /**
+     * The top-level outer content window ID (called "browserId" in networking
+     * code) associated with this connection, if any (otherwise, 0). Useful for
+     * associating this connection with a browser tab in order to show UI (e.g.
+     * the client authentication certificate selection dialog).
+     */
+    attribute uint64_t browserId;
 };

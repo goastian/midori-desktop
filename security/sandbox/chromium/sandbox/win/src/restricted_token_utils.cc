@@ -109,13 +109,15 @@ DWORD CreateRestrictedToken(HANDLE effective_token,
       sid_exceptions.push_back(WinInteractiveSid);
       sid_exceptions.push_back(WinAuthenticatedUserSid);
       privilege_exceptions.push_back(SE_CHANGE_NOTIFY_NAME);
-      restricted_token.AddRestrictingSid(WinBuiltinUsersSid);
-      restricted_token.AddRestrictingSid(WinWorldSid);
-      restricted_token.AddRestrictingSid(WinInteractiveSid);
-      restricted_token.AddRestrictingSid(WinAuthenticatedUserSid);
-      restricted_token.AddRestrictingSid(WinRestrictedCodeSid);
-      restricted_token.AddRestrictingSidCurrentUser();
-      restricted_token.AddRestrictingSidLogonSession();
+      if (use_restricting_sids) {
+        restricted_token.AddRestrictingSid(WinBuiltinUsersSid);
+        restricted_token.AddRestrictingSid(WinWorldSid);
+        restricted_token.AddRestrictingSid(WinInteractiveSid);
+        restricted_token.AddRestrictingSid(WinAuthenticatedUserSid);
+        restricted_token.AddRestrictingSid(WinRestrictedCodeSid);
+        restricted_token.AddRestrictingSidCurrentUser();
+        restricted_token.AddRestrictingSidLogonSession();
+      }
       break;
     }
     case USER_INTERACTIVE: {
@@ -304,6 +306,14 @@ DWORD SetProcessIntegrityLevel(IntegrityLevel integrity_level) {
     // No mandatory level specified, we don't change it.
     return ERROR_SUCCESS;
   }
+
+  // Set integrity level for our process ACL, so we retain access to it.
+  // We ignore failures because this is not a security measure, but some
+  // functionality may fail later in the process.
+  DWORD rv =
+      SetObjectIntegrityLabel(::GetCurrentProcess(), SE_KERNEL_OBJECT, L"",
+                              GetIntegrityLevelString(integrity_level));
+  DCHECK(rv == ERROR_SUCCESS);
 
   HANDLE token_handle;
   if (!::OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_DEFAULT,

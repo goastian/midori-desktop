@@ -4,6 +4,7 @@
 
 #include "secutil.h"
 #include "pk11func.h"
+#include "sechash.h"
 #include "secoid.h"
 
 #if defined(XP_WIN) || (defined(__sun) && !defined(SVR4))
@@ -17,40 +18,13 @@ extern int fprintf(FILE *, char *, ...);
 #include "plgetopt.h"
 
 static SECOidData *
-HashTypeToOID(HASH_HashType hashtype)
-{
-    SECOidTag hashtag;
-
-    if (hashtype <= HASH_AlgNULL || hashtype >= HASH_AlgTOTAL)
-        return NULL;
-
-    switch (hashtype) {
-        case HASH_AlgMD2:
-            hashtag = SEC_OID_MD2;
-            break;
-        case HASH_AlgMD5:
-            hashtag = SEC_OID_MD5;
-            break;
-        case HASH_AlgSHA1:
-            hashtag = SEC_OID_SHA1;
-            break;
-        default:
-            fprintf(stderr, "A new hash type has been added to HASH_HashType.\n");
-            fprintf(stderr, "This program needs to be updated!\n");
-            return NULL;
-    }
-
-    return SECOID_FindOIDByTag(hashtag);
-}
-
-static SECOidData *
 HashNameToOID(const char *hashName)
 {
     HASH_HashType htype;
     SECOidData *hashOID;
 
     for (htype = HASH_AlgNULL + 1; htype < HASH_AlgTOTAL; htype++) {
-        hashOID = HashTypeToOID(htype);
+        hashOID = SECOID_FindOIDByTag(HASH_GetHashOidTagByHashType(htype));
         if (PORT_Strcasecmp(hashName, hashOID->desc) == 0)
             break;
     }
@@ -73,7 +47,8 @@ Usage(char *progName)
             "-t type");
     fprintf(stderr, "%-20s ", "");
     for (htype = HASH_AlgNULL + 1; htype < HASH_AlgTOTAL; htype++) {
-        fprintf(stderr, "%s", HashTypeToOID(htype)->desc);
+        fputs(SECOID_FindOIDByTag(HASH_GetHashOidTagByHashType(htype))->desc,
+              stderr);
         if (htype == (HASH_AlgTOTAL - 2))
             fprintf(stderr, " or ");
         else if (htype != (HASH_AlgTOTAL - 1))
@@ -91,7 +66,7 @@ static int
 DigestFile(FILE *outFile, FILE *inFile, SECOidData *hashOID)
 {
     int nb;
-    unsigned char ibuf[4096], digest[32];
+    unsigned char ibuf[4096], digest[HASH_LENGTH_MAX];
     PK11Context *hashcx;
     unsigned int len;
     SECStatus rv;
@@ -124,7 +99,7 @@ DigestFile(FILE *outFile, FILE *inFile, SECOidData *hashOID)
         }
     }
 
-    rv = PK11_DigestFinal(hashcx, digest, &len, 32);
+    rv = PK11_DigestFinal(hashcx, digest, &len, HASH_LENGTH_MAX);
     PK11_DestroyContext(hashcx, PR_TRUE);
 
     if (rv != SECSuccess)
@@ -209,6 +184,7 @@ main(int argc, char **argv)
         outFile = stdout;
 
     hashOID = HashNameToOID(hashName);
+    free(hashName);
     if (hashOID == NULL) {
         fprintf(stderr, "%s: invalid digest type\n", progName);
         Usage(progName);

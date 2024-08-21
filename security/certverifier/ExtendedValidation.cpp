@@ -475,17 +475,6 @@ static const struct EVInfo kEVInfos[] = {
     "CYP0",
   },
   {
-    // CN = Autoridad de Certificacion Firmaprofesional CIF A62634068, C = ES
-    "1.3.6.1.4.1.13177.10.1.3.10",
-    "Firmaprofesional EV OID",
-    { 0x04, 0x04, 0x80, 0x28, 0xBF, 0x1F, 0x28, 0x64, 0xD4, 0x8F, 0x9A,
-      0xD4, 0xD8, 0x32, 0x94, 0x36, 0x6A, 0x82, 0x88, 0x56, 0x55, 0x3F,
-      0x3B, 0x14, 0x30, 0x3F, 0x90, 0x14, 0x7F, 0x5D, 0x40, 0xEF },
-    "MFExCzAJBgNVBAYTAkVTMUIwQAYDVQQDDDlBdXRvcmlkYWQgZGUgQ2VydGlmaWNh"
-    "Y2lvbiBGaXJtYXByb2Zlc2lvbmFsIENJRiBBNjI2MzQwNjg=",
-    "U+w77vuySF8=",
-  },
-  {
     // CN = TWCA Global Root CA, OU = Root CA, O = TAIWAN-CA, C = TW
     "1.3.6.1.4.1.40869.1.1.22.3",
     "TWCA EV OID",
@@ -495,30 +484,6 @@ static const struct EVInfo kEVInfos[] = {
     "MFExCzAJBgNVBAYTAlRXMRIwEAYDVQQKEwlUQUlXQU4tQ0ExEDAOBgNVBAsTB1Jv"
     "b3QgQ0ExHDAaBgNVBAMTE1RXQ0EgR2xvYmFsIFJvb3QgQ0E=",
     "DL4=",
-  },
-  {
-    // CN=E-Tugra Global Root CA RSA v3,OU=E-Tugra Trust Center,O=E-Tugra EBG A.S.,L=Ankara,C=TR
-    "2.23.140.1.1",
-    "CA/Browser Forum EV OID",
-    { 0xEF, 0x66, 0xB0, 0xB1, 0x0A, 0x3C, 0xDB, 0x9F, 0x2E, 0x36, 0x48,
-      0xC7, 0x6B, 0xD2, 0xAF, 0x18, 0xEA, 0xD2, 0xBF, 0xE6, 0xF1, 0x17,
-      0x65, 0x5E, 0x28, 0xC4, 0x06, 0x0D, 0xA1, 0xA3, 0xF4, 0xC2 },
-    "MIGAMQswCQYDVQQGEwJUUjEPMA0GA1UEBxMGQW5rYXJhMRkwFwYDVQQKExBFLVR1"
-    "Z3JhIEVCRyBBLlMuMR0wGwYDVQQLExRFLVR1Z3JhIFRydXN0IENlbnRlcjEmMCQG"
-    "A1UEAxMdRS1UdWdyYSBHbG9iYWwgUm9vdCBDQSBSU0EgdjM=",
-    "DU3FzRYilZYIfrgLfxUGNPt5EDQ=",
-  },
-  {
-    // CN=E-Tugra Global Root CA ECC v3,OU=E-Tugra Trust Center,O=E-Tugra EBG A.S.,L=Ankara,C=TR
-    "2.23.140.1.1",
-    "CA/Browser Forum EV OID",
-    { 0x87, 0x3F, 0x46, 0x85, 0xFA, 0x7F, 0x56, 0x36, 0x25, 0x25, 0x2E,
-      0x6D, 0x36, 0xBC, 0xD7, 0xF1, 0x6F, 0xC2, 0x49, 0x51, 0xF2, 0x64,
-      0xE4, 0x7E, 0x1B, 0x95, 0x4F, 0x49, 0x08, 0xCD, 0xCA, 0x13 },
-    "MIGAMQswCQYDVQQGEwJUUjEPMA0GA1UEBxMGQW5rYXJhMRkwFwYDVQQKExBFLVR1"
-    "Z3JhIEVCRyBBLlMuMR0wGwYDVQQLExRFLVR1Z3JhIFRydXN0IENlbnRlcjEmMCQG"
-    "A1UEAxMdRS1UdWdyYSBHbG9iYWwgUm9vdCBDQSBFQ0MgdjM=",
-    "JkYZdzHhT28oNt45UYbm1JeIIsE=",
   },
   {
     // CN=Actalis Authentication Root CA,O=Actalis S.p.A./03358520967,L=Milan,C=IT
@@ -852,6 +817,28 @@ static const struct EVInfo kEVInfos[] = {
     "VrYpzTS8ePY=",
   },
   {
+    // CN=SSL.com TLS ECC Root CA 2022,O=SSL Corporation,C=US
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0xC3, 0x2F, 0xFD, 0x9F, 0x46, 0xF9, 0x36, 0xD1, 0x6C, 0x36, 0x73,
+      0x99, 0x09, 0x59, 0x43, 0x4B, 0x9A, 0xD6, 0x0A, 0xAF, 0xBB, 0x9E,
+      0x7C, 0xF3, 0x36, 0x54, 0xF1, 0x44, 0xCC, 0x1B, 0xA1, 0x43 },
+    "ME4xCzAJBgNVBAYTAlVTMRgwFgYDVQQKDA9TU0wgQ29ycG9yYXRpb24xJTAjBgNV"
+    "BAMMHFNTTC5jb20gVExTIEVDQyBSb290IENBIDIwMjI=",
+    "FAP1q/s3ixdAW+JDsqXRxA==",
+  },
+  {
+    // CN=SSL.com TLS RSA Root CA 2022,O=SSL Corporation,C=US
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0x8F, 0xAF, 0x7D, 0x2E, 0x2C, 0xB4, 0x70, 0x9B, 0xB8, 0xE0, 0xB3,
+      0x36, 0x66, 0xBF, 0x75, 0xA5, 0xDD, 0x45, 0xB5, 0xDE, 0x48, 0x0F,
+      0x8E, 0xA8, 0xD4, 0xBF, 0xE6, 0xBE, 0xBC, 0x17, 0xF2, 0xED },
+    "ME4xCzAJBgNVBAYTAlVTMRgwFgYDVQQKDA9TU0wgQ29ycG9yYXRpb24xJTAjBgNV"
+    "BAMMHFNTTC5jb20gVExTIFJTQSBSb290IENBIDIwMjI=",
+    "b77arXO9CEDii02+1PdbkQ==",
+  },
+  {
     // CN=UCA Extended Validation Root,O=UniTrust,C=CN
     "2.23.140.1.1",
     "CA/Browser Forum EV OID",
@@ -1092,17 +1079,6 @@ static const struct EVInfo kEVInfos[] = {
     "Z3SdjXfYO2rbIvT/WeK/zg==",
   },
   {
-    // CN=HiPKI Root CA - G1,O="Chunghwa Telecom Co., Ltd.",C=TW
-    "2.23.140.1.1",
-    "CA/Browser Forum EV OID",
-    { 0xF0, 0x15, 0xCE, 0x3C, 0xC2, 0x39, 0xBF, 0xEF, 0x06, 0x4B, 0xE9,
-      0xF1, 0xD2, 0xC4, 0x17, 0xE1, 0xA0, 0x26, 0x4A, 0x0A, 0x94, 0xBE,
-      0x1F, 0x0C, 0x8D, 0x12, 0x18, 0x64, 0xEB, 0x69, 0x49, 0xCC },
-    "ME8xCzAJBgNVBAYTAlRXMSMwIQYDVQQKDBpDaHVuZ2h3YSBUZWxlY29tIENvLiwg"
-    "THRkLjEbMBkGA1UEAwwSSGlQS0kgUm9vdCBDQSAtIEcx",
-    "Ld2szmKXlKFD6LDNdmpeYA==",
-  },
-  {
     // CN=vTrus Root CA,O="iTrusChina Co.,Ltd.",C=CN
     "2.23.140.1.1",
     "CA/Browser Forum EV OID",
@@ -1180,6 +1156,88 @@ static const struct EVInfo kEVInfos[] = {
     "MFQxCzAJBgNVBAYTAkNOMSYwJAYDVQQKDB1CRUlKSU5HIENFUlRJRklDQVRFIEFV"
     "VEhPUklUWTEdMBsGA1UEAwwUQkpDQSBHbG9iYWwgUm9vdCBDQTI=",
     "LBcIfWQqwP6FGFkGz7RK6w==",
+  },
+  {
+    // CN=Sectigo Public Server Authentication Root E46,O=Sectigo Limited,C=GB
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0xC9, 0x0F, 0x26, 0xF0, 0xFB, 0x1B, 0x40, 0x18, 0xB2, 0x22, 0x27,
+      0x51, 0x9B, 0x5C, 0xA2, 0xB5, 0x3E, 0x2C, 0xA5, 0xB3, 0xBE, 0x5C,
+      0xF1, 0x8E, 0xFE, 0x1B, 0xEF, 0x47, 0x38, 0x0C, 0x53, 0x83 },
+    "MF8xCzAJBgNVBAYTAkdCMRgwFgYDVQQKEw9TZWN0aWdvIExpbWl0ZWQxNjA0BgNV"
+    "BAMTLVNlY3RpZ28gUHVibGljIFNlcnZlciBBdXRoZW50aWNhdGlvbiBSb290IEU0"
+    "Ng==",
+    "QvLM2htpN0RfFf51KBC49A==",
+  },
+  {
+    // CN=Sectigo Public Server Authentication Root R46,O=Sectigo Limited,C=GB
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0x7B, 0xB6, 0x47, 0xA6, 0x2A, 0xEE, 0xAC, 0x88, 0xBF, 0x25, 0x7A,
+      0xA5, 0x22, 0xD0, 0x1F, 0xFE, 0xA3, 0x95, 0xE0, 0xAB, 0x45, 0xC7,
+      0x3F, 0x93, 0xF6, 0x56, 0x54, 0xEC, 0x38, 0xF2, 0x5A, 0x06 },
+    "MF8xCzAJBgNVBAYTAkdCMRgwFgYDVQQKEw9TZWN0aWdvIExpbWl0ZWQxNjA0BgNV"
+    "BAMTLVNlY3RpZ28gUHVibGljIFNlcnZlciBBdXRoZW50aWNhdGlvbiBSb290IFI0"
+    "Ng==",
+    "dY39i658BwD6qSWn4cetFA==",
+  },
+  {
+    // CN=TrustAsia Global Root CA G3,O="TrustAsia Technologies, Inc.",C=CN
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0xE0, 0xD3, 0x22, 0x6A, 0xEB, 0x11, 0x63, 0xC2, 0xE4, 0x8F, 0xF9,
+      0xBE, 0x3B, 0x50, 0xB4, 0xC6, 0x43, 0x1B, 0xE7, 0xBB, 0x1E, 0xAC,
+      0xC5, 0xC3, 0x6B, 0x5D, 0x5E, 0xC5, 0x09, 0x03, 0x9A, 0x08 },
+    "MFoxCzAJBgNVBAYTAkNOMSUwIwYDVQQKDBxUcnVzdEFzaWEgVGVjaG5vbG9naWVz"
+    "LCBJbmMuMSQwIgYDVQQDDBtUcnVzdEFzaWEgR2xvYmFsIFJvb3QgQ0EgRzM=",
+    "ZPYOZXdhaqs7tOqFhLuxibhxkw8=",
+  },
+  {
+    // CN=TrustAsia Global Root CA G4,O="TrustAsia Technologies, Inc.",C=CN
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0xBE, 0x4B, 0x56, 0xCB, 0x50, 0x56, 0xC0, 0x13, 0x6A, 0x52, 0x6D,
+      0xF4, 0x44, 0x50, 0x8D, 0xAA, 0x36, 0xA0, 0xB5, 0x4F, 0x42, 0xE4,
+      0xAC, 0x38, 0xF7, 0x2A, 0xF4, 0x70, 0xE4, 0x79, 0x65, 0x4C },
+    "MFoxCzAJBgNVBAYTAkNOMSUwIwYDVQQKDBxUcnVzdEFzaWEgVGVjaG5vbG9naWVz"
+    "LCBJbmMuMSQwIgYDVQQDDBtUcnVzdEFzaWEgR2xvYmFsIFJvb3QgQ0EgRzQ=",
+    "TyNkuI6XY57GU4HBdk7LKnQV1tc=",
+  },
+  {
+    // CN=Telekom Security TLS ECC Root 2020,O=Deutsche Telekom Security GmbH,C=DE
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0x57, 0x8A, 0xF4, 0xDE, 0xD0, 0x85, 0x3F, 0x4E, 0x59, 0x98, 0xDB,
+      0x4A, 0xEA, 0xF9, 0xCB, 0xEA, 0x8D, 0x94, 0x5F, 0x60, 0xB6, 0x20,
+      0xA3, 0x8D, 0x1A, 0x3C, 0x13, 0xB2, 0xBC, 0x7B, 0xA8, 0xE1 },
+    "MGMxCzAJBgNVBAYTAkRFMScwJQYDVQQKDB5EZXV0c2NoZSBUZWxla29tIFNlY3Vy"
+    "aXR5IEdtYkgxKzApBgNVBAMMIlRlbGVrb20gU2VjdXJpdHkgVExTIEVDQyBSb290"
+    "IDIwMjA=",
+    "NjqWjMlcsljN0AFdxeVXAA==",
+  },
+  {
+    // CN=Telekom Security TLS RSA Root 2023,O=Deutsche Telekom Security GmbH,C=DE
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0xEF, 0xC6, 0x5C, 0xAD, 0xBB, 0x59, 0xAD, 0xB6, 0xEF, 0xE8, 0x4D,
+      0xA2, 0x23, 0x11, 0xB3, 0x56, 0x24, 0xB7, 0x1B, 0x3B, 0x1E, 0xA0,
+      0xDA, 0x8B, 0x66, 0x55, 0x17, 0x4E, 0xC8, 0x97, 0x86, 0x46 },
+    "MGMxCzAJBgNVBAYTAkRFMScwJQYDVQQKDB5EZXV0c2NoZSBUZWxla29tIFNlY3Vy"
+    "aXR5IEdtYkgxKzApBgNVBAMMIlRlbGVrb20gU2VjdXJpdHkgVExTIFJTQSBSb290"
+    "IDIwMjM=",
+    "IZxULej27HF3+k7ow3BXlw==",
+  },
+  {
+    // CN=FIRMAPROFESIONAL CA ROOT-A WEB,OID.2.5.4.97=VATES-A62634068,O=Firmaprofesional SA,C=ES
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0xBE, 0xF2, 0x56, 0xDA, 0xF2, 0x6E, 0x9C, 0x69, 0xBD, 0xEC, 0x16,
+      0x02, 0x35, 0x97, 0x98, 0xF3, 0xCA, 0xF7, 0x18, 0x21, 0xA0, 0x3E,
+      0x01, 0x82, 0x57, 0xC5, 0x3C, 0x65, 0x61, 0x7F, 0x3D, 0x4A },
+    "MG4xCzAJBgNVBAYTAkVTMRwwGgYDVQQKDBNGaXJtYXByb2Zlc2lvbmFsIFNBMRgw"
+    "FgYDVQRhDA9WQVRFUy1BNjI2MzQwNjgxJzAlBgNVBAMMHkZJUk1BUFJPRkVTSU9O"
+    "QUwgQ0EgUk9PVC1BIFdFQg==",
+    "MZch7a+JQn81QYehZ1ZMbQ==",
   },
     // clang-format on
 };

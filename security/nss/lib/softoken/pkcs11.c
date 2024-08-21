@@ -37,6 +37,7 @@
 #include "secasn1.h"
 #include "secerr.h"
 #include "lgglue.h"
+#include "kem.h"
 
 PRBool parentForkedAfterC_Initialize;
 
@@ -60,6 +61,11 @@ PRBool usePthread_atfork;
 
 #endif
 
+#ifdef XP_UNIX
+#define LIB_PARAM_DEFAULT_FILE_LOCATION "/etc/nss/params.config"
+#endif
+
+#define LIB_PARAM_DEFAULT " configdir='' certPrefix='' keyPrefix='' secmod='' flags=noCertDB,noModDB "
 /*
  * ******************** Static data *******************************
  */
@@ -92,6 +98,17 @@ static PRIntervalTime loginWaitTime;
 #define CK_NEED_ARG_LIST 1
 
 #include "pkcs11f.h"
+
+#ifndef NSS_FIPS_DISABLE
+/* ------------- forward declare all the FIPS functions ------------- */
+#undef CK_NEED_ARG_LIST
+#undef CK_PKCS11_FUNCTION_INFO
+
+#define CK_PKCS11_FUNCTION_INFO(name) CK_RV __PASTE(F, name)
+#define CK_NEED_ARG_LIST 1
+
+#include "pkcs11f.h"
+#endif
 
 /* build the crypto module table */
 static CK_FUNCTION_LIST_3_0 sftk_funcList = {
@@ -154,6 +171,12 @@ CK_NSS_FIPS_FUNCTIONS sftk_fips_funcList = {
     nsc_NSSGetFIPSStatus
 };
 
+CK_NSS_KEM_FUNCTIONS sftk_kem_funcList = {
+    { 1, 0 },
+    NSC_Encapsulate,
+    NSC_Decapsulate
+};
+
 /*
  * Array is orderd by default first
  */
@@ -161,10 +184,11 @@ static CK_INTERFACE nss_interfaces[] = {
     { (CK_UTF8CHAR_PTR) "PKCS 11", &sftk_funcList, NSS_INTERFACE_FLAGS },
     { (CK_UTF8CHAR_PTR) "PKCS 11", &sftk_funcList_v2, NSS_INTERFACE_FLAGS },
     { (CK_UTF8CHAR_PTR) "Vendor NSS Module Interface", &sftk_module_funcList, NSS_INTERFACE_FLAGS },
-    { (CK_UTF8CHAR_PTR) "Vendor NSS FIPS Interface", &sftk_fips_funcList, NSS_INTERFACE_FLAGS }
+    { (CK_UTF8CHAR_PTR) "Vendor NSS FIPS Interface", &sftk_fips_funcList, NSS_INTERFACE_FLAGS },
+    { (CK_UTF8CHAR_PTR) "Vendor NSS KEM Interface", &sftk_kem_funcList, NSS_INTERFACE_FLAGS }
 };
 /* must match the count of interfaces in nss_interfaces above */
-#define NSS_INTERFACE_COUNT 4
+#define NSS_INTERFACE_COUNT 5
 
 /* List of DES Weak Keys */
 typedef unsigned char desKey[8];
@@ -286,6 +310,7 @@ struct mechanismList {
 #define CKF_EC_PNU CKF_EC_F_P | CKF_EC_NAMEDCURVE | CKF_EC_UNCOMPRESS
 
 #define CKF_EC_BPNU CKF_EC_F_2M | CKF_EC_PNU
+#define CKF_EC_POC CKF_EC_F_P | CKF_EC_OID | CKF_EC_COMPRESS
 
 #define CK_MAX 0xffffffff
 
@@ -355,6 +380,8 @@ static const struct mechanismList mechanisms[] = {
     { CKM_ECDSA_SHA256, { EC_MIN_KEY_BITS, EC_MAX_KEY_BITS, CKF_SN_VR | CKF_EC_BPNU }, PR_TRUE },
     { CKM_ECDSA_SHA384, { EC_MIN_KEY_BITS, EC_MAX_KEY_BITS, CKF_SN_VR | CKF_EC_BPNU }, PR_TRUE },
     { CKM_ECDSA_SHA512, { EC_MIN_KEY_BITS, EC_MAX_KEY_BITS, CKF_SN_VR | CKF_EC_BPNU }, PR_TRUE },
+    { CKM_EC_EDWARDS_KEY_PAIR_GEN, { ECD_MIN_KEY_BITS, ECD_MAX_KEY_BITS, CKF_GENERATE_KEY_PAIR }, PR_TRUE },
+    { CKM_EDDSA, { ECD_MIN_KEY_BITS, ECD_MAX_KEY_BITS, CKF_SN_VR | CKF_EC_POC }, PR_TRUE },
     /* ------------------------- RC2 Operations --------------------------- */
     { CKM_RC2_KEY_GEN, { 1, 128, CKF_GENERATE }, PR_TRUE },
     { CKM_RC2_ECB, { 1, 128, CKF_EN_DE_WR_UN }, PR_TRUE },
@@ -447,6 +474,18 @@ static const struct mechanismList mechanisms[] = {
     { CKM_SHA512, { 0, 0, CKF_DIGEST }, PR_FALSE },
     { CKM_SHA512_HMAC, { 1, 128, CKF_SN_VR }, PR_TRUE },
     { CKM_SHA512_HMAC_GENERAL, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_224, { 0, 0, CKF_DIGEST }, PR_FALSE },
+    { CKM_SHA3_224_HMAC, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_224_HMAC_GENERAL, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_256, { 0, 0, CKF_DIGEST }, PR_FALSE },
+    { CKM_SHA3_256_HMAC, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_256_HMAC_GENERAL, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_384, { 0, 0, CKF_DIGEST }, PR_FALSE },
+    { CKM_SHA3_384_HMAC, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_384_HMAC_GENERAL, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_512, { 0, 0, CKF_DIGEST }, PR_FALSE },
+    { CKM_SHA3_512_HMAC, { 1, 128, CKF_SN_VR }, PR_TRUE },
+    { CKM_SHA3_512_HMAC_GENERAL, { 1, 128, CKF_SN_VR }, PR_TRUE },
     { CKM_TLS_PRF_GENERAL, { 0, 512, CKF_SN_VR }, PR_FALSE },
     { CKM_TLS_MAC, { 0, 512, CKF_SN_VR }, PR_FALSE },
     { CKM_NSS_TLS_PRF_GENERAL_SHA256,
@@ -602,11 +641,14 @@ static const struct mechanismList mechanisms[] = {
     /* -------------------- Constant Time TLS MACs ----------------------- */
     { CKM_NSS_HMAC_CONSTANT_TIME, { 0, 0, CKF_DIGEST }, PR_TRUE },
     { CKM_NSS_SSL3_MAC_CONSTANT_TIME, { 0, 0, CKF_DIGEST }, PR_TRUE },
-    /* --------------------IPSEC ----------------------- */
+    /* -------------------- IPSEC ----------------------- */
     { CKM_NSS_IKE_PRF_PLUS_DERIVE, { 8, 255 * 64, CKF_DERIVE }, PR_TRUE },
     { CKM_NSS_IKE_PRF_DERIVE, { 8, 64, CKF_DERIVE }, PR_TRUE },
     { CKM_NSS_IKE1_PRF_DERIVE, { 8, 64, CKF_DERIVE }, PR_TRUE },
-    { CKM_NSS_IKE1_APP_B_PRF_DERIVE, { 8, 255 * 64, CKF_DERIVE }, PR_TRUE }
+    { CKM_NSS_IKE1_APP_B_PRF_DERIVE, { 8, 255 * 64, CKF_DERIVE }, PR_TRUE },
+    /* -------------------- Kyber Operations ----------------------- */
+    { CKM_NSS_KYBER_KEY_PAIR_GEN, { 0, 0, CKF_GENERATE_KEY_PAIR }, PR_TRUE },
+    { CKM_NSS_KYBER, { 0, 0, 0 }, PR_TRUE },
 };
 static const CK_ULONG mechanismCount = sizeof(mechanisms) / sizeof(mechanisms[0]);
 
@@ -1035,6 +1077,8 @@ sftk_handlePublicKeyObject(SFTKSession *session, SFTKObject *object,
             recover = CK_FALSE;
             wrap = CK_FALSE;
             break;
+        case CKK_EC_MONTGOMERY:
+        case CKK_EC_EDWARDS:
         case CKK_EC:
             if (!sftk_hasAttribute(object, CKA_EC_PARAMS)) {
                 return CKR_TEMPLATE_INCOMPLETE;
@@ -1042,8 +1086,19 @@ sftk_handlePublicKeyObject(SFTKSession *session, SFTKObject *object,
             if (!sftk_hasAttribute(object, CKA_EC_POINT)) {
                 return CKR_TEMPLATE_INCOMPLETE;
             }
-            derive = CK_TRUE; /* for ECDH */
-            verify = CK_TRUE; /* for ECDSA */
+            /* for ECDSA and EDDSA. Change if the structure of any of them is modified. */
+            derive = (key_type == CKK_EC_EDWARDS) ? CK_FALSE : CK_TRUE; /* CK_TRUE for ECDH */
+            verify = CK_TRUE;                                           /* for ECDSA and EDDSA */
+            encrypt = CK_FALSE;
+            recover = CK_FALSE;
+            wrap = CK_FALSE;
+            break;
+        case CKK_NSS_KYBER:
+            if (!sftk_hasAttribute(object, CKA_NSS_PARAMETER_SET)) {
+                return CKR_TEMPLATE_INCOMPLETE;
+            }
+            derive = CK_FALSE;
+            verify = CK_FALSE;
             encrypt = CK_FALSE;
             recover = CK_FALSE;
             wrap = CK_FALSE;
@@ -1080,7 +1135,7 @@ sftk_handlePublicKeyObject(SFTKSession *session, SFTKObject *object,
     object->infoFree = (SFTKFree)nsslowkey_DestroyPublicKey;
 
     /* Check that an imported EC key is valid */
-    if (key_type == CKK_EC) {
+    if (key_type == CKK_EC || key_type == CKK_EC_EDWARDS || key_type == CKK_EC_MONTGOMERY) {
         NSSLOWKEYPublicKey *pubKey = (NSSLOWKEYPublicKey *)object->objectInfo;
         SECStatus rv = EC_ValidatePublicKey(&pubKey->u.ec.ecParams,
                                             &pubKey->u.ec.publicValue);
@@ -1222,14 +1277,18 @@ sftk_handlePrivateKeyObject(SFTKSession *session, SFTKObject *object, CK_KEY_TYP
             wrap = CK_FALSE;
             break;
         case CKK_EC:
+        case CKK_EC_EDWARDS:
+        case CKK_EC_MONTGOMERY:
             if (!sftk_hasAttribute(object, CKA_EC_PARAMS)) {
                 return CKR_TEMPLATE_INCOMPLETE;
             }
             if (!sftk_hasAttribute(object, CKA_VALUE)) {
                 return CKR_TEMPLATE_INCOMPLETE;
             }
+            /* for ECDSA and EDDSA. Change if the structure of any of them is modified. */
+            derive = (key_type == CKK_EC_EDWARDS) ? CK_FALSE : CK_TRUE; /* CK_TRUE for ECDH */
+            sign = CK_TRUE;                                             /* for ECDSA and EDDSA */
             encrypt = CK_FALSE;
-            sign = CK_TRUE;
             recover = CK_FALSE;
             wrap = CK_FALSE;
             break;
@@ -1246,6 +1305,15 @@ sftk_handlePrivateKeyObject(SFTKSession *session, SFTKObject *object, CK_KEY_TYP
             encrypt = sign = recover = wrap = CK_FALSE;
             derive = CK_TRUE;
             createObjectInfo = PR_FALSE;
+            break;
+        case CKK_NSS_KYBER:
+            if (!sftk_hasAttribute(object, CKA_KEY_TYPE)) {
+                return CKR_TEMPLATE_INCOMPLETE;
+            }
+            if (!sftk_hasAttribute(object, CKA_VALUE)) {
+                return CKR_TEMPLATE_INCOMPLETE;
+            }
+            encrypt = sign = recover = wrap = CK_FALSE;
             break;
         default:
             return CKR_ATTRIBUTE_VALUE_INVALID;
@@ -1868,6 +1936,8 @@ sftk_GetPubKey(SFTKObject *object, CK_KEY_TYPE key_type,
             crv = sftk_Attribute2SSecItem(arena, &pubKey->u.dh.publicValue,
                                           object, CKA_VALUE);
             break;
+        case CKK_EC_EDWARDS:
+        case CKK_EC_MONTGOMERY:
         case CKK_EC:
             pubKey->keyType = NSSLOWKEYECKey;
             crv = sftk_Attribute2SSecItem(arena,
@@ -1897,8 +1967,8 @@ sftk_GetPubKey(SFTKObject *object, CK_KEY_TYPE key_type,
                 /* Handle the non-DER encoded case.
                  * Some curves are always pressumed to be non-DER.
                  */
-                if (pubKey->u.ec.publicValue.len == keyLen &&
-                    (pubKey->u.ec.ecParams.fieldID.type == ec_field_plain ||
+                if (pubKey->u.ec.ecParams.type != ec_params_named ||
+                    (pubKey->u.ec.publicValue.len == keyLen &&
                      pubKey->u.ec.publicValue.data[0] == EC_POINT_FORM_UNCOMPRESSED)) {
                     break; /* key was not DER encoded, no need to unwrap */
                 }
@@ -1918,8 +1988,7 @@ sftk_GetPubKey(SFTKObject *object, CK_KEY_TYPE key_type,
                         break;
                     }
                     /* we don't handle compressed points except in the case of ECCurve25519 */
-                    if ((pubKey->u.ec.ecParams.fieldID.type != ec_field_plain) &&
-                        (publicValue.data[0] != EC_POINT_FORM_UNCOMPRESSED)) {
+                    if (publicValue.data[0] != EC_POINT_FORM_UNCOMPRESSED) {
                         crv = CKR_ATTRIBUTE_VALUE_INVALID;
                         break;
                     }
@@ -1929,6 +1998,9 @@ sftk_GetPubKey(SFTKObject *object, CK_KEY_TYPE key_type,
                 }
                 crv = CKR_ATTRIBUTE_VALUE_INVALID;
             }
+            break;
+        case CKK_NSS_KYBER:
+            crv = CKR_OK;
             break;
         default:
             crv = CKR_KEY_TYPE_INCONSISTENT;
@@ -2038,7 +2110,8 @@ sftk_mkPrivKey(SFTKObject *object, CK_KEY_TYPE key_type, CK_RV *crvp)
             /* privKey was zero'd so public value is already set to NULL, 0
              * if we don't set it explicitly */
             break;
-
+        case CKK_EC_EDWARDS:
+        case CKK_EC_MONTGOMERY:
         case CKK_EC:
             privKey->keyType = NSSLOWKEYECKey;
             crv = sftk_Attribute2SSecItem(arena,
@@ -2082,6 +2155,9 @@ sftk_mkPrivKey(SFTKObject *object, CK_KEY_TYPE key_type, CK_RV *crvp)
                 break;
 #endif
             }
+            break;
+
+        case CKK_NSS_KYBER:
             break;
 
         default:
@@ -2351,6 +2427,8 @@ sftk_PutPubKey(SFTKObject *publicKey, SFTKObject *privateKey, CK_KEY_TYPE keyTyp
                                         sftk_item_expand(&pubKey->u.dh.publicValue));
             break;
         case CKK_EC:
+        case CKK_EC_MONTGOMERY:
+        case CKK_EC_EDWARDS:
             sftk_DeleteAttributeType(publicKey, CKA_EC_PARAMS);
             sftk_DeleteAttributeType(publicKey, CKA_EC_POINT);
             crv = sftk_AddAttributeType(publicKey, CKA_EC_PARAMS,
@@ -2485,7 +2563,15 @@ NSC_GetFunctionList(CK_FUNCTION_LIST_PTR *pFunctionList)
 CK_RV
 C_GetFunctionList(CK_FUNCTION_LIST_PTR *pFunctionList)
 {
+#ifdef NSS_FIPS_DISABLED
     return NSC_GetFunctionList(pFunctionList);
+#else
+    if (NSS_GetSystemFIPSEnabled()) {
+        return FC_GetFunctionList(pFunctionList);
+    } else {
+        return NSC_GetFunctionList(pFunctionList);
+    }
+#endif
 }
 
 CK_RV
@@ -2506,7 +2592,15 @@ NSC_GetInterfaceList(CK_INTERFACE_PTR interfaces, CK_ULONG_PTR pulCount)
 CK_RV
 C_GetInterfaceList(CK_INTERFACE_PTR interfaces, CK_ULONG_PTR pulCount)
 {
+#ifdef NSS_FIPS_DISABLED
     return NSC_GetInterfaceList(interfaces, pulCount);
+#else
+    if (NSS_GetSystemFIPSEnabled()) {
+        return FC_GetInterfaceList(interfaces, pulCount);
+    } else {
+        return NSC_GetInterfaceList(interfaces, pulCount);
+    }
+#endif
 }
 
 /*
@@ -2539,7 +2633,15 @@ CK_RV
 C_GetInterface(CK_UTF8CHAR_PTR pInterfaceName, CK_VERSION_PTR pVersion,
                CK_INTERFACE_PTR_PTR ppInterface, CK_FLAGS flags)
 {
+#ifdef NSS_FIPS_DISABLED
     return NSC_GetInterface(pInterfaceName, pVersion, ppInterface, flags);
+#else
+    if (NSS_GetSystemFIPSEnabled()) {
+        return FC_GetInterface(pInterfaceName, pVersion, ppInterface, flags);
+    } else {
+        return NSC_GetInterface(pInterfaceName, pVersion, ppInterface, flags);
+    }
+#endif
 }
 
 static PLHashNumber
@@ -3254,6 +3356,82 @@ sftk_closePeer(PRBool isFIPS)
 extern void sftk_PBELockInit(void);
 extern void sftk_PBELockShutdown(void);
 
+/* Parse the library parameters from the first occurance in the following src.:
+ * 1. C_INITIALIZED_ARGS - lib params are included in LibraryParameters field
+ * 2. NSS_LIB_PARAMS - env. var. containing the lib. params.
+ * 3. NSS_LIB_PARAMS_FILE - env. var. pointion to a file with lib. params.
+ * 4. /etc/nss/params.config - default lib. param. file location [Linux only]
+ * 5. LIB_PARAM_DEFAULT - string ensureing the pressence at all times
+ *    "configdir='' certPrefix='' keyPrefix='' secmod='' flags=noCertDB,noModDB"
+ */
+static CK_RV
+sftk_getParameters(CK_C_INITIALIZE_ARGS *init_args, PRBool isFIPS,
+                   sftk_parameters *paramStrings)
+{
+    CK_RV crv;
+    char *libParams;
+    const char *filename;
+    PRFileDesc *file_dc;
+    PRBool free_mem = PR_FALSE;
+
+    if (!init_args || !init_args->LibraryParameters) {
+        /* Library parameters were not provided via C_Initialize_args*/
+
+        /* Enviromental value has precedence to configuration filename */
+        libParams = PR_GetEnvSecure("NSS_LIB_PARAMS");
+
+        if (!libParams) {
+            /* Load from config filename or use default */
+            filename = PR_GetEnvSecure("NSS_LIB_PARAMS_FILE");
+#ifdef XP_UNIX
+            /* Use default configuration file for Linux only */
+            if (!filename)
+                filename = LIB_PARAM_DEFAULT_FILE_LOCATION;
+#endif
+            if (filename) {
+                file_dc = PR_OpenFile(filename, PR_RDONLY, 444);
+                if (file_dc) {
+                    /* file opened */
+                    PRInt32 len = PR_Available(file_dc);
+                    libParams = PORT_NewArray(char, len + 1);
+                    if (libParams) {
+                        /* memory allocated */
+                        if (PR_Read(file_dc, libParams, len) == -1) {
+                            PORT_Free(libParams);
+                            libParams = NULL;
+                        } else {
+                            free_mem = PR_TRUE;
+                            libParams[len] = '\0';
+                        }
+                    }
+
+                    PR_Close(file_dc);
+                }
+            }
+        }
+
+        if (libParams == NULL)
+            libParams = LIB_PARAM_DEFAULT;
+
+    } else {
+        /* Use parameters provided with C_Initialize_args */
+        libParams = (char *)init_args->LibraryParameters;
+    }
+
+    crv = sftk_parseParameters(libParams, paramStrings, isFIPS);
+    if (crv != CKR_OK) {
+        crv = CKR_ARGUMENTS_BAD;
+        goto loser;
+    }
+
+    crv = CKR_OK;
+loser:
+    if (free_mem)
+        PORT_Free(libParams);
+
+    return crv;
+}
+
 /* NSC_Initialize initializes the Cryptoki library. */
 CK_RV
 nsc_CommonInitialize(CK_VOID_PTR pReserved, PRBool isFIPS)
@@ -3315,53 +3493,56 @@ nsc_CommonInitialize(CK_VOID_PTR pReserved, PRBool isFIPS)
             return crv;
         }
     }
-    crv = CKR_ARGUMENTS_BAD;
-    if ((init_args && init_args->LibraryParameters)) {
-        sftk_parameters paramStrings;
 
-        crv = sftk_parseParameters((char *)init_args->LibraryParameters, &paramStrings, isFIPS);
-        if (crv != CKR_OK) {
-            return crv;
-        }
-        crv = sftk_configure(paramStrings.man, paramStrings.libdes);
-        if (crv != CKR_OK) {
-            goto loser;
-        }
+    sftk_parameters paramStrings;
 
-        /* if we have a peer already open, have him close his DB's so we
-         * don't clobber each other. */
-        if ((isFIPS && nsc_init) || (!isFIPS && nsf_init)) {
-            sftk_closePeer(isFIPS);
-            if (sftk_audit_enabled) {
-                if (isFIPS && nsc_init) {
-                    sftk_LogAuditMessage(NSS_AUDIT_INFO, NSS_AUDIT_FIPS_STATE,
-                                         "enabled FIPS mode");
-                } else {
-                    sftk_LogAuditMessage(NSS_AUDIT_INFO, NSS_AUDIT_FIPS_STATE,
-                                         "disabled FIPS mode");
-                }
-            }
-            /* if we have a peer open, we don't want to destroy the freelist
-             * from under the peer if we fail, the free list will be
-             * destroyed in that case when the C_Finalize is called for
-             * the peer */
-            destroy_freelist_on_error = PR_FALSE;
-        }
-        /* allow us to create objects in SFTK_SlotInit */
-        sftk_InitFreeLists();
-
-        for (i = 0; i < paramStrings.token_count; i++) {
-            crv = SFTK_SlotInit(paramStrings.configdir,
-                                paramStrings.updatedir, paramStrings.updateID,
-                                &paramStrings.tokens[i], moduleIndex);
-            if (crv != CKR_OK) {
-                nscFreeAllSlots(moduleIndex);
-                break;
-            }
-        }
-    loser:
-        sftk_freeParams(&paramStrings);
+    /* load and parse the library parameters */
+    crv = sftk_getParameters(init_args, isFIPS, &paramStrings);
+    if (crv != CKR_OK) {
+        goto loser;
     }
+
+    crv = sftk_configure(paramStrings.man, paramStrings.libdes);
+    if (crv != CKR_OK) {
+        goto loser;
+    }
+
+    /* if we have a peer already open, have him close his DB's so we
+     * don't clobber each other. */
+    if ((isFIPS && nsc_init) || (!isFIPS && nsf_init)) {
+        sftk_closePeer(isFIPS);
+        if (sftk_audit_enabled) {
+            if (isFIPS && nsc_init) {
+                sftk_LogAuditMessage(NSS_AUDIT_INFO, NSS_AUDIT_FIPS_STATE,
+                                     "enabled FIPS mode");
+            } else {
+                sftk_LogAuditMessage(NSS_AUDIT_INFO, NSS_AUDIT_FIPS_STATE,
+                                     "disabled FIPS mode");
+            }
+        }
+        /* if we have a peer open, we don't want to destroy the freelist
+         * from under the peer if we fail, the free list will be
+         * destroyed in that case when the C_Finalize is called for
+         * the peer */
+        destroy_freelist_on_error = PR_FALSE;
+    }
+    /* allow us to create objects in SFTK_SlotInit */
+    sftk_InitFreeLists();
+
+    for (i = 0; i < paramStrings.token_count; i++) {
+        crv = SFTK_SlotInit(paramStrings.configdir,
+                            paramStrings.updatedir, paramStrings.updateID,
+                            &paramStrings.tokens[i], moduleIndex);
+        if (crv != CKR_OK) {
+            nscFreeAllSlots(moduleIndex);
+            break;
+        }
+    }
+
+loser:
+
+    sftk_freeParams(&paramStrings);
+
     if (destroy_freelist_on_error && (CKR_OK != crv)) {
         /* idempotent. If the list are already freed, this is a noop */
         sftk_CleanupFreeLists();
@@ -4625,8 +4806,14 @@ NSC_CreateObject(CK_SESSION_HANDLE hSession,
     if (object == NULL) {
         return CKR_HOST_MEMORY;
     }
-    object->isFIPS = PR_FALSE; /* if we created the object on the fly,
-                                * it's not a FIPS object */
+
+    /*
+     * sftk_NewObject will set object->isFIPS to PR_TRUE if the slot is FIPS.
+     * We don't need to worry about that here, as FC_CreateObject will always
+     * disallow the import of secret and private keys, regardless of isFIPS
+     * approval status. Therefore, at this point we know that the key is a
+     * public key, which is acceptable to be imported in plaintext.
+     */
 
     /*
      * load the template values into the object

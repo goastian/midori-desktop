@@ -55,6 +55,7 @@ const extern std::vector<SSLNamedGroup> kAllDHEGroups;
 const extern std::vector<SSLNamedGroup> kECDHEGroups;
 const extern std::vector<SSLNamedGroup> kFFDHEGroups;
 const extern std::vector<SSLNamedGroup> kFasterDHEGroups;
+const extern std::vector<SSLNamedGroup> kEcdhHybridGroups;
 
 // These functions are called from callbacks.  They use bare pointers because
 // TlsAgent sets up the callback and it doesn't know who owns it.
@@ -560,6 +561,11 @@ class TlsAgentTestClient : public TlsAgentTestBase,
 };
 
 class TlsAgentTestClient13 : public TlsAgentTestClient {};
+
+class TlsAgentStreamTestClient13 : public TlsAgentTestClient {
+ public:
+  TlsAgentStreamTestClient13() { variant_ = ssl_variant_stream; }
+};
 
 class TlsAgentStreamTestClient : public TlsAgentTestBase {
  public:
