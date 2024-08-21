@@ -1,6 +1,86 @@
 {
   "tests": [
     {
+      "name": "reduceMax float32 0D constant tensor default options",
+      "inputs": {
+        "input": {
+          "shape": [],
+          "data": [
+            32.16658401489258
+          ],
+          "type": "float32",
+          "constant": true
+        }
+      },
+      "expected": {
+        "name": "output",
+        "data": 32.16658401489258,
+        "type": "float32"
+      }
+    },
+    {
+      "name": "reduceMax float32 0D constant tensor empty axes",
+      "inputs": {
+        "input": {
+          "shape": [],
+          "data": [
+            32.16658401489258
+          ],
+          "type": "float32",
+          "constant": true
+        }
+      },
+      "options": {
+        "axes": []
+      },
+      "expected": {
+        "name": "output",
+        "data": 32.16658401489258,
+        "type": "float32"
+      }
+    },
+    {
+      "name": "reduceMax float32 1D constant tensor default options",
+      "inputs": {
+        "input": {
+          "shape": [24],
+          "data": [
+            32.166585683408215,
+            90.42288038051404,
+            -26.341795469529572,
+            -7.147959324354275,
+            75.90379209491468,
+            -48.204211355965356,
+            -53.094252997077795,
+            66.66099234322033,
+            -96.16854360851454,
+            -88.30545253131574,
+            94.99645116994563,
+            37.28493087456198,
+            -42.209860696518845,
+            96.55397216250705,
+            0.8807230095547567,
+            62.504641219832195,
+            36.650633791794576,
+            99.77313292829271,
+            -72.86485546227293,
+            -46.03200926418318,
+            20.253753500247612,
+            -21.55738542170144,
+            -51.287275192229046,
+            -42.588327517032454
+          ],
+          "type": "float32",
+          "constant": true
+        }
+      },
+      "expected": {
+        "name": "output",
+        "data": 99.77313232421875,
+        "type": "float32"
+      }
+    },
+    {
       "name": "reduceMax float32 1D tensor default options",
       "inputs": {
         "input": {
@@ -515,7 +595,8 @@
         }
       },
       "options": {
-        "axes": [1, 3]
+        "axes": [1, 3],
+        "keepDimensions": false
       },
       "expected": {
         "name": "output",
@@ -564,11 +645,12 @@
         }
       },
       "options": {
-        "axes": [1, 3]
+        "axes": [1, 3],
+        "keepDimensions": true
       },
       "expected": {
         "name": "output",
-        "shape": [1, 2, 2, 1],
+        "shape": [2, 1, 2, 1],
         "data": [
           90.42288208007812,
           94.99645233154297,

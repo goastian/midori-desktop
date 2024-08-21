@@ -1,0 +1,5 @@
+[DEFAULT]
+subsuite = "skip-fails"
+
+["test_skipfails.py"]
+requirements = "testing/test/test_skipfails.txt"

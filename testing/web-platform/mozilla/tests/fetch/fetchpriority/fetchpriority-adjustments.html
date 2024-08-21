@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>fetchpriority: verify basic invariants for adjustments</title>
+<link rel="help" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1880528"/>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+  const fetchpriorities = ["auto", "low", "high"];
+  const prioritiesWhenFetchpriorityDisabled = {
+      "link-preload-script": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_HIGHEST,
+      "module-script": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "async-or-defer-script": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "script-in-head": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "other-script": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "link-preload-font": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_HIGH,
+      "link-preload-fetch": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "deferred-style": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "link-preload-style": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_HIGHEST,
+      "non-deferred-style": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "global-fetch-api": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+      "images": SpecialPowers.Ci.nsISupportsPriority.PRIORITY_LOW,
+  };
+  for (const name in prioritiesWhenFetchpriorityDisabled) {
+      let adjustments = {};
+      for (const fetchpriority of fetchpriorities) {
+	  adjustments[fetchpriority] = SpecialPowers.getIntPref(`network.fetchpriority.adjustments.${name}.${fetchpriority}`);
+      }
+      test(() => {
+	  // The higher the internal priority, the smaller the integer value.
+	  assert_less_than_equal(adjustments.high, adjustments.auto, "Internal priority for high is at most the one for auto");
+	  assert_less_than_equal(adjustments.auto, adjustments.low, "Internal priority for auto is at most the one for low");
+      }, `${name}: adjusted priorities for low/auto/high have proper ordering.`);
+
+      test(() => {
+	  assert_less_than(adjustments.high, adjustments.low, "Internal priority for high is less than the one for low");
+      }, `${name}: at least one of fetchpriority="high" or fetchpriority="low" has any effect.`);
+
+      test(() => {
+	  const priority = prioritiesWhenFetchpriorityDisabled[name];
+	  const predefinedPriorities = [
+	      SpecialPowers.Ci.nsISupportsPriority.PRIORITY_HIGHEST,
+	      SpecialPowers.Ci.nsISupportsPriority.PRIORITY_HIGH,
+	      SpecialPowers.Ci.nsISupportsPriority.PRIORITY_NORMAL,
+	      SpecialPowers.Ci.nsISupportsPriority.PRIORITY_LOW,
+	      SpecialPowers.Ci.nsISupportsPriority.PRIORITY_LOWEST
+	  ];
+	  for (const fetchpriority of fetchpriorities) {
+	      const adjustedPriority = priority + adjustments[fetchpriority];
+	      assert_true(predefinedPriorities.includes(adjustedPriority), `Internal priority for ${fetchpriority} is in the predefined set of priorities.`);
+	  }
+      }, `${name}: adjusted priorities belong to the predefined set.`);
+  }
+</script>

@@ -1,34 +1,32 @@
 # mypy: allow-untyped-defs
 
-import os
-import subprocess
-from multiprocessing import Queue, Event
-from threading import Thread
-
 from . import chrome_spki_certs
-from .base import (
-    Browser,
-    ExecutorBrowser,
-    OutputHandler,
-)
+from .base import cmd_arg, require_arg
 from .base import get_timeout_multiplier   # noqa: F401
+from .chrome import ChromeBrowser, debug_args
 from ..executors import executor_kwargs as base_executor_kwargs
-from ..executors.executorcontentshell import (  # noqa: F401
-    ContentShellCrashtestExecutor,
-    ContentShellPrintRefTestExecutor,
-    ContentShellRefTestExecutor,
-    ContentShellTestharnessExecutor,
+from ..executors.base import WdspecExecutor  # noqa: F401
+from ..executors.executorchrome import (  # noqa: F401
+    ChromeDriverPrintRefTestExecutor,
+    ChromeDriverRefTestExecutor,
+    ChromeDriverTestharnessExecutor,
 )
+from ..executors.executorwebdriver import WebDriverCrashtestExecutor  # noqa: F401
+
+ENABLE_THREADED_COMPOSITING_FLAG = '--enable-threaded-compositing'
+DISABLE_THREADED_COMPOSITING_FLAG = '--disable-threaded-compositing'
+DISABLE_THREADED_ANIMATION_FLAG = '--disable-threaded-animation'
 
 
 __wptrunner__ = {"product": "content_shell",
                  "check_args": "check_args",
                  "browser": "ContentShellBrowser",
                  "executor": {
-                     "crashtest": "ContentShellCrashtestExecutor",
-                     "print-reftest": "ContentShellPrintRefTestExecutor",
-                     "reftest": "ContentShellRefTestExecutor",
-                     "testharness": "ContentShellTestharnessExecutor",
+                     "crashtest": "WebDriverCrashtestExecutor",
+                     "print-reftest": "ChromeDriverPrintRefTestExecutor",
+                     "reftest": "ChromeDriverRefTestExecutor",
+                     "testharness": "ChromeDriverTestharnessExecutor",
+                     "wdspec": "WdspecExecutor",
                  },
                  "browser_kwargs": "browser_kwargs",
                  "executor_kwargs": "executor_kwargs",
@@ -39,36 +37,79 @@ __wptrunner__ = {"product": "content_shell",
 
 
 def check_args(**kwargs):
-    pass
+    require_arg(kwargs, "webdriver_binary")
 
 
 def browser_kwargs(logger, test_type, run_info_data, config, **kwargs):
-    args = list(kwargs["binary_args"])
-
-    args.append("--ignore-certificate-errors-spki-list=%s" %
-        ','.join(chrome_spki_certs.IGNORE_CERTIFICATE_ERRORS_SPKI_LIST))
-
-    webtranport_h3_port = config.ports.get('webtransport-h3')
-    if webtranport_h3_port is not None:
-        args.append(
-            f"--origin-to-force-quic-on=web-platform.test:{webtranport_h3_port[0]}")
-
-    # These flags are specific to content_shell - they activate web test protocol mode.
-    args.append("--run-web-tests")
-    args.append("-")
-
     return {"binary": kwargs["binary"],
-            "binary_args": args}
+            "webdriver_binary": kwargs["webdriver_binary"],
+            "webdriver_args": kwargs.get("webdriver_args"),
+            "debug_info": kwargs["debug_info"]}
 
 
-def executor_kwargs(logger, test_type, test_environment, run_info_data,
+def executor_kwargs(logger, test_type, test_environment, run_info_data, subsuite,
                     **kwargs):
     sanitizer_enabled = kwargs.get("sanitizer_enabled")
     if sanitizer_enabled:
         test_type = "crashtest"
     executor_kwargs = base_executor_kwargs(test_type, test_environment, run_info_data,
-                                           **kwargs)
+                                           subsuite, **kwargs)
     executor_kwargs["sanitizer_enabled"] = sanitizer_enabled
+    executor_kwargs["close_after_done"] = True
+    executor_kwargs["reuse_window"] = kwargs.get("reuse_window", False)
+
+    capabilities = {
+        "goog:chromeOptions": {
+            "prefs": {
+                "profile": {
+                    "default_content_setting_values": {
+                        "popups": 1
+                    }
+                }
+            },
+            "excludeSwitches": ["enable-automation"],
+            "w3c": True,
+        }
+    }
+
+    chrome_options = capabilities["goog:chromeOptions"]
+    if kwargs["binary"] is not None:
+        chrome_options["binary"] = kwargs["binary"]
+
+    chrome_options["args"] = []
+    chrome_options["args"].append("--ignore-certificate-errors-spki-list=%s" %
+        ','.join(chrome_spki_certs.IGNORE_CERTIFICATE_ERRORS_SPKI_LIST))
+    # For WebTransport tests.
+    chrome_options["args"].append("--webtransport-developer-mode")
+    chrome_options["args"].append("--enable-blink-test-features")
+
+    # always run in headful mode for content_shell
+
+    if kwargs["debug_info"]:
+        chrome_options["args"].extend(debug_args(kwargs["debug_info"]))
+
+    for arg in kwargs.get("binary_args", []):
+        # skip empty --user-data-dir args, and allow chromedriver to pick one.
+        # Do not pass in --run-web-tests, otherwise content_shell will hang.
+        if arg in ['--user-data-dir', '--run-web-tests']:
+            continue
+        if arg not in chrome_options["args"]:
+            chrome_options["args"].append(arg)
+
+    # Temporary workaround to align with RWT behavior. Unless a vts explicitly
+    # enables threaded compositing, we should use single threaded compositing
+    # Do not pass in DISABLE_THREADED_COMPOSITING_FLAG or
+    # DISABLE_THREADED_ANIMATION_FLAG. Content shell will hang due to that.
+    #if ENABLE_THREADED_COMPOSITING_FLAG not in subsuite.config.get("binary_args", []):
+    #    chrome_options["args"].extend([DISABLE_THREADED_COMPOSITING_FLAG,
+    #                 DISABLE_THREADED_ANIMATION_FLAG])
+
+    for arg in subsuite.config.get("binary_args", []):
+        if arg not in chrome_options["args"]:
+            chrome_options["args"].append(arg)
+
+    executor_kwargs["capabilities"] = capabilities
+
     return executor_kwargs
 
 
@@ -78,155 +119,16 @@ def env_extras(**kwargs):
 
 def env_options():
     return {"server_host": "127.0.0.1",
-            "testharnessreport": "testharnessreport-content-shell.js"}
+            "supports_debugger": True}
 
 
 def update_properties():
     return (["debug", "os", "processor"], {"os": ["version"], "processor": ["bits"]})
 
 
-class ContentShellBrowser(Browser):
-    """Class that represents an instance of content_shell.
-
-    Upon startup, the stdout, stderr, and stdin pipes of the underlying content_shell
-    process are connected to multiprocessing Queues so that the runner process can
-    interact with content_shell through its protocol mode.
-    """
-    # Seconds to wait for the process to stop after it was sent `SIGTERM` or
-    # `TerminateProcess()`. The value is inherited from:
-    # https://chromium.googlesource.com/chromium/src/+/b175d48d3ea4ea66eea35c88c11aa80d233f3bee/third_party/blink/tools/blinkpy/web_tests/port/base.py#476
-    termination_timeout: float = 3
-
-    def __init__(self, logger, binary="content_shell", binary_args=[], **kwargs):
-        super().__init__(logger)
-        self._args = [binary] + binary_args
-        self._output_handler = None
-        self._proc = None
-
-    def start(self, group_metadata, **kwargs):
-        self.logger.debug("Starting content shell: %s..." % self._args[0])
-        self._output_handler = OutputHandler(self.logger, self._args)
-        if os.name == "posix":
-            close_fds, preexec_fn = True, lambda: os.setpgid(0, 0)
-        else:
-            close_fds, preexec_fn = False, None
-        self._proc = subprocess.Popen(self._args,
-                                      stdin=subprocess.PIPE,
-                                      stdout=subprocess.PIPE,
-                                      stderr=subprocess.PIPE,
-                                      close_fds=close_fds,
-                                      preexec_fn=preexec_fn)
-        self._output_handler.after_process_start(self._proc.pid)
-
-        self._stdout_queue = Queue()
-        self._stderr_queue = Queue()
-        self._stdin_queue = Queue()
-        self._io_stopped = Event()
-
-        self._stdout_reader = self._create_reader_thread(self._proc.stdout,
-                                                         self._stdout_queue,
-                                                         prefix=b"OUT: ")
-        self._stderr_reader = self._create_reader_thread(self._proc.stderr,
-                                                         self._stderr_queue,
-                                                         prefix=b"ERR: ")
-        self._stdin_writer = self._create_writer_thread(self._proc.stdin, self._stdin_queue)
-
-        # Content shell is likely still in the process of initializing. The actual waiting
-        # for the startup to finish is done in the ContentShellProtocol.
-        self.logger.debug("Content shell has been started.")
-        self._output_handler.start(group_metadata=group_metadata, **kwargs)
-
-    def stop(self, force=False):
-        self.logger.debug("Stopping content shell...")
-
-        clean_shutdown = True
-        if self.is_alive():
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=self.termination_timeout)
-            except subprocess.TimeoutExpired:
-                clean_shutdown = False
-                self.logger.warning(
-                    "Content shell failed to stop gracefully (PID: "
-                    f"{self._proc.pid}, timeout: {self.termination_timeout}s)")
-                if force:
-                    self._proc.kill()
-
-        # We need to shut down these queues cleanly to avoid broken pipe error spam in the logs.
-        self._stdout_reader.join(2)
-        self._stderr_reader.join(2)
-
-        self._stdin_queue.put(None)
-        self._stdin_writer.join(2)
-
-        for thread in [self._stdout_reader, self._stderr_reader, self._stdin_writer]:
-            if thread.is_alive():
-                self.logger.warning("Content shell IO threads did not shut down gracefully.")
-                return False
-
-        stopped = not self.is_alive()
-        if stopped:
-            self.logger.debug("Content shell has been stopped.")
-        else:
-            self.logger.warning("Content shell failed to stop.")
-        if stopped and self._output_handler is not None:
-            self._output_handler.after_process_stop(clean_shutdown)
-            self._output_handler = None
-        return stopped
-
-    def is_alive(self):
-        return self._proc is not None and self._proc.poll() is None
-
-    def pid(self):
-        return self._proc.pid if self._proc else None
-
-    def executor_browser(self):
-        """This function returns the `ExecutorBrowser` object that is used by other
-        processes to interact with content_shell. In our case, this consists of the three
-        multiprocessing Queues as well as an `io_stopped` event to signal when the
-        underlying pipes have reached EOF.
-        """
-        return ExecutorBrowser, {"stdout_queue": self._stdout_queue,
-                                 "stderr_queue": self._stderr_queue,
-                                 "stdin_queue": self._stdin_queue,
-                                 "io_stopped": self._io_stopped}
-
-    def check_crash(self, process, test):
-        return not self.is_alive()
-
-    def _create_reader_thread(self, stream, queue, prefix=b""):
-        """This creates (and starts) a background thread which reads lines from `stream` and
-        puts them into `queue` until `stream` reports EOF.
-        """
-        def reader_thread(stream, queue, stop_event):
-            while True:
-                line = stream.readline()
-                if not line:
-                    break
-                self._output_handler(prefix + line.rstrip())
-                queue.put(line)
-
-            stop_event.set()
-            queue.close()
-            queue.join_thread()
-
-        result = Thread(target=reader_thread, args=(stream, queue, self._io_stopped), daemon=True)
-        result.start()
-        return result
-
-    def _create_writer_thread(self, stream, queue):
-        """This creates (and starts) a background thread which gets items from `queue` and
-        writes them into `stream` until it encounters a None item in the queue.
-        """
-        def writer_thread(stream, queue):
-            while True:
-                line = queue.get()
-                if not line:
-                    break
-
-                stream.write(line)
-                stream.flush()
-
-        result = Thread(target=writer_thread, args=(stream, queue), daemon=True)
-        result.start()
-        return result
+class ContentShellBrowser(ChromeBrowser):
+    def make_command(self):
+        return [self.webdriver_binary,
+                cmd_arg("port", str(self.port)),
+                cmd_arg("url-base", self.base_path),
+                cmd_arg("enable-chrome-logs")] + self.webdriver_args

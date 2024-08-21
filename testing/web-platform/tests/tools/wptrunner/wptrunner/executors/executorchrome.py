@@ -1,9 +1,12 @@
 # mypy: allow-untyped-defs
 
 import os
+import time
 import traceback
 from typing import Type
 from urllib.parse import urljoin
+
+from webdriver import error
 
 from .base import (
     CrashtestExecutor,
@@ -12,12 +15,14 @@ from .base import (
 )
 from .executorwebdriver import (
     WebDriverCrashtestExecutor,
+    WebDriverFedCMProtocolPart,
     WebDriverProtocol,
     WebDriverRefTestExecutor,
     WebDriverRun,
     WebDriverTestharnessExecutor,
+    WebDriverTestharnessProtocolPart,
 )
-from .protocol import PrintProtocolPart
+from .protocol import PrintProtocolPart, ProtocolPart
 
 here = os.path.dirname(__file__)
 
@@ -41,7 +46,7 @@ def make_sanitizer_mixin(crashtest_executor_cls: Type[CrashtestExecutor]):  # ty
                         status = result["status"]
                         if status == "PASS":
                             status = "OK"
-                        harness_result = test.result_cls(status, result["message"])
+                        harness_result = test.make_result(status, result["message"])
                         # Don't report subtests.
                         return harness_result, []
                     # `crashtest` statuses are a subset of `(print-)reftest`
@@ -57,12 +62,69 @@ def make_sanitizer_mixin(crashtest_executor_cls: Type[CrashtestExecutor]):  # ty
 _SanitizerMixin = make_sanitizer_mixin(WebDriverCrashtestExecutor)
 
 
-class ChromeDriverRefTestExecutor(WebDriverRefTestExecutor, _SanitizerMixin):  # type: ignore
-    pass
+class ChromeDriverTestharnessProtocolPart(WebDriverTestharnessProtocolPart):
+    """Implementation of `testharness.js` tests controlled by ChromeDriver.
 
+    The main difference from the default WebDriver testharness implementation is
+    that the test window can be reused between tests for better performance.
+    """
 
-class ChromeDriverTestharnessExecutor(WebDriverTestharnessExecutor, _SanitizerMixin):  # type: ignore
-    pass
+    def setup(self):
+        super().setup()
+        # Handle (an alphanumeric string) that may be set if window reuse is
+        # enabled. This state allows the protocol to distinguish the test
+        # window from other windows a test itself may create that the "Get
+        # Window Handles" command also returns.
+        #
+        # Because test window persistence is a Chrome-only feature, it's not
+        # exposed to the base WebDriver testharness executor.
+        self.test_window = None
+        self.reuse_window = self.parent.reuse_window
+
+    def close_test_window(self):
+        if self.test_window:
+            self._close_window(self.test_window)
+            self.test_window = None
+
+    def close_old_windows(self):
+        self.webdriver.actions.release()
+        for handle in self.webdriver.handles:
+            if handle not in {self.runner_handle, self.test_window}:
+                self._close_window(handle)
+        if not self.reuse_window:
+            self.close_test_window()
+        self.webdriver.window_handle = self.runner_handle
+        return self.runner_handle
+
+    def open_test_window(self, window_id):
+        if self.test_window:
+            # Try to reuse the existing test window by emulating the `about:blank`
+            # page with no history you would get with a new window.
+            try:
+                self.webdriver.window_handle = self.test_window
+                # Reset navigation history with Chrome DevTools Protocol:
+                # https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-resetNavigationHistory
+                self.parent.cdp.execute_cdp_command("Page.resetNavigationHistory")
+                self.webdriver.url = "about:blank"
+                return
+            except error.NoSuchWindowException:
+                self.test_window = None
+        super().open_test_window(window_id)
+
+    def get_test_window(self, window_id, parent, timeout=5):
+        if self.test_window:
+            return self.test_window
+        # Poll the handles endpoint for the test window like the base WebDriver
+        # protocol part, but don't bother checking for the serialized
+        # WindowProxy (not supported by Chrome currently).
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.test_window = self._poll_handles_for_test_window(parent)
+            if self.test_window is not None:
+                assert self.test_window != parent
+                return self.test_window
+            time.sleep(0.03)
+        raise Exception("unable to find test window")
 
 
 class ChromeDriverPrintProtocolPart(PrintProtocolPart):
@@ -86,21 +148,18 @@ class ChromeDriverPrintProtocolPart(PrintProtocolPart):
 
     def render_as_pdf(self, width, height):
         margin = 0.5
-        body = {
-            "cmd": "Page.printToPDF",
-            "params": {
-                # Chrome accepts dimensions in inches; we are using cm
-                "paperWidth": width / 2.54,
-                "paperHeight": height / 2.54,
-                "marginLeft": margin,
-                "marginRight": margin,
-                "marginTop": margin,
-                "marginBottom": margin,
-                "shrinkToFit": False,
-                "printBackground": True,
-            }
+        params = {
+            # Chrome accepts dimensions in inches; we are using cm
+            "paperWidth": width / 2.54,
+            "paperHeight": height / 2.54,
+            "marginLeft": margin,
+            "marginRight": margin,
+            "marginTop": margin,
+            "marginBottom": margin,
+            "shrinkToFit": False,
+            "printBackground": True,
         }
-        return self.webdriver.send_session_command("POST", "goog/cdp/execute", body=body)["data"]
+        return self.parent.cdp.execute_cdp_command("Page.printToPDF", params)["data"]
 
     def pdf_to_png(self, pdf_base64, ranges):
         handle = self.webdriver.window_handle
@@ -116,8 +175,74 @@ render('%s').then(result => callback(result))""" % pdf_base64)
             self.webdriver.window_handle = handle
 
 
+class ChromeDriverFedCMProtocolPart(WebDriverFedCMProtocolPart):
+    def confirm_idp_login(self):
+        return self.webdriver.send_session_command("POST",
+                                                   f"{self.parent.vendor_prefix}/fedcm/confirmidplogin")
+
+
+class ChromeDriverDevToolsProtocolPart(ProtocolPart):
+    """A low-level API for sending Chrome DevTools Protocol [0] commands directly to the browser.
+
+    Prefer using standard APIs where possible.
+
+    [0]: https://chromedevtools.github.io/devtools-protocol/
+    """
+    name = "cdp"
+
+    def setup(self):
+        self.webdriver = self.parent.webdriver
+
+    def execute_cdp_command(self, command, params=None):
+        body = {"cmd": command, "params": params or {}}
+        return self.webdriver.send_session_command("POST",
+                                                   f"{self.parent.vendor_prefix}/cdp/execute",
+                                                   body=body)
+
+
 class ChromeDriverProtocol(WebDriverProtocol):
-    implements = WebDriverProtocol.implements + [ChromeDriverPrintProtocolPart]
+    implements = [
+        ChromeDriverDevToolsProtocolPart,
+        ChromeDriverFedCMProtocolPart,
+        ChromeDriverPrintProtocolPart,
+        ChromeDriverTestharnessProtocolPart,
+        *(part for part in WebDriverProtocol.implements
+          if part.name != ChromeDriverTestharnessProtocolPart.name and
+            part.name != ChromeDriverFedCMProtocolPart.name)
+    ]
+    reuse_window = False
+    # Prefix to apply to vendor-specific WebDriver extension commands.
+    vendor_prefix = "goog"
+
+
+class ChromeDriverRefTestExecutor(WebDriverRefTestExecutor, _SanitizerMixin):  # type: ignore
+    protocol_cls = ChromeDriverProtocol
+
+
+class ChromeDriverTestharnessExecutor(WebDriverTestharnessExecutor, _SanitizerMixin):  # type: ignore
+    protocol_cls = ChromeDriverProtocol
+
+    def __init__(self, *args, reuse_window=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.protocol.reuse_window = reuse_window
+
+    def setup(self, runner):
+        super().setup(runner)
+        # Chromium requires the `background-sync` permission for reporting APIs
+        # to work. Not all embedders (notably, `chrome --headless=old`) grant
+        # `background-sync` by default, so this CDP call ensures the permission
+        # is granted for all origins, in line with the background sync spec's
+        # recommendation [0].
+        #
+        # WebDriver's "Set Permission" command can only act on the test's
+        # origin, which may be too limited.
+        #
+        # [0]: https://wicg.github.io/background-sync/spec/#permission
+        params = {
+            "permission": {"name": "background-sync"},
+            "setting": "granted",
+        }
+        self.protocol.cdp.execute_cdp_command("Browser.setPermission", params)
 
 
 class ChromeDriverPrintRefTestExecutor(ChromeDriverRefTestExecutor):

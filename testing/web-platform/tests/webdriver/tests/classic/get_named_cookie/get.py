@@ -1,6 +1,6 @@
 import pytest
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 from tests.support.asserts import assert_error, assert_success
@@ -62,7 +62,7 @@ def test_get_named_cookie(session, url):
 
     # same formatting as Date.toUTCString() in javascript
     utc_string_format = "%a, %d %b %Y %H:%M:%S"
-    a_day_from_now = (datetime.utcnow() + timedelta(days=1)).strftime(utc_string_format)
+    a_day_from_now = (datetime.now(timezone.utc) + timedelta(days=1)).strftime(utc_string_format)
     session.execute_script("document.cookie = 'foo=bar;expires=%s'" % a_day_from_now)
 
     result = get_named_cookie(session, "foo")
@@ -122,7 +122,6 @@ def test_duplicated_cookie(session, url, server_config, inline):
 
 
 @pytest.mark.parametrize("same_site", ["None", "Lax", "Strict"])
-@pytest.mark.capabilities({"acceptInsecureCerts": True})
 def test_get_cookie_with_same_site_flag(session, url, same_site):
     session.url = url("/common/blank.html", protocol="https")
     clear_all_cookies(session)

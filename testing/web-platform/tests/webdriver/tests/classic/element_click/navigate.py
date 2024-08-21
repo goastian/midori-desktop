@@ -13,53 +13,47 @@ def element_click(session, element):
             element_id=element.id))
 
 
-def test_numbers_link(session, server_config, inline):
+def test_numbers_link(session, inline, url):
     link = "/webdriver/tests/classic/element_click/support/input.html"
-    session.url = inline("<a href={url}>123456</a>".format(url=link))
+    session.url = inline(f"<a href={link}>123456</a>")
     element = session.find.css("a", all=False)
     response = element_click(session, element)
     assert_success(response)
-    host = server_config["browser_host"]
-    port = server_config["ports"]["http"][0]
 
-    assert session.url == "http://{host}:{port}{url}".format(host=host, port=port, url=link)
+    assert session.url == url(link)
 
 
-def test_multi_line_link(session, server_config, inline):
+def test_multi_line_link(session, inline, url):
     link = "/webdriver/tests/classic/element_click/support/input.html"
-    session.url = inline("""
+    session.url = inline(f"""
         <p style="background-color: yellow; width: 50px;">
-            <a href={url}>Helloooooooooooooooooooo Worlddddddddddddddd</a>
-        </p>""".format(url=link))
+            <a href={link}>Helloooooooooooooooooooo Worlddddddddddddddd</a>
+        </p>""")
     element = session.find.css("a", all=False)
     response = element_click(session, element)
     assert_success(response)
-    host = server_config["browser_host"]
-    port = server_config["ports"]["http"][0]
 
-    assert session.url == "http://{host}:{port}{url}".format(host=host, port=port, url=link)
+    assert session.url == url(link)
 
 
-def test_link_unload_event(session, server_config, inline):
+def test_navigation_retains_input_state(session, url, server_config, inline):
     link = "/webdriver/tests/classic/element_click/support/input.html"
-    session.url = inline("""
-        <body onunload="checkUnload()">
-            <a href={url}>click here</a>
-            <input type=checkbox>
+    session.url = inline(f"""
+        <body onpagehide="checkPageHide()">
+            <a href="{link}">click here</a>
+            <input type="checkbox">
             <script>
-                function checkUnload() {{
+                function checkPageHide() {{
                     document.getElementsByTagName("input")[0].checked = true;
                 }}
             </script>
-        </body>""".format(url=link))
+        </body>""")
 
     element = session.find.css("a", all=False)
     response = element_click(session, element)
     assert_success(response)
 
-    host = server_config["browser_host"]
-    port = server_config["ports"]["http"][0]
-    assert session.url == "http://{host}:{port}{url}".format(host=host, port=port, url=link)
+    assert session.url == url(link)
 
     session.back()
 
@@ -138,7 +132,7 @@ def test_link_from_nested_context_with_target(session, inline, iframe, target):
     session.url = inline(iframe("<a href='{}' target='{}'>click</a>".format(target_page, target)))
     frame = session.find.css("iframe", all=False)
     session.switch_frame(frame)
-    element = session.find.css("a".format(target), all=False)
+    element = session.find.css("a", all=False)
 
     orig_handles = session.handles
 
@@ -164,12 +158,9 @@ def test_link_from_nested_context_with_target(session, inline, iframe, target):
     wait.until(lambda s: s.find.css("#foo"))
 
 
-# Capability needed as long as no valid certificate is available:
-#   https://github.com/web-platform-tests/wpt/issues/28847
-@pytest.mark.capabilities({"acceptInsecureCerts": True})
 def test_link_cross_origin(session, inline, url):
     base_path = ("/webdriver/tests/support/html/subframe.html" +
-                 "?pipe=header(Cross-Origin-Opener-Policy,same-origin")
+                 "?pipe=header(Cross-Origin-Opener-Policy,same-origin)")
     target_page = url(base_path, protocol="https", domain="alt")
 
     session.url = inline("<a href='{}'>click me</a>".format(target_page), protocol="https")

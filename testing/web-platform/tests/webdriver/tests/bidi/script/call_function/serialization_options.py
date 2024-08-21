@@ -1,5 +1,6 @@
 import pytest
 from webdriver.bidi.modules.script import ContextTarget, SerializationOptions
+from webdriver.bidi.undefined import UNDEFINED
 
 from ... import any_string, recursive_compare
 
@@ -7,11 +8,12 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.parametrize(
-    "include_shadow_tree, shadow_root_mode, expected",
+    "include_shadow_tree, shadow_root_mode, contains_children, expected",
     [
         (
-            None,
+            UNDEFINED,
             "open",
+            False,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -19,8 +21,9 @@ pytestmark = pytest.mark.asyncio
             },
         ),
         (
-            None,
+            UNDEFINED,
             "closed",
+            False,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -30,6 +33,7 @@ pytestmark = pytest.mark.asyncio
         (
             "none",
             "open",
+            False,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -39,6 +43,7 @@ pytestmark = pytest.mark.asyncio
         (
             "none",
             "closed",
+            False,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -48,6 +53,7 @@ pytestmark = pytest.mark.asyncio
         (
             "open",
             "open",
+            True,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -75,6 +81,7 @@ pytestmark = pytest.mark.asyncio
         (
             "open",
             "closed",
+            False,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -84,6 +91,7 @@ pytestmark = pytest.mark.asyncio
         (
             "all",
             "open",
+            True,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -111,6 +119,7 @@ pytestmark = pytest.mark.asyncio
         (
             "all",
             "closed",
+            True,
             {
                 "type": "node",
                 "sharedId": any_string,
@@ -147,12 +156,13 @@ pytestmark = pytest.mark.asyncio
         "'all' mode for closed shadow root",
     ],
 )
-async def test_include_shadow_tree(
+async def test_include_shadow_tree_for_custom_element(
     bidi_session,
     top_context,
     get_test_page,
     include_shadow_tree,
     shadow_root_mode,
+    contains_children,
     expected,
 ):
     await bidi_session.browsing_context.navigate(
@@ -170,6 +180,122 @@ async def test_include_shadow_tree(
     )
 
     recursive_compare(expected, result["value"]["shadowRoot"])
+
+    # Explicitely check for children because recursive_compare skips it
+    if not contains_children:
+        assert "children" not in result["value"]["shadowRoot"]["value"]
+
+
+@pytest.mark.parametrize(
+    "include_shadow_tree, contains_children, expected",
+    [
+        (
+            UNDEFINED,
+            False,
+            {
+                "type": "node",
+                "sharedId": any_string,
+                "value": {"childNodeCount": 1, "mode": "open", "nodeType": 11},
+            },
+        ),
+        (
+            "none",
+            False,
+            {
+                "type": "node",
+                "sharedId": any_string,
+                "value": {"childNodeCount": 1, "mode": "open", "nodeType": 11},
+            },
+        ),
+        (
+            "open",
+            True,
+            {
+                "type": "node",
+                "sharedId": any_string,
+                "value": {
+                    "childNodeCount": 1,
+                    "children": [
+                        {
+                            "type": "node",
+                            "sharedId": any_string,
+                            "value": {
+                                "nodeType": 1,
+                                "localName": "div",
+                                "namespaceURI": "http://www.w3.org/1999/xhtml",
+                                "childNodeCount": 1,
+                                "attributes": {"id": "in-shadow-dom"},
+                                "shadowRoot": None,
+                            },
+                        }
+                    ],
+                    "nodeType": 11,
+                    "mode": "open",
+                },
+            },
+        ),
+        (
+            "all",
+            True,
+            {
+                "type": "node",
+                "sharedId": any_string,
+                "value": {
+                    "childNodeCount": 1,
+                    "children": [
+                        {
+                            "type": "node",
+                            "sharedId": any_string,
+                            "value": {
+                                "nodeType": 1,
+                                "localName": "div",
+                                "namespaceURI": "http://www.w3.org/1999/xhtml",
+                                "childNodeCount": 1,
+                                "attributes": {"id": "in-shadow-dom"},
+                                "shadowRoot": None,
+                            },
+                        }
+                    ],
+                    "mode": "open",
+                    "nodeType": 11,
+                },
+            },
+        ),
+    ],
+    ids=[
+        "default mode",
+        "'none' mode",
+        "'open' mode",
+        "'all' mode",
+    ],
+)
+async def test_include_shadow_tree_for_shadow_root(
+    bidi_session,
+    top_context,
+    get_test_page,
+    include_shadow_tree,
+    contains_children,
+    expected
+):
+    await bidi_session.browsing_context.navigate(
+        context=top_context["context"],
+        url=get_test_page(),
+        wait="complete",
+    )
+    result = await bidi_session.script.call_function(
+        function_declaration="""() => document.querySelector("custom-element").shadowRoot""",
+        target=ContextTarget(top_context["context"]),
+        await_promise=True,
+        serialization_options=SerializationOptions(
+            include_shadow_tree=include_shadow_tree, max_dom_depth=1
+        ),
+    )
+
+    recursive_compare(expected, result)
+
+    # Explicitely check for children because recursive_compare skips it
+    if not contains_children:
+        assert "children" not in result["value"]
 
 
 @pytest.mark.parametrize(
@@ -313,7 +439,8 @@ async def test_max_dom_depth(
         function_declaration="""() => document.querySelector("div#with-children")""",
         target=ContextTarget(top_context["context"]),
         await_promise=True,
-        serialization_options=SerializationOptions(max_dom_depth=max_dom_depth),
+        serialization_options=SerializationOptions(
+            max_dom_depth=max_dom_depth),
     )
 
     recursive_compare(expected, result)
@@ -321,21 +448,17 @@ async def test_max_dom_depth(
 
 async def test_max_dom_depth_null(
     bidi_session,
-    send_blocking_command,
     top_context,
     get_test_page,
 ):
     await bidi_session.browsing_context.navigate(
         context=top_context["context"], url=get_test_page(), wait="complete"
     )
-    result = await send_blocking_command(
-        "script.callFunction",
-        {
-            "functionDeclaration": """() => document.querySelector("div#with-children")""",
-            "target": ContextTarget(top_context["context"]),
-            "awaitPromise": True,
-            "serializationOptions": {"maxDomDepth": None},
-        },
+    result = await bidi_session.script.call_function(
+        function_declaration="""() => document.querySelector("div#with-children")""",
+        target=ContextTarget(top_context["context"]),
+        await_promise=True,
+        serialization_options=SerializationOptions(max_dom_depth=None),
     )
 
     recursive_compare(
@@ -393,7 +516,7 @@ async def test_max_dom_depth_null(
                 "shadowRoot": None,
             },
         },
-        result["result"],
+        result,
     )
 
 
@@ -401,7 +524,7 @@ async def test_max_dom_depth_null(
     "max_object_depth, expected",
     [
         (
-            None,
+            UNDEFINED,
             {
                 "type": "array",
                 "value": [

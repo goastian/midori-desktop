@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="timeout" content="long">
+  <title>fetchpriority: internal priorities of corresponding http-on-opening-requests</title>
+  <script src="/resources/testharness.js"></script>
+  <script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+  <script type="module">
+    import { runTests } from "./fetchpriority.js";
+    runTests({
+        testDataKey: 'kTestData',
+    });
+  </script>
+</body>
+</html>

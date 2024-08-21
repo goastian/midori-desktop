@@ -21,6 +21,7 @@ PIP_OVERRIDES_PREF = "extensions.webcompat.enable_picture_in_picture_overrides"
 SHIMS_PREF = "extensions.webcompat.enable_shims"
 STRICT_ETP_PREF = "privacy.trackingprotection.enabled"
 UA_OVERRIDES_PREF = "extensions.webcompat.perform_ua_overrides"
+SYSTEM_ADDON_UPDATES_PREF = "extensions.systemAddon.update.enabled"
 
 
 class WebDriver:
@@ -82,10 +83,14 @@ class FirefoxWebDriver(WebDriver):
         if "use_strict_etp" in test_config:
             prefs[STRICT_ETP_PREF] = test_config["use_strict_etp"]
 
-        if "without_tcp" in test_config:
-            cookieBehavior = 4 if test_config["without_tcp"] else 5
-            prefs[CB_PREF] = cookieBehavior
-            prefs[CB_PBM_PREF] = cookieBehavior
+        # keep system addon updates off to prevent bug 1882562
+        prefs[SYSTEM_ADDON_UPDATES_PREF] = False
+
+        # remote/cdp/CDP.sys.mjs sets cookieBehavior to 0,
+        # which we definitely do not want, so set it back to 5.
+        cookieBehavior = 4 if test_config.get("without_tcp") else 5
+        prefs[CB_PREF] = cookieBehavior
+        prefs[CB_PBM_PREF] = cookieBehavior
 
         fx_options = {"prefs": prefs}
 
@@ -124,7 +129,7 @@ def config_file(request):
 
 @pytest.fixture
 def bug_number(request):
-    return re.findall("\d+", str(request.fspath.basename))[0]
+    return re.findall(r"\d+", str(request.fspath.basename))[0]
 
 
 @pytest.fixture
@@ -170,11 +175,11 @@ def install_addon(session, addon_file_path):
         """
         const addon_file_path = arguments[0];
         const cb = arguments[1];
-        const { AddonManager } = ChromeUtils.import(
-            "resource://gre/modules/AddonManager.jsm"
+        const { AddonManager } = ChromeUtils.importESModule(
+            "resource://gre/modules/AddonManager.sys.mjs"
         );
-        const { ExtensionPermissions } = ChromeUtils.import(
-            "resource://gre/modules/ExtensionPermissions.jsm"
+        const { ExtensionPermissions } = ChromeUtils.importESModule(
+            "resource://gre/modules/ExtensionPermissions.sys.mjs"
         );
         const { FileUtils } = ChromeUtils.importESModule(
             "resource://gre/modules/FileUtils.sys.mjs"

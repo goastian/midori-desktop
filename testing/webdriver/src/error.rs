@@ -7,10 +7,9 @@ use http::StatusCode;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::borrow::Cow;
-use std::convert::From;
-use std::error::Error;
-use std::fmt;
+use std::error;
 use std::io;
+use thiserror::Error;
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorStatus {
@@ -149,8 +148,6 @@ pub enum ErrorStatus {
     /// [command]: ../command/index.html
     UnknownMethod,
 
-    UnknownPath,
-
     /// Indicates that a [command] that should have executed properly is not
     /// currently supported.
     UnsupportedOperation,
@@ -206,9 +203,9 @@ impl ErrorStatus {
             UnableToCaptureScreen => "unable to capture screen",
             UnableToSetCookie => "unable to set cookie",
             UnexpectedAlertOpen => "unexpected alert open",
-            UnknownCommand | UnknownError => "unknown error",
+            UnknownError => "unknown error",
             UnknownMethod => "unknown method",
-            UnknownPath => "unknown command",
+            UnknownCommand => "unknown command",
             UnsupportedOperation => "unsupported operation",
         }
     }
@@ -246,7 +243,6 @@ impl ErrorStatus {
             UnknownCommand => StatusCode::NOT_FOUND,
             UnknownError => StatusCode::INTERNAL_SERVER_ERROR,
             UnknownMethod => StatusCode::METHOD_NOT_ALLOWED,
-            UnknownPath => StatusCode::NOT_FOUND,
             UnsupportedOperation => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -292,8 +288,9 @@ impl From<String> for ErrorStatus {
 
 pub type WebDriverResult<T> = Result<T, WebDriverError>;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Error)]
 #[serde(remote = "Self")]
+#[error("{}", .error.error_code())]
 pub struct WebDriverError {
     pub error: ErrorStatus,
     pub message: Cow<'static, str>,
@@ -352,22 +349,6 @@ impl WebDriverError {
     }
 }
 
-impl Error for WebDriverError {
-    fn description(&self) -> &str {
-        self.error_code()
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
-
-impl fmt::Display for WebDriverError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.message.fmt(f)
-    }
-}
-
 impl From<serde_json::Error> for WebDriverError {
     fn from(err: serde_json::Error) -> WebDriverError {
         WebDriverError::new(ErrorStatus::InvalidArgument, err.to_string())
@@ -386,8 +367,8 @@ impl From<DecodeError> for WebDriverError {
     }
 }
 
-impl From<Box<dyn Error>> for WebDriverError {
-    fn from(err: Box<dyn Error>) -> WebDriverError {
+impl From<Box<dyn error::Error>> for WebDriverError {
+    fn from(err: Box<dyn error::Error>) -> WebDriverError {
         WebDriverError::new(ErrorStatus::UnknownError, err.to_string())
     }
 }

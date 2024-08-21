@@ -4,8 +4,8 @@ import os
 from collections import deque
 from fnmatch import fnmatch
 from io import BytesIO
-from typing import (Any, BinaryIO, Callable, Deque, Dict, Iterable, List, Optional, Pattern,
-                    Set, Text, Tuple, Union, cast)
+from typing import (Any, BinaryIO, Callable, Deque, Dict, Iterable, List,
+                    Optional, Pattern, Set, Text, Tuple, TypedDict, Union, cast)
 from urllib.parse import urljoin
 
 try:
@@ -22,11 +22,16 @@ from .item import (ConformanceCheckerTest,
                    ManualTest,
                    PrintRefTest,
                    RefTest,
+                   SpecItem,
                    SupportFile,
                    TestharnessTest,
                    VisualTest,
                    WebDriverSpecTest)
 from .utils import cached_property
+
+# Cannot do `from ..metadata.webfeatures.schema import WEB_FEATURES_YML_FILENAME`
+# because relative import beyond toplevel throws *ImportError*!
+from metadata.webfeatures.schema import WEB_FEATURES_YML_FILENAME  # type: ignore
 
 wd_pattern = "*.py"
 js_meta_re = re.compile(br"//\s*META:\s*(\w*)=(.*)$")
@@ -63,8 +68,15 @@ def read_script_metadata(f: BinaryIO, regexp: Pattern[bytes]) -> Iterable[Tuple[
         yield (m.groups()[0].decode("utf8"), m.groups()[1].decode("utf8"))
 
 
-_any_variants: Dict[Text, Dict[Text, Any]] = {
+class VariantData(TypedDict, total=False):
+    suffix: str
+    force_https: bool
+    longhand: Set[str]
+
+
+_any_variants: Dict[Text, VariantData] = {
     "window": {"suffix": ".any.html"},
+    "window-module": {},
     "serviceworker": {"force_https": True},
     "serviceworker-module": {"force_https": True},
     "sharedworker": {},
@@ -199,9 +211,11 @@ class SourceFile:
 
         type_flag = None
         if "-" in name:
-            type_flag = name.rsplit("-", 1)[1].split(".")[0]
-
-        meta_flags = name.split(".")[1:]
+            type_meta = name.rsplit("-", 1)[1].split(".")
+            type_flag = type_meta[0]
+            meta_flags = type_meta[1:]
+        else:
+            meta_flags = name.split(".")[1:]
 
         self.tests_root: Text = tests_root
         self.rel_path: Text = rel_path
@@ -301,6 +315,7 @@ class SourceFile:
         return (self.is_dir() or
                 self.name_prefix("MANIFEST") or
                 self.filename == "META.yml" or
+                self.filename == WEB_FEATURES_YML_FILENAME or
                 self.filename.startswith(".") or
                 self.filename.endswith(".headers") or
                 self.filename.endswith(".ini") or
@@ -1016,18 +1031,23 @@ class SourceFile:
                 ))
 
         elif self.content_is_ref_node:
-            rv = RefTest.item_type, [
-                RefTest(
+            rv = RefTest.item_type, []
+            for variant in self.test_variants:
+                url = self.rel_url + variant
+                rv[1].append(RefTest(
                     self.tests_root,
                     self.rel_path,
                     self.url_base,
-                    self.rel_url,
-                    references=self.references,
+                    url,
+                    references=[
+                        (ref[0] + variant, ref[1])
+                        for ref in self.references
+                    ],
                     timeout=self.timeout,
                     viewport_size=self.viewport_size,
                     dpi=self.dpi,
                     fuzzy=self.fuzzy
-                )]
+                ))
 
         elif self.content_is_css_visual and not self.name_is_reference:
             rv = VisualTest.item_type, [
@@ -1057,4 +1077,16 @@ class SourceFile:
                     del self.__dict__[prop]
             del self.__dict__["__cached_properties__"]
 
+        return rv
+
+    def manifest_spec_items(self) -> Optional[Tuple[Text, List[ManifestItem]]]:
+        specs = list(self.spec_links)
+        if not specs:
+            return None
+        rv: Tuple[Text, List[ManifestItem]] = (SpecItem.item_type, [
+            SpecItem(
+                self.tests_root,
+                self.rel_path,
+                specs
+            )])
         return rv

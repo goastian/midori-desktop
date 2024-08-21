@@ -1,3 +1,0 @@
-asyncio==3.4.3
-pytest-asyncio==0.16.0
-urllib3==1.26

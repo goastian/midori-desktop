@@ -32,6 +32,10 @@ from .protocol import (BaseProtocolPart,
                        WindowProtocolPart,
                        DebugProtocolPart,
                        SPCTransactionsProtocolPart,
+                       RPHRegistrationsProtocolPart,
+                       FedCMProtocolPart,
+                       VirtualSensorProtocolPart,
+                       DevicePostureProtocolPart,
                        merge_dicts)
 
 from webdriver.client import Session
@@ -42,15 +46,16 @@ here = os.path.dirname(__file__)
 
 class WebDriverCallbackHandler(CallbackHandler):
     unimplemented_exc = (NotImplementedError, error.UnknownCommandException)
+    expected_exc = (error.WebDriverException,)
 
 
 class WebDriverBaseProtocolPart(BaseProtocolPart):
     def setup(self):
         self.webdriver = self.parent.webdriver
 
-    def execute_script(self, script, asynchronous=False):
+    def execute_script(self, script, asynchronous=False, args=None):
         method = self.webdriver.execute_async_script if asynchronous else self.webdriver.execute_script
-        return method(script)
+        return method(script, args=args)
 
     def set_timeout(self, timeout):
         try:
@@ -89,7 +94,9 @@ addEventListener("__test_restart", e => {e.preventDefault(); callback(true)})"""
             except (socket.timeout, error.NoSuchWindowException, error.UnknownErrorException, OSError):
                 break
             except Exception:
-                self.logger.error(traceback.format_exc())
+                message = "Uncaught exception in WebDriverBaseProtocolPart.wait:\n"
+                message += traceback.format_exc()
+                self.logger.error(message)
                 break
         return False
 
@@ -119,13 +126,20 @@ class WebDriverTestharnessProtocolPart(TestharnessProtocolPart):
         self.webdriver.actions.release()
         handles = [item for item in self.webdriver.handles if item != self.runner_handle]
         for handle in handles:
-            try:
-                self.webdriver.window_handle = handle
-                self.webdriver.window.close()
-            except error.NoSuchWindowException:
-                pass
+            self._close_window(handle)
         self.webdriver.window_handle = self.runner_handle
         return self.runner_handle
+
+    def _close_window(self, window_handle):
+        try:
+            self.webdriver.window_handle = window_handle
+            self.webdriver.window.close()
+        except error.NoSuchWindowException:
+            pass
+
+    def open_test_window(self, window_id):
+        self.webdriver.execute_script(
+            "window.open('about:blank', '%s', 'noopener')" % window_id)
 
     def get_test_window(self, window_id, parent, timeout=5):
         """Find the test window amongst all the open windows.
@@ -150,12 +164,7 @@ class WebDriverTestharnessProtocolPart(TestharnessProtocolPart):
                 pass
 
             if test_window is None:
-                after = self.webdriver.handles
-                if len(after) == 2:
-                    test_window = next(iter(set(after) - {parent}))
-                elif after[0] == parent and len(after) > 2:
-                    # Hope the first one here is the test window
-                    test_window = after[1]
+                test_window = self._poll_handles_for_test_window(parent)
 
             if test_window is not None:
                 assert test_window != parent
@@ -164,6 +173,16 @@ class WebDriverTestharnessProtocolPart(TestharnessProtocolPart):
             time.sleep(0.1)
 
         raise Exception("unable to find test window")
+
+    def _poll_handles_for_test_window(self, parent):
+        test_window = None
+        after = self.webdriver.handles
+        if len(after) == 2:
+            test_window = next(iter(set(after) - {parent}))
+        elif after[0] == parent and len(after) > 2:
+            # Hope the first one here is the test window
+            test_window = after[1]
+        return test_window
 
     def test_window_loaded(self):
         """Wait until the page in the new window has been loaded.
@@ -239,6 +258,9 @@ class WebDriverWindowProtocolPart(WindowProtocolPart):
         self.logger.info("Restoring")
         self.webdriver.window.rect = rect
 
+    def get_rect(self):
+        self.logger.info("Getting rect")
+        return self.webdriver.window.rect
 
 class WebDriverSendKeysProtocolPart(SendKeysProtocolPart):
     def setup(self):
@@ -346,11 +368,80 @@ class WebDriverSPCTransactionsProtocolPart(SPCTransactionsProtocolPart):
         body = {"mode": mode}
         return self.webdriver.send_session_command("POST", "secure-payment-confirmation/set-mode", body)
 
+class WebDriverRPHRegistrationsProtocolPart(RPHRegistrationsProtocolPart):
+    def setup(self):
+        self.webdriver = self.parent.webdriver
+
+    def set_rph_registration_mode(self, mode):
+        body = {"mode": mode}
+        return self.webdriver.send_session_command("POST", "custom-handlers/set-mode", body)
+
+class WebDriverFedCMProtocolPart(FedCMProtocolPart):
+    def setup(self):
+        self.webdriver = self.parent.webdriver
+
+    def cancel_fedcm_dialog(self):
+        return self.webdriver.send_session_command("POST", "fedcm/canceldialog")
+
+    def click_fedcm_dialog_button(self, dialog_button):
+        body = {"dialogButton": dialog_button}
+        return self.webdriver.send_session_command("POST", "fedcm/clickdialogbutton", body)
+
+    def select_fedcm_account(self, account_index):
+        body = {"accountIndex": account_index}
+        return self.webdriver.send_session_command("POST", "fedcm/selectaccount", body)
+
+    def get_fedcm_account_list(self):
+        return self.webdriver.send_session_command("GET", "fedcm/accountlist")
+
+    def get_fedcm_dialog_title(self):
+        return self.webdriver.send_session_command("GET", "fedcm/gettitle")
+
+    def get_fedcm_dialog_type(self):
+        return self.webdriver.send_session_command("GET", "fedcm/getdialogtype")
+
+    def set_fedcm_delay_enabled(self, enabled):
+        body = {"enabled": enabled}
+        return self.webdriver.send_session_command("POST", "fedcm/setdelayenabled", body)
+
+    def reset_fedcm_cooldown(self):
+        return self.webdriver.send_session_command("POST", "fedcm/resetcooldown")
+
 
 class WebDriverDebugProtocolPart(DebugProtocolPart):
     def load_devtools(self):
         raise NotImplementedError()
 
+
+class WebDriverVirtualSensorPart(VirtualSensorProtocolPart):
+    def setup(self):
+        self.webdriver = self.parent.webdriver
+
+    def create_virtual_sensor(self, sensor_type, sensor_params):
+        body = {"type": sensor_type}
+        body.update(sensor_params)
+        return self.webdriver.send_session_command("POST", "sensor", body)
+
+    def update_virtual_sensor(self, sensor_type, reading):
+        body = {"reading": reading}
+        return self.webdriver.send_session_command("POST", "sensor/%s" % sensor_type, body)
+
+    def remove_virtual_sensor(self, sensor_type):
+        return self.webdriver.send_session_command("DELETE", "sensor/%s" % sensor_type)
+
+    def get_virtual_sensor_information(self, sensor_type):
+        return self.webdriver.send_session_command("GET", "sensor/%s" % sensor_type)
+
+class WebDriverDevicePostureProtocolPart(DevicePostureProtocolPart):
+    def setup(self):
+        self.webdriver = self.parent.webdriver
+
+    def set_device_posture(self, posture):
+        body = {"posture": posture}
+        return self.webdriver.send_session_command("POST", "deviceposture", body)
+
+    def clear_device_posture(self):
+        return self.webdriver.send_session_command("DELETE", "deviceposture")
 
 class WebDriverProtocol(Protocol):
     implements = [WebDriverBaseProtocolPart,
@@ -367,7 +458,11 @@ class WebDriverProtocol(Protocol):
                   WebDriverSetPermissionProtocolPart,
                   WebDriverVirtualAuthenticatorProtocolPart,
                   WebDriverSPCTransactionsProtocolPart,
-                  WebDriverDebugProtocolPart]
+                  WebDriverRPHRegistrationsProtocolPart,
+                  WebDriverFedCMProtocolPart,
+                  WebDriverDebugProtocolPart,
+                  WebDriverVirtualSensorPart,
+                  WebDriverDevicePostureProtocolPart]
 
     def __init__(self, executor, browser, capabilities, **kwargs):
         super().__init__(executor, browser)
@@ -444,7 +539,9 @@ class WebDriverRun(TimedRunner):
             self.result = True, self.func(self.protocol, self.url, self.timeout)
         except (error.TimeoutException, error.ScriptTimeoutException):
             self.result = False, ("EXTERNAL-TIMEOUT", None)
-        except (socket.timeout, error.UnknownErrorException):
+        except socket.timeout:
+            # Checking if the browser is alive below is likely to hang, so mark
+            # this case as a CRASH unconditionally.
             self.result = False, ("CRASH", None)
         except Exception as e:
             if (isinstance(e, error.WebDriverException) and
@@ -453,11 +550,12 @@ class WebDriverRun(TimedRunner):
                 # workaround for https://bugs.chromium.org/p/chromedriver/issues/detail?id=2001
                 self.result = False, ("EXTERNAL-TIMEOUT", None)
             else:
+                status = "INTERNAL-ERROR" if self.protocol.is_alive() else "CRASH"
                 message = str(getattr(e, "message", ""))
                 if message:
                     message += "\n"
                 message += traceback.format_exc()
-                self.result = False, ("INTERNAL-ERROR", message)
+                self.result = False, (status, message)
         finally:
             self.result_flag.set()
 
@@ -503,17 +601,15 @@ class WebDriverTestharnessExecutor(TestharnessExecutor):
         if success:
             return self.convert_result(test, data)
 
-        return (test.result_cls(*data), [])
+        return (test.make_result(*data), [])
 
     def do_testharness(self, protocol, url, timeout):
-        format_map = {"url": strip_server(url)}
-
         # The previous test may not have closed its old windows (if something
         # went wrong or if cleanup_after_test was False), so clean up here.
         parent_window = protocol.testharness.close_old_windows()
 
         # Now start the test harness
-        protocol.base.execute_script("window.open('about:blank', '%s', 'noopener')" % self.window_id)
+        protocol.testharness.open_test_window(self.window_id)
         test_window = protocol.testharness.get_test_window(self.window_id,
                                                            parent_window,
                                                            timeout=5*self.timeout_multiplier)
@@ -527,13 +623,13 @@ class WebDriverTestharnessExecutor(TestharnessExecutor):
 
         while True:
             result = protocol.base.execute_script(
-                self.script_resume % format_map, asynchronous=True)
+                self.script_resume, asynchronous=True, args=[strip_server(url)])
 
             # As of 2019-03-29, WebDriver does not define expected behavior for
             # cases where the browser crashes during script execution:
             #
             # https://github.com/w3c/webdriver/issues/1308
-            if not isinstance(result, list) or len(result) != 2:
+            if not isinstance(result, list) or len(result) != 3:
                 try:
                     is_alive = self.is_alive()
                 except error.WebDriverException:
@@ -541,6 +637,16 @@ class WebDriverTestharnessExecutor(TestharnessExecutor):
 
                 if not is_alive:
                     raise Exception("Browser crashed during script execution.")
+
+            # A user prompt created after starting execution of the resume
+            # script will resolve the script with `null` [1, 2]. In that case,
+            # cycle this event loop and handle the prompt the next time the
+            # resume script executes.
+            #
+            # [1]: Step 5.3 of https://www.w3.org/TR/webdriver/#execute-async-script
+            # [2]: https://www.w3.org/TR/webdriver/#dfn-execute-a-function-body
+            if result is None:
+                continue
 
             done, rv = handler(result)
             if done:
@@ -642,7 +748,7 @@ class WebDriverCrashtestExecutor(CrashtestExecutor):
     def __init__(self, logger, browser, server_config, timeout_multiplier=1,
                  screenshot_cache=None, close_after_done=True,
                  debug_info=None, capabilities=None, **kwargs):
-        """WebDriver-based executor for reftests"""
+        """WebDriver-based executor for crashtests"""
         CrashtestExecutor.__init__(self,
                                    logger,
                                    browser,
@@ -671,7 +777,7 @@ class WebDriverCrashtestExecutor(CrashtestExecutor):
         if success:
             return self.convert_result(test, data)
 
-        return (test.result_cls(*data), [])
+        return (test.make_result(*data), [])
 
     def do_crashtest(self, protocol, url, timeout):
         protocol.base.load(url)

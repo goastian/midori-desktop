@@ -13,7 +13,7 @@ def add_common_arguments(parser):
         type=str,
         dest="app_binary",
         default=None,
-        help="path to application binary (eg: c:\program files\mozilla firefox\firefox.exe)",
+        help="path to application binary (eg: c:\\program files\\mozilla firefox\\firefox.exe)",
     )
     parser.add_argument(
         "--app-path",
@@ -21,6 +21,20 @@ def add_common_arguments(parser):
         dest="appPath",
         default=None,
         help="application directory (as opposed to XRE directory)",
+    )
+    parser.add_argument(
+        "--msix-app-path",
+        type=str,
+        dest="msixAppPath",
+        default=None,
+        help="application directory for msix mode (as opposed to XRE directory)",
+    )
+    parser.add_argument(
+        "--msix-app-binary",
+        type=str,
+        dest="msix_app_binary",
+        default=None,
+        help="path to application binary for msix mode (eg: c:\\program files\\mozilla firefox\\firefox.exe)",
     )
     parser.add_argument(
         "--interactive",
@@ -143,6 +157,15 @@ def add_common_arguments(parser):
         help="absolute path to directory containing XRE (probably xulrunner)",
     )
     parser.add_argument(
+        "--msix-xre-path",
+        action="store",
+        type=str,
+        dest="msixXrePath",
+        # individual scripts will set a sane default
+        default=None,
+        help="absolute path to directory containing XRE in msix mode (probably xulrunner)",
+    )
+    parser.add_argument(
         "--symbols-path",
         action="store",
         type=str,
@@ -248,11 +271,25 @@ def add_common_arguments(parser):
         "and CPU x 4 when running in automation",
     )
     parser.add_argument(
+        "--variant",
+        action="store",
+        default="",
+        help="use specified variant for any harness level changes.",
+    )
+    parser.add_argument(
         "--setpref",
         action="append",
         dest="extraPrefs",
         metavar="PREF=VALUE",
         help="Defines an extra user preference (can be passed multiple times.",
+    )
+    parser.add_argument(
+        "--setenv",
+        action="append",
+        dest="extraEnv",
+        metavar="NAME=VALUE",
+        help="Set one or more environment variable before launching the test "
+        "(can be passed multiple times).",
     )
     parser.add_argument(
         "testPaths", nargs="*", default=None, help="Paths of tests to run."

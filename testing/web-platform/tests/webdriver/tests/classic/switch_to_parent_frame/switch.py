@@ -34,22 +34,6 @@ def test_no_top_browsing_context(session, url):
     assert_error(response, "no such window")
 
 
-def test_no_parent_browsing_context(session, url):
-    session.url = url("/webdriver/tests/support/html/frames.html")
-
-    subframe = session.find.css("#sub-frame", all=False)
-    session.switch_frame(subframe)
-
-    deleteframe = session.find.css("#delete-frame", all=False)
-    session.switch_frame(deleteframe)
-
-    button = session.find.css("#remove-top", all=False)
-    button.click()
-
-    response = switch_to_parent_frame(session)
-    assert_error(response, "no such window")
-
-
 def test_no_browsing_context(session, closed_frame):
     response = switch_to_parent_frame(session)
     assert_success(response)

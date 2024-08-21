@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 from tests.support.sync import AsyncPoll
 from webdriver.error import TimeoutException
@@ -42,7 +40,7 @@ async def test_unsubscribe_from_module(bidi_session):
 
 @pytest.mark.asyncio
 async def test_subscribe_to_module_unsubscribe_from_one_event(
-    bidi_session, wait_for_event
+    bidi_session, wait_for_event, wait_for_future_safe
 ):
     await bidi_session.session.subscribe(events=["browsingContext"])
 
@@ -52,7 +50,7 @@ async def test_subscribe_to_module_unsubscribe_from_one_event(
     # Track all received browsing context events in the events array
     events = []
 
-    async def on_event(method, data):
+    async def on_event(method, _):
         events.append(method)
 
     remove_listener_contextCreated = bidi_session.add_event_listener(
@@ -68,7 +66,7 @@ async def test_subscribe_to_module_unsubscribe_from_one_event(
     # Wait for the last event
     on_entry_added = wait_for_event("browsingContext.load")
     await bidi_session.browsing_context.create(type_hint="tab")
-    await on_entry_added
+    await wait_for_future_safe(on_entry_added)
 
     # Make sure we didn't receive browsingContext.domContentLoaded event
     assert len(events) == 2

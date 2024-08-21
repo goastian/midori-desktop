@@ -62,7 +62,6 @@ class RemoteProcessMonitor(object):
                 self.package,
                 intent="org.mozilla.geckoview.test_runner.XPCSHELL_TEST_MAIN",
                 activity_name="TestRunnerActivity",
-                e10s=True,
             )
             # Newer Androids require that background services originate from
             # active apps, so wait here until the test runner is the top
@@ -98,7 +97,6 @@ class RemoteProcessMonitor(object):
         self.device.launch_service(
             self.package,
             activity_name=("XpcshellTestRunnerService$i%d" % selectedProcess),
-            e10s=True,
             moz_env=env,
             grant_runtime_permissions=False,
             extra_args=extra_args,
@@ -125,6 +123,9 @@ class RemoteProcessMonitor(object):
             time.sleep(interval)
             timer += interval
             interval *= 1.5
+            # We're using exponential back-off. To avoid unnecessarily waiting
+            # for too long, cap the maximum sleep interval to 15 seconds.
+            interval = min(15, interval)
             if timeout and timer > timeout:
                 status = False
                 self.log.info(
@@ -273,7 +274,6 @@ class RemoteXPCShellTestThread(xpcshell.XPCShellTestThread):
         # change base class' paths to remote paths and use base class to build command
         self.xpcshell = posixpath.join(self.remoteBinDir, "xpcw")
         self.headJSPath = posixpath.join(self.remoteScriptsDir, "head.js")
-        self.httpdJSPath = posixpath.join(self.remoteComponentsDir, "httpd.js")
         self.testingModulesDir = self.remoteModulesDir
         self.testharnessdir = self.remoteScriptsDir
         xpcsCmd = xpcshell.XPCShellTestThread.buildXpcsCmd(self)
@@ -639,8 +639,8 @@ class XPCShellRemote(xpcshell.XPCShellTests, object):
                     file=sys.stderr,
                 )
 
-        local = os.path.join(self.localBin, "components/httpd.js")
-        remoteFile = posixpath.join(self.remoteComponentsDir, "httpd.js")
+        local = os.path.join(self.localBin, "components/httpd.sys.mjs")
+        remoteFile = posixpath.join(self.remoteComponentsDir, "httpd.sys.mjs")
         self.device.push(local, remoteFile)
         self.device.chmod(remoteFile)
 
@@ -653,12 +653,7 @@ class XPCShellRemote(xpcshell.XPCShellTests, object):
 
             self.pushLibs()
         else:
-            localB2G = os.path.join(self.options["objdir"], "dist", "b2g")
-            if os.path.exists(localB2G):
-                self.device.push(localB2G, self.remoteBinDir)
-                self.device.chmod(self.remoteBinDir)
-            else:
-                raise Exception("unable to install gre: no APK and not b2g")
+            raise Exception("unable to install gre: no APK")
 
     def pushLibs(self):
         pushed_libs_count = 0

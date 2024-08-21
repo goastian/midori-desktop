@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use crate::common::{WebElement, ELEMENT_KEY};
+use icu_segmenter::GraphemeClusterSegmenter;
 use serde::de::{self, Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use serde_json::Value;
 use std::default::Default;
 use std::f64;
-use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ActionSequence {
@@ -91,7 +91,7 @@ where
 {
     String::deserialize(deserializer).map(|value| {
         // Only a single Unicode grapheme cluster is allowed
-        if value.graphemes(true).count() != 1 {
+        if GraphemeClusterSegmenter::new().segment_str(&value).count() != 2 {
             return Err(de::Error::custom(format!(
                 "'{}' should only contain a single Unicode code point",
                 value
@@ -102,18 +102,13 @@ where
     })?
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PointerType {
+    #[default]
     Mouse,
     Pen,
     Touch,
-}
-
-impl Default for PointerType {
-    fn default() -> PointerType {
-        PointerType::Mouse
-    }
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -328,7 +323,7 @@ pub struct PointerUpAction {
     pub azimuthAngle: Option<f64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub enum PointerOrigin {
     #[serde(
         rename = "element-6066-11e4-a52e-4f735466cecf",
@@ -338,13 +333,8 @@ pub enum PointerOrigin {
     #[serde(rename = "pointer")]
     Pointer,
     #[serde(rename = "viewport")]
+    #[default]
     Viewport,
-}
-
-impl Default for PointerOrigin {
-    fn default() -> PointerOrigin {
-        PointerOrigin::Viewport
-    }
 }
 
 // TODO: The custom deserializer can be removed once the support of the legacy
