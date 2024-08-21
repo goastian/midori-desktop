@@ -15,7 +15,6 @@
 #include "nsIDocShell.h"
 #include "nsIObserverService.h"
 #include "nsPresContext.h"
-#include "nsIScrollableFrame.h"
 #include "nsISelectionController.h"
 #include "nsISimpleEnumerator.h"
 #include "mozilla/dom/TouchEvent.h"
@@ -24,6 +23,7 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/TouchEvents.h"
 #include "nsView.h"
 #include "nsGkAtoms.h"
@@ -35,6 +35,7 @@
 #include "nsTreeColumns.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/ElementInternals.h"
 #include "mozilla/dom/HTMLLabelElement.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/Selection.h"
@@ -252,21 +253,24 @@ nsresult nsCoreUtils::ScrollSubstringTo(nsIFrame* aFrame, nsRange* aRange,
   return NS_OK;
 }
 
-void nsCoreUtils::ScrollFrameToPoint(nsIFrame* aScrollableFrame,
+void nsCoreUtils::ScrollFrameToPoint(nsIFrame* aScrollContainerFrame,
                                      nsIFrame* aFrame,
                                      const LayoutDeviceIntPoint& aPoint) {
-  nsIScrollableFrame* scrollableFrame = do_QueryFrame(aScrollableFrame);
-  if (!scrollableFrame) return;
+  ScrollContainerFrame* scrollContainerFrame =
+      do_QueryFrame(aScrollContainerFrame);
+  if (!scrollContainerFrame) {
+    return;
+  }
 
   nsPoint point = LayoutDeviceIntPoint::ToAppUnits(
       aPoint, aFrame->PresContext()->AppUnitsPerDevPixel());
   nsRect frameRect = aFrame->GetScreenRectInAppUnits();
   nsPoint deltaPoint = point - frameRect.TopLeft();
 
-  nsPoint scrollPoint = scrollableFrame->GetScrollPosition();
+  nsPoint scrollPoint = scrollContainerFrame->GetScrollPosition();
   scrollPoint -= deltaPoint;
 
-  scrollableFrame->ScrollTo(scrollPoint, ScrollMode::Instant);
+  scrollContainerFrame->ScrollTo(scrollPoint, ScrollMode::Instant);
 }
 
 void nsCoreUtils::ConvertScrollTypeToPercents(uint32_t aScrollType,
@@ -312,9 +316,9 @@ void nsCoreUtils::ConvertScrollTypeToPercents(uint32_t aScrollType,
       whenX = WhenToScroll::Always;
       break;
     default:
-      whereY = WhereToScroll::Nearest;
+      whereY = WhereToScroll::Center;
       whenY = WhenToScroll::IfNotFullyVisible;
-      whereX = WhereToScroll::Nearest;
+      whereX = WhereToScroll::Center;
       whenX = WhenToScroll::IfNotFullyVisible;
   }
   *aVertical = ScrollAxis(whereY, whenY);
@@ -368,7 +372,7 @@ PresShell* nsCoreUtils::GetPresShellFor(nsINode* aNode) {
 
 bool nsCoreUtils::GetID(nsIContent* aContent, nsAString& aID) {
   return aContent->IsElement() &&
-         aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::id, aID);
+         aContent->AsElement()->GetAttr(nsGkAtoms::id, aID);
 }
 
 bool nsCoreUtils::GetUIntAttr(nsIContent* aContent, nsAtom* aAttr,
@@ -405,8 +409,7 @@ void nsCoreUtils::GetLanguageFor(nsIContent* aContent, nsIContent* aRootContent,
   nsIContent* walkUp = aContent;
   while (walkUp && walkUp != aRootContent &&
          (!walkUp->IsElement() ||
-          !walkUp->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::lang,
-                                        aLanguage))) {
+          !walkUp->AsElement()->GetAttr(nsGkAtoms::lang, aLanguage))) {
     walkUp = walkUp->GetParent();
   }
 }
@@ -533,7 +536,7 @@ void nsCoreUtils::ScrollTo(PresShell* aPresShell, nsIContent* aContent,
 bool nsCoreUtils::IsHTMLTableHeader(nsIContent* aContent) {
   return aContent->NodeInfo()->Equals(nsGkAtoms::th) ||
          (aContent->IsElement() &&
-          aContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::scope));
+          aContent->AsElement()->HasAttr(nsGkAtoms::scope));
 }
 
 bool nsCoreUtils::IsWhitespaceString(const nsAString& aString) {
@@ -620,4 +623,35 @@ bool nsCoreUtils::IsDocumentVisibleConsideringInProcessAncestors(
     }
   } while ((parent = parent->GetInProcessParentDocument()));
   return true;
+}
+
+bool nsCoreUtils::IsDescendantOfAnyShadowIncludingAncestor(
+    nsINode* aDescendant, nsINode* aStartAncestor) {
+  const nsINode* descRoot = aDescendant->SubtreeRoot();
+  nsINode* ancRoot = aStartAncestor->SubtreeRoot();
+  for (;;) {
+    if (ancRoot == descRoot) {
+      return true;
+    }
+    auto* shadow = mozilla::dom::ShadowRoot::FromNode(ancRoot);
+    if (!shadow || !shadow->GetHost()) {
+      break;
+    }
+    ancRoot = shadow->GetHost()->SubtreeRoot();
+  }
+  return false;
+}
+
+Element* nsCoreUtils::GetAriaActiveDescendantElement(Element* aElement) {
+  if (Element* activeDescendant = aElement->GetAriaActiveDescendantElement()) {
+    return activeDescendant;
+  }
+
+  if (auto* element = nsGenericHTMLElement::FromNode(aElement)) {
+    if (auto* internals = element->GetInternals()) {
+      return internals->GetAriaActiveDescendantElement();
+    }
+  }
+
+  return nullptr;
 }

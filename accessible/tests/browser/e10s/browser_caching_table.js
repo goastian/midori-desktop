@@ -482,7 +482,7 @@ addAccessibleTask(
  */
 addAccessibleTask(
   `<table><tr id="tr"></tr></table>`,
-  async function (browser, docAcc) {
+  async function (browser) {
     let reordered = waitForEvent(EVENT_REORDER, "tr");
     await invokeContentTask(browser, [], () => {
       const iframe = content.document.createElement("iframe");
@@ -491,6 +491,90 @@ addAccessibleTask(
     await reordered;
   },
   { topLevel: true }
+);
+
+/**
+ * Verify that table row and column information is correct when there are
+ * intervening generics between the table and a rowgroup.
+ */
+addAccessibleTask(
+  `
+<div id="table" role="grid">
+  <div role="rowgroup">
+    <div role="row">
+      <div role="columnheader">a</div>
+    </div>
+  </div>
+  <div tabindex="-1" style="height: 1px; overflow: auto;">
+    <div role="rowgroup">
+      <div role="row">
+        <div id="cell" role="gridcell">b</div>
+      </div>
+    </div>
+  </div>
+</div>
+  `,
+  async function (browser, docAcc) {
+    const table = findAccessibleChildByID(docAcc, "table", [
+      nsIAccessibleTable,
+    ]);
+
+    info("Verifying that the table row and column counts are correct.");
+    is(table.rowCount, 2, "table rowCount correct");
+    is(table.columnCount, 1, "table columnCount correct");
+
+    info("Verifying that the cell row and column extents are correct.");
+    const cell = findAccessibleChildByID(docAcc, "cell", [
+      nsIAccessibleTableCell,
+    ]);
+    is(cell.rowExtent, 1, "cell rowExtent correct");
+    is(cell.columnExtent, 1, "cell colExtent correct");
+    is(cell.rowIndex, 1, "cell rowIndex correct");
+    is(cell.columnIndex, 0, "cell columnIndex correct");
+  },
+  { chrome: true, topLevel: true, iframe: true, remoteIframe: true }
+);
+
+/**
+ * Verify that table row and column information is correct when there are
+ * intervening generics between rows and cells.
+ */
+addAccessibleTask(
+  `
+<div id="table" role="grid">
+  <div role="rowgroup">
+    <div role="row">
+      <div role="columnheader">a</div>
+    </div>
+  </div>
+  <div role="rowgroup">
+    <div role="row">
+      <div tabindex="-1" style="height: 1px; overflow: auto;">
+        <div id="cell" role="gridcell">b</div>
+      </div>
+    </div>
+  </div>
+</div>
+  `,
+  async function (browser, docAcc) {
+    const table = findAccessibleChildByID(docAcc, "table", [
+      nsIAccessibleTable,
+    ]);
+
+    info("Verifying that the table row and column counts are correct.");
+    is(table.rowCount, 2, "table rowCount correct");
+    is(table.columnCount, 1, "table columnCount correct");
+
+    info("Verifying that the cell row and column extents are correct.");
+    const cell = findAccessibleChildByID(docAcc, "cell", [
+      nsIAccessibleTableCell,
+    ]);
+    is(cell.rowExtent, 1, "cell rowExtent correct");
+    is(cell.columnExtent, 1, "cell colExtent correct");
+    is(cell.rowIndex, 1, "cell rowIndex correct");
+    is(cell.columnIndex, 0, "cell columnIndex correct");
+  },
+  { chrome: true, topLevel: true, iframe: true, remoteIframe: true }
 );
 
 /**
@@ -503,6 +587,55 @@ addAccessibleTask(
     ok(table, "Retrieved table Accessible");
   },
   { chrome: true, topLevel: true }
+);
+
+/**
+ * Test ARIA tables in SVG.
+ */
+addAccessibleTask(
+  `
+<svg id="table" role="table">
+  <text id="caption" role="caption">caption</text>
+  <g role="row">
+    <text id="a" role="columnheader">a</text>
+    <text id="b" role="columnheader">b</text>
+  </g>
+  <g role="row">
+    <text id="c" role="cell">c</text>
+    <text id="d" role="cell">d</text>
+  </g>
+</svg>
+  `,
+  async function (browser, docAcc) {
+    const table = findAccessibleChildByID(docAcc, "table", [
+      nsIAccessibleTable,
+    ]);
+    is(table.rowCount, 2, "table rowCount correct");
+    is(table.columnCount, 2, "table columnCount correct");
+    const caption = findAccessibleChildByID(docAcc, "caption");
+    is(table.caption, caption, "table caption correct");
+    testTableIndexes(table, [
+      [0, 1],
+      [2, 3],
+    ]);
+    const cells = {};
+    for (const id of ["a", "b", "c", "d"]) {
+      cells[id] = findAccessibleChildByID(docAcc, id, [nsIAccessibleTableCell]);
+    }
+    testHeaderCells([
+      {
+        cell: cells.c,
+        rowHeaderCells: [],
+        columnHeaderCells: [cells.a],
+      },
+      {
+        cell: cells.d,
+        rowHeaderCells: [],
+        columnHeaderCells: [cells.b],
+      },
+    ]);
+  },
+  { chrome: true, topLevel: true, remoteIframe: true }
 );
 
 /**

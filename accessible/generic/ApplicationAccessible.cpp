@@ -7,18 +7,16 @@
 
 #include "ApplicationAccessible.h"
 
-#include "AccAttributes.h"
 #include "LocalAccessible-inl.h"
 #include "nsAccessibilityService.h"
-#include "nsAccUtils.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 
 #include "nsServiceManagerUtils.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/Components.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIStringBundle.h"
 
 using namespace mozilla::a11y;

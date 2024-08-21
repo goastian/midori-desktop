@@ -185,6 +185,17 @@ class HyperTextAccessibleBase {
   }
 
   /**
+   * Transform the given a11y point into an offset relative to this hypertext.
+   * Returns {success, offset}, where success is true if successful.
+   * If unsuccessful, the returned offset will be CharacterCount() if
+   * aIsEndOffset is true, 0 otherwise. This means most callers can ignore the
+   * success return value.
+   */
+  std::pair<bool, int32_t> TransformOffset(Accessible* aDescendant,
+                                           int32_t aOffset,
+                                           bool aIsEndOffset) const;
+
+  /**
    * Return text attributes for the given text range.
    */
   already_AddRefed<AccAttributes> TextAttributes(bool aIncludeDefAttrs,
@@ -202,6 +213,12 @@ class HyperTextAccessibleBase {
    * control or the document this accessible belongs to.
    */
   virtual void SelectionRanges(nsTArray<TextRange>* aRanges) const = 0;
+
+  /**
+   * Return text selection ranges cropped to this Accessible (rather than for
+   * the entire text control or document). This also excludes collapsed ranges.
+   */
+  void CroppedSelectionRanges(nsTArray<TextRange>& aRanges) const;
 
   /**
    * Return selected regions count within the accessible.
@@ -245,6 +262,13 @@ class HyperTextAccessibleBase {
                                                      int32_t aEndOffset,
                                                      uint32_t aScrollType);
 
+  /**
+   * Scroll the given text range to the given point.
+   */
+  virtual void ScrollSubstringToPoint(int32_t aStartOffset, int32_t aEndOffset,
+                                      uint32_t aCoordinateType, int32_t aX,
+                                      int32_t aY) = 0;
+
   //////////////////////////////////////////////////////////////////////////////
   // EditableTextAccessible
 
@@ -277,17 +301,6 @@ class HyperTextAccessibleBase {
 
  private:
   /**
-   * Transform the given a11y point into an offset relative to this hypertext.
-   * Returns {success, offset}, where success is true if successful.
-   * If unsuccessful, the returned offset will be CharacterCount() if
-   * aIsEndOffset is true, 0 otherwise. This means most callers can ignore the
-   * success return value.
-   */
-  std::pair<bool, int32_t> TransformOffset(Accessible* aDescendant,
-                                           int32_t aOffset,
-                                           bool aIsEndOffset) const;
-
-  /**
    * Helper method for TextBefore/At/AfterOffset.
    * If BOUNDARY_LINE_END was requested and the origin is itself a line end
    * boundary, we must use the line which ends at the origin. We must do
@@ -297,12 +310,6 @@ class HyperTextAccessibleBase {
   void AdjustOriginIfEndBoundary(TextLeafPoint& aOrigin,
                                  AccessibleTextBoundary aBoundaryType,
                                  bool aAtOffset = false) const;
-
-  /**
-   * Return text selection ranges cropped to this Accessible (rather than for
-   * the entire text control or document). This also excludes collapsed ranges.
-   */
-  virtual void CroppedSelectionRanges(nsTArray<TextRange>& aRanges) const;
 };
 
 }  // namespace mozilla::a11y

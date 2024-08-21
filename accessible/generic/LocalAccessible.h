@@ -171,7 +171,7 @@ class LocalAccessible : public nsISupports, public Accessible {
    * Return accessible role specified by ARIA (see constants in
    * roles).
    */
-  mozilla::a11y::role ARIARole();
+  inline mozilla::a11y::role ARIARole();
 
   /**
    * Returns enumerated accessible role from native markup (see constants in
@@ -258,7 +258,7 @@ class LocalAccessible : public nsISupports, public Accessible {
   /**
    * Set the ARIA role map entry for a new accessible.
    */
-  void SetRoleMapEntry(const nsRoleMapEntry* aRoleMapEntry);
+  inline void SetRoleMapEntry(const nsRoleMapEntry* aRoleMapEntry);
 
   /**
    * Append/insert/remove a child. Return true if operation was successful.
@@ -273,7 +273,8 @@ class LocalAccessible : public nsISupports, public Accessible {
    * then the child is unbound from the document, and false is returned. Make
    * sure to null out any references on the child object as it may be destroyed.
    */
-  bool InsertAfter(LocalAccessible* aNewChild, LocalAccessible* aRefChild);
+  inline bool InsertAfter(LocalAccessible* aNewChild,
+                          LocalAccessible* aRefChild);
 
   virtual bool RemoveChild(LocalAccessible* aChild);
 
@@ -422,10 +423,8 @@ class LocalAccessible : public nsISupports, public Accessible {
   MOZ_CAN_RUN_SCRIPT
   virtual void ScrollTo(uint32_t aHow) const override;
 
-  /**
-   * Scroll the accessible to the given point.
-   */
-  void ScrollToPoint(uint32_t aCoordinateType, int32_t aX, int32_t aY);
+  virtual void ScrollToPoint(uint32_t aCoordinateType, int32_t aX,
+                             int32_t aY) override;
 
   /**
    * Get a pointer to accessibility interface for this node, which is specific
@@ -588,12 +587,17 @@ class LocalAccessible : public nsISupports, public Accessible {
    */
   virtual LocalAccessible* ContainerWidget() const;
 
-  bool IsActiveDescendant(LocalAccessible** aWidget = nullptr) const;
+  /**
+   * Accessible's element ID is referenced as a aria-activedescendant in the
+   * document. This method is only used for ID changes and therefore does not
+   * need to work for direct element references via ariaActiveDescendantElement.
+   */
+  bool IsActiveDescendantId(LocalAccessible** aWidget = nullptr) const;
 
   /**
    * Return true if the accessible is defunct.
    */
-  bool IsDefunct() const;
+  inline bool IsDefunct() const;
 
   /**
    * Return false if the accessible is no longer in the document.
@@ -617,12 +621,12 @@ class LocalAccessible : public nsISupports, public Accessible {
   /**
    * Return true if native markup has a numeric value.
    */
-  bool NativeHasNumericValue() const;
+  inline bool NativeHasNumericValue() const;
 
   /**
    * Return true if ARIA specifies support for a numeric value.
    */
-  bool ARIAHasNumericValue() const;
+  inline bool ARIAHasNumericValue() const;
 
   /**
    * Return true if the accessible has a numeric value.
@@ -732,6 +736,8 @@ class LocalAccessible : public nsISupports, public Accessible {
 
   virtual void DOMNodeID(nsString& aID) const override;
 
+  virtual void DOMNodeClass(nsString& aClass) const override;
+
   virtual void LiveRegionAttributes(nsAString* aLive, nsAString* aRelevant,
                                     Maybe<bool>* aAtomic,
                                     nsAString* aBusy) const override;
@@ -838,6 +844,12 @@ class LocalAccessible : public nsISupports, public Accessible {
    * Return ARIA role (helper method).
    */
   mozilla::a11y::role ARIATransformRole(mozilla::a11y::role aRole) const;
+
+  /**
+   * Return the minimum role that should be used as a last resort if the element
+   * does not have a more specific role.
+   */
+  mozilla::a11y::role GetMinimumRole(mozilla::a11y::role aRole) const;
 
   //////////////////////////////////////////////////////////////////////////////
   // Name helpers
@@ -1004,6 +1016,19 @@ class LocalAccessible : public nsISupports, public Accessible {
    * OOP iframe docs and tab documents.
    */
   nsIFrame* FindNearestAccessibleAncestorFrame();
+
+  /*
+   * This function assumes that the current role is not valid. It searches for a
+   * fallback role in the role attribute string, and returns it. If there is no
+   * valid fallback role in the role attribute string, the function returns the
+   * native role. The aRolesToSkip parameter will cause the function to skip any
+   * roles found in the role attribute string when searching for the next valid
+   * role.
+   */
+  role FindNextValidARIARole(
+      std::initializer_list<nsStaticAtom*> aRolesToSkip) const;
+
+  LocalAccessible* GetPopoverTargetDetailsRelation() const;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(LocalAccessible, NS_ACCESSIBLE_IMPL_IID)

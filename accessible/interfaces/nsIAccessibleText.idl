@@ -22,6 +22,8 @@ interface nsIAccessibleText : nsISupports
   const int32_t TEXT_OFFSET_END_OF_TEXT = -1;
   const int32_t TEXT_OFFSET_CARET       = -2;
 
+  // A single Unicode character. For a user-perceived character, see
+  // BOUNDARY_CLUSTER.
   const AccessibleTextBoundary BOUNDARY_CHAR = 0;
   const AccessibleTextBoundary BOUNDARY_WORD_START = 1;
   const AccessibleTextBoundary BOUNDARY_WORD_END = 2;
@@ -30,6 +32,10 @@ interface nsIAccessibleText : nsISupports
   const AccessibleTextBoundary BOUNDARY_LINE_START = 5;
   const AccessibleTextBoundary BOUNDARY_LINE_END = 6;
   const AccessibleTextBoundary BOUNDARY_PARAGRAPH = 7;
+  // A grapheme cluster, AKA user-perceived character. This might consist of
+  // multiple Unicode characters, but a user will perceive this as a single
+  // character and it is treated as such by the caret, selection, etc.
+  const AccessibleTextBoundary BOUNDARY_CLUSTER = 8;
 
   /**
    * The current current caret offset.
@@ -195,32 +201,10 @@ interface nsIAccessibleText : nsISupports
                               in long x, in long y);
 
   /**
-   * Return a range that encloses this text control or otherwise the document
-   * this text accessible belongs to.
-   */
-  readonly attribute nsIAccessibleTextRange enclosingRange;
-
-  /**
    * Return an array of disjoint ranges for selected text within the text control
    * or otherwise the document this accessible belongs to.
    */
   readonly attribute nsIArray selectionRanges;
-
-  /**
-   * Return an array of disjoint ranges of visible text within the text control
-   * or otherwise the document this accessible belongs to.
-   */
-  readonly attribute nsIArray visibleRanges;
-
-  /**
-   * Return a range containing the given accessible.
-   */
-  nsIAccessibleTextRange getRangeByChild(in nsIAccessible child);
-
-  /**
-   * Return a range containing an accessible at the given point.
-   */
-  nsIAccessibleTextRange getRangeAtPoint(in long x, in long y);
 };
 
 /*

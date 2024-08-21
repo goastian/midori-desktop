@@ -6,17 +6,16 @@
 #ifndef mozilla_a11y_HTMLLinkAccessible_h__
 #define mozilla_a11y_HTMLLinkAccessible_h__
 
-#include "HyperTextAccessibleWrap.h"
+#include "HyperTextAccessible.h"
 
 namespace mozilla {
 namespace a11y {
 
-class HTMLLinkAccessible : public HyperTextAccessibleWrap {
+class HTMLLinkAccessible : public HyperTextAccessible {
  public:
   HTMLLinkAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
-  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLLinkAccessible,
-                                       HyperTextAccessibleWrap)
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLLinkAccessible, HyperTextAccessible)
 
   // LocalAccessible
   virtual void Value(nsString& aValue) const override;
@@ -46,6 +45,8 @@ class HTMLLinkAccessible : public HyperTextAccessibleWrap {
                                    int32_t aModType,
                                    const nsAttrValue* aOldValue,
                                    uint64_t aOldState) override;
+
+  virtual ENameValueFlag NativeName(nsString& aName) const override;
 
   enum { eAction_Jump = 0 };
 };

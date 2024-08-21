@@ -8,10 +8,12 @@
 #define mozilla_a11y_LazyInstantiator_h
 
 #include "IUnknownImpl.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
 #include "nsString.h"
 
 #include <oleacc.h>
+#include <uiautomation.h>
 
 class nsIFile;
 
@@ -28,9 +30,13 @@ class MsaaRootAccessible;
  *     services in order to fulfill; and
  * (2) LazyInstantiator::ShouldInstantiate returns true.
  */
-class LazyInstantiator final : public IAccessible, public IServiceProvider {
+class LazyInstantiator final : public IAccessible,
+                               public IServiceProvider,
+                               public IRawElementProviderSimple {
  public:
   [[nodiscard]] static already_AddRefed<IAccessible> GetRootAccessible(
+      HWND aHwnd);
+  [[nodiscard]] static already_AddRefed<IRawElementProviderSimple> GetRootUia(
       HWND aHwnd);
   static void EnableBlindAggregation(HWND aHwnd);
 
@@ -82,14 +88,41 @@ class LazyInstantiator final : public IAccessible, public IServiceProvider {
   STDMETHODIMP QueryService(REFGUID aServiceId, REFIID aServiceIid,
                             void** aOutInterface) override;
 
+  // IRawElementProviderSimple
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_ProviderOptions(
+      /* [retval][out] */ __RPC__out enum ProviderOptions* aProviderOptions);
+
+  virtual HRESULT STDMETHODCALLTYPE GetPatternProvider(
+      /* [in] */ PATTERNID aPatternId,
+      /* [retval][out] */ __RPC__deref_out_opt IUnknown** aPatternProvider);
+
+  virtual HRESULT STDMETHODCALLTYPE GetPropertyValue(
+      /* [in] */ PROPERTYID aPropertyId,
+      /* [retval][out] */ __RPC__out VARIANT* aPropertyValue);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(
+      /* [retval][out] */ __RPC__deref_out_opt IRawElementProviderSimple**
+          aRawElmProvider);
+
+  /**
+   * We cache the result of UIA detection because it could be expensive if a
+   * client repeatedly queries us. This function is called to reset that cache
+   * when one of our windows comes to the foreground. If there is a new UIA
+   * client that isn't blocked, instantiation will subsequently be allowed. The
+   * hope is that a user will probably need to switch apps in order to start a
+   * new client.
+   */
+  static void ResetUiaDetectionCache() { sShouldBlockUia = Nothing(); }
+
  private:
   explicit LazyInstantiator(HWND aHwnd);
   ~LazyInstantiator();
 
   bool IsBlockedInjection();
-  bool ShouldInstantiate(const DWORD aClientTid);
+  bool ShouldInstantiate(const DWORD aClientPid);
+  bool ShouldInstantiate();
 
-  DWORD GetClientPid(const DWORD aClientTid);
+  DWORD GetRemoteMsaaClientPid();
 
   /**
    * @return S_OK if we have a valid mRealRoot to invoke methods on
@@ -105,6 +138,9 @@ class LazyInstantiator final : public IAccessible, public IServiceProvider {
   void TransplantRefCnt();
   void ClearProp();
 
+  template <class T>
+  static already_AddRefed<T> GetRoot(HWND aHwnd);
+
  private:
   mozilla::a11y::AutoRefCnt mRefCnt;
   HWND mHwnd;
@@ -112,7 +148,7 @@ class LazyInstantiator final : public IAccessible, public IServiceProvider {
   RefPtr<IUnknown> mRealRootUnk;
   RefPtr<IUnknown> mStdDispatch;
   /**
-   * mWeakRootAccWrap, mWeakAccessible and mWeakDispatch are weak because they
+   * mWeakMsaaRoot, mWeakAccessible and mWeakDispatch are weak because they
    * are interfaces that come from objects that we aggregate. Aggregated object
    * interfaces share refcount methods with ours, so if we were to hold strong
    * references to them, we would be holding strong references to ourselves,
@@ -121,6 +157,8 @@ class LazyInstantiator final : public IAccessible, public IServiceProvider {
   MsaaRootAccessible* mWeakMsaaRoot;
   IAccessible* mWeakAccessible;
   IDispatch* mWeakDispatch;
+  IRawElementProviderSimple* mWeakUia;
+  static Maybe<bool> sShouldBlockUia;
 };
 
 }  // namespace a11y

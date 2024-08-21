@@ -5,13 +5,17 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 SOURCES += [
+    "UiaGrid.cpp",
+    "UiaGridItem.cpp",
     "uiaRawElmProvider.cpp",
+    "UiaRoot.cpp",
 ]
 
 LOCAL_INCLUDES += [
     "/accessible/base",
     "/accessible/generic",
     "/accessible/html",
+    "/accessible/windows/ia2",
     "/accessible/windows/msaa",
     "/accessible/xpcom",
     "/accessible/xul",

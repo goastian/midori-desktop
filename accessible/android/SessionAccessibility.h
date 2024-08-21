@@ -11,17 +11,11 @@
 #include "nsAppShell.h"
 #include "nsThreadUtils.h"
 #include "nsWindow.h"
-#include "AccessibleWrap.h"
 
 namespace mozilla {
 namespace a11y {
 
-class AccessibleWrap;
-class AccAttributes;
 class Accessible;
-class RemoteAccessible;
-class RootAccessibleWrap;
-class BatchData;
 
 class SessionAccessibility final
     : public java::SessionAccessibility::NativeProvider::Natives<
@@ -57,12 +51,12 @@ class SessionAccessibility final
   void Click(int32_t aID);
   bool Pivot(int32_t aID, int32_t aGranularity, bool aForward, bool aInclusive);
   void ExploreByTouch(int32_t aID, float aX, float aY);
-  void NavigateText(int32_t aID, int32_t aGranularity, int32_t aStartOffset,
+  bool NavigateText(int32_t aID, int32_t aGranularity, int32_t aStartOffset,
                     int32_t aEndOffset, bool aForward, bool aSelect);
   void SetSelection(int32_t aID, int32_t aStart, int32_t aEnd);
   void Cut(int32_t aID);
   void Copy(int32_t aID);
-  void Paste(int32_t aID);
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void Paste(int32_t aID);
   void StartNativeAccessibility();
 
   // Event methods
@@ -71,7 +65,8 @@ class SessionAccessibility final
                           int32_t aScrollY, int32_t aMaxScrollX,
                           int32_t aMaxScrollY);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  void SendAccessibilityFocusedEvent(Accessible* aAccessible);
+  void SendAccessibilityFocusedEvent(Accessible* aAccessible,
+                                     bool aScrollIntoView);
   void SendHoverEnterEvent(Accessible* aAccessible);
   void SendTextSelectionChangedEvent(Accessible* aAccessible,
                                      int32_t aCaretOffset);
@@ -107,13 +102,41 @@ class SessionAccessibility final
 
   void SetAttached(bool aAttached, already_AddRefed<Runnable> aRunnable);
 
+  bool DoNavigateText(Accessible* aAccessible, int32_t aGranularity,
+                      int32_t aStartOffset, int32_t aEndOffset, bool aForward,
+                      bool aSelect);
+
   jni::NativeWeakPtr<widget::GeckoViewSupport> mWindow;  // Parent only
   java::SessionAccessibility::NativeProvider::GlobalRef mSessionAccessibility;
+
+  class IDMappingEntry {
+   public:
+    explicit IDMappingEntry(Accessible* aAccessible);
+
+    IDMappingEntry& operator=(Accessible* aAccessible);
+
+    operator Accessible*() const;
+
+   private:
+    // A strong reference to a DocAccessible or DocAccessibleParent. They don't
+    // share any useful base class except nsISupports, so we use that.
+    // When we retrieve the document from this reference we cast it to
+    // LocalAccessible in the DocAccessible case because DocAccessible has
+    // multiple inheritance paths for nsISupports.
+    RefPtr<nsISupports> mDoc;
+    // The ID of the accessible as used in the internal doc mapping.
+    // We rely on this ID being pointer derived and therefore divisible by two
+    // so we can use the first bit to mark if it is remote or not.
+    uint64_t mInternalID;
+
+    static const uintptr_t IS_REMOTE = 0x1;
+  };
 
   /*
    * This provides a mapping from 32 bit id to accessible objects.
    */
-  nsTHashMap<nsUint32HashKey, Accessible*> mIDToAccessibleMap;
+  nsBaseHashtable<nsUint32HashKey, IDMappingEntry, Accessible*>
+      mIDToAccessibleMap;
 };
 
 }  // namespace a11y

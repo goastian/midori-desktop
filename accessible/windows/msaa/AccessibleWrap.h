@@ -9,7 +9,6 @@
 
 #include "nsCOMPtr.h"
 #include "LocalAccessible.h"
-#include "MsaaAccessible.h"
 #include "mozilla/a11y/RemoteAccessible.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/mscom/Utils.h"
@@ -20,6 +19,7 @@
 namespace mozilla {
 namespace a11y {
 class DocRemoteAccessibleWrap;
+class MsaaAccessible;
 
 /**
  * Windows specific functionality for an accessibility tree node that originated
@@ -34,7 +34,6 @@ class AccessibleWrap : public LocalAccessible {
 
  public:
   // LocalAccessible
-  virtual nsresult HandleAccEvent(AccEvent* aEvent) override;
   virtual void Shutdown() override;
 
   // Helper methods
@@ -45,12 +44,10 @@ class AccessibleWrap : public LocalAccessible {
    * We will use an invisible system caret.
    * Gecko is still responsible for drawing its own caret
    */
-  void UpdateSystemCaretFor(LocalAccessible* aAccessible);
-  static void UpdateSystemCaretFor(RemoteAccessible* aProxy,
+  static void UpdateSystemCaretFor(Accessible* aAccessible,
                                    const LayoutDeviceIntRect& aCaretRect);
-
- private:
-  static void UpdateSystemCaretFor(HWND aCaretWnd,
+  static void UpdateSystemCaretFor(LocalAccessible* aAccessible);
+  static void UpdateSystemCaretFor(RemoteAccessible* aProxy,
                                    const LayoutDeviceIntRect& aCaretRect);
 
  public:
@@ -63,7 +60,7 @@ class AccessibleWrap : public LocalAccessible {
   virtual void GetNativeInterface(void** aOutAccessible) override;
 
  protected:
-  virtual ~AccessibleWrap() = default;
+  virtual ~AccessibleWrap();
 
   RefPtr<MsaaAccessible> mMsaa;
 };

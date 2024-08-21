@@ -7,9 +7,7 @@
 #include "DocManager.h"
 
 #include "ApplicationAccessible.h"
-#include "ARIAMap.h"
 #include "DocAccessible-inl.h"
-#include "DocAccessibleChild.h"
 #include "DocAccessibleParent.h"
 #include "nsAccessibilityService.h"
 #include "Platform.h"
@@ -19,6 +17,7 @@
 #  include "Logging.h"
 #endif
 
+#include "mozilla/BasePrincipal.h"
 #include "mozilla/Components.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/PresShell.h"
@@ -28,11 +27,8 @@
 #include "nsIChannel.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIWebNavigation.h"
-#include "nsServiceManagerUtils.h"
 #include "nsIWebProgress.h"
 #include "nsCoreUtils.h"
-#include "nsXULAppAPI.h"
-#include "mozilla/dom/BrowserChild.h"
 #include "xpcAccessibleDocument.h"
 
 using namespace mozilla;
@@ -469,7 +465,18 @@ DocAccessible* DocManager::CreateDocOrRootAccessible(Document* aDocument) {
     // XXXaaronl: ideally we would traverse the presshell chain. Since there's
     // no easy way to do that, we cheat and use the document hierarchy.
     parentDocAcc = GetDocAccessible(aDocument->GetInProcessParentDocument());
-    NS_ASSERTION(parentDocAcc, "Can't create an accessible for the document!");
+    // We should always get parentDocAcc except sometimes for background
+    // extension pages, where the parent has an invisible DocShell but the child
+    // does not. See bug 1888649.
+    NS_ASSERTION(
+        parentDocAcc ||
+            (BasePrincipal::Cast(aDocument->GetPrincipal())->AddonPolicy() &&
+             aDocument->GetInProcessParentDocument() &&
+             aDocument->GetInProcessParentDocument()->GetDocShell() &&
+             aDocument->GetInProcessParentDocument()
+                 ->GetDocShell()
+                 ->IsInvisible()),
+        "Can't create an accessible for the document!");
     if (!parentDocAcc) return nullptr;
   }
 

@@ -5,7 +5,6 @@
 "use strict";
 
 async function runTests(browser, accDoc) {
-  await waitForImageMap(browser, accDoc);
   const dpr = await getContentDPR(browser);
 
   await testChildAtPoint(
@@ -60,7 +59,9 @@ async function runTests(browser, accDoc) {
   await testChildAtPoint(dpr, 1, 1, area, area, area);
 
   info("Test image maps. Their children are not in the layout tree.");
+  await waitForImageMap(browser, accDoc);
   const imgmap = findAccessibleChildByID(accDoc, "imgmap");
+  ok(imgmap, "Image map exists");
   const theLetterA = imgmap.firstChild;
   await hitTest(browser, imgmap, theLetterA, theLetterA);
   await hitTest(
@@ -103,9 +104,44 @@ async function runTests(browser, accDoc) {
   );
 
   info("Testing wrapped text");
-  const wrappedTextP = findAccessibleChildByID(accDoc, "wrappedTextP");
-  const wrappedTextA = findAccessibleChildByID(accDoc, "wrappedTextA");
-  await hitTest(browser, wrappedTextP, wrappedTextA, wrappedTextA.firstChild);
+  const wrappedTextLinkFirstP = findAccessibleChildByID(
+    accDoc,
+    "wrappedTextLinkFirstP"
+  );
+  const wrappedTextLinkFirstA = findAccessibleChildByID(
+    accDoc,
+    "wrappedTextLinkFirstA"
+  );
+  await hitTest(
+    browser,
+    wrappedTextLinkFirstP,
+    wrappedTextLinkFirstA,
+    wrappedTextLinkFirstA.firstChild
+  );
+  const wrappedTextLeafFirstP = findAccessibleChildByID(
+    accDoc,
+    "wrappedTextLeafFirstP"
+  );
+  const wrappedTextLeafFirstMark = findAccessibleChildByID(
+    accDoc,
+    "wrappedTextLeafFirstMark"
+  );
+  await hitTest(
+    browser,
+    wrappedTextLeafFirstP,
+    wrappedTextLeafFirstMark,
+    wrappedTextLeafFirstMark.firstChild
+  );
+
+  info("Testing image");
+  const imageP = findAccessibleChildByID(accDoc, "imageP");
+  const image = findAccessibleChildByID(accDoc, "image");
+  await hitTest(browser, imageP, image, image);
+
+  info("Testing image map with 0-sized area");
+  const mapWith0AreaP = findAccessibleChildByID(accDoc, "mapWith0AreaP");
+  const mapWith0Area = findAccessibleChildByID(accDoc, "mapWith0Area");
+  await hitTest(browser, mapWith0AreaP, mapWith0Area, mapWith0Area);
 }
 
 addAccessibleTask(
@@ -148,8 +184,23 @@ addAccessibleTask(
     <p id="containerWithInaccessibleChild_p2">bye</p>
   </div>
 
-  <p id="wrappedTextP" style="width: 3ch; font-family: monospace;">
-    <a id="wrappedTextA" href="https://example.com/">a</a>b cd
+  <p id="wrappedTextLinkFirstP" style="width: 3ch; font-family: monospace;">
+    <a id="wrappedTextLinkFirstA" href="https://example.com/">a</a>b cd
+  </p>
+
+  <p id="wrappedTextLeafFirstP" style="width: 3ch; font-family: monospace;">
+    <mark id="wrappedTextLeafFirstMark">a</mark><a href="https://example.com/">b cd</a>
+  </p>
+
+  <p id="imageP">
+    <img id="image" src="http://example.com/a11y/accessible/tests/mochitest/letters.gif">
+  </p>
+
+  <map id="0Area">
+    <area shape="rect">
+  </map>
+  <p id="mapWith0AreaP">
+    <img id="mapWith0Area" src="http://example.com/a11y/accessible/tests/mochitest/letters.gif" usemap="#0Area">
   </p>
   `,
   runTests,
@@ -333,6 +384,41 @@ addAccessibleTask(
       generic,
       invisible, // Direct Child
       invisible.firstChild // Deepest Child
+    );
+  },
+  { chrome: false, iframe: true, remoteIframe: true }
+);
+
+/**
+ * Verify that hit testing correctly ignores
+ * elements with pointer-events: none;
+ */
+addAccessibleTask(
+  `<div id="container" style="position:relative;"><button id="obscured">click me</button><div id="overlay" style="pointer-events:none; top:0; bottom:0; left:0; right:0; position: absolute;"></div></div><button id="clickable">I am clickable</button>`,
+  async function (browser, docAcc) {
+    const container = findAccessibleChildByID(docAcc, "container");
+    const obscured = findAccessibleChildByID(docAcc, "obscured");
+    const clickable = findAccessibleChildByID(docAcc, "clickable");
+    const dpr = await getContentDPR(browser);
+    let [targetX, targetY, targetW, targetH] = Layout.getBounds(obscured, dpr);
+    const [x, y] = Layout.getBounds(docAcc, dpr);
+    await testChildAtPoint(
+      dpr,
+      targetX - x + targetW / 2,
+      targetY - y + targetH / 2,
+      docAcc,
+      container, // Direct Child
+      obscured // Deepest Child
+    );
+
+    [targetX, targetY, targetW, targetH] = Layout.getBounds(clickable, dpr);
+    await testChildAtPoint(
+      dpr,
+      targetX - x + targetW / 2,
+      targetY - y + targetH / 2,
+      docAcc,
+      clickable, // Direct Child
+      clickable // Deepest Child
     );
   },
   { chrome: false, iframe: true, remoteIframe: true }

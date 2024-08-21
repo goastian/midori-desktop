@@ -7,7 +7,6 @@
 
 #include "LocalAccessible-inl.h"
 #include "nsEventShell.h"
-#include "DocAccessible.h"
 #include "DocAccessibleChild.h"
 #include "nsTextEquivUtils.h"
 #ifdef A11Y_LOG
@@ -84,7 +83,9 @@ bool EventQueue::PushNameOrDescriptionChange(AccEvent* aOrigEvent) {
         nsAutoString name;
         ENameValueFlag nameFlag = parent->Name(name);
         // If name is obtained from subtree, fire name change event.
-        if (nameFlag == eNameFromSubtree) {
+        // HTML file inputs always get part of their name from the subtree, even
+        // if the author provided a name.
+        if (nameFlag == eNameFromSubtree || parent->IsHTMLFileInput()) {
           RefPtr<AccEvent> nameChangeEvent =
               new AccEvent(nsIAccessibleEvent::EVENT_NAME_CHANGE, parent);
           pushed |= PushEvent(nameChangeEvent);
@@ -109,6 +110,10 @@ bool EventQueue::PushNameOrDescriptionChange(AccEvent* aOrigEvent) {
       }
     }
 
+    if (parent->IsDoc()) {
+      // Never cross document boundaries.
+      break;
+    }
     parent = parent->LocalParent();
   } while (parent &&
            nsTextEquivUtils::HasNameRule(parent, eNameFromSubtreeIfReqRule));

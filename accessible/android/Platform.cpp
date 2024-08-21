@@ -12,6 +12,7 @@
 #include "nsIAccessibleEvent.h"
 #include "nsIAccessiblePivot.h"
 #include "nsIStringBundle.h"
+#include "TextLeafRange.h"
 
 #define ROLE_STRINGS_URL "chrome://global/locale/AccessFu.properties"
 
@@ -64,7 +65,8 @@ void a11y::PlatformInit() {
 
   // Preload any roles that have localized versions
 #define ROLE(geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, \
-             msaaRole, ia2Role, androidClass, nameRule)                     \
+             msaaRole, ia2Role, androidClass, iosIsElement, uiaControlType, \
+             nameRule)                                                      \
   rv = stringBundle->GetStringFromName(stringRole, localizedStr);           \
   if (NS_SUCCEEDED(rv)) {                                                   \
     sLocalizedStrings.InsertOrUpdate(u##stringRole##_ns, localizedStr);     \
@@ -84,7 +86,7 @@ void a11y::ProxyDestroyed(RemoteAccessible* aProxy) {
   SessionAccessibility::UnregisterAccessible(aProxy);
 }
 
-void a11y::ProxyEvent(RemoteAccessible* aTarget, uint32_t aEventType) {
+void a11y::PlatformEvent(Accessible* aTarget, uint32_t aEventType) {
   RefPtr<SessionAccessibility> sessionAcc =
       SessionAccessibility::GetInstanceFor(aTarget);
   if (!sessionAcc) {
@@ -92,19 +94,23 @@ void a11y::ProxyEvent(RemoteAccessible* aTarget, uint32_t aEventType) {
   }
 
   switch (aEventType) {
-    case nsIAccessibleEvent::EVENT_FOCUS:
-      sessionAcc->SendFocusEvent(aTarget);
-      break;
     case nsIAccessibleEvent::EVENT_REORDER:
       sessionAcc->SendWindowContentChangedEvent();
+      break;
+    case nsIAccessibleEvent::EVENT_SCROLLING_START:
+      if (Accessible* result = AccessibleWrap::DoPivot(
+              aTarget, java::SessionAccessibility::HTML_GRANULARITY_DEFAULT,
+              true, true)) {
+        sessionAcc->SendAccessibilityFocusedEvent(result, false);
+      }
       break;
     default:
       break;
   }
 }
 
-void a11y::ProxyStateChangeEvent(RemoteAccessible* aTarget, uint64_t aState,
-                                 bool aEnabled) {
+void a11y::PlatformStateChangeEvent(Accessible* aTarget, uint64_t aState,
+                                    bool aEnabled) {
   RefPtr<SessionAccessibility> sessionAcc =
       SessionAccessibility::GetInstanceFor(aTarget);
 
@@ -134,20 +140,45 @@ void a11y::ProxyStateChangeEvent(RemoteAccessible* aTarget, uint64_t aState,
   }
 }
 
-void a11y::ProxyCaretMoveEvent(RemoteAccessible* aTarget, int32_t aOffset,
-                               bool aIsSelectionCollapsed,
-                               int32_t aGranularity) {
-  RefPtr<SessionAccessibility> sessionAcc =
-      SessionAccessibility::GetInstanceFor(aTarget);
-
-  if (sessionAcc) {
-    sessionAcc->SendTextSelectionChangedEvent(aTarget, aOffset);
+void a11y::PlatformFocusEvent(Accessible* aTarget,
+                              const LayoutDeviceIntRect& aCaretRect) {
+  if (RefPtr<SessionAccessibility> sessionAcc =
+          SessionAccessibility::GetInstanceFor(aTarget)) {
+    sessionAcc->SendFocusEvent(aTarget);
   }
 }
 
-void a11y::ProxyTextChangeEvent(RemoteAccessible* aTarget,
-                                const nsAString& aStr, int32_t aStart,
-                                uint32_t aLen, bool aIsInsert, bool aFromUser) {
+void a11y::PlatformCaretMoveEvent(Accessible* aTarget, int32_t aOffset,
+                                  bool aIsSelectionCollapsed,
+                                  int32_t aGranularity,
+                                  const LayoutDeviceIntRect& aCaretRect,
+                                  bool aFromUser) {
+  RefPtr<SessionAccessibility> sessionAcc =
+      SessionAccessibility::GetInstanceFor(aTarget);
+  if (!sessionAcc) {
+    return;
+  }
+
+  if (!aTarget->IsDoc() && !aFromUser && !aIsSelectionCollapsed) {
+    // Pivot to the caret's position if it has an expanded selection.
+    // This is used mostly for find in page.
+    Accessible* leaf = TextLeafPoint::GetCaret(aTarget).ActualizeCaret().mAcc;
+    MOZ_ASSERT(leaf);
+    if (leaf) {
+      if (Accessible* result = AccessibleWrap::DoPivot(
+              leaf, java::SessionAccessibility::HTML_GRANULARITY_DEFAULT, true,
+              true)) {
+        sessionAcc->SendAccessibilityFocusedEvent(result, false);
+      }
+    }
+  }
+
+  sessionAcc->SendTextSelectionChangedEvent(aTarget, aOffset);
+}
+
+void a11y::PlatformTextChangeEvent(Accessible* aTarget, const nsAString& aStr,
+                                   int32_t aStart, uint32_t aLen,
+                                   bool aIsInsert, bool aFromUser) {
   RefPtr<SessionAccessibility> sessionAcc =
       SessionAccessibility::GetInstanceFor(aTarget);
 
@@ -157,48 +188,17 @@ void a11y::ProxyTextChangeEvent(RemoteAccessible* aTarget,
   }
 }
 
-void a11y::ProxyShowHideEvent(RemoteAccessible* aTarget,
-                              RemoteAccessible* aParent, bool aInsert,
-                              bool aFromUser) {
+void a11y::PlatformShowHideEvent(Accessible* aTarget, Accessible* aParent,
+                                 bool aInsert, bool aFromUser) {
   // We rely on the window content changed events to be dispatched
   // after the viewport cache is refreshed.
 }
 
-void a11y::ProxySelectionEvent(RemoteAccessible*, RemoteAccessible*, uint32_t) {
-}
+void a11y::PlatformSelectionEvent(Accessible*, Accessible*, uint32_t) {}
 
-void a11y::ProxyVirtualCursorChangeEvent(
-    RemoteAccessible* aTarget, RemoteAccessible* aOldPosition,
-    int32_t aOldStartOffset, int32_t aOldEndOffset,
-    RemoteAccessible* aNewPosition, int32_t aNewStartOffset,
-    int32_t aNewEndOffset, int16_t aReason, int16_t aBoundaryType,
-    bool aFromUser) {
-  if (!aNewPosition || !aFromUser) {
-    return;
-  }
-
-  RefPtr<SessionAccessibility> sessionAcc =
-      SessionAccessibility::GetInstanceFor(aTarget);
-
-  if (!sessionAcc) {
-    return;
-  }
-
-  if (aReason == nsIAccessiblePivot::REASON_POINT) {
-    sessionAcc->SendHoverEnterEvent(aNewPosition);
-  } else if (aBoundaryType == nsIAccessiblePivot::NO_BOUNDARY) {
-    sessionAcc->SendAccessibilityFocusedEvent(aNewPosition);
-  }
-
-  if (aBoundaryType != nsIAccessiblePivot::NO_BOUNDARY) {
-    sessionAcc->SendTextTraversedEvent(aNewPosition, aNewStartOffset,
-                                       aNewEndOffset);
-  }
-}
-
-void a11y::ProxyScrollingEvent(RemoteAccessible* aTarget, uint32_t aEventType,
-                               uint32_t aScrollX, uint32_t aScrollY,
-                               uint32_t aMaxScrollX, uint32_t aMaxScrollY) {
+void a11y::PlatformScrollingEvent(Accessible* aTarget, uint32_t aEventType,
+                                  uint32_t aScrollX, uint32_t aScrollY,
+                                  uint32_t aMaxScrollX, uint32_t aMaxScrollY) {
   if (aEventType == nsIAccessibleEvent::EVENT_SCROLLING) {
     RefPtr<SessionAccessibility> sessionAcc =
         SessionAccessibility::GetInstanceFor(aTarget);
@@ -210,9 +210,9 @@ void a11y::ProxyScrollingEvent(RemoteAccessible* aTarget, uint32_t aEventType,
   }
 }
 
-void a11y::ProxyAnnouncementEvent(RemoteAccessible* aTarget,
-                                  const nsAString& aAnnouncement,
-                                  uint16_t aPriority) {
+void a11y::PlatformAnnouncementEvent(Accessible* aTarget,
+                                     const nsAString& aAnnouncement,
+                                     uint16_t aPriority) {
   RefPtr<SessionAccessibility> sessionAcc =
       SessionAccessibility::GetInstanceFor(aTarget);
 

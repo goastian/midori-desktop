@@ -24,8 +24,6 @@ const nsIAccessibleScrollingEvent = Ci.nsIAccessibleScrollingEvent;
 const nsIAccessibleTextChangeEvent = Ci.nsIAccessibleTextChangeEvent;
 const nsIAccessibleTextSelectionChangeEvent =
   Ci.nsIAccessibleTextSelectionChangeEvent;
-const nsIAccessibleVirtualCursorChangeEvent =
-  Ci.nsIAccessibleVirtualCursorChangeEvent;
 const nsIAccessibleObjectAttributeChangedEvent =
   Ci.nsIAccessibleObjectAttributeChangedEvent;
 const nsIAccessibleAnnouncementEvent = Ci.nsIAccessibleAnnouncementEvent;
@@ -850,7 +848,11 @@ function getTextFromClipboard() {
   }
 
   trans.addDataFlavor("text/plain");
-  Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
+  Services.clipboard.getData(
+    trans,
+    Services.clipboard.kGlobalClipboard,
+    SpecialPowers.wrap(window).browsingContext.currentWindowContext
+  );
 
   var str = {};
   trans.getTransferData("text/plain", str);
@@ -974,7 +976,7 @@ function prettyName(aIdentifier) {
  * @param aString the string to shorten.
  * @returns the shortened string.
  */
-function shortenString(aString, aMaxLength) {
+function shortenString(aString) {
   if (aString.length <= MAX_TRIM_LENGTH) {
     return aString;
   }

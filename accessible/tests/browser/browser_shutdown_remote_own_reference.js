@@ -5,9 +5,6 @@
 "use strict";
 
 add_task(async function () {
-  // Making sure that the e10s is enabled on Windows for testing.
-  await setE10sPrefs();
-
   await BrowserTestUtils.withNewTab(
     {
       gBrowser,
@@ -111,7 +108,7 @@ add_task(async function () {
       const [contentA11yShutdownObserver, contentA11yShutdownPromise] =
         shutdownAccService(browser);
       const contentA11yShutdown = new Promise((resolve, reject) =>
-        contentA11yShutdownPromise.then(flag =>
+        contentA11yShutdownPromise.then(() =>
           contentCanShutdown
             ? resolve()
             : reject("Accessible service was shut down incorrectly")
@@ -173,9 +170,6 @@ add_task(async function () {
           "Accessibility service consumers in content are correct."
         )
       );
-
-      // Unsetting e10s related preferences.
-      await unsetE10sPrefs();
     }
   );
 });

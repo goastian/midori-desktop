@@ -8,8 +8,8 @@
 loadScripts({ name: "role.js", dir: MOCHITESTS_DIR });
 
 // Test web area role and AXLoadComplete event
-addAccessibleTask(``, async (browser, accDoc) => {
-  let evt = waitForMacEvent("AXLoadComplete", (iface, data) => {
+addAccessibleTask(``, async browser => {
+  let evt = waitForMacEvent("AXLoadComplete", iface => {
     return iface.getAttributeValue("AXDescription") == "webarea test";
   });
   await SpecialPowers.spawn(browser, [], () => {
@@ -29,16 +29,16 @@ addAccessibleTask(``, async (browser, accDoc) => {
 });
 
 // Test iframe web area role and AXLayoutComplete event
-addAccessibleTask(`<title>webarea test</title>`, async (browser, accDoc) => {
+addAccessibleTask(`<title>webarea test</title>`, async browser => {
   // If the iframe loads before the top level document finishes loading, we'll
   // get both an AXLayoutComplete event for the iframe and an AXLoadComplete
   // event for the document. Otherwise, if the iframe loads after the
   // document, we'll get one AXLoadComplete event.
   let eventPromise = Promise.race([
-    waitForMacEvent("AXLayoutComplete", (iface, data) => {
+    waitForMacEvent("AXLayoutComplete", iface => {
       return iface.getAttributeValue("AXDescription") == "iframe document";
     }),
-    waitForMacEvent("AXLoadComplete", (iface, data) => {
+    waitForMacEvent("AXLoadComplete", iface => {
       return iface.getAttributeValue("AXDescription") == "webarea test";
     }),
   ]);
@@ -75,3 +75,34 @@ addAccessibleTask(`<title>webarea test</title>`, async (browser, accDoc) => {
     "iframe document has finished loading"
   );
 });
+
+// Test AXContents in outer doc (AXScrollArea)
+addAccessibleTask(
+  `<p id="p">Hello</p>`,
+  async (browser, accDoc) => {
+    const doc = accDoc.nativeInterface.QueryInterface(
+      Ci.nsIAccessibleMacInterface
+    );
+
+    const outerDoc = doc.getAttributeValue("AXParent");
+    const p = getNativeInterface(accDoc, "p");
+
+    let contents = outerDoc.getAttributeValue("AXContents");
+    is(contents.length, 1, "outer doc has single AXContents member");
+    is(
+      contents[0].getAttributeValue("AXRole"),
+      "AXWebArea",
+      "AXContents member is a web area"
+    );
+
+    ok(
+      !doc.attributeNames.includes("AXContents"),
+      "Web area does not have XContents"
+    );
+    ok(
+      !p.attributeNames.includes("AXContents"),
+      "Web content does not hace XContents"
+    );
+  },
+  { iframe: true, remoteIframe: true }
+);

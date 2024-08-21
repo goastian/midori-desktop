@@ -16,7 +16,7 @@
 #include "uiaRawElmProvider.h"
 
 #include "mozilla/a11y/DocAccessibleChild.h"
-#include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_accessibility.h"
 
 #include "ISimpleDOM.h"
 
@@ -39,17 +39,6 @@ ServiceProvider::QueryService(REFGUID aGuidService, REFIID aIID,
   Accessible* acc = mMsaa->Acc();
   if (!acc) {
     return CO_E_OBJNOTCONNECTED;
-  }
-  AccessibleWrap* localAcc = mMsaa->LocalAcc();
-
-  // UIA IAccessibleEx
-  if (aGuidService == IID_IAccessibleEx &&
-      Preferences::GetBool("accessibility.uia.enable") && localAcc) {
-    uiaRawElmProvider* accEx = new uiaRawElmProvider(localAcc);
-    HRESULT hr = accEx->QueryInterface(aIID, aInstancePtr);
-    if (FAILED(hr)) delete accEx;
-
-    return hr;
   }
 
   // Provide a special service ID for getting the accessible for the browser tab
@@ -96,8 +85,12 @@ ServiceProvider::QueryService(REFGUID aGuidService, REFIID aIID,
       {0xb6, 0x61, 0x00, 0xaa, 0x00, 0x4c, 0xd6, 0xd8}};
   if (aGuidService == IID_ISimpleDOMNode ||
       aGuidService == IID_SimpleDOMDeprecated ||
-      aGuidService == IID_IAccessible || aGuidService == IID_IAccessible2)
+      aGuidService == IID_IAccessible || aGuidService == IID_IAccessible2 ||
+      // UIA IAccessibleEx
+      (aGuidService == IID_IAccessibleEx &&
+       StaticPrefs::accessibility_uia_enable())) {
     return mMsaa->QueryInterface(aIID, aInstancePtr);
+  }
 
   return E_INVALIDARG;
 }

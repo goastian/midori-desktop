@@ -20,7 +20,7 @@
 #include "nsAccUtils.h"
 #include "DocAccessibleParent.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "RootAccessible.h"
 #include "mozilla/a11y/PDocAccessible.h"
 #include "mozilla/dom/BrowserParent.h"
@@ -159,6 +159,12 @@ using namespace mozilla::a11y;
     return ![self moxIsLiveRegion];
   }
 
+  if (selector == @selector(moxARIAPosInSet) || selector == @selector
+                                                    (moxARIASetSize)) {
+    GroupPos groupPos = mGeckoAccessible->GroupPosition();
+    return groupPos.setSize == 0;
+  }
+
   if (selector == @selector(moxExpanded)) {
     return [self stateWithMask:states::EXPANDABLE] == 0;
   }
@@ -289,7 +295,8 @@ using namespace mozilla::a11y;
 
 - (NSString*)moxRole {
 #define ROLE(geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, \
-             msaaRole, ia2Role, androidClass, nameRule)                     \
+             msaaRole, ia2Role, androidClass, iosIsElement, uiaControlType, \
+             nameRule)                                                      \
   case roles::geckoRole:                                                    \
     return macRole;
 
@@ -360,7 +367,8 @@ using namespace mozilla::a11y;
   }
 
 #define ROLE(geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, \
-             msaaRole, ia2Role, androidClass, nameRule)                     \
+             msaaRole, ia2Role, androidClass, iosIsElement, uiaControlType, \
+             nameRule)                                                      \
   case roles::geckoRole:                                                    \
     if (![macSubrole isEqualToString:NSAccessibilityUnknownSubrole]) {      \
       return macSubrole;                                                    \
@@ -620,6 +628,16 @@ struct RoleDescrComparator {
   return utils::GetAccAttr(self, nsGkAtoms::aria_live);
 }
 
+- (NSNumber*)moxARIAPosInSet {
+  GroupPos groupPos = mGeckoAccessible->GroupPosition();
+  return @(groupPos.posInSet);
+}
+
+- (NSNumber*)moxARIASetSize {
+  GroupPos groupPos = mGeckoAccessible->GroupPosition();
+  return @(groupPos.setSize);
+}
+
 - (NSString*)moxARIARelevant {
   if (NSString* relevant =
           utils::GetAccAttr(self, nsGkAtoms::containerRelevant)) {
@@ -628,6 +646,16 @@ struct RoleDescrComparator {
 
   // Default aria-relevant value
   return @"additions text";
+}
+
+- (NSString*)moxPlaceholderValue {
+  // First, check for plaecholder HTML attribute
+  if (NSString* placeholder = utils::GetAccAttr(self, nsGkAtoms::placeholder)) {
+    return placeholder;
+  }
+
+  // If no placeholder HTML attribute, check for the aria version.
+  return utils::GetAccAttr(self, nsGkAtoms::aria_placeholder);
 }
 
 - (id)moxTitleUIElement {
@@ -732,6 +760,11 @@ struct RoleDescrComparator {
 #ifndef RELEASE_OR_BETA
 - (NSString*)moxMozDebugDescription {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  if (!mGeckoAccessible) {
+    return [NSString stringWithFormat:@"<%@: %p mGeckoAccessible=null>",
+                                      NSStringFromClass([self class]), self];
+  }
 
   NSMutableString* domInfo = [NSMutableString string];
   if (NSString* tagName = utils::GetAccAttr(self, nsGkAtoms::tag)) {
@@ -854,7 +887,7 @@ struct RoleDescrComparator {
     // so we verify a child exists, and then query that child below.
     NSArray* children = [self moxChildren];
     MOZ_ASSERT([children count] == 1 && children[0],
-               "A11yUtil event recieved, but no announcement found?");
+               "A11yUtil event received, but no announcement found?");
 
     mozAccessible* announcement = children[0];
     NSString* key;

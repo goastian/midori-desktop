@@ -8,17 +8,23 @@
 MARKUPMAP(
     a,
     [](Element* aElement, LocalAccessible* aContext) -> LocalAccessible* {
+      // An anchor element without an href attribute and without a click
+      // listener should be a generic.
+      if (!aElement->HasAttr(nsGkAtoms::href) &&
+          !nsCoreUtils::HasClickListener(aElement)) {
+        return new HyperTextAccessible(aElement, aContext->Document());
+      }
       // Only some roles truly enjoy life as HTMLLinkAccessibles, for
       // details see closed bug 494807.
       const nsRoleMapEntry* roleMapEntry = aria::GetRoleMap(aElement);
       if (roleMapEntry && roleMapEntry->role != roles::NOTHING &&
           roleMapEntry->role != roles::LINK) {
-        return new HyperTextAccessibleWrap(aElement, aContext->Document());
+        return new HyperTextAccessible(aElement, aContext->Document());
       }
 
       return new HTMLLinkAccessible(aElement, aContext->Document());
     },
-    roles::LINK)
+    0)
 
 MARKUPMAP(abbr, New_HyperText, 0)
 
@@ -28,7 +34,12 @@ MARKUPMAP(address, New_HyperText, roles::GROUPING)
 
 MARKUPMAP(article, New_HyperText, roles::ARTICLE, Attr(xmlroles, article))
 
-MARKUPMAP(aside, New_HyperText, roles::LANDMARK)
+MARKUPMAP(
+    aside,
+    [](Element* aElement, LocalAccessible* aContext) -> LocalAccessible* {
+      return new HTMLAsideAccessible(aElement, aContext->Document());
+    },
+    0)
 
 MARKUPMAP(blockquote, New_HyperText, roles::BLOCKQUOTE)
 
@@ -54,14 +65,15 @@ MARKUPMAP(
     },
     0)
 
-// XXX: Uncomment this once HTML-aam agrees to map to same as ARIA.
-// MARKUPMAP(code, New_HyperText, roles::CODE)
+MARKUPMAP(code, New_HyperText, roles::CODE)
 
-MARKUPMAP(dd, New_HTMLDtOrDd<HyperTextAccessibleWrap>, roles::DEFINITION)
+MARKUPMAP(dd, New_HTMLDtOrDd<HyperTextAccessible>, roles::DEFINITION)
 
 MARKUPMAP(del, New_HyperText, roles::CONTENT_DELETION)
 
 MARKUPMAP(details, New_HyperText, roles::DETAILS)
+
+MARKUPMAP(dfn, New_HyperText, roles::TERM)
 
 MARKUPMAP(dialog, New_HyperText, roles::DIALOG)
 
@@ -74,8 +86,8 @@ MARKUPMAP(
         return nullptr;
       }
       // Always create an accessible if the div has an id.
-      if (aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::id)) {
-        return new HyperTextAccessibleWrap(aElement, aContext->Document());
+      if (aElement->HasAttr(nsGkAtoms::id)) {
+        return new HyperTextAccessible(aElement, aContext->Document());
       }
       // Never create an accessible if the div is not display:block; or
       // display:inline-block or the like.
@@ -93,7 +105,7 @@ MARKUPMAP(
       if (prevSibling) {
         nsIFrame* prevSiblingFrame = prevSibling->GetPrimaryFrame();
         if (prevSiblingFrame && prevSiblingFrame->IsInlineOutside()) {
-          return new HyperTextAccessibleWrap(aElement, aContext->Document());
+          return new HyperTextAccessible(aElement, aContext->Document());
         }
       }
       // Now, check the children.
@@ -113,7 +125,7 @@ MARKUPMAP(
         }
         // Check to see if first child has an inline frame.
         if (firstChildFrame && firstChildFrame->IsInlineOutside()) {
-          return new HyperTextAccessibleWrap(aElement, aContext->Document());
+          return new HyperTextAccessible(aElement, aContext->Document());
         }
         nsIContent* lastChild = aElement->GetLastChild();
         MOZ_ASSERT(lastChild);
@@ -131,7 +143,7 @@ MARKUPMAP(
           }
           // Check to see if last child has an inline frame.
           if (lastChildFrame && lastChildFrame->IsInlineOutside()) {
-            return new HyperTextAccessibleWrap(aElement, aContext->Document());
+            return new HyperTextAccessible(aElement, aContext->Document());
           }
         }
       }
@@ -147,6 +159,8 @@ MARKUPMAP(
     roles::DEFINITION_LIST)
 
 MARKUPMAP(dt, New_HTMLDtOrDd<HTMLLIAccessible>, roles::TERM)
+
+MARKUPMAP(em, New_HyperText, roles::EMPHASIS)
 
 MARKUPMAP(
     figcaption,
@@ -201,6 +215,8 @@ MARKUPMAP(h4, New_HyperText, roles::HEADING)
 MARKUPMAP(h5, New_HyperText, roles::HEADING)
 
 MARKUPMAP(h6, New_HyperText, roles::HEADING)
+
+MARKUPMAP(hgroup, New_HyperText, roles::GROUPING)
 
 MARKUPMAP(
     hr,
@@ -328,12 +344,16 @@ MARKUPMAP(
 
 MARKUPMAP(q, New_HyperText, 0)
 
+MARKUPMAP(s, New_HyperText, roles::CONTENT_DELETION)
+
 MARKUPMAP(
     section,
     [](Element* aElement, LocalAccessible* aContext) -> LocalAccessible* {
       return new HTMLSectionAccessible(aElement, aContext->Document());
     },
     0)
+
+MARKUPMAP(strong, New_HyperText, roles::STRONG)
 
 MARKUPMAP(sub, New_HyperText, roles::SUBSCRIPT)
 
@@ -353,10 +373,10 @@ MARKUPMAP(
     },
     roles::TABLE)
 
-MARKUPMAP(time, New_HyperText, 0, Attr(xmlroles, time),
+MARKUPMAP(time, New_HyperText, roles::TIME, Attr(xmlroles, time),
           AttrFromDOM(datetime, datetime))
 
-MARKUPMAP(tbody, nullptr, roles::GROUPING)
+MARKUPMAP(tbody, nullptr, roles::ROWGROUP)
 
 MARKUPMAP(
     td,
@@ -364,7 +384,7 @@ MARKUPMAP(
       if (!aContext->IsHTMLTableRow()) {
         return nullptr;
       }
-      if (aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::scope)) {
+      if (aElement->HasAttr(nsGkAtoms::scope)) {
         return new HTMLTableHeaderCellAccessible(aElement,
                                                  aContext->Document());
       }
@@ -372,7 +392,7 @@ MARKUPMAP(
     },
     0)
 
-MARKUPMAP(tfoot, nullptr, roles::GROUPING)
+MARKUPMAP(tfoot, nullptr, roles::ROWGROUP)
 
 MARKUPMAP(
     th,
@@ -384,7 +404,7 @@ MARKUPMAP(
     },
     0)
 
-MARKUPMAP(thead, nullptr, roles::GROUPING)
+MARKUPMAP(thead, nullptr, roles::ROWGROUP)
 
 MARKUPMAP(
     tr,
@@ -425,3 +445,5 @@ MARKUPMAP(
       return new HTMLMeterAccessible(aElement, aContext->Document());
     },
     roles::METER)
+
+MARKUPMAP(search, New_HyperText, roles::LANDMARK)

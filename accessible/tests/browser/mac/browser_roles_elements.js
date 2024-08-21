@@ -47,6 +47,7 @@ addAccessibleTask(
   <div id="complementary" role="complementary"></div>
   <div id="contentinfo" role="contentinfo"></div>
   <div id="form" role="form"></div>
+  <div id="form_label" aria-label="form" role="form"></div>
   <div id="main" role="main"></div>
   <div id="navigation" role="navigation"></div>
   <div id="search" role="search"></div>
@@ -72,8 +73,8 @@ addAccessibleTask(
   <div id="switch" role="switch"></div>
   <div id="timer" role="timer"></div>
   <div id="tooltip" role="tooltip"></div>
-  <input type="radio" role="menuitemradio" id="menuitemradio">
-  <input type="checkbox" role="menuitemcheckbox" id="menuitemcheckbox">
+  <div role="menu"><input type="radio" role="menuitemradio" id="menuitemradio"></div>
+  <div role="menu"><input type="checkbox" role="menuitemcheckbox" id="menuitemcheckbox"></div>
   <input type="datetime-local" id="datetime">
 
   <!-- text entries -->
@@ -149,7 +150,8 @@ addAccessibleTask(
       "AXLandmarkComplementary"
     );
     testRoleAndSubRole(accDoc, "contentinfo", null, "AXLandmarkContentInfo");
-    testRoleAndSubRole(accDoc, "form", null, "AXLandmarkForm");
+    testRoleAndSubRole(accDoc, "form", null, "AXApplicationGroup");
+    testRoleAndSubRole(accDoc, "form_label", null, "AXLandmarkForm");
     testRoleAndSubRole(accDoc, "main", null, "AXLandmarkMain");
     testRoleAndSubRole(accDoc, "navigation", null, "AXLandmarkNavigation");
     testRoleAndSubRole(accDoc, "search", null, "AXLandmarkSearch");
@@ -223,7 +225,7 @@ addAccessibleTask(
       accDoc,
       "meter",
       "AXLevelIndicator",
-      null,
+      "AXMeter",
       "level indicator"
     );
     testRoleAndSubRole(accDoc, "sub", "AXGroup", "AXSubscriptStyleGroup");

@@ -18,10 +18,10 @@
           src="../promisified-events.js"></script>
 
   <script type="application/javascript">
-    const { BrowserTestUtils } = ChromeUtils.import(
-      "resource://testing-common/BrowserTestUtils.jsm");
-    const { Downloads } = ChromeUtils.import(
-      "resource://gre/modules/Downloads.jsm");
+    const { BrowserTestUtils } = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs");
+    const { Downloads } = ChromeUtils.importESModule(
+      "resource://gre/modules/Downloads.sys.mjs");
 
     function matchDocBusyChange(isBusy) {
       return function(event) {

@@ -25,13 +25,15 @@ c</textarea>
     });
     let [scrollEvent1, scrollEndEvent1] = await onScrolling;
     scrollEvent1.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEvent1.maxScrollY >= scrollEvent1.scrollY,
+    Assert.greaterOrEqual(
+      scrollEvent1.maxScrollY,
+      scrollEvent1.scrollY,
       "scrollY is within max"
     );
     scrollEndEvent1.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEndEvent1.maxScrollY >= scrollEndEvent1.scrollY,
+    Assert.greaterOrEqual(
+      scrollEndEvent1.maxScrollY,
+      scrollEndEvent1.scrollY,
       "scrollY is within max"
     );
 
@@ -44,13 +46,15 @@ c</textarea>
     });
     let [scrollEvent2, scrollEndEvent2] = await onScrolling;
     scrollEvent2.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEvent2.scrollY > scrollEvent1.scrollY,
+    Assert.greater(
+      scrollEvent2.scrollY,
+      scrollEvent1.scrollY,
       `${scrollEvent2.scrollY} > ${scrollEvent1.scrollY}`
     );
     scrollEndEvent2.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEndEvent2.maxScrollY >= scrollEndEvent2.scrollY,
+    Assert.greaterOrEqual(
+      scrollEndEvent2.maxScrollY,
+      scrollEndEvent2.scrollY,
       "scrollY is within max"
     );
 
@@ -63,17 +67,20 @@ c</textarea>
     });
     let [scrollEvent3, scrollEndEvent3] = await onScrolling;
     scrollEvent3.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEvent3.maxScrollX >= scrollEvent3.scrollX,
+    Assert.greaterOrEqual(
+      scrollEvent3.maxScrollX,
+      scrollEvent3.scrollX,
       "scrollX is within max"
     );
     scrollEndEvent3.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEndEvent3.maxScrollX >= scrollEndEvent3.scrollX,
+    Assert.greaterOrEqual(
+      scrollEndEvent3.maxScrollX,
+      scrollEndEvent3.scrollX,
       "scrollY is within max"
     );
-    ok(
-      scrollEvent3.scrollX > scrollEvent2.scrollX,
+    Assert.greater(
+      scrollEvent3.scrollX,
+      scrollEvent2.scrollX,
       `${scrollEvent3.scrollX} > ${scrollEvent2.scrollX}`
     );
 
@@ -87,13 +94,15 @@ c</textarea>
     });
     let [scrollEvent4, scrollEndEvent4] = await onScrolling;
     scrollEvent4.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEvent4.maxScrollY >= scrollEvent4.scrollY,
+    Assert.greaterOrEqual(
+      scrollEvent4.maxScrollY,
+      scrollEvent4.scrollY,
       "scrollY is within max"
     );
     scrollEndEvent4.QueryInterface(nsIAccessibleScrollingEvent);
-    ok(
-      scrollEndEvent4.maxScrollY >= scrollEndEvent4.scrollY,
+    Assert.greaterOrEqual(
+      scrollEndEvent4.maxScrollY,
+      scrollEndEvent4.scrollY,
       "scrollY is within max"
     );
 
@@ -110,4 +119,44 @@ c</textarea>
     });
     await onScrolling;
   }
+);
+
+// Verify that the scrolling start event is fired for an anchor change.
+addAccessibleTask(
+  `
+    <p>a</p>
+    <p>b</p>
+    <p id="c">c</p>
+  `,
+  async function (browser) {
+    let onScrollingStart = waitForEvent(EVENT_SCROLLING_START, "c");
+    await SpecialPowers.spawn(browser, [], () => {
+      content.location.hash = "#c";
+    });
+    await onScrollingStart;
+  },
+  { chrome: true, topLevel: true }
+);
+
+// Ensure that a scrollable, focused non-interactive element receives a
+// scrolling start event when an anchor jump to that element is triggered.
+addAccessibleTask(
+  `
+<div style="height: 100vh; width: 100vw; overflow: auto;" id="scrollable">
+  <h1 style="height: 300%;" id="inside-scrollable">test</h1>
+</div>
+  `,
+  async function (browser) {
+    let onScrollingStart = waitForEvent(
+      EVENT_SCROLLING_START,
+      "inside-scrollable"
+    );
+    await invokeContentTask(browser, [], () => {
+      const scrollable = content.document.getElementById("scrollable");
+      scrollable.focus();
+      content.location.hash = "#inside-scrollable";
+    });
+    await onScrollingStart;
+  },
+  { chrome: true, topLevel: true, iframe: true, remoteIframe: true }
 );

@@ -6,7 +6,6 @@
 #include "RootAccessible.h"
 
 #include "mozilla/ArrayUtils.h"
-#include "mozilla/PresShell.h"  // for nsAccUtils::GetDocAccessibleFor()
 #include "nsXULPopupManager.h"
 
 #define CreateEvent CreateEventA
@@ -19,7 +18,7 @@
 #include "nsCoreUtils.h"
 #include "nsEventShell.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 #include "XULTreeAccessible.h"
 
@@ -38,9 +37,7 @@
 #include "nsIPropertyBag2.h"
 #include "nsPIDOMWindow.h"
 #include "nsIWebBrowserChrome.h"
-#include "nsReadableUtils.h"
 #include "nsFocusManager.h"
-#include "nsGlobalWindow.h"
 
 #include "nsIAppWindow.h"
 

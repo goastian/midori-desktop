@@ -25,14 +25,6 @@ namespace a11y {
 class TextRange;
 class xpcAccessibleGeneric;
 
-#if !defined(XP_WIN)
-class DocAccessiblePlatformExtParent;
-#endif
-
-#ifdef ANDROID
-class SessionAccessibility;
-#endif
-
 /*
  * These objects live in the main process and comunicate with and represent
  * an accessible document in a content process.
@@ -116,38 +108,22 @@ class DocAccessibleParent : public RemoteAccessible,
                                                const bool& aEnabled) final;
 
   mozilla::ipc::IPCResult RecvCaretMoveEvent(
-      const uint64_t& aID,
-#if defined(XP_WIN)
-      const LayoutDeviceIntRect& aCaretRect,
-#endif
+      const uint64_t& aID, const LayoutDeviceIntRect& aCaretRect,
       const int32_t& aOffset, const bool& aIsSelectionCollapsed,
-      const bool& aIsAtEndOfLine, const int32_t& aGranularity) final;
+      const bool& aIsAtEndOfLine, const int32_t& aGranularity,
+      const bool& aFromUser) final;
 
   virtual mozilla::ipc::IPCResult RecvTextChangeEvent(
       const uint64_t& aID, const nsAString& aStr, const int32_t& aStart,
       const uint32_t& aLen, const bool& aIsInsert,
       const bool& aFromUser) override;
 
-#if defined(XP_WIN)
-  virtual mozilla::ipc::IPCResult RecvSyncTextChangeEvent(
-      const uint64_t& aID, const nsAString& aStr, const int32_t& aStart,
-      const uint32_t& aLen, const bool& aIsInsert,
-      const bool& aFromUser) override;
-
   virtual mozilla::ipc::IPCResult RecvFocusEvent(
       const uint64_t& aID, const LayoutDeviceIntRect& aCaretRect) override;
-#endif  // defined(XP_WIN)
 
   virtual mozilla::ipc::IPCResult RecvSelectionEvent(
       const uint64_t& aID, const uint64_t& aWidgetID,
       const uint32_t& aType) override;
-
-  virtual mozilla::ipc::IPCResult RecvVirtualCursorChangeEvent(
-      const uint64_t& aID, const uint64_t& aOldPositionID,
-      const int32_t& aOldStartOffset, const int32_t& aOldEndOffset,
-      const uint64_t& aNewPositionID, const int32_t& aNewStartOffset,
-      const int32_t& aNewEndOffset, const int16_t& aReason,
-      const int16_t& aBoundaryType, const bool& aFromUser) override;
 
   virtual mozilla::ipc::IPCResult RecvScrollingEvent(
       const uint64_t& aID, const uint64_t& aType, const uint32_t& aScrollX,
@@ -272,16 +248,6 @@ class DocAccessibleParent : public RemoteAccessible,
   HWND GetEmulatedWindowHandle() const { return mEmulatedWindowHandle; }
 #endif
 
-#if !defined(XP_WIN)
-  virtual bool DeallocPDocAccessiblePlatformExtParent(
-      PDocAccessiblePlatformExtParent* aActor) override;
-
-  virtual PDocAccessiblePlatformExtParent*
-  AllocPDocAccessiblePlatformExtParent() override;
-
-  DocAccessiblePlatformExtParent* GetPlatformExtension();
-#endif
-
   // Accessible
   virtual Accessible* Parent() const override {
     if (IsTopLevel()) {
@@ -348,10 +314,6 @@ class DocAccessibleParent : public RemoteAccessible,
   static DocAccessibleParent* GetFrom(dom::BrowsingContext* aBrowsingContext);
 
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) override;
-
-#ifdef ANDROID
-  RefPtr<SessionAccessibility> mSessionAccessibility;
-#endif
 
  private:
   ~DocAccessibleParent();

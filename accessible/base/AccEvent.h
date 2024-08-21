@@ -102,8 +102,6 @@ class AccEvent {
     eCaretMoveEvent,
     eTextSelChangeEvent,
     eSelectionChangeEvent,
-    eTableChangeEvent,
-    eVirtualCursorChangeEvent,
     eObjectAttrChangedEvent,
     eScrollingEvent,
     eAnnouncementEvent,
@@ -440,71 +438,6 @@ class AccSelChangeEvent : public AccEvent {
   AccSelChangeEvent* mPackedEvent;
 
   friend class EventQueue;
-};
-
-/**
- * Accessible table change event.
- */
-class AccTableChangeEvent : public AccEvent {
- public:
-  AccTableChangeEvent(LocalAccessible* aAccessible, uint32_t aEventType,
-                      int32_t aRowOrColIndex, int32_t aNumRowsOrCols);
-
-  // AccEvent
-  static const EventGroup kEventGroup = eTableChangeEvent;
-  virtual unsigned int GetEventGroups() const override {
-    return AccEvent::GetEventGroups() | (1U << eTableChangeEvent);
-  }
-
-  // AccTableChangeEvent
-  uint32_t GetIndex() const { return mRowOrColIndex; }
-  uint32_t GetCount() const { return mNumRowsOrCols; }
-
- private:
-  uint32_t mRowOrColIndex;  // the start row/column after which the rows are
-                            // inserted/deleted.
-  uint32_t mNumRowsOrCols;  // the number of inserted/deleted rows/columns
-};
-
-/**
- * Accessible virtual cursor change event.
- */
-class AccVCChangeEvent : public AccEvent {
- public:
-  AccVCChangeEvent(LocalAccessible* aAccessible,
-                   LocalAccessible* aOldAccessible, int32_t aOldStart,
-                   int32_t aOldEnd, LocalAccessible* aNewAccessible,
-                   int32_t aNewStart, int32_t aNewEnd, int16_t aReason,
-                   int16_t aBoundaryType,
-                   EIsFromUserInput aIsFromUserInput = eFromUserInput);
-
-  virtual ~AccVCChangeEvent() {}
-
-  // AccEvent
-  static const EventGroup kEventGroup = eVirtualCursorChangeEvent;
-  virtual unsigned int GetEventGroups() const override {
-    return AccEvent::GetEventGroups() | (1U << eVirtualCursorChangeEvent);
-  }
-
-  // AccVCChangeEvent
-  LocalAccessible* OldAccessible() const { return mOldAccessible; }
-  int32_t OldStartOffset() const { return mOldStart; }
-  int32_t OldEndOffset() const { return mOldEnd; }
-  LocalAccessible* NewAccessible() const { return mNewAccessible; }
-  int32_t NewStartOffset() const { return mNewStart; }
-  int32_t NewEndOffset() const { return mNewEnd; }
-  int32_t Reason() const { return mReason; }
-  int32_t BoundaryType() const { return mBoundaryType; }
-
- private:
-  RefPtr<LocalAccessible> mOldAccessible;
-  RefPtr<LocalAccessible> mNewAccessible;
-  int32_t mOldStart;
-  int32_t mNewStart;
-  int32_t mOldEnd;
-  int32_t mNewEnd;
-  int16_t mReason;
-  int16_t mBoundaryType;
 };
 
 /**

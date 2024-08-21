@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Accessible.h"
-#include "AccGroupInfo.h"
 #include "ARIAMap.h"
 #include "nsAccUtils.h"
 #include "nsIURI.h"
@@ -464,8 +463,12 @@ void Accessible::DebugDescription(nsCString& aDesc) const {
 void Accessible::DebugPrint(const char* aPrefix,
                             const Accessible* aAccessible) {
   nsAutoCString desc;
-  aAccessible->DebugDescription(desc);
-#  if defined(ANDROID)
+  if (aAccessible) {
+    aAccessible->DebugDescription(desc);
+  } else {
+    desc.AssignLiteral("[null]");
+  }
+#  if defined(ANDROID) || defined(MOZ_WIDGET_UIKIT)
   printf_stderr("%s %s\n", aPrefix, desc.get());
 #  else
   printf("%s %s\n", aPrefix, desc.get());
@@ -505,6 +508,24 @@ const Accessible* Accessible::ActionAncestor() const {
 }
 
 nsStaticAtom* Accessible::LandmarkRole() const {
+  // For certain cases below (e.g. ARIA region, HTML <header>), whether it is
+  // actually a landmark is conditional. Rather than duplicating that
+  // conditional logic here, we check the Gecko role.
+  if (const nsRoleMapEntry* roleMapEntry = ARIARoleMap()) {
+    // Explicit ARIA role should take precedence.
+    if (roleMapEntry->Is(nsGkAtoms::region)) {
+      if (Role() == roles::REGION) {
+        return nsGkAtoms::region;
+      }
+    } else if (roleMapEntry->Is(nsGkAtoms::form)) {
+      if (Role() == roles::FORM) {
+        return nsGkAtoms::form;
+      }
+    } else if (roleMapEntry->IsOfType(eLandmark)) {
+      return roleMapEntry->roleAtom;
+    }
+  }
+
   nsAtom* tagName = TagName();
   if (!tagName) {
     // Either no associated content, or no cache.
@@ -536,58 +557,53 @@ nsStaticAtom* Accessible::LandmarkRole() const {
   }
 
   if (tagName == nsGkAtoms::section) {
-    nsAutoString name;
-    Name(name);
-    if (!name.IsEmpty()) {
+    if (Role() == roles::REGION) {
       return nsGkAtoms::region;
     }
   }
 
   if (tagName == nsGkAtoms::form) {
-    nsAutoString name;
-    Name(name);
-    if (!name.IsEmpty()) {
+    if (Role() == roles::FORM_LANDMARK) {
       return nsGkAtoms::form;
     }
   }
 
-  const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
-  return roleMapEntry && roleMapEntry->IsOfType(eLandmark)
-             ? roleMapEntry->roleAtom
-             : nullptr;
+  if (tagName == nsGkAtoms::search) {
+    return nsGkAtoms::search;
+  }
+
+  return nullptr;
 }
 
 nsStaticAtom* Accessible::ComputedARIARole() const {
   const nsRoleMapEntry* roleMap = ARIARoleMap();
+  if (roleMap && roleMap->IsOfType(eDPub)) {
+    return roleMap->roleAtom;
+  }
   if (roleMap && roleMap->roleAtom != nsGkAtoms::_empty &&
-      // region has its own Gecko role and it needs to be handled specially.
+      // region and form have their own Gecko roles and need to be handled
+      // specially.
       roleMap->roleAtom != nsGkAtoms::region &&
+      roleMap->roleAtom != nsGkAtoms::form &&
       (roleMap->roleRule == kUseNativeRole || roleMap->IsOfType(eLandmark) ||
        roleMap->roleAtom == nsGkAtoms::alertdialog ||
-       roleMap->roleAtom == nsGkAtoms::feed ||
-       roleMap->roleAtom == nsGkAtoms::rowgroup ||
-       roleMap->roleAtom == nsGkAtoms::searchbox)) {
+       roleMap->roleAtom == nsGkAtoms::feed)) {
     // Explicit ARIA role (e.g. specified via the role attribute) which does not
     // map to a unique Gecko role.
     return roleMap->roleAtom;
+  }
+  if (IsSearchbox()) {
+    return nsGkAtoms::searchbox;
   }
   role geckoRole = Role();
   if (geckoRole == roles::LANDMARK) {
     // Landmark role from native markup; e.g. <main>, <nav>.
     return LandmarkRole();
   }
-  if (geckoRole == roles::GROUPING) {
-    // Gecko doesn't differentiate between group and rowgroup. It uses
-    // roles::GROUPING for both.
-    nsAtom* tag = TagName();
-    if (tag == nsGkAtoms::tbody || tag == nsGkAtoms::tfoot ||
-        tag == nsGkAtoms::thead) {
-      return nsGkAtoms::rowgroup;
-    }
-  }
   // Role from native markup or layout.
 #define ROLE(_geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, \
-             msaaRole, ia2Role, androidClass, nameRule)                      \
+             msaaRole, ia2Role, androidClass, iosIsElement, uiaControlType,  \
+             nameRule)                                                       \
   case roles::_geckoRole:                                                    \
     return ariaRole;
   switch (geckoRole) {
@@ -607,12 +623,15 @@ void Accessible::ApplyImplicitState(uint64_t& aState) const {
     }
   }
 
-  // If this is an ARIA item of the selectable widget and if it's focused and
-  // not marked unselected explicitly (i.e. aria-selected="false") then expose
-  // it as selected to make ARIA widget authors life easier.
+  // If this is an option, tab or treeitem and if it's focused and not marked
+  // unselected explicitly (i.e. aria-selected="false") then expose it as
+  // selected to make ARIA widget authors life easier.
   const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
-  if (roleMapEntry && !(aState & states::SELECTED) &&
-      ARIASelected().valueOr(true)) {
+  if (roleMapEntry &&
+      (roleMapEntry->Is(nsGkAtoms::option) ||
+       roleMapEntry->Is(nsGkAtoms::tab) ||
+       roleMapEntry->Is(nsGkAtoms::treeitem)) &&
+      !(aState & states::SELECTED) && ARIASelected().valueOr(true)) {
     // Special case for tabs: focused tab or focus inside related tab panel
     // implies selected state.
     if (roleMapEntry->role == roles::PAGETAB) {
@@ -642,6 +661,12 @@ void Accessible::ApplyImplicitState(uint64_t& aState) const {
   }
 }
 
+bool Accessible::NameIsEmpty() const {
+  nsAutoString name;
+  Name(name);
+  return name.IsEmpty();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // KeyBinding class
 
@@ -654,8 +679,6 @@ uint32_t KeyBinding::AccelModifier() {
       return kControl;
     case MODIFIER_META:
       return kMeta;
-    case MODIFIER_OS:
-      return kOS;
     default:
       MOZ_CRASH("Handle the new result of WidgetInputEvent::AccelModifier()");
       return 0;

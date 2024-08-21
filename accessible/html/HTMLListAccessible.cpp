@@ -7,11 +7,8 @@
 #include "HTMLListAccessible.h"
 
 #include "AccAttributes.h"
-#include "DocAccessible.h"
-#include "EventTree.h"
-#include "nsAccUtils.h"
-#include "nsPersistentProperties.h"
-#include "Role.h"
+#include "nsAccessibilityService.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 
 #include "nsLayoutUtils.h"
@@ -29,7 +26,7 @@ role HTMLListAccessible::NativeRole() const {
 }
 
 uint64_t HTMLListAccessible::NativeState() const {
-  return HyperTextAccessibleWrap::NativeState() | states::READONLY;
+  return HyperTextAccessible::NativeState() | states::READONLY;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,7 +34,7 @@ uint64_t HTMLListAccessible::NativeState() const {
 ////////////////////////////////////////////////////////////////////////////////
 
 HTMLLIAccessible::HTMLLIAccessible(nsIContent* aContent, DocAccessible* aDoc)
-    : HyperTextAccessibleWrap(aContent, aDoc) {
+    : HyperTextAccessible(aContent, aDoc) {
   mType = eHTMLLiType;
 }
 
@@ -47,7 +44,7 @@ role HTMLLIAccessible::NativeRole() const {
 }
 
 uint64_t HTMLLIAccessible::NativeState() const {
-  return HyperTextAccessibleWrap::NativeState() | states::READONLY;
+  return HyperTextAccessible::NativeState() | states::READONLY;
 }
 
 nsRect HTMLLIAccessible::BoundsInAppUnits() const {

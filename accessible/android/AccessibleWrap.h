@@ -27,22 +27,8 @@ class AccessibleWrap : public LocalAccessible {
 
   virtual bool DoAction(uint8_t aIndex) const override;
 
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  virtual bool PivotTo(int32_t aGranularity, bool aForward, bool aInclusive);
-
-  virtual void NavigateText(int32_t aGranularity, int32_t aStartOffset,
-                            int32_t aEndOffset, bool aForward, bool aSelect);
-
-  virtual void SetSelection(int32_t aStart, int32_t aEnd);
-
-  virtual void Cut();
-
-  virtual void Copy();
-
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  virtual void Paste();
-
-  void ExploreByTouch(float aX, float aY);
+  static Accessible* ExploreByTouch(Accessible* aAccessible, float aX,
+                                    float aY);
 
   static uint32_t GetFlags(role aRole, uint64_t aState, uint8_t aActionCount);
 
@@ -63,6 +49,10 @@ class AccessibleWrap : public LocalAccessible {
   static Accessible* DoPivot(Accessible* aAccessible, int32_t aGranularity,
                              bool aForward, bool aInclusive);
 
+  static Maybe<std::pair<int32_t, int32_t>> NavigateText(
+      Accessible* aAccessible, int32_t aGranularity, int32_t aStartOffset,
+      int32_t aEndOffset, bool aForward, bool aSelect);
+
  protected:
   int32_t mID;
 
@@ -70,8 +60,6 @@ class AccessibleWrap : public LocalAccessible {
   void GetTextEquiv(nsString& aText);
 
   bool HandleLiveRegionEvent(AccEvent* aEvent);
-
-  void GetSelectionOrCaret(int32_t* aStartOffset, int32_t* aEndOffset);
 };
 
 }  // namespace a11y

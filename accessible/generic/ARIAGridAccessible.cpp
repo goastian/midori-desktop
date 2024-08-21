@@ -8,13 +8,12 @@
 #include <stdint.h>
 #include "LocalAccessible-inl.h"
 #include "AccAttributes.h"
-#include "AccIterator.h"
 #include "mozilla/a11y/TableAccessible.h"
 #include "mozilla/a11y/TableCellAccessible.h"
 #include "nsAccessibilityService.h"
 #include "nsAccUtils.h"
 #include "nsGkAtoms.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 
 using namespace mozilla;
@@ -29,7 +28,7 @@ using namespace mozilla::a11y;
 
 ARIAGridCellAccessible::ARIAGridCellAccessible(nsIContent* aContent,
                                                DocAccessible* aDoc)
-    : HyperTextAccessibleWrap(aContent, aDoc) {
+    : HyperTextAccessible(aContent, aDoc) {
   mGenericTypes |= eTableCell;
 }
 
@@ -37,7 +36,7 @@ ARIAGridCellAccessible::ARIAGridCellAccessible(nsIContent* aContent,
 // LocalAccessible
 
 void ARIAGridCellAccessible::ApplyARIAState(uint64_t* aState) const {
-  HyperTextAccessibleWrap::ApplyARIAState(aState);
+  HyperTextAccessible::ApplyARIAState(aState);
 
   // Return if the gridcell has aria-selected="true".
   if (*aState & states::SELECTED) return;
@@ -56,8 +55,7 @@ void ARIAGridCellAccessible::ApplyARIAState(uint64_t* aState) const {
 }
 
 already_AddRefed<AccAttributes> ARIAGridCellAccessible::NativeAttributes() {
-  RefPtr<AccAttributes> attributes =
-      HyperTextAccessibleWrap::NativeAttributes();
+  RefPtr<AccAttributes> attributes = HyperTextAccessible::NativeAttributes();
 
   // We only need to expose table-cell-index to clients. If we're in the content
   // process, we don't need this, so building a CachedTableAccessible is very

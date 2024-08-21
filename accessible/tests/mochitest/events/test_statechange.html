@@ -28,7 +28,7 @@
       await p;
     }
 
-    async function makeEditableDoc(aDocNode, aIsEnabled) {
+    async function makeEditableDoc(aDocNode) {
       let p = waitForStateChange(aDocNode, EXT_STATE_EDITABLE, true, true);
       aDocNode.designMode = "on";
       await p;
@@ -55,11 +55,10 @@
     async function stateChangeOnFileInput(aID, aAttr, aValue,
                                     aState, aIsExtraState, aIsEnabled) {
       let fileControlNode = getNode(aID);
-      let fileControl = getAccessible(fileControlNode);
-      let browseButton = fileControl.firstChild;
-      let p = waitForEvents([
-        stateChangeEventArgs(fileControl, aState, aIsEnabled, aIsExtraState),
-        stateChangeEventArgs(browseButton, aState, aIsEnabled, aIsExtraState)])
+      let browseButton = getAccessible(fileControlNode);
+      let p = waitForStateChange(
+        browseButton, aState, aIsEnabled, aIsExtraState
+      );
       fileControlNode.setAttribute(aAttr, aValue);
       await p;
     }
@@ -129,21 +128,6 @@
         getNode(aID).setAttribute(aARIAAttr, aValue);
         getNode(aID).setAttribute(aAttr, aValue);
       }
-      await p;
-    }
-
-    async function testLinked() {
-      let p = waitForStateChange("link1", STATE_LINKED, false, false);
-      getNode("link1").removeAttribute("href");
-      await p;
-
-      p = waitForStateChange("link2", STATE_LINKED, false, false);
-      getNode("link2").removeAttribute("onclick");
-      await p;
-
-      p = waitForStateChange("link3", STATE_LINKED, true, false);
-      // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-      getNode("link3").setAttribute("href", "http://example.com");
       await p;
     }
 
@@ -264,7 +248,7 @@
         STATE_INVISIBLE, 0,
         "image should be invisible");
     }
-    
+
     async function testMultiSelectable(aID, aAttribute) {
       testStates(aID,
         0, 0,
@@ -379,6 +363,11 @@
     }
 
     async function doTests() {
+      // Disable mixed-content upgrading as this test is expecting an HTTP load
+      await SpecialPowers.pushPrefEnv({
+          set: [["security.mixed_content.upgrade_display_content", false]]
+      });
+
       // Test opening details objects
       await openNode("detailsOpen", "summaryOpen", true);
       await openNode("detailsOpen", "summaryOpen", false);
@@ -426,8 +415,6 @@
       await testReadOnly();
 
       await testReadonlyUntilEditable();
-
-      await testLinked();
 
       await testHasPopup();
 
@@ -530,10 +517,6 @@
   <div id="sentinel"></div>
 
   <input id="text1">
-
-  <a id="link1" href="#">I am a link link</a>
-  <a id="link2" onclick="console.log('hi')">I am a link-ish link</a>
-  <a id="link3">I am a non-link link</a>
 
   <div id="textbox" role="textbox" aria-multiline="false">hello</div>
 

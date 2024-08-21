@@ -31,6 +31,8 @@ using namespace mozilla::a11y;
 AccessibleWrap::AccessibleWrap(nsIContent* aContent, DocAccessible* aDoc)
     : LocalAccessible(aContent, aDoc) {}
 
+AccessibleWrap::~AccessibleWrap() = default;
+
 NS_IMPL_ISUPPORTS_INHERITED0(AccessibleWrap, LocalAccessible)
 
 void AccessibleWrap::Shutdown() {
@@ -60,35 +62,6 @@ void AccessibleWrap::GetNativeInterface(void** aOutAccessible) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// LocalAccessible
-
-nsresult AccessibleWrap::HandleAccEvent(AccEvent* aEvent) {
-  nsresult rv = LocalAccessible::HandleAccEvent(aEvent);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (IPCAccessibilityActive()) {
-    return NS_OK;
-  }
-
-  uint32_t eventType = aEvent->GetEventType();
-
-  // Means we're not active.
-  NS_ENSURE_TRUE(!IsDefunct(), NS_ERROR_FAILURE);
-
-  LocalAccessible* accessible = aEvent->GetAccessible();
-  if (!accessible) return NS_OK;
-
-  if (eventType == nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED ||
-      eventType == nsIAccessibleEvent::EVENT_FOCUS) {
-    UpdateSystemCaretFor(accessible);
-  }
-
-  MsaaAccessible::FireWinEvent(accessible, eventType);
-
-  return NS_OK;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // AccessibleWrap
 
 //------- Helper methods ---------
@@ -104,6 +77,38 @@ bool AccessibleWrap::IsRootForHWND() {
   return thisHwnd != parentHwnd;
 }
 
+static void UpdateSystemCaretForHwnd(HWND aCaretWnd,
+                                     const LayoutDeviceIntRect& aCaretRect) {
+  if (!aCaretWnd || aCaretRect.IsEmpty()) {
+    return;
+  }
+
+  // Create invisible bitmap for caret, otherwise its appearance interferes
+  // with Gecko caret
+  nsAutoBitmap caretBitMap(CreateBitmap(1, aCaretRect.Height(), 1, 1, nullptr));
+  if (::CreateCaret(aCaretWnd, caretBitMap, 1,
+                    aCaretRect.Height())) {  // Also destroys the last caret
+    ::ShowCaret(aCaretWnd);
+    POINT clientPoint{aCaretRect.X(), aCaretRect.Y()};
+    ::ScreenToClient(aCaretWnd, &clientPoint);
+    ::SetCaretPos(clientPoint.x, clientPoint.y);
+  }
+}
+
+/* static */
+void AccessibleWrap::UpdateSystemCaretFor(
+    Accessible* aAccessible, const LayoutDeviceIntRect& aCaretRect) {
+  if (LocalAccessible* localAcc = aAccessible->AsLocal()) {
+    // XXX We need the widget for LocalAccessible, so we have to call
+    // HyperTextAccessible::GetCaretRect. We should find some way of avoiding
+    // the need for the widget.
+    UpdateSystemCaretFor(localAcc);
+  } else {
+    UpdateSystemCaretFor(aAccessible->AsRemote(), aCaretRect);
+  }
+}
+
+/* static */
 void AccessibleWrap::UpdateSystemCaretFor(LocalAccessible* aAccessible) {
   // Move the system caret so that Windows Tablet Edition and tradional ATs with
   // off-screen model can follow the caret
@@ -121,7 +126,7 @@ void AccessibleWrap::UpdateSystemCaretFor(LocalAccessible* aAccessible) {
 
   HWND caretWnd =
       reinterpret_cast<HWND>(widget->GetNativeData(NS_NATIVE_WINDOW));
-  UpdateSystemCaretFor(caretWnd, caretRect);
+  UpdateSystemCaretForHwnd(caretWnd, caretRect);
 }
 
 /* static */
@@ -132,24 +137,5 @@ void AccessibleWrap::UpdateSystemCaretFor(
   // The HWND should be the real widget HWND, not an emulated HWND.
   // We get the HWND from the proxy's outer doc to bypass window emulation.
   LocalAccessible* outerDoc = aProxy->OuterDocOfRemoteBrowser();
-  UpdateSystemCaretFor(MsaaAccessible::GetHWNDFor(outerDoc), aCaretRect);
-}
-
-/* static */
-void AccessibleWrap::UpdateSystemCaretFor(
-    HWND aCaretWnd, const LayoutDeviceIntRect& aCaretRect) {
-  if (!aCaretWnd || aCaretRect.IsEmpty()) {
-    return;
-  }
-
-  // Create invisible bitmap for caret, otherwise its appearance interferes
-  // with Gecko caret
-  nsAutoBitmap caretBitMap(CreateBitmap(1, aCaretRect.Height(), 1, 1, nullptr));
-  if (::CreateCaret(aCaretWnd, caretBitMap, 1,
-                    aCaretRect.Height())) {  // Also destroys the last caret
-    ::ShowCaret(aCaretWnd);
-    POINT clientPoint{aCaretRect.X(), aCaretRect.Y()};
-    ::ScreenToClient(aCaretWnd, &clientPoint);
-    ::SetCaretPos(clientPoint.x, clientPoint.y);
-  }
+  UpdateSystemCaretForHwnd(MsaaAccessible::GetHWNDFor(outerDoc), aCaretRect);
 }

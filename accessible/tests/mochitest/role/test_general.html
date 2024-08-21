@@ -50,8 +50,8 @@
       testRole("head5", ROLE_HEADING);
       testRole("head6", ROLE_HEADING);
 
-      // Test that an html:input @type="file" is exposed as ROLE_GROUPING.
-      testRole("data", ROLE_GROUPING);
+      // Test that an html:input @type="file" is exposed as ROLE_PUSHBUTTON.
+      testRole("data", ROLE_PUSHBUTTON);
 
       // Test that input type="checkbox" and type="radio" are
       // exposed as such regardless of appearance style.
@@ -161,7 +161,7 @@
          id="nav_overflow">overflow nav</nav>
     <header style="overflow: hidden;"
             id="header_overflow">overflow header</header>
-    <aside style="overflow: hidden;"
+    <aside style="overflow: hidden;" aria-label="aside"
            id="aside_overflow">overflow aside</aside>
     <footer style="overflow: hidden;"
             id="footer_overflow">overflow footer</footer>

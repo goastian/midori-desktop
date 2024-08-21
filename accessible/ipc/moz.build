@@ -5,17 +5,11 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 if CONFIG["OS_ARCH"] == "WINNT":
-    DIRS += ["win"]
     LOCAL_INCLUDES += [
-        "/accessible/ipc/win",
         "/accessible/windows/ia2",
         "/accessible/windows/msaa",
     ]
 else:
-    DIRS += ["other", "extension"]
-    LOCAL_INCLUDES += [
-        "/accessible/ipc/other",
-    ]
     if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
         LOCAL_INCLUDES += [
             "/accessible/atk",
@@ -24,10 +18,9 @@ else:
         LOCAL_INCLUDES += [
             "/accessible/mac",
         ]
-    elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+    elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
         LOCAL_INCLUDES += [
-            "/accessible/android",
-            "/widget/android",
+            "/accessible/ios",
         ]
     else:
         LOCAL_INCLUDES += [
@@ -35,6 +28,9 @@ else:
         ]
 
 if CONFIG["ACCESSIBILITY"]:
+    PREPROCESSED_IPDL_SOURCES += [
+        "PDocAccessible.ipdl",
+    ]
     IPDL_SOURCES += [
         "DocAccessibleTypes.ipdlh",
     ]
@@ -45,16 +41,15 @@ EXPORTS.mozilla.a11y += [
 
 if CONFIG["ACCESSIBILITY"]:
     EXPORTS.mozilla.a11y += [
-        "DocAccessibleChildBase.h",
+        "DocAccessibleChild.h",
         "DocAccessibleParent.h",
-        "RemoteAccessibleBase.h",
-        "RemoteAccessibleShared.h",
+        "RemoteAccessible.h",
     ]
 
     UNIFIED_SOURCES += [
-        "DocAccessibleChildBase.cpp",
+        "DocAccessibleChild.cpp",
         "DocAccessibleParent.cpp",
-        "RemoteAccessibleBase.cpp",
+        "RemoteAccessible.cpp",
     ]
 
     LOCAL_INCLUDES += [

@@ -16,12 +16,12 @@
 
 #include "nsDocShellLoadTypes.h"
 #include "nsIChannel.h"
-#include "nsIInterfaceRequestorUtils.h"
 #include "nsIWebProgress.h"
 #include "prenv.h"
 #include "nsIDocShellTreeItem.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StackWalk.h"
 #include "mozilla/ToString.h"
 #include "mozilla/dom/BorrowedAttrInfo.h"
@@ -195,12 +195,12 @@ static void LogPresShell(dom::Document* aDocumentNode) {
   PresShell* presShell = aDocumentNode->GetPresShell();
   printf("presshell: %p", static_cast<void*>(presShell));
 
-  nsIScrollableFrame* sf = nullptr;
+  ScrollContainerFrame* sf = nullptr;
   if (presShell) {
     printf(", is %s destroying", (presShell->IsDestroying() ? "" : "not"));
-    sf = presShell->GetRootScrollFrameAsScrollable();
+    sf = presShell->GetRootScrollContainerFrame();
   }
-  printf(", root scroll frame: %p", static_cast<void*>(sf));
+  printf(", root scroll container frame: %p", static_cast<void*>(sf));
 }
 
 static void LogDocLoadGroup(dom::Document* aDocumentNode) {

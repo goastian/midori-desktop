@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include "nsStringFwd.h"
+#include "Units.h"
 
 #if defined(ANDROID)
 #  include "nsTArray.h"
@@ -20,13 +21,10 @@
 #  include "nsTArray.h"
 #endif
 
-#if defined(XP_WIN)
-#  include "Units.h"
-#endif
-
 namespace mozilla {
 namespace a11y {
 
+class Accessible;
 class RemoteAccessible;
 
 enum EPlatformDisabledState {
@@ -49,10 +47,10 @@ EPlatformDisabledState PlatformDisabledState();
 void PreInit();
 #endif
 
-#if defined(MOZ_ACCESSIBILITY_ATK) || defined(XP_MACOSX)
+#if defined(MOZ_ACCESSIBILITY_ATK) || defined(XP_DARWIN)
 /**
  * Is platform accessibility enabled.
- * Only used on linux with atk and MacOS for now.
+ * Only used on Linux, MacOS and iOS for now.
  */
 bool ShouldA11yBeEnabled();
 #endif
@@ -90,57 +88,46 @@ void ProxyCreated(RemoteAccessible* aProxy);
 void ProxyDestroyed(RemoteAccessible*);
 
 /**
- * Callied when an event is fired on a proxied accessible.
+ * Called when an event is fired on an Accessible so that platforms may fire
+ * events if appropriate.
  */
-void ProxyEvent(RemoteAccessible* aTarget, uint32_t aEventType);
-void ProxyStateChangeEvent(RemoteAccessible* aTarget, uint64_t aState,
-                           bool aEnabled);
+void PlatformEvent(Accessible* aTarget, uint32_t aEventType);
+void PlatformStateChangeEvent(Accessible* aTarget, uint64_t aState,
+                              bool aEnabled);
 
-#if defined(XP_WIN)
-void ProxyFocusEvent(RemoteAccessible* aTarget,
-                     const LayoutDeviceIntRect& aCaretRect);
-void ProxyCaretMoveEvent(RemoteAccessible* aTarget,
-                         const LayoutDeviceIntRect& aCaretRect,
-                         int32_t aGranularity);
-#else
-void ProxyCaretMoveEvent(RemoteAccessible* aTarget, int32_t aOffset,
-                         bool aIsSelectionCollapsed, int32_t aGranularity);
-#endif
-void ProxyTextChangeEvent(RemoteAccessible* aTarget, const nsAString& aStr,
-                          int32_t aStart, uint32_t aLen, bool aIsInsert,
-                          bool aFromUser);
-void ProxyShowHideEvent(RemoteAccessible* aTarget, RemoteAccessible* aParent,
-                        bool aInsert, bool aFromUser);
-void ProxySelectionEvent(RemoteAccessible* aTarget, RemoteAccessible* aWidget,
-                         uint32_t aType);
+void PlatformFocusEvent(Accessible* aTarget,
+                        const LayoutDeviceIntRect& aCaretRect);
+void PlatformCaretMoveEvent(Accessible* aTarget, int32_t aOffset,
+                            bool aIsSelectionCollapsed, int32_t aGranularity,
+                            const LayoutDeviceIntRect& aCaretRect,
+                            bool aFromUser);
+void PlatformTextChangeEvent(Accessible* aTarget, const nsAString& aStr,
+                             int32_t aStart, uint32_t aLen, bool aIsInsert,
+                             bool aFromUser);
+void PlatformShowHideEvent(Accessible* aTarget, Accessible* aParent,
+                           bool aInsert, bool aFromUser);
+void PlatformSelectionEvent(Accessible* aTarget, Accessible* aWidget,
+                            uint32_t aType);
 
 #if defined(ANDROID)
-void ProxyVirtualCursorChangeEvent(RemoteAccessible* aTarget,
-                                   RemoteAccessible* aOldPosition,
-                                   int32_t aOldStartOffset,
-                                   int32_t aOldEndOffset,
-                                   RemoteAccessible* aNewPosition,
-                                   int32_t aNewStartOffset,
-                                   int32_t aNewEndOffset, int16_t aReason,
-                                   int16_t aBoundaryType, bool aFromUser);
+void PlatformScrollingEvent(Accessible* aTarget, uint32_t aEventType,
+                            uint32_t aScrollX, uint32_t aScrollY,
+                            uint32_t aMaxScrollX, uint32_t aMaxScrollY);
 
-void ProxyScrollingEvent(RemoteAccessible* aTarget, uint32_t aEventType,
-                         uint32_t aScrollX, uint32_t aScrollY,
-                         uint32_t aMaxScrollX, uint32_t aMaxScrollY);
-
-void ProxyAnnouncementEvent(RemoteAccessible* aTarget,
-                            const nsAString& aAnnouncement, uint16_t aPriority);
+void PlatformAnnouncementEvent(Accessible* aTarget,
+                               const nsAString& aAnnouncement,
+                               uint16_t aPriority);
 
 bool LocalizeString(const nsAString& aToken, nsAString& aLocalized);
 #endif
 
 #ifdef MOZ_WIDGET_COCOA
-class TextRangeData;
-void ProxyTextSelectionChangeEvent(RemoteAccessible* aTarget,
-                                   const nsTArray<TextRangeData>& aSelection);
+class TextRange;
+void PlatformTextSelectionChangeEvent(Accessible* aTarget,
+                                      const nsTArray<TextRange>& aSelection);
 
-void ProxyRoleChangedEvent(RemoteAccessible* aTarget, const a11y::role& aRole,
-                           uint8_t aRoleMapEntryIndex);
+void PlatformRoleChangedEvent(Accessible* aTarget, const a11y::role& aRole,
+                              uint8_t aRoleMapEntryIndex);
 #endif
 
 }  // namespace a11y

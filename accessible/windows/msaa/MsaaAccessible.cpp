@@ -10,9 +10,11 @@
 #include "ia2AccessibleImage.h"
 #include "ia2AccessibleTable.h"
 #include "ia2AccessibleTableCell.h"
+#include "LocalAccessible-inl.h"
 #include "mozilla/a11y/AccessibleWrap.h"
 #include "mozilla/a11y/Compatibility.h"
 #include "mozilla/a11y/DocAccessibleParent.h"
+#include "mozilla/StaticPrefs_accessibility.h"
 #include "MsaaAccessible.h"
 #include "MsaaDocAccessible.h"
 #include "MsaaRootAccessible.h"
@@ -32,8 +34,16 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
-const uint32_t USE_ROLE_STRING = 0;
 static const VARIANT kVarChildIdSelf = {{{VT_I4}}};
+
+// Used internally to safely get an MsaaAccessible from a COM pointer provided
+// to us by a client.
+static const GUID IID_MsaaAccessible = {
+    /* a94aded3-1a9c-4afc-a32c-d6b5c010046b */
+    0xa94aded3,
+    0x1a9c,
+    0x4afc,
+    {0xa3, 0x2c, 0xd6, 0xb5, 0xc0, 0x10, 0x04, 0x6b}};
 
 MsaaIdGenerator MsaaAccessible::sIDGen;
 ITypeInfo* MsaaAccessible::gTypeInfo = nullptr;
@@ -473,6 +483,16 @@ MsaaAccessible* MsaaAccessible::GetFrom(Accessible* aAcc) {
   return static_cast<AccessibleWrap*>(aAcc)->GetMsaa();
 }
 
+/* static */
+Accessible* MsaaAccessible::GetAccessibleFrom(IUnknown* aUnknown) {
+  RefPtr<MsaaAccessible> msaa;
+  aUnknown->QueryInterface(IID_MsaaAccessible, getter_AddRefs(msaa));
+  if (!msaa) {
+    return nullptr;
+  }
+  return msaa->Acc();
+}
+
 // IUnknown methods
 STDMETHODIMP
 MsaaAccessible::QueryInterface(REFIID iid, void** ppv) {
@@ -488,10 +508,19 @@ MsaaAccessible::QueryInterface(REFIID iid, void** ppv) {
     return E_NOINTERFACE;
   }
 
+  if (NS_WARN_IF(!NS_IsMainThread())) {
+    // Bug 1896816: JAWS sometimes traverses into Gecko UI from a file dialog
+    // thread. It shouldn't do that, but let's fail gracefully instead of
+    // crashing.
+    return RPC_E_WRONG_THREAD;
+  }
+
   // These interfaces are always available. We can support querying to them
   // even if the Accessible is dead.
   if (IID_IUnknown == iid) {
     *ppv = static_cast<IAccessible*>(this);
+  } else if (IID_MsaaAccessible == iid) {
+    *ppv = static_cast<MsaaAccessible*>(this);
   } else if (IID_IDispatch == iid || IID_IAccessible == iid) {
     *ppv = static_cast<IAccessible*>(this);
   } else if (IID_IServiceProvider == iid) {
@@ -500,6 +529,12 @@ MsaaAccessible::QueryInterface(REFIID iid, void** ppv) {
     HRESULT hr = ia2Accessible::QueryInterface(iid, ppv);
     if (SUCCEEDED(hr)) {
       return hr;
+    }
+    if (StaticPrefs::accessibility_uia_enable()) {
+      hr = uiaRawElmProvider::QueryInterface(iid, ppv);
+      if (SUCCEEDED(hr)) {
+        return hr;
+      }
     }
   }
   if (*ppv) {
@@ -583,16 +618,20 @@ MsaaAccessible::get_accChildCount(long __RPC_FAR* pcountChildren) {
 
   if (!mAcc) return CO_E_OBJNOTCONNECTED;
 
-  if (Compatibility::IsA11ySuppressedForClipboardCopy() && mAcc->IsRoot()) {
+  if ((Compatibility::A11ySuppressionReasons() &
+       SuppressionReasons::Clipboard) &&
+      mAcc->IsRoot()) {
     // Bug 1798098: Windows Suggested Actions (introduced in Windows 11 22H2)
-    // might walk the entire a11y tree using UIA whenever anything is copied to
-    // the clipboard. This causes an unacceptable hang, particularly when the
-    // cache is disabled. We prevent this tree walk by returning a 0 child count
-    // for the root window, from which Windows might walk.
+    // might walk the entire a11y tree using UIA whenever anything is copied
+    // to the clipboard. This causes an unacceptable hang, particularly when
+    // the cache is disabled. We prevent this tree walk by returning a 0 child
+    // count for the root window, from which Windows might walk.
     return S_OK;
   }
 
-  if (nsAccUtils::MustPrune(mAcc)) return S_OK;
+  if (nsAccUtils::MustPrune(mAcc)) {
+    return S_OK;
+  }
 
   *pcountChildren = mAcc->ChildCount();
   return S_OK;
@@ -740,7 +779,8 @@ MsaaAccessible::get_accRole(
   uint32_t msaaRole = 0;
 
 #define ROLE(_geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, \
-             _msaaRole, ia2Role, androidClass, nameRule)                     \
+             _msaaRole, ia2Role, androidClass, iosIsElement, uiaControlType, \
+             nameRule)                                                       \
   case roles::_geckoRole:                                                    \
     msaaRole = _msaaRole;                                                    \
     break;
@@ -762,72 +802,9 @@ MsaaAccessible::get_accRole(
       msaaRole = ROLE_SYSTEM_OUTLINEITEM;
   }
 
-  // -- Try enumerated role
-  if (msaaRole != USE_ROLE_STRING) {
-    pvarRole->vt = VT_I4;
-    pvarRole->lVal = msaaRole;  // Normal enumerated role
-    return S_OK;
-  }
-
-  // -- Try BSTR role
-  // Could not map to known enumerated MSAA role like ROLE_BUTTON
-  // Use BSTR role to expose role attribute or tag name + namespace
-  // XXX We should remove this hack and map to standard MSAA roles, even though
-  // they're lossy. See bug 798492.
-  if (mAcc->IsRemote()) {
-    // We don't support unknown or multiple ARIA roles for RemoteAccessible
-    // here, nor can we support namespaces. No one should be relying on this
-    // anyway, so this is fine. We just want to avoid returning a failure here.
-    nsAtom* val = nullptr;
-    const nsRoleMapEntry* roleMap = mAcc->ARIARoleMap();
-    if (roleMap && roleMap->roleAtom != nsGkAtoms::_empty) {
-      val = roleMap->roleAtom;
-    } else {
-      val = mAcc->TagName();
-    }
-    if (!val) {
-      return E_FAIL;
-    }
-    pvarRole->vt = VT_BSTR;
-    pvarRole->bstrVal = ::SysAllocString(val->GetUTF16String());
-    return S_OK;
-  }
-
-  LocalAccessible* localAcc = mAcc->AsLocal();
-  MOZ_ASSERT(localAcc);
-  nsIContent* content = localAcc->GetContent();
-  if (!content) return E_FAIL;
-
-  if (content->IsElement()) {
-    nsAutoString roleString;
-    // Try the role attribute.
-    nsAccUtils::GetARIAAttr(content->AsElement(), nsGkAtoms::role, roleString);
-
-    if (roleString.IsEmpty()) {
-      // No role attribute (or it is an empty string).
-      // Use the tag name.
-      dom::Document* document = content->GetUncomposedDoc();
-      if (!document) return E_FAIL;
-
-      dom::NodeInfo* nodeInfo = content->NodeInfo();
-      nodeInfo->GetName(roleString);
-
-      // Only append name space if different from that of current document.
-      if (!nodeInfo->NamespaceEquals(document->GetDefaultNamespaceID())) {
-        nsAutoString nameSpaceURI;
-        nodeInfo->GetNamespaceURI(nameSpaceURI);
-        roleString += u", "_ns + nameSpaceURI;
-      }
-    }
-
-    if (!roleString.IsEmpty()) {
-      pvarRole->vt = VT_BSTR;
-      pvarRole->bstrVal = ::SysAllocString(roleString.get());
-      return S_OK;
-    }
-  }
-
-  return E_FAIL;
+  pvarRole->vt = VT_I4;
+  pvarRole->lVal = msaaRole;
+  return S_OK;
 }
 
 STDMETHODIMP
@@ -1285,6 +1262,19 @@ MsaaAccessible::accHitTest(
 
   // if we got a child
   if (accessible) {
+    if (accessible != mAcc && accessible->IsTextLeaf()) {
+      Accessible* parent = accessible->Parent();
+      if (parent != mAcc && parent->Role() == roles::LINK) {
+        // Bug 1843832: The UI Automation -> IAccessible2 proxy barfs if we
+        // return the text leaf child of a link when hit testing an ancestor of
+        // the link. Therefore, we return the link instead. MSAA clients which
+        // call AccessibleObjectFromPoint will still get to the text leaf, since
+        // AccessibleObjectFromPoint keeps calling accHitTest until it can't
+        // descend any further. We should remove this tragic hack once we have
+        // a native UIA implementation.
+        accessible = parent;
+      }
+    }
     if (accessible == mAcc) {
       pvarChild->vt = VT_I4;
       pvarChild->lVal = CHILDID_SELF;

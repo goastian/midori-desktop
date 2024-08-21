@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
+requestLongerTimeout(2);
 
 /* import-globals-from ../../mochitest/role.js */
 /* import-globals-from ../../mochitest/states.js */
@@ -424,6 +425,11 @@ addAccessibleTask(
 <div role="listbox" aria-multiselectable="true">
   <div id="multiNoSel" role="option" tabindex="0">multiNoSel</div>
 </div>
+<div role="grid">
+  <div role="row">
+    <div id="gridcell" role="gridcell" tabindex="0">gridcell</div>
+  </div>
+</div>
   `,
   async function (browser, docAcc) {
     const noSel = findAccessibleChildByID(docAcc, "noSel");
@@ -449,6 +455,14 @@ addAccessibleTask(
     multiNoSel.takeFocus();
     await focused;
     testStates(multiNoSel, STATE_FOCUSED, 0, STATE_SELECTED, 0);
+
+    const gridcell = findAccessibleChildByID(docAcc, "gridcell");
+    testStates(gridcell, 0, 0, STATE_FOCUSED | STATE_SELECTED, 0);
+    info("Focusing gridcell");
+    focused = waitForEvent(EVENT_FOCUS, gridcell);
+    gridcell.takeFocus();
+    await focused;
+    testStates(gridcell, STATE_FOCUSED, 0, STATE_SELECTED, 0);
   },
   { topLevel: true, iframe: true, remoteIframe: true, chrome: true }
 );
@@ -481,4 +495,327 @@ addAccessibleTask(
     testStates(email, STATE_INVALID);
   },
   { chrome: true, topLevel: true, remoteIframe: true }
+);
+
+/**
+ * Test caching of the expanded state for the popovertarget content attribute.
+ */
+addAccessibleTask(
+  `
+  <button id="show-popover-btn" popovertarget="mypopover" popovertargetaction="show">Show popover</button>
+  <button id="hide-popover-btn" popovertarget="mypopover" popovertargetaction="hide">Hide popover</button>
+  <button id="toggle">toggle</button>
+  <div id="mypopover" popover>
+    Popover content
+    <button id="hide-inside" popovertarget="mypopover" popovertargetaction="hide">Hide inside popover</button>
+  </div>
+  `,
+  async function (browser, docAcc) {
+    const show = findAccessibleChildByID(docAcc, "show-popover-btn");
+    const hide = findAccessibleChildByID(docAcc, "hide-popover-btn");
+    testStates(show, STATE_COLLAPSED, 0);
+    testStates(hide, STATE_COLLAPSED, 0);
+    const toggle = findAccessibleChildByID(docAcc, "toggle");
+    testStates(
+      toggle,
+      0,
+      0,
+      STATE_EXPANDED | STATE_COLLAPSED,
+      EXT_STATE_EXPANDABLE
+    );
+
+    info("Setting toggle's popovertarget");
+    let stateChanged = waitForStateChange(
+      toggle,
+      EXT_STATE_EXPANDABLE,
+      true,
+      true
+    );
+    await invokeContentTask(browser, [], () => {
+      content.document
+        .getElementById("toggle")
+        .setAttribute("popovertarget", "mypopover");
+    });
+    await stateChanged;
+
+    // Changes to the popover should fire events on all invokers.
+    const changeEvents = [
+      [EVENT_STATE_CHANGE, show],
+      [EVENT_STATE_CHANGE, hide],
+      [EVENT_STATE_CHANGE, toggle],
+    ];
+    info("Expanding popover");
+    let onShowing = waitForEvents(changeEvents);
+    await show.doAction(0);
+    await onShowing;
+    testStates(show, STATE_EXPANDED, 0);
+    testStates(hide, STATE_EXPANDED, 0);
+    testStates(toggle, STATE_EXPANDED, 0);
+    const hideInside = findAccessibleChildByID(show, "hide-inside");
+    testStates(hideInside, 0, 0, STATE_EXPANDED | STATE_COLLAPSED, 0);
+
+    info("Collapsing popover");
+    let onHiding = waitForEvents(changeEvents);
+    await hide.doAction(0);
+    await onHiding;
+    testStates(hide, STATE_COLLAPSED, 0);
+    testStates(show, STATE_COLLAPSED, 0);
+    testStates(toggle, STATE_COLLAPSED, 0);
+  },
+  { chrome: true, topLevel: true, remoteIframe: true }
+);
+
+/**
+ * Test caching of the expanded state for the popoverTargetElement WebIDL
+ * attribute.
+ */
+addAccessibleTask(
+  `
+<button id="toggle1">toggle</button>
+<div id="popover1" popover>popover1</div>
+<button id="toggle2">toggle2</button>
+<button id="toggle3">toggle3</button>
+<div id="shadowHost"><template shadowrootmode="open">
+  <button id="toggle4">toggle4</button>
+  <div id="popover2" popover>popover2</div>
+  <button id="toggle5">toggle5</button>
+</template></div>
+<script>
+  const toggle1 = document.getElementById("toggle1");
+  const popover1 = document.getElementById("popover1");
+  toggle1.popoverTargetElement = popover1;
+  const toggle3 = document.getElementById("toggle3");
+  const shadow = document.getElementById("shadowHost").shadowRoot;
+  const toggle4 = shadow.getElementById("toggle4");
+  const popover2 = shadow.getElementById("popover2");
+  toggle3.popoverTargetElement = popover2;
+  toggle4.popoverTargetElement = popover2;
+  const toggle5 = shadow.getElementById("toggle5");
+  toggle5.popoverTargetElement = popover1;
+</script>
+  `,
+  async function (browser, docAcc) {
+    const toggle1 = findAccessibleChildByID(docAcc, "toggle1");
+    // toggle1's popover target is set and connected to the document.
+    testStates(toggle1, STATE_COLLAPSED);
+
+    const toggle2 = findAccessibleChildByID(docAcc, "toggle2");
+    // toggle2's popover target isn't set yet.
+    testStates(
+      toggle2,
+      0,
+      0,
+      STATE_EXPANDED | STATE_COLLAPSED,
+      EXT_STATE_EXPANDABLE
+    );
+    info("Setting toggle2's popoverTargetElement");
+    let changed = waitForStateChange(toggle2, EXT_STATE_EXPANDABLE, true, true);
+    await invokeContentTask(browser, [], () => {
+      const toggle2Dom = content.document.getElementById("toggle2");
+      const popover1 = content.document.getElementById("popover1");
+      toggle2Dom.popoverTargetElement = popover1;
+    });
+    await changed;
+    testStates(toggle2, STATE_COLLAPSED);
+
+    const toggle5 = findAccessibleChildByID(docAcc, "toggle5");
+    // toggle5 is inside the shadow DOM and popover1 is outside, so the target
+    // is valid.
+    testStates(toggle5, STATE_COLLAPSED);
+
+    // Changes to the popover should fire events on all invokers.
+    const changeEvents = [
+      [EVENT_STATE_CHANGE, toggle1],
+      [EVENT_STATE_CHANGE, toggle2],
+      [EVENT_STATE_CHANGE, toggle5],
+    ];
+    info("Showing popover1");
+    changed = waitForEvents(changeEvents);
+    toggle1.doAction(0);
+    await changed;
+    testStates(toggle1, STATE_EXPANDED);
+    testStates(toggle2, STATE_EXPANDED);
+
+    info("Hiding popover1");
+    changed = waitForEvents(changeEvents);
+    toggle1.doAction(0);
+    await changed;
+    testStates(toggle1, STATE_COLLAPSED);
+    testStates(toggle2, STATE_COLLAPSED);
+
+    info("Clearing toggle1's popover target");
+    changed = waitForStateChange(toggle1, EXT_STATE_EXPANDABLE, false, true);
+    await invokeContentTask(browser, [], () => {
+      const toggle1Dom = content.document.getElementById("toggle1");
+      toggle1Dom.popoverTargetElement = null;
+    });
+    await changed;
+    testStates(
+      toggle1,
+      0,
+      0,
+      STATE_EXPANDED | STATE_COLLAPSED,
+      EXT_STATE_EXPANDABLE
+    );
+
+    info("Setting toggle2's popover target to a disconnected node");
+    changed = waitForStateChange(toggle2, EXT_STATE_EXPANDABLE, false, true);
+    await invokeContentTask(browser, [], () => {
+      const toggle2Dom = content.document.getElementById("toggle2");
+      const popover3 = content.document.createElement("div");
+      popover3.popover = "auto";
+      popover3.textContent = "popover3";
+      // We don't append popover3 anywhere, so it is disconnected.
+      toggle2Dom.popoverTargetElement = popover3;
+    });
+    await changed;
+    testStates(
+      toggle2,
+      0,
+      0,
+      STATE_EXPANDED | STATE_COLLAPSED,
+      EXT_STATE_EXPANDABLE
+    );
+
+    const toggle3 = findAccessibleChildByID(docAcc, "toggle3");
+    // toggle3 is outside popover2's shadow DOM, so the target isn't valid.
+    testStates(
+      toggle3,
+      0,
+      0,
+      STATE_EXPANDED | STATE_COLLAPSED,
+      EXT_STATE_EXPANDABLE
+    );
+    const toggle4 = findAccessibleChildByID(docAcc, "toggle4");
+    // toggle4 is in the same shadow DOM as popover2.
+    testStates(toggle4, STATE_COLLAPSED);
+  },
+  { chrome: true, topLevel: true }
+);
+
+/**
+ * Test the mixed state of indeterminate HTML checkboxes.
+ */
+addAccessibleTask(
+  `<input type="checkbox" id="checkbox">`,
+  async function testHTMLCheckboxMixed(browser, docAcc) {
+    const checkbox = findAccessibleChildByID(docAcc, "checkbox");
+    testStates(checkbox, 0, 0, STATE_MIXED);
+    info("Setting indeterminate on checkbox");
+    let changed = waitForStateChange(checkbox, STATE_MIXED, true);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("checkbox").indeterminate = true;
+    });
+    await changed;
+    testStates(checkbox, STATE_MIXED);
+    info("Clearing indeterminate on checkbox");
+    changed = waitForStateChange(checkbox, STATE_MIXED, false);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("checkbox").indeterminate = false;
+    });
+    await changed;
+    testStates(checkbox, 0, 0, STATE_MIXED);
+  },
+  { chrome: true, topLevel: true, iframe: true, remoteIframe: true }
+);
+
+/**
+ * Test the readonly state on progress bars.
+ */
+addAccessibleTask(
+  `
+<progress id="htmlProgress"></progress>
+<div id="ariaProgress" role="progressbar">ariaProgress</div>
+<div id="ariaProgressRoFalse" role="progressbar" aria-readonly="false">ariaProgressRoFalse</div>
+  `,
+  async function testProgressBarReadOnly(browser, docAcc) {
+    const htmlProgress = findAccessibleChildByID(docAcc, "htmlProgress");
+    testStates(htmlProgress, STATE_READONLY);
+    const ariaProgress = findAccessibleChildByID(docAcc, "ariaProgress");
+    testStates(ariaProgress, STATE_READONLY);
+    // aria-readonly isn't valid and has no effect on a progress bar.
+    const ariaProgressRoFalse = findAccessibleChildByID(
+      docAcc,
+      "ariaProgressRoFalse"
+    );
+    testStates(ariaProgressRoFalse, STATE_READONLY);
+  },
+  { chrome: true, topLevel: true }
+);
+
+/**
+ * Test the unavailable state.
+ */
+addAccessibleTask(
+  `
+<input id="input" disabled>
+<fieldset id="fieldset" disabled>
+  <input id="fieldsetInput">
+</fieldset>
+<div id="ariaDisabled" aria-disabled="true" role="button">ariaDisabled</div>
+<input id="enabled">
+  `,
+  async function testUnavailable(browser, docAcc) {
+    const input = findAccessibleChildByID(docAcc, "input");
+    testStates(input, STATE_UNAVAILABLE, 0, STATE_FOCUSABLE);
+    info("Enabling input");
+    let changed = waitForEvents([
+      stateChangeEventArgs(input, STATE_UNAVAILABLE, false),
+      stateChangeEventArgs(input, STATE_FOCUSABLE, true),
+    ]);
+    await invokeSetAttribute(browser, "input", "disabled", null);
+    await changed;
+    testStates(input, STATE_FOCUSABLE, 0, STATE_UNAVAILABLE);
+    info("Disabling input");
+    changed = waitForEvents([
+      stateChangeEventArgs(input, STATE_UNAVAILABLE, true),
+      stateChangeEventArgs(input, STATE_FOCUSABLE, false),
+    ]);
+    await invokeSetAttribute(browser, "input", "disabled", "true");
+    await changed;
+    testStates(input, STATE_UNAVAILABLE, 0, STATE_FOCUSABLE);
+
+    const fieldset = findAccessibleChildByID(docAcc, "fieldset");
+    testStates(fieldset, STATE_UNAVAILABLE);
+    const fieldsetInput = findAccessibleChildByID(docAcc, "fieldsetInput");
+    testStates(fieldsetInput, STATE_UNAVAILABLE, 0, STATE_FOCUSABLE);
+    info("Enabling fieldset");
+    changed = waitForEvents([
+      stateChangeEventArgs(fieldset, STATE_UNAVAILABLE, false),
+      stateChangeEventArgs(fieldsetInput, STATE_UNAVAILABLE, false),
+      stateChangeEventArgs(fieldsetInput, STATE_FOCUSABLE, true),
+    ]);
+    await invokeSetAttribute(browser, "fieldset", "disabled", null);
+    await changed;
+    testStates(fieldset, 0, 0, STATE_UNAVAILABLE);
+    testStates(fieldsetInput, STATE_FOCUSABLE, 0, STATE_UNAVAILABLE);
+    info("Disabling fieldset");
+    changed = waitForEvents([
+      stateChangeEventArgs(fieldset, STATE_UNAVAILABLE, true),
+      stateChangeEventArgs(fieldsetInput, STATE_UNAVAILABLE, true),
+      stateChangeEventArgs(fieldsetInput, STATE_FOCUSABLE, false),
+    ]);
+    await invokeSetAttribute(browser, "fieldset", "disabled", "true");
+    await changed;
+    testStates(fieldset, STATE_UNAVAILABLE);
+    testStates(fieldsetInput, STATE_UNAVAILABLE, 0, STATE_FOCUSABLE);
+
+    const ariaDisabled = findAccessibleChildByID(docAcc, "ariaDisabled");
+    testStates(ariaDisabled, STATE_UNAVAILABLE);
+    info("Enabling ariaDisabled");
+    changed = waitForStateChange(ariaDisabled, STATE_UNAVAILABLE, false);
+    await invokeSetAttribute(browser, "ariaDisabled", "aria-disabled", null);
+    await changed;
+    testStates(ariaDisabled, 0, 0, STATE_UNAVAILABLE);
+    info("Disabling ariaDisabled");
+    changed = waitForStateChange(ariaDisabled, STATE_UNAVAILABLE, true);
+    await invokeSetAttribute(browser, "ariaDisabled", "aria-disabled", "true");
+    await changed;
+    testStates(ariaDisabled, STATE_UNAVAILABLE);
+
+    // Test a control that is initially enabled.
+    const enabled = findAccessibleChildByID(docAcc, "enabled");
+    testStates(enabled, 0, 0, STATE_UNAVAILABLE);
+  },
+  { chrome: true, topLevel: true }
 );

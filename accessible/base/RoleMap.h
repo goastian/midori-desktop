@@ -5,7 +5,7 @@
 // clang-format off
 /**
  * Usage: declare the macro ROLE()with the following arguments:
- * ROLE(geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, msaaRole, ia2Role, nameRule)
+ * ROLE(geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, msaaRole, ia2Role, iosIsElement, uiaControlType, nameRule)
  */
 
 ROLE(NOTHING,
@@ -14,21 +14,12 @@ ROLE(NOTHING,
      ATK_ROLE_UNKNOWN,
      NSAccessibilityUnknownRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_CLIENT,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::No,
+     UIA_CustomControlTypeId,
      eNameFromSubtreeIfReqRule)
-
-ROLE(TITLEBAR,
-     "titlebar",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,  //Irrelevant on OS X; windows are always native.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_TITLEBAR,
-     ROLE_SYSTEM_TITLEBAR,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(MENUBAR,
      "menubar",
@@ -39,6 +30,8 @@ ROLE(MENUBAR,
      ROLE_SYSTEM_MENUBAR,
      ROLE_SYSTEM_MENUBAR,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_MenuBarControlTypeId,
      eNoNameRule)
 
 ROLE(SCROLLBAR,
@@ -50,51 +43,9 @@ ROLE(SCROLLBAR,
      ROLE_SYSTEM_SCROLLBAR,
      ROLE_SYSTEM_SCROLLBAR,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ScrollBarControlTypeId,
      eNameFromValueRule)
-
-ROLE(GRIP,
-     "grip",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilitySplitterRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_GRIP,
-     ROLE_SYSTEM_GRIP,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(SOUND,
-     "sound",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,  //Unused on OS X.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_SOUND,
-     ROLE_SYSTEM_SOUND,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(CURSOR,
-     "cursor",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,  //Unused on OS X.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_CURSOR,
-     ROLE_SYSTEM_CURSOR,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(CARET,
-     "caret",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,  //Unused on OS X.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_CARET,
-     ROLE_SYSTEM_CARET,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(ALERT,
      "alert",
@@ -105,18 +56,9 @@ ROLE(ALERT,
      ROLE_SYSTEM_ALERT,
      ROLE_SYSTEM_ALERT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
-
-ROLE(WINDOW,
-     "window",
-     nullptr,
-     ATK_ROLE_WINDOW,
-     NSAccessibilityWindowRole,  //Irrelevant on OS X; all window a11y is handled by the system.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_WINDOW,
-     ROLE_SYSTEM_WINDOW,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(INTERNAL_FRAME,
      "internal frame",
@@ -124,9 +66,11 @@ ROLE(INTERNAL_FRAME,
      ATK_ROLE_INTERNAL_FRAME,
      NSAccessibilityScrollAreaRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_INTERNAL_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_PaneControlTypeId,
      eNoNameRule)
 
 ROLE(MENUPOPUP,
@@ -138,6 +82,8 @@ ROLE(MENUPOPUP,
      ROLE_SYSTEM_MENUPOPUP,
      ROLE_SYSTEM_MENUPOPUP,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_MenuControlTypeId,
      eNoNameRule)
 
 ROLE(MENUITEM,
@@ -149,6 +95,8 @@ ROLE(MENUITEM,
      ROLE_SYSTEM_MENUITEM,
      ROLE_SYSTEM_MENUITEM,
      java::SessionAccessibility::CLASSNAME_MENUITEM,
+     IsAccessibilityElementRule::Yes,
+     UIA_MenuItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(TOOLTIP,
@@ -160,6 +108,8 @@ ROLE(TOOLTIP,
      ROLE_SYSTEM_TOOLTIP,
      ROLE_SYSTEM_TOOLTIP,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_ToolTipControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(APPLICATION,
@@ -171,6 +121,8 @@ ROLE(APPLICATION,
      ROLE_SYSTEM_APPLICATION,
      ROLE_SYSTEM_APPLICATION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_PaneControlTypeId,
      eNoNameRule)
 
 ROLE(DOCUMENT,
@@ -182,6 +134,8 @@ ROLE(DOCUMENT,
      ROLE_SYSTEM_DOCUMENT,
      ROLE_SYSTEM_DOCUMENT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DocumentControlTypeId,
      eNoNameRule)
 
 /**
@@ -202,17 +156,8 @@ ROLE(PANE,
      ROLE_SYSTEM_GROUPING,
      ROLE_SYSTEM_GROUPING,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(CHART,
-     "chart",
-     nullptr,
-     ATK_ROLE_CHART,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_CHART,
-     ROLE_SYSTEM_CHART,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_PaneControlTypeId,
      eNoNameRule)
 
 ROLE(DIALOG,
@@ -224,17 +169,8 @@ ROLE(DIALOG,
      ROLE_SYSTEM_DIALOG,
      ROLE_SYSTEM_DIALOG,
      java::SessionAccessibility::CLASSNAME_DIALOG,
-     eNoNameRule)
-
-ROLE(BORDER,
-     "border",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,  //Unused on OS X.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_BORDER,
-     ROLE_SYSTEM_BORDER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_PaneControlTypeId,
      eNoNameRule)
 
 ROLE(GROUPING,
@@ -246,6 +182,8 @@ ROLE(GROUPING,
      ROLE_SYSTEM_GROUPING,
      ROLE_SYSTEM_GROUPING,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(SEPARATOR,
@@ -257,6 +195,8 @@ ROLE(SEPARATOR,
      ROLE_SYSTEM_SEPARATOR,
      ROLE_SYSTEM_SEPARATOR,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_SeparatorControlTypeId,
      eNoNameRule)
 
 ROLE(TOOLBAR,
@@ -268,6 +208,8 @@ ROLE(TOOLBAR,
      ROLE_SYSTEM_TOOLBAR,
      ROLE_SYSTEM_TOOLBAR,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ToolBarControlTypeId,
      eNoNameRule)
 
 ROLE(STATUSBAR,
@@ -279,6 +221,8 @@ ROLE(STATUSBAR,
      ROLE_SYSTEM_STATUSBAR,
      ROLE_SYSTEM_STATUSBAR,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(TABLE,
@@ -290,6 +234,8 @@ ROLE(TABLE,
      ROLE_SYSTEM_TABLE,
      ROLE_SYSTEM_TABLE,
      java::SessionAccessibility::CLASSNAME_GRIDVIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TableControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(COLUMNHEADER,
@@ -301,6 +247,8 @@ ROLE(COLUMNHEADER,
      ROLE_SYSTEM_COLUMNHEADER,
      ROLE_SYSTEM_COLUMNHEADER,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DataItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(ROWHEADER,
@@ -312,17 +260,8 @@ ROLE(ROWHEADER,
      ROLE_SYSTEM_ROWHEADER,
      ROLE_SYSTEM_ROWHEADER,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNameFromSubtreeRule)
-
-ROLE(COLUMN,
-     "column",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityColumnRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_COLUMN,
-     ROLE_SYSTEM_COLUMN,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_HeaderItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(ROW,
@@ -334,6 +273,8 @@ ROLE(ROW,
      ROLE_SYSTEM_ROW,
      ROLE_SYSTEM_ROW,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DataItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(CELL,
@@ -345,6 +286,8 @@ ROLE(CELL,
      ROLE_SYSTEM_CELL,
      ROLE_SYSTEM_CELL,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DataItemControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(LINK,
@@ -356,29 +299,9 @@ ROLE(LINK,
      ROLE_SYSTEM_LINK,
      ROLE_SYSTEM_LINK,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfBrokenUp,
+     UIA_HyperlinkControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(HELPBALLOON,
-     "helpballoon",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityHelpTagRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_HELPBALLOON,
-     ROLE_SYSTEM_HELPBALLOON,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNameFromSubtreeRule)
-
-ROLE(CHARACTER,
-     "character",
-     nullptr,
-     ATK_ROLE_IMAGE,
-     NSAccessibilityUnknownRole,  //Unused on OS X.
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_CHARACTER,
-     ROLE_SYSTEM_CHARACTER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(LIST,
      "list",
@@ -389,6 +312,8 @@ ROLE(LIST,
      ROLE_SYSTEM_LIST,
      ROLE_SYSTEM_LIST,
      java::SessionAccessibility::CLASSNAME_LISTVIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ListControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(LISTITEM,
@@ -400,6 +325,8 @@ ROLE(LISTITEM,
      ROLE_SYSTEM_LISTITEM,
      ROLE_SYSTEM_LISTITEM,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ListItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(OUTLINE,
@@ -411,6 +338,8 @@ ROLE(OUTLINE,
      ROLE_SYSTEM_OUTLINE,
      ROLE_SYSTEM_OUTLINE,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TreeControlTypeId,
      eNoNameRule)
 
 ROLE(OUTLINEITEM,
@@ -422,6 +351,8 @@ ROLE(OUTLINEITEM,
      ROLE_SYSTEM_OUTLINEITEM,
      ROLE_SYSTEM_OUTLINEITEM,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TreeItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(PAGETAB,
@@ -433,6 +364,8 @@ ROLE(PAGETAB,
      ROLE_SYSTEM_PAGETAB,
      ROLE_SYSTEM_PAGETAB,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_TabItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(PROPERTYPAGE,
@@ -444,28 +377,21 @@ ROLE(PROPERTYPAGE,
      ROLE_SYSTEM_PROPERTYPAGE,
      ROLE_SYSTEM_PROPERTYPAGE,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(INDICATOR,
-     "indicator",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_INDICATOR,
-     ROLE_SYSTEM_INDICATOR,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_PaneControlTypeId,
      eNoNameRule)
 
 ROLE(GRAPHIC,
      "graphic",
-     nsGkAtoms::img,
+     nsGkAtoms::image,
      ATK_ROLE_IMAGE,
      NSAccessibilityImageRole,
      NSAccessibilityUnknownSubrole,
      ROLE_SYSTEM_GRAPHIC,
      ROLE_SYSTEM_GRAPHIC,
      java::SessionAccessibility::CLASSNAME_IMAGE,
+     IsAccessibilityElementRule::Yes,
+     UIA_ImageControlTypeId,
      eNoNameRule)
 
 ROLE(STATICTEXT,
@@ -477,6 +403,8 @@ ROLE(STATICTEXT,
      ROLE_SYSTEM_STATICTEXT,
      ROLE_SYSTEM_STATICTEXT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfParentIsntElementWithName,
+     UIA_TextControlTypeId,
      eNoNameRule)
 
 ROLE(TEXT_LEAF,
@@ -488,6 +416,8 @@ ROLE(TEXT_LEAF,
      ROLE_SYSTEM_TEXT,
      ROLE_SYSTEM_TEXT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfParentIsntElementWithName,
+     UIA_TextControlTypeId,
      eNoNameRule)
 
 ROLE(PUSHBUTTON,
@@ -499,6 +429,8 @@ ROLE(PUSHBUTTON,
      ROLE_SYSTEM_PUSHBUTTON,
      ROLE_SYSTEM_PUSHBUTTON,
      java::SessionAccessibility::CLASSNAME_BUTTON,
+     IsAccessibilityElementRule::Yes,
+     UIA_ButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(CHECKBUTTON,
@@ -510,6 +442,8 @@ ROLE(CHECKBUTTON,
      ROLE_SYSTEM_CHECKBUTTON,
      ROLE_SYSTEM_CHECKBUTTON,
      java::SessionAccessibility::CLASSNAME_CHECKBOX,
+     IsAccessibilityElementRule::Yes,
+     UIA_CheckBoxControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(RADIOBUTTON,
@@ -521,6 +455,8 @@ ROLE(RADIOBUTTON,
      ROLE_SYSTEM_RADIOBUTTON,
      ROLE_SYSTEM_RADIOBUTTON,
      java::SessionAccessibility::CLASSNAME_RADIOBUTTON,
+     IsAccessibilityElementRule::Yes,
+     UIA_RadioButtonControlTypeId,
      eNameFromSubtreeRule)
 
 // Equivalent of HTML select element with size="1". See also EDITCOMBOBOX.
@@ -533,18 +469,9 @@ ROLE(COMBOBOX,
      ROLE_SYSTEM_COMBOBOX,
      ROLE_SYSTEM_COMBOBOX,
      java::SessionAccessibility::CLASSNAME_SPINNER,
+     IsAccessibilityElementRule::Yes,
+     UIA_ComboBoxControlTypeId,
      eNameFromValueRule)
-
-ROLE(DROPLIST,
-     "droplist",
-     nullptr,
-     ATK_ROLE_COMBO_BOX,
-     NSAccessibilityPopUpButtonRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_DROPLIST,
-     ROLE_SYSTEM_DROPLIST,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(PROGRESSBAR,
      "progressbar",
@@ -555,29 +482,9 @@ ROLE(PROGRESSBAR,
      ROLE_SYSTEM_PROGRESSBAR,
      ROLE_SYSTEM_PROGRESSBAR,
      java::SessionAccessibility::CLASSNAME_PROGRESSBAR,
+     IsAccessibilityElementRule::Yes,
+     UIA_ProgressBarControlTypeId,
      eNameFromValueRule)
-
-ROLE(DIAL,
-     "dial",
-     nullptr,
-     ATK_ROLE_DIAL,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_DIAL,
-     ROLE_SYSTEM_DIAL,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(HOTKEYFIELD,
-     "hotkeyfield",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_HOTKEYFIELD,
-     ROLE_SYSTEM_HOTKEYFIELD,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(SLIDER,
      "slider",
@@ -588,6 +495,8 @@ ROLE(SLIDER,
      ROLE_SYSTEM_SLIDER,
      ROLE_SYSTEM_SLIDER,
      java::SessionAccessibility::CLASSNAME_SEEKBAR,
+     IsAccessibilityElementRule::Yes,
+     UIA_SliderControlTypeId,
      eNameFromValueRule)
 
 ROLE(SPINBUTTON,
@@ -599,6 +508,8 @@ ROLE(SPINBUTTON,
      ROLE_SYSTEM_SPINBUTTON,
      ROLE_SYSTEM_SPINBUTTON,
      java::SessionAccessibility::CLASSNAME_EDITTEXT,
+     IsAccessibilityElementRule::Yes,
+     UIA_SpinnerControlTypeId,
      eNameFromValueRule)
 
 ROLE(DIAGRAM,
@@ -610,6 +521,8 @@ ROLE(DIAGRAM,
      ROLE_SYSTEM_DIAGRAM,
      ROLE_SYSTEM_DIAGRAM,
      java::SessionAccessibility::CLASSNAME_IMAGE,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ImageControlTypeId,
      eNoNameRule)
 
 ROLE(ANIMATION,
@@ -621,17 +534,8 @@ ROLE(ANIMATION,
      ROLE_SYSTEM_ANIMATION,
      ROLE_SYSTEM_ANIMATION,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(EQUATION,
-     "equation",
-     nsGkAtoms::math,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_EQUATION,
-     ROLE_SYSTEM_EQUATION,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(BUTTONDROPDOWN,
@@ -643,6 +547,8 @@ ROLE(BUTTONDROPDOWN,
      ROLE_SYSTEM_BUTTONDROPDOWN,
      ROLE_SYSTEM_BUTTONDROPDOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_SplitButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(BUTTONMENU,
@@ -654,17 +560,8 @@ ROLE(BUTTONMENU,
      ROLE_SYSTEM_BUTTONMENU,
      ROLE_SYSTEM_BUTTONMENU,
      java::SessionAccessibility::CLASSNAME_SPINNER,
-     eNameFromSubtreeRule)
-
-ROLE(BUTTONDROPDOWNGRID,
-     "buttondropdowngrid",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_BUTTONDROPDOWNGRID,
-     ROLE_SYSTEM_BUTTONDROPDOWNGRID,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(WHITESPACE,
@@ -676,6 +573,8 @@ ROLE(WHITESPACE,
      ROLE_SYSTEM_WHITESPACE,
      ROLE_SYSTEM_WHITESPACE,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::No,
+     UIA_TextControlTypeId,
      eNoNameRule)
 
 ROLE(PAGETABLIST,
@@ -687,61 +586,8 @@ ROLE(PAGETABLIST,
      ROLE_SYSTEM_PAGETABLIST,
      ROLE_SYSTEM_PAGETABLIST,
      java::SessionAccessibility::CLASSNAME_TABWIDGET,
-     eNoNameRule)
-
-ROLE(CLOCK,
-     "clock",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,  //Unused on OS X
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_CLOCK,
-     ROLE_SYSTEM_CLOCK,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(SPLITBUTTON,
-     "splitbutton",
-     nullptr,
-     ATK_ROLE_PUSH_BUTTON,
-     NSAccessibilityButtonRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_SPLITBUTTON,
-     ROLE_SYSTEM_SPLITBUTTON,
-     java::SessionAccessibility::CLASSNAME_BUTTON,
-     eNoNameRule)
-
-ROLE(IPADDRESS,
-     "ipaddress",
-     nullptr,
-     ATK_ROLE_UNKNOWN,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_IPADDRESS,
-     ROLE_SYSTEM_IPADDRESS,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(ACCEL_LABEL,
-     "accel label",
-     nullptr,
-     ATK_ROLE_ACCEL_LABEL,
-     NSAccessibilityStaticTextRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_STATICTEXT,
-     ROLE_SYSTEM_STATICTEXT,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(ARROW,
-     "arrow",
-     nullptr,
-     ATK_ROLE_ARROW,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_INDICATOR,
-     ROLE_SYSTEM_INDICATOR,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TabControlTypeId,
      eNoNameRule)
 
 ROLE(CANVAS,
@@ -750,9 +596,11 @@ ROLE(CANVAS,
      ATK_ROLE_CANVAS,
      NSAccessibilityImageRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GRAPHIC,
      IA2_ROLE_CANVAS,
      java::SessionAccessibility::CLASSNAME_IMAGE,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ImageControlTypeId,
      eNoNameRule)
 
 ROLE(CHECK_MENU_ITEM,
@@ -764,18 +612,9 @@ ROLE(CHECK_MENU_ITEM,
      ROLE_SYSTEM_MENUITEM,
      IA2_ROLE_CHECK_MENU_ITEM,
      java::SessionAccessibility::CLASSNAME_MENUITEM,
+     IsAccessibilityElementRule::Yes,
+     UIA_MenuItemControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(COLOR_CHOOSER,
-     "color chooser",
-     nullptr,
-     ATK_ROLE_COLOR_CHOOSER,
-     NSAccessibilityColorWellRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_DIALOG,
-     IA2_ROLE_COLOR_CHOOSER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(DATE_EDITOR,
      "date editor",
@@ -783,64 +622,11 @@ ROLE(DATE_EDITOR,
      ATK_ROLE_DATE_EDITOR,
      @"AXGroup",
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_DATE_EDITOR,
      java::SessionAccessibility::CLASSNAME_SPINNER,
-     eNoNameRule)
-
-ROLE(DESKTOP_ICON,
-     "desktop icon",
-     nullptr,
-     ATK_ROLE_DESKTOP_ICON,
-     NSAccessibilityImageRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_DESKTOP_ICON,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(DESKTOP_FRAME,
-     "desktop frame",
-     nullptr,
-     ATK_ROLE_DESKTOP_FRAME,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_DESKTOP_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(DIRECTORY_PANE,
-     "directory pane",
-     nullptr,
-     ATK_ROLE_DIRECTORY_PANE,
-     NSAccessibilityBrowserRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_DIRECTORY_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(FILE_CHOOSER,
-     "file chooser",
-     nullptr,
-     ATK_ROLE_FILE_CHOOSER,
-     NSAccessibilityUnknownRole,  //Unused on OS X
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_FILE_CHOOSER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(FONT_CHOOSER,
-     "font chooser",
-     nullptr,
-     ATK_ROLE_FONT_CHOOSER,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_FONT_CHOOSER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(CHROME_WINDOW,
@@ -852,39 +638,8 @@ ROLE(CHROME_WINDOW,
      ROLE_SYSTEM_APPLICATION,
      IA2_ROLE_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(GLASS_PANE,
-     "glass pane",
-     nullptr,
-     ATK_ROLE_GLASS_PANE,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_GLASS_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(HTML_CONTAINER,
-     "html container",
-     nullptr,
-     ATK_ROLE_HTML_CONTAINER,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_UNKNOWN,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNameFromSubtreeIfReqRule)
-
-ROLE(ICON,
-     "icon",
-     nullptr,
-     ATK_ROLE_ICON,
-     NSAccessibilityImageRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_PUSHBUTTON,
-     IA2_ROLE_ICON,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_WindowControlTypeId,
      eNoNameRule)
 
 ROLE(LABEL,
@@ -896,29 +651,9 @@ ROLE(LABEL,
      ROLE_SYSTEM_STATICTEXT,
      IA2_ROLE_LABEL,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(LAYERED_PANE,
-     "layered pane",
-     nullptr,
-     ATK_ROLE_LAYERED_PANE,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_LAYERED_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(OPTION_PANE,
-     "option pane",
-     nullptr,
-     ATK_ROLE_OPTION_PANE,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_OPTION_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(PASSWORD_TEXT,
      "password text",
@@ -929,17 +664,8 @@ ROLE(PASSWORD_TEXT,
      ROLE_SYSTEM_TEXT,
      ROLE_SYSTEM_TEXT,
      java::SessionAccessibility::CLASSNAME_EDITTEXT,
-     eNoNameRule)
-
-ROLE(POPUP_MENU,
-     "popup menu",
-     nullptr,
-     ATK_ROLE_POPUP_MENU,
-     NSAccessibilityUnknownRole,  //Unused
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_MENUPOPUP,
-     ROLE_SYSTEM_MENUPOPUP,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_EditControlTypeId,
      eNoNameRule)
 
 ROLE(RADIO_MENU_ITEM,
@@ -951,84 +677,9 @@ ROLE(RADIO_MENU_ITEM,
      ROLE_SYSTEM_MENUITEM,
      IA2_ROLE_RADIO_MENU_ITEM,
      java::SessionAccessibility::CLASSNAME_MENUITEM,
+     IsAccessibilityElementRule::Yes,
+     UIA_MenuItemControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(ROOT_PANE,
-     "root pane",
-     nullptr,
-     ATK_ROLE_ROOT_PANE,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_ROOT_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(SCROLL_PANE,
-     "scroll pane",
-     nullptr,
-     ATK_ROLE_SCROLL_PANE,
-     NSAccessibilityScrollAreaRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_SCROLL_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(SPLIT_PANE,
-     "split pane",
-     nullptr,
-     ATK_ROLE_SPLIT_PANE,
-     NSAccessibilitySplitGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_SPLIT_PANE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(TABLE_COLUMN_HEADER,
-     "table column header",
-     nullptr,
-     ATK_ROLE_TABLE_COLUMN_HEADER,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_COLUMNHEADER,
-     ROLE_SYSTEM_COLUMNHEADER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNameFromSubtreeRule)
-
-ROLE(TABLE_ROW_HEADER,
-     "table row header",
-     nullptr,
-     ATK_ROLE_TABLE_ROW_HEADER,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_ROWHEADER,
-     ROLE_SYSTEM_ROWHEADER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNameFromSubtreeRule)
-
-ROLE(TEAR_OFF_MENU_ITEM,
-     "tear off menu item",
-     nullptr,
-     ATK_ROLE_TEAR_OFF_MENU_ITEM,
-     NSAccessibilityMenuItemRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_MENUITEM,
-     IA2_ROLE_TEAR_OFF_MENU,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNameFromSubtreeRule)
-
-ROLE(TERMINAL,
-     "terminal",
-     nullptr,
-     ATK_ROLE_TERMINAL,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_TERMINAL,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(TEXT_CONTAINER,
      "text container",
@@ -1036,9 +687,11 @@ ROLE(TEXT_CONTAINER,
      ATK_ROLE_SECTION,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_TEXT_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(TOGGLE_BUTTON,
@@ -1050,6 +703,8 @@ ROLE(TOGGLE_BUTTON,
      ROLE_SYSTEM_PUSHBUTTON,
      IA2_ROLE_TOGGLE_BUTTON,
      java::SessionAccessibility::CLASSNAME_TOGGLEBUTTON,
+     IsAccessibilityElementRule::Yes,
+     UIA_ButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(TREE_TABLE,
@@ -1061,39 +716,8 @@ ROLE(TREE_TABLE,
      ROLE_SYSTEM_OUTLINE,
      ROLE_SYSTEM_OUTLINE,
      java::SessionAccessibility::CLASSNAME_GRIDVIEW,
-     eNoNameRule)
-
-ROLE(VIEWPORT,
-     "viewport",
-     nullptr,
-     ATK_ROLE_VIEWPORT,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_PANE,
-     IA2_ROLE_VIEW_PORT,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(HEADER,
-     "header",
-     nullptr,
-     ATK_ROLE_HEADER,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_HEADER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(FOOTER,
-     "footer",
-     nullptr,
-     ATK_ROLE_FOOTER,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_FOOTER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DataGridControlTypeId,
      eNoNameRule)
 
 ROLE(PARAGRAPH,
@@ -1102,43 +726,12 @@ ROLE(PARAGRAPH,
      ATK_ROLE_PARAGRAPH,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_PARAGRAPH,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
      eNameFromSubtreeIfReqRule)
-
-ROLE(RULER,
-     "ruler",
-     nullptr,
-     ATK_ROLE_RULER,
-     NSAccessibilityRulerRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_RULER,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(AUTOCOMPLETE,
-     "autocomplete",
-     nullptr,
-     ATK_ROLE_AUTOCOMPLETE,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_COMBOBOX,
-     ROLE_SYSTEM_COMBOBOX,
-     java::SessionAccessibility::CLASSNAME_EDITTEXT,
-     eNoNameRule)
-
-ROLE(EDITBAR,
-     "editbar",
-     nullptr,
-     ATK_ROLE_EDITBAR,
-     NSAccessibilityTextFieldRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_TEXT,
-     IA2_ROLE_EDITBAR,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(ENTRY,
      "entry",
@@ -1149,6 +742,8 @@ ROLE(ENTRY,
      ROLE_SYSTEM_TEXT,
      ROLE_SYSTEM_TEXT,
      java::SessionAccessibility::CLASSNAME_EDITTEXT,
+     IsAccessibilityElementRule::Yes,
+     UIA_EditControlTypeId,
      eNameFromValueRule)
 
 ROLE(CAPTION,
@@ -1157,9 +752,11 @@ ROLE(CAPTION,
      ATK_ROLE_CAPTION,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_CAPTION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(NON_NATIVE_DOCUMENT,
@@ -1171,6 +768,8 @@ ROLE(NON_NATIVE_DOCUMENT,
      ROLE_SYSTEM_DOCUMENT,
      ROLE_SYSTEM_DOCUMENT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DocumentControlTypeId,
      eNoNameRule)
 
 ROLE(HEADING,
@@ -1179,21 +778,12 @@ ROLE(HEADING,
      ATK_ROLE_HEADING,
      @"AXHeading",
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_HEADING,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildless,
+     UIA_TextControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(PAGE,
-     "page",
-     nullptr,
-     ATK_ROLE_PAGE,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_PAGE,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(SECTION,
      "section",
@@ -1201,21 +791,12 @@ ROLE(SECTION,
      ATK_ROLE_SECTION,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_SECTION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
-
-ROLE(REDUNDANT_OBJECT,
-     "redundant object",
-     nullptr,
-     ATK_ROLE_REDUNDANT_OBJECT,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_REDUNDANT_OBJECT,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(FORM,
      "form",
@@ -1223,20 +804,11 @@ ROLE(FORM,
      ATK_ROLE_FORM,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_FORM,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
-
-ROLE(IME,
-     "ime",
-     nullptr,
-     ATK_ROLE_INPUT_METHOD_WINDOW,
-     NSAccessibilityUnknownRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_INPUT_METHOD_WINDOW,
-     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(APP_ROOT,
@@ -1248,6 +820,8 @@ ROLE(APP_ROOT,
      ROLE_SYSTEM_APPLICATION,
      ROLE_SYSTEM_APPLICATION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_WindowControlTypeId,
      eNoNameRule)
 
 ROLE(PARENT_MENUITEM,
@@ -1259,18 +833,9 @@ ROLE(PARENT_MENUITEM,
      ROLE_SYSTEM_MENUITEM,
      ROLE_SYSTEM_MENUITEM,
      java::SessionAccessibility::CLASSNAME_MENUITEM,
+     IsAccessibilityElementRule::Yes,
+     UIA_MenuItemControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(CALENDAR,
-     "calendar",
-     nullptr,
-     ATK_ROLE_CALENDAR,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     ROLE_SYSTEM_CLIENT,
-     ROLE_SYSTEM_CLIENT,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(COMBOBOX_LIST,
      "combobox list",
@@ -1281,6 +846,8 @@ ROLE(COMBOBOX_LIST,
      ROLE_SYSTEM_LIST,
      ROLE_SYSTEM_LIST,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::No,
+     UIA_ListControlTypeId,
      eNoNameRule)
 
 ROLE(COMBOBOX_OPTION,
@@ -1292,6 +859,8 @@ ROLE(COMBOBOX_OPTION,
      ROLE_SYSTEM_LISTITEM,
      ROLE_SYSTEM_LISTITEM,
      java::SessionAccessibility::CLASSNAME_MENUITEM,
+     IsAccessibilityElementRule::Yes,
+     UIA_ListItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(IMAGE_MAP,
@@ -1303,6 +872,8 @@ ROLE(IMAGE_MAP,
      ROLE_SYSTEM_GRAPHIC,
      ROLE_SYSTEM_GRAPHIC,
      java::SessionAccessibility::CLASSNAME_IMAGE,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ImageControlTypeId,
      eNoNameRule)
 
 ROLE(OPTION,
@@ -1314,6 +885,8 @@ ROLE(OPTION,
      ROLE_SYSTEM_LISTITEM,
      ROLE_SYSTEM_LISTITEM,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_ListItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(RICH_OPTION,
@@ -1325,6 +898,8 @@ ROLE(RICH_OPTION,
      ROLE_SYSTEM_LISTITEM,
      ROLE_SYSTEM_LISTITEM,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ListItemControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(LISTBOX,
@@ -1336,7 +911,9 @@ ROLE(LISTBOX,
      ROLE_SYSTEM_LIST,
      ROLE_SYSTEM_LIST,
      java::SessionAccessibility::CLASSNAME_LISTVIEW,
-     eNoNameRule)
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ListControlTypeId,
+     eNameFromValueRule)
 
 ROLE(FLAT_EQUATION,
      "flat equation",
@@ -1347,6 +924,8 @@ ROLE(FLAT_EQUATION,
      ROLE_SYSTEM_EQUATION,
      ROLE_SYSTEM_EQUATION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(GRID_CELL,
@@ -1358,18 +937,9 @@ ROLE(GRID_CELL,
      ROLE_SYSTEM_CELL,
      ROLE_SYSTEM_CELL,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DataItemControlTypeId,
      eNameFromSubtreeRule)
-
-ROLE(EMBEDDED_OBJECT,
-     "embedded object",
-     nullptr,
-     ATK_ROLE_PANEL,
-     NSAccessibilityGroupRole,
-     NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
-     IA2_ROLE_EMBEDDED_OBJECT,
-     java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
 
 ROLE(NOTE,
      "note",
@@ -1377,9 +947,11 @@ ROLE(NOTE,
      ATK_ROLE_COMMENT,
      NSAccessibilityGroupRole,
      @"AXDocumentNote",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_NOTE,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(FIGURE,
@@ -1391,6 +963,8 @@ ROLE(FIGURE,
      ROLE_SYSTEM_GROUPING,
      ROLE_SYSTEM_GROUPING,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(CHECK_RICH_OPTION,
@@ -1402,6 +976,8 @@ ROLE(CHECK_RICH_OPTION,
      ROLE_SYSTEM_CHECKBUTTON,
      ROLE_SYSTEM_CHECKBUTTON,
      java::SessionAccessibility::CLASSNAME_CHECKBOX,
+     IsAccessibilityElementRule::Yes,
+     UIA_CheckBoxControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(DEFINITION_LIST,
@@ -1413,28 +989,34 @@ ROLE(DEFINITION_LIST,
      ROLE_SYSTEM_LIST,
      ROLE_SYSTEM_LIST,
      java::SessionAccessibility::CLASSNAME_LISTVIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ListControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(TERM,
      "term",
-     nullptr,
+     nsGkAtoms::term,
      ATK_ROLE_DESCRIPTION_TERM,
      NSAccessibilityGroupRole,
      @"AXTerm",
      ROLE_SYSTEM_LISTITEM,
      ROLE_SYSTEM_LISTITEM,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(DEFINITION,
      "definition",
-     nullptr,
+     nsGkAtoms::definition,
      ATK_ROLE_PARAGRAPH,
      NSAccessibilityGroupRole,
      @"AXDescription",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_PARAGRAPH,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(KEY,
@@ -1446,6 +1028,8 @@ ROLE(KEY,
      ROLE_SYSTEM_PUSHBUTTON,
      ROLE_SYSTEM_PUSHBUTTON,
      java::SessionAccessibility::CLASSNAME_BUTTON,
+     IsAccessibilityElementRule::Yes,
+     UIA_ButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(SWITCH,
@@ -1457,6 +1041,8 @@ ROLE(SWITCH,
      ROLE_SYSTEM_CHECKBUTTON,
      IA2_ROLE_TOGGLE_BUTTON,
      java::SessionAccessibility::CLASSNAME_CHECKBOX,
+     IsAccessibilityElementRule::Yes,
+     UIA_ButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_MATH,
@@ -1468,6 +1054,8 @@ ROLE(MATHML_MATH,
      ROLE_SYSTEM_EQUATION,
      ROLE_SYSTEM_EQUATION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_IDENTIFIER,
@@ -1479,6 +1067,8 @@ ROLE(MATHML_IDENTIFIER,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_NUMBER,
@@ -1490,6 +1080,8 @@ ROLE(MATHML_NUMBER,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_OPERATOR,
@@ -1506,6 +1098,8 @@ ROLE(MATHML_OPERATOR,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_TEXT,
@@ -1517,6 +1111,8 @@ ROLE(MATHML_TEXT,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_STRING_LITERAL,
@@ -1528,6 +1124,8 @@ ROLE(MATHML_STRING_LITERAL,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_GLYPH,
@@ -1539,6 +1137,8 @@ ROLE(MATHML_GLYPH,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_IMAGE,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(MATHML_ROW,
@@ -1550,6 +1150,8 @@ ROLE(MATHML_ROW,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_FRACTION,
@@ -1561,6 +1163,8 @@ ROLE(MATHML_FRACTION,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_SQUARE_ROOT,
@@ -1572,6 +1176,8 @@ ROLE(MATHML_SQUARE_ROOT,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_ROOT,
@@ -1583,6 +1189,8 @@ ROLE(MATHML_ROOT,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_ENCLOSED,
@@ -1594,6 +1202,8 @@ ROLE(MATHML_ENCLOSED,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STYLE,
@@ -1605,6 +1215,8 @@ ROLE(MATHML_STYLE,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_SUB,
@@ -1616,6 +1228,8 @@ ROLE(MATHML_SUB,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_SUP,
@@ -1627,6 +1241,8 @@ ROLE(MATHML_SUP,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_SUB_SUP,
@@ -1638,6 +1254,8 @@ ROLE(MATHML_SUB_SUP,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_UNDER,
@@ -1649,6 +1267,8 @@ ROLE(MATHML_UNDER,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_OVER,
@@ -1660,6 +1280,8 @@ ROLE(MATHML_OVER,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_UNDER_OVER,
@@ -1671,6 +1293,8 @@ ROLE(MATHML_UNDER_OVER,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_MULTISCRIPTS,
@@ -1682,6 +1306,8 @@ ROLE(MATHML_MULTISCRIPTS,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_TABLE,
@@ -1693,6 +1319,8 @@ ROLE(MATHML_TABLE,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_GRIDVIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_LABELED_ROW,
@@ -1704,6 +1332,8 @@ ROLE(MATHML_LABELED_ROW,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_TABLE_ROW,
@@ -1715,6 +1345,8 @@ ROLE(MATHML_TABLE_ROW,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_CELL,
@@ -1726,6 +1358,8 @@ ROLE(MATHML_CELL,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_ACTION,
@@ -1737,6 +1371,8 @@ ROLE(MATHML_ACTION,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_ERROR,
@@ -1748,6 +1384,8 @@ ROLE(MATHML_ERROR,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STACK,
@@ -1759,6 +1397,8 @@ ROLE(MATHML_STACK,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_LONG_DIVISION,
@@ -1770,6 +1410,8 @@ ROLE(MATHML_LONG_DIVISION,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STACK_GROUP,
@@ -1781,6 +1423,8 @@ ROLE(MATHML_STACK_GROUP,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STACK_ROW,
@@ -1792,6 +1436,8 @@ ROLE(MATHML_STACK_ROW,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STACK_CARRIES,
@@ -1803,6 +1449,8 @@ ROLE(MATHML_STACK_CARRIES,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STACK_CARRY,
@@ -1814,6 +1462,8 @@ ROLE(MATHML_STACK_CARRY,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MATHML_STACK_LINE,
@@ -1825,6 +1475,8 @@ ROLE(MATHML_STACK_LINE,
      0,
      IA2_ROLE_UNKNOWN,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(RADIO_GROUP,
@@ -1836,6 +1488,8 @@ ROLE(RADIO_GROUP,
      ROLE_SYSTEM_GROUPING,
      ROLE_SYSTEM_GROUPING,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_ListControlTypeId,
      eNoNameRule)
 
 ROLE(TEXT,
@@ -1844,9 +1498,11 @@ ROLE(TEXT,
      ATK_ROLE_STATIC,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_TEXT_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(DETAILS,
@@ -1858,6 +1514,8 @@ ROLE(DETAILS,
      ROLE_SYSTEM_GROUPING,
      ROLE_SYSTEM_GROUPING,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(SUMMARY,
@@ -1869,6 +1527,8 @@ ROLE(SUMMARY,
      ROLE_SYSTEM_PUSHBUTTON,
      ROLE_SYSTEM_PUSHBUTTON,
      java::SessionAccessibility::CLASSNAME_BUTTON,
+     IsAccessibilityElementRule::Yes,
+     UIA_ButtonControlTypeId,
      eNameFromSubtreeRule)
 
 ROLE(LANDMARK,
@@ -1877,9 +1537,11 @@ ROLE(LANDMARK,
      ATK_ROLE_LANDMARK,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_LANDMARK,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(NAVIGATION,
@@ -1888,9 +1550,11 @@ ROLE(NAVIGATION,
      ATK_ROLE_LANDMARK,
      NSAccessibilityGroupRole,
      @"AXLandmarkNavigation",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_LANDMARK,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(FOOTNOTE,
@@ -1899,9 +1563,11 @@ ROLE(FOOTNOTE,
      ATK_ROLE_FOOTNOTE,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_FOOTNOTE,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(ARTICLE,
@@ -1913,6 +1579,8 @@ ROLE(ARTICLE,
      ROLE_SYSTEM_DOCUMENT,
      ROLE_SYSTEM_DOCUMENT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(REGION,
@@ -1921,9 +1589,11 @@ ROLE(REGION,
      ATK_ROLE_LANDMARK,
      NSAccessibilityGroupRole,
      @"AXLandmarkRegion",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_LANDMARK,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 // A composite widget with a text input and popup. Used for ARIA role combobox.
@@ -1937,6 +1607,8 @@ ROLE(EDITCOMBOBOX,
      ROLE_SYSTEM_COMBOBOX,
      ROLE_SYSTEM_COMBOBOX,
      java::SessionAccessibility::CLASSNAME_EDITTEXT,
+     IsAccessibilityElementRule::Yes,
+     UIA_ComboBoxControlTypeId,
      eNameFromValueRule)
 
 ROLE(BLOCKQUOTE,
@@ -1948,6 +1620,8 @@ ROLE(BLOCKQUOTE,
      ROLE_SYSTEM_GROUPING,
      IA2_ROLE_BLOCK_QUOTE,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(CONTENT_DELETION,
@@ -1956,10 +1630,12 @@ ROLE(CONTENT_DELETION,
      ATK_ROLE_CONTENT_DELETION,
      NSAccessibilityGroupRole,
      @"AXDeleteStyleGroup",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_CONTENT_DELETION,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
 
 ROLE(CONTENT_INSERTION,
      "content insertion",
@@ -1967,10 +1643,12 @@ ROLE(CONTENT_INSERTION,
      ATK_ROLE_CONTENT_INSERTION,
      NSAccessibilityGroupRole,
      @"AXInsertStyleGroup",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_CONTENT_INSERTION,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
 
 ROLE(FORM_LANDMARK,
      "form",
@@ -1978,9 +1656,11 @@ ROLE(FORM_LANDMARK,
      ATK_ROLE_LANDMARK,
      NSAccessibilityGroupRole,
      @"AXLandmarkForm",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_FORM,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(MARK,
@@ -1989,9 +1669,11 @@ ROLE(MARK,
      ATK_ROLE_MARK,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_MARK,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(SUGGESTION,
@@ -2000,9 +1682,11 @@ ROLE(SUGGESTION,
      ATK_ROLE_SUGGESTION,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_SUGGESTION,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(COMMENT,
@@ -2011,9 +1695,11 @@ ROLE(COMMENT,
      ATK_ROLE_COMMENT,
      NSAccessibilityGroupRole,
      NSAccessibilityUnknownSubrole,
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_COMMENT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNoNameRule)
 
 ROLE(CODE,
@@ -2022,10 +1708,12 @@ ROLE(CODE,
      ATK_ROLE_STATIC,
      NSAccessibilityGroupRole,
      @"AXCodeStyleGroup",
-     USE_ROLE_STRING,
+     ROLE_SYSTEM_GROUPING,
      IA2_ROLE_TEXT_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
 
 ROLE(TIME_EDITOR,
      "time editor",
@@ -2036,6 +1724,8 @@ ROLE(TIME_EDITOR,
      ROLE_SYSTEM_GROUPING,
      ROLE_SYSTEM_GROUPING,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(LISTITEM_MARKER,
@@ -2047,17 +1737,21 @@ ROLE(LISTITEM_MARKER,
      ROLE_SYSTEM_STATICTEXT,
      ROLE_SYSTEM_STATICTEXT,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
      eNoNameRule)
 
 ROLE(METER,
      "meter",
      nsGkAtoms::meter,
      ATK_ROLE_LEVEL_BAR,
-     @"AXLevelIndicator",
-     NSAccessibilityUnknownSubrole,
+     NSAccessibilityLevelIndicatorRole,
+     @"AXMeter",
      ROLE_SYSTEM_PROGRESSBAR,
      ROLE_SYSTEM_PROGRESSBAR,
      java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::Yes,
+     UIA_ProgressBarControlTypeId,
      eNameFromValueRule)
 
 ROLE(SUBSCRIPT,
@@ -2069,7 +1763,9 @@ ROLE(SUBSCRIPT,
      ROLE_SYSTEM_GROUPING,
      IA2_ROLE_TEXT_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
 
 ROLE(SUPERSCRIPT,
      "superscript",
@@ -2080,5 +1776,72 @@ ROLE(SUPERSCRIPT,
      ROLE_SYSTEM_GROUPING,
      IA2_ROLE_TEXT_FRAME,
      java::SessionAccessibility::CLASSNAME_VIEW,
-     eNoNameRule)
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
+
+ROLE(EMPHASIS,
+     "emphasis",
+     nsGkAtoms::emphasis,
+     ATK_ROLE_STATIC,
+     NSAccessibilityGroupRole,
+     @"AXEmphasisStyleGroup",
+     ROLE_SYSTEM_GROUPING,
+     IA2_ROLE_TEXT_FRAME,
+     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
+
+ROLE(STRONG,
+     "strong",
+     nsGkAtoms::strong,
+     ATK_ROLE_STATIC,
+     NSAccessibilityGroupRole,
+     @"AXStrongStyleGroup",
+     ROLE_SYSTEM_GROUPING,
+     IA2_ROLE_TEXT_FRAME,
+     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
+
+ROLE(TIME,
+     "time",
+     nsGkAtoms::time,
+     ATK_ROLE_STATIC,
+     NSAccessibilityGroupRole,
+     @"AXTimeGroup",
+     ROLE_SYSTEM_GROUPING,
+     ROLE_SYSTEM_GROUPING,
+     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_TextControlTypeId,
+     eNameFromSubtreeIfReqRule)
+
+ROLE(GRID,
+     "grid",
+     nsGkAtoms::grid,
+     ATK_ROLE_TABLE,
+     NSAccessibilityTableRole,
+     NSAccessibilityUnknownSubrole,
+     ROLE_SYSTEM_TABLE,
+     ROLE_SYSTEM_TABLE,
+     java::SessionAccessibility::CLASSNAME_GRIDVIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_DataGridControlTypeId,
+     eNameFromSubtreeIfReqRule)
+
+ROLE(ROWGROUP,
+     "rowgroup",
+     nsGkAtoms::rowgroup,
+     ATK_ROLE_PANEL,
+     NSAccessibilityGroupRole,
+     NSAccessibilityUnknownSubrole,
+     ROLE_SYSTEM_GROUPING,
+     ROLE_SYSTEM_GROUPING,
+     java::SessionAccessibility::CLASSNAME_VIEW,
+     IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
+     UIA_GroupControlTypeId,
+     eNameFromSubtreeIfReqRule)
 // clang-format on

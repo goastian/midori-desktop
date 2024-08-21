@@ -323,3 +323,135 @@ addAccessibleTask(
     });
   }
 );
+
+// Verify that removing the parent of a DOM-sibling aria-owned child keeps the
+// formerly-owned child in the tree.
+addAccessibleTask(
+  `<input id='x'></input><div aria-owns='x'></div>`,
+  async function (browser, accDoc) {
+    testAccessibleTree(accDoc, {
+      DOCUMENT: [{ SECTION: [{ ENTRY: [] }] }],
+    });
+
+    info("Removing the div that aria-owns a DOM sibling");
+    let onReorder = waitForEvent(EVENT_REORDER, accDoc);
+    await invokeContentTask(browser, [], () => {
+      content.document.querySelector("div").remove();
+    });
+    await onReorder;
+
+    info("Verifying that the formerly-owned child is still present");
+    testAccessibleTree(accDoc, {
+      DOCUMENT: [{ ENTRY: [] }],
+    });
+  },
+  { chrome: true, iframe: true, remoteIframe: true }
+);
+
+// Verify that removing the parent of multiple DOM-sibling aria-owned children
+// keeps all formerly-owned children in the tree.
+addAccessibleTask(
+  `<input id='x'></input><input id='y'><div aria-owns='x y'></div>`,
+  async function (browser, accDoc) {
+    testAccessibleTree(accDoc, {
+      DOCUMENT: [
+        {
+          SECTION: [{ ENTRY: [] }, { ENTRY: [] }],
+        },
+      ],
+    });
+
+    info("Removing the div that aria-owns DOM siblings");
+    let onReorder = waitForEvent(EVENT_REORDER, accDoc);
+    await invokeContentTask(browser, [], () => {
+      content.document.querySelector("div").remove();
+    });
+    await onReorder;
+
+    info("Verifying that the formerly-owned children are still present");
+    testAccessibleTree(accDoc, {
+      DOCUMENT: [{ ENTRY: [] }, { ENTRY: [] }],
+    });
+  },
+  { chrome: true, iframe: true, remoteIframe: true }
+);
+
+// Verify that reordering owned elements by changing the aria-owns attribute
+// properly reorders owned elements.
+addAccessibleTask(
+  `
+<div id="container" aria-owns="b d c a">
+  <div id="a" role="button"></div>
+  <div id="b" role="checkbox"></div>
+</div>
+<div id="c" role="radio"></div>
+<div id="d"></div>`,
+  async function (browser, accDoc) {
+    testAccessibleTree(accDoc, {
+      DOCUMENT: [
+        {
+          SECTION: [
+            { CHECKBUTTON: [] }, // b
+            { SECTION: [] }, // d
+            { RADIOBUTTON: [] }, // c
+            { PUSHBUTTON: [] }, // a
+          ],
+        },
+      ],
+    });
+
+    info("Removing the div that aria-owns other elements");
+    let onReorder = waitForEvent(EVENT_REORDER, accDoc);
+    await invokeContentTask(browser, [], () => {
+      content.document.querySelector("#container").remove();
+    });
+    await onReorder;
+
+    info(
+      "Verify DOM children are removed, order of remaining elements is correct"
+    );
+    testAccessibleTree(accDoc, {
+      DOCUMENT: [
+        { RADIOBUTTON: [] }, // c
+        { SECTION: [] }, // d
+      ],
+    });
+  },
+  { chrome: true, iframe: true, remoteIframe: true }
+);
+
+// Verify that we avoid sending unwanted hide events when doing multiple
+// aria-owns relocations in a single tick. Note that we're avoiding testing
+// chrome here since parent process locals don't track moves in the same way,
+// meaning our mechanism for avoiding duplicate hide events doesn't work.
+addAccessibleTask(
+  `
+<div id='b' aria-owns='a'></div>
+<div id='d'></div>
+<dd id='f'>
+  <div id='a' aria-owns='d'></div>
+</dd>
+  `,
+  async function (browser, accDoc) {
+    const b = findAccessibleChildByID(accDoc, "b");
+    const waitFor = {
+      expected: [
+        [EVENT_HIDE, b],
+        [EVENT_SHOW, "d"],
+        [EVENT_REORDER, accDoc],
+      ],
+      unexpected: [
+        [EVENT_HIDE, "d"],
+        [EVENT_REORDER, "a"],
+      ],
+    };
+    info(
+      "Verifying that events are fired properly after doing two aria-owns relocations"
+    );
+    await contentSpawnMutation(browser, waitFor, function () {
+      content.document.querySelector("#b").remove();
+      content.document.querySelector("#f").remove();
+    });
+  },
+  { chrome: false, iframe: true, remoteIframe: true }
+);

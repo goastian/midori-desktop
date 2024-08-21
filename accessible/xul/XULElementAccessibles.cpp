@@ -12,7 +12,7 @@
 #include "nsCoreUtils.h"
 #include "nsTextEquivUtils.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 #include "TextUpdater.h"
 
@@ -33,13 +33,13 @@ using namespace mozilla::a11y;
 
 XULLabelAccessible::XULLabelAccessible(nsIContent* aContent,
                                        DocAccessible* aDoc)
-    : HyperTextAccessibleWrap(aContent, aDoc) {
+    : HyperTextAccessible(aContent, aDoc) {
   mType = eXULLabelType;
 }
 
 void XULLabelAccessible::Shutdown() {
   mValueTextLeaf = nullptr;
-  HyperTextAccessibleWrap::Shutdown();
+  HyperTextAccessible::Shutdown();
 }
 
 void XULLabelAccessible::DispatchClickEvent(nsIContent* aContent,
@@ -65,11 +65,11 @@ role XULLabelAccessible::NativeRole() const { return roles::LABEL; }
 uint64_t XULLabelAccessible::NativeState() const {
   // Labels and description have read only state
   // They are not focusable or selectable
-  return HyperTextAccessibleWrap::NativeState() | states::READONLY;
+  return HyperTextAccessible::NativeState() | states::READONLY;
 }
 
 Relation XULLabelAccessible::RelationByType(RelationType aType) const {
-  Relation rel = HyperTextAccessibleWrap::RelationByType(aType);
+  Relation rel = HyperTextAccessible::RelationByType(aType);
 
   // The label for xul:groupbox is generated from the first xul:label
   if (aType == RelationType::LABEL_FOR) {
@@ -142,11 +142,11 @@ XULLinkAccessible::~XULLinkAccessible() {}
 void XULLinkAccessible::Value(nsString& aValue) const {
   aValue.Truncate();
 
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::href, aValue);
+  mContent->AsElement()->GetAttr(nsGkAtoms::href, aValue);
 }
 
 ENameValueFlag XULLinkAccessible::NativeName(nsString& aName) const {
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::value, aName);
+  mContent->AsElement()->GetAttr(nsGkAtoms::value, aName);
   if (!aName.IsEmpty()) return eNameOK;
 
   nsTextEquivUtils::GetNameFromSubtree(this, aName);
@@ -193,7 +193,7 @@ already_AddRefed<nsIURI> XULLinkAccessible::AnchorURIAt(
   if (aAnchorIndex != 0) return nullptr;
 
   nsAutoString href;
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
+  mContent->AsElement()->GetAttr(nsGkAtoms::href, href);
 
   dom::Document* document = mContent->OwnerDoc();
 

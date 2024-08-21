@@ -8,13 +8,19 @@
 #define COMPATIBILITY_MANAGER_H
 
 #include <windows.h>
-#include "mozilla/Maybe.h"
+#include "nsTArray.h"
 #include "nsString.h"
 
 #include <stdint.h>
 
-namespace mozilla {
-namespace a11y {
+namespace mozilla::a11y {
+
+enum class SuppressionReasons : uint8_t {
+  None = 0,
+  Clipboard = 1 << 0,
+  SnapLayouts = 1 << 1,
+};
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(SuppressionReasons);
 
 /**
  * Used to get compatibility modes. Note, modes are computed at accessibility
@@ -60,9 +66,7 @@ class Compatibility {
    */
   static void Init();
 
-  static Maybe<bool> OnUIAMessage(WPARAM aWParam, LPARAM aLParam);
-
-  static Maybe<DWORD> GetUiaRemotePid() { return sUiaRemotePid; }
+  static void GetUiaClientPids(nsTArray<DWORD>& aPids);
 
   /**
    * return true if a known, non-UIA a11y consumer is present
@@ -80,7 +84,11 @@ class Compatibility {
                                       unsigned long long aVersion);
 
   static void SuppressA11yForClipboardCopy();
-  static bool IsA11ySuppressedForClipboardCopy();
+  static void SuppressA11yForSnapLayouts();
+  static bool IsA11ySuppressed() {
+    return A11ySuppressionReasons() != SuppressionReasons::None;
+  }
+  static SuppressionReasons A11ySuppressionReasons();
 
  private:
   Compatibility();
@@ -112,11 +120,9 @@ class Compatibility {
 
  private:
   static uint32_t sConsumers;
-  static Maybe<DWORD> sUiaRemotePid;
 };
 
-}  // namespace a11y
-}  // namespace mozilla
+}  // namespace mozilla::a11y
 
 // Convert the 4 (decimal) components of a DLL version number into a
 // single unsigned long long, as needed by

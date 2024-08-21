@@ -208,6 +208,12 @@ addAccessibleTask(
   <ins id="ins">a</ins>
   <button id="button">b</button>
 </div>
+<p>
+  <span id="presentationalSpan" role="none"
+      style="display: block; position: absolute; top: 0; left: 0; translate: 1px;">
+    a
+  </span>
+</p>
   `,
   async function (browser, docAcc) {
     const div = findAccessibleChildByID(docAcc, "div");
@@ -228,6 +234,15 @@ addAccessibleTask(
       "block",
       "ins display attribute changed to block"
     );
+
+    // This span has role="none", but we force a generic Accessible because it
+    // has a transform. role="none" might have been used to avoid exposing
+    // display: block, so ensure we don't expose that.
+    const presentationalSpan = findAccessibleChildByID(
+      docAcc,
+      "presentationalSpan"
+    );
+    testAbsentAttrs(presentationalSpan, { display: "" });
   },
   { chrome: true, topLevel: true, iframe: true, remoteIframe: true }
 );
@@ -617,11 +632,8 @@ addAccessibleTask(
   async function (browser, docAcc) {
     const noAlt = findAccessibleChildByID(docAcc, "noAlt");
     testAttrs(noAlt, { src: kImgUrl }, true);
-    if (browser.isRemoteBrowser) {
-      // To avoid wasting memory, we don't cache src if there's a name.
-      const alt = findAccessibleChildByID(docAcc, "alt");
-      testAbsentAttrs(alt, { src: "" });
-    }
+    const alt = findAccessibleChildByID(docAcc, "alt");
+    testAttrs(alt, { src: kImgUrl }, true);
 
     const mutate = findAccessibleChildByID(docAcc, "mutate");
     testAbsentAttrs(mutate, { src: "" });
@@ -712,6 +724,40 @@ addAccessibleTask(
       "HTML",
       "mutate placeholder correct"
     );
+  },
+  { chrome: true, topLevel: true }
+);
+
+/**
+ * Test the ispopup attribute.
+ */
+addAccessibleTask(
+  `<div id="popover" popover>popover</div>`,
+  async function testIspopup(browser) {
+    info("Showing popover");
+    let shown = waitForEvent(EVENT_SHOW, "popover");
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("popover").showPopover();
+    });
+    let popover = (await shown).accessible;
+    testAttrs(popover, { ispopup: "auto" }, true);
+    info("Setting popover to null");
+    // Setting popover causes the Accessible to be recreated.
+    shown = waitForEvent(EVENT_SHOW, "popover");
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("popover").popover = null;
+    });
+    popover = (await shown).accessible;
+    testAbsentAttrs(popover, { ispopup: "" });
+    info("Setting popover to manual and showing");
+    shown = waitForEvent(EVENT_SHOW, "popover");
+    await invokeContentTask(browser, [], () => {
+      const popoverDom = content.document.getElementById("popover");
+      popoverDom.popover = "manual";
+      popoverDom.showPopover();
+    });
+    popover = (await shown).accessible;
+    testAttrs(popover, { ispopup: "manual" }, true);
   },
   { chrome: true, topLevel: true }
 );

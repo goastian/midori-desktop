@@ -7,11 +7,11 @@
 
 #include "CacheConstants.h"
 #include "nsCoreUtils.h"
-#include "DocAccessible.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 
 #include "nsContentUtils.h"
+#include "mozilla/a11y/DocAccessible.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/MutationEventBinding.h"
 
@@ -24,7 +24,7 @@ using namespace mozilla::a11y;
 
 HTMLLinkAccessible::HTMLLinkAccessible(nsIContent* aContent,
                                        DocAccessible* aDoc)
-    : HyperTextAccessibleWrap(aContent, aDoc) {
+    : HyperTextAccessible(aContent, aDoc) {
   mType = eHTMLLinkType;
 }
 
@@ -34,7 +34,7 @@ HTMLLinkAccessible::HTMLLinkAccessible(nsIContent* aContent,
 role HTMLLinkAccessible::NativeRole() const { return roles::LINK; }
 
 uint64_t HTMLLinkAccessible::NativeState() const {
-  return HyperTextAccessibleWrap::NativeState() & ~states::READONLY;
+  return HyperTextAccessible::NativeState() & ~states::READONLY;
 }
 
 uint64_t HTMLLinkAccessible::NativeLinkState() const {
@@ -54,12 +54,12 @@ uint64_t HTMLLinkAccessible::NativeLinkState() const {
 }
 
 uint64_t HTMLLinkAccessible::NativeInteractiveState() const {
-  uint64_t state = HyperTextAccessibleWrap::NativeInteractiveState();
+  uint64_t state = HyperTextAccessible::NativeInteractiveState();
 
   // This is how we indicate it is a named anchor. In other words, this anchor
   // can be selected as a location :) There is no other better state to use to
   // indicate this.
-  if (mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::name)) {
+  if (mContent->AsElement()->HasAttr(nsGkAtoms::name)) {
     state |= states::SELECTABLE;
   }
 
@@ -94,7 +94,7 @@ void HTMLLinkAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName) {
 
 bool HTMLLinkAccessible::AttributeChangesState(nsAtom* aAttribute) {
   return aAttribute == nsGkAtoms::href ||
-         HyperTextAccessibleWrap::AttributeChangesState(aAttribute);
+         HyperTextAccessible::AttributeChangesState(aAttribute);
 }
 
 void HTMLLinkAccessible::DOMAttributeChanged(int32_t aNameSpaceID,
@@ -102,14 +102,25 @@ void HTMLLinkAccessible::DOMAttributeChanged(int32_t aNameSpaceID,
                                              int32_t aModType,
                                              const nsAttrValue* aOldValue,
                                              uint64_t aOldState) {
-  HyperTextAccessibleWrap::DOMAttributeChanged(aNameSpaceID, aAttribute,
-                                               aModType, aOldValue, aOldState);
+  HyperTextAccessible::DOMAttributeChanged(aNameSpaceID, aAttribute, aModType,
+                                           aOldValue, aOldState);
 
   if (aAttribute == nsGkAtoms::href &&
       (aModType == dom::MutationEvent_Binding::ADDITION ||
        aModType == dom::MutationEvent_Binding::REMOVAL)) {
-    SendCache(CacheDomain::Actions, CacheUpdateType::Update);
+    mDoc->QueueCacheUpdate(this, CacheDomain::Actions);
   }
+}
+
+ENameValueFlag HTMLLinkAccessible::NativeName(nsString& aName) const {
+  if (mContent->IsSVGElement()) {
+    mContent->AsElement()->GetAttr(kNameSpaceID_XLink, nsGkAtoms::title, aName);
+    if (!aName.IsEmpty()) {
+      return eNameOK;
+    }
+  }
+
+  return HyperTextAccessible::NativeName(aName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

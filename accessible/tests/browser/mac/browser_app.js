@@ -4,6 +4,9 @@
 
 "use strict";
 
+const { UrlbarTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/UrlbarTestUtils.sys.mjs"
+);
 /* import-globals-from ../../mochitest/role.js */
 /* import-globals-from ../../mochitest/states.js */
 loadScripts(
@@ -135,7 +138,7 @@ add_task(async () => {
       gBrowser,
       url: "about:license",
     },
-    async browser => {
+    async () => {
       let root = await getMacAccessible(document);
       let rootChildCount = () => root.getAttributeValue("AXChildren").length;
 
@@ -203,8 +206,10 @@ add_task(async () => {
       is(rootChildCount(), baseRootChildCount + 1, "Root has another child");
 
       // Close popup
+      let hide = waitForMacEvent("AXUIElementDestroyed");
       EventUtils.synthesizeKey("KEY_Escape");
       await BrowserTestUtils.waitForPopupEvent(identityPopup, "hidden");
+      await hide;
 
       // We're back to the base child count
       is(rootChildCount(), baseRootChildCount, "Root has the base child count");
@@ -222,12 +227,45 @@ add_task(async () => {
       // eslint-disable-next-line @microsoft/sdl/no-insecure-url
       url: "http://example.com",
     },
-    async browser => {
-      let input = await getMacAccessible("urlbar-input");
+    async () => {
+      let input = await getMacAccessible(gURLBar.inputField);
       is(
         input.getAttributeValue("AXValue"),
-        "example.com",
+        // eslint-disable-next-line @microsoft/sdl/no-insecure-url
+        UrlbarTestUtils.trimURL("http://example.com"),
         "Location bar has correct value"
+      );
+    }
+  );
+});
+
+/**
+ * Tests attributed text in nav bar has no invisible AXAttachments
+ */
+add_task(async () => {
+  await BrowserTestUtils.withNewTab(
+    {
+      gBrowser,
+      // eslint-disable-next-line @microsoft/sdl/no-insecure-url
+      url: "http://example.com",
+    },
+    async () => {
+      let root = await getMacAccessible(document);
+      let navBar = await getMacAccessible("nav-bar");
+      let elemRange = root.getParameterizedAttributeValue(
+        "AXTextMarkerRangeForUIElement",
+        navBar
+      );
+      let attributedString = root.getParameterizedAttributeValue(
+        "AXAttributedStringForTextMarkerRange",
+        elemRange
+      );
+      let attachmentRoles = attributedString.map(s =>
+        s.AXAttachment ? s.AXAttachment.getAttributeValue("AXRole") : null
+      );
+      ok(
+        !attachmentRoles.includes("AXMenu"),
+        "Collapsed menu should be embedded in attributed text"
       );
     }
   );

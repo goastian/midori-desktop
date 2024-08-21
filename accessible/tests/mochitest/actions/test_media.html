@@ -21,6 +21,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=483573
           src="../states.js"></script>
 
   <script type="application/javascript">
+    SimpleTest.requestCompleteLog(); // To help diagnose bug 1845221
 
     // gA11yEventDumpID = "eventDump";
     // gA11yEventDumpToConsole = true; // debug stuff
@@ -31,7 +32,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=483573
       this.getID = function focusChecker_getID() {
         return "focus handling";
       };
-      this.check = function focusChecker_check(aEvent) {
+      this.check = function focusChecker_check() {
         testStates(this.target, STATE_FOCUSED);
       };
     }

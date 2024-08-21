@@ -5,8 +5,10 @@
 
 #include "NotificationController.h"
 
+#include "CssAltContent.h"
 #include "DocAccessible-inl.h"
 #include "DocAccessibleChild.h"
+#include "LocalAccessible-inl.h"
 #include "nsEventShell.h"
 #include "TextLeafAccessible.h"
 #include "TextUpdater.h"
@@ -107,7 +109,7 @@ void NotificationController::Shutdown() {
 
   mDocument = nullptr;
 
-  mTextHash.Clear();
+  mTextArray.Clear();
   mContentInsertions.Clear();
   mNotifications.Clear();
   mFocusEvent = nullptr;
@@ -149,6 +151,13 @@ bool NotificationController::QueueMutationEvent(AccTreeMutationEvent* aEvent) {
       AccTreeMutationEvent* showEvent =
           mMutationMap.GetEvent(aEvent->GetAccessible(), EventMap::ShowEvent);
       DropMutationEvent(showEvent);
+      return false;
+    }
+
+    // Don't queue a hide event on an accessible that's already being moved. It
+    // or an ancestor should already have a hide event queued.
+    if (mDocument &&
+        mDocument->IsAccessibleBeingMoved(aEvent->GetAccessible())) {
       return false;
     }
 
@@ -303,7 +312,10 @@ bool NotificationController::QueueMutationEvent(AccTreeMutationEvent* aEvent) {
 }
 
 void NotificationController::DropMutationEvent(AccTreeMutationEvent* aEvent) {
-  if (aEvent->GetEventType() == nsIAccessibleEvent::EVENT_REORDER) {
+  const uint32_t eventType = aEvent->GetEventType();
+  MOZ_ASSERT(eventType != nsIAccessibleEvent::EVENT_INNER_REORDER,
+             "Inner reorder has already been dropped, cannot drop again");
+  if (eventType == nsIAccessibleEvent::EVENT_REORDER) {
     // We don't fully drop reorder events, we just change them to inner reorder
     // events.
     AccReorderEvent* reorderEvent = downcast_accEvent(aEvent);
@@ -311,10 +323,11 @@ void NotificationController::DropMutationEvent(AccTreeMutationEvent* aEvent) {
     MOZ_ASSERT(reorderEvent);
     reorderEvent->SetInner();
     return;
-  } else if (aEvent->GetEventType() == nsIAccessibleEvent::EVENT_SHOW) {
+  }
+  if (eventType == nsIAccessibleEvent::EVENT_SHOW) {
     // unset the event bits since the event isn't being fired any more.
     aEvent->GetAccessible()->SetShowEventTarget(false);
-  } else {
+  } else if (eventType == nsIAccessibleEvent::EVENT_HIDE) {
     // unset the event bits since the event isn't being fired any more.
     aEvent->GetAccessible()->SetHideEventTarget(false);
 
@@ -324,6 +337,8 @@ void NotificationController::DropMutationEvent(AccTreeMutationEvent* aEvent) {
     if (hideEvent->NeedsShutdown()) {
       mDocument->ShutdownChildrenInSubtree(aEvent->GetAccessible());
     }
+  } else {
+    MOZ_ASSERT_UNREACHABLE("Mutation event has non-mutation event type");
   }
 
   // Do the work to splice the event out of the list.
@@ -463,10 +478,10 @@ void NotificationController::ScheduleProcessing() {
 // NotificationCollector: protected
 
 bool NotificationController::IsUpdatePending() {
-  return mPresShell->IsLayoutFlushObserver() ||
+  return mPresShell->ObservingStyleFlushes() ||
          mObservingState == eRefreshProcessingForUpdate || WaitingForParent() ||
          mContentInsertions.Count() != 0 || mNotifications.Length() != 0 ||
-         mTextHash.Count() != 0 ||
+         !mTextArray.IsEmpty() ||
          !mDocument->HasLoadState(DocAccessible::eTreeConstructed);
 }
 
@@ -531,15 +546,15 @@ void NotificationController::ProcessMutationEvents() {
                     const AccTreeMutationEvent* b) const {
         int32_t aIdx = a->GetAccessible()->IndexInParent();
         int32_t bIdx = b->GetAccessible()->IndexInParent();
-        MOZ_ASSERT(aIdx >= 0 && bIdx >= 0 && aIdx != bIdx);
+        MOZ_ASSERT(aIdx >= 0 && bIdx >= 0 && (a == b || aIdx != bIdx));
         return aIdx < bIdx;
       }
       bool Equals(const AccTreeMutationEvent* a,
                   const AccTreeMutationEvent* b) const {
         DebugOnly<int32_t> aIdx = a->GetAccessible()->IndexInParent();
         DebugOnly<int32_t> bIdx = b->GetAccessible()->IndexInParent();
-        MOZ_ASSERT(aIdx >= 0 && bIdx >= 0 && aIdx != bIdx);
-        return false;
+        MOZ_ASSERT(aIdx >= 0 && bIdx >= 0 && (a == b || aIdx != bIdx));
+        return a == b;
       }
     };
 
@@ -741,8 +756,14 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
 
   mDocument->ProcessPendingUpdates();
 
-  // Process rendered text change notifications.
-  for (nsIContent* textNode : mTextHash) {
+  // Process rendered text change notifications. Even though we want to process
+  // them in the order in which they were queued, we still want to avoid
+  // duplicates.
+  nsTHashSet<nsIContent*> textHash;
+  for (nsIContent* textNode : mTextArray) {
+    if (!textHash.EnsureInserted(textNode)) {
+      continue;  // Already processed.
+    }
     LocalAccessible* textAcc = mDocument->GetAccessible(textNode);
 
     // If the text node is not in tree or doesn't have a frame, or placed in
@@ -803,6 +824,14 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
       }
 #endif
 
+      if (CssAltContent(textNode)) {
+        // A11y doesn't care about the text rendered by layout if there is CSS
+        // content alt text. We skip this here rather than when the update is
+        // queued because the TextLeafAccessible might not exist yet and we
+        // might need to create it below.
+        continue;
+      }
+
       TextUpdater::Run(mDocument, textAcc->AsTextLeaf(), text.mString);
       continue;
     }
@@ -831,7 +860,8 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
       }
     }
   }
-  mTextHash.Clear();
+  textHash.Clear();
+  mTextArray.Clear();
 
   // Process content inserted notifications to update the tree.
   // Processing an insertion can indirectly run script (e.g. querying a XUL
@@ -1012,9 +1042,6 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
             ->SendPDocAccessibleConstructor(
                 ipcDoc, parentIPCDoc, id,
                 childDoc->DocumentNode()->GetBrowsingContext());
-#ifndef XP_WIN
-        ipcDoc->SendPDocAccessiblePlatformExtConstructor();
-#endif
       }
     }
   }
@@ -1036,7 +1063,7 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
   // Stop further processing if there are no new notifications of any kind or
   // events and document load is processed.
   if (mContentInsertions.Count() == 0 && mNotifications.IsEmpty() &&
-      !mFocusEvent && mEvents.IsEmpty() && mTextHash.Count() == 0 &&
+      !mFocusEvent && mEvents.IsEmpty() && mTextArray.IsEmpty() &&
       mHangingChildDocuments.IsEmpty() &&
       mDocument->HasLoadState(DocAccessible::eCompletelyLoaded) &&
       mPresShell->RemoveRefreshObserver(this, FlushType::Display)) {

@@ -20,7 +20,7 @@ const gActionDescrMap = {
   expand: "Expand",
   activate: "Activate",
   cycle: "Cycle",
-  clickAncestor: "Click ancestor",
+  "click ancestor": "Click ancestor",
 };
 
 async function testActions(browser, docAcc, id, expectedActions, domEvents) {
@@ -92,6 +92,19 @@ addAccessibleTask(
           src="http://example.com/a11y/accessible/tests/mochitest/moz.png">
   </a>
 
+  <a href="about:mozilla" id="link4" target="_blank" rel="opener">
+    <img src="../moz.png" id="link4img">
+  </a>
+  <a id="link5" onmousedown="">
+    <img src="../moz.png" id="link5img">
+  </a>
+  <a id="link6" onclick="">
+    <img src="../moz.png" id="link6img">
+  </a>
+  <a id="link7" onmouseup="">
+    <img src="../moz.png" id="link7img">
+  </a>
+
   <div>
     <label for="TextBox_t2" id="label1">
       <span>Explicit</span>
@@ -116,9 +129,17 @@ addAccessibleTask(
     await _testActions("link1", ["jump"], gClickEvents);
     await _testActions("link2", ["click"], gClickEvents);
     await _testActions("link3", ["jump"], gClickEvents);
-    await _testActions("link3img", ["clickAncestor"], gClickEvents);
+    await _testActions("link3img", ["click ancestor"], gClickEvents);
+    await _testActions("link4", ["jump"], gClickEvents);
+    await _testActions("link4img", ["click ancestor"], gClickEvents);
+    await _testActions("link5", ["click"], gClickEvents);
+    await _testActions("link5img", ["click ancestor"], gClickEvents);
+    await _testActions("link6", ["click"], gClickEvents);
+    await _testActions("link6img", ["click ancestor"], gClickEvents);
+    await _testActions("link7", ["click"], gClickEvents);
+    await _testActions("link7img", ["click ancestor"], gClickEvents);
     await _testActions("label1", ["click"], gClickEvents);
-    await _testActions("p_in_clickable_div", ["clickAncestor"], gClickEvents);
+    await _testActions("p_in_clickable_div", ["click ancestor"], gClickEvents);
 
     await invokeContentTask(browser, [], () => {
       content.document
@@ -171,16 +192,24 @@ addAccessibleTask(
     await _testActions("onclick_img", ["showlongdesc"]);
 
     // Remove 'href' from link and test linkable child
-    const link1Acc = findAccessibleChildByID(docAcc, "link1");
+    let link1Acc = findAccessibleChildByID(docAcc, "link1");
     is(
       link1Acc.firstChild.getActionName(0),
-      "clickAncestor",
-      "linkable child has clickAncestor action"
+      "click ancestor",
+      "linkable child has click ancestor action"
     );
+    let onRecreation = waitForEvents({
+      expected: [
+        [EVENT_HIDE, link1Acc],
+        [EVENT_SHOW, "link1"],
+      ],
+    });
     await invokeContentTask(browser, [], () => {
       let link1 = content.document.getElementById("link1");
       link1.removeAttribute("href");
     });
+    await onRecreation;
+    link1Acc = findAccessibleChildByID(docAcc, "link1");
     await untilCacheIs(() => link1Acc.actionCount, 0, "link has no actions");
     is(link1Acc.firstChild.actionCount, 0, "linkable child's actions removed");
 
@@ -189,7 +218,7 @@ addAccessibleTask(
       content.document.body.onclick = () => {};
     });
     await untilCacheIs(() => docAcc.actionCount, 1, "Doc has 1 action");
-    await _testActions("link1", ["clickAncestor"]);
+    await _testActions("link1", ["click ancestor"]);
 
     await invokeContentTask(browser, [], () => {
       content.document.body.onclick = null;
@@ -203,7 +232,7 @@ addAccessibleTask(
       content.document.documentElement.onclick = () => {};
     });
     await untilCacheIs(() => docAcc.actionCount, 1, "Doc has 1 action");
-    await _testActions("link1", ["clickAncestor"]);
+    await _testActions("link1", ["click ancestor"]);
   },
   {
     chrome: true,

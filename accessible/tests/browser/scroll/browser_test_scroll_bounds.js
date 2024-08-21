@@ -13,13 +13,19 @@ requestLongerTimeout(2);
 
 const appUnitsPerDevPixel = 60;
 
-function testCachedScrollPosition(acc, expectedX, expectedY) {
+function testCachedScrollPosition(
+  acc,
+  expectedX,
+  expectedY,
+  shouldBeEmpty = false
+) {
   let cachedPosition = "";
   try {
     cachedPosition = acc.cache.getStringProperty("scroll-position");
   } catch (e) {
-    // If the key doesn't exist, this means 0, 0.
-    cachedPosition = "0, 0";
+    info("Cache was not populated");
+    // If the key doesn't exist, this frame is not scrollable.
+    return shouldBeEmpty;
   }
 
   // The value we retrieve from the cache is in app units, but the values
@@ -232,7 +238,11 @@ addAccessibleTask(
       newTopBounds[0],
       "x of non-fixed element remains accurate."
     );
-    ok(newTopBounds[1] < 0, "y coordinate shows item scrolled off page");
+    Assert.less(
+      newTopBounds[1],
+      0,
+      "y coordinate shows item scrolled off page"
+    );
     is(
       origTopBounds[2],
       newTopBounds[2],
@@ -248,7 +258,11 @@ addAccessibleTask(
       newDBounds[0],
       "x of non-fixed container element remains accurate."
     );
-    ok(newDBounds[1] < 0, "y coordinate shows container scrolled off page");
+    Assert.less(
+      newDBounds[1],
+      0,
+      "y coordinate shows container scrolled off page"
+    );
     // Removing the position styling on this acc causes it to be bound by
     // its parent's bounding box, which alters its width as a block element.
     // We don't particularly care about width in this test, so skip it.
@@ -475,7 +489,7 @@ addAccessibleTask(
         newBounds[0],
         `x coord of non-sticky element remains accurate.`
       );
-      ok(newBounds[1] < 0, "y coordinate shows item scrolled off page");
+      Assert.less(newBounds[1], 0, "y coordinate shows item scrolled off page");
 
       // Removing the position styling on this acc causes it to be bound by
       // its parent's bounding box, which alters its width as a block element.
@@ -603,4 +617,54 @@ addAccessibleTask(
     assertBoundsFuzzyEqual(newMutateBounds, origMutateBounds);
   },
   { chrome: true, iframe: true, remoteIframe: true }
+);
+
+/**
+ * Test scroll offset on non-scrollable accs
+ */
+addAccessibleTask(
+  `
+  <div id='square' style='height:100px; width: 100px; background:green;'>hello world
+  </div>
+  `,
+  async function (browser, docAcc) {
+    const square = findAccessibleChildByID(docAcc, "square");
+    await untilCacheOk(
+      () => testCachedScrollPosition(square, 0, 0, true),
+      "Square is not scrollable."
+    );
+
+    info("Adding more text content to square");
+    await invokeContentTask(browser, [], () => {
+      const s = content.document.getElementById("square");
+      s.textContent =
+        "hello world I am some text and I should overflow this container because I am very long";
+      s.offsetTop; // Flush layout.
+    });
+
+    await waitForContentPaint(browser);
+
+    await untilCacheOk(
+      () => testCachedScrollPosition(square, 0, 0, true),
+      "Square is not scrollable (still has overflow:visible)."
+    );
+
+    info("Adding overflow:auto; styling");
+    await invokeContentTask(browser, [], () => {
+      const s = content.document.getElementById("square");
+      s.setAttribute(
+        "style",
+        "overflow:auto; height:100px; width: 100px; background:green;"
+      );
+      s.offsetTop; // Flush layout.
+    });
+
+    await waitForContentPaint(browser);
+
+    await untilCacheOk(
+      () => testCachedScrollPosition(square, 0, 0),
+      "Square is scrollable."
+    );
+  },
+  { iframe: true, remoteIframe: true }
 );

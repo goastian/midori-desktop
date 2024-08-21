@@ -7,26 +7,52 @@
 #ifndef mozilla_a11y_uiaRawElmProvider_h__
 #define mozilla_a11y_uiaRawElmProvider_h__
 
-#include "objbase.h"
-#include "AccessibleWrap.h"
-#include "IUnknownImpl.h"
-#include "uiautomation.h"
+#include <objbase.h>
+#include <stdint.h>
+#include <uiautomation.h>
+
+#include <initializer_list>
+
+#include "nsString.h"
+
+template <class T>
+class nsTArray;
+template <class T>
+class RefPtr;
 
 namespace mozilla {
 namespace a11y {
 
-class AccessibleWrap;
+class Accessible;
+enum class RelationType;
 
 /**
  * IRawElementProviderSimple implementation (maintains IAccessibleEx approach).
  */
-class uiaRawElmProvider final : public IAccessibleEx,
-                                public IRawElementProviderSimple {
+class uiaRawElmProvider : public IAccessibleEx,
+                          public IRawElementProviderSimple,
+                          public IRawElementProviderFragment,
+                          public IInvokeProvider,
+                          public IToggleProvider,
+                          public IExpandCollapseProvider,
+                          public IScrollItemProvider,
+                          public IValueProvider,
+                          public IRangeValueProvider,
+                          public ISelectionProvider,
+                          public ISelectionItemProvider {
  public:
-  explicit uiaRawElmProvider(AccessibleWrap* aAcc) : mAcc(aAcc) {}
+  static constexpr enum ProviderOptions kProviderOptions =
+      static_cast<enum ProviderOptions>(ProviderOptions_ServerSideProvider |
+                                        ProviderOptions_UseComThreading |
+                                        ProviderOptions_HasNativeIAccessible);
+
+  static void RaiseUiaEventForGeckoEvent(Accessible* aAcc,
+                                         uint32_t aGeckoEvent);
+  static void RaiseUiaEventForStateChange(Accessible* aAcc, uint64_t aState,
+                                          bool aEnabled);
 
   // IUnknown
-  DECL_IUNKNOWN
+  STDMETHODIMP QueryInterface(REFIID aIid, void** aInterface);
 
   // IAccessibleEx
   virtual HRESULT STDMETHODCALLTYPE GetObjectForChild(
@@ -60,14 +86,120 @@ class uiaRawElmProvider final : public IAccessibleEx,
       /* [retval][out] */ __RPC__deref_out_opt IRawElementProviderSimple**
           aRawElmProvider);
 
- private:
-  uiaRawElmProvider() = delete;
-  uiaRawElmProvider& operator=(const uiaRawElmProvider&) = delete;
-  uiaRawElmProvider(const uiaRawElmProvider&) = delete;
+  // IRawElementProviderFragment
+  virtual HRESULT STDMETHODCALLTYPE Navigate(
+      /* [in] */ enum NavigateDirection aDirection,
+      /* [retval][out] */ __RPC__deref_out_opt IRawElementProviderFragment**
+          aRetVal);
 
- protected:
-  RefPtr<AccessibleWrap> mAcc;
+  // GetRuntimeId is shared with IAccessibleEx.
+
+  virtual HRESULT STDMETHODCALLTYPE get_BoundingRectangle(
+      /* [retval][out] */ __RPC__out struct UiaRect* aRetVal);
+
+  virtual HRESULT STDMETHODCALLTYPE GetEmbeddedFragmentRoots(
+      /* [retval][out] */ __RPC__deref_out_opt SAFEARRAY** aRetVal);
+
+  virtual HRESULT STDMETHODCALLTYPE SetFocus(void);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_FragmentRoot(
+      /* [retval][out] */ __RPC__deref_out_opt IRawElementProviderFragmentRoot**
+          aRetVal);
+
+  // IInvokeProvider
+  virtual HRESULT STDMETHODCALLTYPE Invoke(void);
+
+  // IToggleProvider
+  virtual HRESULT STDMETHODCALLTYPE Toggle(void);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_ToggleState(
+      /* [retval][out] */ __RPC__out enum ToggleState* aRetVal);
+
+  // IExpandCollapseProvider
+  virtual HRESULT STDMETHODCALLTYPE Expand(void);
+
+  virtual HRESULT STDMETHODCALLTYPE Collapse(void);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_ExpandCollapseState(
+      /* [retval][out] */ __RPC__out enum ExpandCollapseState* aRetVal);
+
+  // IScrollItemProvider
+  virtual HRESULT STDMETHODCALLTYPE ScrollIntoView(void);
+
+  // IValueProvider
+  virtual HRESULT STDMETHODCALLTYPE SetValue(
+      /* [in] */ __RPC__in LPCWSTR val);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Value(
+      /* [retval][out] */ __RPC__deref_out_opt BSTR* pRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_IsReadOnly(
+      /* [retval][out] */ __RPC__out BOOL* pRetVal);
+
+  // IRangeValueProvider
+  virtual HRESULT STDMETHODCALLTYPE SetValue(
+      /* [in] */ double aVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Value(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  // get_IsReadOnly is shared with IValueProvider.
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Maximum(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Minimum(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_LargeChange(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_SmallChange(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  // ISelectionProvider
+  virtual HRESULT STDMETHODCALLTYPE GetSelection(
+      /* [retval][out] */ __RPC__deref_out_opt SAFEARRAY** aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_CanSelectMultiple(
+      /* [retval][out] */ __RPC__out BOOL* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(
+      /* [retval][out] */ __RPC__out BOOL* aRetVal);
+
+  // ISelectionItemProvider methods
+  virtual HRESULT STDMETHODCALLTYPE Select(void);
+
+  virtual HRESULT STDMETHODCALLTYPE AddToSelection(void);
+
+  virtual HRESULT STDMETHODCALLTYPE RemoveFromSelection(void);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_IsSelected(
+      /* [retval][out] */ __RPC__out BOOL* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_SelectionContainer(
+      /* [retval][out] */ __RPC__deref_out_opt IRawElementProviderSimple**
+          aRetVal);
+
+ private:
+  Accessible* Acc() const;
+  bool IsControl();
+  long GetControlType() const;
+  bool HasTogglePattern();
+  bool HasExpandCollapsePattern();
+  bool HasValuePattern() const;
+  template <class Derived, class Interface>
+  RefPtr<Interface> GetPatternFromDerived();
+  bool HasSelectionItemPattern();
+  SAFEARRAY* AccRelationsToUiaArray(
+      std::initializer_list<RelationType> aTypes) const;
+  Accessible* GetLabeledBy() const;
+  long GetLandmarkType() const;
+  void GetLocalizedLandmarkType(nsAString& aLocalized) const;
+  long GetLiveSetting() const;
 };
+
+SAFEARRAY* AccessibleArrayToUiaArray(const nsTArray<Accessible*>& aAccs);
 
 }  // namespace a11y
 }  // namespace mozilla

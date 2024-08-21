@@ -134,35 +134,18 @@ using namespace mozilla::a11y;
 
 @end
 
-@implementation mozIncrementableAccessible
+@implementation mozRangeAccessible
 
 - (id)moxValue {
   return [NSNumber numberWithDouble:mGeckoAccessible->CurValue()];
 }
 
-- (NSString*)moxValueDescription {
-  nsAutoString valueDesc;
-  mGeckoAccessible->Value(valueDesc);
-  return nsCocoaUtils::ToNSString(valueDesc);
-}
 - (id)moxMinValue {
   return [NSNumber numberWithDouble:mGeckoAccessible->MinValue()];
 }
 
 - (id)moxMaxValue {
   return [NSNumber numberWithDouble:mGeckoAccessible->MaxValue()];
-}
-
-- (void)moxSetValue:(id)value {
-  [self setValue:([value doubleValue])];
-}
-
-- (void)moxPerformIncrement {
-  [self changeValueBySteps:1];
-}
-
-- (void)moxPerformDecrement {
-  [self changeValueBySteps:-1];
 }
 
 - (NSString*)moxOrientation {
@@ -190,6 +173,70 @@ using namespace mozilla::a11y;
       [super handleAccessibleEvent:eventType];
       break;
   }
+}
+
+@end
+
+@implementation mozMeterAccessible
+
+- (NSString*)moxValueDescription {
+  nsAutoString valueDesc;
+  mGeckoAccessible->Value(valueDesc);
+  if (mGeckoAccessible->TagName() != nsGkAtoms::meter) {
+    // We're dealing with an aria meter, which shouldn't get
+    // a value region.
+    return nsCocoaUtils::ToNSString(valueDesc);
+  }
+
+  if (!valueDesc.IsEmpty()) {
+    // Append a comma to separate the existing value description
+    // from the value region.
+    valueDesc.Append(u", "_ns);
+  }
+  // We need to concat the given value description
+  // with a description of the value as either optimal,
+  // suboptimal, or critical.
+  int32_t region;
+  if (mGeckoAccessible->IsRemote()) {
+    region = mGeckoAccessible->AsRemote()->ValueRegion();
+  } else {
+    HTMLMeterAccessible* localMeter =
+        static_cast<HTMLMeterAccessible*>(mGeckoAccessible->AsLocal());
+    region = localMeter->ValueRegion();
+  }
+
+  if (region == 1) {
+    valueDesc.Append(u"Optimal value"_ns);
+  } else if (region == 0) {
+    valueDesc.Append(u"Suboptimal value"_ns);
+  } else {
+    MOZ_ASSERT(region == -1);
+    valueDesc.Append(u"Critical value"_ns);
+  }
+
+  return nsCocoaUtils::ToNSString(valueDesc);
+}
+
+@end
+
+@implementation mozIncrementableAccessible
+
+- (NSString*)moxValueDescription {
+  nsAutoString valueDesc;
+  mGeckoAccessible->Value(valueDesc);
+  return nsCocoaUtils::ToNSString(valueDesc);
+}
+
+- (void)moxSetValue:(id)value {
+  [self setValue:([value doubleValue])];
+}
+
+- (void)moxPerformIncrement {
+  [self changeValueBySteps:1];
+}
+
+- (void)moxPerformDecrement {
+  [self changeValueBySteps:-1];
 }
 
 /*

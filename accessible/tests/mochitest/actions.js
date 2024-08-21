@@ -227,5 +227,5 @@ var gActionDescrMap = {
   expand: "Expand",
   activate: "Activate",
   cycle: "Cycle",
-  clickAncestor: "Click ancestor",
+  "click ancestor": "Click ancestor",
 };

@@ -15,17 +15,14 @@
 #include "mozilla/BinarySearch.h"
 #include "mozilla/Casting.h"
 #include "mozilla/dom/CharacterData.h"
-#include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/intl/Segmenter.h"
 #include "mozilla/intl/WordBreaker.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/TextEditor.h"
-#include "nsAccessibilityService.h"
 #include "nsAccUtils.h"
 #include "nsBlockFrame.h"
-#include "nsContentUtils.h"
 #include "nsFrameSelection.h"
 #include "nsIAccessiblePivot.h"
 #include "nsILineIterator.h"
@@ -34,11 +31,12 @@
 #include "nsStyleStructInlines.h"
 #include "nsTArray.h"
 #include "nsTextFrame.h"
-#include "nsUnicodeProperties.h"
+#include "nsUnicharUtils.h"
 #include "Pivot.h"
 #include "TextAttrs.h"
 
 using mozilla::intl::WordBreaker;
+using FindWordOptions = mozilla::intl::WordBreaker::FindWordOptions;
 
 namespace mozilla::a11y {
 
@@ -191,6 +189,56 @@ static nsIFrame* GetFrameInBlock(const LocalAccessible* aAcc) {
   return aAcc->GetFrame();
 }
 
+/**
+ * Returns true if the given frames are on different lines.
+ */
+static bool AreFramesOnDifferentLines(nsIFrame* aFrame1, nsIFrame* aFrame2) {
+  MOZ_ASSERT(aFrame1 && aFrame2);
+  if (aFrame1 == aFrame2) {
+    // This can happen if two Accessibles share the same frame; e.g. image maps.
+    return false;
+  }
+  auto [block1, lineFrame1] = aFrame1->GetContainingBlockForLine(
+      /* aLockScroll */ false);
+  if (!block1) {
+    // Error; play it safe.
+    return true;
+  }
+  auto [block2, lineFrame2] = aFrame2->GetContainingBlockForLine(
+      /* aLockScroll */ false);
+  if (lineFrame1 == lineFrame2) {
+    return false;
+  }
+  if (block1 != block2) {
+    // These frames are in different blocks, so they're on different lines.
+    return true;
+  }
+  if (nsBlockFrame* block = do_QueryFrame(block1)) {
+    // If we have a block frame, it's faster for us to use
+    // BlockInFlowLineIterator because it uses the line cursor.
+    bool found = false;
+    block->SetupLineCursorForQuery();
+    nsBlockInFlowLineIterator it1(block, lineFrame1, &found);
+    if (!found) {
+      // Error; play it safe.
+      return true;
+    }
+    found = false;
+    nsBlockInFlowLineIterator it2(block, lineFrame2, &found);
+    return !found || it1.GetLine() != it2.GetLine();
+  }
+  AutoAssertNoDomMutations guard;
+  nsILineIterator* it = block1->GetLineIterator();
+  MOZ_ASSERT(it, "GetLineIterator impl in line-container blocks is infallible");
+  int32_t line1 = it->FindLineContaining(lineFrame1);
+  if (line1 < 0) {
+    // Error; play it safe.
+    return true;
+  }
+  int32_t line2 = it->FindLineContaining(lineFrame2, line1);
+  return line1 != line2;
+}
+
 static bool IsLocalAccAtLineStart(LocalAccessible* aAcc) {
   if (aAcc->NativeRole() == roles::LISTITEM_MARKER) {
     // A bullet always starts a line.
@@ -234,52 +282,12 @@ static bool IsLocalAccAtLineStart(LocalAccessible* aAcc) {
     return false;
   }
 
-  auto [thisBlock, thisLineFrame] = thisFrame->GetContainingBlockForLine(
-      /* aLockScroll */ false);
-  if (!thisBlock) {
-    // We couldn't get the containing block for this frame. In that case, we
-    // play it safe and assume this is the beginning of a new line.
-    return true;
-  }
-
   // The previous leaf might cross lines. We want to compare against the last
   // line.
   prevFrame = prevFrame->LastContinuation();
-  auto [prevBlock, prevLineFrame] = prevFrame->GetContainingBlockForLine(
-      /* aLockScroll */ false);
-  if (thisBlock != prevBlock) {
-    // If the blocks are different, that means there's nothing before us on the
-    // same line, so we're at the start.
-    return true;
-  }
-  if (nsBlockFrame* block = do_QueryFrame(thisBlock)) {
-    // If we have a block frame, it's faster for us to use
-    // BlockInFlowLineIterator because it uses the line cursor.
-    bool found = false;
-    block->SetupLineCursorForQuery();
-    nsBlockInFlowLineIterator prevIt(block, prevLineFrame, &found);
-    if (!found) {
-      // Error; play it safe.
-      return true;
-    }
-    found = false;
-    nsBlockInFlowLineIterator thisIt(block, thisLineFrame, &found);
-    // if the lines are different, that means there's nothing before us on the
-    // same line, so we're at the start.
-    return !found || prevIt.GetLine() != thisIt.GetLine();
-  }
-  AutoAssertNoDomMutations guard;
-  nsILineIterator* it = prevBlock->GetLineIterator();
-  MOZ_ASSERT(it, "GetLineIterator impl in line-container blocks is infallible");
-  int32_t prevLineNum = it->FindLineContaining(prevLineFrame);
-  if (prevLineNum < 0) {
-    // Error; play it safe.
-    return true;
-  }
-  int32_t thisLineNum = it->FindLineContaining(thisLineFrame, prevLineNum);
-  // if the blocks and line numbers are different, that means there's nothing
-  // before us on the same line, so we're at the start.
-  return thisLineNum != prevLineNum;
+  // if the lines are different, that means there's nothing before us on the
+  // same line, so we're at the start.
+  return AreFramesOnDifferentLines(thisFrame, prevFrame);
 }
 
 /**
@@ -303,30 +311,7 @@ static WordBreakClass GetWordBreakClass(char16_t aChar) {
     default:
       break;
   }
-  // Based on ClusterIterator::IsPunctuation in
-  // layout/generic/nsTextFrame.cpp.
-  uint8_t cat = unicode::GetGeneralCategory(aChar);
-  switch (cat) {
-    case HB_UNICODE_GENERAL_CATEGORY_CONNECT_PUNCTUATION: /* Pc */
-      if (aChar == '_' &&
-          !StaticPrefs::layout_word_select_stop_at_underscore()) {
-        return eWbcOther;
-      }
-      [[fallthrough]];
-    case HB_UNICODE_GENERAL_CATEGORY_DASH_PUNCTUATION:    /* Pd */
-    case HB_UNICODE_GENERAL_CATEGORY_CLOSE_PUNCTUATION:   /* Pe */
-    case HB_UNICODE_GENERAL_CATEGORY_FINAL_PUNCTUATION:   /* Pf */
-    case HB_UNICODE_GENERAL_CATEGORY_INITIAL_PUNCTUATION: /* Pi */
-    case HB_UNICODE_GENERAL_CATEGORY_OTHER_PUNCTUATION:   /* Po */
-    case HB_UNICODE_GENERAL_CATEGORY_OPEN_PUNCTUATION:    /* Ps */
-    case HB_UNICODE_GENERAL_CATEGORY_CURRENCY_SYMBOL:     /* Sc */
-    case HB_UNICODE_GENERAL_CATEGORY_MATH_SYMBOL:         /* Sm */
-    case HB_UNICODE_GENERAL_CATEGORY_OTHER_SYMBOL:        /* So */
-      return eWbcPunct;
-    default:
-      break;
-  }
-  return eWbcOther;
+  return mozilla::IsPunctuationForWordSelect(aChar) ? eWbcPunct : eWbcOther;
 }
 
 /**
@@ -567,6 +552,30 @@ std::pair<nsIContent*, int32_t> TextLeafPoint::ToDOMPoint(
   return {content, RenderedToContentOffset(mAcc->AsLocal(), mOffset)};
 }
 
+static bool IsLineBreakContinuation(nsTextFrame* aContinuation) {
+  // A fluid continuation always means a new line.
+  if (aContinuation->HasAnyStateBits(NS_FRAME_IS_FLUID_CONTINUATION)) {
+    return true;
+  }
+  // If both this continuation and the previous continuation are bidi
+  // continuations, this continuation might be both a bidi split and on a new
+  // line.
+  if (!aContinuation->HasAnyStateBits(NS_FRAME_IS_BIDI)) {
+    return true;
+  }
+  nsTextFrame* prev = aContinuation->GetPrevContinuation();
+  if (!prev) {
+    // aContinuation is the primary frame. We can't be sure if this starts a new
+    // line, as there might be other nodes before it. That is handled by
+    // IsLocalAccAtLineStart.
+    return false;
+  }
+  if (!prev->HasAnyStateBits(NS_FRAME_IS_BIDI)) {
+    return true;
+  }
+  return AreFramesOnDifferentLines(aContinuation, prev);
+}
+
 /*** TextLeafPoint ***/
 
 TextLeafPoint::TextLeafPoint(Accessible* aAcc, int32_t aOffset) {
@@ -685,14 +694,25 @@ TextLeafPoint TextLeafPoint::FindPrevLineStartSameLocalAcc(
       origOffset, true, &unusedOffsetInContinuation, (nsIFrame**)&continuation);
   MOZ_ASSERT(continuation);
   int32_t lineStart = continuation->GetContentOffset();
-  if (!aIncludeOrigin && lineStart > 0 && lineStart == origOffset) {
-    // A line starts at the origin, but the caller doesn't want this included.
-    // Go back one more.
-    continuation = continuation->GetPrevContinuation();
+  if (lineStart > 0 && (
+                           // A line starts at the origin, but the caller
+                           // doesn't want this included.
+                           (!aIncludeOrigin && lineStart == origOffset) ||
+                           !IsLineBreakContinuation(continuation))) {
+    // Go back one more, skipping continuations that aren't line breaks or the
+    // primary frame.
+    for (nsTextFrame* prev = continuation->GetPrevContinuation(); prev;
+         prev = prev->GetPrevContinuation()) {
+      continuation = prev;
+      if (IsLineBreakContinuation(continuation)) {
+        break;
+      }
+    }
     MOZ_ASSERT(continuation);
     lineStart = continuation->GetContentOffset();
   }
   MOZ_ASSERT(lineStart >= 0);
+  MOZ_ASSERT(lineStart == 0 || IsLineBreakContinuation(continuation));
   if (lineStart == 0 && !IsLocalAccAtLineStart(acc)) {
     // This is the first line of this text node, but there is something else
     // on the same line before this text node, so don't return this as a line
@@ -732,13 +752,19 @@ TextLeafPoint TextLeafPoint::FindNextLineStartSameLocalAcc(
   if (
       // A line starts at the origin and the caller wants this included.
       aIncludeOrigin && continuation->GetContentOffset() == origOffset &&
+      IsLineBreakContinuation(continuation) &&
       // If this is the first line of this text node (offset 0), don't treat it
       // as a line start if there's something else on the line before this text
       // node.
       !(origOffset == 0 && !IsLocalAccAtLineStart(acc))) {
     return *this;
   }
-  continuation = continuation->GetNextContinuation();
+  // Get the next continuation, skipping continuations that aren't line breaks.
+  while ((continuation = continuation->GetNextContinuation())) {
+    if (IsLineBreakContinuation(continuation)) {
+      break;
+    }
+  }
   if (!continuation) {
     return TextLeafPoint();
   }
@@ -852,12 +878,23 @@ TextLeafPoint TextLeafPoint::FindPrevWordStartSameAcc(
   if (mOffset == 0) {
     word.mBegin = 0;
   } else if (mOffset == static_cast<int32_t>(text.Length())) {
-    word = WordBreaker::FindWord(text.get(), text.Length(), mOffset - 1);
+    word = WordBreaker::FindWord(
+        text, mOffset - 1,
+        StaticPrefs::layout_word_select_stop_at_punctuation()
+            ? FindWordOptions::StopAtPunctuation
+            : FindWordOptions::None);
   } else {
-    word = WordBreaker::FindWord(text.get(), text.Length(), mOffset);
+    word = WordBreaker::FindWord(
+        text, mOffset,
+        StaticPrefs::layout_word_select_stop_at_punctuation()
+            ? FindWordOptions::StopAtPunctuation
+            : FindWordOptions::None);
   }
-  for (;; word = WordBreaker::FindWord(text.get(), text.Length(),
-                                       word.mBegin - 1)) {
+  for (;; word = WordBreaker::FindWord(
+              text, word.mBegin - 1,
+              StaticPrefs::layout_word_select_stop_at_punctuation()
+                  ? FindWordOptions::StopAtPunctuation
+                  : FindWordOptions::None)) {
     if (!aIncludeOrigin && static_cast<int32_t>(word.mBegin) == mOffset) {
       // A word possibly starts at the origin, but the caller doesn't want this
       // included.
@@ -914,12 +951,23 @@ TextLeafPoint TextLeafPoint::FindNextWordStartSameAcc(
   }
   // Keep walking forward until we find an acceptable word start.
   intl::WordBreakIteratorUtf16 wordBreakIter(text);
+  int32_t previousPos = wordStart;
   Maybe<uint32_t> nextBreak = wordBreakIter.Seek(wordStart);
   for (;;) {
     if (!nextBreak || *nextBreak == text.Length()) {
       if (lineStart) {
         // A line start always starts a new word.
         return lineStart;
+      }
+      if (StaticPrefs::layout_word_select_stop_at_punctuation()) {
+        // If layout.word_select.stop_at_punctuation is true, we have to look
+        // for punctuation class since it may not break state in UAX#29.
+        for (int32_t i = previousPos + 1;
+             i < static_cast<int32_t>(text.Length()); i++) {
+          if (IsAcceptableWordStart(mAcc, text, i)) {
+            return TextLeafPoint(mAcc, i);
+          }
+        }
       }
       return TextLeafPoint();
     }
@@ -931,6 +979,17 @@ TextLeafPoint TextLeafPoint::FindNextWordStartSameAcc(
     if (IsAcceptableWordStart(mAcc, text, wordStart)) {
       break;
     }
+
+    if (StaticPrefs::layout_word_select_stop_at_punctuation()) {
+      // If layout.word_select.stop_at_punctuation is true, we have to look
+      // for punctuation class since it may not break state in UAX#29.
+      for (int32_t i = previousPos + 1; i < wordStart; i++) {
+        if (IsAcceptableWordStart(mAcc, text, i)) {
+          return TextLeafPoint(mAcc, i);
+        }
+      }
+    }
+    previousPos = wordStart;
     nextBreak = wordBreakIter.Next();
   }
   return TextLeafPoint(mAcc, wordStart);
@@ -990,7 +1049,8 @@ TextLeafPoint TextLeafPoint::FindBoundary(AccessibleTextBoundary aBoundaryType,
                                           nsDirection aDirection,
                                           BoundaryFlags aFlags) const {
   if (IsCaret()) {
-    if (aBoundaryType == nsIAccessibleText::BOUNDARY_CHAR) {
+    if (aBoundaryType == nsIAccessibleText::BOUNDARY_CHAR ||
+        aBoundaryType == nsIAccessibleText::BOUNDARY_CLUSTER) {
       if (IsCaretAtEndOfLine()) {
         // The caret is at the end of the line. Return no character.
         return ActualizeCaret(/* aAdjustAtEndOfLine */ false);
@@ -1066,6 +1126,9 @@ TextLeafPoint TextLeafPoint::FindBoundary(AccessibleTextBoundary aBoundaryType,
       case nsIAccessibleText::BOUNDARY_PARAGRAPH:
         boundary = searchFrom.FindParagraphSameAcc(aDirection, includeOrigin,
                                                    ignoreListItemMarker);
+        break;
+      case nsIAccessibleText::BOUNDARY_CLUSTER:
+        boundary = searchFrom.FindClusterSameAcc(aDirection, includeOrigin);
         break;
       default:
         MOZ_ASSERT_UNREACHABLE();
@@ -1310,6 +1373,62 @@ TextLeafPoint TextLeafPoint::FindParagraphSameAcc(
   return TextLeafPoint();
 }
 
+TextLeafPoint TextLeafPoint::FindClusterSameAcc(nsDirection aDirection,
+                                                bool aIncludeOrigin) const {
+  // We don't support clusters which cross nodes. We can live with that because
+  // editor doesn't seem to fully support this either.
+  if (aIncludeOrigin && mOffset == 0) {
+    // Since we don't cross nodes, offset 0 always begins a cluster.
+    return *this;
+  }
+  if (aDirection == eDirPrevious) {
+    if (mOffset == 0) {
+      // We can't go back any further.
+      return TextLeafPoint();
+    }
+    if (!aIncludeOrigin && mOffset == 1) {
+      // Since we don't cross nodes, offset 0 always begins a cluster. We can't
+      // take this fast path if aIncludeOrigin is true because offset 1 might
+      // start a cluster, but we don't know that yet.
+      return TextLeafPoint(mAcc, 0);
+    }
+  }
+  nsAutoString text;
+  mAcc->AppendTextTo(text);
+  if (text.IsEmpty()) {
+    return TextLeafPoint();
+  }
+  if (aDirection == eDirNext &&
+      mOffset == static_cast<int32_t>(text.Length())) {
+    return TextLeafPoint();
+  }
+  // There is GraphemeClusterBreakReverseIteratorUtf16, but it "doesn't
+  // handle conjoining Jamo and emoji". Therefore, we must use
+  // GraphemeClusterBreakIteratorUtf16 even when moving backward.
+  // GraphemeClusterBreakIteratorUtf16::Seek() always starts from the beginning
+  // and repeatedly calls Next(), regardless of the seek offset. The best we
+  // can do is call Next() until we find the offset we need.
+  intl::GraphemeClusterBreakIteratorUtf16 iter(text);
+  // Since we don't cross nodes, offset 0 always begins a cluster.
+  int32_t prevCluster = 0;
+  while (Maybe<uint32_t> next = iter.Next()) {
+    int32_t cluster = static_cast<int32_t>(*next);
+    if (aIncludeOrigin && cluster == mOffset) {
+      return *this;
+    }
+    if (aDirection == eDirPrevious) {
+      if (cluster >= mOffset) {
+        return TextLeafPoint(mAcc, prevCluster);
+      }
+      prevCluster = cluster;
+    } else if (cluster > mOffset) {
+      MOZ_ASSERT(aDirection == eDirNext);
+      return TextLeafPoint(mAcc, cluster);
+    }
+  }
+  return TextLeafPoint();
+}
+
 bool TextLeafPoint::IsInSpellingError() const {
   if (LocalAccessible* acc = mAcc->AsLocal()) {
     auto domRanges = FindDOMSpellingErrors(acc, mOffset, mOffset + 1);
@@ -1323,8 +1442,8 @@ bool TextLeafPoint::IsInSpellingError() const {
   if (!acc->mCachedFields) {
     return false;
   }
-  auto spellingErrors =
-      acc->mCachedFields->GetAttribute<nsTArray<int32_t>>(nsGkAtoms::spelling);
+  auto spellingErrors = acc->mCachedFields->GetAttribute<nsTArray<int32_t>>(
+      CacheKey::SpellingErrors);
   if (!spellingErrors) {
     return false;
   }
@@ -1414,8 +1533,8 @@ TextLeafPoint TextLeafPoint::FindSpellingErrorSameAcc(
   if (!acc->mCachedFields) {
     return TextLeafPoint();
   }
-  auto spellingErrors =
-      acc->mCachedFields->GetAttribute<nsTArray<int32_t>>(nsGkAtoms::spelling);
+  auto spellingErrors = acc->mCachedFields->GetAttribute<nsTArray<int32_t>>(
+      CacheKey::SpellingErrors);
   if (!spellingErrors) {
     return TextLeafPoint();
   }
@@ -1766,6 +1885,33 @@ bool TextLeafPoint::ContainsPoint(int32_t aX, int32_t aY) {
   }
 
   return CharBounds().Contains(aX, aY);
+}
+
+/*** TextLeafRange ***/
+
+bool TextLeafRange::Crop(Accessible* aContainer) {
+  TextLeafPoint containerStart(aContainer, 0);
+  TextLeafPoint containerEnd(aContainer,
+                             nsIAccessibleText::TEXT_OFFSET_END_OF_TEXT);
+
+  if (mEnd < containerStart || containerEnd < mStart) {
+    // The range ends before the container, or starts after it.
+    return false;
+  }
+
+  if (mStart < containerStart) {
+    // If range start is before container start, adjust range start to
+    // start of container.
+    mStart = containerStart;
+  }
+
+  if (containerEnd < mEnd) {
+    // If range end is after container end, adjust range end to end of
+    // container.
+    mEnd = containerEnd;
+  }
+
+  return true;
 }
 
 LayoutDeviceIntRect TextLeafRange::Bounds() const {

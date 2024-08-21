@@ -80,7 +80,6 @@ class KeyBinding {
   static const uint32_t kControl = 2;
   static const uint32_t kAlt = 4;
   static const uint32_t kMeta = 8;
-  static const uint32_t kOS = 16;
 
   static uint32_t AccelModifier();
 
@@ -186,6 +185,46 @@ class Accessible {
    */
   bool IsBefore(const Accessible* aAcc) const;
 
+  /**
+   * A utility enum for controlling FindAncestorIf.
+   *   Continue: this is not the desired ancestor node, keep searching
+   *   Found:    this is the desired ancestor node
+   *   NotFound: this is not the desired ancestor node, stop searching
+   */
+  enum class AncestorSearchOption { Continue, Found, NotFound };
+  /**
+   * Return a non-generic ancestor for which the given predicate returns
+   * AncestorSearchOption::Found, if any exist. If none exist, return nullptr.
+   * The predicate may choose to return options from AncestorSearchOption to
+   * control the flow of the ancestor search.
+   */
+  template <typename Callable>
+  Accessible* FindAncestorIf(Callable&& aPredicate) const {
+    static_assert(
+        std::is_same_v<std::invoke_result_t<Callable, const Accessible&>,
+                       AncestorSearchOption>,
+        "Given callable must return AncestorSearchOption.");
+    static_assert(std::is_invocable_v<Callable, const Accessible&>,
+                  "Given callable must accept const Accessible&.");
+    Accessible* search = GetNonGenericParent();
+    while (search) {
+      const AncestorSearchOption option = aPredicate(*search);
+      switch (option) {
+        case AncestorSearchOption::Continue:
+          search = search->GetNonGenericParent();
+          continue;
+        case AncestorSearchOption::Found:
+          return search;
+        case AncestorSearchOption::NotFound:
+          return nullptr;
+        default:
+          MOZ_ASSERT(false, "Unhandled AncestorSearchOption");
+          break;
+      }
+    }
+    return nullptr;
+  }
+
   bool IsAncestorOf(const Accessible* aAcc) const {
     for (const Accessible* parent = aAcc->Parent(); parent;
          parent = parent->Parent()) {
@@ -252,6 +291,11 @@ class Accessible {
    * Get the name of this accessible.
    */
   virtual ENameValueFlag Name(nsString& aName) const = 0;
+
+  /*
+   * Return true if the accessible name is empty.
+   */
+  bool NameIsEmpty() const;
 
   /*
    * Get the description of this accessible.
@@ -373,6 +417,12 @@ class Accessible {
   virtual void ScrollTo(uint32_t aHow) const = 0;
 
   /**
+   * Scroll the accessible to the given point.
+   */
+  virtual void ScrollToPoint(uint32_t aCoordinateType, int32_t aX,
+                             int32_t aY) = 0;
+
+  /**
    * Return tag name of associated DOM node.
    */
   virtual nsAtom* TagName() const = 0;
@@ -388,9 +438,14 @@ class Accessible {
   nsStaticAtom* LandmarkRole() const;
 
   /**
-   * Return the id of the dom node this accessible represents.
+   * Return the id of the DOM node this Accessible represents.
    */
   virtual void DOMNodeID(nsString& aID) const = 0;
+
+  /**
+   * Return the class of the DOM node this Accessible represents.
+   */
+  virtual void DOMNodeClass(nsString& aClass) const = 0;
 
   //////////////////////////////////////////////////////////////////////////////
   // ActionAccessible
@@ -601,6 +656,17 @@ class Accessible {
   }
 
   /**
+   * Returns true if the accessible is non-interactive.
+   */
+  bool IsNonInteractive() const {
+    if (IsGeneric()) {
+      return true;
+    }
+    const role accRole = Role();
+    return accRole == role::LANDMARK || accRole == role::REGION;
+  }
+
+  /**
    * Return true if the link is valid (e. g. points to a valid URL).
    */
   bool IsLinkValid();
@@ -715,7 +781,7 @@ class Accessible {
   uint32_t mGenericTypes : kGenericTypesBits;
   uint8_t mRoleMapEntryIndex;
 
-  friend class DocAccessibleChildBase;
+  friend class DocAccessibleChild;
   friend class AccGroupInfo;
 };
 

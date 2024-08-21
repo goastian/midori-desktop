@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
+requestLongerTimeout(2);
 
 /* import-globals-from ../../mochitest/name.js */
 loadScripts({ name: "name.js", dir: MOCHITESTS_DIR });
@@ -338,6 +339,7 @@ const markupTests = [
     <span id="l1">test2</span>
     <span id="l2">test3</span>
     <a id="a"
+       href=""
        aria-label="test1"
        aria-labelledby="l1 l2"
        title="test4">test5</a>`,
@@ -350,6 +352,7 @@ const markupTests = [
     <span id="l1">test2</span>
     <span id="l2">test3</span>
     <a id="a-img"
+       href=""
        aria-label="test1"
        aria-labelledby="l1 l2"
        title="test4"><img alt="test5"/></a>`,
@@ -474,7 +477,7 @@ markupTests.forEach(({ id, ruleset, markup, expected }) =>
     markup,
     async function (browser, accDoc) {
       const observer = {
-        observe(subject, topic, data) {
+        observe(subject) {
           const event = subject.QueryInterface(nsIAccessibleEvent);
           console.log(eventToString(event));
         },

@@ -5,8 +5,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "SDKDeclarations.h"
-
 @protocol MOXTextMarkerSupport;
 @protocol mozAccessible;
 
@@ -263,6 +261,12 @@
 // AXSelectedRows
 - (NSArray* _Nullable)moxSelectedRows;
 
+// AXARIAPosInSet
+- (NSNumber* _Nullable)moxARIAPosInSet;
+
+// AXARIASetSize
+- (NSNumber* _Nullable)moxARIASetSize;
+
 // Math Attributes
 
 // AXMathRootRadicand
@@ -330,6 +334,9 @@
 
 // AXARIARelevant
 - (NSString* _Nullable)moxARIARelevant;
+
+// AXPlaceholderValue
+- (NSString* _Nullable)moxPlaceholderValue;
 
 // AXMozDebugDescription
 - (NSString* _Nullable)moxMozDebugDescription;

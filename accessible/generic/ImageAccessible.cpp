@@ -8,13 +8,12 @@
 #include "DocAccessible-inl.h"
 #include "LocalAccessible-inl.h"
 #include "nsAccUtils.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "AccAttributes.h"
 #include "AccIterator.h"
 #include "CacheConstants.h"
 #include "States.h"
 
-#include "imgIContainer.h"
 #include "imgIRequest.h"
 #include "nsGenericHTMLElement.h"
 #include "mozilla/dom/BrowsingContext.h"
@@ -90,7 +89,7 @@ uint64_t ImageAccessible::NativeState() const {
 }
 
 ENameValueFlag ImageAccessible::NativeName(nsString& aName) const {
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::alt, aName);
+  mContent->AsElement()->GetAttr(nsGkAtoms::alt, aName);
   if (!aName.IsEmpty()) return eNameOK;
 
   ENameValueFlag nameFlag = LocalAccessible::NativeName(aName);
@@ -111,7 +110,7 @@ void ImageAccessible::DOMAttributeChanged(int32_t aNameSpaceID,
   if (aAttribute == nsGkAtoms::longdesc &&
       (aModType == dom::MutationEvent_Binding::ADDITION ||
        aModType == dom::MutationEvent_Binding::REMOVAL)) {
-    SendCache(CacheDomain::Actions, CacheUpdateType::Update);
+    mDoc->QueueCacheUpdate(this, CacheDomain::Actions);
   }
 }
 
@@ -171,7 +170,7 @@ already_AddRefed<AccAttributes> ImageAccessible::NativeAttributes() {
   RefPtr<AccAttributes> attributes = LinkableAccessible::NativeAttributes();
 
   nsString src;
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src);
+  mContent->AsElement()->GetAttr(nsGkAtoms::src, src);
   if (!src.IsEmpty()) attributes->SetAttribute(nsGkAtoms::src, std::move(src));
 
   return attributes.forget();
@@ -181,11 +180,10 @@ already_AddRefed<AccAttributes> ImageAccessible::NativeAttributes() {
 // Private methods
 
 already_AddRefed<nsIURI> ImageAccessible::GetLongDescURI() const {
-  if (mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::longdesc)) {
+  if (mContent->AsElement()->HasAttr(nsGkAtoms::longdesc)) {
     // To check if longdesc contains an invalid url.
     nsAutoString longdesc;
-    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::longdesc,
-                                   longdesc);
+    mContent->AsElement()->GetAttr(nsGkAtoms::longdesc, longdesc);
     if (longdesc.FindChar(' ') != -1 || longdesc.FindChar('\t') != -1 ||
         longdesc.FindChar('\r') != -1 || longdesc.FindChar('\n') != -1) {
       return nullptr;
@@ -203,7 +201,7 @@ already_AddRefed<nsIURI> ImageAccessible::GetLongDescURI() const {
     while (nsIContent* target = iter.NextElem()) {
       if ((target->IsHTMLElement(nsGkAtoms::a) ||
            target->IsHTMLElement(nsGkAtoms::area)) &&
-          target->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
+          target->AsElement()->HasAttr(nsGkAtoms::href)) {
         nsGenericHTMLElement* element = nsGenericHTMLElement::FromNode(target);
 
         nsCOMPtr<nsIURI> uri;

@@ -7,7 +7,6 @@
 #include "AccEvent.h"
 
 #include "nsAccUtils.h"
-#include "DocAccessible.h"
 #include "xpcAccEvents.h"
 #include "States.h"
 #include "TextRange.h"
@@ -162,40 +161,6 @@ AccSelChangeEvent::AccSelChangeEvent(LocalAccessible* aWidget,
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// AccTableChangeEvent
-////////////////////////////////////////////////////////////////////////////////
-
-AccTableChangeEvent::AccTableChangeEvent(LocalAccessible* aAccessible,
-                                         uint32_t aEventType,
-                                         int32_t aRowOrColIndex,
-                                         int32_t aNumRowsOrCols)
-    : AccEvent(aEventType, aAccessible),
-      mRowOrColIndex(aRowOrColIndex),
-      mNumRowsOrCols(aNumRowsOrCols) {}
-
-////////////////////////////////////////////////////////////////////////////////
-// AccVCChangeEvent
-////////////////////////////////////////////////////////////////////////////////
-
-AccVCChangeEvent::AccVCChangeEvent(LocalAccessible* aAccessible,
-                                   LocalAccessible* aOldAccessible,
-                                   int32_t aOldStart, int32_t aOldEnd,
-                                   LocalAccessible* aNewAccessible,
-                                   int32_t aNewStart, int32_t aNewEnd,
-                                   int16_t aReason, int16_t aBoundaryType,
-                                   EIsFromUserInput aIsFromUserInput)
-    : AccEvent(::nsIAccessibleEvent::EVENT_VIRTUALCURSOR_CHANGED, aAccessible,
-               aIsFromUserInput),
-      mOldAccessible(aOldAccessible),
-      mNewAccessible(aNewAccessible),
-      mOldStart(aOldStart),
-      mNewStart(aNewStart),
-      mOldEnd(aOldEnd),
-      mNewEnd(aNewEnd),
-      mReason(aReason),
-      mBoundaryType(aBoundaryType) {}
-
 already_AddRefed<nsIAccessibleEvent> a11y::MakeXPCEvent(AccEvent* aEvent) {
   DocAccessible* doc = aEvent->Document();
   LocalAccessible* acc = aEvent->GetAccessible();
@@ -257,16 +222,6 @@ already_AddRefed<nsIAccessibleEvent> a11y::MakeXPCEvent(AccEvent* aEvent) {
 
     xpEvent = new xpcAccTextSelectionChangeEvent(
         type, ToXPC(acc), ToXPCDocument(doc), node, fromUser, xpcRanges);
-    return xpEvent.forget();
-  }
-
-  if (eventGroup & (1 << AccEvent::eVirtualCursorChangeEvent)) {
-    AccVCChangeEvent* vcc = downcast_accEvent(aEvent);
-    xpEvent = new xpcAccVirtualCursorChangeEvent(
-        type, ToXPC(acc), ToXPCDocument(doc), node, fromUser,
-        ToXPC(vcc->OldAccessible()), vcc->OldStartOffset(), vcc->OldEndOffset(),
-        ToXPC(vcc->NewAccessible()), vcc->NewStartOffset(), vcc->NewEndOffset(),
-        vcc->Reason(), vcc->BoundaryType());
     return xpEvent.forget();
   }
 

@@ -189,17 +189,38 @@ addAccessibleTask(
         c.isAttributeSettable("AXSelected"),
         c.getAttributeValue("AXEnabled"),
       ]);
+    [
+      ["​", false, 0],
+      ["Fruits", false, 0],
+      ["Banana", true, 1],
+      ["Apple", true, 1],
+      ["Orange", true, 1],
+      ["​", false, 0],
+      ["Vegetables", false, 0],
+      ["Lettuce", true, 1],
+      ["Tomato", true, 1],
+      ["Onion", true, 1],
+      ["​", false, 0],
+      ["Spices", false, 0],
+      ["Cumin", true, 1],
+      ["Coriander", true, 1],
+      ["Allspice", true, 1],
+      ["Everything", true, 1],
+    ];
     Assert.deepEqual(
       childValueSelectablePairs,
       [
+        ["​", false, false],
         ["Fruits", false, false],
         ["Banana", true, true],
         ["Apple", true, true],
         ["Orange", true, true],
+        ["​", false, false],
         ["Vegetables", false, false],
         ["Lettuce", true, true],
         ["Tomato", true, true],
         ["Onion", true, true],
+        ["​", false, false],
         ["Spices", false, false],
         ["Cumin", true, true],
         ["Coriander", true, true],
@@ -237,7 +258,7 @@ addAccessibleTask(
       "Select is direct parent of nested option"
     );
 
-    let groupLabel = select.getAttributeValue("AXChildren")[0];
+    let groupLabel = select.getAttributeValue("AXChildren")[1];
     ok(
       !groupLabel.isAttributeSettable("AXSelected"),
       "Group label should not be selectable"
@@ -279,9 +300,6 @@ addAccessibleTask(
   async (browser, accDoc) => {
     let select = getNativeInterface(accDoc, "select");
     let one = getNativeInterface(accDoc, "one");
-    let two = getNativeInterface(accDoc, "two");
-    let three = getNativeInterface(accDoc, "three");
-    let four = getNativeInterface(accDoc, "four");
 
     is(
       select.getAttributeValue("AXTitle"),
@@ -318,25 +336,5 @@ addAccessibleTask(
     });
     await evt;
     is(select.getAttributeValue("AXSelectedChildren").length, 0);
-    evt = waitForMacEvent("AXSelectedChildrenChanged");
-    three.setAttributeValue("AXSelected", true);
-    await evt;
-    is(select.getAttributeValue("AXSelectedChildren").length, 1);
-    ok(getSelectedIds(select).includes("three"), "'three' is selected");
-    evt = waitForMacEvent("AXSelectedChildrenChanged");
-    select.setAttributeValue("AXSelectedChildren", [one, two]);
-    await evt;
-    await untilCacheOk(() => {
-      let ids = getSelectedIds(select);
-      return ids[0] == "one" && ids[1] == "two";
-    }, "Got correct selected children");
-
-    evt = waitForMacEvent("AXSelectedChildrenChanged");
-    select.setAttributeValue("AXSelectedChildren", [three, two, four]);
-    await evt;
-    await untilCacheOk(() => {
-      let ids = getSelectedIds(select);
-      return ids[0] == "two" && ids[1] == "three";
-    }, "Got correct selected children");
   }
 );

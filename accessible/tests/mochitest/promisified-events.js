@@ -141,7 +141,7 @@ function matchEvent(event, matchCriteria) {
 function waitForEvent(eventType, matchCriteria, message) {
   return new Promise(resolve => {
     let eventObserver = {
-      observe(subject, topic, data) {
+      observe(subject, topic) {
         if (topic !== "accessible-event") {
           return;
         }
@@ -165,7 +165,7 @@ function waitForEvent(eventType, matchCriteria, message) {
           Services.obs.removeObserver(this, "accessible-event");
           ok(
             true,
-            `${message ? message + ": " : ""}Recieved ${eventTypeToString(
+            `${message ? message + ": " : ""}Received ${eventTypeToString(
               eventType
             )} event`
           );
@@ -185,7 +185,7 @@ class UnexpectedEvents {
     }
   }
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic !== "accessible-event") {
       return;
     }
@@ -215,7 +215,7 @@ class UnexpectedEvents {
  * @param {Array}   events          a list of events to wait (same format as
  *                                   waitForEvent arguments)
  * @param {String}  message         Message to prepend to logging.
- * @param {Boolean} ordered         Events need to be recieved in given order.
+ * @param {Boolean} ordered         Events need to be received in given order.
  * @param {Object}  invokerOrWindow a local window or a special content invoker
  *                                   it takes a list of arguments and a task
  *                                   function.
