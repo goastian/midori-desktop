@@ -113,8 +113,18 @@ struct StartupCacheEntry {
         mRequestedOrder(0),
         mRequested(true) {}
 
+  // std::pair is not trivially move assignable/constructible, so make our own.
+  struct KeyValuePair {
+    const nsCString* first;
+    StartupCacheEntry* second;
+    KeyValuePair(const nsCString* aKeyPtr, StartupCacheEntry* aValuePtr)
+        : first(aKeyPtr), second(aValuePtr) {}
+  };
+  static_assert(std::is_trivially_move_assignable<KeyValuePair>::value);
+  static_assert(std::is_trivially_move_constructible<KeyValuePair>::value);
+
   struct Comparator {
-    using Value = std::pair<const nsCString*, StartupCacheEntry*>;
+    using Value = KeyValuePair;
 
     bool Equals(const Value& a, const Value& b) const {
       return a.second->mRequestedOrder == b.second->mRequestedOrder;
@@ -199,7 +209,7 @@ class StartupCache : public nsIMemoryReporter {
 
   friend class StartupCacheInfo;
 
-  Result<Ok, nsresult> LoadArchive();
+  Result<Ok, nsresult> LoadArchive() MOZ_REQUIRES(mTableLock);
   nsresult Init();
 
   // Returns a file pointer for the cache file with the given name in the
@@ -234,7 +244,7 @@ class StartupCache : public nsIMemoryReporter {
   nsTArray<decltype(mTable)> mOldTables MOZ_GUARDED_BY(mTableLock);
   size_t mAllowedInvalidationsCount;
   nsCOMPtr<nsIFile> mFile;
-  loader::AutoMemMap mCacheData MOZ_GUARDED_BY(mTableLock);
+  mozilla::loader::AutoMemMap mCacheData MOZ_GUARDED_BY(mTableLock);
   Mutex mTableLock;
 
   nsCOMPtr<nsIObserverService> mObserverService;
