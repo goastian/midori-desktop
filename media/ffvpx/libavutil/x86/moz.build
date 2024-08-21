@@ -15,7 +15,11 @@ SOURCES += [
     'imgutils.asm',
     'imgutils_init.c',
     'lls.asm',
-    'lls_init.c'
+    'lls_init.c',
+    'pixelutils.asm',
+    'pixelutils_init.c',
+    'tx_float.asm',
+    'tx_float_init.c',
 ]
 
 FINAL_LIBRARY = 'mozavutil'

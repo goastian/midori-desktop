@@ -9,14 +9,13 @@
 
 #include <soundtouch/STTypes.h>
 #include <soundtouch/SoundTouch.h>
+#include <soundtouch/RLBoxSoundTouchFactory.h>
 
-namespace soundtouch
+extern "C" namespace soundtouch
 {
-SOUNDTOUCH_API
 soundtouch::SoundTouch*
 createSoundTouchObj();
 
-SOUNDTOUCH_API
 void
 destroySoundTouchObj(soundtouch::SoundTouch* aObj);
 }

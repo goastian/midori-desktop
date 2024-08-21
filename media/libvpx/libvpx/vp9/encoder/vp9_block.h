@@ -11,8 +11,6 @@
 #ifndef VPX_VP9_ENCODER_VP9_BLOCK_H_
 #define VPX_VP9_ENCODER_VP9_BLOCK_H_
 
-#include "vpx_util/vpx_thread.h"
-
 #include "vp9/common/vp9_blockd.h"
 #include "vp9/common/vp9_entropymv.h"
 #include "vp9/common/vp9_entropy.h"
@@ -34,7 +32,7 @@ struct macroblock_plane {
   uint16_t *eobs;
   struct buf_2d src;
 
-  // Quantizer setings
+  // Quantizer settings
   int16_t *round_fp;
   int16_t *quant_fp;
   int16_t *quant;
@@ -85,10 +83,10 @@ struct macroblock {
   // The equivalent error at the current rdmult of one whole bit (not one
   // bitcost unit).
   int errorperbit;
-  // The equivalend SAD error of one (whole) bit at the current quantizer
+  // The equivalent SAD error of one (whole) bit at the current quantizer
   // for large blocks.
   int sadperbit16;
-  // The equivalend SAD error of one (whole) bit at the current quantizer
+  // The equivalent SAD error of one (whole) bit at the current quantizer
   // for sub-8x8 blocks.
   int sadperbit4;
   int rddiv;
@@ -128,7 +126,7 @@ struct macroblock {
   // from extending outside the UMV borders
   MvLimits mv_limits;
 
-  // Notes transform blocks where no coefficents are coded.
+  // Notes transform blocks where no coefficients are coded.
   // Set during mode selection. Read during block encoding.
   uint8_t zcoeff_blk[TX_SIZES][256];
 

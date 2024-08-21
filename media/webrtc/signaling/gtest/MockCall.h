@@ -79,22 +79,20 @@ class MockAudioReceiveStream : public webrtc::AudioReceiveStreamInterface {
   virtual void SetDepacketizerToDecoderFrameTransformer(
       rtc::scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer)
       override {
-    // Unimplemented after webrtc.org e2561e17e2 removed the Reconfigure
-    // method.
-    MOZ_ASSERT(false);
+    MOZ_CRASH(
+        "Unimplemented after webrtc.org e2561e17e2 removed the Reconfigure "
+        "method.");
   }
   virtual void SetDecoderMap(
       std::map<int, webrtc::SdpAudioFormat> decoder_map) override;
   virtual void SetNackHistory(int history_ms) override {
-    // Unimplemented after webrtc.org e2561e17e2 removed the Reconfigure
-    // method.
-    MOZ_ASSERT(false);
+    MOZ_CRASH(
+        "Unimplemented after webrtc.org e2561e17e2 removed the Reconfigure "
+        "method.");
   }
   virtual void SetNonSenderRttMeasurement(bool enabled) override {}
   void SetFrameDecryptor(rtc::scoped_refptr<webrtc::FrameDecryptorInterface>
                              frame_decryptor) override {}
-  void SetRtpExtensions(std::vector<webrtc::RtpExtension> extensions) override;
-  webrtc::RtpHeaderExtensionMap GetRtpExtensionMap() const override;
   bool SetBaseMinimumPlayoutDelayMs(int delay_ms) override { return false; }
   int GetBaseMinimumPlayoutDelayMs() const override { return 0; }
   uint32_t remote_ssrc() const override { return 0; }
@@ -127,8 +125,6 @@ class MockVideoSendStream : public webrtc::VideoSendStream {
                                webrtc::SetParametersCallback callback) override;
 
   Stats GetStats() override { return mStats; }
-
-  void StartPerRtpStream(const std::vector<bool> active_layers) override {}
 
   void AddAdaptationResource(
       rtc::scoped_refptr<webrtc::Resource> resource) override {}
@@ -196,9 +192,7 @@ class MockVideoReceiveStream : public webrtc::VideoReceiveStreamInterface {
   virtual void SetAssociatedPayloadTypes(
       std::map<int, int> associated_payload_types) override {}
 
-  void SetRtpExtensions(std::vector<webrtc::RtpExtension> extensions) override {
-  }
-  webrtc::RtpHeaderExtensionMap GetRtpExtensionMap() const override;
+  virtual void UpdateRtxSsrc(uint32_t ssrc) override{};
 
   virtual ~MockVideoReceiveStream() {}
 
@@ -310,7 +304,7 @@ class MockCall : public webrtc::Call {
         width, height, *mVideoSendEncoderConfig);
   }
 
-  virtual const webrtc::WebRtcKeyValueConfig& trials() const override {
+  virtual const webrtc::FieldTrialsView& trials() const override {
     return mUnusedConfig;
   }
 

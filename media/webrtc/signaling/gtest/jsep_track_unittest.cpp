@@ -78,16 +78,6 @@ class JsepTrackTest : public JsepTrackTestBase {
     results.emplace_back(new JsepApplicationCodecDescription(
         "webrtc-datachannel", 256, 5999, 499));
 
-    // if we're doing something with red, it needs
-    // to update the redundant encodings list
-    for (auto& codec : results) {
-      if (codec->mName == "red") {
-        JsepVideoCodecDescription& red =
-            static_cast<JsepVideoCodecDescription&>(*codec);
-        red.UpdateRedundantEncodings(results);
-      }
-    }
-
     return results;
   }
 
@@ -176,11 +166,11 @@ class JsepTrackTest : public JsepTrackTestBase {
     }
   }
 
-  void OfferAnswer() {
+  void OfferAnswer(bool offerCodecsMatchAnswer = true) {
     CreateOffer();
     CreateAnswer();
     Negotiate();
-    SanityCheck();
+    SanityCheck(offerCodecsMatchAnswer);
   }
 
   // TODO: Look into writing a macro that wraps an ASSERT_ and returns false
@@ -306,20 +296,25 @@ class JsepTrackTest : public JsepTrackTestBase {
   }
 
   void SanityCheckNegotiatedDetails(const JsepTrackNegotiatedDetails& a,
-                                    const JsepTrackNegotiatedDetails& b) const {
+                                    const JsepTrackNegotiatedDetails& b,
+                                    bool codecsMustMatch) const {
     ASSERT_EQ(a.GetEncodingCount(), b.GetEncodingCount());
-    for (size_t i = 0; i < a.GetEncodingCount(); ++i) {
-      SanityCheckEncodings(a.GetEncoding(i), b.GetEncoding(i));
+    if (codecsMustMatch) {
+      for (size_t i = 0; i < a.GetEncodingCount(); ++i) {
+        SanityCheckEncodings(a.GetEncoding(i), b.GetEncoding(i));
+      }
     }
 
-    ASSERT_EQ(a.GetUniquePayloadTypes().size(),
-              b.GetUniquePayloadTypes().size());
-    for (size_t i = 0; i < a.GetUniquePayloadTypes().size(); ++i) {
-      ASSERT_EQ(a.GetUniquePayloadTypes()[i], b.GetUniquePayloadTypes()[i]);
+    ASSERT_EQ(a.GetUniqueReceivePayloadTypes().size(),
+              b.GetUniqueReceivePayloadTypes().size());
+    for (size_t i = 0; i < a.GetUniqueReceivePayloadTypes().size(); ++i) {
+      ASSERT_EQ(a.GetUniqueReceivePayloadTypes()[i],
+                b.GetUniqueReceivePayloadTypes()[i]);
     }
   }
 
-  void SanityCheckTracks(const JsepTrack& a, const JsepTrack& b) const {
+  void SanityCheckTracks(const JsepTrack& a, const JsepTrack& b,
+                         bool codecsMustMatch) const {
     if (!a.GetNegotiatedDetails()) {
       ASSERT_FALSE(!!b.GetNegotiatedDetails());
       return;
@@ -337,12 +332,12 @@ class JsepTrackTest : public JsepTrackTestBase {
     }
 
     SanityCheckNegotiatedDetails(*a.GetNegotiatedDetails(),
-                                 *b.GetNegotiatedDetails());
+                                 *b.GetNegotiatedDetails(), codecsMustMatch);
   }
 
-  void SanityCheck() const {
-    SanityCheckTracks(mSendOff, mRecvAns);
-    SanityCheckTracks(mRecvOff, mSendAns);
+  void SanityCheck(bool offerCodecsMatchAnswer = true) const {
+    SanityCheckTracks(mSendOff, mRecvAns, true);
+    SanityCheckTracks(mRecvOff, mSendAns, offerCodecsMatchAnswer);
   }
 
  protected:
@@ -459,7 +454,7 @@ TEST_F(JsepTrackTest, AudioNegotiationOffererDtmf) {
 
   InitTracks(SdpMediaSection::kAudio);
   InitSdp(SdpMediaSection::kAudio);
-  OfferAnswer();
+  OfferAnswer(false);
 
   CheckOffEncodingCount(1);
   CheckAnsEncodingCount(1);
@@ -475,7 +470,7 @@ TEST_F(JsepTrackTest, AudioNegotiationOffererDtmf) {
   UniquePtr<JsepAudioCodecDescription> track;
   ASSERT_TRUE((track = GetAudioCodec(mSendOff, 2, 0)));
   ASSERT_EQ("109", track->mDefaultPt);
-  ASSERT_TRUE((track = GetAudioCodec(mRecvOff, 2, 0)));
+  ASSERT_TRUE((track = GetAudioCodec(mRecvOff, 3, 0)));
   ASSERT_EQ("109", track->mDefaultPt);
   ASSERT_TRUE((track = GetAudioCodec(mSendAns, 2, 0)));
   ASSERT_EQ("109", track->mDefaultPt);
@@ -483,7 +478,7 @@ TEST_F(JsepTrackTest, AudioNegotiationOffererDtmf) {
   ASSERT_EQ("109", track->mDefaultPt);
   ASSERT_TRUE((track = GetAudioCodec(mSendOff, 2, 1)));
   ASSERT_EQ("9", track->mDefaultPt);
-  ASSERT_TRUE((track = GetAudioCodec(mRecvOff, 2, 1)));
+  ASSERT_TRUE((track = GetAudioCodec(mRecvOff, 3, 1)));
   ASSERT_EQ("9", track->mDefaultPt);
   ASSERT_TRUE((track = GetAudioCodec(mSendAns, 2, 1)));
   ASSERT_EQ("9", track->mDefaultPt);
@@ -759,7 +754,7 @@ TEST_F(JsepTrackTest, VideoNegotationOffererFEC) {
 
   InitTracks(SdpMediaSection::kVideo);
   InitSdp(SdpMediaSection::kVideo);
-  OfferAnswer();
+  OfferAnswer(false);
 
   CheckOffEncodingCount(1);
   CheckAnsEncodingCount(1);
@@ -769,14 +764,10 @@ TEST_F(JsepTrackTest, VideoNegotationOffererFEC) {
   ASSERT_EQ(mAnswer->ToString().find("a=rtpmap:122 red"), std::string::npos);
   ASSERT_EQ(mAnswer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
 
-  ASSERT_NE(mOffer->ToString().find("a=fmtp:122 120/126/123"),
-            std::string::npos);
-  ASSERT_EQ(mAnswer->ToString().find("a=fmtp:122"), std::string::npos);
-
   UniquePtr<JsepVideoCodecDescription> track;
   ASSERT_TRUE((track = GetVideoCodec(mSendOff, 2, 0)));
   ASSERT_EQ("120", track->mDefaultPt);
-  ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 2, 0)));
+  ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 4, 0)));
   ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mSendAns, 2, 0)));
   ASSERT_EQ("120", track->mDefaultPt);
@@ -784,7 +775,7 @@ TEST_F(JsepTrackTest, VideoNegotationOffererFEC) {
   ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mSendOff, 2, 1)));
   ASSERT_EQ("126", track->mDefaultPt);
-  ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 2, 1)));
+  ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 4, 1)));
   ASSERT_EQ("126", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mSendAns, 2, 1)));
   ASSERT_EQ("126", track->mDefaultPt);
@@ -807,9 +798,6 @@ TEST_F(JsepTrackTest, VideoNegotationAnswererFEC) {
   ASSERT_EQ(mOffer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
   ASSERT_EQ(mAnswer->ToString().find("a=rtpmap:122 red"), std::string::npos);
   ASSERT_EQ(mAnswer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
-
-  ASSERT_EQ(mOffer->ToString().find("a=fmtp:122"), std::string::npos);
-  ASSERT_EQ(mAnswer->ToString().find("a=fmtp:122"), std::string::npos);
 
   UniquePtr<JsepVideoCodecDescription> track;
   ASSERT_TRUE((track = GetVideoCodec(mSendOff, 2, 0)));
@@ -846,11 +834,6 @@ TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFEC) {
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:122 red"), std::string::npos);
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
 
-  ASSERT_NE(mOffer->ToString().find("a=fmtp:122 120/126/123"),
-            std::string::npos);
-  ASSERT_NE(mAnswer->ToString().find("a=fmtp:122 120/126/123"),
-            std::string::npos);
-
   UniquePtr<JsepVideoCodecDescription> track;
   ASSERT_TRUE((track = GetVideoCodec(mSendOff, 4)));
   ASSERT_EQ("120", track->mDefaultPt);
@@ -878,20 +861,17 @@ TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFECPreferred) {
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:122 red"), std::string::npos);
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
 
-  ASSERT_NE(mOffer->ToString().find("a=fmtp:122 120/126/123"),
-            std::string::npos);
-  ASSERT_NE(mAnswer->ToString().find("a=fmtp:122 120/126/123"),
-            std::string::npos);
-
   UniquePtr<JsepVideoCodecDescription> track;
+  // We should have 4 codecs, the first of which is VP8, because having a
+  // pseudo codec come first is silly.
   ASSERT_TRUE((track = GetVideoCodec(mSendOff, 4)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 4)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mSendAns, 4)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mRecvAns, 4)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
 }
 
 // Make sure we only put the right things in the fmtp:122 120/.... line
@@ -904,7 +884,7 @@ TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFECMismatch) {
 
   InitTracks(SdpMediaSection::kVideo);
   InitSdp(SdpMediaSection::kVideo);
-  OfferAnswer();
+  OfferAnswer(false);
 
   CheckOffEncodingCount(1);
   CheckAnsEncodingCount(1);
@@ -914,19 +894,17 @@ TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFECMismatch) {
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:122 red"), std::string::npos);
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
 
-  ASSERT_NE(mOffer->ToString().find("a=fmtp:122 120/126/123"),
-            std::string::npos);
-  ASSERT_NE(mAnswer->ToString().find("a=fmtp:122 120/123"), std::string::npos);
-
+  // We should have 3 codecs, the first of which is VP8, because having a
+  // pseudo codec come first is silly.
   UniquePtr<JsepVideoCodecDescription> track;
   ASSERT_TRUE((track = GetVideoCodec(mSendOff, 3)));
-  ASSERT_EQ("122", track->mDefaultPt);
-  ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 3)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
+  ASSERT_TRUE((track = GetVideoCodec(mRecvOff, 4)));
+  ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mSendAns, 3)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
   ASSERT_TRUE((track = GetVideoCodec(mRecvAns, 3)));
-  ASSERT_EQ("122", track->mDefaultPt);
+  ASSERT_EQ("120", track->mDefaultPt);
 }
 
 TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFECZeroVP9Codec) {
@@ -939,9 +917,6 @@ TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFECZeroVP9Codec) {
   JsepVideoCodecDescription& red =
       static_cast<JsepVideoCodecDescription&>(*mOffCodecs[4]);
   ASSERT_EQ("red", red.mName);
-  // rebuild the redundant encodings with our newly added "wacky" VP9
-  red.mRedundantEncodings.clear();
-  red.UpdateRedundantEncodings(mOffCodecs);
 
   mAnsCodecs = MakeCodecs(true);
 
@@ -956,11 +931,6 @@ TEST_F(JsepTrackTest, VideoNegotationOffererAnswererFECZeroVP9Codec) {
   ASSERT_NE(mOffer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:122 red"), std::string::npos);
   ASSERT_NE(mAnswer->ToString().find("a=rtpmap:123 ulpfec"), std::string::npos);
-
-  ASSERT_NE(mOffer->ToString().find("a=fmtp:122 120/126/123/0"),
-            std::string::npos);
-  ASSERT_NE(mAnswer->ToString().find("a=fmtp:122 120/126/123\r\n"),
-            std::string::npos);
 }
 
 TEST_F(JsepTrackTest, VideoNegotiationOfferRemb) {
@@ -1349,6 +1319,20 @@ TEST_F(JsepTrackTest, SimulcastOffererWithRtx) {
   ASSERT_GT(posSsrc1, posSsrc0);
   ASSERT_GT(posSsrc2, posSsrc0);
   ASSERT_GT(posSsrc2, posSsrc1);
+
+  ASSERT_EQ(3U, mSendOff.GetRtxSsrcs().size());
+  const auto posRtxSsrc0 =
+      mOffer->ToString().find(std::to_string(mSendOff.GetRtxSsrcs()[0]));
+  const auto posRtxSsrc1 =
+      mOffer->ToString().find(std::to_string(mSendOff.GetRtxSsrcs()[1]));
+  const auto posRtxSsrc2 =
+      mOffer->ToString().find(std::to_string(mSendOff.GetRtxSsrcs()[2]));
+  ASSERT_NE(std::string::npos, posRtxSsrc0);
+  ASSERT_NE(std::string::npos, posRtxSsrc1);
+  ASSERT_NE(std::string::npos, posRtxSsrc2);
+  ASSERT_GT(posRtxSsrc1, posRtxSsrc0);
+  ASSERT_GT(posRtxSsrc2, posRtxSsrc0);
+  ASSERT_GT(posRtxSsrc2, posRtxSsrc1);
 }
 
 TEST_F(JsepTrackTest, SimulcastAnswerer) {
@@ -1482,7 +1466,7 @@ TEST_F(JsepTrackTest, RtcpFbWithPayloadTypeAsymmetry) {
       "c=IN IP4 0.0.0.0\r\n"
       "a=sendrecv\r\n"
       "a=fmtp:136 "
-      "profile-level-id=42e00d;level-asymmetry-allowed=1;packetization-mode="
+      "profile-level-id=42e01f;level-asymmetry-allowed=1;packetization-mode="
       "1\r\n"
       "a=msid:stream_id\r\n"
       "a=rtcp-fb:136 nack\r\n"
@@ -1508,7 +1492,7 @@ TEST_F(JsepTrackTest, RtcpFbWithPayloadTypeAsymmetry) {
   ASSERT_TRUE((codec = GetVideoCodec(mSendOff)));
   ASSERT_EQ("136", codec->mDefaultPt)
       << "Offerer should have seen answer asymmetry!";
-  ASSERT_TRUE((codec = GetVideoCodec(mRecvOff)));
+  ASSERT_TRUE((codec = GetVideoCodec(mRecvOff, 2, 0)));
   ASSERT_EQ("126", codec->mDefaultPt);
   ASSERT_EQ(expectedAckFbTypes, codec->mAckFbTypes);
   ASSERT_EQ(expectedNackFbTypes, codec->mNackFbTypes);
@@ -1635,29 +1619,29 @@ TEST_F(JsepTrackTest, VideoSdpFmtpLine) {
   // the corresponding remote codec.
   UniquePtr<JsepVideoCodecDescription> codec;
   EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 0)));
-  EXPECT_EQ("red", codec->mName);
-  EXPECT_EQ("120/126/123", codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_EQ("VP8", codec->mName);
+  EXPECT_EQ("max-fs=12288;max-fr=60", codec->mSdpFmtpLine.valueOr("nothing"));
   EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 0)));
-  EXPECT_EQ("red", codec->mName);
-  EXPECT_EQ("120/126/123", codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_EQ("VP8", codec->mName);
+  EXPECT_EQ("max-fs=12288;max-fr=60", codec->mSdpFmtpLine.valueOr("nothing"));
 
   EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 1)));
-  EXPECT_EQ("VP8", codec->mName);
-  EXPECT_EQ("max-fs=12288;max-fr=60", codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_EQ("H264", codec->mName);
+  EXPECT_EQ(
+      "profile-level-id=42e01f;level-asymmetry-allowed=1;packetization-mode=1",
+      codec->mSdpFmtpLine.valueOr("nothing"));
   EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 1)));
-  EXPECT_EQ("VP8", codec->mName);
-  EXPECT_EQ("max-fs=12288;max-fr=60", codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_EQ("H264", codec->mName);
+  EXPECT_EQ(
+      "profile-level-id=42e01f;level-asymmetry-allowed=1;packetization-mode=1",
+      codec->mSdpFmtpLine.valueOr("nothing"));
 
   EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 2)));
-  EXPECT_EQ("H264", codec->mName);
-  EXPECT_EQ(
-      "profile-level-id=42e00d;level-asymmetry-allowed=1;packetization-mode=1",
-      codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_EQ("red", codec->mName);
+  EXPECT_EQ("nothing", codec->mSdpFmtpLine.valueOr("nothing"));
   EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 2)));
-  EXPECT_EQ("H264", codec->mName);
-  EXPECT_EQ(
-      "profile-level-id=42e00d;level-asymmetry-allowed=1;packetization-mode=1",
-      codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_EQ("red", codec->mName);
+  EXPECT_EQ("nothing", codec->mSdpFmtpLine.valueOr("nothing"));
 
   EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 3)));
   EXPECT_EQ("ulpfec", codec->mName);
@@ -1711,31 +1695,31 @@ TEST_F(JsepTrackTest, NonDefaultVideoSdpFmtpLine) {
   // the corresponding remote codec.
   UniquePtr<JsepVideoCodecDescription> codec;
   EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 0)));
-  EXPECT_EQ("red", codec->mName);
-  EXPECT_EQ("120/126/123", codec->mSdpFmtpLine.valueOr("nothing"));
-  EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 0)));
-  EXPECT_EQ("red", codec->mName);
-  EXPECT_EQ("120/126/123", codec->mSdpFmtpLine.valueOr("nothing"));
-
-  EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 1)));
   EXPECT_EQ("VP8", codec->mName);
   EXPECT_EQ("max-fs=32400;max-fr=60", codec->mSdpFmtpLine.valueOr("nothing"));
-  EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 1)));
+  EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 0)));
   EXPECT_EQ("VP8", codec->mName);
   EXPECT_EQ("max-fs=1200;max-fr=15", codec->mSdpFmtpLine.valueOr("nothing"));
 
-  EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 2)));
+  EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 1)));
   EXPECT_EQ("H264", codec->mName);
   EXPECT_EQ(
       "profile-level-id=42f00b;level-asymmetry-allowed=1;packetization-mode=1;"
       "max-mbps=1944000;max-fs=32400;max-cpb=800000;max-dpb=128000",
       codec->mSdpFmtpLine.valueOr("nothing"));
-  EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 2)));
+  EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 1)));
   EXPECT_EQ("H264", codec->mName);
   EXPECT_EQ(
       "profile-level-id=42e01f;level-asymmetry-allowed=1;packetization-mode=1;"
       "max-fs=1200;max-dpb=6400;max-br=1000",
       codec->mSdpFmtpLine.valueOr("nothing"));
+
+  EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 2)));
+  EXPECT_EQ("red", codec->mName);
+  EXPECT_EQ("nothing", codec->mSdpFmtpLine.valueOr("nothing"));
+  EXPECT_TRUE((codec = GetVideoCodec(mSendAns, 4, 2)));
+  EXPECT_EQ("red", codec->mName);
+  EXPECT_EQ("nothing", codec->mSdpFmtpLine.valueOr("nothing"));
 
   EXPECT_TRUE((codec = GetVideoCodec(mSendOff, 4, 3)));
   EXPECT_EQ("ulpfec", codec->mName);

@@ -19,7 +19,7 @@ def write_aom_config(system, arch, variables, cache_variables):
 
     # filter variables
     cache_variables = [x for x in sorted(cache_variables)
-                       if x and not x.startswith((' ', 'CMAKE', 'AOM'))]
+                       if x and not x.startswith((' ', 'CMAKE', 'AOM_C', 'AOM_RTCD'))]
 
     # inherit this from the mozilla build config
     cache_variables.remove('HAVE_PTHREAD_H')
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     shared_variables = {
         'CMAKE_CURRENT_SOURCE_DIR': AOM_DIR,
         'CONFIG_AV1_DECODER': 1,
-        'CONFIG_AV1_ENCODER': 0,
+        'CONFIG_AV1_ENCODER': 1,
         'CONFIG_COLLECT_INTER_MODE_RD_STATS': 0,
         'CONFIG_INSPECTION': 0,
         'CONFIG_INTERNAL_STATS': 0,
@@ -88,6 +88,7 @@ if __name__ == '__main__':
 
     platforms = [
         ('armv7', 'linux', 'arm', True),
+        ('arm64', 'mac', 'arm64', True),
         ('generic', '', 'generic', True),
         ('x86', 'linux', 'ia32', True),
         ('x86', 'win', 'ia32', False),
@@ -117,26 +118,36 @@ if __name__ == '__main__':
         # Disable HAVE_UNISTD_H.
         cache_variables.remove('HAVE_UNISTD_H')
         write_aom_config(system, arch, variables, cache_variables)
+
+        # Windows x86_64 needs this -- all other source files are shared
+        # between OSes
+        if cpu == 'x86_64' and system == 'win':
+          f.write('  \'X64_WIN_SOURCES\': [\n')
+          f.write('    \'%s\',\n' % variables['AOM_PORTS_ASM_X86'])
+          f.write("  ],\n")
+
         # Currently, the sources are the same for each supported cpu
         # regardless of operating system / compiler. If that changes, we'll
         # have to generate sources for each combination.
         if generate_sources:
             # Remove spurious sources and perl files
-            sources = filter(lambda x: x.startswith(AOM_DIR), sources)
-            sources = filter(lambda x: not x.endswith('.pl'), sources)
+            sources = list(filter(lambda x: x.startswith(AOM_DIR), sources))
+            sources = list(filter(lambda x: not x.endswith('.pl'), sources))
 
             # Filter out exports
-            exports = filter(lambda x: re.match(os.path.join(AOM_DIR, '(aom|aom_mem|aom_ports|aom_scale)/.*h$'), x), sources)
-            exports = filter(lambda x: not re.search('(internal|src)', x), exports)
-            exports = filter(lambda x: not re.search('(emmintrin_compat.h|mem_.*|msvc.h|aom_once.h)$', x), exports)
+            exports = list(filter(lambda x: re.match(os.path.join(AOM_DIR, '(aom|aom_mem|aom_ports|aom_scale)/.*h$'), x), sources))
+            exports = list(filter(lambda x: not re.search('(internal|src)', x), exports))
+            exports = list(filter(lambda x: not re.search('(emmintrin_compat.h|mem_.*|msvc.h|aom_once.h)$', x), exports))
 
             sources = list(sources)
-            
-            for export in exports:
-                sources.remove(export)
 
-            # Remove header files
+            for export in exports:
+                if export in sources:
+                    sources.remove(export)
+
+            # Remove header and .inc files
             sources = sorted(filter(lambda x: not x.endswith('.h'), sources))
+            sources = sorted(filter(lambda x: not x.endswith('.inc'), sources))
 
             # The build system is unhappy if two files have the same prefix
             # In libaom, sometimes .asm and .c files share the same prefix

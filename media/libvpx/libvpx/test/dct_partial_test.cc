@@ -22,6 +22,7 @@
 #include "test/clear_system_state.h"
 #include "test/register_state_check.h"
 #include "test/util.h"
+#include "vpx_config.h"
 #include "vpx/vpx_codec.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_dsp/vpx_dsp_common.h"
@@ -67,7 +68,7 @@ class PartialFdctTest : public ::testing::TestWithParam<PartialFdctParam> {
     bit_depth_ = GET_PARAM(2);
   }
 
-  virtual void TearDown() { libvpx_test::ClearSystemState(); }
+  void TearDown() override { libvpx_test::ClearSystemState(); }
 
  protected:
   void RunTest() {

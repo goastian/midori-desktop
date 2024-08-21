@@ -14,6 +14,7 @@
 #include "test/encode_test_driver.h"
 #include "test/i420_video_source.h"
 #include "test/util.h"
+#include "vpx_config.h"
 
 namespace {
 
@@ -50,21 +51,21 @@ class CQTest : public ::libvpx_test::EncoderTest,
     init_flags_ = VPX_CODEC_USE_PSNR;
   }
 
-  virtual ~CQTest() {}
+  ~CQTest() override = default;
 
-  virtual void SetUp() {
+  void SetUp() override {
     InitializeConfig();
     SetMode(libvpx_test::kTwoPassGood);
   }
 
-  virtual void BeginPassHook(unsigned int /*pass*/) {
+  void BeginPassHook(unsigned int /*pass*/) override {
     file_size_ = 0;
     psnr_ = 0.0;
     n_frames_ = 0;
   }
 
-  virtual void PreEncodeFrameHook(libvpx_test::VideoSource *video,
-                                  libvpx_test::Encoder *encoder) {
+  void PreEncodeFrameHook(libvpx_test::VideoSource *video,
+                          libvpx_test::Encoder *encoder) override {
     if (video->frame() == 0) {
       if (cfg_.rc_end_usage == VPX_CQ) {
         encoder->Control(VP8E_SET_CQ_LEVEL, cq_level_);
@@ -73,12 +74,12 @@ class CQTest : public ::libvpx_test::EncoderTest,
     }
   }
 
-  virtual void PSNRPktHook(const vpx_codec_cx_pkt_t *pkt) {
+  void PSNRPktHook(const vpx_codec_cx_pkt_t *pkt) override {
     psnr_ += pow(10.0, pkt->data.psnr.psnr[0] / 10.0);
     n_frames_++;
   }
 
-  virtual void FramePktHook(const vpx_codec_cx_pkt_t *pkt) {
+  void FramePktHook(const vpx_codec_cx_pkt_t *pkt) override {
     file_size_ += pkt->data.frame.sz;
   }
 
@@ -104,6 +105,10 @@ CQTest::BitrateMap CQTest::bitrates_;
 
 TEST_P(CQTest, LinearPSNRIsHigherForCQLevel) {
   const vpx_rational timebase = { 33333333, 1000000000 };
+#if CONFIG_REALTIME_ONlY
+  GTEST_SKIP()
+      << "Non-zero g_lag_in_frames is unsupported with CONFIG_REALTIME_ONLY";
+#else
   cfg_.g_timebase = timebase;
   cfg_.rc_target_bitrate = kCQTargetBitrate;
   cfg_.g_lag_in_frames = 25;
@@ -124,6 +129,7 @@ TEST_P(CQTest, LinearPSNRIsHigherForCQLevel) {
   ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
   const double vbr_psnr_lin = GetLinearPSNROverBitrate();
   EXPECT_GE(cq_psnr_lin, vbr_psnr_lin);
+#endif  // CONFIG_REALTIME_ONLY
 }
 
 VP8_INSTANTIATE_TEST_SUITE(CQTest, ::testing::Range(kCQLevelMin, kCQLevelMax,

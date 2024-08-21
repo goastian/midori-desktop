@@ -4,11 +4,6 @@ bugzilla:
   product: "Core"
   component: "Audio/Video"
 
-# The whole library is not used, only the relevant files are imported in the
-# tree, using the script `update.sh`. Some changes have been made to the files,
-# using the patch `moz-libsoundtouch.patch`.
-# We also use a custom soundtouch_config.h.
-
 origin:
   name: "SoundTouch"
   description: "Audio processing library"
@@ -25,24 +20,7 @@ vendoring:
   tracking: commit
 
   exclude:
-    - bin
-    - bootstrap
-    - config
-    - configure.ac
-    - createsrcpack
-    - Makefile.am
-    - make-win.bat
-    - README.html
-    - readme.md
-    - soundtouch.m4
-    - soundtouch.pc.in
-    - ".*"
-    - "source/Android-lib"
-    - "source/*/*/*"
-    - "source/*/*"
-    - "source/*/.*"
-    - "source/*"
-    - "include/*"
+    - "**"
 
   include:
     - COPYING.TXT
@@ -74,6 +52,7 @@ vendoring:
   keep:
     - AUTHORS
     - clear-lf.sh
+    - src/RLBoxSoundTouch*
     - src/SoundTouchFactory.*
     - src/soundtouch_config.h
     - src/soundtouch_perms.h

@@ -2,22 +2,20 @@
 
 This directory contains files used in gecko builds from FFmpeg
 (http://ffmpeg.org). The current files are from FFmpeg as of
-revision fed07efcde72824ac1ada80d4af4e91ac4fcfc14
+revision
+d9d56953
 git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
-git checkout fed07efcde72824ac1ada80d4af4e91ac4fcfc14
-
-This copy has a single patch backported from a later revision to fix the build with recent binutils:
-
-http://git.videolan.org/?p=ffmpeg.git;a=patch;h=effadce6c756247ea8bae32dc13bb3e6f464f0eb
-that is available as `1846703.patch` in this directory. As usual this has other
-changes that don't come from upstream, in `changes.patch`
+git checkout d9d56953
 
 All source files match their path from the library's source archive.
 
-Currently, we only use the vp8, vp9, av1 (libdav1d), mp3, and flac portion of
-the library. If this changes, configuration files will most likely need to be
-updated. Decoding AV1 via libdav1d is supported, although the decoder
-(libdav1d) is vendored separately, `ffvpx` only contains the code to use `libdav1d` through the `ffmpeg` API.
+Currently, we only use the vp8, vp9, av1 (via libdav1d), mp3, flac, vorbis (via
+libvorbis), opus (via libopus) and PCM portion of the library. If this changes,
+configuration files will most likely need to be updated.
+
+Decoding AV1 via libdav1d and libvorbis is supported, although the decoder
+libraries are vendored separately, `ffvpx` only contains the code to use
+those libraries through the `ffmpeg` API.
 
 The ffmpeg project recommends to use ffmpeg's tip, not a particular release.
 
@@ -37,6 +35,9 @@ Then, make sure the files:
 
 include conditional compilation directives, by probably reverting them (or
 reverting and adjusting them if new codecs are added).
+
+Revert and adjust libavcodec `dovi_rpu.h` so that it contains just the necessary
+stubs to compile.
 
 ## Add headers for a new major ffmpeg version
 
@@ -124,7 +125,7 @@ with the thread flavor Gecko prefers on Windows (win32, not pthreads).
 - Run ffmpeg's `./configure` with the options needed:
 
 > ./configure --disable-all --enable-avcodec --enable-decoder=vp8,vp9,mp3,flac
-              --enable-parser=vp8,vp9 --disable-static --enable-shared 
+              --enable-parser=vp8,vp9 --disable-static --enable-shared
               --disable-autodetect --enable-w32threads --toolchain=msvc
 
 - Copy `config.h` and `config.asm` as `config_win64.h` and `config_win64.asm`.
@@ -159,3 +160,9 @@ and link errors.
 There are going to be a lot of changes in terms of symbols exported. Adjust
 `libavutil/avutil.symbols` and `libavcodec/avcodec.symbols` by removing and
 adding symbols until the build passes.
+
+Finally, apply the patches:
+- no-unicode-stdio.patch to avoid passing the infity symbol in unicode to an
+  stdio.h function, that causes bug 1879740 issue on Windows.
+- opusenc-dtx.patch to allow enabling DTX in the opus encoder.
+- libaomenc-svc.patch to allow configuring SVC in the libaom encoder.

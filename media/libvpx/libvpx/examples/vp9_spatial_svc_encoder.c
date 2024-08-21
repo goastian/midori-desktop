@@ -316,7 +316,6 @@ static void parse_command_line(int argc, const char **argv_,
           break;
         default:
           die("Error: Invalid bit depth selected (%d)\n", enc_cfg->g_bit_depth);
-          break;
       }
 #endif  // CONFIG_VP9_HIGHBITDEPTH
     } else if (arg_match(&arg, &dropframe_thresh_arg, argi)) {
@@ -1157,12 +1156,13 @@ int main(int argc, const char **argv) {
 #if CONFIG_VP9_DECODER && !SIMULCAST_MODE
       vpx_codec_control(&encoder, VP9E_GET_SVC_LAYER_ID, &layer_id);
       // Don't look for mismatch on top spatial and top temporal layers as they
-      // are non reference frames.
+      // are non reference frames. Don't look at frames whose top spatial layer
+      // is dropped.
       if ((enc_cfg.ss_number_layers > 1 || enc_cfg.ts_number_layers > 1) &&
+          cx_pkt->data.frame
+              .spatial_layer_encoded[enc_cfg.ss_number_layers - 1] &&
           !(layer_id.temporal_layer_id > 0 &&
-            layer_id.temporal_layer_id == (int)enc_cfg.ts_number_layers - 1 &&
-            cx_pkt->data.frame
-                .spatial_layer_encoded[enc_cfg.ss_number_layers - 1])) {
+            layer_id.temporal_layer_id == (int)enc_cfg.ts_number_layers - 1)) {
         test_decode(&encoder, &decoder, frame_cnt, &mismatch_seen);
       }
 #endif

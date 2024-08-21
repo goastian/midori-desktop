@@ -29,7 +29,6 @@
 #include "MediaTransportHandler.h"
 #include "WebrtcCallWrapper.h"
 #include "PeerConnectionCtx.h"
-#include "WaitFor.h"
 
 #define GTEST_HAS_RTTI 0
 #include "gtest/gtest.h"
@@ -70,7 +69,7 @@ class FakeAudioTrack : public ProcessedMediaTrack {
 
   void Destroy() override {
     MutexAutoLock lock(mMutex);
-    MOZ_ASSERT(!mMainThreadDestroyed);
+    MOZ_RELEASE_ASSERT(!mMainThreadDestroyed);
     mMainThreadDestroyed = true;
     mTimer->Cancel();
     mTimer = nullptr;
@@ -80,14 +79,14 @@ class FakeAudioTrack : public ProcessedMediaTrack {
 
   void AddListener(MediaTrackListener* aListener) override {
     MutexAutoLock lock(mMutex);
-    MOZ_ASSERT(!mListener);
+    MOZ_RELEASE_ASSERT(!mListener);
     mListener = aListener;
   }
 
   RefPtr<GenericPromise> RemoveListener(
       MediaTrackListener* aListener) override {
     MutexAutoLock lock(mMutex);
-    MOZ_ASSERT(mListener == aListener);
+    MOZ_RELEASE_ASSERT(mListener == aListener);
     mListener = nullptr;
     return GenericPromise::CreateAndResolve(true, __func__);
   }
@@ -225,7 +224,7 @@ class LoopbackTransport : public MediaTransportHandler {
 
   void SendPacket(const std::string& aTransportId,
                   MediaPacket&& aPacket) override {
-    peer_->SignalPacketReceived(aTransportId, aPacket);
+    peer_->LoopbackPacketReceived(aTransportId, aPacket);
   }
 
   void SetState(const std::string& aTransportId, TransportLayer::State aState) {
@@ -237,8 +236,19 @@ class LoopbackTransport : public MediaTransportHandler {
     MediaTransportHandler::OnRtcpStateChange(aTransportId, aState);
   }
 
+  void LoopbackPacketReceived(const std::string& aTransportId,
+                              const MediaPacket& aPacket) {
+    if (aPacket.len() && aPacket.type() == MediaPacket::RTCP) {
+      ++rtcp_packets_received_;
+    }
+    SignalPacketReceived(aTransportId, aPacket);
+  }
+
+  int RtcpPacketsReceived() const { return rtcp_packets_received_; }
+
  private:
-  RefPtr<MediaTransportHandler> peer_;
+  RefPtr<LoopbackTransport> peer_;
+  std::atomic<int> rtcp_packets_received_{0};
 };
 
 class TestAgent {
@@ -251,7 +261,6 @@ class TestAgent {
             aSharedState)),
         audio_conduit_(
             AudioSessionConduit::Create(call_, test_utils->sts_target())),
-        audio_pipeline_(),
         transport_(new LoopbackTransport) {
     Unused << WaitFor(InvokeAsync(call_->mCallThread, __func__, [&] {
       audio_conduit_->InitControl(&control_);
@@ -327,9 +336,7 @@ class TestAgent {
 
   int GetAudioRtcpCountSent() { return audio_pipeline_->RtcpPacketsSent(); }
 
-  int GetAudioRtcpCountReceived() {
-    return audio_pipeline_->RtcpPacketsReceived();
-  }
+  int GetAudioRtcpCountReceived() { return transport_->RtcpPacketsReceived(); }
 
  protected:
   ConcreteControl control_;
@@ -357,9 +364,10 @@ class TestAgentSend : public TestAgent {
   virtual void CreatePipeline(const std::string& aTransportId) {
     std::string test_pc;
 
-    auto audio_pipeline = MakeRefPtr<MediaPipelineTransmit>(
-        test_pc, transport_, AbstractThread::MainThread(),
-        test_utils->sts_target(), false, audio_conduit_);
+    RefPtr<MediaPipelineTransmit> audio_pipeline =
+        MediaPipelineTransmit::Create(
+            test_pc, transport_, AbstractThread::MainThread(),
+            test_utils->sts_target(), false, audio_conduit_);
     Unused << WaitFor(InvokeAsync(call_->mCallThread, __func__, [&] {
       audio_pipeline->InitControl(&control_);
       return GenericPromise::CreateAndResolve(true, __func__);
@@ -590,6 +598,15 @@ TEST_F(MediaPipelineFilterTest, TestSSRCFilter) {
   EXPECT_FALSE(Filter(filter, 556, 110));
 }
 
+TEST_F(MediaPipelineFilterTest, TestSSRCFilterOverridesPayloadTypeFilter) {
+  MediaPipelineFilter filter;
+  filter.AddRemoteSSRC(555);
+  filter.AddUniqueReceivePT(110);
+  // We have a configured ssrc; do not allow payload type matching.
+  EXPECT_FALSE(Filter(filter, 556, 110));
+  EXPECT_TRUE(Filter(filter, 555, 110));
+}
+
 #define SSRC(ssrc)                                                    \
   ((ssrc >> 24) & 0xFF), ((ssrc >> 16) & 0xFF), ((ssrc >> 8) & 0xFF), \
       (ssrc & 0xFF)
@@ -619,9 +636,14 @@ TEST_F(MediaPipelineFilterTest, TestMidFilter) {
 
 TEST_F(MediaPipelineFilterTest, TestPayloadTypeFilter) {
   MediaPipelineFilter filter;
-  filter.AddUniquePT(110);
+  filter.AddUniqueReceivePT(110);
   EXPECT_TRUE(Filter(filter, 555, 110));
   EXPECT_FALSE(Filter(filter, 556, 111));
+  // Matching based on unique payload type causes us to learn the ssrc.
+  EXPECT_TRUE(Filter(filter, 555, 98));
+  // Once we have learned an SSRC, do _not_ learn new ones based on payload
+  // type.
+  EXPECT_FALSE(Filter(filter, 557, 110));
 }
 
 TEST_F(MediaPipelineFilterTest, TestSSRCMovedWithMid) {
@@ -643,7 +665,7 @@ TEST_F(MediaPipelineFilterTest, TestRemoteSDPNoSSRCs) {
   MediaPipelineFilter filter;
   const auto mid = Some(std::string("mid0"));
   filter.SetRemoteMediaStreamId(mid);
-  filter.AddUniquePT(111);
+  filter.AddUniqueReceivePT(111);
   EXPECT_TRUE(Filter(filter, 555, 110, mid));
   EXPECT_TRUE(Filter(filter, 555, 110));
 

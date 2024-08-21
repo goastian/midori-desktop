@@ -263,6 +263,7 @@ struct EncodeFrameResult {
   // The EncodeFrame will allocate a buffer, write the coding data into the
   // buffer and give the ownership of the buffer to coding_data.
   std::unique_ptr<unsigned char[]> coding_data;
+  size_t max_coding_data_byte_size;
   double psnr;
   uint64_t sse;
   int quantize_index;
@@ -309,7 +310,7 @@ struct EncodeFrameResult {
   // The tpl stats stored in the vector is according to the encoding order.
   // For example, suppose there are N show frames for the current GOP.
   // Then tpl_stats_info[0] stores the information of the first frame to be
-  // encoded for this GOP, i.e, the AltRef frame.
+  // encoded for this GOP, i.e., the AltRef frame.
   std::vector<TplStatsInfo> tpl_stats_info;
   ImageBuffer coded_frame;
 

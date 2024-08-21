@@ -24,7 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <time.h>
+#include <vector>
 
 using namespace std;
 
@@ -66,11 +66,11 @@ using namespace std;
   X(AAudioStream_getFramesWritten)                                             \
   X(AAudioStream_getFramesPerBurst)                                            \
   X(AAudioStreamBuilder_setInputPreset)                                        \
-  X(AAudioStreamBuilder_setUsage)
+  X(AAudioStreamBuilder_setUsage)                                              \
+  X(AAudioStreamBuilder_setFramesPerDataCallback)
 
 // not needed or added later on
-// X(AAudioStreamBuilder_setFramesPerDataCallback) \
-  // X(AAudioStreamBuilder_setDeviceId)              \
+// X(AAudioStreamBuilder_setDeviceId)              \
   // X(AAudioStreamBuilder_setSamplesPerFrame)       \
   // X(AAudioStream_getSamplesPerFrame)              \
   // X(AAudioStream_getDeviceId)                     \
@@ -110,6 +110,9 @@ static void
 aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
 static int
 aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
+
+static void
+reinitialize_stream(cubeb_stream * stm);
 
 enum class stream_state {
   INIT = 0,
@@ -157,7 +160,7 @@ struct cubeb_stream {
   // changing device.
   std::mutex mutex;
 
-  std::unique_ptr<char[]> in_buf;
+  std::vector<uint8_t> in_buf;
   unsigned in_frame_size{}; // size of one input frame
 
   unique_ptr<cubeb_stream_params> output_stream_params;
@@ -242,13 +245,24 @@ shutdown_with_error(cubeb_stream * stm)
   }
 
   int64_t poll_frequency_ns = NS_PER_S * stm->out_frame_size / stm->sample_rate;
+  int rv;
   if (stm->istream) {
-    wait_for_state_change(stm->istream, AAUDIO_STREAM_STATE_STOPPED,
-                          poll_frequency_ns);
+    rv = wait_for_state_change(stm->istream, AAUDIO_STREAM_STATE_STOPPED,
+                               poll_frequency_ns);
+    if (rv != CUBEB_OK) {
+      LOG("Failure when waiting for stream change on the input side when "
+          "shutting down in error");
+      // Not much we can do, carry on
+    }
   }
   if (stm->ostream) {
-    wait_for_state_change(stm->ostream, AAUDIO_STREAM_STATE_STOPPED,
-                          poll_frequency_ns);
+    rv = wait_for_state_change(stm->ostream, AAUDIO_STREAM_STATE_STOPPED,
+                               poll_frequency_ns);
+    if (rv != CUBEB_OK) {
+      LOG("Failure when waiting for stream change on the output side when "
+          "shutting down in error");
+      // Not much we can do, carry on
+    }
   }
 
   assert(!stm->in_data_callback.load());
@@ -618,7 +632,9 @@ aaudio_get_latency(cubeb_stream * stm, aaudio_direction_t direction,
   auto result = WRAP(AAudioStream_getTimestamp)(stream, CLOCK_MONOTONIC,
                                                 &hw_frame_index, &hw_tstamp);
   if (result != AAUDIO_OK) {
-    LOG("AAudioStream_getTimestamp failure.");
+    LOG("AAudioStream_getTimestamp failure for %s: %s",
+        is_output ? "output" : "input",
+        WRAP(AAudio_convertResultToText)(result));
     return 0;
   }
 
@@ -629,9 +645,12 @@ aaudio_get_latency(cubeb_stream * stm, aaudio_direction_t direction,
   // Extrapolate from the known timestamp for a particular frame presented.
   int64_t app_frame_hw_time = hw_tstamp + frame_time_delta;
   // For an output stream, the latency is positive, for an input stream, it's
-  // negative.
-  int64_t latency_ns = is_output ? app_frame_hw_time - signed_tstamp_ns
-                                 : signed_tstamp_ns - app_frame_hw_time;
+  // negative. It can happen in some instances, e.g. around start of the stream
+  // that the latency for output is negative, return 0 in this case.
+  int64_t latency_ns = is_output
+                           ? std::max(static_cast<int64_t>(0),
+                                      app_frame_hw_time - signed_tstamp_ns)
+                           : signed_tstamp_ns - app_frame_hw_time;
   int64_t latency_frames = stm->sample_rate * latency_ns / NS_PER_S;
 
   LOGV("Latency in frames (%s): %d (%dms)", is_output ? "output" : "input",
@@ -687,9 +706,6 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   stream_state state = atomic_load(&stm->state);
   int istate = WRAP(AAudioStream_getState)(stm->istream);
   int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), "
-        "num_frames: %ld",
-        (void *)stm, state, istate, ostate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -698,23 +714,38 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   // This might happen when we started draining but not yet actually
   // stopped the stream from the state thread.
   if (state == stream_state::DRAINING) {
+    LOG("Draining in duplex callback");
     std::memset(audio_data, 0x0, num_frames * stm->out_frame_size);
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
 
+  if (num_frames * stm->in_frame_size > stm->in_buf.size()) {
+    LOG("Resizing input buffer in duplex callback");
+    stm->in_buf.resize(num_frames * stm->in_frame_size);
+  }
   // The aaudio docs state that AAudioStream_read must not be called on
   // the stream associated with a callback. But we call it on the input stream
   // while this callback is for the output stream so this is ok.
   // We also pass timeout 0, giving us strong non-blocking guarantees.
   // This is exactly how it's done in the aaudio duplex example code snippet.
   long in_num_frames =
-      WRAP(AAudioStream_read)(stm->istream, stm->in_buf.get(), num_frames, 0);
+      WRAP(AAudioStream_read)(stm->istream, stm->in_buf.data(), num_frames, 0);
   if (in_num_frames < 0) { // error
-    stm->state.store(stream_state::ERROR);
+    if (in_num_frames == AAUDIO_STREAM_STATE_DISCONNECTED) {
+      LOG("AAudioStream_read: %s (reinitializing)",
+          WRAP(AAudio_convertResultToText)(in_num_frames));
+      reinitialize_stream(stm);
+    } else {
+      stm->state.store(stream_state::ERROR);
+    }
     LOG("AAudioStream_read: %s",
         WRAP(AAudio_convertResultToText)(in_num_frames));
     return AAUDIO_CALLBACK_RESULT_STOP;
   }
+
+  ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), "
+        "num_frames: %ld, read: %ld",
+        (void *)stm, state, istate, ostate, num_frames, in_num_frames);
 
   compute_and_report_latency_metrics(stm);
 
@@ -729,13 +760,13 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     // LOG("AAudioStream_read returned not enough frames: %ld instead of %d",
     //   in_num_frames, num_frames);
     unsigned left = num_frames - in_num_frames;
-    char * buf = stm->in_buf.get() + in_num_frames * stm->in_frame_size;
+    uint8_t * buf = stm->in_buf.data() + in_num_frames * stm->in_frame_size;
     std::memset(buf, 0x0, left * stm->in_frame_size);
     in_num_frames = num_frames;
   }
 
   long done_frames =
-      cubeb_resampler_fill(stm->resampler, stm->in_buf.get(), &in_num_frames,
+      cubeb_resampler_fill(stm->resampler, stm->in_buf.data(), &in_num_frames,
                            audio_data, num_frames);
 
   if (done_frames < 0 || done_frames > num_frames) {
@@ -904,7 +935,7 @@ aaudio_error_cb(AAudioStream * astream, void * user_data, aaudio_result_t error)
   assert(stm->ostream == astream || stm->istream == astream);
 
   // Device change -- reinitialize on the new default device.
-  if (error == AAUDIO_ERROR_DISCONNECTED) {
+  if (error == AAUDIO_ERROR_DISCONNECTED || error == AAUDIO_ERROR_TIMEOUT) {
     LOG("Audio device change, reinitializing stream");
     reinitialize_stream(stm);
     return;
@@ -1022,6 +1053,8 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
     stm->istream = nullptr;
   }
 
+  stm->timing_info.invalidate();
+
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
     stm->resampler = nullptr;
@@ -1040,6 +1073,8 @@ static int
 aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
   assert(stm->state.load() == stream_state::INIT);
+
+  cubeb_async_log_reset_threads();
 
   aaudio_result_t res;
   AAudioStreamBuilder * sb;
@@ -1104,10 +1139,27 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     WRAP(AAudioStreamBuilder_setUsage)(sb, output_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_OUTPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, out_data_callback, stm);
+    assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
+    LOG("Frames per callback set to %d for output", stm->latency_frames);
+    WRAP(AAudioStreamBuilder_setFramesPerDataCallback)
+    (sb, static_cast<int32_t>(stm->latency_frames));
+
     int res_err = realize_stream(sb, stm->output_stream_params.get(),
                                  &stm->ostream, &frame_size);
     if (res_err) {
       return res_err;
+    }
+
+    int32_t output_burst_size =
+        WRAP(AAudioStream_getFramesPerBurst)(stm->ostream);
+    LOG("AAudio output burst size: %d", output_burst_size);
+    // 3 times the burst size seems to be robust.
+    res = WRAP(AAudioStream_setBufferSizeInFrames)(stm->ostream,
+                                                   output_burst_size * 3);
+    if (res < 0) {
+      LOG("AAudioStream_setBufferSizeInFrames error (ostream): %s",
+          WRAP(AAudio_convertResultToText)(res));
+      // Not fatal
     }
 
     int rate = WRAP(AAudioStream_getSampleRate)(stm->ostream);
@@ -1143,10 +1195,26 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     WRAP(AAudioStreamBuilder_setInputPreset)(sb, input_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
+    assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
+    LOG("Frames per callback set to %d for input", stm->latency_frames);
+    WRAP(AAudioStreamBuilder_setFramesPerDataCallback)
+    (sb, static_cast<int32_t>(stm->latency_frames));
     int res_err = realize_stream(sb, stm->input_stream_params.get(),
                                  &stm->istream, &frame_size);
     if (res_err) {
       return res_err;
+    }
+
+    int32_t input_burst_size =
+        WRAP(AAudioStream_getFramesPerBurst)(stm->istream);
+    LOG("AAudio input burst size: %d", input_burst_size);
+    // 3 times the burst size seems to be robust.
+    res = WRAP(AAudioStream_setBufferSizeInFrames)(stm->istream,
+                                                   input_burst_size * 3);
+    if (res < AAUDIO_OK) {
+      LOG("AAudioStream_setBufferSizeInFrames error (istream): %s",
+          WRAP(AAudio_convertResultToText)(res));
+      // Not fatal
     }
 
     int bcap = WRAP(AAudioStream_getBufferCapacityInFrames)(stm->istream);
@@ -1160,7 +1228,7 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
         WRAP(AAudioStream_getBufferSizeInFrames)(stm->istream));
     LOG("AAudio input stream buffer rate: %d", rate);
 
-    stm->in_buf.reset(new char[bcap * frame_size]());
+    stm->in_buf.resize(bcap * frame_size);
     assert(!stm->sample_rate ||
            stm->sample_rate == stm->input_stream_params->rate);
 
@@ -1685,6 +1753,7 @@ const static struct cubeb_ops aaudio_ops = {
     /*.get_max_channel_count =*/aaudio_get_max_channel_count,
     /* .get_min_latency =*/aaudio_get_min_latency,
     /*.get_preferred_sample_rate =*/aaudio_get_preferred_sample_rate,
+    /*.get_supported_input_processing_params =*/nullptr,
     /*.enumerate_devices =*/nullptr,
     /*.device_collection_destroy =*/nullptr,
     /*.destroy =*/aaudio_destroy,
@@ -1698,6 +1767,8 @@ const static struct cubeb_ops aaudio_ops = {
     /*.stream_set_volume =*/aaudio_stream_set_volume,
     /*.stream_set_name =*/nullptr,
     /*.stream_get_current_device =*/nullptr,
+    /*.stream_set_input_mute =*/nullptr,
+    /*.stream_set_input_processing_params =*/nullptr,
     /*.stream_device_destroy =*/nullptr,
     /*.stream_register_device_changed_callback =*/nullptr,
     /*.register_device_collection_changed =*/nullptr};

@@ -18,6 +18,7 @@
 #include "test/y4m_video_source.h"
 #include "test/yuv_video_source.h"
 #include "vp9/encoder/vp9_ratectrl.h"
+#include "vpx_config.h"
 
 namespace {
 
@@ -86,9 +87,9 @@ class ArfFreqTest
       : EncoderTest(GET_PARAM(0)), test_video_param_(GET_PARAM(1)),
         test_encode_param_(GET_PARAM(2)), min_arf_requested_(GET_PARAM(3)) {}
 
-  virtual ~ArfFreqTest() {}
+  ~ArfFreqTest() override = default;
 
-  virtual void SetUp() {
+  void SetUp() override {
     InitializeConfig();
     SetMode(test_encode_param_.mode);
     if (test_encode_param_.mode != ::libvpx_test::kRealTime) {
@@ -104,7 +105,7 @@ class ArfFreqTest
     dec_cfg_.threads = 4;
   }
 
-  virtual void BeginPassHook(unsigned int) {
+  void BeginPassHook(unsigned int) override {
     min_run_ = ARF_NOT_SEEN;
     run_of_visible_frames_ = 0;
   }
@@ -126,7 +127,7 @@ class ArfFreqTest
     return frames;
   }
 
-  virtual void FramePktHook(const vpx_codec_cx_pkt_t *pkt) {
+  void FramePktHook(const vpx_codec_cx_pkt_t *pkt) override {
     if (pkt->kind != VPX_CODEC_CX_FRAME_PKT) return;
     const int frames = GetNumFramesInPkt(pkt);
     if (frames == 1) {
@@ -145,8 +146,8 @@ class ArfFreqTest
     }
   }
 
-  virtual void PreEncodeFrameHook(::libvpx_test::VideoSource *video,
-                                  ::libvpx_test::Encoder *encoder) {
+  void PreEncodeFrameHook(::libvpx_test::VideoSource *video,
+                          ::libvpx_test::Encoder *encoder) override {
     if (video->frame() == 0) {
       encoder->Control(VP9E_SET_FRAME_PARALLEL_DECODING, 1);
       encoder->Control(VP9E_SET_TILE_COLUMNS, 4);

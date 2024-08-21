@@ -23,6 +23,7 @@
 #include "test/register_state_check.h"
 #include "test/util.h"
 #include "vp9/common/vp9_entropy.h"
+#include "vpx_config.h"
 #include "vpx/vpx_codec.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_ports/mem.h"
@@ -134,7 +135,7 @@ void fwht_ref(const Buffer<int16_t> &in, Buffer<tran_low_t> *out, int size,
 
 class TransTestBase : public ::testing::TestWithParam<DctParam> {
  public:
-  virtual void SetUp() {
+  void SetUp() override {
     rnd_.Reset(ACMRandom::DeterministicSeed());
     const int idx = GET_PARAM(0);
     const FuncInfo *func_info = &(GET_PARAM(1)[idx]);
@@ -166,7 +167,7 @@ class TransTestBase : public ::testing::TestWithParam<DctParam> {
     ASSERT_NE(dst_, nullptr);
   }
 
-  virtual void TearDown() {
+  void TearDown() override {
     vpx_free(src_);
     src_ = nullptr;
     vpx_free(dst_);

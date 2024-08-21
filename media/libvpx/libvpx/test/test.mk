@@ -7,6 +7,8 @@ LIBVPX_TEST_SRCS-yes += codec_factory.h
 LIBVPX_TEST_SRCS-yes += md5_helper.h
 LIBVPX_TEST_SRCS-yes += register_state_check.h
 LIBVPX_TEST_SRCS-yes += test.mk
+LIBVPX_TEST_SRCS-yes += init_vpx_test.cc
+LIBVPX_TEST_SRCS-yes += init_vpx_test.h
 LIBVPX_TEST_SRCS-yes += test_libvpx.cc
 LIBVPX_TEST_SRCS-yes += test_vectors.cc
 LIBVPX_TEST_SRCS-yes += test_vectors.h
@@ -19,9 +21,12 @@ LIBVPX_TEST_SRCS-yes += video_source.h
 ## Black box tests only use the public API.
 ##
 LIBVPX_TEST_SRCS-yes                   += ../md5_utils.h ../md5_utils.c
+LIBVPX_TEST_SRCS-yes                   += vpx_image_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += ivf_video_source.h
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += ../y4minput.h ../y4minput.c
+ifneq ($(CONFIG_REALTIME_ONLY),yes)
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += altref_test.cc
+endif
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += encode_api_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += error_resilience_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += i420_video_source.h
@@ -30,7 +35,9 @@ LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += resize_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += y4m_video_source.h
 LIBVPX_TEST_SRCS-$(CONFIG_ENCODERS)    += yuv_video_source.h
 
+ifneq ($(CONFIG_REALTIME_ONLY),yes)
 LIBVPX_TEST_SRCS-$(CONFIG_VP8_ENCODER) += config_test.cc
+endif
 LIBVPX_TEST_SRCS-$(CONFIG_VP8_ENCODER) += cq_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP8_ENCODER) += keyframe_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP8_ENCODER) += vp8_datarate_test.cc
@@ -41,7 +48,9 @@ LIBVPX_TEST_SRCS-$(CONFIG_VP9_DECODER) += external_frame_buffer_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_DECODER) += user_priv_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += active_map_refresh_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += active_map_test.cc
+ifneq ($(CONFIG_REALTIME_ONLY),yes)
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += alt_ref_aq_segment_test.cc
+endif
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += aq_segment_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += borders_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += cpu_speed_test.cc
@@ -58,7 +67,9 @@ LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += svc_test.h
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += svc_end_to_end_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += timestamp_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += vp9_datarate_test.cc
+ifneq ($(CONFIG_REALTIME_ONLY),yes)
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += vp9_ext_ratectrl_test.cc
+endif
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += ../vp9/simple_encode.h
 
 LIBVPX_TEST_SRCS-yes                   += decode_test_driver.cc
@@ -85,6 +96,7 @@ LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += ../webmdec.cc
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += ../webmdec.h
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += webm_video_source.h
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_DECODER) += vp9_skip_loopfilter_test.cc
+$(BUILD_PFX)third_party/libwebm/%.cc.o: CXXFLAGS += $(LIBWEBM_CXXFLAGS)
 endif
 
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += decode_api_test.cc
@@ -214,6 +226,8 @@ endif
 
 TEST_INTRA_PRED_SPEED_SRCS-yes := test_intra_pred_speed.cc
 TEST_INTRA_PRED_SPEED_SRCS-yes += ../md5_utils.h ../md5_utils.c
+TEST_INTRA_PRED_SPEED_SRCS-yes += init_vpx_test.cc
+TEST_INTRA_PRED_SPEED_SRCS-yes += init_vpx_test.h
 
 RC_INTERFACE_TEST_SRCS-yes := test_rc_interface.cc
 RC_INTERFACE_TEST_SRCS-$(CONFIG_VP9_ENCODER) += vp9_ratectrl_rtc_test.cc

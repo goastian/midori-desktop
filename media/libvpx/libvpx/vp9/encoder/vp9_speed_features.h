@@ -306,7 +306,7 @@ typedef struct SPEED_FEATURES {
   // Turned off when (row_mt_bit_exact == 1 && adaptive_rd_thresh_row_mt == 0).
   int adaptive_rd_thresh;
 
-  // Flag to use adaptive_rd_thresh when row-mt it enabled, only for non-rd
+  // Flag to use adaptive_rd_thresh when row-mt is enabled, only for non-rd
   // pickmode.
   int adaptive_rd_thresh_row_mt;
 
@@ -643,7 +643,7 @@ typedef struct SPEED_FEATURES {
   // Use machine learning based partition search.
   int nonrd_use_ml_partition;
 
-  // Multiplier for base thresold for variance partitioning.
+  // Multiplier for base threshold for variance partitioning.
   int variance_part_thresh_mult;
 
   // Force subpel motion filter to always use SMOOTH_FILTER.

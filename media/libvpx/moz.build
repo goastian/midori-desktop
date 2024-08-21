@@ -13,39 +13,47 @@ if CONFIG['VPX_USE_NASM']:
     USE_NASM = True
 
 # Linux, Mac and Win share file lists for x86* but not configurations.
-if CONFIG['CPU_ARCH'] == 'x86_64':
-    EXPORTS.vpx += files['X64_EXPORTS']
-    SOURCES += files['X64_SOURCES']
+if CONFIG['TARGET_CPU'] == 'x86_64':
     if CONFIG['OS_TARGET'] == 'WINNT':
+        EXPORTS.vpx += files['WIN_X64_EXPORTS']
+        SOURCES += files['WIN_X64_SOURCES']
         ASFLAGS += [ '-I%s/media/libvpx/config/win/x64/' % TOPSRCDIR ]
         LOCAL_INCLUDES += [ '/media/libvpx/config/win/x64/' ]
     elif CONFIG['OS_TARGET'] == 'Darwin':
+        EXPORTS.vpx += files['MAC_X64_EXPORTS']
+        SOURCES += files['MAC_X64_SOURCES']
         ASFLAGS += [ '-I%s/media/libvpx/config/mac/x64/' % TOPSRCDIR ]
         LOCAL_INCLUDES += [ '/media/libvpx/config/mac/x64/' ]
     else: # Android, Linux, BSDs, etc.
+        EXPORTS.vpx += files['LINUX_X64_EXPORTS']
+        SOURCES += files['LINUX_X64_SOURCES']
         ASFLAGS += [ '-I%s/media/libvpx/config/linux/x64/' % TOPSRCDIR ]
         LOCAL_INCLUDES += [ '/media/libvpx/config/linux/x64/' ]
-elif CONFIG['CPU_ARCH'] == 'x86':
-    EXPORTS.vpx += files['IA32_EXPORTS']
-    SOURCES += files['IA32_SOURCES']
+elif CONFIG['TARGET_CPU'] == 'x86':
     if CONFIG['OS_TARGET'] == 'WINNT':
+        EXPORTS.vpx += files['WIN_IA32_EXPORTS']
+        SOURCES += files['WIN_IA32_SOURCES']
         ASFLAGS += [ '-I%s/media/libvpx/config/win/ia32/' % TOPSRCDIR ]
         LOCAL_INCLUDES += [ '/media/libvpx/config/win/ia32/' ]
     elif CONFIG['OS_TARGET'] == 'Darwin':
+        EXPORTS.vpx += files['MAC_IA32_EXPORTS']
+        SOURCES += files['MAC_IA32_SOURCES']
         ASFLAGS += [ '-I%s/media/libvpx/config/mac/ia32/' % TOPSRCDIR ]
         LOCAL_INCLUDES += [ '/media/libvpx/config/mac/ia32/' ]
     else: # Android, Linux, BSDs, etc.
+        EXPORTS.vpx += files['LINUX_IA32_EXPORTS']
+        SOURCES += files['LINUX_IA32_SOURCES']
         ASFLAGS += [ '-I%s/media/libvpx/config/linux/ia32/' % TOPSRCDIR ]
         LOCAL_INCLUDES += [ '/media/libvpx/config/linux/ia32/' ]
-elif CONFIG['CPU_ARCH'] == 'arm':
-    EXPORTS.vpx += files['ARM_EXPORTS']
+elif CONFIG['TARGET_CPU'] == 'arm':
+    EXPORTS.vpx += files['LINUX_ARM_EXPORTS']
     ASFLAGS += [
         '-I%s/media/libvpx/config/linux/arm/' % TOPSRCDIR,
         '-I%s/libvpx' % OBJDIR,
     ]
     LOCAL_INCLUDES += [ '/media/libvpx/config/linux/arm/' ]
 
-    arm_asm_files = files['ARM_SOURCES']
+    arm_asm_files = files['LINUX_ARM_SOURCES']
 
     if CONFIG['GNU_AS']:
         SOURCES += sorted([
@@ -63,16 +71,22 @@ elif CONFIG['CPU_ARCH'] == 'arm':
         LOCAL_INCLUDES += [
             '%%%s/sources/android/cpufeatures' % CONFIG['ANDROID_NDK'],
         ]
-elif CONFIG['CPU_ARCH'] == 'aarch64' and CONFIG['OS_TARGET'] == 'WINNT':
-    EXPORTS.vpx += files['ARM64_EXPORTS']
-    SOURCES += files['ARM64_SOURCES']
-    ASFLAGS += [ '-I%s/media/libvpx/config/win/aarch64/' % TOPSRCDIR ]
-    LOCAL_INCLUDES += [ '/media/libvpx/config/win/aarch64/' ]
-elif CONFIG['CPU_ARCH'] == 'aarch64':
-    EXPORTS.vpx += files['ARM64_EXPORTS']
-    SOURCES += files['ARM64_SOURCES']
-    ASFLAGS += [ '-I%s/media/libvpx/config/linux/arm64/' % TOPSRCDIR ]
-    LOCAL_INCLUDES += [ '/media/libvpx/config/linux/arm64/' ]
+elif CONFIG['TARGET_CPU'] == 'aarch64':
+    if CONFIG['OS_TARGET'] == 'WINNT':
+        EXPORTS.vpx += files['WIN_AARCH64_EXPORTS']
+        SOURCES += files['WIN_AARCH64_SOURCES']
+        ASFLAGS += [ '-I%s/media/libvpx/config/win/aarch64/' % TOPSRCDIR ]
+        LOCAL_INCLUDES += [ '/media/libvpx/config/win/aarch64/' ]
+    elif CONFIG['OS_TARGET'] == 'Darwin':
+        EXPORTS.vpx += files['MAC_ARM64_EXPORTS']
+        SOURCES += files['MAC_ARM64_SOURCES']
+        ASFLAGS += [ '-I%s/media/libvpx/config/mac/arm64/' % TOPSRCDIR ]
+        LOCAL_INCLUDES += [ '/media/libvpx/config/mac/arm64/' ]
+    else: # Android, Linux, BSDs, etc.
+        EXPORTS.vpx += files['LINUX_ARM64_EXPORTS']
+        SOURCES += files['LINUX_ARM64_SOURCES']
+        ASFLAGS += [ '-I%s/media/libvpx/config/linux/arm64/' % TOPSRCDIR ]
+        LOCAL_INCLUDES += [ '/media/libvpx/config/linux/arm64/' ]
 else:
     # Generic C-only configuration
     EXPORTS.vpx += files['GENERIC_EXPORTS']
@@ -83,7 +97,8 @@ else:
 # We allow warnings for third-party code that can be updated from upstream.
 AllowCompilerWarnings()
 
-FINAL_LIBRARY = 'gkmedias'
+FINAL_LIBRARY = 'gkcodecs'
+NoVisibilityFlags()
 
 DEFINES['HAVE_CONFIG_H'] = 'vpx_config.h'
 
@@ -110,6 +125,14 @@ for f in SOURCES:
             SOURCES[f].flags += ['-mavx']
         if 'avx2.c' in f:
             SOURCES[f].flags += ['-mavx2']
+        if 'neon_dotprod.c' in f:
+            SOURCES[f].flags += ['-march=armv8.2-a+dotprod']
+        if 'neon_i8mm.c' in f:
+            SOURCES[f].flags += ['-march=armv8.2-a+dotprod+i8mm']
+        if 'sve.c' in f:
+            SOURCES[f].flags += ['-march=armv8.2-a+dotprod+i8mm+sve']
+        if 'sve2.c' in f:
+            SOURCES[f].flags += ['-march=armv9-a+sve2']
 
 # Suppress warnings in third-party code.
 CFLAGS += [

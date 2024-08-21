@@ -56,9 +56,48 @@ function gen_rtcd_header {
     > $BASE_DIR/$LIBAOM_CONFIG_DIR/$1/config/aom_dsp_rtcd.h
 }
 
+# Generate arm64 optional arguments for *_rtcd.h files.
+# $1 - Header file directory.
+function gen_arm64_optional_args {
+  local file="$BASE_DIR/$LIBAOM_CONFIG_DIR/$1/config/aom_config.h"
+
+  # The features below are copied from the "ARM64_FLAVORS" in
+  # AOM_DIR/build/cmake/cpu.cmake.
+  local arm64_flavors=(
+    "NEON"
+    "ARM_CRC32"
+    "NEON_DOTPROD"
+    "NEON_I8MM"
+    "SVE"
+    "SVE2"
+  )
+
+  local config=""
+  local opt=""
+  local args=""
+  while read -r line; do
+    for f in "${arm64_flavors[@]}"; do
+        config="HAVE_$f "
+        if [[ $line == *"$config"* ]]; then
+            enabled=${line//*$config}
+            if [[ $enabled -eq 0 ]]; then
+                opt=$(echo $f | tr '[:upper:]' '[:lower:]')
+                args=$(echo $args; echo "--disable-$opt")
+            fi
+        fi
+    done
+  done < $file
+
+  echo $args
+}
+
 echo "Generating config files."
-cd $BASE_DIR
-python generate_sources_mozbuild.py
+python3 -m venv temp
+. temp/bin/activate
+pip install pyparsing==2.4.7
+python3 generate_sources_mozbuild.py
+deactivate
+rm -r temp
 
 # Copy aom_version.h once. The file is the same for all platforms.
 cp aom_version.h $BASE_DIR/$LIBAOM_CONFIG_DIR
@@ -70,6 +109,8 @@ gen_rtcd_header win/x64 x86_64
 gen_rtcd_header win/ia32 x86
 
 gen_rtcd_header linux/arm armv7
+
+gen_rtcd_header mac/arm64 arm64 "$(gen_arm64_optional_args mac/arm64)"
 
 gen_rtcd_header generic generic
 

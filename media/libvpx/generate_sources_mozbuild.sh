@@ -69,6 +69,7 @@ function write_sources {
 # Convert a list of source files into sources.mozbuild.
 # $1 - Input file.
 # $2 - Output prefix.
+# $3 - Path of vpx_config.c under $LIBVPX_CONFIG_DIR
 function convert_srcs_to_project_files {
   # Do the following here:
   # 1. Filter .c, .h, .s, .S and .asm files.
@@ -76,8 +77,17 @@ function convert_srcs_to_project_files {
 
   local source_list=$(grep -E '(\.c|\.h|\.S|\.s|\.asm)$' $1)
 
-  # Remove vpx_config.c.
+  # Adjust the path for vpx_config.c while maintaining list order:
+  # Since the config file resides in $BASE_DIR/$LIBVPX_CONFIG_DIR, while the
+  # files in $source_list are placed under $BASE_DIR/libvpx (see write_sources),
+  # the config file path requires adjustment. To ensure the list remains sorted,
+  # we must first remove it and then insert it at the beginning of the list.
+
+  # Remove vpx_config.c
   source_list=$(echo "$source_list" | grep -v 'vpx_config\.c')
+  # Insert vpx_config.c at the beginning of the list.
+  local config=$(echo "../$LIBVPX_CONFIG_DIR/$3/vpx_config.c")
+  source_list=$(echo "$config" ; echo "$source_list")
 
   # Remove include-only asm files (no object code emitted)
   source_list=$(echo "$source_list" | grep -v 'x86_abi_support\.asm')
@@ -168,7 +178,9 @@ function gen_rtcd_header {
 # $1 - Header file directory.
 # $2 - Config command line.
 function gen_config_files {
-  ./configure $2 > /dev/null
+  mkdir -p $BASE_DIR/$LIBVPX_CONFIG_DIR/$1
+  ./configure $2 --log=$BASE_DIR/$LIBVPX_CONFIG_DIR/$1/config.log > /dev/null
+  echo "Log file: $BASE_DIR/$LIBVPX_CONFIG_DIR/$1/config.log"
 
   # Disable HAVE_UNISTD_H.
   ( echo '/HAVE_UNISTD_H'; echo 'd' ; echo 'w' ; echo 'q' ) | ed -s vpx_config.h
@@ -200,8 +212,9 @@ all_platforms="--enable-external-build --disable-examples --disable-install-docs
 all_platforms="${all_platforms} --enable-multi-res-encoding --size-limit=8192x4608 --enable-pic"
 all_platforms="${all_platforms} --disable-avx512"
 x86_platforms="--enable-postproc --enable-vp9-postproc --as=yasm"
-arm_platforms="--enable-runtime-cpu-detect --enable-realtime-only"
-arm64_platforms="--enable-realtime-only"
+runtime_cpu_detect="--enable-runtime-cpu-detect"
+realtime_only="--enable-realtime-only"
+disable_sve="--disable-sve" # Bug 1885585, Bug 1889813
 
 gen_config_files linux/x64 "--target=x86_64-linux-gcc ${all_platforms} ${x86_platforms}"
 gen_config_files linux/ia32 "--target=x86-linux-gcc ${all_platforms} ${x86_platforms}"
@@ -210,9 +223,10 @@ gen_config_files mac/ia32 "--target=x86-darwin9-gcc ${all_platforms} ${x86_platf
 gen_config_files win/x64 "--target=x86_64-win64-vs15 ${all_platforms} ${x86_platforms}"
 gen_config_files win/ia32 "--target=x86-win32-gcc ${all_platforms} ${x86_platforms}"
 
-gen_config_files linux/arm "--target=armv7-linux-gcc ${all_platforms} ${arm_platforms}"
-gen_config_files linux/arm64 "--target=arm64-linux-gcc ${all_platforms} ${arm64_platforms}"
-gen_config_files win/aarch64 "--target=arm64-win64-vs15 ${all_platforms} ${arm64_platforms}"
+gen_config_files linux/arm "--target=armv7-linux-gcc ${all_platforms} ${runtime_cpu_detect} ${realtime_only}"
+gen_config_files linux/arm64 "--target=arm64-linux-gcc ${all_platforms} ${realtime_only} ${disable_sve}" # Bug 1889813
+gen_config_files mac/arm64 "--target=arm64-darwin-gcc ${all_platforms}"
+gen_config_files win/aarch64 "--target=arm64-win64-vs15 ${all_platforms} ${realtime_only} ${disable_sve}" # Bug 1885585
 
 gen_config_files generic "--target=generic-gnu ${all_platforms}"
 
@@ -234,8 +248,9 @@ gen_rtcd_header win/x64 x86_64
 gen_rtcd_header win/ia32 x86
 
 gen_rtcd_header linux/arm armv7
-gen_rtcd_header linux/arm64 arm64
-gen_rtcd_header win/aarch64 arm64
+gen_rtcd_header linux/arm64 arm64 $disable_sve # Bug 1889813
+gen_rtcd_header mac/arm64 arm64
+gen_rtcd_header win/aarch64 arm64 $disable_sve # Bug 1885585
 
 gen_rtcd_header generic generic
 
@@ -248,38 +263,74 @@ rm -rf $BASE_DIR/sources.mozbuild
 write_license $BASE_DIR/sources.mozbuild
 echo "files = {" >> $BASE_DIR/sources.mozbuild
 
-echo "Generate X86_64 source list."
+echo "Generate X86_64 source list on Linux."
 config=$(print_config linux/x64)
 make_clean
 make libvpx_srcs.txt target=libs $config > /dev/null
-convert_srcs_to_project_files libvpx_srcs.txt X64
+convert_srcs_to_project_files libvpx_srcs.txt LINUX_X64 linux/x64
+
+echo "Generate X86_64 source list on Mac."
+config=$(print_config mac/x64)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_project_files libvpx_srcs.txt MAC_X64 mac/x64
+
+echo "Generate X86_64 source list on Windows."
+config=$(print_config win/x64)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_project_files libvpx_srcs.txt WIN_X64 win/x64
 
 # Copy vpx_version.h once. The file is the same for all platforms.
 cp vpx_version.h $BASE_DIR/$LIBVPX_CONFIG_DIR
 
-echo "Generate IA32 source list."
+echo "Generate IA32 source list on Linux."
 config=$(print_config linux/ia32)
 make_clean
 make libvpx_srcs.txt target=libs $config > /dev/null
-convert_srcs_to_project_files libvpx_srcs.txt IA32
+convert_srcs_to_project_files libvpx_srcs.txt LINUX_IA32 linux/ia32
 
-echo "Generate ARM source list."
+echo "Generate IA32 source list on Mac."
+config=$(print_config mac/ia32)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_project_files libvpx_srcs.txt MAC_IA32 mac/ia32
+
+echo "Generate IA32 source list on Windows."
+config=$(print_config win/ia32)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_project_files libvpx_srcs.txt WIN_IA32 win/ia32
+
+echo "Generate ARM source list on Linux."
 config=$(print_config linux/arm)
 make_clean
 make libvpx_srcs.txt target=libs $config > /dev/null
-convert_srcs_to_project_files libvpx_srcs.txt ARM
+convert_srcs_to_project_files libvpx_srcs.txt LINUX_ARM linux/arm
 
-echo "Generate ARM64 source list."
+echo "Generate ARM64 source list on Linux"
 config=$(print_config linux/arm64)
 make_clean
 make libvpx_srcs.txt target=libs $config > /dev/null
-convert_srcs_to_project_files libvpx_srcs.txt ARM64
+convert_srcs_to_project_files libvpx_srcs.txt LINUX_ARM64 linux/arm64
+
+echo "Generate ARM64 source list on Mac"
+config=$(print_config mac/arm64)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_project_files libvpx_srcs.txt MAC_ARM64 mac/arm64
+
+echo "Generate AARCH64 source list on Windows."
+config=$(print_config win/aarch64)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_project_files libvpx_srcs.txt WIN_AARCH64 win/aarch64
 
 echo "Generate generic source list."
 config=$(print_config generic)
 make_clean
 make libvpx_srcs.txt target=libs $config > /dev/null
-convert_srcs_to_project_files libvpx_srcs.txt GENERIC
+convert_srcs_to_project_files libvpx_srcs.txt GENERIC generic
 
 echo "}" >> $BASE_DIR/sources.mozbuild
 

@@ -14,6 +14,7 @@
 #include "test/acm_random.h"
 #include "test/buffer.h"
 #include "test/register_state_check.h"
+#include "vpx_config.h"
 #include "vpx_ports/vpx_timer.h"
 
 namespace {
@@ -290,7 +291,7 @@ void ApplyReferenceFilter(
 class YUVTemporalFilterTest
     : public ::testing::TestWithParam<TemporalFilterWithBd> {
  public:
-  virtual void SetUp() {
+  void SetUp() override {
     filter_func_ = GetParam().temporal_filter;
     bd_ = GetParam().bd;
     use_highbd_ = (bd_ != 8);

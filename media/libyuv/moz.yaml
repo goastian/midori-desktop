@@ -23,7 +23,7 @@ origin:
 
   # Revision to pull in
   # Must be a long or short commit SHA (long preferred)
-  revision: b2528b0be934de1918e20c85fc170d809eeb49ab
+  revision: 2bdc210be9eb11ded16bf3ef1f6cadb0d4dcb0c2
 
   # The package's license, where possible using the mnemonic from
   # https://spdx.org/licenses/
@@ -34,8 +34,8 @@ origin:
   license-file: LICENSE
 
 updatebot:
-    maintainer-phab: chew
-    maintainer-bz: ngrunbaum@mozilla.com
+    maintainer-phab: ng
+    maintainer-bz: na-g@nostrum.com
     tasks:
       - type: vendoring
         enabled: true
@@ -48,8 +48,7 @@ vendoring:
   skip-vendoring-steps: ['update-moz-build']
 
   exclude:
-    - .gitattributes
-    - .gitignore
+    - ".*"
 
   patches:
     - fix_build_errors.patch

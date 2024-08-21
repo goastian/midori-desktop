@@ -36,7 +36,7 @@ if CONFIG['MOZ_DAV1D_ASM']:
     stack_alignment = 0
 
     # Default stack alignment can be 4 bytes on x86.
-    if CONFIG['CPU_ARCH'] == 'x86':
+    if CONFIG['TARGET_CPU'] == 'x86':
         if CONFIG['OS_TARGET'] == 'WINNT':
             # Allow the default to avoid crashes
             stack_alignment = 4
@@ -51,11 +51,11 @@ if CONFIG['MOZ_DAV1D_ASM']:
                 CFLAGS += ['-mpreferred-stack-boundary=4']
                 for ep in entrypoint_source_files:
                     SOURCES[ep].flags += ['-mincoming-stack-boundary=2']
-    elif CONFIG['CPU_ARCH'] in ('x86_64', 'aarch64'):
+    elif CONFIG['TARGET_CPU'] in ('x86_64', 'aarch64'):
         # The default stack alignment is 16 bytes.
         stack_alignment = 16
     else:
-        error('Cpu arch %s is not expected' % CONFIG['CPU_ARCH'])
+        error('Cpu arch %s is not expected' % CONFIG['TARGET_CPU'])
 
     # Set the macro here instead of config.h
     if stack_alignment == 0:
@@ -85,6 +85,7 @@ SOURCES += [
     '../../third_party/dav1d/src/mem.c',
     '../../third_party/dav1d/src/msac.c',
     '../../third_party/dav1d/src/obu.c',
+    '../../third_party/dav1d/src/pal.c',
     '../../third_party/dav1d/src/picture.c',
     '../../third_party/dav1d/src/qm.c',
     '../../third_party/dav1d/src/ref.c',
@@ -209,7 +210,7 @@ if CONFIG['CC_TYPE'] == 'gcc':
     LOCAL_INCLUDES += ['../../third_party/dav1d/include/compat/gcc/']
     EXPORTS.dav1d += ['../../third_party/dav1d/include/compat/gcc/stdatomic.h']
 
-FINAL_LIBRARY = 'gkmedias'
+FINAL_LIBRARY = 'xul'
 
 # We allow warnings for third-party code that can be updated from upstream.
 AllowCompilerWarnings()

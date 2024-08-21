@@ -16,6 +16,7 @@
 #define GTEST_HAS_RTTI 0
 #include "gtest/gtest.h"
 
+#include "CodecConfig.h"
 #include "PeerConnectionImpl.h"
 #include "sdp/SdpMediaSection.h"
 #include "sdp/SipccSdpParser.h"
@@ -65,6 +66,7 @@ class JsepSessionTest : public JsepSessionTestBase,
                             "never");
     Preferences::SetBool("media.peerconnection.video.use_rtx", true);
     Preferences::SetBool("media.navigator.video.use_transport_cc", true);
+    Preferences::SetBool("media.navigator.video.disable_h264_baseline", false);
 
     mSessionOff =
         MakeUnique<JsepSessionImpl>("Offerer", MakeUnique<FakeUuidGenerator>());
@@ -110,10 +112,10 @@ class JsepSessionTest : public JsepSessionTestBase,
 
  protected:
   struct TransportData {
-    std::map<std::string, std::vector<uint8_t>> mFingerprints;
+    std::map<nsCString, std::vector<uint8_t>> mFingerprints;
   };
 
-  void AddDtlsFingerprint(const std::string& alg, JsepSessionImpl& session,
+  void AddDtlsFingerprint(const nsCString& alg, JsepSessionImpl& session,
                           TransportData& tdata) {
     std::vector<uint8_t> fp;
     fp.assign((alg == "sha-1") ? 20 : 32,
@@ -123,8 +125,8 @@ class JsepSessionTest : public JsepSessionTestBase,
   }
 
   void AddTransportData(JsepSessionImpl& session, TransportData& tdata) {
-    AddDtlsFingerprint("sha-1", session, tdata);
-    AddDtlsFingerprint("sha-256", session, tdata);
+    AddDtlsFingerprint("sha-1"_ns, session, tdata);
+    AddDtlsFingerprint("sha-256"_ns, session, tdata);
   }
 
   void CheckTransceiverInvariants(
@@ -1486,12 +1488,12 @@ class JsepSessionTest : public JsepSessionTestBase,
         const SdpFingerprintAttributeList& fps = attrs.GetFingerprint();
         for (auto fp = fps.mFingerprints.begin(); fp != fps.mFingerprints.end();
              ++fp) {
-          std::string alg_str = "None";
+          nsCString alg_str = "None"_ns;
 
           if (fp->hashFunc == SdpFingerprintAttributeList::kSha1) {
-            alg_str = "sha-1";
+            alg_str = "sha-1"_ns;
           } else if (fp->hashFunc == SdpFingerprintAttributeList::kSha256) {
-            alg_str = "sha-256";
+            alg_str = "sha-256"_ns;
           }
           ASSERT_EQ(source.mFingerprints[alg_str], fp->fingerprint);
         }
@@ -2028,11 +2030,10 @@ TEST_P(JsepSessionTest, RenegotiationAnswererStopsTransceiver) {
   std::vector<JsepTransceiver> origAnswererTransceivers =
       GetTransceivers(*mSessionAns);
 
-  // Avoid bundle transport side effects; don't stop the BUNDLE-tag!
   GetTransceivers(*mSessionAns).back().Stop();
-  JsepTrack removedTrack(GetTransceivers(*mSessionAns).back().mSendTrack);
 
   OfferAnswer(CHECK_SUCCESS);
+  ASSERT_TRUE(mSessionAns->CheckNegotiationNeeded());
 
   // Last m-section should be sendrecv
   auto offer = GetParsedLocalDescription(*mSessionOff);
@@ -2042,11 +2043,12 @@ TEST_P(JsepSessionTest, RenegotiationAnswererStopsTransceiver) {
   ASSERT_TRUE(msection->IsReceiving());
   ASSERT_TRUE(msection->IsSending());
 
-  // Last m-section should be disabled
+  // Last m-section should be sendrecv; answerer does not reject!
   auto answer = GetParsedLocalDescription(*mSessionAns);
   msection = &answer->GetMediaSection(answer->GetMediaSectionCount() - 1);
   ASSERT_TRUE(msection);
-  ValidateDisabledMSection(msection);
+  ASSERT_TRUE(msection->IsReceiving());
+  ASSERT_TRUE(msection->IsSending());
 
   auto newOffererTransceivers = GetTransceivers(*mSessionOff);
   auto newAnswererTransceivers = GetTransceivers(*mSessionAns);
@@ -2054,11 +2056,10 @@ TEST_P(JsepSessionTest, RenegotiationAnswererStopsTransceiver) {
   ASSERT_EQ(origOffererTransceivers.size(), newOffererTransceivers.size());
 
   ASSERT_FALSE(origOffererTransceivers.back().IsStopped());
-  ASSERT_TRUE(newOffererTransceivers.back().IsStopped());
+  ASSERT_FALSE(newOffererTransceivers.back().IsStopped());
   ASSERT_FALSE(origAnswererTransceivers.back().IsStopped());
-  ASSERT_TRUE(newAnswererTransceivers.back().IsStopped());
-  RemoveLastN(origOffererTransceivers, 1);   // Ignore this one
-  RemoveLastN(newOffererTransceivers, 1);    // Ignore this one
+  ASSERT_TRUE(newAnswererTransceivers.back().IsStopping());
+  ASSERT_FALSE(newAnswererTransceivers.back().IsStopped());
   RemoveLastN(origAnswererTransceivers, 1);  // Ignore this one
   RemoveLastN(newAnswererTransceivers, 1);   // Ignore this one
 
@@ -2085,8 +2086,12 @@ TEST_P(JsepSessionTest, RenegotiationBothStopSameTransceiver) {
   JsepTrack removedTrackOffer(GetTransceivers(*mSessionOff).back().mSendTrack);
   GetTransceivers(*mSessionAns).back().Stop();
   JsepTrack removedTrackAnswer(GetTransceivers(*mSessionAns).back().mSendTrack);
+  ASSERT_TRUE(mSessionOff->CheckNegotiationNeeded());
+  ASSERT_TRUE(mSessionAns->CheckNegotiationNeeded());
 
   OfferAnswer(CHECK_SUCCESS);
+  ASSERT_FALSE(mSessionOff->CheckNegotiationNeeded());
+  ASSERT_FALSE(mSessionAns->CheckNegotiationNeeded());
 
   // Last m-section should be disabled
   auto offer = GetParsedLocalDescription(*mSessionOff);
@@ -2334,14 +2339,15 @@ TEST_P(JsepSessionTest, RenegotiationOffererDisablesTelephoneEvent) {
     const JsepTrackNegotiatedDetails* details = track.GetNegotiatedDetails();
     ASSERT_EQ(1U, details->GetEncodingCount());
     const JsepTrackEncoding& encoding = details->GetEncoding(0);
-    ASSERT_EQ(4U, encoding.GetCodecs().size());
+    auto expectedSize = (track.GetDirection() != sdp::kSend) ? 5U : 4U;
+    ASSERT_EQ(expectedSize, encoding.GetCodecs().size());
     ASSERT_TRUE(encoding.HasFormat("109"));
     // we can cast here because we've already checked for audio track
     const JsepAudioCodecDescription* audioCodec =
         static_cast<const JsepAudioCodecDescription*>(
             encoding.GetCodecs()[0].get());
     ASSERT_TRUE(audioCodec);
-    ASSERT_FALSE(audioCodec->mDtmfEnabled);
+    ASSERT_EQ(track.GetDirection() != sdp::kSend, audioCodec->mDtmfEnabled);
   }
 }
 
@@ -2559,7 +2565,7 @@ TEST_P(JsepSessionTest, RenegotiationOffererDisablesBundleTransport) {
   }
 }
 
-TEST_P(JsepSessionTest, RenegotiationAnswererDisablesBundleTransport) {
+TEST_P(JsepSessionTest, RenegotiationAnswererDoesNotRejectStoppedTransceiver) {
   AddTracks(*mSessionOff);
   AddTracks(*mSessionAns);
 
@@ -2577,11 +2583,15 @@ TEST_P(JsepSessionTest, RenegotiationAnswererDisablesBundleTransport) {
   auto stopped = GetTransceiverByLevel(*mSessionAns, 0);
   stopped->Stop();
   mSessionAns->SetTransceiver(*stopped);
+  ASSERT_TRUE(mSessionAns->CheckNegotiationNeeded());
 
   OfferAnswer(CHECK_SUCCESS);
+  ASSERT_TRUE(mSessionAns->CheckNegotiationNeeded());
 
   auto newOffererTransceivers = GetTransceivers(*mSessionOff);
   auto newAnswererTransceivers = GetTransceivers(*mSessionAns);
+
+  DumpTransceivers(*mSessionAns);
 
   ASSERT_EQ(newOffererTransceivers.size(), newAnswererTransceivers.size());
   ASSERT_EQ(origOffererTransceivers.size(), newOffererTransceivers.size());
@@ -2590,51 +2600,28 @@ TEST_P(JsepSessionTest, RenegotiationAnswererDisablesBundleTransport) {
   Maybe<JsepTransceiver> ot0 = GetTransceiverByLevel(newOffererTransceivers, 0);
   Maybe<JsepTransceiver> at0 =
       GetTransceiverByLevel(newAnswererTransceivers, 0);
-  ASSERT_FALSE(ot0->HasBundleLevel());
-  ASSERT_FALSE(at0->HasBundleLevel());
+  ASSERT_TRUE(ot0->HasBundleLevel());
+  ASSERT_TRUE(at0->HasBundleLevel());
 
-  ASSERT_FALSE(
+  ASSERT_TRUE(
       Equals(ot0->mTransport,
              GetTransceiverByLevel(origOffererTransceivers, 0)->mTransport));
-  ASSERT_FALSE(
+  ASSERT_TRUE(
       Equals(at0->mTransport,
              GetTransceiverByLevel(origAnswererTransceivers, 0)->mTransport));
 
-  ASSERT_EQ(0U, ot0->mTransport.mComponents);
-  ASSERT_EQ(0U, at0->mTransport.mComponents);
-
-  // With bundle-policy "balanced", this ends up being somewhat complicated.
-  // The first m-section of each type is _not_ marked bundle-only,
-  // but subsequent m-sections of that type are. This means that if there is
-  // more than one type, there is more than one transport, which means there's
-  // a fallback when the bundle-tag is disabled (the first such transport). We
-  // should be using that fallback when it exists.
-  Maybe<size_t> fallbackTransport;
-  for (size_t level = 1; level != types.size(); ++level) {
-    if (types[level] != types[0]) {
-      fallbackTransport = Some(level);
-      break;
-    }
-  }
+  ASSERT_EQ(1U, ot0->mTransport.mComponents);
+  ASSERT_EQ(1U, at0->mTransport.mComponents);
 
   for (size_t i = 1; i < newOffererTransceivers.size(); ++i) {
     auto ot = GetTransceiverByLevel(newOffererTransceivers, i);
     auto at = GetTransceiverByLevel(newAnswererTransceivers, i);
-    // If there is no fallback, the bundle level will be left pointing at the
-    // dead transport at index 0.
-    size_t expectedBundleLevel = fallbackTransport.valueOr(0);
-    auto otWithTransport =
-        GetTransceiverByLevel(newOffererTransceivers, expectedBundleLevel);
-    auto atWithTransport =
-        GetTransceiverByLevel(newAnswererTransceivers, expectedBundleLevel);
+    auto otWithTransport = GetTransceiverByLevel(newOffererTransceivers, 0);
+    auto atWithTransport = GetTransceiverByLevel(newAnswererTransceivers, 0);
     ASSERT_TRUE(ot->HasBundleLevel());
     ASSERT_TRUE(at->HasBundleLevel());
-    ASSERT_EQ(expectedBundleLevel, ot->BundleLevel());
-    ASSERT_EQ(expectedBundleLevel, at->BundleLevel());
-    // TODO: When creating an answer where we have rejected the bundle
-    // transport, we do not do a good job of creating a sensible SDP. Mainly,
-    // when we remove the rejected mid from the bundle group, we can leave a
-    // bundle-only mid as the first one when others are available.
+    ASSERT_EQ(0U, ot->BundleLevel());
+    ASSERT_EQ(0U, at->BundleLevel());
     ASSERT_TRUE(Equals(otWithTransport->mTransport, ot->mTransport));
     ASSERT_TRUE(Equals(atWithTransport->mTransport, at->mTransport));
   }
@@ -3304,7 +3291,7 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   const auto& video_attrs = video_section.GetAttributeList();
   ASSERT_EQ(SdpDirectionAttribute::kSendrecv, video_attrs.GetDirection());
 
-  ASSERT_EQ(10U, video_section.GetFormats().size());
+  ASSERT_EQ(15U, video_section.GetFormats().size());
   ASSERT_EQ("120", video_section.GetFormats()[0]);
   ASSERT_EQ("124", video_section.GetFormats()[1]);
   ASSERT_EQ("121", video_section.GetFormats()[2]);
@@ -3313,8 +3300,13 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   ASSERT_EQ("127", video_section.GetFormats()[5]);
   ASSERT_EQ("97", video_section.GetFormats()[6]);
   ASSERT_EQ("98", video_section.GetFormats()[7]);
-  ASSERT_EQ("123", video_section.GetFormats()[8]);
-  ASSERT_EQ("122", video_section.GetFormats()[9]);
+  ASSERT_EQ("105", video_section.GetFormats()[8]);
+  ASSERT_EQ("106", video_section.GetFormats()[9]);
+  ASSERT_EQ("103", video_section.GetFormats()[10]);
+  ASSERT_EQ("104", video_section.GetFormats()[11]);
+  ASSERT_EQ("123", video_section.GetFormats()[12]);
+  ASSERT_EQ("122", video_section.GetFormats()[13]);
+  ASSERT_EQ("119", video_section.GetFormats()[14]);
 
   // Validate rtpmap
   ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kRtpmapAttribute));
@@ -3325,10 +3317,15 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   ASSERT_TRUE(rtpmaps.HasEntry("125"));
   ASSERT_TRUE(rtpmaps.HasEntry("126"));
   ASSERT_TRUE(rtpmaps.HasEntry("127"));
+  ASSERT_TRUE(rtpmaps.HasEntry("105"));
+  ASSERT_TRUE(rtpmaps.HasEntry("106"));
+  ASSERT_TRUE(rtpmaps.HasEntry("103"));
+  ASSERT_TRUE(rtpmaps.HasEntry("104"));
   ASSERT_TRUE(rtpmaps.HasEntry("97"));
   ASSERT_TRUE(rtpmaps.HasEntry("98"));
   ASSERT_TRUE(rtpmaps.HasEntry("123"));
   ASSERT_TRUE(rtpmaps.HasEntry("122"));
+  ASSERT_TRUE(rtpmaps.HasEntry("119"));
 
   const auto& vp8_entry = rtpmaps.GetEntry("120");
   const auto& vp8_rtx_entry = rtpmaps.GetEntry("124");
@@ -3338,8 +3335,13 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   const auto& h264_1_rtx_entry = rtpmaps.GetEntry("127");
   const auto& h264_0_entry = rtpmaps.GetEntry("97");
   const auto& h264_0_rtx_entry = rtpmaps.GetEntry("98");
+  const auto& h264_baseline_1_entry = rtpmaps.GetEntry("105");
+  const auto& h264_baseline_1_rtx_entry = rtpmaps.GetEntry("106");
+  const auto& h264_baseline_0_entry = rtpmaps.GetEntry("103");
+  const auto& h264_baseline_0_rtx_entry = rtpmaps.GetEntry("104");
   const auto& ulpfec_0_entry = rtpmaps.GetEntry("123");
   const auto& red_0_entry = rtpmaps.GetEntry("122");
+  const auto& red_0_rtx_entry = rtpmaps.GetEntry("119");
 
   ASSERT_EQ("VP8", vp8_entry.name);
   ASSERT_EQ("rtx", vp8_rtx_entry.name);
@@ -3349,14 +3351,19 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   ASSERT_EQ("rtx", h264_1_rtx_entry.name);
   ASSERT_EQ("H264", h264_0_entry.name);
   ASSERT_EQ("rtx", h264_0_rtx_entry.name);
+  ASSERT_EQ("H264", h264_baseline_1_entry.name);
+  ASSERT_EQ("rtx", h264_baseline_1_rtx_entry.name);
+  ASSERT_EQ("H264", h264_baseline_0_entry.name);
+  ASSERT_EQ("rtx", h264_baseline_0_rtx_entry.name);
   ASSERT_EQ("red", red_0_entry.name);
   ASSERT_EQ("ulpfec", ulpfec_0_entry.name);
+  ASSERT_EQ("rtx", red_0_rtx_entry.name);
 
   // Validate fmtps
   ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kFmtpAttribute));
   auto& fmtps = video_attrs.GetFmtp().mFmtps;
 
-  ASSERT_EQ(9U, fmtps.size());
+  ASSERT_EQ(13U, fmtps.size());
 
   // VP8
   const SdpFmtpAttributeList::Parameters* vp8_params =
@@ -3412,7 +3419,7 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   const auto& parsed_h264_1_params =
       *static_cast<const SdpFmtpAttributeList::H264Parameters*>(h264_1_params);
 
-  ASSERT_EQ((uint32_t)0x42e00d, parsed_h264_1_params.profile_level_id);
+  ASSERT_EQ((uint32_t)0x42e01f, parsed_h264_1_params.profile_level_id);
   ASSERT_TRUE(parsed_h264_1_params.level_asymmetry_allowed);
   ASSERT_EQ(1U, parsed_h264_1_params.packetization_mode);
 
@@ -3437,7 +3444,7 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
   const auto& parsed_h264_0_params =
       *static_cast<const SdpFmtpAttributeList::H264Parameters*>(h264_0_params);
 
-  ASSERT_EQ((uint32_t)0x42e00d, parsed_h264_0_params.profile_level_id);
+  ASSERT_EQ((uint32_t)0x42e01f, parsed_h264_0_params.profile_level_id);
   ASSERT_TRUE(parsed_h264_0_params.level_asymmetry_allowed);
   ASSERT_EQ(0U, parsed_h264_0_params.packetization_mode);
 
@@ -3453,20 +3460,70 @@ TEST_F(JsepSessionTest, ValidateOfferedVideoCodecParams) {
 
   ASSERT_EQ((uint32_t)97, parsed_h264_0_rtx_params.apt);
 
-  // red
-  const SdpFmtpAttributeList::Parameters* red_params =
-      video_section.FindFmtp("122");
-  ASSERT_TRUE(red_params);
-  ASSERT_EQ(SdpRtpmapAttributeList::kRed, red_params->codec_type);
+  // H264 Baseline packetization mode 1
+  const SdpFmtpAttributeList::Parameters* h264_baseline_1_params =
+      video_section.FindFmtp("105");
+  ASSERT_TRUE(h264_baseline_1_params);
+  ASSERT_EQ(SdpRtpmapAttributeList::kH264, h264_baseline_1_params->codec_type);
 
-  const auto& parsed_red_params =
-      *static_cast<const SdpFmtpAttributeList::RedParameters*>(red_params);
-  ASSERT_EQ(5U, parsed_red_params.encodings.size());
-  ASSERT_EQ(120, parsed_red_params.encodings[0]);
-  ASSERT_EQ(121, parsed_red_params.encodings[1]);
-  ASSERT_EQ(126, parsed_red_params.encodings[2]);
-  ASSERT_EQ(97, parsed_red_params.encodings[3]);
-  ASSERT_EQ(123, parsed_red_params.encodings[4]);
+  const auto& parsed_h264_baseline_1_params =
+      *static_cast<const SdpFmtpAttributeList::H264Parameters*>(
+          h264_baseline_1_params);
+
+  ASSERT_EQ((uint32_t)0x42001f, parsed_h264_baseline_1_params.profile_level_id);
+  ASSERT_TRUE(parsed_h264_baseline_1_params.level_asymmetry_allowed);
+  ASSERT_EQ(1U, parsed_h264_baseline_1_params.packetization_mode);
+
+  // H264 Baseline packetization mode 1 RTX
+  const SdpFmtpAttributeList::Parameters* h264_baseline_1_rtx_params =
+      video_section.FindFmtp("106");
+  ASSERT_TRUE(h264_baseline_1_rtx_params);
+  ASSERT_EQ(SdpRtpmapAttributeList::kRtx,
+            h264_baseline_1_rtx_params->codec_type);
+
+  const auto& parsed_h264__baseline_1_rtx_params =
+      *static_cast<const SdpFmtpAttributeList::RtxParameters*>(
+          h264_baseline_1_rtx_params);
+
+  ASSERT_EQ((uint32_t)105, parsed_h264__baseline_1_rtx_params.apt);
+
+  // H264 Baseline packetization mode 0
+  const SdpFmtpAttributeList::Parameters* h264_baseline_0_params =
+      video_section.FindFmtp("103");
+  ASSERT_TRUE(h264_baseline_0_params);
+  ASSERT_EQ(SdpRtpmapAttributeList::kH264, h264_baseline_0_params->codec_type);
+
+  const auto& parsed_h264_baseline_0_params =
+      *static_cast<const SdpFmtpAttributeList::H264Parameters*>(
+          h264_baseline_0_params);
+
+  ASSERT_EQ((uint32_t)0x42001f, parsed_h264_baseline_0_params.profile_level_id);
+  ASSERT_TRUE(parsed_h264_baseline_0_params.level_asymmetry_allowed);
+  ASSERT_EQ(0U, parsed_h264_baseline_0_params.packetization_mode);
+
+  // H264 Baseline packetization mode 0 RTX
+  const SdpFmtpAttributeList::Parameters* h264__baseline_0_rtx_params =
+      video_section.FindFmtp("104");
+  ASSERT_TRUE(h264__baseline_0_rtx_params);
+  ASSERT_EQ(SdpRtpmapAttributeList::kRtx,
+            h264__baseline_0_rtx_params->codec_type);
+
+  const auto& parsed_h264_baseline_0_rtx_params =
+      *static_cast<const SdpFmtpAttributeList::RtxParameters*>(
+          h264__baseline_0_rtx_params);
+
+  ASSERT_EQ((uint32_t)103, parsed_h264_baseline_0_rtx_params.apt);
+
+  // red RTX
+  const SdpFmtpAttributeList::Parameters* red_rtx_params =
+      video_section.FindFmtp("119");
+  ASSERT_TRUE(red_rtx_params);
+  ASSERT_EQ(SdpRtpmapAttributeList::kRtx, red_rtx_params->codec_type);
+
+  const auto& parsed_red_rtx_params =
+      *static_cast<const SdpFmtpAttributeList::RtxParameters*>(red_rtx_params);
+
+  ASSERT_EQ((uint32_t)122, parsed_red_rtx_params.apt);
 }
 
 TEST_F(JsepSessionTest, ValidateOfferedAudioCodecParams) {
@@ -3567,11 +3624,6 @@ TEST_F(JsepSessionTest, ValidateNoFmtpLineForRedInOfferAndAnswer) {
 
   std::string offer = CreateOffer();
 
-  // look for line with fmtp:122 and remove it
-  size_t start = offer.find("a=fmtp:122");
-  size_t end = offer.find("\r\n", start);
-  offer.replace(start, end + 2 - start, "");
-
   SetLocalOffer(offer);
   SetRemoteOffer(offer);
 
@@ -3591,7 +3643,7 @@ TEST_F(JsepSessionTest, ValidateNoFmtpLineForRedInOfferAndAnswer) {
   auto& video_attrs = video_section.GetAttributeList();
   ASSERT_EQ(SdpDirectionAttribute::kSendrecv, video_attrs.GetDirection());
 
-  ASSERT_EQ(10U, video_section.GetFormats().size());
+  ASSERT_EQ(15U, video_section.GetFormats().size());
   ASSERT_EQ("120", video_section.GetFormats()[0]);
   ASSERT_EQ("124", video_section.GetFormats()[1]);
   ASSERT_EQ("121", video_section.GetFormats()[2]);
@@ -3600,8 +3652,13 @@ TEST_F(JsepSessionTest, ValidateNoFmtpLineForRedInOfferAndAnswer) {
   ASSERT_EQ("127", video_section.GetFormats()[5]);
   ASSERT_EQ("97", video_section.GetFormats()[6]);
   ASSERT_EQ("98", video_section.GetFormats()[7]);
-  ASSERT_EQ("123", video_section.GetFormats()[8]);
-  ASSERT_EQ("122", video_section.GetFormats()[9]);
+  ASSERT_EQ("105", video_section.GetFormats()[8]);
+  ASSERT_EQ("106", video_section.GetFormats()[9]);
+  ASSERT_EQ("103", video_section.GetFormats()[10]);
+  ASSERT_EQ("104", video_section.GetFormats()[11]);
+  ASSERT_EQ("123", video_section.GetFormats()[12]);
+  ASSERT_EQ("122", video_section.GetFormats()[13]);
+  ASSERT_EQ("119", video_section.GetFormats()[14]);
 
   // Validate rtpmap
   ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kRtpmapAttribute));
@@ -3614,22 +3671,32 @@ TEST_F(JsepSessionTest, ValidateNoFmtpLineForRedInOfferAndAnswer) {
   ASSERT_TRUE(rtpmaps.HasEntry("127"));
   ASSERT_TRUE(rtpmaps.HasEntry("97"));
   ASSERT_TRUE(rtpmaps.HasEntry("98"));
+  ASSERT_TRUE(rtpmaps.HasEntry("105"));
+  ASSERT_TRUE(rtpmaps.HasEntry("106"));
+  ASSERT_TRUE(rtpmaps.HasEntry("103"));
+  ASSERT_TRUE(rtpmaps.HasEntry("104"));
   ASSERT_TRUE(rtpmaps.HasEntry("123"));
   ASSERT_TRUE(rtpmaps.HasEntry("122"));
+  ASSERT_TRUE(rtpmaps.HasEntry("119"));
 
   // Validate fmtps
   ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kFmtpAttribute));
   auto& fmtps = video_attrs.GetFmtp().mFmtps;
 
-  ASSERT_EQ(8U, fmtps.size());
+  ASSERT_EQ(13U, fmtps.size());
   ASSERT_EQ("126", fmtps[0].format);
   ASSERT_EQ("97", fmtps[1].format);
-  ASSERT_EQ("120", fmtps[2].format);
-  ASSERT_EQ("124", fmtps[3].format);
-  ASSERT_EQ("121", fmtps[4].format);
-  ASSERT_EQ("125", fmtps[5].format);
-  ASSERT_EQ("127", fmtps[6].format);
-  ASSERT_EQ("98", fmtps[7].format);
+  ASSERT_EQ("105", fmtps[2].format);
+  ASSERT_EQ("103", fmtps[3].format);
+  ASSERT_EQ("120", fmtps[4].format);
+  ASSERT_EQ("124", fmtps[5].format);
+  ASSERT_EQ("121", fmtps[6].format);
+  ASSERT_EQ("125", fmtps[7].format);
+  ASSERT_EQ("127", fmtps[8].format);
+  ASSERT_EQ("98", fmtps[9].format);
+  ASSERT_EQ("106", fmtps[10].format);
+  ASSERT_EQ("104", fmtps[11].format);
+  ASSERT_EQ("119", fmtps[12].format);
 
   SetLocalAnswer(answer);
   SetRemoteAnswer(answer);
@@ -3640,12 +3707,12 @@ TEST_F(JsepSessionTest, ValidateNoFmtpLineForRedInOfferAndAnswer) {
   ASSERT_FALSE(IsNull(offerTransceivers[1].mRecvTrack));
   ASSERT_TRUE(offerTransceivers[1].mSendTrack.GetNegotiatedDetails());
   ASSERT_TRUE(offerTransceivers[1].mRecvTrack.GetNegotiatedDetails());
-  ASSERT_EQ(6U, offerTransceivers[1]
+  ASSERT_EQ(8U, offerTransceivers[1]
                     .mSendTrack.GetNegotiatedDetails()
                     ->GetEncoding(0)
                     .GetCodecs()
                     .size());
-  ASSERT_EQ(6U, offerTransceivers[1]
+  ASSERT_EQ(8U, offerTransceivers[1]
                     .mRecvTrack.GetNegotiatedDetails()
                     ->GetEncoding(0)
                     .GetCodecs()
@@ -3657,172 +3724,16 @@ TEST_F(JsepSessionTest, ValidateNoFmtpLineForRedInOfferAndAnswer) {
   ASSERT_FALSE(IsNull(answerTransceivers[1].mRecvTrack));
   ASSERT_TRUE(answerTransceivers[1].mSendTrack.GetNegotiatedDetails());
   ASSERT_TRUE(answerTransceivers[1].mRecvTrack.GetNegotiatedDetails());
-  ASSERT_EQ(6U, answerTransceivers[1]
+  ASSERT_EQ(8U, answerTransceivers[1]
                     .mSendTrack.GetNegotiatedDetails()
                     ->GetEncoding(0)
                     .GetCodecs()
                     .size());
-  ASSERT_EQ(6U, answerTransceivers[1]
+  ASSERT_EQ(8U, answerTransceivers[1]
                     .mRecvTrack.GetNegotiatedDetails()
                     ->GetEncoding(0)
                     .GetCodecs()
                     .size());
-}
-
-TEST_F(JsepSessionTest, ValidateAnsweredCodecParamsNoRed) {
-  // TODO(bug 1099351): Once fixed, we can allow red in this offer,
-  // which will also cause multiple codecs in answer.  For now,
-  // red/ulpfec for video are behind a pref to mitigate potential for
-  // errors.
-  SetCodecEnabled(*mSessionOff, "red", false);
-  for (auto& codec : mSessionAns->Codecs()) {
-    if (codec->mName == "H264") {
-      JsepVideoCodecDescription* h264 =
-          static_cast<JsepVideoCodecDescription*>(codec.get());
-      h264->mProfileLevelId = 0x42a00d;
-      // Switch up the pts
-      if (h264->mDefaultPt == "126") {
-        h264->mDefaultPt = "97";
-      } else {
-        h264->mDefaultPt = "126";
-      }
-    }
-  }
-
-  types.push_back(SdpMediaSection::kAudio);
-  types.push_back(SdpMediaSection::kVideo);
-
-  AddTracksToStream(*mSessionOff, "offerer_stream", "audio,video");
-
-  std::string offer = CreateOffer();
-  SetLocalOffer(offer);
-  SetRemoteOffer(offer);
-
-  AddTracksToStream(*mSessionAns, "answerer_stream", "audio,video");
-
-  std::string answer = CreateAnswer();
-
-  UniquePtr<Sdp> outputSdp(Parse(answer));
-  ASSERT_TRUE(!!outputSdp);
-
-  ASSERT_EQ(2U, outputSdp->GetMediaSectionCount());
-  auto& video_section = outputSdp->GetMediaSection(1);
-  ASSERT_EQ(SdpMediaSection::kVideo, video_section.GetMediaType());
-  auto& video_attrs = video_section.GetAttributeList();
-  ASSERT_EQ(SdpDirectionAttribute::kSendrecv, video_attrs.GetDirection());
-
-  ASSERT_EQ(4U, video_section.GetFormats().size());
-  ASSERT_EQ("120", video_section.GetFormats()[0]);
-  ASSERT_EQ("124", video_section.GetFormats()[1]);
-  ASSERT_EQ("121", video_section.GetFormats()[2]);
-  ASSERT_EQ("125", video_section.GetFormats()[3]);
-
-  // Validate rtpmap
-  ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kRtpmapAttribute));
-  auto& rtpmaps = video_attrs.GetRtpmap();
-  ASSERT_TRUE(rtpmaps.HasEntry("120"));
-  ASSERT_TRUE(rtpmaps.HasEntry("121"));
-
-  auto& vp8_entry = rtpmaps.GetEntry("120");
-  auto& vp9_entry = rtpmaps.GetEntry("121");
-
-  ASSERT_EQ("VP8", vp8_entry.name);
-  ASSERT_EQ("VP9", vp9_entry.name);
-
-  // Validate fmtps
-  ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kFmtpAttribute));
-  auto& fmtps = video_attrs.GetFmtp().mFmtps;
-
-  ASSERT_EQ(4U, fmtps.size());
-
-  // VP8
-  ASSERT_EQ("120", fmtps[0].format);
-  ASSERT_TRUE(!!fmtps[0].parameters);
-  ASSERT_EQ(SdpRtpmapAttributeList::kVP8, fmtps[0].parameters->codec_type);
-
-  auto& parsed_vp8_params =
-      *static_cast<const SdpFmtpAttributeList::VP8Parameters*>(
-          fmtps[0].parameters.get());
-
-  ASSERT_EQ((uint32_t)12288, parsed_vp8_params.max_fs);
-  ASSERT_EQ((uint32_t)60, parsed_vp8_params.max_fr);
-
-  // VP9
-  ASSERT_EQ("121", fmtps[2].format);
-  ASSERT_TRUE(!!fmtps[2].parameters);
-  ASSERT_EQ(SdpRtpmapAttributeList::kVP9, fmtps[2].parameters->codec_type);
-
-  auto& parsed_vp9_params =
-      *static_cast<const SdpFmtpAttributeList::VP8Parameters*>(
-          fmtps[2].parameters.get());
-
-  ASSERT_EQ((uint32_t)12288, parsed_vp9_params.max_fs);
-  ASSERT_EQ((uint32_t)60, parsed_vp9_params.max_fr);
-
-  SetLocalAnswer(answer);
-  SetRemoteAnswer(answer);
-
-  auto offerTransceivers = GetTransceivers(*mSessionOff);
-  ASSERT_EQ(2U, offerTransceivers.size());
-  ASSERT_FALSE(IsNull(offerTransceivers[1].mSendTrack));
-  ASSERT_FALSE(IsNull(offerTransceivers[1].mRecvTrack));
-  ASSERT_TRUE(offerTransceivers[1].mSendTrack.GetNegotiatedDetails());
-  ASSERT_TRUE(offerTransceivers[1].mRecvTrack.GetNegotiatedDetails());
-  ASSERT_EQ(2U, offerTransceivers[1]
-                    .mSendTrack.GetNegotiatedDetails()
-                    ->GetEncoding(0)
-                    .GetCodecs()
-                    .size());
-  ASSERT_EQ(2U, offerTransceivers[1]
-                    .mRecvTrack.GetNegotiatedDetails()
-                    ->GetEncoding(0)
-                    .GetCodecs()
-                    .size());
-
-  auto answerTransceivers = GetTransceivers(*mSessionAns);
-  ASSERT_EQ(2U, answerTransceivers.size());
-  ASSERT_FALSE(IsNull(answerTransceivers[1].mSendTrack));
-  ASSERT_FALSE(IsNull(answerTransceivers[1].mRecvTrack));
-  ASSERT_TRUE(answerTransceivers[1].mSendTrack.GetNegotiatedDetails());
-  ASSERT_TRUE(answerTransceivers[1].mRecvTrack.GetNegotiatedDetails());
-  ASSERT_EQ(2U, answerTransceivers[1]
-                    .mSendTrack.GetNegotiatedDetails()
-                    ->GetEncoding(0)
-                    .GetCodecs()
-                    .size());
-  ASSERT_EQ(2U, answerTransceivers[1]
-                    .mRecvTrack.GetNegotiatedDetails()
-                    ->GetEncoding(0)
-                    .GetCodecs()
-                    .size());
-
-#if 0
-  // H264 packetization mode 1
-  ASSERT_EQ("126", fmtps[1].format);
-  ASSERT_TRUE(fmtps[1].parameters);
-  ASSERT_EQ(SdpRtpmapAttributeList::kH264, fmtps[1].parameters->codec_type);
-
-  auto& parsed_h264_1_params =
-    *static_cast<const SdpFmtpAttributeList::H264Parameters*>(
-        fmtps[1].parameters.get());
-
-  ASSERT_EQ((uint32_t)0x42a00d, parsed_h264_1_params.profile_level_id);
-  ASSERT_TRUE(parsed_h264_1_params.level_asymmetry_allowed);
-  ASSERT_EQ(1U, parsed_h264_1_params.packetization_mode);
-
-  // H264 packetization mode 0
-  ASSERT_EQ("97", fmtps[2].format);
-  ASSERT_TRUE(fmtps[2].parameters);
-  ASSERT_EQ(SdpRtpmapAttributeList::kH264, fmtps[2].parameters->codec_type);
-
-  auto& parsed_h264_0_params =
-    *static_cast<const SdpFmtpAttributeList::H264Parameters*>(
-        fmtps[2].parameters.get());
-
-  ASSERT_EQ((uint32_t)0x42a00d, parsed_h264_0_params.profile_level_id);
-  ASSERT_TRUE(parsed_h264_0_params.level_asymmetry_allowed);
-  ASSERT_EQ(0U, parsed_h264_0_params.packetization_mode);
-#endif
 }
 
 TEST_F(JsepSessionTest, OfferWithBundleGroupNoTags) {
@@ -3888,7 +3799,7 @@ static void ForceH264(JsepSession& session, uint32_t profileLevelId) {
 
 TEST_F(JsepSessionTest, TestH264Negotiation) {
   ForceH264(*mSessionOff, 0x42e00b);
-  ForceH264(*mSessionAns, 0x42e00d);
+  ForceH264(*mSessionAns, 0x42e01f);
 
   AddTracks(*mSessionOff, "video");
   AddTracks(*mSessionAns, "video");
@@ -3908,7 +3819,7 @@ TEST_F(JsepSessionTest, TestH264Negotiation) {
   ASSERT_EQ("H264", offererSendCodec->mName);
   const JsepVideoCodecDescription* offererVideoSendCodec(
       static_cast<const JsepVideoCodecDescription*>(offererSendCodec.get()));
-  ASSERT_EQ((uint32_t)0x42e00d, offererVideoSendCodec->mProfileLevelId);
+  ASSERT_EQ((uint32_t)0x42e01f, offererVideoSendCodec->mProfileLevelId);
 
   UniquePtr<JsepCodecDescription> offererRecvCodec;
   GetCodec(*mSessionOff, 0, sdp::kRecv, 0, 0, &offererRecvCodec);
@@ -3930,12 +3841,12 @@ TEST_F(JsepSessionTest, TestH264Negotiation) {
   ASSERT_EQ("H264", answererRecvCodec->mName);
   const JsepVideoCodecDescription* answererVideoRecvCodec(
       static_cast<const JsepVideoCodecDescription*>(answererRecvCodec.get()));
-  ASSERT_EQ((uint32_t)0x42e00d, answererVideoRecvCodec->mProfileLevelId);
+  ASSERT_EQ((uint32_t)0x42e01f, answererVideoRecvCodec->mProfileLevelId);
 }
 
 TEST_F(JsepSessionTest, TestH264NegotiationFails) {
   ForceH264(*mSessionOff, 0x42000b);
-  ForceH264(*mSessionAns, 0x42e00d);
+  ForceH264(*mSessionAns, 0x42e01f);
 
   AddTracks(*mSessionOff, "video");
   AddTracks(*mSessionAns, "video");
@@ -3977,7 +3888,7 @@ TEST_F(JsepSessionTest, TestH264NegotiationOffererDefault) {
   ASSERT_EQ("H264", answererSendCodec->mName);
   const JsepVideoCodecDescription* answererVideoSendCodec(
       static_cast<const JsepVideoCodecDescription*>(answererSendCodec.get()));
-  ASSERT_EQ((uint32_t)0x420010, answererVideoSendCodec->mProfileLevelId);
+  ASSERT_EQ((uint32_t)0x42000A, answererVideoSendCodec->mProfileLevelId);
 }
 
 TEST_F(JsepSessionTest, TestH264NegotiationOffererNoFmtp) {
@@ -4004,19 +3915,19 @@ TEST_F(JsepSessionTest, TestH264NegotiationOffererNoFmtp) {
   ASSERT_EQ("H264", answererSendCodec->mName);
   const JsepVideoCodecDescription* answererVideoSendCodec(
       static_cast<const JsepVideoCodecDescription*>(answererSendCodec.get()));
-  ASSERT_EQ((uint32_t)0x420010, answererVideoSendCodec->mProfileLevelId);
+  ASSERT_EQ((uint32_t)0x42000A, answererVideoSendCodec->mProfileLevelId);
 
   UniquePtr<JsepCodecDescription> answererRecvCodec;
   GetCodec(*mSessionAns, 0, sdp::kRecv, 0, 0, &answererRecvCodec);
   ASSERT_EQ("H264", answererRecvCodec->mName);
   const JsepVideoCodecDescription* answererVideoRecvCodec(
       static_cast<const JsepVideoCodecDescription*>(answererRecvCodec.get()));
-  ASSERT_EQ((uint32_t)0x420010, answererVideoRecvCodec->mProfileLevelId);
+  ASSERT_EQ((uint32_t)0x42000A, answererVideoRecvCodec->mProfileLevelId);
 }
 
 TEST_F(JsepSessionTest, TestH264LevelAsymmetryDisallowedByOffererWithLowLevel) {
   ForceH264(*mSessionOff, 0x42e00b);
-  ForceH264(*mSessionAns, 0x42e00d);
+  ForceH264(*mSessionAns, 0x42e01f);
 
   AddTracks(*mSessionOff, "video");
   AddTracks(*mSessionAns, "video");
@@ -4053,7 +3964,7 @@ TEST_F(JsepSessionTest, TestH264LevelAsymmetryDisallowedByOffererWithLowLevel) {
 
 TEST_F(JsepSessionTest,
        TestH264LevelAsymmetryDisallowedByOffererWithHighLevel) {
-  ForceH264(*mSessionOff, 0x42e00d);
+  ForceH264(*mSessionOff, 0x42e01f);
   ForceH264(*mSessionAns, 0x42e00b);
 
   AddTracks(*mSessionOff, "video");
@@ -4091,7 +4002,7 @@ TEST_F(JsepSessionTest,
 
 TEST_F(JsepSessionTest,
        TestH264LevelAsymmetryDisallowedByAnswererWithLowLevel) {
-  ForceH264(*mSessionOff, 0x42e00d);
+  ForceH264(*mSessionOff, 0x42e01f);
   ForceH264(*mSessionAns, 0x42e00b);
 
   AddTracks(*mSessionOff, "video");
@@ -4130,7 +4041,7 @@ TEST_F(JsepSessionTest,
 TEST_F(JsepSessionTest,
        TestH264LevelAsymmetryDisallowedByAnswererWithHighLevel) {
   ForceH264(*mSessionOff, 0x42e00b);
-  ForceH264(*mSessionAns, 0x42e00d);
+  ForceH264(*mSessionAns, 0x42e01f);
 
   AddTracks(*mSessionOff, "video");
   AddTracks(*mSessionAns, "video");
@@ -5002,10 +4913,13 @@ TEST_F(JsepSessionTest, TestRtcpFbStar) {
   }
 }
 
-TEST_F(JsepSessionTest, TestUniquePayloadTypes) {
-  // The audio payload types will all appear more than once, but the video
-  // payload types will be unique.
-  AddTracks(*mSessionOff, "audio,audio,video");
+TEST_F(JsepSessionTest, TestUniqueReceivePayloadTypes) {
+  // The audio payload types will all appear more than once.
+  // For the offerer, only one video m-section will be receiving, so those
+  // video payload types will be unique.
+  // On the other hand, the answerer will have two video m-sections receiving,
+  // so those _won't_ be unique.
+  AddTracks(*mSessionOff, "audio,audio,video,video");
   AddTracks(*mSessionAns, "audio,audio,video");
 
   std::string offer = CreateOffer();
@@ -5017,49 +4931,67 @@ TEST_F(JsepSessionTest, TestUniquePayloadTypes) {
 
   auto offerTransceivers = GetTransceivers(*mSessionOff);
   auto answerTransceivers = GetTransceivers(*mSessionAns);
-  ASSERT_EQ(3U, offerTransceivers.size());
-  ASSERT_EQ(3U, answerTransceivers.size());
+  ASSERT_EQ(4U, offerTransceivers.size());
+  ASSERT_EQ(4U, answerTransceivers.size());
 
   ASSERT_FALSE(IsNull(offerTransceivers[0].mRecvTrack));
   ASSERT_TRUE(offerTransceivers[0].mRecvTrack.GetNegotiatedDetails());
   ASSERT_EQ(0U, offerTransceivers[0]
                     .mRecvTrack.GetNegotiatedDetails()
-                    ->GetUniquePayloadTypes()
+                    ->GetUniqueReceivePayloadTypes()
                     .size());
 
   ASSERT_FALSE(IsNull(offerTransceivers[1].mRecvTrack));
   ASSERT_TRUE(offerTransceivers[1].mRecvTrack.GetNegotiatedDetails());
   ASSERT_EQ(0U, offerTransceivers[1]
                     .mRecvTrack.GetNegotiatedDetails()
-                    ->GetUniquePayloadTypes()
+                    ->GetUniqueReceivePayloadTypes()
                     .size());
 
+  // First video transceiver is the only one receiving, so gets unique pts.
   ASSERT_FALSE(IsNull(offerTransceivers[2].mRecvTrack));
   ASSERT_TRUE(offerTransceivers[2].mRecvTrack.GetNegotiatedDetails());
   ASSERT_NE(0U, offerTransceivers[2]
                     .mRecvTrack.GetNegotiatedDetails()
-                    ->GetUniquePayloadTypes()
+                    ->GetUniqueReceivePayloadTypes()
+                    .size());
+
+  // First video transceiver is not receiving, so does not get unique pts.
+  ASSERT_TRUE(IsNull(offerTransceivers[3].mRecvTrack));
+  ASSERT_TRUE(offerTransceivers[3].mRecvTrack.GetNegotiatedDetails());
+  ASSERT_EQ(0U, offerTransceivers[3]
+                    .mRecvTrack.GetNegotiatedDetails()
+                    ->GetUniqueReceivePayloadTypes()
                     .size());
 
   ASSERT_FALSE(IsNull(answerTransceivers[0].mRecvTrack));
   ASSERT_TRUE(answerTransceivers[0].mRecvTrack.GetNegotiatedDetails());
   ASSERT_EQ(0U, answerTransceivers[0]
                     .mRecvTrack.GetNegotiatedDetails()
-                    ->GetUniquePayloadTypes()
+                    ->GetUniqueReceivePayloadTypes()
                     .size());
 
   ASSERT_FALSE(IsNull(answerTransceivers[1].mRecvTrack));
   ASSERT_TRUE(answerTransceivers[1].mRecvTrack.GetNegotiatedDetails());
   ASSERT_EQ(0U, answerTransceivers[1]
                     .mRecvTrack.GetNegotiatedDetails()
-                    ->GetUniquePayloadTypes()
+                    ->GetUniqueReceivePayloadTypes()
                     .size());
 
+  // Answerer is receiving two video streams with the same payload types.
+  // Neither recv track should have unique pts.
   ASSERT_FALSE(IsNull(answerTransceivers[2].mRecvTrack));
   ASSERT_TRUE(answerTransceivers[2].mRecvTrack.GetNegotiatedDetails());
-  ASSERT_NE(0U, answerTransceivers[2]
+  ASSERT_EQ(0U, answerTransceivers[2]
                     .mRecvTrack.GetNegotiatedDetails()
-                    ->GetUniquePayloadTypes()
+                    ->GetUniqueReceivePayloadTypes()
+                    .size());
+
+  ASSERT_FALSE(IsNull(answerTransceivers[3].mRecvTrack));
+  ASSERT_TRUE(answerTransceivers[3].mRecvTrack.GetNegotiatedDetails());
+  ASSERT_EQ(0U, answerTransceivers[3]
+                    .mRecvTrack.GetNegotiatedDetails()
+                    ->GetUniqueReceivePayloadTypes()
                     .size());
 }
 
@@ -6531,9 +6463,11 @@ TEST_F(JsepSessionTest, OffererRecycle) {
   GetTransceivers(*mSessionOff)[0].Stop();
   AddTracks(*mSessionOff, "audio");
   ASSERT_EQ(3U, GetTransceivers(*mSessionOff).size());
+  ASSERT_TRUE(mSessionOff->CheckNegotiationNeeded());
 
   OfferAnswer(CHECK_SUCCESS);
 
+  ASSERT_FALSE(mSessionOff->CheckNegotiationNeeded());
   // It is too soon to recycle msection 0, so the new track should have been
   // given a new msection.
   ASSERT_EQ(3U, GetTransceivers(*mSessionOff).size());
@@ -6597,9 +6531,40 @@ TEST_F(JsepSessionTest, RecycleAnswererStopsTransceiver) {
   ASSERT_EQ(2U, GetTransceivers(*mSessionOff).size());
   ASSERT_EQ(2U, GetTransceivers(*mSessionAns).size());
   GetTransceivers(*mSessionAns)[0].Stop();
+  ASSERT_TRUE(mSessionAns->CheckNegotiationNeeded());
 
   OfferAnswer(CHECK_SUCCESS);
 
+  // Answerer is not allowed to handle Stop(); it needs to be done in an offer
+  ASSERT_TRUE(mSessionAns->CheckNegotiationNeeded());
+  ASSERT_EQ(2U, GetTransceivers(*mSessionOff).size());
+  ASSERT_EQ(0U, GetTransceivers(*mSessionOff)[0].GetLevel());
+  // webrtc-pc pulled a fast one and modified JSEP to say that the answerer
+  // does not reject when it has a stopped transceiver. That's an offerer thing
+  // only.
+  ASSERT_FALSE(GetTransceivers(*mSessionOff)[0].IsStopped());
+  ASSERT_EQ(1U, GetTransceivers(*mSessionOff)[1].GetLevel());
+  ASSERT_FALSE(GetTransceivers(*mSessionOff)[1].IsStopped());
+
+  ASSERT_EQ(2U, GetTransceivers(*mSessionAns).size());
+  ASSERT_EQ(0U, GetTransceivers(*mSessionAns)[0].GetLevel());
+  ASSERT_TRUE(GetTransceivers(*mSessionAns)[0].IsStopping());
+  ASSERT_FALSE(GetTransceivers(*mSessionAns)[0].IsStopped());
+  ASSERT_EQ(1U, GetTransceivers(*mSessionAns)[1].GetLevel());
+  ASSERT_FALSE(GetTransceivers(*mSessionAns)[1].IsStopping());
+  ASSERT_FALSE(GetTransceivers(*mSessionAns)[1].IsStopped());
+
+  auto offer = GetParsedLocalDescription(*mSessionOff);
+  ASSERT_EQ(2U, offer->GetMediaSectionCount());
+
+  auto answer = GetParsedLocalDescription(*mSessionAns);
+  ASSERT_EQ(2U, answer->GetMediaSectionCount());
+
+  // Switching roles and renegotiating will cause the m-section to be rejected
+  SwapOfferAnswerRoles();
+  OfferAnswer();
+
+  ASSERT_FALSE(mSessionAns->CheckNegotiationNeeded());
   ASSERT_EQ(2U, GetTransceivers(*mSessionOff).size());
   ASSERT_EQ(0U, GetTransceivers(*mSessionOff)[0].GetLevel());
   ASSERT_TRUE(GetTransceivers(*mSessionOff)[0].IsStopped());
@@ -6612,11 +6577,14 @@ TEST_F(JsepSessionTest, RecycleAnswererStopsTransceiver) {
   ASSERT_EQ(1U, GetTransceivers(*mSessionAns)[1].GetLevel());
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[1].IsStopped());
 
-  UniquePtr<Sdp> offer = GetParsedLocalDescription(*mSessionOff);
+  offer = GetParsedLocalDescription(*mSessionOff);
   ASSERT_EQ(2U, offer->GetMediaSectionCount());
 
-  UniquePtr<Sdp> answer = GetParsedLocalDescription(*mSessionAns);
+  answer = GetParsedLocalDescription(*mSessionAns);
   ASSERT_EQ(2U, answer->GetMediaSectionCount());
+
+  ValidateDisabledMSection(&offer->GetMediaSection(0));
+  ValidateDisabledMSection(&offer->GetMediaSection(0));
   ValidateDisabledMSection(&answer->GetMediaSection(0));
 
   // Renegotiating should recycle m-section 0.
@@ -6694,6 +6662,7 @@ TEST_F(JsepSessionTest, OffererRecycleNoMagicAnswererStopsTransceiver) {
   ASSERT_EQ(2U, GetTransceivers(*mSessionAns).size());
   GetTransceivers(*mSessionAns)[0].Stop();
 
+  SwapOfferAnswerRoles();
   OfferAnswer(CHECK_SUCCESS);
 
   // Ok. Now renegotiating should recycle m-section 0.
@@ -7048,11 +7017,12 @@ TEST_F(JsepSessionTest, ComplicatedRemoteRollback) {
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[1].IsRemoved());
 
   // First audio transceiver, kept because AddTrack touched it, even though we
-  // removed the send track after.
+  // removed the send track after. Gets magic because that's what other browsers
+  // do (ugh).
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[2].HasLevel());
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[2].IsStopped());
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[2].IsAssociated());
-  ASSERT_FALSE(GetTransceivers(*mSessionAns)[2].HasAddTrackMagic());
+  ASSERT_TRUE(GetTransceivers(*mSessionAns)[2].HasAddTrackMagic());
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[2].OnlyExistsBecauseOfSetRemote());
   ASSERT_TRUE(IsNull(GetTransceivers(*mSessionAns)[2].mSendTrack));
   ASSERT_FALSE(GetTransceivers(*mSessionAns)[2].IsRemoved());
@@ -7108,17 +7078,19 @@ TEST_F(JsepSessionTest, JsStopsTransceiverBeforeAnswer) {
   std::string answer = CreateAnswer();
   SetLocalAnswer(answer, CHECK_SUCCESS);
 
-  // Now JS decides to stop a transceiver. Make sure transport stuff is still
-  // ready to go when the answer is set. This should only prevent the flow of
-  // media for that transceiver.
+  // Now JS decides to stop a transceiver. This should have absolutely no effect
+  // on JSEP this negotiation. Any effects will be on the JS side of things.
+  // JSEP _will_ advertise that negotiation is needed.
 
   GetTransceivers(*mSessionOff)[0].Stop();
   SetRemoteAnswer(answer, CHECK_SUCCESS);
 
-  ASSERT_TRUE(GetTransceivers(*mSessionOff)[0].IsStopped());
+  ASSERT_TRUE(GetTransceivers(*mSessionOff)[0].IsStopping());
+  ASSERT_FALSE(GetTransceivers(*mSessionOff)[0].IsStopped());
   ASSERT_EQ(1U, GetTransceivers(*mSessionOff)[0].mTransport.mComponents);
-  ASSERT_FALSE(GetTransceivers(*mSessionOff)[0].mSendTrack.GetActive());
-  ASSERT_FALSE(GetTransceivers(*mSessionOff)[0].mRecvTrack.GetActive());
+  ASSERT_TRUE(GetTransceivers(*mSessionOff)[0].mSendTrack.GetActive());
+  ASSERT_TRUE(GetTransceivers(*mSessionOff)[0].mRecvTrack.GetActive());
+  ASSERT_TRUE(mSessionOff->CheckNegotiationNeeded());
 }
 
 TEST_F(JsepSessionTest, TestOfferPTAsymmetryRtxApt) {
@@ -7398,13 +7370,142 @@ TEST_F(JsepSessionTest, TestOfferRtxNoMsid) {
   ASSERT_NE(std::string::npos, offer.find("FID")) << offer;
 }
 
+TEST_F(JsepSessionTest, TestRedRtxAddedToVideoCodec) {
+  types.push_back(SdpMediaSection::kVideo);
+  AddTracks(*mSessionOff, "video");
+  AddTracks(*mSessionAns, "video");
+
+  OfferAnswer();
+
+  std::vector<sdp::Direction> directions = {sdp::kSend, sdp::kRecv};
+
+  for (auto direction : directions) {
+    UniquePtr<JsepCodecDescription> codec;
+    std::set<std::string> payloadTypes;
+    std::string redPt, ulpfecPt, redRtxPt;
+    for (size_t i = 0; i < 4; ++i) {
+      GetCodec(*mSessionOff, 0, direction, 0, i, &codec);
+      ASSERT_TRUE(codec);
+      JsepVideoCodecDescription* videoCodec =
+          static_cast<JsepVideoCodecDescription*>(codec.get());
+
+      // Ensure RED, ULPFEC, and RTX RED are not empty which validates that
+      // EnableFEC worked.
+      ASSERT_FALSE(videoCodec->mREDPayloadType.empty());
+      ASSERT_FALSE(videoCodec->mULPFECPayloadType.empty());
+      ASSERT_FALSE(videoCodec->mREDRTXPayloadType.empty());
+      ASSERT_TRUE(payloadTypes.insert(videoCodec->mDefaultPt).second);
+      ASSERT_TRUE(payloadTypes.insert(videoCodec->mRtxPayloadType).second);
+      // ULPFEC, RED, and RED RTX payload types are the same for each codec, so
+      // we only check them for the first one.
+      if (i == 0) {
+        ASSERT_TRUE(payloadTypes.insert(videoCodec->mREDPayloadType).second)
+        << "RED is using a duplicate payload type.";
+        ASSERT_TRUE(payloadTypes.insert(videoCodec->mULPFECPayloadType).second)
+        << "ULPFEC is using a duplicate payload type.";
+        ASSERT_TRUE(payloadTypes.insert(videoCodec->mREDRTXPayloadType).second)
+        << "RED RTX is using a duplicate payload type.";
+        redPt = videoCodec->mREDPayloadType;
+        ulpfecPt = videoCodec->mULPFECPayloadType;
+        redRtxPt = videoCodec->mREDRTXPayloadType;
+      } else {
+        ASSERT_TRUE(redPt == videoCodec->mREDPayloadType);
+        ASSERT_TRUE(ulpfecPt == videoCodec->mULPFECPayloadType);
+        ASSERT_TRUE(redRtxPt == videoCodec->mREDRTXPayloadType);
+      }
+    }
+  }
+}
+
+TEST_P(JsepSessionTest, TestNegotiatedDetailsToVideoCodecConfigs) {
+  AddTracks(*mSessionOff);
+  AddTracks(*mSessionAns);
+  OfferAnswer();
+
+  // Check all the video tracks to ensure negotiated details is added to
+  // VideoCodecConfig. Especially information related to FEC, RED, and RED RTX.
+  std::vector<JsepTrack> tracks;
+  for (const auto& transceiver : GetTransceivers(*mSessionOff)) {
+    tracks.push_back(transceiver.mSendTrack);
+    tracks.push_back(transceiver.mRecvTrack);
+  }
+
+  for (const JsepTrack& track : tracks) {
+    if (track.GetMediaType() != SdpMediaSection::kVideo) {
+      continue;
+    }
+
+    const auto& details(*track.GetNegotiatedDetails());
+    std::vector<VideoCodecConfig> videoConfigs;
+    dom::RTCRtpTransceiver::NegotiatedDetailsToVideoCodecConfigs(details,
+                                                                 &videoConfigs);
+    ASSERT_FALSE(videoConfigs.empty());
+    ASSERT_EQ(1U, details.GetEncodingCount());
+
+    const JsepTrackEncoding& encoding = details.GetEncoding(0);
+
+    ASSERT_EQ(encoding.GetCodecs().size(), videoConfigs.size());
+    // Since encodings and videoConfigs is the same size and order we can loop
+    // through them both at the same time and validate that videoConfigs
+    // contains the expected encoding data from negotiated details.
+    for (unsigned int i = 0; i < videoConfigs.size(); i++) {
+      const JsepVideoCodecDescription& codec =
+          static_cast<const JsepVideoCodecDescription&>(
+              *encoding.GetCodecs().at(i));
+      const auto& config = videoConfigs.at(i);
+
+      uint16_t payloadType;
+      ASSERT_TRUE(codec.GetPtAsInt(&payloadType));
+      ASSERT_EQ(payloadType, config.mType);
+      ASSERT_EQ(codec.mName, config.mName);
+      ASSERT_EQ(codec.RtcpFbRembIsSet(), config.mRembFbSet);
+      ASSERT_EQ(codec.mFECEnabled, config.mFECFbSet);
+      ASSERT_EQ(codec.RtcpFbTransportCCIsSet(), config.mTransportCCFbSet);
+      ASSERT_EQ(details.GetTias(), config.mTias);
+      ASSERT_EQ(codec.mConstraints, config.mEncodingConstraints);
+
+      if (codec.mName == "H264") {
+        ASSERT_EQ((codec.mProfileLevelId & 0x00FF0000) >> 16, config.mProfile);
+        ASSERT_EQ((codec.mProfileLevelId & 0x0000FF00) >> 8,
+                  config.mConstraints);
+        ASSERT_EQ(codec.mProfileLevelId & 0x000000FF, config.mLevel);
+        ASSERT_EQ(codec.mPacketizationMode, config.mPacketizationMode);
+        ASSERT_EQ(codec.mSpropParameterSets, config.mSpropParameterSets);
+      }
+
+      if (codec.mFECEnabled) {
+        uint16_t redPayloadType, ulpFecPayloadType, redRtxPayloadType;
+
+        ASSERT_TRUE(
+            SdpHelper::GetPtAsInt(codec.mREDPayloadType, &redPayloadType));
+        ASSERT_TRUE(SdpHelper::GetPtAsInt(codec.mULPFECPayloadType,
+                                          &ulpFecPayloadType));
+        ASSERT_TRUE(SdpHelper::GetPtAsInt(codec.mREDRTXPayloadType,
+                                          &redRtxPayloadType));
+
+        ASSERT_EQ(redPayloadType, config.mREDPayloadType);
+        ASSERT_EQ(ulpFecPayloadType, config.mULPFECPayloadType);
+        ASSERT_EQ(redRtxPayloadType, config.mREDRTXPayloadType);
+      }
+
+      if (codec.mRtxEnabled) {
+        uint16_t rtxPayloadType;
+
+        ASSERT_TRUE(
+            SdpHelper::GetPtAsInt(codec.mRtxPayloadType, &rtxPayloadType));
+        ASSERT_EQ(rtxPayloadType, config.mRTXPayloadType);
+      }
+    }
+  }
+}
+
 TEST_F(JsepSessionTest, TestDuplicatePayloadTypes) {
   for (auto& codec : mSessionOff->Codecs()) {
     if (codec->Type() == SdpMediaSection::kVideo) {
       JsepVideoCodecDescription* videoCodec =
           static_cast<JsepVideoCodecDescription*>(codec.get());
       videoCodec->mRtxPayloadType = "97";
-      videoCodec->EnableFec("97", "97");
+      videoCodec->EnableFec("97", "97", "97");
     }
   }
 
@@ -7418,7 +7519,7 @@ TEST_F(JsepSessionTest, TestDuplicatePayloadTypes) {
   for (auto direction : directions) {
     UniquePtr<JsepCodecDescription> codec;
     std::set<std::string> payloadTypes;
-    std::string redPt, ulpfecPt;
+    std::string redPt, ulpfecPt, redRtxPt;
     for (size_t i = 0; i < 4; ++i) {
       GetCodec(*mSessionOff, 0, direction, 0, i, &codec);
       ASSERT_TRUE(codec);
@@ -7431,11 +7532,14 @@ TEST_F(JsepSessionTest, TestDuplicatePayloadTypes) {
       if (i == 0) {
         ASSERT_TRUE(payloadTypes.insert(videoCodec->mREDPayloadType).second);
         ASSERT_TRUE(payloadTypes.insert(videoCodec->mULPFECPayloadType).second);
+        ASSERT_TRUE(payloadTypes.insert(videoCodec->mREDRTXPayloadType).second);
         redPt = videoCodec->mREDPayloadType;
         ulpfecPt = videoCodec->mULPFECPayloadType;
+        redRtxPt = videoCodec->mREDRTXPayloadType;
       } else {
         ASSERT_TRUE(redPt == videoCodec->mREDPayloadType);
         ASSERT_TRUE(ulpfecPt == videoCodec->mULPFECPayloadType);
+        ASSERT_TRUE(redRtxPt == videoCodec->mREDRTXPayloadType);
       }
     }
   }

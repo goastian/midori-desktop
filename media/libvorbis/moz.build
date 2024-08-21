@@ -42,16 +42,19 @@ SOURCES += [
 
 LOCAL_INCLUDES += ['lib']
 
-if CONFIG['OS_ARCH'] == 'AIX':
-    DEFINES['alloca'] = '__alloca'
-
 if CONFIG['OS_ARCH'] == 'SunOS':
     DEFINES['HAVE_ALLOCA_H'] = True
+
+if CONFIG["OS_ARCH"] == "Linux":
+    OS_LIBS += [
+        "m",
+    ]
 
 # We allow warnings for third-party code that can be updated from upstream.
 AllowCompilerWarnings()
 
-FINAL_LIBRARY = 'gkmedias'
+FINAL_LIBRARY = 'gkcodecs'
+NoVisibilityFlags()
 
 # Suppress warnings in third-party code.
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):

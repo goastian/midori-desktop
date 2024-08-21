@@ -9,7 +9,6 @@
 
 #include "AudioConduit.h"
 #include "Canonicals.h"
-#include "WaitFor.h"
 
 #include "MockCall.h"
 
@@ -26,7 +25,8 @@ class AudioConduitTest : public ::testing::Test {
         mAudioConduit(MakeRefPtr<WebrtcAudioConduit>(
             mCallWrapper, GetCurrentSerialEventTarget())),
         mControl(GetCurrentSerialEventTarget()) {
-    mAudioConduit->InitControl(&mControl);
+    mControl.Update(
+        [&](auto& aControl) { mAudioConduit->InitControl(&mControl); });
   }
 
   ~AudioConduitTest() override {
@@ -716,7 +716,6 @@ TEST_F(AudioConduitTest, TestSetLocalRTPExtensions) {
     aControl.mTransmitting = true;
   });
   ASSERT_TRUE(Call()->mAudioReceiveConfig);
-  ASSERT_TRUE(Call()->mAudioReceiveConfig->rtp.extensions.empty());
   ASSERT_TRUE(Call()->mAudioSendConfig);
   ASSERT_TRUE(Call()->mAudioSendConfig->rtp.extensions.empty());
 
@@ -730,8 +729,6 @@ TEST_F(AudioConduitTest, TestSetLocalRTPExtensions) {
     aControl.mLocalSendRtpExtensions = extensions;
   });
   ASSERT_TRUE(Call()->mAudioReceiveConfig);
-  ASSERT_EQ(Call()->mAudioReceiveConfig->rtp.extensions.back().uri,
-            webrtc::RtpExtension::kAudioLevelUri);
   ASSERT_TRUE(Call()->mAudioSendConfig);
   ASSERT_EQ(Call()->mAudioSendConfig->rtp.extensions.back().uri,
             webrtc::RtpExtension::kAudioLevelUri);
@@ -748,8 +745,6 @@ TEST_F(AudioConduitTest, TestSetLocalRTPExtensions) {
     aControl.mLocalSendRtpExtensions = extensions;
   });
   ASSERT_TRUE(Call()->mAudioReceiveConfig);
-  ASSERT_EQ(Call()->mAudioReceiveConfig->rtp.extensions.back().uri,
-            webrtc::RtpExtension::kCsrcAudioLevelsUri);
   ASSERT_TRUE(Call()->mAudioSendConfig);
   ASSERT_TRUE(Call()->mAudioSendConfig->rtp.extensions.empty());
 
@@ -764,7 +759,6 @@ TEST_F(AudioConduitTest, TestSetLocalRTPExtensions) {
     aControl.mLocalSendRtpExtensions = extensions;
   });
   ASSERT_TRUE(Call()->mAudioReceiveConfig);
-  ASSERT_TRUE(Call()->mAudioReceiveConfig->rtp.extensions.empty());
   ASSERT_EQ(Call()->mAudioSendConfig->rtp.extensions.back().uri,
             webrtc::RtpExtension::kMidUri);
 }

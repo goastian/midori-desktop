@@ -13,6 +13,7 @@
 #include "./vpx_config.h"
 #include "vpx_dsp/vpx_dsp_common.h"
 #include "vpx_mem/vpx_mem.h"
+#include "vpx_util/vpx_pthread.h"
 #include "vp9/common/vp9_entropymode.h"
 #include "vp9/common/vp9_thread_common.h"
 #include "vp9/common/vp9_reconinter.h"
@@ -388,10 +389,10 @@ void vp9_loop_filter_dealloc(VP9LfSync *lf_sync) {
 
 static int get_next_row(VP9_COMMON *cm, VP9LfSync *lf_sync) {
   int return_val = -1;
-  int cur_row;
   const int max_rows = cm->mi_rows;
 
 #if CONFIG_MULTITHREAD
+  int cur_row;
   const int tile_cols = 1 << cm->log2_tile_cols;
 
   pthread_mutex_lock(lf_sync->lf_mutex);
@@ -428,14 +429,8 @@ static int get_next_row(VP9_COMMON *cm, VP9LfSync *lf_sync) {
 #else
   (void)lf_sync;
   if (cm->lf_row < max_rows) {
-    cur_row = cm->lf_row >> MI_BLOCK_SIZE_LOG2;
     return_val = cm->lf_row;
     cm->lf_row += MI_BLOCK_SIZE;
-    if (cm->lf_row < max_rows) {
-      /* If this is not the last row, make sure the next row is also decoded.
-       * This is because the intra predict has to happen before loop filter */
-      cur_row += 1;
-    }
   }
 #endif  // CONFIG_MULTITHREAD
 

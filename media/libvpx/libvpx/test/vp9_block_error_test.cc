@@ -53,14 +53,14 @@ int64_t BlockError8BitWrapper(const tran_low_t *coeff,
 
 class BlockErrorTest : public ::testing::TestWithParam<BlockErrorParam> {
  public:
-  virtual ~BlockErrorTest() {}
-  virtual void SetUp() {
+  ~BlockErrorTest() override = default;
+  void SetUp() override {
     error_block_op_ = GET_PARAM(0);
     ref_error_block_op_ = GET_PARAM(1);
     bit_depth_ = GET_PARAM(2);
   }
 
-  virtual void TearDown() { libvpx_test::ClearSystemState(); }
+  void TearDown() override { libvpx_test::ClearSystemState(); }
 
  protected:
   vpx_bit_depth_t bit_depth_;
@@ -215,4 +215,13 @@ const BlockErrorParam neon_block_error_tests[] = {
 INSTANTIATE_TEST_SUITE_P(NEON, BlockErrorTest,
                          ::testing::ValuesIn(neon_block_error_tests));
 #endif  // HAVE_NEON
+
+#if HAVE_SVE
+const BlockErrorParam sve_block_error_tests[] = { make_tuple(
+    &BlockError8BitWrapper<vp9_block_error_sve>,
+    &BlockError8BitWrapper<vp9_block_error_c>, VPX_BITS_8) };
+
+INSTANTIATE_TEST_SUITE_P(SVE, BlockErrorTest,
+                         ::testing::ValuesIn(sve_block_error_tests));
+#endif  // HAVE_SVE
 }  // namespace

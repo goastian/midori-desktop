@@ -95,7 +95,7 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
   XASSERT(input_stream_params || output_stream_params);
   if (output_stream_params) {
     if (output_stream_params->rate < 1000 ||
-        output_stream_params->rate > 192000 ||
+        output_stream_params->rate > 768000 ||
         output_stream_params->channels < 1 ||
         output_stream_params->channels > UINT8_MAX) {
       return CUBEB_ERROR_INVALID_FORMAT;
@@ -103,7 +103,7 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
   }
   if (input_stream_params) {
     if (input_stream_params->rate < 1000 ||
-        input_stream_params->rate > 192000 ||
+        input_stream_params->rate > 768000 ||
         input_stream_params->channels < 1 ||
         input_stream_params->channels > UINT8_MAX) {
       return CUBEB_ERROR_INVALID_FORMAT;
@@ -341,6 +341,21 @@ cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rate)
   return context->ops->get_preferred_sample_rate(context, rate);
 }
 
+int
+cubeb_get_supported_input_processing_params(
+    cubeb * context, cubeb_input_processing_params * params)
+{
+  if (!context || !params) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!context->ops->get_supported_input_processing_params) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  return context->ops->get_supported_input_processing_params(context, params);
+}
+
 void
 cubeb_destroy(cubeb * context)
 {
@@ -498,6 +513,36 @@ cubeb_stream_get_current_device(cubeb_stream * stream,
   }
 
   return stream->context->ops->stream_get_current_device(stream, device);
+}
+
+int
+cubeb_stream_set_input_mute(cubeb_stream * stream, int mute)
+{
+  if (!stream) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!stream->context->ops->stream_set_input_mute) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  return stream->context->ops->stream_set_input_mute(stream, mute);
+}
+
+int
+cubeb_stream_set_input_processing_params(cubeb_stream * stream,
+                                         cubeb_input_processing_params params)
+{
+  if (!stream) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!stream->context->ops->stream_set_input_processing_params) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  return stream->context->ops->stream_set_input_processing_params(stream,
+                                                                  params);
 }
 
 int

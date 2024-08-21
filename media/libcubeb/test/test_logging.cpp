@@ -26,7 +26,7 @@
 std::atomic<uint32_t> log_statements_received = {0};
 std::atomic<uint32_t> data_callback_call_count = {0};
 
-void
+static void
 test_logging_callback(char const * fmt, ...)
 {
   log_statements_received++;
@@ -40,7 +40,7 @@ test_logging_callback(char const * fmt, ...)
 #endif // PRINT_LOGS_TO_STDERR
 }
 
-long
+static long
 data_cb_load(cubeb_stream * stream, void * user, const void * inputbuffer,
              void * outputbuffer, long nframes)
 {
@@ -48,7 +48,7 @@ data_cb_load(cubeb_stream * stream, void * user, const void * inputbuffer,
   return nframes;
 }
 
-void
+static void
 state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 {
   if (stream == NULL)
@@ -106,7 +106,10 @@ TEST(cubeb, logging)
   output_params.prefs = CUBEB_STREAM_PREF_NONE;
 
   r = cubeb_get_min_latency(ctx, &output_params, &latency_frames);
-  ASSERT_EQ(r, CUBEB_OK) << "Could not get minimal latency";
+  if (r != CUBEB_OK) {
+    // not fatal
+    latency_frames = 1024;
+  }
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb logging", NULL, NULL, NULL,
                         &output_params, latency_frames, data_cb_load, state_cb,

@@ -17,16 +17,17 @@
 #include "test/util.h"
 #include "test/y4m_video_source.h"
 #include "vp9/encoder/vp9_firstpass.h"
+#include "vpx_config.h"
 
 namespace {
 // FIRSTPASS_STATS struct:
 // {
-//   25 double members;
+//   26 double members;
 //   1 int64_t member;
 // }
 // Whenever FIRSTPASS_STATS struct is modified, the following constants need to
 // be revisited.
-const int kDbl = 25;
+const int kDbl = 26;
 const int kInt = 1;
 const size_t kFirstPassStatsSz = kDbl * sizeof(double) + kInt * sizeof(int64_t);
 
@@ -44,9 +45,9 @@ class VPxFirstPassEncoderThreadTest
     firstpass_stats_.buf = nullptr;
     firstpass_stats_.sz = 0;
   }
-  virtual ~VPxFirstPassEncoderThreadTest() { free(firstpass_stats_.buf); }
+  ~VPxFirstPassEncoderThreadTest() override { free(firstpass_stats_.buf); }
 
-  virtual void SetUp() {
+  void SetUp() override {
     InitializeConfig();
     SetMode(encoding_mode_);
 
@@ -57,19 +58,19 @@ class VPxFirstPassEncoderThreadTest
     cfg_.rc_min_quantizer = 0;
   }
 
-  virtual void BeginPassHook(unsigned int /*pass*/) {
+  void BeginPassHook(unsigned int /*pass*/) override {
     encoder_initialized_ = false;
     abort_ = false;
   }
 
-  virtual void EndPassHook() {
+  void EndPassHook() override {
     // For first pass stats test, only run first pass encoder.
     if (first_pass_only_ && cfg_.g_pass == VPX_RC_FIRST_PASS)
       abort_ |= first_pass_only_;
   }
 
-  virtual void PreEncodeFrameHook(::libvpx_test::VideoSource * /*video*/,
-                                  ::libvpx_test::Encoder *encoder) {
+  void PreEncodeFrameHook(::libvpx_test::VideoSource * /*video*/,
+                          ::libvpx_test::Encoder *encoder) override {
     if (!encoder_initialized_) {
       // Encode in 2-pass mode.
       encoder->Control(VP9E_SET_TILE_COLUMNS, tiles_);
@@ -87,7 +88,7 @@ class VPxFirstPassEncoderThreadTest
     }
   }
 
-  virtual void StatsPktHook(const vpx_codec_cx_pkt_t *pkt) {
+  void StatsPktHook(const vpx_codec_cx_pkt_t *pkt) override {
     const uint8_t *const pkt_buf =
         reinterpret_cast<uint8_t *>(pkt->data.twopass_stats.buf);
     const size_t pkt_size = pkt->data.twopass_stats.sz;
@@ -168,6 +169,9 @@ static void compare_fp_stats_md5(vpx_fixed_buf_t *fp_stats) {
 }
 
 TEST_P(VPxFirstPassEncoderThreadTest, FirstPassStatsTest) {
+#if CONFIG_REALTIME_ONLY
+  GTEST_SKIP();
+#else
   ::libvpx_test::Y4mVideoSource video("niklas_1280_720_30.y4m", 0, 60);
 
   first_pass_only_ = true;
@@ -185,7 +189,7 @@ TEST_P(VPxFirstPassEncoderThreadTest, FirstPassStatsTest) {
   ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
 
   // Compare to check if using or not using row-mt generates close stats.
-  ASSERT_NO_FATAL_FAILURE(compare_fp_stats(&firstpass_stats_, 1000.0));
+  ASSERT_NO_FATAL_FAILURE(compare_fp_stats(&firstpass_stats_, 400.0));
 
   // Test single thread vs multiple threads
   row_mt_mode_ = 1;
@@ -199,7 +203,7 @@ TEST_P(VPxFirstPassEncoderThreadTest, FirstPassStatsTest) {
   ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
 
   // Compare to check if single-thread and multi-thread stats are close enough.
-  ASSERT_NO_FATAL_FAILURE(compare_fp_stats(&firstpass_stats_, 1000.0));
+  ASSERT_NO_FATAL_FAILURE(compare_fp_stats(&firstpass_stats_, 400.0));
 
   // Bit exact test in row_mt mode.
   // When row_mt_mode_=1 and using >1 threads, the encoder generates bit exact
@@ -216,6 +220,7 @@ TEST_P(VPxFirstPassEncoderThreadTest, FirstPassStatsTest) {
 
   // Compare to check if stats match with row-mt=0/1.
   compare_fp_stats_md5(&firstpass_stats_);
+#endif  // CONFIG_REALTIME_ONLY
 }
 
 class VPxEncoderThreadTest
@@ -233,9 +238,9 @@ class VPxEncoderThreadTest
     psnr_ = 0.0;
     nframes_ = 0;
   }
-  virtual ~VPxEncoderThreadTest() {}
+  ~VPxEncoderThreadTest() override = default;
 
-  virtual void SetUp() {
+  void SetUp() override {
     InitializeConfig();
     SetMode(encoding_mode_);
 
@@ -252,14 +257,14 @@ class VPxEncoderThreadTest
     cfg_.rc_min_quantizer = 0;
   }
 
-  virtual void BeginPassHook(unsigned int /*pass*/) {
+  void BeginPassHook(unsigned int /*pass*/) override {
     encoder_initialized_ = false;
     psnr_ = 0.0;
     nframes_ = 0;
   }
 
-  virtual void PreEncodeFrameHook(::libvpx_test::VideoSource * /*video*/,
-                                  ::libvpx_test::Encoder *encoder) {
+  void PreEncodeFrameHook(::libvpx_test::VideoSource * /*video*/,
+                          ::libvpx_test::Encoder *encoder) override {
     if (!encoder_initialized_) {
       // Encode 4 column tiles.
       encoder->Control(VP9E_SET_TILE_COLUMNS, tiles_);
@@ -280,21 +285,21 @@ class VPxEncoderThreadTest
     }
   }
 
-  virtual void PSNRPktHook(const vpx_codec_cx_pkt_t *pkt) {
+  void PSNRPktHook(const vpx_codec_cx_pkt_t *pkt) override {
     psnr_ += pkt->data.psnr.psnr[0];
     nframes_++;
   }
 
-  virtual void DecompressedFrameHook(const vpx_image_t &img,
-                                     vpx_codec_pts_t /*pts*/) {
+  void DecompressedFrameHook(const vpx_image_t &img,
+                             vpx_codec_pts_t /*pts*/) override {
     ::libvpx_test::MD5 md5_res;
     md5_res.Add(&img);
     md5_.push_back(md5_res.Get());
   }
 
-  virtual bool HandleDecodeResult(const vpx_codec_err_t res,
-                                  const libvpx_test::VideoSource & /*video*/,
-                                  libvpx_test::Decoder * /*decoder*/) {
+  bool HandleDecodeResult(const vpx_codec_err_t res,
+                          const libvpx_test::VideoSource & /*video*/,
+                          libvpx_test::Decoder * /*decoder*/) override {
     if (res != VPX_CODEC_OK) {
       EXPECT_EQ(VPX_CODEC_OK, res);
       return false;
@@ -407,23 +412,17 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(
         ::testing::Values(
             static_cast<const libvpx_test::CodecFactory *>(&libvpx_test::kVP9)),
-        ::testing::Values(::libvpx_test::kTwoPassGood,
-                          ::libvpx_test::kOnePassGood,
-                          ::libvpx_test::kRealTime),
-        ::testing::Range(3, 10),   // cpu_used
-        ::testing::Range(0, 3),    // tile_columns
-        ::testing::Range(2, 5)));  // threads
+        ONE_PASS_TEST_MODES, ::testing::Range(3, 10),  // cpu_used
+        ::testing::Range(0, 3),                        // tile_columns
+        ::testing::Range(2, 5)));                      // threads
 
 INSTANTIATE_TEST_SUITE_P(
     VP9Large, VPxEncoderThreadTest,
     ::testing::Combine(
         ::testing::Values(
             static_cast<const libvpx_test::CodecFactory *>(&libvpx_test::kVP9)),
-        ::testing::Values(::libvpx_test::kTwoPassGood,
-                          ::libvpx_test::kOnePassGood,
-                          ::libvpx_test::kRealTime),
-        ::testing::Range(0, 3),    // cpu_used
-        ::testing::Range(0, 3),    // tile_columns
-        ::testing::Range(2, 5)));  // threads
+        ONE_PASS_TEST_MODES, ::testing::Range(0, 3),  // cpu_used
+        ::testing::Range(0, 3),                       // tile_columns
+        ::testing::Range(2, 5)));                     // threads
 
 }  // namespace

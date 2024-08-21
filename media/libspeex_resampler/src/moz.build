@@ -18,29 +18,25 @@ SOURCES += [
 # We allow warnings for third-party code that can be updated from upstream.
 AllowCompilerWarnings()
 
-FINAL_LIBRARY = 'gkmedias'
+FINAL_LIBRARY = 'xul'
 
 # We don't compile the full speex codec, only the resampler.
 DEFINES['OUTSIDE_SPEEX'] = True
 
 DEFINES['EXPORT'] = ''
-
-if CONFIG['MOZ_SAMPLE_TYPE_S16']:
-    DEFINES['FIXED_POINT'] = True
-else:
-    DEFINES['FLOATING_POINT'] = True
+DEFINES['FLOATING_POINT'] = True
 
 # Only use SSE code when using floating point samples, and on x86
-if CONFIG['INTEL_ARCHITECTURE'] and not CONFIG['MOZ_SAMPLE_TYPE_S16']:
-    DEFINES['_USE_SSE'] = True
-    DEFINES['_USE_SSE2'] = True
+if CONFIG['INTEL_ARCHITECTURE']:
+    DEFINES['USE_SSE'] = True
+    DEFINES['USE_SSE2'] = True
     SOURCES += [
         'resample_sse.c'
     ]
     SOURCES['resample_sse.c'].flags += CONFIG['SSE2_FLAGS']
 
-if CONFIG['CPU_ARCH'] == 'arm' and CONFIG['BUILD_ARM_NEON']:
-    DEFINES['_USE_NEON'] = True
+if CONFIG['TARGET_CPU'] == 'arm' and CONFIG['BUILD_ARM_NEON']:
+    DEFINES['USE_NEON'] = True
     SOURCES += [
         'resample_neon.c'
     ]

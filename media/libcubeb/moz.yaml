@@ -9,8 +9,8 @@ origin:
   description: "Cross platform audio library"
   url: https://github.com/mozilla/cubeb
   license: ISC
-  release: ac8474a5929e9de3bce84f16f8c589240eb9f7c4 (2023-08-03T12:13:06Z).
-  revision: ac8474a5929e9de3bce84f16f8c589240eb9f7c4
+  release: dabff209ddc97c5d1c304e64107d0c8c1dbe6897 (2024-05-24T13:53:45Z).
+  revision: dabff209ddc97c5d1c304e64107d0c8c1dbe6897
 
 vendoring:
   url: https://github.com/mozilla/cubeb
@@ -18,10 +18,13 @@ vendoring:
   vendor-directory: media/libcubeb
   patches:
     - 0001-disable-aaudio-before-android-31.patch
+    - 0002-disable-crash-reporter-death-test.patch
+    - 0003-audiounit-ios-compile-fixes.patch
+    - 0004-disable-cubeb_one_duplex_one_input-macos10.15.patch
   skip-vendoring-steps:
     - update-moz-build
   exclude:
-    - .clang-format
+    - ".*"
     - CMakeLists.txt
     - Config.cmake.in
     - INSTALL.md

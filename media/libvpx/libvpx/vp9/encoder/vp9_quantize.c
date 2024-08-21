@@ -12,9 +12,11 @@
 #include <math.h>
 #include "./vpx_dsp_rtcd.h"
 #include "vpx_mem/vpx_mem.h"
+#include "vpx_ports/bitops.h"
 #include "vpx_ports/mem.h"
 
 #include "vp9/common/vp9_quant_common.h"
+#include "vp9/common/vp9_scan.h"
 #include "vp9/common/vp9_seg_common.h"
 
 #include "vp9/encoder/vp9_encoder.h"
@@ -22,12 +24,14 @@
 #include "vp9/encoder/vp9_rd.h"
 
 void vp9_quantize_fp_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs,
-                       const int16_t *round_ptr, const int16_t *quant_ptr,
+                       const struct macroblock_plane *const mb_plane,
                        tran_low_t *qcoeff_ptr, tran_low_t *dqcoeff_ptr,
                        const int16_t *dequant_ptr, uint16_t *eob_ptr,
-                       const int16_t *scan, const int16_t *iscan) {
+                       const struct ScanOrder *const scan_order) {
   int i, eob = -1;
-  (void)iscan;
+  const int16_t *round_ptr = mb_plane->round_fp;
+  const int16_t *quant_ptr = mb_plane->quant_fp;
+  const int16_t *scan = scan_order->scan;
 
   memset(qcoeff_ptr, 0, n_coeffs * sizeof(*qcoeff_ptr));
   memset(dqcoeff_ptr, 0, n_coeffs * sizeof(*dqcoeff_ptr));
@@ -53,15 +57,15 @@ void vp9_quantize_fp_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs,
 
 #if CONFIG_VP9_HIGHBITDEPTH
 void vp9_highbd_quantize_fp_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs,
-                              const int16_t *round_ptr,
-                              const int16_t *quant_ptr, tran_low_t *qcoeff_ptr,
-                              tran_low_t *dqcoeff_ptr,
+                              const struct macroblock_plane *const mb_plane,
+                              tran_low_t *qcoeff_ptr, tran_low_t *dqcoeff_ptr,
                               const int16_t *dequant_ptr, uint16_t *eob_ptr,
-                              const int16_t *scan, const int16_t *iscan) {
+                              const struct ScanOrder *const scan_order) {
   int i;
   int eob = -1;
-
-  (void)iscan;
+  const int16_t *round_ptr = mb_plane->round_fp;
+  const int16_t *quant_ptr = mb_plane->quant_fp;
+  const int16_t *scan = scan_order->scan;
 
   memset(qcoeff_ptr, 0, n_coeffs * sizeof(*qcoeff_ptr));
   memset(dqcoeff_ptr, 0, n_coeffs * sizeof(*dqcoeff_ptr));
@@ -86,12 +90,14 @@ void vp9_highbd_quantize_fp_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs,
 // TODO(jingning) Refactor this file and combine functions with similar
 // operations.
 void vp9_quantize_fp_32x32_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs,
-                             const int16_t *round_ptr, const int16_t *quant_ptr,
+                             const struct macroblock_plane *const mb_plane,
                              tran_low_t *qcoeff_ptr, tran_low_t *dqcoeff_ptr,
                              const int16_t *dequant_ptr, uint16_t *eob_ptr,
-                             const int16_t *scan, const int16_t *iscan) {
+                             const struct ScanOrder *const scan_order) {
   int i, eob = -1;
-  (void)iscan;
+  const int16_t *round_ptr = mb_plane->round_fp;
+  const int16_t *quant_ptr = mb_plane->quant_fp;
+  const int16_t *scan = scan_order->scan;
 
   memset(qcoeff_ptr, 0, n_coeffs * sizeof(*qcoeff_ptr));
   memset(dqcoeff_ptr, 0, n_coeffs * sizeof(*dqcoeff_ptr));
@@ -118,13 +124,14 @@ void vp9_quantize_fp_32x32_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs,
 
 #if CONFIG_VP9_HIGHBITDEPTH
 void vp9_highbd_quantize_fp_32x32_c(
-    const tran_low_t *coeff_ptr, intptr_t n_coeffs, const int16_t *round_ptr,
-    const int16_t *quant_ptr, tran_low_t *qcoeff_ptr, tran_low_t *dqcoeff_ptr,
-    const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
-    const int16_t *iscan) {
+    const tran_low_t *coeff_ptr, intptr_t n_coeffs,
+    const struct macroblock_plane *const mb_plane, tran_low_t *qcoeff_ptr,
+    tran_low_t *dqcoeff_ptr, const int16_t *dequant_ptr, uint16_t *eob_ptr,
+    const struct ScanOrder *const scan_order) {
   int i, eob = -1;
-
-  (void)iscan;
+  const int16_t *round_ptr = mb_plane->round_fp;
+  const int16_t *quant_ptr = mb_plane->quant_fp;
+  const int16_t *scan = scan_order->scan;
 
   memset(qcoeff_ptr, 0, n_coeffs * sizeof(*qcoeff_ptr));
   memset(dqcoeff_ptr, 0, n_coeffs * sizeof(*dqcoeff_ptr));
@@ -150,10 +157,10 @@ void vp9_highbd_quantize_fp_32x32_c(
 #endif
 
 static void invert_quant(int16_t *quant, int16_t *shift, int d) {
-  unsigned t;
+  unsigned int t;
   int l, m;
-  t = d;
-  for (l = 0; t > 1; l++) t >>= 1;
+  t = (unsigned int)d;
+  l = get_msb(t);
   m = 1 + (1 << (16 + l)) / d;
   *quant = (int16_t)(m - (1 << 16));
   *shift = 1 << (16 - l);

@@ -49,8 +49,8 @@
 #include <unistd.h>
 #endif
 
-static atomic_int cpu_flags = ATOMIC_VAR_INIT(-1);
-static atomic_int cpu_count = ATOMIC_VAR_INIT(-1);
+static atomic_int cpu_flags = -1;
+static atomic_int cpu_count = -1;
 
 static int get_cpu_flags(void)
 {
@@ -174,6 +174,8 @@ int av_parse_cpu_caps(unsigned *flags, const char *s)
         { "armv8",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_ARMV8    },    .unit = "flags" },
         { "neon",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_NEON     },    .unit = "flags" },
         { "vfp",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_VFP      },    .unit = "flags" },
+        { "dotprod",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_DOTPROD  },    .unit = "flags" },
+        { "i8mm",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_I8MM     },    .unit = "flags" },
 #elif ARCH_MIPS
         { "mmi",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_MMI      },    .unit = "flags" },
         { "msa",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_MSA      },    .unit = "flags" },
@@ -184,11 +186,12 @@ int av_parse_cpu_caps(unsigned *flags, const char *s)
         { "rvi",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVI      },    .unit = "flags" },
         { "rvf",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVF      },    .unit = "flags" },
         { "rvd",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVD      },    .unit = "flags" },
-        { "rvv-i32",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_I32 },     .unit = "flags" },
-        { "rvv-f32",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_F32 },     .unit = "flags" },
-        { "rvv-i64",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_I64 },     .unit = "flags" },
-        { "rvv",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_F64 },     .unit = "flags" },
-        { "rvb-basic",NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVB_BASIC },   .unit = "flags" },
+        { "zve32x",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_I32  },    .unit = "flags" },
+        { "zve32f",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_F32  },    .unit = "flags" },
+        { "zve64x",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_I64  },    .unit = "flags" },
+        { "zve64d",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVV_F64  },    .unit = "flags" },
+        { "zba",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVB_ADDR },    .unit = "flags" },
+        { "zbb",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_RVB_BASIC },   .unit = "flags" },
 #endif
         { NULL },
     };
@@ -205,7 +208,7 @@ int av_parse_cpu_caps(unsigned *flags, const char *s)
 
 int av_cpu_count(void)
 {
-    static atomic_int printed = ATOMIC_VAR_INIT(0);
+    static atomic_int printed = 0;
 
     int nb_cpus = 1;
     int count   = 0;
