@@ -12,10 +12,11 @@ What is a Triaged Bug
 
 The new definition of Triaged will be Firefox-related bugs of type
 ``defect`` where the component is not
-``UNTRIAGED``, and a severity value not equal to ``--`` or ``N/A``.
+``UNTRIAGED``, and a :ref:`Severity <Defect Severity>` value not equal
+to ``--`` or ``N/A``.
 
-Bugs of type Task or Enhancement may have a severity of ``N/A``,
-but defects must have a severity that is neither ``--`` or
+Bugs of type Task or Enhancement may have a Severity of ``N/A``,
+but defects must have a Severity that is neither ``--`` nor
 ``N/A``.
 
 Why Triage
@@ -67,7 +68,7 @@ Firefox::General and Toolkit::General
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugs in Firefox::General are fitted with Bug Bug’s model to see if
-there’s another component with a high liklihood of fit, and if a
+there’s another component with a high likelihood of fit, and if a
 threshold confidence is achieved, the bug is moved to that component.
 
 Members of the community also review bugs in this component and try to
@@ -87,8 +88,8 @@ are:
 -  All bugs with a needinfo request unanswered for more than 10 days
 
 There’s a tool with these queries to help you find bugs
-https://mozilla.github.io/triage-center/ and the source is at
-https://github.com/mozilla/triage-center/.
+https://bugdash.moz.tools/ and the source is at
+https://github.com/mozilla/bugdash/.
 
 If a bug is an enhancement it needs a priority set and a target release
 or program milestone. These bugs are normally reviewed by product
@@ -115,7 +116,7 @@ These bugs are reviewed in the weekly Regression Triage meeting
 Automatic Bug Updates
 ~~~~~~~~~~~~~~~~~~~~~
 
-When a bug is tracked for a release, i.e. the ``tracking_firefoxNN``
+When a bug is tracked for a release, i.e. the ``tracking_firefoxNN``
 flag is set to ``+`` or ``blocking`` triage decisions will be overridden,
 or made as follows:
 
@@ -223,7 +224,7 @@ Multiple times weekly
 ~~~~~~~~~~~~~~~~~~~~~
 
 Use queries for the components you are responsible for in
-https://mozilla.github.io/triage-center/ to find bugs in
+https://github.com/mozilla/bugdash/ to find bugs in
 need of triage.
 
 For each untriaged bug:
@@ -243,7 +244,7 @@ Close minor bugs with unresponded needinfo flags.
 
 Follow up on needinfo flag requests.
 
-The `Triage Center tool <https://mozilla.github.io/triage-center/>`__ will help you find these.
+`BugDash <https://github.com/mozilla/bugdash/>`__ will help you find these.
 
 End of Iteration/Release Cycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

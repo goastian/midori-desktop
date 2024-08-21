@@ -1,9 +1,9 @@
 Existing Infrastructure and Analysis
 ====================================
 
-This document is about how Static Analysis occurs at Mozilla: the Firefox-specific and general llvm clang-tidy checks that are run on submissions in Phabricator and how to run them locally.  For information about how to develop your own static analysis checks, please see `Writing New Firefox-Specific Checks </code-quality/static-analysis/writing-new/>`_.
+This document is about how Static Analysis occurs at Mozilla: the Firefox-specific and general llvm clang-tidy checks that are run on submissions in Phabricator and how to run them locally.  For information about how to develop your own static analysis checks, please see `Writing New Firefox-Specific Checks <../static-analysis/writing-new/index.html>`_.
 
-For linting, please see the `linting documentation </code-quality/lint/>`_.
+For linting, please see the `linting documentation <../lint/index.html>`_.
 
 For reviews, use the `#static-analysis-reviewers review group <https://phabricator.services.mozilla.com/project/view/120/>`__.
 Ask questions on `#static-analysis:mozilla.org <https://chat.mozilla.org/#/room/#static-analysis:mozilla.org>`__.
@@ -69,10 +69,10 @@ following parameters:
    Depending on the checker, this option might not do anything.
    The list of checkers with autofix can be found on the `clang-tidy website <https://clang.llvm.org/extra/clang-tidy/checks/list.html>`__.
 -  ``--header-filter, -h-f`` - Regular expression matching the names of
-   the headers to output diagnostic from.Diagnostic from the main file
+   the headers to output diagnostic from. Diagnostic from the main file
    of each translation unit are always displayed.
 
-As an example we  run static-analysis through mach on
+As an example we run static-analysis through mach on
 ``dom/presentation/Presentation.cpp`` with
 ``google-readability-braces-around-statements`` check and autofix we
 would have:
@@ -96,7 +96,7 @@ Regression Testing
 
 In order to prevent regressions in our clang-tidy based static analysis,
 we have created a
-:searchfox:`task <taskcluster/ci/static-analysis-autotest/kind.yml>`
+:searchfox:`task <taskcluster/kinds/static-analysis-autotest/kind.yml>`
 on automation. This task runs on each commit and launches a test suite
 that is integrated into mach.
 
@@ -125,7 +125,7 @@ modernize-raw-string-literal, we can run:
 
    ./mach static-analysis autotest modernize-raw-string-literal
 
-If we want to add a new checker we need to generated the expected result
+If we want to add a new checker we need to generate the expected result
 file, by doing:
 
 .. code-block:: shell
@@ -213,7 +213,7 @@ If you see a message like:
 
    scan-build: Removing directory '/var/folders/s2/zc78dpsx2rz6cpc_21r9g5hr0000gn/T/scan-build-2011-12-15-1' because it contains no reports.
 
-either no static analysis results were available yet or your environment
+Either no static analysis results were available yet or your environment
 is not configured properly.
 
 By default, ``scan-build`` writes results to a folder in a

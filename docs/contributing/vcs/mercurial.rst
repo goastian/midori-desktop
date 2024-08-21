@@ -2,7 +2,7 @@ Mercurial Overview
 ==================
 
 Mercurial is a source-code management tool which allows users to keep track of changes to the source code locally and share their changes with others.
-We use it for the development of Firefox.
+We also support Git as VCS (see :ref:`Firefox Contributors' Quick Reference`).
 
 Installation
 ------------
@@ -156,7 +156,7 @@ to verify they are available on your build machine.
 Extensions
 ----------
 
-There's a number of extensions you can enable. See http://mercurial.selenic.com/wiki/UsingExtensions. Almost everyone should probably enable the following, most of them are enabled by ``mach boostrap``:
+There's a number of extensions you can enable. See http://mercurial.selenic.com/wiki/UsingExtensions. Almost everyone should probably enable the following, most of them are enabled by ``mach bootstrap``:
 
 #. color - Colorize terminal output
 #. histedit - Provides git rebase --interactive behavior.

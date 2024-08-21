@@ -105,17 +105,17 @@ simple commit message should look like this:
 
    Bug 123456 - Change this thing to work better by doing something. r=reviewers
 
-The ``r=reviewers`` part is optional; if you are using Phabricator,
-Lando will add it automatically based on who actually granted review,
-and in any case the person who does the final check-in of the patch will
-make sure it's added.
-
 The text of the message should be what you did to fix the bug, not a
 description of what the bug was. If it is not obvious why this change is
 appropriate, then `explain why in the commit
 message <https://mozilla-version-control-tools.readthedocs.io/en/latest/mozreview/commits.html#write-detailed-commit-messages>`__.
 If this does not fit on one line, then leave a blank line and add
 further lines for more detail and/or reasoning.
+
+The ``r=reviewers`` part specifies that ``reviewers`` should review the patch
+and provide feedback before it is integrated into the Firefox codebase. For
+choosing reviewers, and the full reviewer syntax, please see
+:ref:`Getting reviews`.
 
 You can edit the message of the current commit at any time using
 ``hg commit --amend`` or ``hg histedit``.
@@ -210,7 +210,7 @@ reviewed.
 
 .. note::
 
-   Note: Be sure to build the application with the patch applied. This
+   Be sure to build the application with the patch applied. This
    ensures it runs as expected, passing automated tests, and/or runs
    through the `try
    server <https://wiki.mozilla.org/Build:TryServerAsBranch>`__. In the
@@ -224,7 +224,6 @@ reviewed.
 Ask the reviewer to land the patch for you.
 For more details, see :ref:`push_a_change`
 
-If pushing the patch yourself, please follow :ref:`Committing rules and responsibilities`.
 `Lando <https://moz-conduit.readthedocs.io/en/latest/lando-user.html>`__ is used
 to automatically land your code.
 
