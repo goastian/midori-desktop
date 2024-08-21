@@ -23,7 +23,6 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/ResultVariant.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/WindowsVersion.h"
 #include "nsWindowsHelpers.h"
 
 #if defined(MOZILLA_INTERNAL_API)
@@ -37,16 +36,6 @@
  * mozglue.dll. If your code creates dependencies on Mozilla libraries, you
  * should put it elsewhere.
  */
-
-#if _WIN32_WINNT < _WIN32_WINNT_WIN8
-typedef struct _FILE_ID_INFO {
-  ULONGLONG VolumeSerialNumber;
-  FILE_ID_128 FileId;
-} FILE_ID_INFO;
-
-#  define FileIdInfo ((FILE_INFO_BY_HANDLE_CLASS)18)
-
-#endif  // _WIN32_WINNT < _WIN32_WINNT_WIN8
 
 #if !defined(STATUS_SUCCESS)
 #  define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
@@ -522,15 +511,13 @@ class FileUniqueId final {
  private:
   void GetId(const nsAutoHandle& aFile) {
     FILE_ID_INFO fileIdInfo = {};
-    if (IsWin8OrLater()) {
-      if (::GetFileInformationByHandleEx(aFile.get(), FileIdInfo, &fileIdInfo,
-                                         sizeof(fileIdInfo))) {
-        mId = fileIdInfo;
-        return;
-      }
-      // Only NTFS and ReFS support FileIdInfo. So we have to fallback if
-      // GetFileInformationByHandleEx failed.
+    if (::GetFileInformationByHandleEx(aFile.get(), FileIdInfo, &fileIdInfo,
+                                       sizeof(fileIdInfo))) {
+      mId = fileIdInfo;
+      return;
     }
+    // Only NTFS and ReFS support FileIdInfo. So we have to fallback if
+    // GetFileInformationByHandleEx failed.
 
     BY_HANDLE_FILE_INFORMATION info = {};
     if (!::GetFileInformationByHandle(aFile.get(), &info)) {
@@ -751,10 +738,6 @@ inline LauncherResult<TOKEN_ELEVATION_TYPE> GetElevationType(
 }
 
 inline bool HasPackageIdentity() {
-  if (!IsWin8OrLater()) {
-    return false;
-  }
-
   HMODULE kernel32Dll = ::GetModuleHandleW(L"kernel32");
   if (!kernel32Dll) {
     return false;

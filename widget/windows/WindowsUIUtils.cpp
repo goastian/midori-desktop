@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <windows.h>
-#include <winsdkver.h>
 #include <wrl.h>
 
 #include "nsServiceManagerUtils.h"
@@ -24,6 +23,7 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/media/MediaUtils.h"
 #include "nsString.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIWidget.h"
 #include "nsIWindowMediator.h"
 #include "nsPIDOMWindow.h"
@@ -51,48 +51,9 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace ABI::Windows::Foundation;
 using namespace ABI::Windows::ApplicationModel::DataTransfer;
 
-/* All of this is win10 stuff and we're compiling against win81 headers
- * for now, so we may need to do some legwork: */
-#  if WINVER_MAXVER < 0x0A00
-namespace ABI {
-namespace Windows {
-namespace UI {
-namespace ViewManagement {
-enum UserInteractionMode {
-  UserInteractionMode_Mouse = 0,
-  UserInteractionMode_Touch = 1
-};
-}
-}  // namespace UI
-}  // namespace Windows
-}  // namespace ABI
-
-#  endif
-
 #  ifndef RuntimeClass_Windows_UI_ViewManagement_UIViewSettings
 #    define RuntimeClass_Windows_UI_ViewManagement_UIViewSettings \
       L"Windows.UI.ViewManagement.UIViewSettings"
-#  endif
-
-#  if WINVER_MAXVER < 0x0A00
-namespace ABI {
-namespace Windows {
-namespace UI {
-namespace ViewManagement {
-interface IUIViewSettings;
-MIDL_INTERFACE("C63657F6-8850-470D-88F8-455E16EA2C26")
-IUIViewSettings : public IInspectable {
- public:
-  virtual HRESULT STDMETHODCALLTYPE get_UserInteractionMode(
-      UserInteractionMode * value) = 0;
-};
-
-extern const __declspec(selectany) IID& IID_IUIViewSettings =
-    __uuidof(IUIViewSettings);
-}  // namespace ViewManagement
-}  // namespace UI
-}  // namespace Windows
-}  // namespace ABI
 #  endif
 
 #  ifndef IUIViewSettingsInterop
@@ -166,9 +127,9 @@ namespace Foundation {
 
 template <>
 struct __declspec(uuid("808aef30-2660-51b0-9c11-f75dd42006b4"))
-    ITypedEventHandler<ABI::Windows::UI::ViewManagement::UISettings*,
-                       ABI::Windows::UI::ViewManagement::
-                           UISettingsAutoHideScrollBarsChangedEventArgs*>
+ITypedEventHandler<ABI::Windows::UI::ViewManagement::UISettings*,
+                   ABI::Windows::UI::ViewManagement::
+                       UISettingsAutoHideScrollBarsChangedEventArgs*>
     : ITypedEventHandler_impl<
           ABI::Windows::Foundation::Internal::AggregateType<
               ABI::Windows::UI::ViewManagement::UISettings*,
@@ -341,11 +302,6 @@ static IInspectable* GetUISettings() {
   // We need to keep this alive for ~ever so that change callbacks work as
   // expected, sigh.
   static StaticRefPtr<IInspectable> sUiSettingsAsInspectable;
-
-  if (!IsWin10OrLater()) {
-    // Windows.UI.ViewManagement.UISettings is Win10+ only.
-    return nullptr;
-  }
 
   if (!sUiSettingsAsInspectable) {
     ComPtr<IInspectable> uiSettingsAsInspectable;
@@ -589,10 +545,6 @@ bool WindowsUIUtils::ComputeTransparencyEffects() {
 
 void WindowsUIUtils::UpdateInTabletMode() {
 #ifndef __MINGW32__
-  if (!IsWin10OrLater()) {
-    return;
-  }
-
   nsresult rv;
   nsCOMPtr<nsIWindowMediator> winMediator(
       do_GetService(NS_WINDOWMEDIATOR_CONTRACTID, &rv));
@@ -603,8 +555,7 @@ void WindowsUIUtils::UpdateInTabletMode() {
   nsCOMPtr<nsIWidget> widget;
   nsCOMPtr<mozIDOMWindowProxy> navWin;
 
-  rv = winMediator->GetMostRecentWindow(u"navigator:browser",
-                                        getter_AddRefs(navWin));
+  rv = winMediator->GetMostRecentBrowserWindow(getter_AddRefs(navWin));
   if (NS_FAILED(rv) || !navWin) {
     // Fall back to the hidden window
     nsCOMPtr<nsIAppShellService> appShell(
@@ -680,10 +631,6 @@ Result<HStringUniquePtr, HRESULT> ConvertToWindowsString(
 
 static Result<Ok, nsresult> RequestShare(
     const std::function<HRESULT(IDataRequestedEventArgs* pArgs)>& aCallback) {
-  if (!IsWin10OrLater()) {
-    return Err(NS_ERROR_FAILURE);
-  }
-
   HWND hwnd = GetForegroundWindow();
   if (!hwnd) {
     return Err(NS_ERROR_FAILURE);

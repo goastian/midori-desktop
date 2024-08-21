@@ -62,7 +62,8 @@
 
   if (!inWindow || [self dataForWindow:inWindow]) return;
 
-  TopLevelWindowData* windowData = [[TopLevelWindowData alloc] initWithWindow:inWindow];
+  TopLevelWindowData* windowData =
+      [[TopLevelWindowData alloc] initWithWindow:inWindow];
   [self setData:windowData forWindow:inWindow];  // takes ownership
   [windowData release];
 
@@ -114,30 +115,35 @@
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
   if ((self = [super init])) {
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(windowBecameKey:)
-                                                 name:NSWindowDidBecomeKeyNotification
-                                               object:inWindow];
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(windowBecameKey:)
+               name:NSWindowDidBecomeKeyNotification
+             object:inWindow];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(windowResignedKey:)
-                                                 name:NSWindowDidResignKeyNotification
-                                               object:inWindow];
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(windowResignedKey:)
+               name:NSWindowDidResignKeyNotification
+             object:inWindow];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(windowBecameMain:)
-                                                 name:NSWindowDidBecomeMainNotification
-                                               object:inWindow];
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(windowBecameMain:)
+               name:NSWindowDidBecomeMainNotification
+             object:inWindow];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(windowResignedMain:)
-                                                 name:NSWindowDidResignMainNotification
-                                               object:inWindow];
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(windowResignedMain:)
+               name:NSWindowDidResignMainNotification
+             object:inWindow];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(windowWillClose:)
-                                                 name:NSWindowWillCloseNotification
-                                               object:inWindow];
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(windowWillClose:)
+               name:NSWindowWillCloseNotification
+             object:inWindow];
   }
   return self;
 
@@ -147,7 +153,7 @@
 - (void)dealloc {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [NSNotificationCenter.defaultCenter removeObserver:self];
   [super dealloc];
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
@@ -165,7 +171,7 @@
 + (void)activateInWindow:(NSWindow*)aWindow {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  WindowDelegate* delegate = (WindowDelegate*)[aWindow delegate];
+  WindowDelegate* delegate = (WindowDelegate*)aWindow.delegate;
   if (!delegate || ![delegate isKindOfClass:[WindowDelegate class]]) return;
 
   if ([delegate toplevelActiveState]) return;
@@ -185,7 +191,7 @@
 + (void)deactivateInWindow:(NSWindow*)aWindow {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  WindowDelegate* delegate = (WindowDelegate*)[aWindow delegate];
+  WindowDelegate* delegate = (WindowDelegate*)aWindow.delegate;
   if (!delegate || ![delegate isKindOfClass:[WindowDelegate class]]) return;
 
   if (![delegate toplevelActiveState]) return;
@@ -199,8 +205,10 @@
 + (void)activateInWindowViews:(NSWindow*)aWindow {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  id firstResponder = [aWindow firstResponder];
-  if ([firstResponder isKindOfClass:[ChildView class]]) [firstResponder viewsWindowDidBecomeKey];
+  id firstResponder = aWindow.firstResponder;
+  if ([firstResponder isKindOfClass:[ChildView class]]) {
+    [firstResponder viewsWindowDidBecomeKey];
+  }
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
@@ -210,8 +218,10 @@
 + (void)deactivateInWindowViews:(NSWindow*)aWindow {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  id firstResponder = [aWindow firstResponder];
-  if ([firstResponder isKindOfClass:[ChildView class]]) [firstResponder viewsWindowDidResignKey];
+  id firstResponder = aWindow.firstResponder;
+  if ([firstResponder isKindOfClass:[ChildView class]]) {
+    [firstResponder viewsWindowDidResignKey];
+  }
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
@@ -222,23 +232,23 @@
 // should be sent when a native window becomes key, and the NS_DEACTIVATE
 // event should be sent when it resignes key.
 - (void)windowBecameKey:(NSNotification*)inNotification {
-  NSWindow* window = (NSWindow*)[inNotification object];
+  NSWindow* window = inNotification.object;
 
-  id delegate = [window delegate];
+  id delegate = window.delegate;
   if (!delegate || ![delegate isKindOfClass:[WindowDelegate class]]) {
     [TopLevelWindowData activateInWindowViews:window];
-  } else if ([window isSheet] || [NSApp modalWindow]) {
+  } else if (window.isSheet || NSApp.modalWindow) {
     [TopLevelWindowData activateInWindow:window];
   }
 }
 
 - (void)windowResignedKey:(NSNotification*)inNotification {
-  NSWindow* window = (NSWindow*)[inNotification object];
+  NSWindow* window = inNotification.object;
 
-  id delegate = [window delegate];
+  id delegate = window.delegate;
   if (!delegate || ![delegate isKindOfClass:[WindowDelegate class]]) {
     [TopLevelWindowData deactivateInWindowViews:window];
-  } else if ([window isSheet] || [NSApp modalWindow]) {
+  } else if (window.isSheet || NSApp.modalWindow) {
     [TopLevelWindowData deactivateInWindow:window];
   }
 }
@@ -247,23 +257,24 @@
 // state).  So (for non-embedders) we need to ensure that a top-level window
 // is main when an NS_ACTIVATE event is sent to Gecko for it.
 - (void)windowBecameMain:(NSNotification*)inNotification {
-  NSWindow* window = (NSWindow*)[inNotification object];
-
-  id delegate = [window delegate];
+  NSWindow* window = inNotification.object;
+  id delegate = window.delegate;
   // Don't send events to a top-level window that has a sheet/modal-window open
   // above it -- as far as Gecko is concerned, it's inactive, and stays so until
   // the sheet/modal-window closes.
   if (delegate && [delegate isKindOfClass:[WindowDelegate class]] &&
-      ![window attachedSheet] && ![NSApp modalWindow])
+      !window.attachedSheet && !NSApp.modalWindow) {
     [TopLevelWindowData activateInWindow:window];
+  }
 }
 
 - (void)windowResignedMain:(NSNotification*)inNotification {
-  NSWindow* window = (NSWindow*)[inNotification object];
-
-  id delegate = [window delegate];
-  if (delegate && [delegate isKindOfClass:[WindowDelegate class]] && ![window attachedSheet])
+  NSWindow* window = inNotification.object;
+  id delegate = window.delegate;
+  if (delegate && [delegate isKindOfClass:[WindowDelegate class]] &&
+      ![window attachedSheet] && ![NSApp modalWindow]) {
     [TopLevelWindowData deactivateInWindow:window];
+  }
 }
 
 - (void)windowWillClose:(NSNotification*)inNotification {
@@ -273,7 +284,8 @@
   [[self retain] autorelease];
 
   // remove ourselves from the window map (which owns us)
-  [[WindowDataMap sharedWindowDataMap] removeDataForWindow:[inNotification object]];
+  [[WindowDataMap sharedWindowDataMap]
+      removeDataForWindow:[inNotification object]];
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }

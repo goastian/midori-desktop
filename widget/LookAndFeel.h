@@ -53,8 +53,6 @@ class LookAndFeel {
     CaretBlinkCount,
     // pixel width of caret
     CaretWidth,
-    // show the caret when text is selected?
-    ShowCaretDuringSelection,
     // select textfields when focused via tab/accesskey?
     SelectTextfieldsOnKeyFocus,
     // delay before submenus open
@@ -94,8 +92,6 @@ class LookAndFeel {
     TreeScrollDelay,
     // the maximum number of lines to be scrolled at ones
     TreeScrollLinesMax,
-    // What type of tab-order to use
-    TabFocusModel,
     // Should menu items blink when they're chosen?
     ChosenMenuItemsShouldBlink,
 
@@ -109,47 +105,6 @@ class LookAndFeel {
     WindowsAccentColorInTitlebar,
 
     /*
-     * A Boolean value to determine whether the Windows default theme is
-     * being used.
-     *
-     * The value of this metric is not used on other platforms. These platforms
-     * should return NS_ERROR_NOT_IMPLEMENTED when queried for this metric.
-     */
-    WindowsDefaultTheme,
-
-    /*
-     * A Boolean value to determine whether the DWM compositor is being used
-     *
-     * This metric is not used on non-Windows platforms. These platforms
-     * should return NS_ERROR_NOT_IMPLEMENTED when queried for this metric.
-     */
-    DWMCompositor,
-
-    /*
-     * A Boolean value to determine whether Windows is themed (Classic vs.
-     * uxtheme)
-     *
-     * This is Windows-specific and is not implemented on other platforms
-     * (will return the default of NS_ERROR_FAILURE).
-     */
-    WindowsClassic,
-
-    /*
-     * A Boolean value to determine whether the current Windows desktop theme
-     * supports Aero Glass.
-     *
-     * This is Windows-specific and is not implemented on other platforms
-     * (will return the default of NS_ERROR_FAILURE).
-     */
-    WindowsGlass,
-
-    /*
-     * A Boolean value to determine whether the Mac graphite theme is
-     * being used.
-     */
-    MacGraphiteTheme,
-
-    /*
      * A Boolean value to determine whether the macOS Big Sur-specific
      * theming should be used.
      */
@@ -159,6 +114,9 @@ class LookAndFeel {
      * A Boolean value to determine whether macOS is in RTL mode or not.
      */
     MacRTL,
+
+    /* Native macOS titlebar height. */
+    MacTitlebarHeight,
 
     /*
      * AlertNotificationOrigin indicates from which corner of the
@@ -204,10 +162,6 @@ class LookAndFeel {
      * 1: scrollbar button repeats to scroll even if cursor is outside of it.
      */
     ScrollbarButtonAutoRepeatBehavior,
-    /**
-     * Delay before showing a tooltip.
-     */
-    TooltipDelay,
     /*
      * A Boolean value to determine whether swipe animations should be used.
      */
@@ -231,6 +185,7 @@ class LookAndFeel {
      */
     ContextMenuOffsetVertical,
     ContextMenuOffsetHorizontal,
+    TooltipOffsetVertical,
 
     /*
      * A boolean value indicating whether client-side decorations are
@@ -334,6 +289,9 @@ class LookAndFeel {
     /** GTK titlebar radius */
     TitlebarRadius,
 
+    /** GTK button-to-button spacing in the inline axis */
+    TitlebarButtonSpacing,
+
     /**
      * Corresponding to dynamic-range.
      * https://drafts.csswg.org/mediaqueries-5/#dynamic-range
@@ -341,10 +299,18 @@ class LookAndFeel {
      * 1: High
      */
     DynamicRange,
-    VideoDynamicRange,
 
     /** Whether XUL panel animations are enabled. */
     PanelAnimations,
+
+    /* Whether we should hide the cursor while typing */
+    HideCursorWhileTyping,
+
+    /* The StyleGtkThemeFamily of the current GTK theme. */
+    GTKThemeFamily,
+
+    /* Whether macOS' full keyboard access is enabled */
+    FullKeyboardAccess,
 
     /*
      * Not an ID; used to define the range of valid IDs.  Must be last.
@@ -355,6 +321,11 @@ class LookAndFeel {
   // This is a common enough integer that seems worth the shortcut.
   static bool UseOverlayScrollbars() {
     return GetInt(IntID::UseOverlayScrollbars);
+  }
+
+  static constexpr int32_t kDefaultTooltipOffset = 21;
+  static int32_t TooltipOffsetVertical() {
+    return GetInt(IntID::TooltipOffsetVertical, kDefaultTooltipOffset);
   }
 
   // Returns keyCode value of a modifier key which is used for accesskey.
@@ -409,27 +380,12 @@ class LookAndFeel {
 
   using FontID = mozilla::StyleSystemFont;
 
-  static bool WindowsNonNativeMenusEnabled();
-
   static ColorScheme SystemColorScheme() {
     return GetInt(IntID::SystemUsesDarkTheme) ? ColorScheme::Dark
                                               : ColorScheme::Light;
   }
 
   static bool IsDarkColor(nscolor);
-
-  enum class ChromeColorSchemeSetting { Light, Dark, System };
-  static ChromeColorSchemeSetting ColorSchemeSettingForChrome();
-  static ColorScheme ThemeDerivedColorSchemeForContent();
-
-  static ColorScheme ColorSchemeForChrome() {
-    MOZ_ASSERT(sColorSchemeInitialized);
-    return sChromeColorScheme;
-  }
-  static ColorScheme PreferredColorSchemeForContent() {
-    MOZ_ASSERT(sColorSchemeInitialized);
-    return sContentColorScheme;
-  }
 
   static ColorScheme ColorSchemeForStyle(
       const dom::Document&, const StyleColorSchemeFlags&,
@@ -543,6 +499,28 @@ class LookAndFeel {
    */
   static bool DrawInTitlebar();
 
+  enum class TitlebarAction {
+    None,
+    WindowLower,
+    WindowMenu,
+    WindowMinimize,
+    WindowMaximize,
+    WindowMaximizeToggle,
+    // We don't support more actions (maximize-horizontal, maximize-vertical,..)
+    // as they're implemented as part of Wayland gtk_surface1 protocol
+    // which is not accessible to us.
+  };
+
+  enum class TitlebarEvent {
+    Double_Click,
+    Middle_Click,
+  };
+
+  /**
+   * Get system defined action for titlebar events.
+   */
+  static TitlebarAction GetTitlebarAction(TitlebarEvent aEvent);
+
   /**
    * The millisecond to mask password value.
    * This value is only valid when GetEchoPassword() returns true.
@@ -576,20 +554,8 @@ class LookAndFeel {
       DoHandleGlobalThemeChange();
     }
   }
-  static void EnsureColorSchemesInitialized() {
-    if (!sColorSchemeInitialized) {
-      RecomputeColorSchemes();
-    }
-    MOZ_ASSERT(sColorSchemeInitialized);
-  }
-
-  static ColorScheme sChromeColorScheme;
-  static ColorScheme sContentColorScheme;
 
  protected:
-  static void RecomputeColorSchemes();
-  static bool sColorSchemeInitialized;
-
   static void DoHandleGlobalThemeChange();
   // Set to true when ThemeChanged needs to be called on mTheme (and other
   // global LookAndFeel.  This is used because mTheme is a service, so there's

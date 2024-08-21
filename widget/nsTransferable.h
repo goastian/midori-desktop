@@ -33,6 +33,7 @@ struct DataStruct {
   const nsCString& GetFlavor() const { return mFlavor; }
   void SetData(nsISupports* aData, bool aIsPrivateData);
   void GetData(nsISupports** aData);
+  void ClearData();
   bool IsDataAvailable() const { return mData || mCacheFD; }
 
  protected:
@@ -79,7 +80,7 @@ class nsTransferable : public nsITransferable {
   nsTArray<DataStruct> mDataArray;
   nsCOMPtr<nsIFormatConverter> mFormatConv;
   bool mPrivateData;
-  nsCOMPtr<nsIPrincipal> mRequestingPrincipal;
+  nsCOMPtr<nsIPrincipal> mDataPrincipal;
   nsContentPolicyType mContentPolicyType;
   nsCOMPtr<nsICookieJarSettings> mCookieJarSettings;
   nsCOMPtr<nsIReferrerInfo> mReferrerInfo;

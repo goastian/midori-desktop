@@ -55,10 +55,14 @@ class KeymapWrapper {
    */
   static CodeNameIndex ComputeDOMCodeNameIndex(const GdkEventKey* aGdkKeyEvent);
 
+  static guint ConvertGeckoKeyCodeToGDKKeyval(const nsAString& aKeyCode);
+
   /**
-   * Modifier is list of modifiers which we support in widget level.
+   * We need to translate modifiers masks from Gdk to Gecko.
+   * MappedModifier is a table of mapped modifiers, we ignore other
+   * Gdk ones.
    */
-  enum Modifier {
+  enum MappedModifier {
     NOT_MODIFIER = 0x0000,
     CAPS_LOCK = 0x0001,
     NUM_LOCK = 0x0002,
@@ -74,10 +78,10 @@ class KeymapWrapper {
   };
 
   /**
-   * Modifiers is used for combination of Modifier.
-   * E.g., |Modifiers modifiers = (SHIFT | CTRL);| means Shift and Ctrl.
+   * MappedModifiers is used for combination of MappedModifier.
+   * E.g., |MappedModifiers modifiers = (SHIFT | CTRL);| means Shift and Ctrl.
    */
-  typedef uint32_t Modifiers;
+  typedef uint32_t MappedModifiers;
 
   /**
    * GetCurrentModifierState() returns current modifier key state.
@@ -90,17 +94,6 @@ class KeymapWrapper {
   static guint GetCurrentModifierState();
 
   /**
-   * AreModifiersCurrentlyActive() checks the "current" modifier state
-   * on aGdkWindow with the keymap of the singleton instance.
-   *
-   * @param aModifiers        One or more of Modifier values except
-   *                          NOT_MODIFIER.
-   * @return                  TRUE if all of modifieres in aModifiers are
-   *                          active.  Otherwise, FALSE.
-   */
-  static bool AreModifiersCurrentlyActive(Modifiers aModifiers);
-
-  /**
    * Utility function to compute current keyboard modifiers for
    * WidgetInputEvent
    */
@@ -110,7 +103,7 @@ class KeymapWrapper {
    * Utility function to covert platform modifier state to keyboard modifiers
    * of WidgetInputEvent
    */
-  static uint32_t ComputeKeyModifiers(guint aModifierState);
+  static uint32_t ComputeKeyModifiers(guint aGdkModifierState);
 
   /**
    * Convert native modifiers for `nsIWidget::SynthesizeNative*()` to
@@ -123,7 +116,7 @@ class KeymapWrapper {
    * InitInputEvent() initializes the aInputEvent with aModifierState.
    */
   static void InitInputEvent(WidgetInputEvent& aInputEvent,
-                             guint aModifierState);
+                             guint aGdkModifierState);
 
   /**
    * InitKeyEvent() intializes aKeyEvent's modifier key related members
@@ -291,7 +284,6 @@ class KeymapWrapper {
     INDEX_SCROLL_LOCK,
     INDEX_ALT,
     INDEX_META,
-    INDEX_SUPER,
     INDEX_HYPER,
     INDEX_LEVEL3,
     INDEX_LEVEL5,
@@ -299,31 +291,32 @@ class KeymapWrapper {
   };
   guint mModifierMasks[COUNT_OF_MODIFIER_INDEX];
 
-  guint GetModifierMask(Modifier aModifier) const;
+  guint GetGdkModifierMask(MappedModifier aModifier) const;
 
   /**
    * @param aGdkKeyval        A GDK defined modifier key value such as
    *                          GDK_Shift_L.
-   * @return                  Returns Modifier values for aGdkKeyval.
+   * @return                  Returns MappedModifier values for aGdkKeyval.
    *                          If the given key code isn't a modifier key,
    *                          returns NOT_MODIFIER.
    */
-  static Modifier GetModifierForGDKKeyval(guint aGdkKeyval);
+  static MappedModifier GetModifierForGDKKeyval(guint aGdkKeyval);
 
-  static const char* GetModifierName(Modifier aModifier);
+  static const char* GetModifierName(MappedModifier aModifier);
 
   /**
-   * AreModifiersActive() just checks whether aModifierState indicates
+   * AreModifiersActive() just checks whether aGdkModifierState indicates
    * all modifiers in aModifiers are active or not.
    *
-   * @param aModifiers        One or more of Modifier values except
+   * @param aModifiers        One or more of MappedModifier values except
    *                          NOT_MODIFIER.
-   * @param aModifierState    GDK's modifier states.
-   * @return                  TRUE if aGdkModifierType indecates all of
+   * @param aGdkModifierState GDK's modifier states.
+   * @return                  TRUE if aGdkModifierType indicates all of
    *                          modifiers in aModifier are active.
    *                          Otherwise, FALSE.
    */
-  static bool AreModifiersActive(Modifiers aModifiers, guint aModifierState);
+  static bool AreModifiersActive(MappedModifiers aModifiers,
+                                 guint aGdkModifierState);
 
   /**
    * mGdkKeymap is a wrapped instance by this class.
@@ -388,8 +381,8 @@ class KeymapWrapper {
    *                          If failed, this returns 0.
    */
   static uint32_t GetCharCodeFor(const GdkEventKey* aGdkKeyEvent);
-  uint32_t GetCharCodeFor(const GdkEventKey* aGdkKeyEvent, guint aModifierState,
-                          gint aGroup);
+  uint32_t GetCharCodeFor(const GdkEventKey* aGdkKeyEvent,
+                          guint aGdkModifierState, gint aGroup);
 
   /**
    * GetUnmodifiedCharCodeFor() computes what character is inputted by the
@@ -491,6 +484,9 @@ class KeymapWrapper {
    */
   void WillDispatchKeyboardEventInternal(WidgetKeyboardEvent& aKeyEvent,
                                          GdkEventKey* aGdkKeyEvent);
+
+  static guint GetModifierState(GdkEventKey* aGdkKeyEvent,
+                                KeymapWrapper* aWrapper);
 
 #ifdef MOZ_WAYLAND
   /**

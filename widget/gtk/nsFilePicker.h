@@ -24,6 +24,9 @@ class nsFilePicker : public nsBaseFilePicker {
 
   // nsIFilePicker (less what's in nsBaseFilePicker)
   NS_IMETHOD Open(nsIFilePickerShownCallback* aCallback) override;
+  NS_IMETHOD Close() override;
+  NS_IMETHOD IsModeSupported(nsIFilePicker::Mode, JSContext*,
+                             mozilla::dom::Promise**) override;
   NS_IMETHOD AppendFilters(int32_t aFilterMask) override;
   NS_IMETHOD AppendFilter(const nsAString& aTitle,
                           const nsAString& aFilter) override;
@@ -61,7 +64,6 @@ class nsFilePicker : public nsBaseFilePicker {
 
   int16_t mSelectedType;
   nsIFilePicker::ResultCode mResult;
-  bool mRunning;
   bool mAllowURLs;
   nsCString mFileURL;
   nsString mTitle;
@@ -84,6 +86,11 @@ class nsFilePicker : public nsBaseFilePicker {
 
   GtkFileChooserWidget* mFileChooserDelegate;
   bool mUseNativeFileChooser;
+
+  /**
+   * mFileChooser is non-null while open.
+   */
+  void* mFileChooser = nullptr;
 };
 
 #endif

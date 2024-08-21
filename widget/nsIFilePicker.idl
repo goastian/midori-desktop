@@ -10,6 +10,7 @@ interface nsIFile;
 interface nsIURI;
 interface mozIDOMWindowProxy;
 interface nsISimpleEnumerator;
+webidl BrowsingContext;
 
 // Declared in this file, below.
 interface nsIFilePickerShownCallback;
@@ -37,7 +38,7 @@ interface nsIFilePicker : nsISupports
                                                 // *.png; *.bmp; *.ico; *.svg;
                                                 // *.svgz; *.tif; *.tiff; *.ai;
                                                 // *.drw; *.pct; *.psp; *.xcf;
-                                                // *.psd; *.raw; *.webp
+                                                // *.psd; *.raw; *.webp; *.heic
   const long filterXML        = 0x010;          // *.xml
   const long filterXUL        = 0x020;          // *.xul
   const long filterApps       = 0x040;          // Applications (per-platform implementation)
@@ -52,6 +53,7 @@ interface nsIFilePicker : nsISupports
                                                 // *.mpg; *.ogm; *.ogv; *.ogx;
                                                 // *.rm; *.rmvb; *.smil; *.webm;
                                                 // *.wmv; *.xvid
+  const long filterPDF        = 0x400;          // *.pdf;
 
   cenum CaptureTarget: 8 {
     captureNone     = 0,                        // No capture target specified.
@@ -64,13 +66,25 @@ interface nsIFilePicker : nsISupports
   * Initialize the file picker widget.  The file picker is not valid until this
   * method is called.
   *
-  * @param      parent   mozIDOMWindow parent.  This dialog will be dependent
-  *                      on this parent. parent must be non-null.
-  * @param      title    The title for the file widget
-  * @param      mode     load, save, or get folder
+  * @param      browsingContext   The context in which the file picker is being
+  *                               shown, must be non-null.
+  * @param      title             The title for the file widget
+  * @param      mode              load, save, or get folder
   *
   */
-  void init(in mozIDOMWindowProxy parent, in AString title, in nsIFilePicker_Mode mode);
+  void init(in BrowsingContext browsingContext, in AString title, in nsIFilePicker_Mode mode);
+
+  /**
+   * Returns a Promise that resolves to true if the passed nsIFilePicker mode
+   * is supported on the current platform, and false otherwise. The Promise may
+   * reject if something unexpected occurs while trying to determine if the mode
+   * is supported.
+   *
+   * @param mode
+   * @return Promise<boolean>
+   */
+  [implicit_jscontext]
+  Promise isModeSupported(in nsIFilePicker_Mode mode);
 
  /**
   * Append to the  filter list with things from the predefined list
@@ -145,7 +159,8 @@ interface nsIFilePicker : nsISupports
 
 
  /**
-  * Get the nsIFile for the file or directory.
+  * Get the nsIFile for the file or directory. A different file object
+  * may be returned by each invocation.
   *
   * @return Returns the file currently selected
   */
@@ -194,6 +209,11 @@ interface nsIFilePicker : nsISupports
   * The passed in object's done method will be called upon completion.
   */
   void open(in nsIFilePickerShownCallback aFilePickerShownCallback);
+
+ /**
+  * Closes the file dialog if open.
+  */
+  void close();
 
  /**
   * The picker's mode, as set by the 'mode' argument passed to init()

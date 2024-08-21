@@ -61,7 +61,6 @@ const wchar_t kClassNameHidden[] = L"MozillaHiddenWindowClass";
 const wchar_t kClassNameGeneral[] = L"MozillaWindowClass";
 const wchar_t kClassNameDialog[] = L"MozillaDialogClass";
 const wchar_t kClassNameDropShadow[] = L"MozillaDropShadowWindowClass";
-const wchar_t kClassNameTemp[] = L"MozillaTempWindowClass";
 const wchar_t kClassNameTransition[] = L"MozillaTransitionWindowClass";
 
 /**************************************************************
@@ -82,15 +81,6 @@ struct KeyPair {
   KeyPair(uint8_t aGeneral, uint8_t aSpecific, uint16_t aScanCode)
       : mGeneral(aGeneral), mSpecific(aSpecific), mScanCode(aScanCode) {}
 };
-
-#if (WINVER < 0x0600)
-struct TITLEBARINFOEX {
-  DWORD cbSize;
-  RECT rcTitleBar;
-  DWORD rgstate[CCHILDREN_TITLEBAR + 1];
-  RECT rgrect[CCHILDREN_TITLEBAR + 1];
-};
-#endif
 
 namespace mozilla {
 namespace widget {

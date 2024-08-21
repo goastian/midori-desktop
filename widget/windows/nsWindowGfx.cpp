@@ -135,27 +135,16 @@ void nsWindow::ForcePresent() {
   }
 }
 
-bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
-  DeviceResetReason resetReason = DeviceResetReason::OK;
+bool nsWindow::OnPaint(uint32_t aNestingLevel) {
+  gfx::DeviceResetReason resetReason = gfx::DeviceResetReason::OK;
   if (gfxWindowsPlatform::GetPlatform()->DidRenderingDeviceReset(
           &resetReason)) {
     gfxCriticalNote << "(nsWindow) Detected device reset: " << (int)resetReason;
 
     gfxWindowsPlatform::GetPlatform()->UpdateRenderMode();
 
-    bool guilty;
-    switch (resetReason) {
-      case DeviceResetReason::HUNG:
-      case DeviceResetReason::RESET:
-      case DeviceResetReason::INVALID_CALL:
-        guilty = true;
-        break;
-      default:
-        guilty = false;
-        break;
-    }
-
-    GPUProcessManager::Get()->OnInProcessDeviceReset(guilty);
+    GPUProcessManager::GPUProcessManager::NotifyDeviceReset(
+        resetReason, gfx::DeviceResetDetectPlace::WIDGET);
 
     gfxCriticalNote << "(nsWindow) Finished device reset.";
     return false;
@@ -174,20 +163,6 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
   WindowRenderer* renderer = GetWindowRenderer();
   KnowsCompositor* knowsCompositor = renderer->AsKnowsCompositor();
   WebRenderLayerManager* layerManager = renderer->AsWebRender();
-
-  // Clear window by transparent black when compositor window is used in GPU
-  // process and non-client area rendering by DWM is enabled.
-  // It is for showing non-client area rendering. See nsWindow::UpdateGlass().
-  if (HasGlass() && knowsCompositor && knowsCompositor->GetUseCompositorWnd()) {
-    HDC hdc;
-    RECT rect;
-    hdc = ::GetWindowDC(mWnd);
-    ::GetWindowRect(mWnd, &rect);
-    ::MapWindowPoints(nullptr, mWnd, (LPPOINT)&rect, 2);
-    ::FillRect(hdc, &rect,
-               reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-    ReleaseDC(mWnd, hdc);
-  }
 
   if (mClearNCEdge) {
     // We need to clear this edge of the non-client region to black (once).
@@ -228,12 +203,16 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
   }
   mLastPaintBounds = mBounds;
 
-  if (!aDC && (renderer->GetBackendType() == LayersBackend::LAYERS_NONE) &&
-      (TransparencyMode::Transparent == mTransparencyMode)) {
-    // For layered translucent windows all drawing should go to memory DC and no
-    // WM_PAINT messages are normally generated. To support asynchronous
-    // painting we force generation of WM_PAINT messages by invalidating window
-    // areas with RedrawWindow, InvalidateRect or InvalidateRgn function calls.
+  // For layered translucent windows all drawing should go to memory DC and no
+  // WM_PAINT messages are normally generated. To support asynchronous painting
+  // we force generation of WM_PAINT messages by invalidating window areas with
+  // RedrawWindow, InvalidateRect or InvalidateRgn function calls.
+  const bool usingMemoryDC =
+      renderer->GetBackendType() == LayersBackend::LAYERS_NONE &&
+      mTransparencyMode == TransparencyMode::Transparent;
+
+  HDC hDC = nullptr;
+  if (usingMemoryDC) {
     // BeginPaint/EndPaint must be called to make Windows think that invalid
     // area is painted. Otherwise it will continue sending the same message
     // endlessly.
@@ -242,15 +221,13 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
 
     // We're guaranteed to have a widget proxy since we called
     // GetLayerManager().
-    aDC = mBasicLayersSurface->GetTransparentDC();
+    hDC = mBasicLayersSurface->GetTransparentDC();
+  } else {
+    hDC = ::BeginPaint(mWnd, &ps);
   }
 
-  HDC hDC = aDC ? aDC : (::BeginPaint(mWnd, &ps));
-  mPaintDC = hDC;
-
-  bool forceRepaint =
-      aDC || (TransparencyMode::Transparent == mTransparencyMode);
-  LayoutDeviceIntRegion region = GetRegionToPaint(forceRepaint, ps, hDC);
+  const bool forceRepaint = mTransparencyMode == TransparencyMode::Transparent;
+  const LayoutDeviceIntRegion region = GetRegionToPaint(forceRepaint, ps, hDC);
 
   if (knowsCompositor && layerManager) {
     // We need to paint to the screen even if nothing changed, since if we
@@ -326,16 +303,15 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
         // don't need to double buffer with anything but GDI
         BufferMode doubleBuffering = mozilla::layers::BufferMode::BUFFER_NONE;
         switch (mTransparencyMode) {
-          case TransparencyMode::BorderlessGlass:
-          default:
-            // If we're not doing translucency, then double buffer
-            doubleBuffering = mozilla::layers::BufferMode::BUFFERED;
-            break;
           case TransparencyMode::Transparent:
             // If we're rendering with translucency, we're going to be
             // rendering the whole window; make sure we clear it first
             dt->ClearRect(
                 Rect(0.f, 0.f, dt->GetSize().width, dt->GetSize().height));
+            break;
+          default:
+            // If we're not doing translucency, then double buffer
+            doubleBuffering = mozilla::layers::BufferMode::BUFFERED;
             break;
         }
 
@@ -356,8 +332,7 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
       } break;
       case LayersBackend::LAYERS_WR: {
         result = listener->PaintWindow(this, region);
-        if (!gfxEnv::MOZ_DISABLE_FORCE_PRESENT() &&
-            gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
+        if (!gfxEnv::MOZ_DISABLE_FORCE_PRESENT()) {
           nsCOMPtr<nsIRunnable> event = NewRunnableMethod(
               "nsWindow::ForcePresent", this, &nsWindow::ForcePresent);
           NS_DispatchToMainThread(event);
@@ -369,11 +344,10 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
     }
   }
 
-  if (!aDC) {
+  if (!usingMemoryDC) {
     ::EndPaint(mWnd, &ps);
   }
 
-  mPaintDC = nullptr;
   mLastPaintEndTime = TimeStamp::Now();
 
   // Re-get the listener since painting may have killed it.
@@ -381,7 +355,7 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel) {
   if (listener) listener->DidPaintWindow();
 
   if (aNestingLevel == 0 && ::GetUpdateRect(mWnd, nullptr, false)) {
-    OnPaint(aDC, 1);
+    OnPaint(1);
   }
 
   return result;
@@ -422,7 +396,7 @@ void nsWindow::NotifyOcclusionState(mozilla::widget::OcclusionState aState) {
            mIsFullyOccluded, mFrameState->GetSizeMode()));
 
   wr::DebugFlags flags{0};
-  flags.bits = gfx::gfxVars::WebRenderDebugFlags();
+  flags._0 = gfx::gfxVars::WebRenderDebugFlags();
   bool debugEnabled = bool(flags & wr::DebugFlags::WINDOW_VISIBILITY_DBG);
   if (debugEnabled && mCompositorWidgetDelegate) {
     mCompositorWidgetDelegate->NotifyVisibilityUpdated(
@@ -449,7 +423,7 @@ void nsWindow::MaybeEnableWindowOcclusion(bool aEnable) {
       WinWindowOcclusionTracker::Get()->Enable(this, mWnd);
 
       wr::DebugFlags flags{0};
-      flags.bits = gfx::gfxVars::WebRenderDebugFlags();
+      flags._0 = gfx::gfxVars::WebRenderDebugFlags();
       bool debugEnabled = bool(flags & wr::DebugFlags::WINDOW_VISIBILITY_DBG);
       if (debugEnabled && mCompositorWidgetDelegate) {
         mCompositorWidgetDelegate->NotifyVisibilityUpdated(
@@ -470,7 +444,7 @@ void nsWindow::MaybeEnableWindowOcclusion(bool aEnable) {
   NotifyOcclusionState(OcclusionState::VISIBLE);
 
   wr::DebugFlags flags{0};
-  flags.bits = gfx::gfxVars::WebRenderDebugFlags();
+  flags._0 = gfx::gfxVars::WebRenderDebugFlags();
   bool debugEnabled = bool(flags & wr::DebugFlags::WINDOW_VISIBILITY_DBG);
   if (debugEnabled && mCompositorWidgetDelegate) {
     mCompositorWidgetDelegate->NotifyVisibilityUpdated(

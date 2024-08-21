@@ -19,6 +19,8 @@ interface nsIGfxInfo : nsISupports
   readonly attribute AString AzureCanvasBackend;
   readonly attribute AString AzureContentBackend;
   readonly attribute boolean usingGPUProcess;
+  readonly attribute boolean usingRemoteCanvas;
+  readonly attribute boolean usingAcceleratedCanvas;
   readonly attribute boolean hasBattery;
   readonly attribute AString DWriteVersion;
   readonly attribute AString cleartypeParameters;
@@ -38,6 +40,32 @@ interface nsIGfxInfo : nsISupports
   readonly attribute ACString CodecSupportInfo;
 
   // XXX: Switch to a list of devices, rather than explicitly numbering them.
+
+  // Present on all platforms, but only useful on Android
+  cenum FontVisibilityDeviceDetermination : 8 {
+    Unassigned = 0,
+    Unknown_Platform = 1,
+    Windows_Platform = 2,
+    MacOS_Platform = 3,
+    Android_Unknown_Release_Version = 4,
+    Android_Unknown_Peloton = 5,
+    Android_Unknown_vbox = 6,
+    Android_Unknown_mitv = 7,
+    Android_Chromebook = 8,
+    Android_Amazon = 9,
+    Android_sub_9 = 10,
+    Android_9_11 = 11,
+    Android_12_plus = 12,
+    Linux_Unknown = 13,
+    Linux_Ubuntu_any = 14,
+    Linux_Ubuntu_20 = 15,
+    Linux_Ubuntu_22 = 16,
+    Linux_Fedora_any = 17,
+    Linux_Fedora_38 = 18,
+    Linux_Fedora_39 = 19
+  };
+  readonly attribute nsIGfxInfo_FontVisibilityDeviceDetermination fontVisibilityDetermination;
+  readonly attribute AString fontVisibilityDeterminationStr;
 
   /**
    * The name of the display adapter.
@@ -169,7 +197,7 @@ interface nsIGfxInfo : nsISupports
   const long FEATURE_WEBRENDER_PARTIAL_PRESENT = 36;
   /* Whether WebGPU is supported, starting in 100. */
   const long FEATURE_WEBGPU = 37;
-  /* Whether video overlay is supported, starting in 100. */
+  /* Whether video overlay of hardware decoded video is supported, starting in 100. */
   const long FEATURE_VIDEO_OVERLAY = 38;
   /* Whether hardware decoded video zero copy is supported, starting in 101. */
   const long FEATURE_HW_DECODED_VIDEO_ZERO_COPY = 39;
@@ -185,10 +213,16 @@ interface nsIGfxInfo : nsISupports
   const long FEATURE_H264_HW_DECODE = 44;
   /* Whether hardware AV1 decoding is supported, starting in 114; not for downloadable blocking. */
   const long FEATURE_AV1_HW_DECODE = 45;
+  /* Whether video overlay of software decoded video is supported, starting in 116. */
+  const long FEATURE_VIDEO_SOFTWARE_OVERLAY = 46;
   /* Whether WebGL is allowed to use hardware rendering, otherwise software fallbacks. */
-  const long FEATURE_WEBGL_USE_HARDWARE = 46;
+  const long FEATURE_WEBGL_USE_HARDWARE = 47;
+  /* Whether overlay is allowed to VideoProcessor-HDR on SDR content */
+  const long FEATURE_OVERLAY_VP_AUTO_HDR = 48;
+  /* Whether overlay is allowed to VideoProcessor Super Resolution */
+  const long FEATURE_OVERLAY_VP_SUPER_RESOLUTION = 49;
   /* the maximum feature value. */
-  const long FEATURE_MAX_VALUE = FEATURE_WEBGL_USE_HARDWARE;
+  const long FEATURE_MAX_VALUE = FEATURE_OVERLAY_VP_SUPER_RESOLUTION;
 
   /*
    * A set of return values from GetFeatureStatus

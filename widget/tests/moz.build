@@ -38,10 +38,10 @@ with Files("*478536*"):
     BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
 
 with Files("*485118*"):
-    BUG_COMPONENT = ("Toolkit", "XUL Widgets")
+    BUG_COMPONENT = ("Toolkit", "UI Widgets")
 
 with Files("*517396*"):
-    BUG_COMPONENT = ("Toolkit", "XUL Widgets")
+    BUG_COMPONENT = ("Toolkit", "UI Widgets")
 
 with Files("*522217*"):
     BUG_COMPONENT = ("Core", "Widget: Cocoa")
@@ -113,10 +113,10 @@ with Files("*wheeltransaction*"):
     BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
 
 
-XPCSHELL_TESTS_MANIFESTS += ["unit/xpcshell.ini"]
-MOCHITEST_MANIFESTS += ["mochitest.ini"]
-MOCHITEST_CHROME_MANIFESTS += ["chrome.ini"]
-BROWSER_CHROME_MANIFESTS += ["browser/browser.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["unit/xpcshell.toml"]
+MOCHITEST_MANIFESTS += ["mochitest.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["chrome.toml"]
+BROWSER_CHROME_MANIFESTS += ["browser/browser.toml"]
 
 # if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
 #

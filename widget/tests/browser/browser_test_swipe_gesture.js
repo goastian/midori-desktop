@@ -24,8 +24,7 @@ requestLongerTimeout(2);
 
 add_task(async () => {
   // Set the default values for an OS that supports swipe to nav, except for
-  // whole-page-pixel-size which varies by OS, we vary it in differente tests
-  // in this file.
+  // pixel-size which varies by OS, we vary it in differente tests in this file.
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.gesture.swipe.left", "Browser:BackOrBackDuplicate"],
@@ -35,7 +34,7 @@ add_task(async () => {
       // Set the velocity-contribution to 0 so we can exactly control the
       // values in the swipe tracker via the delta in the events that we send.
       ["widget.swipe.success-velocity-contribution", 0.0],
-      ["widget.swipe.whole-page-pixel-size", 550.0],
+      ["widget.swipe.pixel-size", 550.0],
     ],
   });
 
@@ -47,7 +46,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.
@@ -124,9 +123,9 @@ add_task(async () => {
   computedOpacity = window
     .getComputedStyle(gHistorySwipeAnimation._prevBox)
     .getPropertyValue("opacity");
-  ok(computedOpacity == 1, "computed opacity of prevbox is 1");
+  Assert.equal(computedOpacity, 1, "computed opacity of prevbox is 1");
   opacity = gHistorySwipeAnimation._prevBox.style.opacity;
-  ok(opacity == 0, "element.style opacity of prevbox 0");
+  Assert.equal(opacity, 0, "element.style opacity of prevbox 0");
 
   if (isTranslatingIcon) {
     // We don't have a transition for translate property so that we still have
@@ -149,10 +148,10 @@ add_task(async () => {
   await SpecialPowers.popPrefEnv();
 });
 
-// Same test as above but whole-page-pixel-size is increased and the multipliers passed to panLeftToRight correspondingly increased.
+// Same test as above but pixel-size is increased and the multipliers passed to panLeftToRight correspondingly increased.
 add_task(async () => {
   // Set the default values for an OS that supports swipe to nav, except for
-  // whole-page-pixel-size which varies by OS, we vary it in differente tests
+  // pixel-size which varies by OS, we vary it in differente tests
   // in this file.
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -163,7 +162,7 @@ add_task(async () => {
       // Set the velocity-contribution to 0 so we can exactly control the
       // values in the swipe tracker via the delta in the events that we send.
       ["widget.swipe.success-velocity-contribution", 0.0],
-      ["widget.swipe.whole-page-pixel-size", 1100.0],
+      ["widget.swipe.pixel-size", 1100.0],
     ],
   });
 
@@ -175,7 +174,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.
@@ -233,9 +232,9 @@ add_task(async () => {
   computedOpacity = window
     .getComputedStyle(gHistorySwipeAnimation._prevBox)
     .getPropertyValue("opacity");
-  ok(computedOpacity == 1, "computed opacity of prevbox is 1");
+  Assert.equal(computedOpacity, 1, "computed opacity of prevbox is 1");
   opacity = gHistorySwipeAnimation._prevBox.style.opacity;
-  ok(opacity == 0, "element.style opacity of prevbox 0");
+  Assert.equal(opacity, 0, "element.style opacity of prevbox 0");
 
   // Make sure the gesture triggered going back to the previous page.
   await Promise.all([startLoadingPromise, stoppedLoadingPromise]);
@@ -248,7 +247,7 @@ add_task(async () => {
 
 add_task(async () => {
   // Set the default values for an OS that supports swipe to nav, except for
-  // whole-page-pixel-size which varies by OS, we vary it in different tests
+  // pixel-size which varies by OS, we vary it in different tests
   // in this file.
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -261,7 +260,7 @@ add_task(async () => {
       // pushes us into success territory without going into success territory
       // purely from th deltas.
       ["widget.swipe.success-velocity-contribution", 2.0],
-      ["widget.swipe.whole-page-pixel-size", 550.0],
+      ["widget.swipe.pixel-size", 550.0],
     ],
   });
 
@@ -274,7 +273,7 @@ add_task(async () => {
       true /* waitForLoad */
     );
 
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
     // Make sure we can go back to the previous page.
@@ -318,9 +317,9 @@ add_task(async () => {
     let computedOpacity = window
       .getComputedStyle(gHistorySwipeAnimation._prevBox)
       .getPropertyValue("opacity");
-    ok(computedOpacity == 1, "computed opacity of prevbox is 1");
+    Assert.equal(computedOpacity, 1, "computed opacity of prevbox is 1");
     let opacity = gHistorySwipeAnimation._prevBox.style.opacity;
-    ok(opacity == 0, "element.style opacity of prevbox 0");
+    Assert.equal(opacity, 0, "element.style opacity of prevbox 0");
 
     // Make sure the gesture triggered going back to the previous page.
     await Promise.all([startLoadingPromise, stoppedLoadingPromise]);
@@ -344,13 +343,13 @@ add_task(async () => {
     }
     numTries--;
   }
-  ok(numTries > 0, "never ran the test");
+  Assert.greater(numTries, 0, "never ran the test");
   await SpecialPowers.popPrefEnv();
 });
 
 add_task(async () => {
   // Set the default values for an OS that supports swipe to nav, except for
-  // whole-page-pixel-size which varies by OS, we vary it in differente tests
+  // pixel-size which varies by OS, we vary it in differente tests
   // in this file.
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -361,7 +360,7 @@ add_task(async () => {
       // Set the velocity-contribution to 0 so we can exactly control the
       // values in the swipe tracker via the delta in the events that we send.
       ["widget.swipe.success-velocity-contribution", 0.0],
-      ["widget.swipe.whole-page-pixel-size", 550.0],
+      ["widget.swipe.pixel-size", 550.0],
     ],
   });
 
@@ -373,7 +372,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.
@@ -422,7 +421,7 @@ add_task(async () => {
       // Set the velocity-contribution to 0 so we can exactly control the
       // values in the swipe tracker via the delta in the events that we send.
       ["widget.swipe.success-velocity-contribution", 0.0],
-      ["widget.swipe.whole-page-pixel-size", 550.0],
+      ["widget.swipe.pixel-size", 550.0],
     ],
   });
 
@@ -458,7 +457,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.
@@ -536,7 +535,7 @@ add_task(async () => {
 });
 
 add_task(async () => {
-  // success-velocity-contribution is very high and whole-page-pixel-size is
+  // success-velocity-contribution is very high and pixel-size is
   // very low so that one swipe goes over the threshold asap.
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -545,7 +544,7 @@ add_task(async () => {
       ["widget.disable-swipe-tracker", false],
       ["widget.swipe.velocity-twitch-tolerance", 0.0000001],
       ["widget.swipe.success-velocity-contribution", 999999.0],
-      ["widget.swipe.whole-page-pixel-size", 1.0],
+      ["widget.swipe.pixel-size", 1.0],
     ],
   });
 
@@ -557,7 +556,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.
@@ -577,7 +576,7 @@ add_task(async () => {
 
   await panLeftToRightBegin(tab.linkedBrowser, 100, 100, 100);
 
-  ok(gHistorySwipeAnimation._prevBox != null, "should have prevbox");
+  Assert.notEqual(gHistorySwipeAnimation._prevBox, null, "should have prevbox");
   let transitionCancelPromise = new Promise(resolve => {
     gHistorySwipeAnimation._prevBox.addEventListener(
       "transitioncancel",
@@ -636,7 +635,7 @@ add_task(async () => {
 
   await panRightToLeftBegin(tab.linkedBrowser, 100, 100, 100);
 
-  ok(gHistorySwipeAnimation._nextBox != null, "should have nextbox");
+  Assert.notEqual(gHistorySwipeAnimation._nextBox, null, "should have nextbox");
   transitionCancelPromise = new Promise(resolve => {
     gHistorySwipeAnimation._nextBox.addEventListener(
       "transitioncancel",
@@ -708,7 +707,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.
@@ -777,7 +776,7 @@ add_task(async () => {
     "chrome://mochitests/content/",
     "http://mochi.test:8888/"
   );
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     tab.linkedBrowser,
     URL_ROOT + "helper_swipe_gesture.html"
   );
@@ -861,7 +860,7 @@ add_task(async () => {
     "chrome://mochitests/content/",
     "http://mochi.test:8888/"
   );
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     tab.linkedBrowser,
     URL_ROOT + "helper_swipe_gesture.html"
   );
@@ -926,7 +925,7 @@ add_task(async () => {
     "chrome://mochitests/content/",
     "http://mochi.test:8888/"
   );
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     tab.linkedBrowser,
     URL_ROOT + "helper_swipe_gesture.html"
   );
@@ -988,14 +987,14 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, "about:mozilla");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, "about:mozilla");
   await BrowserTestUtils.browserLoaded(
     tab.linkedBrowser,
     false /* includeSubFrames */,
     "about:mozilla"
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, "about:home");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, "about:home");
   await BrowserTestUtils.browserLoaded(
     tab.linkedBrowser,
     false /* includeSubFrames */,
@@ -1079,7 +1078,7 @@ add_task(async () => {
   );
 
   // Load a horizontal scrollable content.
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     tab.linkedBrowser,
     URL_ROOT + "helper_swipe_gesture.html"
   );
@@ -1132,7 +1131,7 @@ add_task(async () => {
 
   // Set up an APZ aware event listener and...
   await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
-    content.document.documentElement.addEventListener("wheel", e => {}, {
+    content.document.documentElement.addEventListener("wheel", () => {}, {
       passive: false,
     });
     await content.wrappedJSObject.promiseApzFlushedRepaints();
@@ -1181,7 +1180,7 @@ add_task(async () => {
     true /* waitForLoad */
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, secondPage);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, secondPage);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, secondPage);
 
   // Make sure we can go back to the previous page.

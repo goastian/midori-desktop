@@ -21,6 +21,7 @@
 #include "mozilla/dom/BrowserParent.h"
 #include "nsExceptionHandler.h"
 #include "nsIWidget.h"
+#include "nsPrintfCString.h"
 
 namespace mozilla {
 
@@ -73,6 +74,41 @@ bool ContentCache::IsValid() const {
   }
 
   return true;
+}
+
+void ContentCache::AssertIfInvalid() const {
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  if (IsValid()) {
+    return;
+  }
+
+  // This text will appear in the crash reports without any permissions.
+  // Do not use `ToString` here to avoid to expose unexpected data with
+  // changing the type or `operator<<()`.
+  nsPrintfCString info(
+      "ContentCache={ mText=%s, mSelection=%s, mCaret=%s, mTextRectArray=%s, "
+      "mCompositionStart=%s }\n",
+      // Don't expose mText.ref() value for protecting the user's privacy.
+      mText.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ Length()=%zu }", mText->Length()).get(),
+      mSelection.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ mAnchor=%u, mFocus=%u }", mSelection->mAnchor,
+                            mSelection->mFocus)
+                .get(),
+      mCaret.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ mOffset=%u }", mCaret->mOffset).get(),
+      mTextRectArray.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ Length()=%u }", mTextRectArray->Length()).get(),
+      mCompositionStart.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("%u", mCompositionStart.value()).get());
+  CrashReporter::AppendAppNotesToCrashReport(info);
+  MOZ_DIAGNOSTIC_ASSERT(false, "Invalid ContentCache data");
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 }
 
 /*****************************************************************************
@@ -147,8 +183,8 @@ bool ContentCacheInChild::CacheAll(nsIWidget* aWidget,
 
   const bool textCached = CacheText(aWidget, aNotification);
   const bool editorRectCached = CacheEditorRect(aWidget, aNotification);
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return textCached || editorRectCached;
+  AssertIfInvalid();
+  return (textCached || editorRectCached) && IsValid();
 }
 
 bool ContentCacheInChild::CacheSelection(nsIWidget* aWidget,
@@ -189,14 +225,15 @@ bool ContentCacheInChild::CacheSelection(nsIWidget* aWidget,
             ("0x%p CacheSelection(), FAILED, editable content had already been "
              "blurred",
              this));
-    MOZ_DIAGNOSTIC_ASSERT(IsValid());
+    AssertIfInvalid();
     return false;
   } else {
     mSelection.emplace(querySelectedTextEvent);
   }
 
-  return CacheCaretAndTextRects(aWidget, aNotification) ||
-         querySelectedTextEvent.Succeeded();
+  return (CacheCaretAndTextRects(aWidget, aNotification) ||
+          querySelectedTextEvent.Succeeded()) &&
+         IsValid();
 }
 
 bool ContentCacheInChild::CacheCaret(nsIWidget* aWidget,
@@ -216,23 +253,23 @@ bool ContentCacheInChild::CacheCaret(nsIWidget* aWidget,
     const uint32_t offset = mSelection->StartOffset();
 
     nsEventStatus status = nsEventStatus_eIgnore;
-    WidgetQueryContentEvent queryCaretRectEvet(true, eQueryCaretRect, aWidget);
-    queryCaretRectEvet.InitForQueryCaretRect(offset);
-    aWidget->DispatchEvent(&queryCaretRectEvet, status);
-    if (NS_WARN_IF(queryCaretRectEvet.Failed())) {
+    WidgetQueryContentEvent queryCaretRectEvent(true, eQueryCaretRect, aWidget);
+    queryCaretRectEvent.InitForQueryCaretRect(offset);
+    aWidget->DispatchEvent(&queryCaretRectEvent, status);
+    if (NS_WARN_IF(queryCaretRectEvent.Failed())) {
       MOZ_LOG(sContentCacheLog, LogLevel::Error,
               ("0x%p   CacheCaret(), FAILED, couldn't retrieve the caret rect "
                "at offset=%u",
                this, offset));
       return false;
     }
-    mCaret.emplace(offset, queryCaretRectEvet.mReply->mRect);
+    mCaret.emplace(offset, queryCaretRectEvent.mReply->mRect);
   }
   MOZ_LOG(sContentCacheLog, LogLevel::Info,
           ("0x%p   CacheCaret(), Succeeded, mSelection=%s, mCaret=%s", this,
            ToString(mSelection).c_str(), ToString(mCaret).c_str()));
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return true;
+  AssertIfInvalid();
+  return IsValid();
 }
 
 bool ContentCacheInChild::CacheEditorRect(
@@ -276,8 +313,8 @@ bool ContentCacheInChild::CacheCaretAndTextRects(
 
   const bool caretCached = CacheCaret(aWidget, aNotification);
   const bool textRectsCached = CacheTextRects(aWidget, aNotification);
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return caretCached || textRectsCached;
+  AssertIfInvalid();
+  return (caretCached || textRectsCached) && IsValid();
 }
 
 bool ContentCacheInChild::CacheText(nsIWidget* aWidget,
@@ -338,7 +375,7 @@ bool ContentCacheInChild::CacheText(nsIWidget* aWidget,
     mSelection.reset();
     mCaret.reset();
     mTextRectArray.reset();
-    MOZ_DIAGNOSTIC_ASSERT(IsValid());
+    AssertIfInvalid();
     return false;
   }
 
@@ -613,8 +650,8 @@ bool ContentCacheInChild::CacheTextRects(nsIWidget* aWidget,
        ToString(mTextRectArray).c_str(), ToString(mSelection).c_str(),
        ToString(mFirstCharRect).c_str(),
        ToString(mLastCommitStringTextRectArray).c_str()));
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return true;
+  AssertIfInvalid();
+  return IsValid();
 }
 
 bool ContentCacheInChild::SetSelection(
@@ -649,7 +686,7 @@ bool ContentCacheInChild::SetSelection(
   CacheCaret(aWidget);
   CacheTextRects(aWidget);
 
-  return mSelection.isSome();
+  return mSelection.isSome() && IsValid();
 }
 
 /*****************************************************************************
@@ -657,14 +694,9 @@ bool ContentCacheInChild::SetSelection(
  *****************************************************************************/
 
 ContentCacheInParent::ContentCacheInParent(BrowserParent& aBrowserParent)
-    : ContentCache(),
-      mBrowserParent(aBrowserParent),
+    : mBrowserParent(aBrowserParent),
       mCommitStringByRequest(nullptr),
-      mPendingEventsNeedingAck(0),
       mPendingCommitLength(0),
-      mPendingCompositionCount(0),
-      mPendingCommitCount(0),
-      mWidgetHasComposition(false),
       mIsChildIgnoringCompositionEvents(false) {}
 
 void ContentCacheInParent::AssignContent(const ContentCache& aOther,
@@ -684,7 +716,7 @@ void ContentCacheInParent::AssignContent(const ContentCache& aOther,
   // process is managing the composition in the remote process.  Therefore,
   // we shouldn't update composition start offset of TextComposition with
   // old composition which is still being handled by the child process.
-  if (mWidgetHasComposition && mPendingCompositionCount == 1 &&
+  if (WidgetHasComposition() && mHandlingCompositions.Length() == 1 &&
       mCompositionStart.isSome()) {
     IMEStateManager::MaybeStartOffsetUpdatedInChild(aWidget,
                                                     mCompositionStart.value());
@@ -695,7 +727,7 @@ void ContentCacheInParent::AssignContent(const ContentCache& aOther,
   // remote process because now we have the information around the composition
   // string.
   mCompositionStartInChild = aOther.mCompositionStart;
-  if (mWidgetHasComposition || mPendingCommitCount) {
+  if (WidgetHasComposition() || HasPendingCommit()) {
     if (mCompositionStartInChild.isSome()) {
       if (mCompositionStart.valueOr(UINT32_MAX) !=
           mCompositionStartInChild.value()) {
@@ -714,15 +746,15 @@ void ContentCacheInParent::AssignContent(const ContentCache& aOther,
       sContentCacheLog, LogLevel::Info,
       ("0x%p   AssignContent(aNotification=%s), "
        "Succeeded, mText=%s, mSelection=%s, mFirstCharRect=%s, "
-       "mCaret=%s, mTextRectArray=%s, mWidgetHasComposition=%s, "
-       "mPendingCompositionCount=%u, mCompositionStart=%s, "
+       "mCaret=%s, mTextRectArray=%s, WidgetHasComposition()=%s, "
+       "mHandlingCompositions.Length()=%zu, mCompositionStart=%s, "
        "mPendingCommitLength=%u, mEditorRect=%s, "
        "mLastCommitStringTextRectArray=%s",
        this, GetNotificationName(aNotification),
        PrintStringDetail(mText, PrintStringDetail::kMaxLengthForEditor).get(),
        ToString(mSelection).c_str(), ToString(mFirstCharRect).c_str(),
        ToString(mCaret).c_str(), ToString(mTextRectArray).c_str(),
-       GetBoolName(mWidgetHasComposition), mPendingCompositionCount,
+       GetBoolName(WidgetHasComposition()), mHandlingCompositions.Length(),
        ToString(mCompositionStart).c_str(), mPendingCommitLength,
        ToString(mEditorRect).c_str(),
        ToString(mLastCommitStringTextRectArray).c_str()));
@@ -760,18 +792,19 @@ bool ContentCacheInParent::HandleQueryContentEvent(
 
   bool isRelativeToInsertionPoint = aEvent.mInput.mRelativeToInsertionPoint;
   if (isRelativeToInsertionPoint) {
-    MOZ_LOG(sContentCacheLog, LogLevel::Debug,
-            ("0x%p HandleQueryContentEvent(), "
-             "making offset absolute... aEvent={ mMessage=%s, mInput={ "
-             "mOffset=%" PRId64 ", mLength=%" PRIu32 " } }, "
-             "mWidgetHasComposition=%s, mPendingCommitCount=%" PRIu8
-             ", mCompositionStart=%" PRIu32 ", "
-             "mPendingCommitLength=%" PRIu32 ", mSelection=%s",
-             this, ToChar(aEvent.mMessage), aEvent.mInput.mOffset,
-             aEvent.mInput.mLength, GetBoolName(mWidgetHasComposition),
-             mPendingCommitCount, mCompositionStart.valueOr(UINT32_MAX),
-             mPendingCommitLength, ToString(mSelection).c_str()));
-    if (mWidgetHasComposition || mPendingCommitCount) {
+    MOZ_LOG(
+        sContentCacheLog, LogLevel::Debug,
+        ("0x%p HandleQueryContentEvent(), "
+         "making offset absolute... aEvent={ mMessage=%s, mInput={ "
+         "mOffset=%" PRId64 ", mLength=%" PRIu32 " } }, "
+         "WidgetHasComposition()=%s, HasPendingCommit()=%s, "
+         "mCompositionStart=%" PRIu32 ", "
+         "mPendingCommitLength=%" PRIu32 ", mSelection=%s",
+         this, ToChar(aEvent.mMessage), aEvent.mInput.mOffset,
+         aEvent.mInput.mLength, GetBoolName(WidgetHasComposition()),
+         GetBoolName(HasPendingCommit()), mCompositionStart.valueOr(UINT32_MAX),
+         mPendingCommitLength, ToString(mSelection).c_str()));
+    if (WidgetHasComposition() || HasPendingCommit()) {
       if (NS_WARN_IF(mCompositionStart.isNothing()) ||
           NS_WARN_IF(!aEvent.mInput.MakeOffsetAbsolute(
               mCompositionStart.value() + mPendingCommitLength))) {
@@ -1276,30 +1309,30 @@ bool ContentCacheInParent::GetCaretRect(uint32_t aOffset,
 }
 
 bool ContentCacheInParent::OnCompositionEvent(
-    const WidgetCompositionEvent& aEvent) {
+    const WidgetCompositionEvent& aCompositionEvent) {
   MOZ_LOG(
       sContentCacheLog, LogLevel::Info,
-      ("0x%p OnCompositionEvent(aEvent={ "
+      ("0x%p OnCompositionEvent(aCompositionEvent={ "
        "mMessage=%s, mData=\"%s\", mRanges->Length()=%zu }), "
-       "mPendingEventsNeedingAck=%u, mWidgetHasComposition=%s, "
-       "mPendingCompositionCount=%" PRIu8 ", mPendingCommitCount=%" PRIu8 ", "
+       "PendingEventsNeedingAck()=%u, WidgetHasComposition()=%s, "
+       "mHandlingCompositions.Length()=%zu, HasPendingCommit()=%s, "
        "mIsChildIgnoringCompositionEvents=%s, mCommitStringByRequest=0x%p",
-       this, ToChar(aEvent.mMessage),
-       PrintStringDetail(aEvent.mData,
+       this, ToChar(aCompositionEvent.mMessage),
+       PrintStringDetail(aCompositionEvent.mData,
                          PrintStringDetail::kMaxLengthForCompositionString)
            .get(),
-       aEvent.mRanges ? aEvent.mRanges->Length() : 0, mPendingEventsNeedingAck,
-       GetBoolName(mWidgetHasComposition), mPendingCompositionCount,
-       mPendingCommitCount, GetBoolName(mIsChildIgnoringCompositionEvents),
-       mCommitStringByRequest));
+       aCompositionEvent.mRanges ? aCompositionEvent.mRanges->Length() : 0,
+       PendingEventsNeedingAck(), GetBoolName(WidgetHasComposition()),
+       mHandlingCompositions.Length(), GetBoolName(HasPendingCommit()),
+       GetBoolName(mIsChildIgnoringCompositionEvents), mCommitStringByRequest));
 
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
-  mDispatchedEventMessages.AppendElement(aEvent.mMessage);
+  mDispatchedEventMessages.AppendElement(aCompositionEvent.mMessage);
 #endif  // #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
   // We must be able to simulate the selection because
   // we might not receive selection updates in time
-  if (!mWidgetHasComposition) {
+  if (!WidgetHasComposition()) {
     if (mCompositionStartInChild.isSome()) {
       // If there is pending composition in the remote process, let's use
       // its start offset temporarily because this stores a lot of information
@@ -1311,22 +1344,26 @@ bool ContentCacheInParent::OnCompositionEvent(
                                    ? mSelection->StartOffset()
                                    : 0u);
     }
-    MOZ_ASSERT(aEvent.mMessage == eCompositionStart);
-    MOZ_RELEASE_ASSERT(mPendingCompositionCount < UINT8_MAX);
-    mPendingCompositionCount++;
+    MOZ_ASSERT(aCompositionEvent.mMessage == eCompositionStart);
+    mHandlingCompositions.AppendElement(
+        HandlingCompositionData(aCompositionEvent.mCompositionId));
   }
 
-  mWidgetHasComposition = !aEvent.CausesDOMCompositionEndEvent();
+  mHandlingCompositions.LastElement().mSentCommitEvent =
+      aCompositionEvent.CausesDOMCompositionEndEvent();
+  MOZ_ASSERT(mHandlingCompositions.LastElement().mCompositionId ==
+             aCompositionEvent.mCompositionId);
 
-  if (!mWidgetHasComposition) {
+  if (!WidgetHasComposition()) {
     // mCompositionStart will be reset when commit event is completely handled
     // in the remote process.
-    if (mPendingCompositionCount == 1) {
-      mPendingCommitLength = aEvent.mData.Length();
+    if (mHandlingCompositions.Length() == 1u) {
+      mPendingCommitLength = aCompositionEvent.mData.Length();
     }
-    mPendingCommitCount++;
-  } else if (aEvent.mMessage != eCompositionStart) {
-    mCompositionString = aEvent.mData;
+    MOZ_ASSERT(HasPendingCommit());
+  } else if (aCompositionEvent.mMessage != eCompositionStart) {
+    mHandlingCompositions.LastElement().mCompositionString =
+        aCompositionEvent.mData;
   }
 
   // During REQUEST_TO_COMMIT_COMPOSITION or REQUEST_TO_CANCEL_COMPOSITION,
@@ -1337,119 +1374,156 @@ bool ContentCacheInParent::OnCompositionEvent(
   // RequestIMEToCommitComposition().  Then, eCommitComposition event will
   // be dispatched with the committed string in the remote process internally.
   if (mCommitStringByRequest) {
-    if (aEvent.mMessage == eCompositionCommitAsIs) {
-      *mCommitStringByRequest = mCompositionString;
+    if (aCompositionEvent.mMessage == eCompositionCommitAsIs) {
+      *mCommitStringByRequest =
+          mHandlingCompositions.LastElement().mCompositionString;
     } else {
-      MOZ_ASSERT(aEvent.mMessage == eCompositionChange ||
-                 aEvent.mMessage == eCompositionCommit);
-      *mCommitStringByRequest = aEvent.mData;
+      MOZ_ASSERT(aCompositionEvent.mMessage == eCompositionChange ||
+                 aCompositionEvent.mMessage == eCompositionCommit);
+      *mCommitStringByRequest = aCompositionEvent.mData;
     }
     // We need to wait eCompositionCommitRequestHandled from the remote process
     // in this case.  Therefore, mPendingEventsNeedingAck needs to be
-    // incremented here.  Additionally, we stop sending eCompositionCommit(AsIs)
-    // event.  Therefore, we need to decrement mPendingCommitCount which has
-    // been incremented above.
-    if (!mWidgetHasComposition) {
-      mPendingEventsNeedingAck++;
-      MOZ_DIAGNOSTIC_ASSERT(mPendingCommitCount);
-      if (mPendingCommitCount) {
-        mPendingCommitCount--;
-      }
+    // incremented here.
+    if (!WidgetHasComposition()) {
+      mHandlingCompositions.LastElement().mPendingEventsNeedingAck++;
     }
     return false;
   }
 
-  mPendingEventsNeedingAck++;
+  mHandlingCompositions.LastElement().mPendingEventsNeedingAck++;
   return true;
 }
 
 void ContentCacheInParent::OnSelectionEvent(
     const WidgetSelectionEvent& aSelectionEvent) {
-  MOZ_LOG(
-      sContentCacheLog, LogLevel::Info,
-      ("0x%p OnSelectionEvent(aEvent={ "
-       "mMessage=%s, mOffset=%u, mLength=%u, mReversed=%s, "
-       "mExpandToClusterBoundary=%s, mUseNativeLineBreak=%s }), "
-       "mPendingEventsNeedingAck=%u, mWidgetHasComposition=%s, "
-       "mPendingCompositionCount=%" PRIu8 ", mPendingCommitCount=%" PRIu8 ", "
-       "mIsChildIgnoringCompositionEvents=%s",
-       this, ToChar(aSelectionEvent.mMessage), aSelectionEvent.mOffset,
-       aSelectionEvent.mLength, GetBoolName(aSelectionEvent.mReversed),
-       GetBoolName(aSelectionEvent.mExpandToClusterBoundary),
-       GetBoolName(aSelectionEvent.mUseNativeLineBreak),
-       mPendingEventsNeedingAck, GetBoolName(mWidgetHasComposition),
-       mPendingCompositionCount, mPendingCommitCount,
-       GetBoolName(mIsChildIgnoringCompositionEvents)));
+  MOZ_LOG(sContentCacheLog, LogLevel::Info,
+          ("0x%p OnSelectionEvent(aEvent={ "
+           "mMessage=%s, mOffset=%u, mLength=%u, mReversed=%s, "
+           "mExpandToClusterBoundary=%s, mUseNativeLineBreak=%s }), "
+           "PendingEventsNeedingAck()=%u, WidgetHasComposition()=%s, "
+           "mHandlingCompositions.Length()=%zu, HasPendingCommit()=%s, "
+           "mIsChildIgnoringCompositionEvents=%s",
+           this, ToChar(aSelectionEvent.mMessage), aSelectionEvent.mOffset,
+           aSelectionEvent.mLength, GetBoolName(aSelectionEvent.mReversed),
+           GetBoolName(aSelectionEvent.mExpandToClusterBoundary),
+           GetBoolName(aSelectionEvent.mUseNativeLineBreak),
+           PendingEventsNeedingAck(), GetBoolName(WidgetHasComposition()),
+           mHandlingCompositions.Length(), GetBoolName(HasPendingCommit()),
+           GetBoolName(mIsChildIgnoringCompositionEvents)));
 
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
   mDispatchedEventMessages.AppendElement(aSelectionEvent.mMessage);
 #endif  // MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
-  mPendingEventsNeedingAck++;
+  mPendingSetSelectionEventNeedingAck++;
 }
 
 void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
-                                                    EventMessage aMessage) {
+                                                    EventMessage aMessage,
+                                                    uint32_t aCompositionId) {
   // This is called when the child process receives WidgetCompositionEvent or
   // WidgetSelectionEvent.
 
-  MOZ_LOG(
-      sContentCacheLog, LogLevel::Info,
-      ("0x%p OnEventNeedingAckHandled(aWidget=0x%p, "
-       "aMessage=%s), mPendingEventsNeedingAck=%u, "
-       "mWidgetHasComposition=%s, mPendingCompositionCount=%" PRIu8 ", "
-       "mPendingCommitCount=%" PRIu8 ", mIsChildIgnoringCompositionEvents=%s",
-       this, aWidget, ToChar(aMessage), mPendingEventsNeedingAck,
-       GetBoolName(mWidgetHasComposition), mPendingCompositionCount,
-       mPendingCommitCount, GetBoolName(mIsChildIgnoringCompositionEvents)));
+  HandlingCompositionData* handlingCompositionData =
+      aMessage != eSetSelection ? GetHandlingCompositionData(aCompositionId)
+                                : nullptr;
+
+  MOZ_LOG(sContentCacheLog, LogLevel::Info,
+          ("0x%p OnEventNeedingAckHandled(aWidget=0x%p, aMessage=%s, "
+           "aCompositionId=%" PRIu32
+           "), PendingEventsNeedingAck()=%u, WidgetHasComposition()=%s, "
+           "mHandlingCompositions.Length()=%zu, HasPendingCommit()=%s, "
+           "mIsChildIgnoringCompositionEvents=%s, handlingCompositionData=0x%p",
+           this, aWidget, ToChar(aMessage), aCompositionId,
+           PendingEventsNeedingAck(), GetBoolName(WidgetHasComposition()),
+           mHandlingCompositions.Length(), GetBoolName(HasPendingCommit()),
+           GetBoolName(mIsChildIgnoringCompositionEvents),
+           handlingCompositionData));
+
+  // If we receive composition event messages for older one or invalid one,
+  // we should ignore them.
+  if (NS_WARN_IF(aMessage != eSetSelection && !handlingCompositionData)) {
+    return;
+  }
 
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
   mReceivedEventMessages.AppendElement(aMessage);
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
-  bool isCommittedInChild =
+  const bool isCommittedInChild =
       // Commit requester in the remote process has committed the composition.
       aMessage == eCompositionCommitRequestHandled ||
       // The commit event has been handled normally in the remote process.
       (!mIsChildIgnoringCompositionEvents &&
        WidgetCompositionEvent::IsFollowedByCompositionEnd(aMessage));
+  const bool hasPendingCommit = HasPendingCommit();
 
   if (isCommittedInChild) {
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
-    if (mPendingCompositionCount == 1) {
+    if (mHandlingCompositions.Length() == 1u) {
       RemoveUnnecessaryEventMessageLog();
     }
-#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
-    if (NS_WARN_IF(!mPendingCompositionCount)) {
-#if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
+    if (NS_WARN_IF(aMessage != eCompositionCommitRequestHandled &&
+                   !handlingCompositionData->mSentCommitEvent)) {
       nsPrintfCString info(
-          "\nThere is no pending composition but received %s "
-          "message from the remote child\n\n",
+          "\nReceived unexpected commit event message (%s) which we've "
+          "not sent yet\n\n",
           ToChar(aMessage));
       AppendEventMessageLog(info);
       CrashReporter::AppendAppNotesToCrashReport(info);
       MOZ_DIAGNOSTIC_ASSERT(
-          false, "No pending composition but received unexpected commit event");
+          false,
+          "Received unexpected commit event which has not been sent yet");
+    }
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
-      // Prevent odd behavior in release channel.
-      mPendingCompositionCount = 1;
+    // This should not occur, though.  If we receive a commit notification for
+    // not the oldest composition, we should forget all older compositions.
+    size_t numberOfOutdatedCompositions = 1u;
+    for (auto& data : mHandlingCompositions) {
+      if (&data == handlingCompositionData) {
+        if (
+            // Don't put the info into the log when we've already sent commit
+            // event because it may be just inserting a character without
+            // composing state, but the remote process may move focus at
+            // eCompositionStart.  This may happen with UI of IME to put only
+            // one character, e.g., the default Emoji picker of Windows.
+            !data.mSentCommitEvent &&
+            // In the normal case, only one message should remain, however,
+            // remaining 2 or more messages is also valid, for example, the
+            // remote process may have a composition update listener which
+            // takes a while.  Then, we can have multiple pending messages.
+            data.mPendingEventsNeedingAck >= 1u) {
+          MOZ_LOG(
+              sContentCacheLog, LogLevel::Debug,
+              ("    NOTE: BrowserParent has %" PRIu32
+               " pending composition messages for the handling composition, "
+               "but before they are handled in the remote process, the active "
+               "composition is commited by a request.  "
+               "OnEventNeedingAckHandled() calls for them will be ignored",
+               data.mPendingEventsNeedingAck));
+        }
+        break;
+      }
+      if (MOZ_UNLIKELY(data.mPendingEventsNeedingAck)) {
+        MOZ_LOG(sContentCacheLog, LogLevel::Warning,
+                ("    BrowserParent has %" PRIu32
+                 " pending composition messages for an older composition than "
+                 "the handling composition, but it'll be removed because newer "
+                 "composition gets comitted in the remote process",
+                 data.mPendingEventsNeedingAck));
+      }
+      numberOfOutdatedCompositions++;
     }
-
-    mPendingCompositionCount--;
-
-    // Forget composition string only when the latest composition string is
-    // handled in the remote process because if there is 2 or more pending
-    // composition, this value shouldn't be referred.
-    if (!mPendingCompositionCount) {
-      mCompositionString.Truncate();
-    }
+    mHandlingCompositions.RemoveElementsAt(0u, numberOfOutdatedCompositions);
+    handlingCompositionData = nullptr;
 
     // Forget pending commit string length if it's handled in the remote
     // process.  Note that this doesn't care too old composition's commit
     // string because in such case, we cannot return proper information
-    // to IME synchornously.
+    // to IME synchronously.
     mPendingCommitLength = 0;
   }
 
@@ -1458,8 +1532,8 @@ void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
     // it'll restart to handle composition events.
     mIsChildIgnoringCompositionEvents = false;
 
-    if (NS_WARN_IF(!mPendingCommitCount)) {
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
+    if (NS_WARN_IF(!hasPendingCommit)) {
       nsPrintfCString info(
           "\nThere is no pending comment events but received "
           "%s message from the remote child\n\n",
@@ -1469,15 +1543,9 @@ void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
       MOZ_DIAGNOSTIC_ASSERT(
           false,
           "No pending commit events but received unexpected commit event");
-#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
-
-      // Prevent odd behavior in release channel.
-      mPendingCommitCount = 1;
     }
-
-    mPendingCommitCount--;
-  } else if (aMessage == eCompositionCommitRequestHandled &&
-             mPendingCommitCount) {
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  } else if (aMessage == eCompositionCommitRequestHandled && hasPendingCommit) {
     // If the remote process commits composition synchronously after
     // requesting commit composition and we've already sent commit composition,
     // it starts to ignore following composition events until receiving
@@ -1487,54 +1555,86 @@ void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
 
   // If neither widget (i.e., IME) nor the remote process has composition,
   // now, we can forget composition string informations.
-  if (!mWidgetHasComposition && !mPendingCompositionCount &&
-      !mPendingCommitCount) {
+  if (mHandlingCompositions.IsEmpty()) {
     mCompositionStart.reset();
   }
 
-  if (NS_WARN_IF(!mPendingEventsNeedingAck)) {
+  if (handlingCompositionData) {
+    if (NS_WARN_IF(!handlingCompositionData->mPendingEventsNeedingAck)) {
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
-    nsPrintfCString info(
-        "\nThere is no pending events but received %s "
-        "message from the remote child\n\n",
-        ToChar(aMessage));
-    AppendEventMessageLog(info);
-    CrashReporter::AppendAppNotesToCrashReport(info);
-    MOZ_DIAGNOSTIC_ASSERT(
-        false, "No pending event message but received unexpected event");
+      nsPrintfCString info(
+          "\nThere is no pending events but received %s "
+          "message from the remote child\n\n",
+          ToChar(aMessage));
+      AppendEventMessageLog(info);
+      CrashReporter::AppendAppNotesToCrashReport(info);
+      MOZ_DIAGNOSTIC_ASSERT(
+          false, "No pending event message but received unexpected event");
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
-    mPendingEventsNeedingAck = 1;
-  }
-  if (--mPendingEventsNeedingAck) {
-    return;
+    } else {
+      handlingCompositionData->mPendingEventsNeedingAck--;
+    }
+  } else if (aMessage == eSetSelection) {
+    if (NS_WARN_IF(!mPendingSetSelectionEventNeedingAck)) {
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
+      nsAutoCString info(
+          "\nThere is no pending set selection events but received from the "
+          "remote child\n\n");
+      AppendEventMessageLog(info);
+      CrashReporter::AppendAppNotesToCrashReport(info);
+      MOZ_DIAGNOSTIC_ASSERT(
+          false, "No pending event message but received unexpected event");
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    } else {
+      mPendingSetSelectionEventNeedingAck--;
+    }
   }
 
-  FlushPendingNotifications(aWidget);
+  if (!PendingEventsNeedingAck()) {
+    FlushPendingNotifications(aWidget);
+  }
 }
 
 bool ContentCacheInParent::RequestIMEToCommitComposition(
-    nsIWidget* aWidget, bool aCancel, nsAString& aCommittedString) {
+    nsIWidget* aWidget, bool aCancel, uint32_t aCompositionId,
+    nsAString& aCommittedString) {
+  HandlingCompositionData* const handlingCompositionData =
+      GetHandlingCompositionData(aCompositionId);
+
   MOZ_LOG(
       sContentCacheLog, LogLevel::Info,
       ("0x%p RequestToCommitComposition(aWidget=%p, "
-       "aCancel=%s), mPendingCompositionCount=%" PRIu8 ", "
-       "mPendingCommitCount=%" PRIu8 ", mIsChildIgnoringCompositionEvents=%s, "
+       "aCancel=%s, aCompositionId=%" PRIu32
+       "), mHandlingCompositions.Length()=%zu, HasPendingCommit()=%s, "
+       "mIsChildIgnoringCompositionEvents=%s, "
        "IMEStateManager::DoesBrowserParentHaveIMEFocus(&mBrowserParent)=%s, "
-       "mWidgetHasComposition=%s, mCommitStringByRequest=%p",
-       this, aWidget, GetBoolName(aCancel), mPendingCompositionCount,
-       mPendingCommitCount, GetBoolName(mIsChildIgnoringCompositionEvents),
+       "WidgetHasComposition()=%s, mCommitStringByRequest=%p, "
+       "handlingCompositionData=0x%p",
+       this, aWidget, GetBoolName(aCancel), aCompositionId,
+       mHandlingCompositions.Length(), GetBoolName(HasPendingCommit()),
+       GetBoolName(mIsChildIgnoringCompositionEvents),
        GetBoolName(
            IMEStateManager::DoesBrowserParentHaveIMEFocus(&mBrowserParent)),
-       GetBoolName(mWidgetHasComposition), mCommitStringByRequest));
+       GetBoolName(WidgetHasComposition()), mCommitStringByRequest,
+       handlingCompositionData));
 
   MOZ_ASSERT(!mCommitStringByRequest);
 
-  // If there are 2 or more pending compositions, we already sent
-  // eCompositionCommit(AsIs) to the remote process.  So, this request is
-  // too late for IME.  The remote process should wait following
-  // composition events for cleaning up TextComposition and handle the
-  // request as it's handled asynchronously.
-  if (mPendingCompositionCount > 1) {
+  // If we don't know the composition ID, it must have already been committed
+  // in this process.  In the case, we should do nothing here.
+  if (NS_WARN_IF(!handlingCompositionData)) {
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    mRequestIMEToCommitCompositionResults.AppendElement(
+        RequestIMEToCommitCompositionResult::eToUnknownCompositionReceived);
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    return false;
+  }
+
+  // If we receive a commit result for not latest composition, this request is
+  // too late for IME.  The remote process should wait following composition
+  // events for cleaning up TextComposition and handle the request as it's
+  // handled asynchronously.
+  if (handlingCompositionData != &mHandlingCompositions.LastElement()) {
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.AppendElement(
         RequestIMEToCommitCompositionResult::eToOldCompositionReceived);
@@ -1542,17 +1642,16 @@ bool ContentCacheInParent::RequestIMEToCommitComposition(
     return false;
   }
 
-  // If there is no pending composition, we may have already sent
-  // eCompositionCommit(AsIs) event for the active composition.  If so, the
-  // remote process will receive composition events which causes cleaning up
-  // TextComposition.  So, this shouldn't do nothing and TextComposition
-  // should handle the request as it's handled asynchronously.
+  // If the composition has already been commit, th remote process will receive
+  // composition events and clean up TextComposition.  So, this should do
+  // nothing and TextComposition should handle the request as it's handled
+  // asynchronously.
   // XXX Perhaps, this is wrong because TextComposition in child process
   //     may commit the composition with current composition string in the
   //     remote process.  I.e., it may be different from actual commit string
   //     which user typed.  So, perhaps, we should return true and the commit
   //     string.
-  if (mPendingCommitCount) {
+  if (handlingCompositionData->mSentCommitEvent) {
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.AppendElement(
         RequestIMEToCommitCompositionResult::eToCommittedCompositionReceived);
@@ -1569,12 +1668,12 @@ bool ContentCacheInParent::RequestIMEToCommitComposition(
     mRequestIMEToCommitCompositionResults.AppendElement(
         RequestIMEToCommitCompositionResult::eReceivedAfterBrowserParentBlur);
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
-    aCommittedString = mCompositionString;
+    aCommittedString = handlingCompositionData->mCompositionString;
     // After we return true from here, i.e., without actually requesting IME
     // to commit composition, we will receive eCompositionCommitRequestHandled
     // pseudo event message from the remote process.  So, we need to increment
     // mPendingEventsNeedingAck here.
-    mPendingEventsNeedingAck++;
+    handlingCompositionData->mPendingEventsNeedingAck++;
     return true;
   }
 
@@ -1588,6 +1687,21 @@ bool ContentCacheInParent::RequestIMEToCommitComposition(
 #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     mRequestIMEToCommitCompositionResults.AppendElement(
         RequestIMEToCommitCompositionResult::eReceivedButNoTextComposition);
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    return false;
+  }
+
+  // If we receive a request for different composition, we must have already
+  // sent a commit event. So the remote process should handle it.
+  // XXX I think that this should never happen because we already checked
+  // whether handlingCompositionData is the latest composition or not.
+  // However, we don't want to commit different composition for the users.
+  // Therefore, let's handle the odd case here.
+  if (NS_WARN_IF(composition->Id() != aCompositionId)) {
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    mRequestIMEToCommitCompositionResults.AppendElement(
+        RequestIMEToCommitCompositionResult::
+            eReceivedButForDifferentTextComposition);
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     return false;
   }
@@ -1606,8 +1720,8 @@ bool ContentCacheInParent::RequestIMEToCommitComposition(
   MOZ_LOG(
       sContentCacheLog, LogLevel::Info,
       ("  0x%p RequestToCommitComposition(), "
-       "mWidgetHasComposition=%s, the composition %s committed synchronously",
-       this, GetBoolName(mWidgetHasComposition),
+       "WidgetHasComposition()=%s, the composition %s committed synchronously",
+       this, GetBoolName(WidgetHasComposition()),
        composition->Destroyed() ? "WAS" : "has NOT been"));
 
   if (!composition->Destroyed()) {
@@ -1642,7 +1756,7 @@ bool ContentCacheInParent::RequestIMEToCommitComposition(
 
 void ContentCacheInParent::MaybeNotifyIME(
     nsIWidget* aWidget, const IMENotification& aNotification) {
-  if (!mPendingEventsNeedingAck) {
+  if (!PendingEventsNeedingAck()) {
     IMEStateManager::NotifyIME(aNotification, aWidget, &mBrowserParent);
     return;
   }
@@ -1667,7 +1781,7 @@ void ContentCacheInParent::MaybeNotifyIME(
 }
 
 void ContentCacheInParent::FlushPendingNotifications(nsIWidget* aWidget) {
-  MOZ_ASSERT(!mPendingEventsNeedingAck);
+  MOZ_ASSERT(!PendingEventsNeedingAck());
 
   // If the BrowserParent's widget has already gone, this can do nothing since
   // widget is necessary to notify IME of something.
@@ -1677,7 +1791,11 @@ void ContentCacheInParent::FlushPendingNotifications(nsIWidget* aWidget) {
 
   // New notifications which are notified during flushing pending notifications
   // should be merged again.
-  mPendingEventsNeedingAck++;
+  const bool pendingEventNeedingAckIncremented =
+      !mHandlingCompositions.IsEmpty();
+  if (pendingEventNeedingAckIncremented) {
+    mHandlingCompositions.LastElement().mPendingEventsNeedingAck++;
+  }
 
   nsCOMPtr<nsIWidget> widget = aWidget;
 
@@ -1720,7 +1838,13 @@ void ContentCacheInParent::FlushPendingNotifications(nsIWidget* aWidget) {
     }
   }
 
-  if (!--mPendingEventsNeedingAck && !widget->Destroyed() &&
+  // Decrement it which was incremented above.
+  if (!mHandlingCompositions.IsEmpty() && pendingEventNeedingAckIncremented &&
+      mHandlingCompositions.LastElement().mPendingEventsNeedingAck) {
+    mHandlingCompositions.LastElement().mPendingEventsNeedingAck--;
+  }
+
+  if (!PendingEventsNeedingAck() && !widget->Destroyed() &&
       (mPendingTextChange.HasNotification() ||
        mPendingSelectionChange.HasNotification() ||
        mPendingLayoutChange.HasNotification() ||

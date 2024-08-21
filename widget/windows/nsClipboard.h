@@ -33,12 +33,6 @@ class nsClipboard : public nsBaseClipboard, public nsIObserver {
   // nsIObserver
   NS_DECL_NSIOBSERVER
 
-  // nsIClipboard
-  NS_IMETHOD HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList,
-                                    int32_t aWhichClipboard,
-                                    bool* _retval) override;
-  NS_IMETHOD EmptyClipboard(int32_t aWhichClipboard) override;
-
   // Internal Native Routines
   enum class MightNeedToFlush : bool { No, Yes };
   static nsresult CreateNativeDataObject(nsITransferable* aTransferable,
@@ -78,10 +72,14 @@ class nsClipboard : public nsBaseClipboard, public nsIObserver {
 
   // Implement the native clipboard behavior.
   NS_IMETHOD SetNativeClipboardData(nsITransferable* aTransferable,
-                                    nsIClipboardOwner* aOwner,
                                     int32_t aWhichClipboard) override;
   NS_IMETHOD GetNativeClipboardData(nsITransferable* aTransferable,
                                     int32_t aWhichClipboard) override;
+  nsresult EmptyNativeClipboardData(int32_t aWhichClipboard) override;
+  mozilla::Result<int32_t, nsresult> GetNativeClipboardSequenceNumber(
+      int32_t aWhichClipboard) override;
+  mozilla::Result<bool, nsresult> HasNativeClipboardDataMatchingFlavors(
+      const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard) override;
 
   static bool IsInternetShortcut(const nsAString& inFileName);
   static bool FindURLFromLocalFile(IDataObject* inDataObject, UINT inIndex,

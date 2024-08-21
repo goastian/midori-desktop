@@ -104,8 +104,8 @@ class nsPrinterBase : public nsIPrinter {
       const mozilla::gfx::SizeDouble& aSize) const;
 
  private:
-  mozilla::EnumeratedArray<AsyncAttribute, AsyncAttribute::Last,
-                           RefPtr<Promise>>
+  mozilla::EnumeratedArray<AsyncAttribute, RefPtr<Promise>,
+                           size_t(AsyncAttribute::Last)>
       mAsyncAttributePromises;
   // List of built-in, commonly used paper sizes.
   const RefPtr<const mozilla::CommonPaperInfoArray> mCommonPaperInfo;

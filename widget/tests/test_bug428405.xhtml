@@ -23,7 +23,9 @@
   </tabbox>
 
   <script type="application/javascript"><![CDATA[
-    const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+    const {BrowserTestUtils} = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs"
+    );
 
     SimpleTest.waitForExplicitFinish();
 
@@ -55,7 +57,7 @@
     // 6) Start reloading first tab.
     function loadFirstTab() {
       var browser = document.getElementById("tab1browser");
-      BrowserTestUtils.loadURIString(browser, "data:text/html;charset=utf-8,<body><h2>First Tab</h2><p><input type='submit' value='Button' id='button1'/></body>");
+      BrowserTestUtils.startLoadingURIString(browser, "data:text/html;charset=utf-8,<body><h2>First Tab</h2><p><input type='submit' value='Button' id='button1'/></body>");
     }
 
     function configureFirstTab() {
@@ -80,7 +82,7 @@
     // 8) Start loading second tab.
     function loadSecondTab() {
       var browser = document.getElementById("tab2browser");
-      BrowserTestUtils.loadURIString(browser, "data:text/html;charset=utf-8,<body><h2>Second Tab</h2><p><input type='submit' value='Button' id='button1'/></body>");
+      BrowserTestUtils.startLoadingURIString(browser, "data:text/html;charset=utf-8,<body><h2>Second Tab</h2><p><input type='submit' value='Button' id='button1'/></body>");
     }
 
     function configureSecondTab() {

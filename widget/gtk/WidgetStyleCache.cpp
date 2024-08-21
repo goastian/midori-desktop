@@ -81,6 +81,12 @@ static GtkWidget* CreateMenuPopupWidget() {
   return widget;
 }
 
+static GtkWidget* CreateMenuBarWidget() {
+  GtkWidget* widget = gtk_menu_bar_new();
+  AddToWindowContainer(widget);
+  return widget;
+}
+
 static GtkWidget* CreateProgressWidget() {
   GtkWidget* widget = gtk_progress_bar_new();
   AddToWindowContainer(widget);
@@ -104,24 +110,6 @@ static GtkWidget* CreateExpanderWidget() {
 
 static GtkWidget* CreateFrameWidget() {
   GtkWidget* widget = gtk_frame_new(nullptr);
-  AddToWindowContainer(widget);
-  return widget;
-}
-
-static GtkWidget* CreateGripperWidget() {
-  GtkWidget* widget = gtk_handle_box_new();
-  AddToWindowContainer(widget);
-  return widget;
-}
-
-static GtkWidget* CreateToolbarWidget() {
-  GtkWidget* widget = gtk_toolbar_new();
-  gtk_container_add(GTK_CONTAINER(GetWidget(MOZ_GTK_GRIPPER)), widget);
-  return widget;
-}
-
-static GtkWidget* CreateToolbarSeparatorWidget() {
-  GtkWidget* widget = GTK_WIDGET(gtk_separator_tool_item_new());
   AddToWindowContainer(widget);
   return widget;
 }
@@ -400,13 +388,6 @@ static GtkWidget* CreateTreeHeaderCellWidget() {
   return gtk_tree_view_column_get_button(middleTreeViewColumn);
 }
 
-static GtkWidget* CreateTreeHeaderSortArrowWidget() {
-  /* TODO, but it can't be NULL */
-  GtkWidget* widget = gtk_button_new();
-  AddToWindowContainer(widget);
-  return widget;
-}
-
 static GtkWidget* CreateHPanedWidget() {
   GtkWidget* widget = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
   AddToWindowContainer(widget);
@@ -663,10 +644,7 @@ static void CreateHeaderBarButtons() {
   GtkWidget* headerBar = sWidgetStorage[MOZ_GTK_HEADER_BAR];
   MOZ_ASSERT(headerBar, "We're missing header bar widget!");
 
-  gint buttonSpacing = 6;
-  g_object_get(headerBar, "spacing", &buttonSpacing, nullptr);
-
-  GtkWidget* buttonBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, buttonSpacing);
+  GtkWidget* buttonBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   gtk_container_add(GTK_CONTAINER(headerBar), buttonBox);
   // We support only LTR headerbar layout for now.
   gtk_style_context_add_class(gtk_widget_get_style_context(buttonBox),
@@ -717,16 +695,12 @@ static GtkWidget* CreateWidget(WidgetNodeType aAppearance) {
       return CreateScrollbarWidget(aAppearance, GTK_ORIENTATION_VERTICAL);
     case MOZ_GTK_MENUPOPUP:
       return CreateMenuPopupWidget();
+    case MOZ_GTK_MENUBAR:
+      return CreateMenuBarWidget();
     case MOZ_GTK_EXPANDER:
       return CreateExpanderWidget();
     case MOZ_GTK_FRAME:
       return CreateFrameWidget();
-    case MOZ_GTK_GRIPPER:
-      return CreateGripperWidget();
-    case MOZ_GTK_TOOLBAR:
-      return CreateToolbarWidget();
-    case MOZ_GTK_TOOLBAR_SEPARATOR:
-      return CreateToolbarSeparatorWidget();
     case MOZ_GTK_SPINBUTTON:
       return CreateSpinWidget();
     case MOZ_GTK_BUTTON:
@@ -744,8 +718,6 @@ static GtkWidget* CreateWidget(WidgetNodeType aAppearance) {
       return CreateTreeViewWidget();
     case MOZ_GTK_TREE_HEADER_CELL:
       return CreateTreeHeaderCellWidget();
-    case MOZ_GTK_TREE_HEADER_SORTARROW:
-      return CreateTreeHeaderSortArrowWidget();
     case MOZ_GTK_SPLITTER_HORIZONTAL:
       return CreateHPanedWidget();
     case MOZ_GTK_SPLITTER_VERTICAL:
@@ -934,6 +906,9 @@ static GtkStyleContext* GetWidgetRootStyle(WidgetNodeType aNodeType) {
     case MOZ_GTK_MENUITEM:
       style = CreateStyleForWidget(gtk_menu_item_new(), MOZ_GTK_MENUPOPUP);
       break;
+    case MOZ_GTK_MENUBARITEM:
+      style = CreateStyleForWidget(gtk_menu_item_new(), MOZ_GTK_MENUBAR);
+      break;
     case MOZ_GTK_TEXT_VIEW:
       style =
           CreateStyleForWidget(gtk_text_view_new(), MOZ_GTK_SCROLLED_WINDOW);
@@ -1062,10 +1037,6 @@ static GtkStyleContext* GetCssNodeStyleInternal(WidgetNodeType aNodeType) {
     case MOZ_GTK_PROGRESS_CHUNK:
       style = CreateChildCSSNode("progress", MOZ_GTK_PROGRESS_TROUGH);
       break;
-    case MOZ_GTK_GRIPPER:
-      // TODO - create from CSS node
-      style = CreateSubStyleWithClass(MOZ_GTK_GRIPPER, GTK_STYLE_CLASS_GRIP);
-      break;
     case MOZ_GTK_SPINBUTTON_ENTRY:
       // TODO - create from CSS node
       style =
@@ -1107,11 +1078,6 @@ static GtkStyleContext* GetCssNodeStyleInternal(WidgetNodeType aNodeType) {
     case MOZ_GTK_TREEVIEW_VIEW:
       // TODO - create from CSS node
       style = CreateSubStyleWithClass(MOZ_GTK_TREEVIEW, GTK_STYLE_CLASS_VIEW);
-      break;
-    case MOZ_GTK_TREEVIEW_EXPANDER:
-      // TODO - create from CSS node
-      style =
-          CreateSubStyleWithClass(MOZ_GTK_TREEVIEW, GTK_STYLE_CLASS_EXPANDER);
       break;
     case MOZ_GTK_SPLITTER_SEPARATOR_HORIZONTAL:
       style = CreateChildCSSNode("separator", MOZ_GTK_SPLITTER_HORIZONTAL);
@@ -1217,9 +1183,6 @@ static GtkStyleContext* GetWidgetStyleInternal(WidgetNodeType aNodeType) {
                                       GTK_STYLE_CLASS_PROGRESSBAR);
       gtk_style_context_remove_class(style, GTK_STYLE_CLASS_TROUGH);
       break;
-    case MOZ_GTK_GRIPPER:
-      style = CreateSubStyleWithClass(MOZ_GTK_GRIPPER, GTK_STYLE_CLASS_GRIP);
-      break;
     case MOZ_GTK_SPINBUTTON_ENTRY:
       style =
           CreateSubStyleWithClass(MOZ_GTK_SPINBUTTON, GTK_STYLE_CLASS_ENTRY);
@@ -1249,10 +1212,6 @@ static GtkStyleContext* GetWidgetStyleInternal(WidgetNodeType aNodeType) {
       return GetWidgetRootStyle(MOZ_GTK_FRAME);
     case MOZ_GTK_TREEVIEW_VIEW:
       style = CreateSubStyleWithClass(MOZ_GTK_TREEVIEW, GTK_STYLE_CLASS_VIEW);
-      break;
-    case MOZ_GTK_TREEVIEW_EXPANDER:
-      style =
-          CreateSubStyleWithClass(MOZ_GTK_TREEVIEW, GTK_STYLE_CLASS_EXPANDER);
       break;
     case MOZ_GTK_SPLITTER_SEPARATOR_HORIZONTAL:
       style = CreateSubStyleWithClass(MOZ_GTK_SPLITTER_HORIZONTAL,

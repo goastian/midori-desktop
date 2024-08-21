@@ -195,9 +195,6 @@ void GfxInfo::EnsureInitialized() {
       ", Manufacturer: %s", NS_LossyConvertUTF16toASCII(mManufacturer).get());
 
   mSDKVersion = java::sdk::Build::VERSION::SDK_INT();
-  // the HARDWARE field isn't available on Android SDK < 8, but we require 9+
-  // anyway.
-  MOZ_ASSERT(mSDKVersion >= 8);
   jni::String::LocalRef hardware = java::sdk::Build::HARDWARE();
   mHardware = hardware->ToString();
   mAdapterDescription.AppendPrintf(
@@ -353,11 +350,11 @@ GfxInfo::GetDrmRenderDevice(nsACString& aDrmRenderDevice) {
 }
 
 void GfxInfo::AddCrashReportAnnotations() {
-  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::AdapterVendorID,
-                                     mGLStrings->Vendor());
-  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::AdapterDeviceID,
-                                     mGLStrings->Renderer());
-  CrashReporter::AnnotateCrashReport(
+  CrashReporter::RecordAnnotationNSCString(
+      CrashReporter::Annotation::AdapterVendorID, mGLStrings->Vendor());
+  CrashReporter::RecordAnnotationNSCString(
+      CrashReporter::Annotation::AdapterDeviceID, mGLStrings->Renderer());
+  CrashReporter::RecordAnnotationNSCString(
       CrashReporter::Annotation::AdapterDriverVersion, mGLStrings->Version());
 }
 
@@ -410,11 +407,7 @@ nsresult GfxInfo::GetFeatureStatusImpl(
   // Don't evaluate special cases when evaluating the downloaded blocklist.
   if (aDriverInfo.IsEmpty()) {
     if (aFeature == nsIGfxInfo::FEATURE_CANVAS2D_ACCELERATION) {
-      if (mSDKVersion < 11) {
-        // It's slower than software due to not having a compositing fast path
-        *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
-        aFailureId = "FEATURE_FAILURE_CANVAS_2D_SDK";
-      } else if (mGLStrings->Renderer().Find("Vivante GC1000") != -1) {
+      if (mGLStrings->Renderer().Find("Vivante GC1000") != -1) {
         // Blocklist Vivante GC1000. See bug 1248183.
         *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
         aFailureId = "FEATURE_FAILED_CANVAS_2D_HW";
@@ -429,14 +422,6 @@ nsresult GfxInfo::GetFeatureStatusImpl(
           mGLStrings->Renderer().Find("Adreno 205") != -1) {
         *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
         aFailureId = "FEATURE_FAILURE_ADRENO_20x";
-        return NS_OK;
-      }
-
-      if (mSDKVersion <= 17) {
-        if (mGLStrings->Renderer().Find("Adreno (TM) 3") != -1) {
-          *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
-          aFailureId = "FEATURE_FAILURE_ADRENO_3xx";
-        }
         return NS_OK;
       }
 
@@ -679,6 +664,14 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     } else {
       *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
     }
+    return NS_OK;
+  }
+
+  if (aFeature == FEATURE_WEBGPU) {
+    // Ensure WebGPU is disabled by default on Android until it is better
+    // tested.
+    *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+    aFailureId = "FEATURE_FAILURE_WEBGPU_ANDROID";
     return NS_OK;
   }
 

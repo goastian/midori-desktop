@@ -138,14 +138,13 @@ MultiTouchInput::MultiTouchInput(const WidgetTouchEvent& aTouchEvent)
 }
 
 void MultiTouchInput::Translate(const ScreenPoint& aTranslation) {
-  const int32_t xTranslation = (int32_t)(aTranslation.x + 0.5f);
-  const int32_t yTranslation = (int32_t)(aTranslation.y + 0.5f);
+  ScreenIntPoint translation = RoundedToInt(aTranslation);
 
   for (auto& touchData : mTouches) {
     for (auto& historicalData : touchData.mHistoricalData) {
-      historicalData.mScreenPoint.MoveBy(xTranslation, yTranslation);
+      historicalData.mScreenPoint.MoveBy(translation.x, translation.y);
     }
-    touchData.mScreenPoint.MoveBy(xTranslation, yTranslation);
+    touchData.mScreenPoint.MoveBy(translation.x, translation.y);
   }
 }
 
@@ -304,6 +303,9 @@ MouseInput::MouseInput(const WidgetMouseEventBase& aMouseEvent)
     case eMouseHitTest:
       mType = MOUSE_HITTEST;
       break;
+    case eContextMenu:
+      mType = MOUSE_CONTEXTMENU;
+      break;
     default:
       MOZ_ASSERT_UNREACHABLE("Mouse event type not supported");
       break;
@@ -364,6 +366,9 @@ WidgetMouseEvent MouseInput::ToWidgetEvent(nsIWidget* aWidget) const {
       break;
     case MOUSE_HITTEST:
       msg = eMouseHitTest;
+      break;
+    case MOUSE_CONTEXTMENU:
+      msg = eContextMenu;
       break;
     default:
       MOZ_ASSERT_UNREACHABLE(
@@ -608,7 +613,7 @@ WidgetWheelEvent PinchGestureInput::ToWidgetEvent(nsIWidget* aWidget) const {
 }
 
 double PinchGestureInput::ComputeDeltaY(nsIWidget* aWidget) const {
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
   // This converts the pinch gesture value to a fake wheel event that has the
   // control key pressed so that pages can implement custom pinch gesture
   // handling. It may seem strange that this doesn't use a wheel event with

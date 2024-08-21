@@ -11,13 +11,16 @@
 #include "WebExecutorSupport.h"
 
 #include "nsIAsyncVerifyRedirectCallback.h"
+#include "nsICancelable.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIHttpHeaderVisitor.h"
+#include "nsIInputStream.h"
 #include "nsIDNSService.h"
 #include "nsIDNSListener.h"
 #include "nsIDNSRecord.h"
 #include "nsINSSErrorsService.h"
+#include "nsContentUtils.h"
 #include "nsNetUtil.h"  // for NS_NewURI, NS_NewChannel, NS_NewStreamLoader
 #include "nsIPrivateBrowsingChannel.h"
 #include "nsIUploadChannel2.h"
@@ -178,7 +181,7 @@ class LoaderListener final : public GeckoViewStreamListener {
   }
 
   void CompleteWithError(nsresult aStatus, nsIChannel* aChannel) override {
-    ::CompleteWithError(mResult, aStatus, aChannel);
+    mozilla::widget::CompleteWithError(mResult, aStatus, aChannel);
   }
 
   virtual ~LoaderListener() {}
@@ -386,8 +389,8 @@ nsresult WebExecutorSupport::CreateStreamLoader(
     channel->SetLoadFlags(nsIRequest::LOAD_ANONYMOUS);
   }
 
-  bool shouldResistFingerprinting =
-      nsContentUtils::ShouldResistFingerprinting(channel);
+  bool shouldResistFingerprinting = nsContentUtils::ShouldResistFingerprinting(
+      channel, RFPTarget::IsAlwaysEnabledForPrecompute);
   nsCOMPtr<nsICookieJarSettings> cookieJarSettings;
   if (aFlags & java::GeckoWebExecutor::FETCH_FLAGS_PRIVATE) {
     nsCOMPtr<nsIPrivateBrowsingChannel> pbChannel = do_QueryInterface(channel);

@@ -198,11 +198,12 @@ interface nsIPrintSettings : nsISupports
   [noscript, notxpcom, nostdcall] long GetSheetOrientation();
 
   /**
-   * Convenience getter, which returns true IFF the sheet orientation and the
-   * page orientation are orthogonal. (In other words, returns true IFF we
-   * are printing with 2 or 6 pages-per-sheet.)
+   * Convenience getter, which returns true IFF the value of `numPagesPerSheet`
+   * would require us to orient the pages orthogonally to the sheet in order
+   * to make best use of the space on the sheet. Specifically, this returns
+   * true IFF `numPagesPerSheet` is set to 2 or 6 pages-per-sheet.
    */
-  [noscript, notxpcom, nostdcall] bool HasOrthogonalSheetsAndPages();
+  [noscript, notxpcom, nostdcall] boolean HasOrthogonalPagesPerSheet();
 
   /**
    * Makes a new copy
@@ -219,7 +220,7 @@ interface nsIPrintSettings : nsISupports
    * therefore print. The printer name is ignored and it allows for a small
    * delta in sizes to allow for rounding differences.
    */
-  bool equivalentTo(in nsIPrintSettings aPrintSettings);
+  boolean equivalentTo(in nsIPrintSettings aPrintSettings);
 
   /**
    * The edge measurements define the positioning of the headers
@@ -334,7 +335,7 @@ interface nsIPrintSettings : nsISupports
    */
   attribute AString toFileName;
 
-  attribute nsIOutputStream outputStream; /* for kOutputDestinationPrinter */
+  attribute nsIOutputStream outputStream; /* for kOutputDestinationStream */
 
   [infallible] attribute long printPageDelay; /* in milliseconds */
 

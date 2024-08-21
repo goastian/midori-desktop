@@ -221,7 +221,8 @@ static const nsCString GetCharacterCodeNames(const nsAString& aString) {
   return GetCharacterCodeNames(aString.BeginReading(), aString.Length());
 }
 
-/* static */ const char* KeymapWrapper::GetModifierName(Modifier aModifier) {
+/* static */
+const char* KeymapWrapper::GetModifierName(MappedModifier aModifier) {
   switch (aModifier) {
     case CAPS_LOCK:
       return "CapsLock";
@@ -252,7 +253,8 @@ static const nsCString GetCharacterCodeNames(const nsAString& aString) {
   }
 }
 
-/* static */ KeymapWrapper::Modifier KeymapWrapper::GetModifierForGDKKeyval(
+/* static */
+KeymapWrapper::MappedModifier KeymapWrapper::GetModifierForGDKKeyval(
     guint aGdkKeyval) {
   switch (aGdkKeyval) {
     case GDK_Caps_Lock:
@@ -290,7 +292,7 @@ static const nsCString GetCharacterCodeNames(const nsAString& aString) {
   }
 }
 
-guint KeymapWrapper::GetModifierMask(Modifier aModifier) const {
+guint KeymapWrapper::GetGdkModifierMask(MappedModifier aModifier) const {
   switch (aModifier) {
     case CAPS_LOCK:
       return GDK_LOCK_MASK;
@@ -305,7 +307,7 @@ guint KeymapWrapper::GetModifierMask(Modifier aModifier) const {
     case ALT:
       return mModifierMasks[INDEX_ALT];
     case SUPER:
-      return mModifierMasks[INDEX_SUPER];
+      return GDK_SUPER_MASK;
     case HYPER:
       return mModifierMasks[INDEX_HYPER];
     case META:
@@ -404,11 +406,12 @@ void KeymapWrapper::Init() {
           ("%p Init, CapsLock=0x%X, NumLock=0x%X, "
            "ScrollLock=0x%X, Level3=0x%X, Level5=0x%X, "
            "Shift=0x%X, Ctrl=0x%X, Alt=0x%X, Meta=0x%X, Super=0x%X, Hyper=0x%X",
-           this, GetModifierMask(CAPS_LOCK), GetModifierMask(NUM_LOCK),
-           GetModifierMask(SCROLL_LOCK), GetModifierMask(LEVEL3),
-           GetModifierMask(LEVEL5), GetModifierMask(SHIFT),
-           GetModifierMask(CTRL), GetModifierMask(ALT), GetModifierMask(META),
-           GetModifierMask(SUPER), GetModifierMask(HYPER)));
+           this, GetGdkModifierMask(CAPS_LOCK), GetGdkModifierMask(NUM_LOCK),
+           GetGdkModifierMask(SCROLL_LOCK), GetGdkModifierMask(LEVEL3),
+           GetGdkModifierMask(LEVEL5), GetGdkModifierMask(SHIFT),
+           GetGdkModifierMask(CTRL), GetGdkModifierMask(ALT),
+           GetGdkModifierMask(META), GetGdkModifierMask(SUPER),
+           GetGdkModifierMask(HYPER)));
 }
 
 #ifdef MOZ_X11
@@ -530,7 +533,7 @@ void KeymapWrapper::InitBySystemSettingsX11() {
   // decide which modifier flag means one of DOM modifiers.
 
   // mod[0] is Modifier introduced by Mod1.
-  Modifier mod[5];
+  MappedModifier mod[5];
   int32_t foundLevel[5];
   for (uint32_t i = 0; i < ArrayLength(mod); i++) {
     mod[i] = NOT_MODIFIER;
@@ -565,7 +568,7 @@ void KeymapWrapper::InitBySystemSettingsX11() {
 
     const int32_t modIndex = bit - 3;
     for (int32_t j = 0; j < keysyms_per_keycode; j++) {
-      Modifier modifier = GetModifierForGDKKeyval(syms[j]);
+      MappedModifier modifier = GetModifierForGDKKeyval(syms[j]);
       MOZ_LOG(gKeyLog, LogLevel::Info,
               ("%p   InitBySystemSettings, "
                "    Mod%d, j=%d, syms[j]=%s(0x%lX), modifier=%s",
@@ -580,6 +583,7 @@ void KeymapWrapper::InitBySystemSettingsX11() {
         case CAPS_LOCK:
         case SHIFT:
         case CTRL:
+        case SUPER:
           // Ignore the modifiers defined in GDK spec. They shouldn't
           // be mapped to Mod1-5 because they must not work on native
           // GTK applications.
@@ -604,7 +608,7 @@ void KeymapWrapper::InitBySystemSettingsX11() {
   }
 
   for (uint32_t i = 0; i < COUNT_OF_MODIFIER_INDEX; i++) {
-    Modifier modifier;
+    MappedModifier modifier;
     switch (i) {
       case INDEX_NUM_LOCK:
         modifier = NUM_LOCK;
@@ -617,9 +621,6 @@ void KeymapWrapper::InitBySystemSettingsX11() {
         break;
       case INDEX_META:
         modifier = META;
-        break;
-      case INDEX_SUPER:
-        modifier = SUPER;
         break;
       case INDEX_HYPER:
         modifier = HYPER;
@@ -666,7 +667,6 @@ void KeymapWrapper::SetModifierMasks(xkb_keymap* aKeymap) {
   keymapWrapper->SetModifierMask(aKeymap, INDEX_NUM_LOCK, XKB_MOD_NAME_NUM);
   keymapWrapper->SetModifierMask(aKeymap, INDEX_ALT, XKB_MOD_NAME_ALT);
   keymapWrapper->SetModifierMask(aKeymap, INDEX_META, "Meta");
-  keymapWrapper->SetModifierMask(aKeymap, INDEX_SUPER, "Super");
   keymapWrapper->SetModifierMask(aKeymap, INDEX_HYPER, "Hyper");
 
   keymapWrapper->SetModifierMask(aKeymap, INDEX_SCROLL_LOCK, "ScrollLock");
@@ -677,17 +677,17 @@ void KeymapWrapper::SetModifierMasks(xkb_keymap* aKeymap) {
           ("%p KeymapWrapper::SetModifierMasks, CapsLock=0x%X, NumLock=0x%X, "
            "ScrollLock=0x%X, Level3=0x%X, Level5=0x%X, "
            "Shift=0x%X, Ctrl=0x%X, Alt=0x%X, Meta=0x%X, Super=0x%X, Hyper=0x%X",
-           keymapWrapper, keymapWrapper->GetModifierMask(CAPS_LOCK),
-           keymapWrapper->GetModifierMask(NUM_LOCK),
-           keymapWrapper->GetModifierMask(SCROLL_LOCK),
-           keymapWrapper->GetModifierMask(LEVEL3),
-           keymapWrapper->GetModifierMask(LEVEL5),
-           keymapWrapper->GetModifierMask(SHIFT),
-           keymapWrapper->GetModifierMask(CTRL),
-           keymapWrapper->GetModifierMask(ALT),
-           keymapWrapper->GetModifierMask(META),
-           keymapWrapper->GetModifierMask(SUPER),
-           keymapWrapper->GetModifierMask(HYPER)));
+           keymapWrapper, keymapWrapper->GetGdkModifierMask(CAPS_LOCK),
+           keymapWrapper->GetGdkModifierMask(NUM_LOCK),
+           keymapWrapper->GetGdkModifierMask(SCROLL_LOCK),
+           keymapWrapper->GetGdkModifierMask(LEVEL3),
+           keymapWrapper->GetGdkModifierMask(LEVEL5),
+           keymapWrapper->GetGdkModifierMask(SHIFT),
+           keymapWrapper->GetGdkModifierMask(CTRL),
+           keymapWrapper->GetGdkModifierMask(ALT),
+           keymapWrapper->GetGdkModifierMask(META),
+           keymapWrapper->GetGdkModifierMask(SUPER),
+           keymapWrapper->GetGdkModifierMask(HYPER)));
 }
 
 /* This keymap routine is derived from weston-2.0.0/clients/simple-im.c
@@ -758,11 +758,14 @@ static void keyboard_handle_modifiers(void* data, struct wl_keyboard* keyboard,
                                       uint32_t serial, uint32_t mods_depressed,
                                       uint32_t mods_latched,
                                       uint32_t mods_locked, uint32_t group) {}
+static void keyboard_handle_repeat_info(void* data,
+                                        struct wl_keyboard* keyboard,
+                                        int32_t rate, int32_t delay) {}
 
 static const struct wl_keyboard_listener keyboard_listener = {
-    keyboard_handle_keymap, keyboard_handle_enter,     keyboard_handle_leave,
-    keyboard_handle_key,    keyboard_handle_modifiers,
-};
+    keyboard_handle_keymap,    keyboard_handle_enter,
+    keyboard_handle_leave,     keyboard_handle_key,
+    keyboard_handle_modifiers, keyboard_handle_repeat_info};
 
 static void seat_handle_capabilities(void* data, struct wl_seat* seat,
                                      unsigned int caps) {
@@ -974,23 +977,19 @@ guint KeymapWrapper::GetCurrentModifierState() {
 }
 
 /* static */
-bool KeymapWrapper::AreModifiersCurrentlyActive(Modifiers aModifiers) {
-  guint modifierState = GetCurrentModifierState();
-  return AreModifiersActive(aModifiers, modifierState);
-}
-
-/* static */
-bool KeymapWrapper::AreModifiersActive(Modifiers aModifiers,
-                                       guint aModifierState) {
+bool KeymapWrapper::AreModifiersActive(MappedModifiers aModifiers,
+                                       guint aGdkModifierState) {
   NS_ENSURE_TRUE(aModifiers, false);
 
   KeymapWrapper* keymapWrapper = GetInstance();
-  for (uint32_t i = 0; i < sizeof(Modifier) * 8 && aModifiers; i++) {
-    Modifier modifier = static_cast<Modifier>(1 << i);
+  for (uint32_t i = 0; i < sizeof(MappedModifier) * 8 && aModifiers; i++) {
+    MappedModifier modifier = static_cast<MappedModifier>(1 << i);
+    // Is the binary position used by modifier?
     if (!(aModifiers & modifier)) {
       continue;
     }
-    if (!(aModifierState & keymapWrapper->GetModifierMask(modifier))) {
+    // Is the modifier active?
+    if (!(aGdkModifierState & keymapWrapper->GetGdkModifierMask(modifier))) {
       return false;
     }
     aModifiers &= ~modifier;
@@ -1004,39 +1003,45 @@ uint32_t KeymapWrapper::ComputeCurrentKeyModifiers() {
 }
 
 /* static */
-uint32_t KeymapWrapper::ComputeKeyModifiers(guint aModifierState) {
-  KeymapWrapper* keymapWrapper = GetInstance();
-
+uint32_t KeymapWrapper::ComputeKeyModifiers(guint aGdkModifierState) {
   uint32_t keyModifiers = 0;
+  if (!aGdkModifierState) {
+    return keyModifiers;
+  }
+
   // DOM Meta key should be TRUE only on Mac.  We need to discuss this
   // issue later.
-  if (keymapWrapper->AreModifiersActive(SHIFT, aModifierState)) {
+  KeymapWrapper* keymapWrapper = GetInstance();
+  if (keymapWrapper->AreModifiersActive(SHIFT, aGdkModifierState)) {
     keyModifiers |= MODIFIER_SHIFT;
   }
-  if (keymapWrapper->AreModifiersActive(CTRL, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(CTRL, aGdkModifierState)) {
     keyModifiers |= MODIFIER_CONTROL;
   }
-  if (keymapWrapper->AreModifiersActive(ALT, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(ALT, aGdkModifierState)) {
     keyModifiers |= MODIFIER_ALT;
   }
-  if (keymapWrapper->AreModifiersActive(META, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(SUPER, aGdkModifierState) ||
+      keymapWrapper->AreModifiersActive(HYPER, aGdkModifierState) ||
+      // "Meta" state is typically mapped to `Alt` + `Shift`, but we ignore the
+      // state if `Alt` is mapped to "Alt" state.  Additionally it's mapped to
+      // `Win` in Sun/Solaris keyboard layout.  In this case, we want to treat
+      // them as DOM Meta modifier keys like "Super" state in the major Linux
+      // environments.
+      keymapWrapper->AreModifiersActive(META, aGdkModifierState)) {
     keyModifiers |= MODIFIER_META;
   }
-  if (keymapWrapper->AreModifiersActive(SUPER, aModifierState) ||
-      keymapWrapper->AreModifiersActive(HYPER, aModifierState)) {
-    keyModifiers |= MODIFIER_OS;
-  }
-  if (keymapWrapper->AreModifiersActive(LEVEL3, aModifierState) ||
-      keymapWrapper->AreModifiersActive(LEVEL5, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(LEVEL3, aGdkModifierState) ||
+      keymapWrapper->AreModifiersActive(LEVEL5, aGdkModifierState)) {
     keyModifiers |= MODIFIER_ALTGRAPH;
   }
-  if (keymapWrapper->AreModifiersActive(CAPS_LOCK, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(CAPS_LOCK, aGdkModifierState)) {
     keyModifiers |= MODIFIER_CAPSLOCK;
   }
-  if (keymapWrapper->AreModifiersActive(NUM_LOCK, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(NUM_LOCK, aGdkModifierState)) {
     keyModifiers |= MODIFIER_NUMLOCK;
   }
-  if (keymapWrapper->AreModifiersActive(SCROLL_LOCK, aModifierState)) {
+  if (keymapWrapper->AreModifiersActive(SCROLL_LOCK, aGdkModifierState)) {
     keyModifiers |= MODIFIER_SCROLLLOCK;
   }
   return keyModifiers;
@@ -1050,28 +1055,28 @@ guint KeymapWrapper::ConvertWidgetModifierToGdkState(
   }
   struct ModifierMapEntry {
     nsIWidget::Modifiers mWidgetModifier;
-    Modifier mModifier;
+    MappedModifier mModifier;
   };
   // TODO: Currently, we don't treat L/R of each modifier on Linux.
   // TODO: No proper native modifier for Level5.
   static constexpr ModifierMapEntry sModifierMap[] = {
-      {nsIWidget::CAPS_LOCK, Modifier::CAPS_LOCK},
-      {nsIWidget::NUM_LOCK, Modifier::NUM_LOCK},
-      {nsIWidget::SHIFT_L, Modifier::SHIFT},
-      {nsIWidget::SHIFT_R, Modifier::SHIFT},
-      {nsIWidget::CTRL_L, Modifier::CTRL},
-      {nsIWidget::CTRL_R, Modifier::CTRL},
-      {nsIWidget::ALT_L, Modifier::ALT},
-      {nsIWidget::ALT_R, Modifier::ALT},
-      {nsIWidget::ALTGRAPH, Modifier::LEVEL3},
-      {nsIWidget::COMMAND_L, Modifier::SUPER},
-      {nsIWidget::COMMAND_R, Modifier::SUPER}};
+      {nsIWidget::CAPS_LOCK, MappedModifier::CAPS_LOCK},
+      {nsIWidget::NUM_LOCK, MappedModifier::NUM_LOCK},
+      {nsIWidget::SHIFT_L, MappedModifier::SHIFT},
+      {nsIWidget::SHIFT_R, MappedModifier::SHIFT},
+      {nsIWidget::CTRL_L, MappedModifier::CTRL},
+      {nsIWidget::CTRL_R, MappedModifier::CTRL},
+      {nsIWidget::ALT_L, MappedModifier::ALT},
+      {nsIWidget::ALT_R, MappedModifier::ALT},
+      {nsIWidget::ALTGRAPH, MappedModifier::LEVEL3},
+      {nsIWidget::COMMAND_L, MappedModifier::SUPER},
+      {nsIWidget::COMMAND_R, MappedModifier::SUPER}};
 
   guint state = 0;
   KeymapWrapper* instance = GetInstance();
   for (const ModifierMapEntry& entry : sModifierMap) {
     if (aNativeModifiers & entry.mWidgetModifier) {
-      state |= instance->GetModifierMask(entry.mModifier);
+      state |= instance->GetGdkModifierMask(entry.mModifier);
     }
   }
   return state;
@@ -1079,28 +1084,26 @@ guint KeymapWrapper::ConvertWidgetModifierToGdkState(
 
 /* static */
 void KeymapWrapper::InitInputEvent(WidgetInputEvent& aInputEvent,
-                                   guint aModifierState) {
+                                   guint aGdkModifierState) {
   KeymapWrapper* keymapWrapper = GetInstance();
 
-  aInputEvent.mModifiers = ComputeKeyModifiers(aModifierState);
+  aInputEvent.mModifiers = ComputeKeyModifiers(aGdkModifierState);
 
   // Don't log this method for non-important events because e.g., eMouseMove is
   // just noisy and there is no reason to log it.
   bool doLog = aInputEvent.mMessage != eMouseMove;
   if (doLog) {
     MOZ_LOG(gKeyLog, LogLevel::Debug,
-            ("%p InitInputEvent, aModifierState=0x%08X, "
+            ("%p InitInputEvent, aGdkModifierState=0x%08X, "
              "aInputEvent={ mMessage=%s, mModifiers=0x%04X (Shift: %s, "
-             "Control: %s, Alt: %s, "
-             "Meta: %s, OS: %s, AltGr: %s, "
+             "Control: %s, Alt: %s, Meta: %s, AltGr: %s, "
              "CapsLock: %s, NumLock: %s, ScrollLock: %s })",
-             keymapWrapper, aModifierState, ToChar(aInputEvent.mMessage),
+             keymapWrapper, aGdkModifierState, ToChar(aInputEvent.mMessage),
              aInputEvent.mModifiers,
              GetBoolName(aInputEvent.mModifiers & MODIFIER_SHIFT),
              GetBoolName(aInputEvent.mModifiers & MODIFIER_CONTROL),
              GetBoolName(aInputEvent.mModifiers & MODIFIER_ALT),
              GetBoolName(aInputEvent.mModifiers & MODIFIER_META),
-             GetBoolName(aInputEvent.mModifiers & MODIFIER_OS),
              GetBoolName(aInputEvent.mModifiers & MODIFIER_ALTGRAPH),
              GetBoolName(aInputEvent.mModifiers & MODIFIER_CAPSLOCK),
              GetBoolName(aInputEvent.mModifiers & MODIFIER_NUMLOCK),
@@ -1120,13 +1123,13 @@ void KeymapWrapper::InitInputEvent(WidgetInputEvent& aInputEvent,
 
   WidgetMouseEventBase& mouseEvent = *aInputEvent.AsMouseEventBase();
   mouseEvent.mButtons = 0;
-  if (aModifierState & GDK_BUTTON1_MASK) {
+  if (aGdkModifierState & GDK_BUTTON1_MASK) {
     mouseEvent.mButtons |= MouseButtonsFlag::ePrimaryFlag;
   }
-  if (aModifierState & GDK_BUTTON3_MASK) {
+  if (aGdkModifierState & GDK_BUTTON3_MASK) {
     mouseEvent.mButtons |= MouseButtonsFlag::eSecondaryFlag;
   }
-  if (aModifierState & GDK_BUTTON2_MASK) {
+  if (aGdkModifierState & GDK_BUTTON2_MASK) {
     mouseEvent.mButtons |= MouseButtonsFlag::eMiddleFlag;
   }
 
@@ -1243,7 +1246,7 @@ uint32_t KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent) {
 
   // Ignore all modifier state except NumLock.
   guint baseState =
-      (aGdkKeyEvent->state & keymapWrapper->GetModifierMask(NUM_LOCK));
+      (aGdkKeyEvent->state & keymapWrapper->GetGdkModifierMask(NUM_LOCK));
 
   // Basically, we should use unmodified character for deciding our keyCode.
   uint32_t unmodifiedChar = keymapWrapper->GetCharCodeFor(
@@ -1261,7 +1264,7 @@ uint32_t KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent) {
   }
 
   // Retry with shifted keycode.
-  guint shiftState = (baseState | keymapWrapper->GetModifierMask(SHIFT));
+  guint shiftState = (baseState | keymapWrapper->GetGdkModifierMask(SHIFT));
   uint32_t shiftedChar = keymapWrapper->GetCharCodeFor(aGdkKeyEvent, shiftState,
                                                        aGdkKeyEvent->group);
   if (IsBasicLatinLetterOrNumeral(shiftedChar)) {
@@ -1731,6 +1734,79 @@ bool KeymapWrapper::HandleKeyReleaseEvent(nsWindow* aWindow,
   return true;
 }
 
+guint KeymapWrapper::GetModifierState(GdkEventKey* aGdkKeyEvent,
+                                      KeymapWrapper* aWrapper) {
+  guint state = aGdkKeyEvent->state;
+  if (!aGdkKeyEvent->is_modifier) {
+    return state;
+  }
+#ifdef MOZ_X11
+  // NOTE: The state of given key event indicates adjacent state of
+  // modifier keys.  E.g., even if the event is Shift key press event,
+  // the bit for Shift is still false.  By the same token, even if the
+  // event is Shift key release event, the bit for Shift is still true.
+  // Unfortunately, gdk_keyboard_get_modifiers() returns current modifier
+  // state.  It means if there're some pending modifier key press or
+  // key release events, the result isn't what we want.
+  GdkDisplay* gdkDisplay = gdk_display_get_default();
+  if (GdkIsX11Display(gdkDisplay)) {
+    GdkDisplay* gdkDisplay = gdk_display_get_default();
+    Display* display = gdk_x11_display_get_xdisplay(gdkDisplay);
+    if (XEventsQueued(display, QueuedAfterReading)) {
+      XEvent nextEvent;
+      XPeekEvent(display, &nextEvent);
+      if (nextEvent.type == aWrapper->mXKBBaseEventCode) {
+        XkbEvent* XKBEvent = (XkbEvent*)&nextEvent;
+        if (XKBEvent->any.xkb_type == XkbStateNotify) {
+          XkbStateNotifyEvent* stateNotifyEvent =
+              (XkbStateNotifyEvent*)XKBEvent;
+          state &= ~0xFF;
+          state |= stateNotifyEvent->lookup_mods;
+        }
+      }
+    }
+    return state;
+  }
+#endif
+#ifdef MOZ_WAYLAND
+  int mask = 0;
+  switch (aGdkKeyEvent->keyval) {
+    case GDK_Shift_L:
+    case GDK_Shift_R:
+      mask = aWrapper->GetGdkModifierMask(SHIFT);
+      break;
+    case GDK_Control_L:
+    case GDK_Control_R:
+      mask = aWrapper->GetGdkModifierMask(CTRL);
+      break;
+    case GDK_Alt_L:
+    case GDK_Alt_R:
+      mask = aWrapper->GetGdkModifierMask(ALT);
+      break;
+    case GDK_Super_L:
+    case GDK_Super_R:
+      mask = aWrapper->GetGdkModifierMask(SUPER);
+      break;
+    case GDK_Hyper_L:
+    case GDK_Hyper_R:
+      mask = aWrapper->GetGdkModifierMask(HYPER);
+      break;
+    case GDK_Meta_L:
+    case GDK_Meta_R:
+      mask = aWrapper->GetGdkModifierMask(META);
+      break;
+    default:
+      break;
+  }
+  if (aGdkKeyEvent->type == GDK_KEY_PRESS) {
+    state |= mask;
+  } else {
+    state &= ~mask;
+  }
+#endif
+  return state;
+}
+
 /* static */
 void KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
                                  GdkEventKey* aGdkKeyEvent,
@@ -1768,33 +1844,7 @@ void KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
     aKeyEvent.mKeyCode = 0;
   }
 
-  // NOTE: The state of given key event indicates adjacent state of
-  // modifier keys.  E.g., even if the event is Shift key press event,
-  // the bit for Shift is still false.  By the same token, even if the
-  // event is Shift key release event, the bit for Shift is still true.
-  // Unfortunately, gdk_keyboard_get_modifiers() returns current modifier
-  // state.  It means if there're some pending modifier key press or
-  // key release events, the result isn't what we want.
-  guint modifierState = aGdkKeyEvent->state;
-  GdkDisplay* gdkDisplay = gdk_display_get_default();
-#ifdef MOZ_X11
-  if (aGdkKeyEvent->is_modifier && GdkIsX11Display(gdkDisplay)) {
-    Display* display = gdk_x11_display_get_xdisplay(gdkDisplay);
-    if (XEventsQueued(display, QueuedAfterReading)) {
-      XEvent nextEvent;
-      XPeekEvent(display, &nextEvent);
-      if (nextEvent.type == keymapWrapper->mXKBBaseEventCode) {
-        XkbEvent* XKBEvent = (XkbEvent*)&nextEvent;
-        if (XKBEvent->any.xkb_type == XkbStateNotify) {
-          XkbStateNotifyEvent* stateNotifyEvent =
-              (XkbStateNotifyEvent*)XKBEvent;
-          modifierState &= ~0xFF;
-          modifierState |= stateNotifyEvent->lookup_mods;
-        }
-      }
-    }
-  }
-#endif
+  const guint modifierState = GetModifierState(aGdkKeyEvent, keymapWrapper);
   InitInputEvent(aKeyEvent, modifierState);
 
   switch (aGdkKeyEvent->keyval) {
@@ -1951,16 +2001,16 @@ uint32_t KeymapWrapper::GetCharCodeFor(const GdkEventKey* aGdkKeyEvent) {
 }
 
 uint32_t KeymapWrapper::GetCharCodeFor(const GdkEventKey* aGdkKeyEvent,
-                                       guint aModifierState, gint aGroup) {
+                                       guint aGdkModifierState, gint aGroup) {
   guint keyval;
   if (!gdk_keymap_translate_keyboard_state(
           mGdkKeymap, aGdkKeyEvent->hardware_keycode,
-          GdkModifierType(aModifierState), aGroup, &keyval, nullptr, nullptr,
+          GdkModifierType(aGdkModifierState), aGroup, &keyval, nullptr, nullptr,
           nullptr)) {
     return 0;
   }
   GdkEventKey tmpEvent = *aGdkKeyEvent;
-  tmpEvent.state = aModifierState;
+  tmpEvent.state = aGdkModifierState;
   tmpEvent.keyval = keyval;
   tmpEvent.group = aGroup;
   return GetCharCodeFor(&tmpEvent);
@@ -1968,10 +2018,11 @@ uint32_t KeymapWrapper::GetCharCodeFor(const GdkEventKey* aGdkKeyEvent,
 
 uint32_t KeymapWrapper::GetUnmodifiedCharCodeFor(
     const GdkEventKey* aGdkKeyEvent) {
-  guint state = aGdkKeyEvent->state &
-                (GetModifierMask(SHIFT) | GetModifierMask(CAPS_LOCK) |
-                 GetModifierMask(NUM_LOCK) | GetModifierMask(SCROLL_LOCK) |
-                 GetModifierMask(LEVEL3) | GetModifierMask(LEVEL5));
+  guint state =
+      aGdkKeyEvent->state &
+      (GetGdkModifierMask(SHIFT) | GetGdkModifierMask(CAPS_LOCK) |
+       GetGdkModifierMask(NUM_LOCK) | GetGdkModifierMask(SCROLL_LOCK) |
+       GetGdkModifierMask(LEVEL3) | GetGdkModifierMask(LEVEL5));
   uint32_t charCode =
       GetCharCodeFor(aGdkKeyEvent, GdkModifierType(state), aGdkKeyEvent->group);
   if (charCode) {
@@ -1981,7 +2032,7 @@ uint32_t KeymapWrapper::GetUnmodifiedCharCodeFor(
   // is active, let's return a character which is inputted by the key without
   // Level3 nor Level5 Shift.
   guint stateWithoutAltGraph =
-      state & ~(GetModifierMask(LEVEL3) | GetModifierMask(LEVEL5));
+      state & ~(GetGdkModifierMask(LEVEL3) | GetGdkModifierMask(LEVEL5));
   if (state == stateWithoutAltGraph) {
     return 0;
   }
@@ -2063,7 +2114,7 @@ guint KeymapWrapper::GetGDKKeyvalWithoutModifier(
     const GdkEventKey* aGdkKeyEvent) {
   KeymapWrapper* keymapWrapper = GetInstance();
   guint state =
-      (aGdkKeyEvent->state & keymapWrapper->GetModifierMask(NUM_LOCK));
+      (aGdkKeyEvent->state & keymapWrapper->GetGdkModifierMask(NUM_LOCK));
   guint keyval;
   if (!gdk_keymap_translate_keyboard_state(
           keymapWrapper->mGdkKeymap, aGdkKeyEvent->hardware_keycode,
@@ -2072,6 +2123,212 @@ guint KeymapWrapper::GetGDKKeyvalWithoutModifier(
     return 0;
   }
   return keyval;
+}
+
+struct KeyCodeData {
+  const char* str;
+  size_t strlength;
+  uint32_t keycode;
+};
+
+static struct KeyCodeData gKeyCodes[] = {
+#define NS_DEFINE_VK(aDOMKeyName, aDOMKeyCode) \
+  {#aDOMKeyName, sizeof(#aDOMKeyName) - 1, aDOMKeyCode},
+#include "mozilla/VirtualKeyCodeList.h"
+#undef NS_DEFINE_VK
+    {nullptr, 0, 0}};
+
+struct KeyPair {
+  uint32_t DOMKeyCode;
+  guint GDKKeyval;
+};
+
+//
+// Netscape keycodes are defined in widget/public/nsGUIEvent.h
+// GTK keycodes are defined in <gdk/gdkkeysyms.h>
+//
+static const KeyPair gKeyPairs[] = {
+    {NS_VK_CANCEL, GDK_Cancel},
+    {NS_VK_BACK, GDK_BackSpace},
+    {NS_VK_TAB, GDK_Tab},
+    {NS_VK_CLEAR, GDK_Clear},
+    {NS_VK_RETURN, GDK_Return},
+    {NS_VK_SHIFT, GDK_Shift_L},
+    {NS_VK_CONTROL, GDK_Control_L},
+    {NS_VK_ALT, GDK_Alt_L},
+    {NS_VK_META, GDK_Meta_L},
+
+    // Assume that Super or Hyper is always mapped to physical Win key.
+    {NS_VK_WIN, GDK_Super_L},
+
+    // GTK's AltGraph key is similar to Mac's Option (Alt) key.  However,
+    // unfortunately, browsers on Mac are using NS_VK_ALT for it even though
+    // it's really different from Alt key on Windows.
+    // On the other hand, GTK's AltGrapsh keys are really different from
+    // Alt key.  However, there is no AltGrapsh key on Windows.  On Windows,
+    // both Ctrl and Alt keys are pressed internally when AltGr key is pressed.
+    // For some languages' users, AltGraph key is important, so, web
+    // applications on such locale may want to know AltGraph key press.
+    // Therefore, we should map AltGr keycode for them only on GTK.
+    {NS_VK_ALTGR, GDK_ISO_Level3_Shift},
+
+    {NS_VK_PAUSE, GDK_Pause},
+    {NS_VK_CAPS_LOCK, GDK_Caps_Lock},
+    {NS_VK_ESCAPE, GDK_Escape},
+    // { NS_VK_ACCEPT,     GDK_XXX },
+    // { NS_VK_MODECHANGE, GDK_XXX },
+    {NS_VK_SPACE, GDK_space},
+    {NS_VK_PAGE_UP, GDK_Page_Up},
+    {NS_VK_PAGE_DOWN, GDK_Page_Down},
+    {NS_VK_END, GDK_End},
+    {NS_VK_HOME, GDK_Home},
+    {NS_VK_LEFT, GDK_Left},
+    {NS_VK_UP, GDK_Up},
+    {NS_VK_RIGHT, GDK_Right},
+    {NS_VK_DOWN, GDK_Down},
+    {NS_VK_SELECT, GDK_Select},
+    {NS_VK_PRINT, GDK_Print},
+    {NS_VK_EXECUTE, GDK_Execute},
+    {NS_VK_PRINTSCREEN, GDK_Print},
+    {NS_VK_INSERT, GDK_Insert},
+    {NS_VK_DELETE, GDK_Delete},
+    {NS_VK_HELP, GDK_Help},
+
+    {NS_VK_NUM_LOCK, GDK_Num_Lock},
+    {NS_VK_SCROLL_LOCK, GDK_Scroll_Lock},
+
+    // Function keys
+    {NS_VK_F1, GDK_F1},
+    {NS_VK_F2, GDK_F2},
+    {NS_VK_F3, GDK_F3},
+    {NS_VK_F4, GDK_F4},
+    {NS_VK_F5, GDK_F5},
+    {NS_VK_F6, GDK_F6},
+    {NS_VK_F7, GDK_F7},
+    {NS_VK_F8, GDK_F8},
+    {NS_VK_F9, GDK_F9},
+    {NS_VK_F10, GDK_F10},
+    {NS_VK_F11, GDK_F11},
+    {NS_VK_F12, GDK_F12},
+    {NS_VK_F13, GDK_F13},
+    {NS_VK_F14, GDK_F14},
+    {NS_VK_F15, GDK_F15},
+    {NS_VK_F16, GDK_F16},
+    {NS_VK_F17, GDK_F17},
+    {NS_VK_F18, GDK_F18},
+    {NS_VK_F19, GDK_F19},
+    {NS_VK_F20, GDK_F20},
+    {NS_VK_F21, GDK_F21},
+    {NS_VK_F22, GDK_F22},
+    {NS_VK_F23, GDK_F23},
+    {NS_VK_F24, GDK_F24},
+
+    // context menu key, keysym 0xff67, typically keycode 117 on 105-key
+    // (Microsoft) x86 keyboards, located between right 'Windows' key and right
+    // Ctrl key
+    {NS_VK_CONTEXT_MENU, GDK_Menu},
+    {NS_VK_SLEEP, GDK_Sleep},
+
+    {NS_VK_ATTN, GDK_3270_Attn},
+    {NS_VK_CRSEL, GDK_3270_CursorSelect},
+    {NS_VK_EXSEL, GDK_3270_ExSelect},
+    {NS_VK_EREOF, GDK_3270_EraseEOF},
+    {NS_VK_PLAY, GDK_3270_Play},
+    //{ NS_VK_ZOOM,       GDK_XXX },
+    {NS_VK_PA1, GDK_3270_PA1},
+
+    {NS_VK_MULTIPLY, GDK_KP_Multiply},
+    {NS_VK_ADD, GDK_KP_Add},
+    {NS_VK_SEPARATOR, GDK_KP_Separator},
+    {NS_VK_SUBTRACT, GDK_KP_Subtract},
+    {NS_VK_DECIMAL, GDK_KP_Decimal},
+    {NS_VK_DIVIDE, GDK_KP_Divide},
+    {NS_VK_NUMPAD0, GDK_KP_0},
+    {NS_VK_NUMPAD1, GDK_KP_1},
+    {NS_VK_NUMPAD2, GDK_KP_2},
+    {NS_VK_NUMPAD3, GDK_KP_3},
+    {NS_VK_NUMPAD4, GDK_KP_4},
+    {NS_VK_NUMPAD5, GDK_KP_5},
+    {NS_VK_NUMPAD6, GDK_KP_6},
+    {NS_VK_NUMPAD7, GDK_KP_7},
+    {NS_VK_NUMPAD8, GDK_KP_8},
+    {NS_VK_NUMPAD9, GDK_KP_9},
+    {NS_VK_SPACE, GDK_space},
+    {NS_VK_COLON, GDK_colon},
+    {NS_VK_SEMICOLON, GDK_semicolon},
+    {NS_VK_LESS_THAN, GDK_less},
+    {NS_VK_EQUALS, GDK_equal},
+    {NS_VK_GREATER_THAN, GDK_greater},
+    {NS_VK_QUESTION_MARK, GDK_question},
+    {NS_VK_AT, GDK_at},
+    {NS_VK_CIRCUMFLEX, GDK_asciicircum},
+    {NS_VK_EXCLAMATION, GDK_exclam},
+    {NS_VK_DOUBLE_QUOTE, GDK_quotedbl},
+    {NS_VK_HASH, GDK_numbersign},
+    {NS_VK_DOLLAR, GDK_dollar},
+    {NS_VK_PERCENT, GDK_percent},
+    {NS_VK_AMPERSAND, GDK_ampersand},
+    {NS_VK_UNDERSCORE, GDK_underscore},
+    {NS_VK_OPEN_PAREN, GDK_parenleft},
+    {NS_VK_CLOSE_PAREN, GDK_parenright},
+    {NS_VK_ASTERISK, GDK_asterisk},
+    {NS_VK_PLUS, GDK_plus},
+    {NS_VK_PIPE, GDK_bar},
+    {NS_VK_HYPHEN_MINUS, GDK_minus},
+    {NS_VK_OPEN_CURLY_BRACKET, GDK_braceleft},
+    {NS_VK_CLOSE_CURLY_BRACKET, GDK_braceright},
+    {NS_VK_TILDE, GDK_asciitilde},
+    {NS_VK_COMMA, GDK_comma},
+    {NS_VK_PERIOD, GDK_period},
+    {NS_VK_SLASH, GDK_slash},
+    {NS_VK_BACK_QUOTE, GDK_grave},
+    {NS_VK_OPEN_BRACKET, GDK_bracketleft},
+    {NS_VK_BACK_SLASH, GDK_backslash},
+    {NS_VK_CLOSE_BRACKET, GDK_bracketright},
+    {NS_VK_QUOTE, GDK_apostrophe},
+};
+
+/* static */
+guint KeymapWrapper::ConvertGeckoKeyCodeToGDKKeyval(const nsAString& aKeyCode) {
+  NS_ConvertUTF16toUTF8 keyName(aKeyCode);
+  ToUpperCase(keyName);  // We want case-insensitive comparison with data
+                         // stored as uppercase.
+
+  uint32_t keyCode = 0;
+
+  uint32_t keyNameLength = keyName.Length();
+  const char* keyNameStr = keyName.get();
+  for (const auto& code : gKeyCodes) {
+    if (keyNameLength == code.strlength &&
+        !nsCRT::strcmp(code.str, keyNameStr)) {
+      keyCode = code.keycode;
+      break;
+    }
+  }
+
+  // First, try to handle alphanumeric input, not listed in nsKeycodes:
+  // most likely, more letters will be getting typed in than things in
+  // the key list, so we will look through these first.
+
+  if (keyCode >= NS_VK_A && keyCode <= NS_VK_Z) {
+    // gdk and DOM both use the ASCII codes for these keys.
+    return keyCode;
+  }
+
+  // numbers
+  if (keyCode >= NS_VK_0 && keyCode <= NS_VK_9) {
+    // gdk and DOM both use the ASCII codes for these keys.
+    return keyCode - NS_VK_0 + GDK_0;
+  }
+
+  // misc other things
+  for (const auto& pair : gKeyPairs) {
+    if (pair.DOMKeyCode == keyCode) {
+      return pair.GDKKeyval;
+    }
+  }
+
+  return 0;
 }
 
 /* static */
@@ -2334,10 +2591,10 @@ void KeymapWrapper::WillDispatchKeyboardEventInternal(
     return;
   }
 
-  guint baseState =
-      aGdkKeyEvent->state & ~(GetModifierMask(SHIFT) | GetModifierMask(CTRL) |
-                              GetModifierMask(ALT) | GetModifierMask(META) |
-                              GetModifierMask(SUPER) | GetModifierMask(HYPER));
+  guint baseState = aGdkKeyEvent->state &
+                    ~(GetGdkModifierMask(SHIFT) | GetGdkModifierMask(CTRL) |
+                      GetGdkModifierMask(ALT) | GetGdkModifierMask(META) |
+                      GetGdkModifierMask(SUPER) | GetGdkModifierMask(HYPER));
 
   // We shold send both shifted char and unshifted char, all keyboard layout
   // users can use all keys.  Don't change event.mCharCode. On some keyboard
@@ -2349,7 +2606,7 @@ void KeymapWrapper::WillDispatchKeyboardEventInternal(
   bool isLatin = (altCharCodes.mUnshiftedCharCode <= 0xFF);
   // shifted charcode of current keyboard layout.
   altCharCodes.mShiftedCharCode = GetCharCodeFor(
-      aGdkKeyEvent, baseState | GetModifierMask(SHIFT), aGdkKeyEvent->group);
+      aGdkKeyEvent, baseState | GetGdkModifierMask(SHIFT), aGdkKeyEvent->group);
   isLatin = isLatin && (altCharCodes.mShiftedCharCode <= 0xFF);
   if (altCharCodes.mUnshiftedCharCode || altCharCodes.mShiftedCharCode) {
     aKeyEvent.mAlternativeCharCodes.AppendElement(altCharCodes);
@@ -2397,7 +2654,7 @@ void KeymapWrapper::WillDispatchKeyboardEventInternal(
   altLatinCharCodes.mUnshiftedCharCode =
       IsBasicLatinLetterOrNumeral(ch) ? ch : 0;
   // shifted charcode of found keyboard layout.
-  ch = GetCharCodeFor(aGdkKeyEvent, baseState | GetModifierMask(SHIFT),
+  ch = GetCharCodeFor(aGdkKeyEvent, baseState | GetGdkModifierMask(SHIFT),
                       minGroup);
   altLatinCharCodes.mShiftedCharCode = IsBasicLatinLetterOrNumeral(ch) ? ch : 0;
   if (altLatinCharCodes.mUnshiftedCharCode ||
@@ -2405,13 +2662,12 @@ void KeymapWrapper::WillDispatchKeyboardEventInternal(
     aKeyEvent.mAlternativeCharCodes.AppendElement(altLatinCharCodes);
   }
   // If the mCharCode is not Latin, and the level is 0 or 1, we should
-  // replace the mCharCode to Latin char if Alt and Meta keys are not
-  // pressed. (Alt should be sent the localized char for accesskey
-  // like handling of Web Applications.)
+  // replace the mCharCode to Latin char if Alt keys are not pressed. (Alt
+  // should be sent the localized char for accesskey like handling of Web
+  // Applications.)
   ch = aKeyEvent.IsShift() ? altLatinCharCodes.mShiftedCharCode
                            : altLatinCharCodes.mUnshiftedCharCode;
-  if (ch && !(aKeyEvent.IsAlt() || aKeyEvent.IsMeta()) &&
-      charCode == unmodifiedCh) {
+  if (ch && !aKeyEvent.IsAlt() && charCode == unmodifiedCh) {
     aKeyEvent.SetCharCode(ch);
   }
 

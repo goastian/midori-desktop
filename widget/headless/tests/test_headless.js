@@ -1,7 +1,9 @@
 /* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 do_get_profile();
 const server = new HttpServer();
@@ -20,7 +22,7 @@ registerCleanupFunction(() => {
 const progressListeners = new Map();
 
 function loadContentWindow(windowlessBrowser, uri) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let loadURIOptions = {
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     };
@@ -44,7 +46,7 @@ function loadContentWindow(windowlessBrowser, uri) {
         progressListeners.delete(progressListener);
         contentWindow.addEventListener(
           "load",
-          event => {
+          () => {
             resolve(contentWindow);
           },
           { once: true }
@@ -62,6 +64,14 @@ function loadContentWindow(windowlessBrowser, uri) {
     );
   });
 }
+
+add_setup(function () {
+  Services.prefs.setBoolPref("security.allow_unsafe_parent_loads", true);
+});
+
+registerCleanupFunction(function () {
+  Services.prefs.clearUserPref("security.allow_unsafe_parent_loads");
+});
 
 add_task(async function test_snapshot() {
   let windowlessBrowser = Services.appShell.createWindowlessBrowser(false);

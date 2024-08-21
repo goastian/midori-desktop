@@ -20,10 +20,10 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/mscom/COMWrappers.h"
 #include "mozilla/mscom/Utils.h"
+#include "mozilla/widget/WinRegistry.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Services.h"
 #include "mozilla/WidgetUtils.h"
-#include "mozilla/WindowsVersion.h"
 #include "nsAppRunner.h"
 #include "nsComponentManagerUtils.h"
 #include "nsCOMPtr.h"
@@ -37,8 +37,6 @@
 #include "prenv.h"
 #include "ToastNotificationHandler.h"
 #include "ToastNotificationHeaderOnlyUtils.h"
-#include "WinTaskbar.h"
-#include "WinUtils.h"
 
 namespace mozilla {
 namespace widget {
@@ -67,10 +65,6 @@ ToastNotification::ToastNotification() = default;
 ToastNotification::~ToastNotification() = default;
 
 nsresult ToastNotification::Init() {
-  if (!IsWin8OrLater()) {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-
   if (!PR_GetEnv("XPCSHELL_TEST_PROFILE_DIR")) {
     // Windows Toast Notification requires AppId.  But allow `xpcshell` to
     // create the service to test other functionality.
@@ -108,18 +102,6 @@ bool ToastNotification::EnsureAumidRegistered() {
     return true;
   }
 
-  // Fall back to start menu shortcut for Windows 8; toast AUMID registration in
-  // the registry only works in Windows 10+.
-  if (!IsWin10OrLater()) {
-    nsAutoString aumid;
-    if (!WinTaskbar::GetAppUserModelID(aumid)) {
-      return false;
-    }
-
-    mAumid = Some(aumid);
-    return true;
-  }
-
   nsAutoString installHash;
   nsresult rv = gDirServiceProvider->GetInstallHash(installHash);
   NS_ENSURE_SUCCESS(rv, false);
@@ -151,24 +133,16 @@ bool ToastNotification::EnsureAumidRegistered() {
 }
 
 bool ToastNotification::AssignIfMsixAumid(Maybe<nsAutoString>& aAumid) {
-  // `GetCurrentApplicationUserModelId` added in Windows 8.
-  DynamicallyLinkedFunctionPtr<decltype(&GetCurrentApplicationUserModelId)>
-      pGetCurrentApplicationUserModelId(L"kernel32.dll",
-                                        "GetCurrentApplicationUserModelId");
-  if (!pGetCurrentApplicationUserModelId) {
-    return false;
-  }
-
   UINT32 len = 0;
   // ERROR_INSUFFICIENT_BUFFER signals that we're in an MSIX package, and
   // therefore should use the package's AUMID.
-  if (pGetCurrentApplicationUserModelId(&len, nullptr) !=
+  if (GetCurrentApplicationUserModelId(&len, nullptr) !=
       ERROR_INSUFFICIENT_BUFFER) {
     MOZ_LOG(sWASLog, LogLevel::Debug, ("Not an MSIX package"));
     return false;
   }
   mozilla::Buffer<wchar_t> buffer(len);
-  LONG success = pGetCurrentApplicationUserModelId(&len, buffer.Elements());
+  LONG success = GetCurrentApplicationUserModelId(&len, buffer.Elements());
   NS_ENSURE_TRUE(success == ERROR_SUCCESS, false);
 
   aAumid.emplace(buffer.Elements());
@@ -180,7 +154,7 @@ bool ToastNotification::AssignIfNsisAumid(nsAutoString& aInstallHash,
   nsAutoString nsisAumidName =
       u""_ns MOZ_TOAST_APP_NAME u"Toast-"_ns + aInstallHash;
   nsAutoString nsisAumidPath = u"AppUserModelId\\"_ns + nsisAumidName;
-  if (!WinUtils::HasRegistryKey(HKEY_CLASSES_ROOT, nsisAumidPath.get())) {
+  if (!WinRegistry::HasKey(HKEY_CLASSES_ROOT, nsisAumidPath)) {
     MOZ_LOG(sWASLog, LogLevel::Debug,
             ("No CustomActivator value from installer in key 'HKCR\\%s'",
              NS_ConvertUTF16toUTF8(nsisAumidPath).get()));
@@ -474,8 +448,8 @@ ToastNotification::ShowAlert(nsIAlertNotification* aAlert,
   nsAutoString hostPort;
   MOZ_TRY(aAlert->GetSource(hostPort));
 
-  nsAutoString launchUrl;
-  MOZ_TRY(aAlert->GetLaunchURL(launchUrl));
+  nsAutoString opaqueRelaunchData;
+  MOZ_TRY(aAlert->GetOpaqueRelaunchData(opaqueRelaunchData));
 
   bool requireInteraction;
   MOZ_TRY(aAlert->GetRequireInteraction(&requireInteraction));
@@ -490,13 +464,41 @@ ToastNotification::ShowAlert(nsIAlertNotification* aAlert,
   MOZ_TRY(aAlert->GetPrincipal(getter_AddRefs(principal)));
   bool isSystemPrincipal = principal && principal->IsSystemPrincipal();
 
+  bool handleActions = false;
+  auto imagePlacement = ImagePlacement::eInline;
+  if (isSystemPrincipal) {
+    nsCOMPtr<nsIWindowsAlertNotification> winAlert(do_QueryInterface(aAlert));
+    if (winAlert) {
+      MOZ_TRY(winAlert->GetHandleActions(&handleActions));
+
+      nsIWindowsAlertNotification::ImagePlacement placement;
+      MOZ_TRY(winAlert->GetImagePlacement(&placement));
+      switch (placement) {
+        case nsIWindowsAlertNotification::eHero:
+          imagePlacement = ImagePlacement::eHero;
+          break;
+        case nsIWindowsAlertNotification::eIcon:
+          imagePlacement = ImagePlacement::eIcon;
+          break;
+        case nsIWindowsAlertNotification::eInline:
+          imagePlacement = ImagePlacement::eInline;
+          break;
+        default:
+          MOZ_LOG(sWASLog, LogLevel::Error,
+                  ("Invalid image placement enum value: %hhu", placement));
+          return NS_ERROR_UNEXPECTED;
+      }
+    }
+  }
+
   RefPtr<ToastNotificationHandler> oldHandler = mActiveHandlers.Get(name);
 
   NS_ENSURE_TRUE(mAumid.isSome(), NS_ERROR_UNEXPECTED);
   RefPtr<ToastNotificationHandler> handler = new ToastNotificationHandler(
       this, mAumid.ref(), aAlertListener, name, cookie, title, text, hostPort,
-      textClickable, requireInteraction, actions, isSystemPrincipal, launchUrl,
-      inPrivateBrowsing, isSilent);
+      textClickable, requireInteraction, actions, isSystemPrincipal,
+      opaqueRelaunchData, inPrivateBrowsing, isSilent, handleActions,
+      imagePlacement);
   mActiveHandlers.InsertOrUpdate(name, RefPtr{handler});
 
   MOZ_LOG(sWASLog, LogLevel::Debug,
@@ -549,8 +551,8 @@ ToastNotification::GetXmlStringForWindowsAlert(nsIAlertNotification* aAlert,
   nsAutoString hostPort;
   MOZ_TRY(aAlert->GetSource(hostPort));
 
-  nsAutoString launchUrl;
-  MOZ_TRY(aAlert->GetLaunchURL(launchUrl));
+  nsAutoString opaqueRelaunchData;
+  MOZ_TRY(aAlert->GetOpaqueRelaunchData(opaqueRelaunchData));
 
   bool requireInteraction;
   MOZ_TRY(aAlert->GetRequireInteraction(&requireInteraction));
@@ -569,7 +571,7 @@ ToastNotification::GetXmlStringForWindowsAlert(nsIAlertNotification* aAlert,
   RefPtr<ToastNotificationHandler> handler = new ToastNotificationHandler(
       this, mAumid.ref(), nullptr /* aAlertListener */, name, cookie, title,
       text, hostPort, textClickable, requireInteraction, actions,
-      isSystemPrincipal, launchUrl, inPrivateBrowsing, isSilent);
+      isSystemPrincipal, opaqueRelaunchData, inPrivateBrowsing, isSilent);
 
   // Usually, this will be empty during testing, making test output
   // deterministic.
@@ -602,8 +604,7 @@ RefPtr<ToastHandledPromise> ToastNotification::VerifyTagPresentOrFallback(
         MOZ_LOG(sWASLog, LogLevel::Debug,
                 ("External windowsTag '%s' is handled by handler [%p]",
                  NS_ConvertUTF16toUTF8(aWindowsTag).get(), handler.get()));
-        ToastHandledResolve handled{u""_ns, u""_ns};
-        return ToastHandledPromise::CreateAndResolve(handled, __func__);
+        return ToastHandledPromise::CreateAndResolve(true, __func__);
       }
     } else {
       MOZ_LOG(sWASLog, LogLevel::Debug,
@@ -611,7 +612,11 @@ RefPtr<ToastHandledPromise> ToastNotification::VerifyTagPresentOrFallback(
     }
   }
 
-  // Fallback handling
+  // Fallback handling is required.
+
+  MOZ_LOG(sWASLog, LogLevel::Debug,
+          ("External windowsTag '%s' is not handled",
+           NS_ConvertUTF16toUTF8(aWindowsTag).get()));
 
   RefPtr<ToastHandledPromise::Private> fallbackPromise =
       new ToastHandledPromise::Private(__func__);
@@ -624,38 +629,7 @@ RefPtr<ToastHandledPromise> ToastNotification::VerifyTagPresentOrFallback(
   // handling were no longer handled in a `WndProc` context.
   NS_DispatchBackgroundTask(NS_NewRunnableFunction(
       "VerifyTagPresentOrFallback fallback background task",
-      [fallbackPromise, aWindowsTag = nsString(aWindowsTag),
-       aAumid = nsString(mAumid.ref())]() {
-        MOZ_ASSERT(mscom::IsCOMInitializedOnCurrentThread());
-
-        bool foundTag;
-        nsAutoString launchUrl;
-        nsAutoString privilegedName;
-
-        nsresult rv = ToastNotificationHandler::
-            FindLaunchURLAndPrivilegedNameForWindowsTag(
-                aWindowsTag, aAumid, foundTag, launchUrl, privilegedName);
-
-        if (NS_FAILED(rv) || !foundTag) {
-          MOZ_LOG(sWASLog, LogLevel::Error,
-                  ("Failed to get launch URL and privileged name for "
-                   "notification tag '%s'",
-                   NS_ConvertUTF16toUTF8(aWindowsTag).get()));
-
-          fallbackPromise->Reject(false, __func__);
-          return;
-        }
-
-        MOZ_LOG(sWASLog, LogLevel::Debug,
-                ("Found launch URL '%s' and privileged name '%s' for "
-                 "windowsTag '%s'",
-                 NS_ConvertUTF16toUTF8(launchUrl).get(),
-                 NS_ConvertUTF16toUTF8(privilegedName).get(),
-                 NS_ConvertUTF16toUTF8(aWindowsTag).get()));
-
-        ToastHandledResolve handled{launchUrl, privilegedName};
-        fallbackPromise->Resolve(handled, __func__);
-      }));
+      [fallbackPromise]() { fallbackPromise->Resolve(false, __func__); }));
 
   return fallbackPromise;
 }
@@ -673,8 +647,7 @@ void ToastNotification::SignalComNotificationHandled(
       do_GetService(NS_WINDOWMEDIATOR_CONTRACTID));
   if (winMediator) {
     nsCOMPtr<mozIDOMWindowProxy> navWin;
-    winMediator->GetMostRecentWindow(u"navigator:browser",
-                                     getter_AddRefs(navWin));
+    winMediator->GetMostRecentBrowserWindow(getter_AddRefs(navWin));
     if (navWin) {
       nsCOMPtr<nsIWidget> widget =
           WidgetUtils::DOMWindowToWidget(nsPIDOMWindowOuter::From(navWin));
@@ -760,7 +733,7 @@ ToastNotification::HandleWindowsTag(const nsAString& aWindowsTag,
       ->Then(
           GetMainThreadSerialEventTarget(), __func__,
           [aWindowsTag = nsString(aWindowsTag),
-           promise](const ToastHandledResolve& aResolved) {
+           promise](const bool aTagWasHandled) {
             // We no longer need to query toast information from OS and can
             // allow the COM server to proceed (toast information is lost once
             // the COM server's `Activate` callback returns).
@@ -772,25 +745,15 @@ ToastNotification::HandleWindowsTag(const nsAString& aWindowsTag,
               return;
             }
 
-            // Resolve the DOM Promise with a JS object. Set `launchUrl` and/or
-            // `privilegedName` properties if fallback handling is necessary.
+            // Resolve the DOM Promise with a JS object. Set properties if
+            // fallback handling is necessary.
 
             JSContext* cx = js.cx();
             JS::Rooted<JSObject*> obj(cx, JS_NewPlainObject(cx));
 
-            auto setProperty = [&](const char* name, const nsString& value) {
-              JS::Rooted<JSString*> title(cx,
-                                          JS_NewUCStringCopyZ(cx, value.get()));
-              JS::Rooted<JS::Value> attVal(cx, JS::StringValue(title));
-              Unused << NS_WARN_IF(!JS_SetProperty(cx, obj, name, attVal));
-            };
-
-            if (!aResolved.launchUrl.IsEmpty()) {
-              setProperty("launchUrl", aResolved.launchUrl);
-            }
-            if (!aResolved.privilegedName.IsEmpty()) {
-              setProperty("privilegedName", aResolved.privilegedName);
-            }
+            JS::Rooted<JS::Value> attVal(cx, JS::BooleanValue(aTagWasHandled));
+            Unused << NS_WARN_IF(
+                !JS_SetProperty(cx, obj, "tagWasHandled", attVal));
 
             promise->MaybeResolve(obj);
           },
@@ -812,6 +775,9 @@ ToastNotification::CloseAlert(const nsAString& aAlertName,
                               bool aContextClosed) {
   RefPtr<ToastNotificationHandler> handler;
   if (NS_WARN_IF(!mActiveHandlers.Get(aAlertName, getter_AddRefs(handler)))) {
+    // This can happen when the handler is gone but the closure signal is not
+    // yet reached to the content process, and then the process tries closing
+    // the same signal.
     return NS_OK;
   }
 
@@ -905,6 +871,44 @@ ToastNotification::RemoveAllNotificationsForInstall() {
       Unused << NS_WARN_IF(FAILED(hr));
     }
   }();
+
+  return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS_INHERITED(WindowsAlertNotification, AlertNotification,
+                            nsIWindowsAlertNotification)
+
+NS_IMETHODIMP
+WindowsAlertNotification::GetHandleActions(bool* aHandleActions) {
+  *aHandleActions = mHandleActions;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WindowsAlertNotification::SetHandleActions(bool aHandleActions) {
+  mHandleActions = aHandleActions;
+  return NS_OK;
+}
+
+NS_IMETHODIMP WindowsAlertNotification::GetImagePlacement(
+    nsIWindowsAlertNotification::ImagePlacement* aImagePlacement) {
+  *aImagePlacement = mImagePlacement;
+  return NS_OK;
+}
+
+NS_IMETHODIMP WindowsAlertNotification::SetImagePlacement(
+    nsIWindowsAlertNotification::ImagePlacement aImagePlacement) {
+  switch (aImagePlacement) {
+    case eHero:
+    case eIcon:
+    case eInline:
+      mImagePlacement = aImagePlacement;
+      break;
+    default:
+      MOZ_LOG(sWASLog, LogLevel::Error,
+              ("Invalid image placement enum value: %hhu", aImagePlacement));
+      return NS_ERROR_INVALID_ARG;
+  }
 
   return NS_OK;
 }

@@ -18,7 +18,6 @@
 #include "mozilla/MiscEvents.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/ToString.h"
-#include "mozilla/WindowsVersion.h"
 
 #ifndef IME_PROP_ACCEPT_WIDE_VKEY
 #  define IME_PROP_ACCEPT_WIDE_VKEY 0x20
@@ -224,8 +223,7 @@ bool IMMHandler::IsActiveIMEInBlockList() {
   // ATOK 2008 and ATOK 2009 crash when user just opens their open state.
   // ATOK 2010 isn't installable newly on Win 7 or later, but we have a lot of
   // crash reports.
-  if (IsWin8OrLater() &&
-      (IsATOK2006Active() || IsATOK2007Active() || IsATOK2008Active() ||
+  if ((IsATOK2006Active() || IsATOK2007Active() || IsATOK2008Active() ||
        IsATOK2009Active() || IsATOK2010Active())) {
     return true;
   }
@@ -357,7 +355,7 @@ IMENotificationRequests IMMHandler::GetIMENotificationRequests() {
 // used for checking the lParam of WM_IME_COMPOSITION
 #define IS_COMPOSING_LPARAM(lParam) \
   ((lParam) & (GCS_COMPSTR | GCS_COMPATTR | GCS_COMPCLAUSE | GCS_CURSORPOS))
-#define IS_COMMITTING_LPARAM(lParam) ((lParam)&GCS_RESULTSTR)
+#define IS_COMMITTING_LPARAM(lParam) ((lParam) & GCS_RESULTSTR)
 // Some IMEs (e.g., the standard IME for Korean) don't have caret position,
 // then, we should not set caret position to compositionchange event.
 #define NO_IME_CARET -1

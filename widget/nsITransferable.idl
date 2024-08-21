@@ -169,6 +169,11 @@ interface nsITransferable : nsISupports
   void setTransferData(in string aFlavor, in nsISupports aData);
 
   /**
+   * Removes the data from all flavors.
+   */
+  void clearAllData();
+
+  /**
     * Add the data flavor, indicating that this transferable
     * can receive this type of flavor
     *
@@ -194,12 +199,16 @@ interface nsITransferable : nsISupports
   [notxpcom, nostdcall] attribute boolean isPrivateData;
 
   /**
-   * The principal of the source dom node this transferable was
-   * created from and the contentPolicyType for the transferable.
-   * Note, currently only used on Windows for network principal and
-   * contentPolicyType information in clipboard and drag operations.
+   * The principal associated with this transferable. This could be either the
+   * node principal of the source DOM node from which this transferable was
+   * created, or the principal of the global from which this transferable was
+   * created.
    */
-  [notxpcom, nostdcall] attribute nsIPrincipal requestingPrincipal;
+  [notxpcom, nostdcall] attribute nsIPrincipal dataPrincipal;
+
+  /**
+   * the contentPolicyType for this transferable.
+   */
   [notxpcom, nostdcall] attribute nsContentPolicyType contentPolicyType;
 
   /**

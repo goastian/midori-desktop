@@ -10,6 +10,7 @@
 #include "base/task.h"
 #include "mozilla/Hal.h"
 #include "gfxConfig.h"
+#include "nsDragService.h"
 #include "nsExceptionHandler.h"
 #include "nsIScreen.h"
 #include "nsWindow.h"
@@ -33,9 +34,11 @@
 #include "mozilla/Hal.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/intl/OSPreferences.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/java/GeckoAppShellNatives.h"
+#include "mozilla/java/GeckoDragAndDropNatives.h"
 #include "mozilla/java/GeckoResultWrappers.h"
 #include "mozilla/java/GeckoThreadNatives.h"
 #include "mozilla/java/XPCOMEventTargetNatives.h"
@@ -50,7 +53,7 @@
 #include <pthread.h>
 #include <wchar.h>
 
-#ifdef MOZ_ANDROID_HISTORY
+#ifdef MOZ_GECKOVIEW_HISTORY
 #  include "nsNetUtil.h"
 #  include "nsIURI.h"
 #  include "IHistory.h"
@@ -67,7 +70,6 @@
 #include "GeckoNetworkManager.h"
 #include "GeckoProcessManager.h"
 #include "GeckoSystemStateListener.h"
-#include "GeckoTelemetryDelegate.h"
 #include "GeckoVRManager.h"
 #include "ImageDecoderSupport.h"
 #include "JavaBuiltins.h"
@@ -331,17 +333,8 @@ class GeckoAppShellSupport final
 
   static bool IsParentProcess() { return XRE_IsParentProcess(); }
 
-  static jni::Object::LocalRef IsGpuProcessEnabled() {
-    java::GeckoResult::GlobalRef result = java::GeckoResult::New();
-
-    NS_DispatchToMainThread(NS_NewRunnableFunction(
-        "GeckoAppShellSupport::IsGpuProcessEnabled", [result]() {
-          result->Complete(gfx::gfxConfig::IsEnabled(gfx::Feature::GPU_PROCESS)
-                               ? java::sdk::Boolean::TRUE()
-                               : java::sdk::Boolean::FALSE());
-        }));
-
-    return jni::Object::Ref::From(result);
+  static bool IsGpuProcessEnabled() {
+    return gfx::gfxVars::GPUProcessEnabled();
   }
 };
 
@@ -410,7 +403,6 @@ nsAppShell::nsAppShell()
       GeckoAppShellSupport::Init();
       XPCOMEventTargetWrapper::Init();
       mozilla::widget::Telemetry::Init();
-      mozilla::widget::GeckoTelemetryDelegate::Init();
 
       if (XRE_IsGPUProcess()) {
         mozilla::gl::AndroidSurfaceTexture::Init();
@@ -441,7 +433,6 @@ nsAppShell::nsAppShell()
     mozilla::widget::Base64UtilsSupport::Init();
     nsWindow::InitNatives();
     mozilla::gl::AndroidSurfaceTexture::Init();
-    mozilla::widget::GeckoTelemetryDelegate::Init();
 
     java::GeckoThread::SetState(java::GeckoThread::State::JNI_READY());
 

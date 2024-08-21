@@ -371,6 +371,9 @@ struct NativeIMEContext final {
   // See also NS_ONLY_ONE_NATIVE_IME_CONTEXT.
   uintptr_t mRawNativeIMEContext;
   // Process ID of the origin of mNativeIMEContext.
+  // static_cast<uint64_t>(-1) if the instance is not initialized properly.
+  // 0 if the instance is originated in the parent process.
+  // 1 or greater if the instance is originated in a content process.
   uint64_t mOriginProcessID;
 
   NativeIMEContext() : mRawNativeIMEContext(0), mOriginProcessID(0) {
@@ -384,7 +387,12 @@ struct NativeIMEContext final {
 
   bool IsValid() const {
     return mRawNativeIMEContext &&
-           mOriginProcessID != static_cast<uintptr_t>(-1);
+           mOriginProcessID != static_cast<uint64_t>(-1);
+  }
+
+  bool IsOriginatedInParentProcess() const {
+    return mOriginProcessID != 0 &&
+           mOriginProcessID != static_cast<uint64_t>(-1);
   }
 
   void Init(nsIWidget* aWidget);
@@ -443,18 +451,20 @@ struct InputContext final {
 
   bool IsInputAttributeChanged(const InputContext& aOldContext) const {
     return mIMEState.mEnabled != aOldContext.mIMEState.mEnabled ||
-#if defined(ANDROID) || defined(MOZ_WIDGET_GTK) || defined(XP_WIN)
+#if defined(ANDROID) || defined(MOZ_WIDGET_GTK) || defined(XP_WIN) || \
+    defined(XP_IOS)
            // input type and inputmode are supported by Windows IME API, GTK
-           // IME API and Android IME API
+           // IME API, Android IME API and iOS API.
            mHTMLInputType != aOldContext.mHTMLInputType ||
            mHTMLInputMode != aOldContext.mHTMLInputMode ||
 #endif
-#if defined(ANDROID) || defined(MOZ_WIDGET_GTK)
-           // autocapitalize is supported by Android IME API and GTK IME API
+#if defined(ANDROID) || defined(MOZ_WIDGET_GTK) || defined(XP_IOS)
+           // autocapitalize is supported by Android IME API, GTK IME API, and
+           // iOS API
            mAutocapitalize != aOldContext.mAutocapitalize ||
 #endif
-#if defined(ANDROID)
-           // enterkeyhint is only supported by Android IME API.
+#if defined(ANDROID) || defined(XP_IOS)
+           // enterkeyhint is only supported by Android IME API and iOS API.
            mActionHint != aOldContext.mActionHint ||
 #endif
            false;

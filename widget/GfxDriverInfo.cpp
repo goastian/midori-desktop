@@ -11,9 +11,6 @@
 
 using namespace mozilla::widget;
 
-int32_t GfxDriverInfo::allFeatures = 0;
-uint64_t GfxDriverInfo::allDriverVersions = ~(uint64_t(0));
-
 GfxDeviceFamily*
     GfxDriverInfo::sDeviceFamilies[static_cast<size_t>(DeviceFamily::Max)];
 nsString*
@@ -31,7 +28,7 @@ GfxDriverInfo::GfxDriverInfo()
       mDriverVendor(GfxDriverInfo::GetDriverVendor(DriverVendor::All)),
       mDevices(GfxDriverInfo::GetDeviceFamily(DeviceFamily::All)),
       mDeleteDevices(false),
-      mFeature(allFeatures),
+      mFeature(optionalFeatures),
       mFeatureStatus(nsIGfxInfo::FEATURE_STATUS_OK),
       mComparisonOp(DRIVER_COMPARISON_IGNORED),
       mDriverVersion(0),
@@ -331,11 +328,106 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x193b);
       APPEND_DEVICE(0x193d);
       break;
+    case DeviceFamily::IntelKabyLake:
+      APPEND_DEVICE(0x5902);
+      APPEND_DEVICE(0x5906);
+      APPEND_DEVICE(0x5908);
+      APPEND_DEVICE(0x590A);
+      APPEND_DEVICE(0x590B);
+      APPEND_DEVICE(0x590E);
+      APPEND_DEVICE(0x5913);
+      APPEND_DEVICE(0x5915);
+      APPEND_DEVICE(0x5912);
+      APPEND_DEVICE(0x5916);
+      APPEND_DEVICE(0x5917);
+      APPEND_DEVICE(0x591A);
+      APPEND_DEVICE(0x591B);
+      APPEND_DEVICE(0x591D);
+      APPEND_DEVICE(0x591E);
+      APPEND_DEVICE(0x5921);
+      APPEND_DEVICE(0x5923);
+      APPEND_DEVICE(0x5926);
+      APPEND_DEVICE(0x5927);
+      APPEND_DEVICE(0x593B);
+      APPEND_DEVICE(0x591C);
+      APPEND_DEVICE(0x87C0);
+      break;
     case DeviceFamily::IntelHD520:
       APPEND_DEVICE(0x1916);
       break;
     case DeviceFamily::IntelMobileHDGraphics:
       APPEND_DEVICE(0x0046); /* IntelMobileHDGraphics */
+      break;
+    case DeviceFamily::IntelGen12:
+      // Rocket Lake
+      APPEND_DEVICE(0x4C8C);  // rkl_gt05
+      APPEND_DEVICE(0x4C8A);  // rkl_gt1
+      APPEND_DEVICE(0x4C8B);  // rkl_gt1
+      APPEND_DEVICE(0x4C90);  // rkl_gt1
+      APPEND_DEVICE(0x4C9A);  // rkl_gt1
+      // Alder Lake
+      APPEND_DEVICE(0x4683);  // adl_gt05
+      APPEND_DEVICE(0x4693);  // adl_gt05
+      APPEND_DEVICE(0x4680);  // adl_gt1
+      APPEND_DEVICE(0x4681);  // adl_gt1
+      APPEND_DEVICE(0x4682);  // adl_gt1
+      APPEND_DEVICE(0x4688);  // adl_gt1
+      APPEND_DEVICE(0x4689);  // adl_gt1
+      APPEND_DEVICE(0x4690);  // adl_gt1
+      APPEND_DEVICE(0x4691);  // adl_gt1
+      APPEND_DEVICE(0x4692);  // adl_gt1
+      APPEND_DEVICE(0x4626);  // adl_gt2
+      APPEND_DEVICE(0x4628);  // adl_gt2
+      APPEND_DEVICE(0x462A);  // adl_gt2
+      APPEND_DEVICE(0x46A0);  // adl_gt2
+      APPEND_DEVICE(0x46A1);  // adl_gt2
+      APPEND_DEVICE(0x46A2);  // adl_gt2
+      APPEND_DEVICE(0x46A3);  // adl_gt2
+      APPEND_DEVICE(0x46A6);  // adl_gt2
+      APPEND_DEVICE(0x46A8);  // adl_gt2
+      APPEND_DEVICE(0x46AA);  // adl_gt2
+      APPEND_DEVICE(0x46B0);  // adl_gt2
+      APPEND_DEVICE(0x46B1);  // adl_gt2
+      APPEND_DEVICE(0x46B2);  // adl_gt2
+      APPEND_DEVICE(0x46B3);  // adl_gt2
+      APPEND_DEVICE(0x46C0);  // adl_gt2
+      APPEND_DEVICE(0x46C1);  // adl_gt2
+      APPEND_DEVICE(0x46C2);  // adl_gt2
+      APPEND_DEVICE(0x46C3);  // adl_gt2
+      APPEND_DEVICE(0x46D0);  // adl_n
+      APPEND_DEVICE(0x46D1);  // adl_n
+      APPEND_DEVICE(0x46D2);  // adl_n
+      // Tiger Lake
+      APPEND_DEVICE(0x9A60);  // tgl_gt1
+      APPEND_DEVICE(0x9A68);  // tgl_gt1
+      APPEND_DEVICE(0x9A70);  // tgl_gt1
+      APPEND_DEVICE(0x9A40);  // tgl_gt2
+      APPEND_DEVICE(0x9A49);  // tgl_gt2
+      APPEND_DEVICE(0x9A59);  // tgl_gt2
+      APPEND_DEVICE(0x9A78);  // tgl_gt2
+      APPEND_DEVICE(0x9AC0);  // tgl_gt2
+      APPEND_DEVICE(0x9AC9);  // tgl_gt2
+      APPEND_DEVICE(0x9AD9);  // tgl_gt2
+      APPEND_DEVICE(0x9AF8);  // tgl_gt2
+      // Raptop Lake
+      APPEND_DEVICE(0xA780);  // rpl
+      APPEND_DEVICE(0xA781);  // rpl
+      APPEND_DEVICE(0xA782);  // rpl
+      APPEND_DEVICE(0xA783);  // rpl
+      APPEND_DEVICE(0xA788);  // rpl
+      APPEND_DEVICE(0xA789);  // rpl
+      APPEND_DEVICE(0xA720);  // rpl_p
+      APPEND_DEVICE(0xA721);  // rpl_p
+      APPEND_DEVICE(0xA7A0);  // rpl_p
+      APPEND_DEVICE(0xA7A1);  // rpl_p
+      APPEND_DEVICE(0xA7A8);  // rpl_p
+      APPEND_DEVICE(0xA7A9);  // rpl_p
+      // DG1
+      APPEND_DEVICE(0x4905);
+      APPEND_DEVICE(0x4906);
+      APPEND_DEVICE(0x4907);
+      APPEND_DEVICE(0x4908);
+      APPEND_DEVICE(0x4909);
       break;
     case DeviceFamily::NvidiaBlockD3D9Layers:
       // Glitches whilst scrolling (see bugs 612007, 644787, 645872)
@@ -627,8 +719,10 @@ const nsAString& GfxDriverInfo::GetDeviceVendor(DeviceFamily id) {
     case DeviceFamily::IntelSandyBridge:
     case DeviceFamily::IntelGen7Baytrail:
     case DeviceFamily::IntelSkylake:
+    case DeviceFamily::IntelKabyLake:
     case DeviceFamily::IntelHD520:
     case DeviceFamily::IntelMobileHDGraphics:
+    case DeviceFamily::IntelGen12:
     case DeviceFamily::IntelWebRenderBlocked:
     case DeviceFamily::Bug1116812:
     case DeviceFamily::Bug1155608:

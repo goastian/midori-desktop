@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 #if defined(MOZ_ASAN) || defined(FUZZING)
 #  include <signal.h>
@@ -25,7 +26,6 @@
 #  include <stdio.h>
 #endif
 
-#include "mozilla/widget/mozwayland.h"
 #include "prlink.h"
 #include "va/va.h"
 
@@ -33,6 +33,8 @@
 
 // Print VA-API test results to stdout and logging to stderr
 #define OUTPUT_PIPE 1
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // bits to use decoding vaapitest() return values.
 constexpr int CODEC_HW_H264 = 1 << 4;
@@ -103,7 +105,7 @@ static void vaapitest(const char* aRenderDevicePath) {
 
   libDrm = dlopen("libva-drm.so.2", RTLD_LAZY);
   if (!libDrm) {
-    record_error("VA-API test failed: libva-drm.so.2 is missing.");
+    log("vaapitest failed: libva-drm.so.2 is missing\n");
     return;
   }
 
@@ -116,7 +118,7 @@ static void vaapitest(const char* aRenderDevicePath) {
 
   display = sVaGetDisplayDRM(renderDeviceFD);
   if (!display) {
-    record_error("VA-API test failed: sVaGetDisplayDRM failed.");
+    record_error("VA-API test failed: vaGetDisplayDRM failed.");
     return;
   }
 
@@ -124,7 +126,6 @@ static void vaapitest(const char* aRenderDevicePath) {
   VAStatus status = vaInitialize(display, &major, &minor);
   if (status != VA_STATUS_SUCCESS) {
     log("vaInitialize failed %d\n", status);
-    record_error("VA-API test failed: failed to initialise VAAPI connection.");
     return;
   } else {
     log("vaInitialize finished\n");
@@ -184,7 +185,7 @@ static void vaapitest(const char* aRenderDevicePath) {
         } else if (!strncmp(profstr, "AV1", 3)) {
           codecs |= CODEC_HW_AV1;
         } else {
-          record_warning("VA-API test unknown profile.\n");
+          record_warning("VA-API test unknown profile.");
         }
         vaDestroyConfig(display, config);
         foundProfile = true;

@@ -6,33 +6,48 @@
 #ifndef __JumpListBuilder_h__
 #define __JumpListBuilder_h__
 
-#include <windows.h>
-
-#undef NTDDI_VERSION
-#define NTDDI_VERSION NTDDI_WIN7
-// Needed for various com interfaces
-#include <shobjidl.h>
-#undef LogSeverity  // SetupAPI.h #defines this as DWORD
-
-#include "nsString.h"
-
 #include "nsIJumpListBuilder.h"
-#include "nsIJumpListItem.h"
-#include "JumpListItem.h"
+
 #include "nsIObserver.h"
-#include "nsTArray.h"
-#include "mozilla/Attributes.h"
+#include "nsProxyRelease.h"
 #include "mozilla/LazyIdleThread.h"
-#include "mozilla/mscom/AgileReference.h"
-#include "mozilla/ReentrantMonitor.h"
 
 namespace mozilla {
+
+namespace dom {
+struct WindowsJumpListShortcutDescription;
+}  // namespace dom
+
 namespace widget {
 
-namespace detail {
-class DoneCommitListBuildCallback;
-}  // namespace detail
+/**
+ * This is an abstract class for a backend to write to the Windows Jump List.
+ *
+ * It has a 1-to-1 method mapping with ICustomDestinationList. The abtract
+ * class allows us to implement a "fake" backend for automated testing.
+ */
+class JumpListBackend {
+  NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
 
+  virtual bool IsAvailable() = 0;
+
+  virtual HRESULT SetAppID(LPCWSTR pszAppID) = 0;
+  virtual HRESULT BeginList(UINT* pcMinSlots, REFIID riid, void** ppv) = 0;
+  virtual HRESULT AddUserTasks(IObjectArray* poa) = 0;
+  virtual HRESULT AppendCategory(LPCWSTR pszCategory, IObjectArray* poa) = 0;
+  virtual HRESULT CommitList() = 0;
+  virtual HRESULT AbortList() = 0;
+  virtual HRESULT DeleteList(LPCWSTR pszAppID) = 0;
+  virtual HRESULT AppendKnownCategory(KNOWNDESTCATEGORY category) = 0;
+
+ protected:
+  virtual ~JumpListBackend() {}
+};
+
+/**
+ * JumpListBuilder is a component that can be used to manage the Windows
+ * Jump List off of the main thread.
+ */
 class JumpListBuilder : public nsIJumpListBuilder, public nsIObserver {
   virtual ~JumpListBuilder();
 
@@ -41,28 +56,44 @@ class JumpListBuilder : public nsIJumpListBuilder, public nsIObserver {
   NS_DECL_NSIJUMPLISTBUILDER
   NS_DECL_NSIOBSERVER
 
-  JumpListBuilder();
-
- protected:
-  static Atomic<bool> sBuildingList;
+  explicit JumpListBuilder(const nsAString& aAppUserModelId,
+                           RefPtr<JumpListBackend> aTestingBackend = nullptr);
 
  private:
-  mscom::AgileReference mJumpListMgr MOZ_GUARDED_BY(mMonitor);
-  uint32_t mMaxItems MOZ_GUARDED_BY(mMonitor);
-  bool mHasCommit;
-  RefPtr<LazyIdleThread> mIOThread;
-  ReentrantMonitor mMonitor;
-  nsString mAppUserModelId;
-
-  bool IsSeparator(nsCOMPtr<nsIJumpListItem>& item);
+  // These all run on the lazy helper thread.
+  void DoSetupBackend();
+  void DoSetupTestingBackend(RefPtr<JumpListBackend> aTestingBackend);
+  void DoShutdownBackend();
+  void DoSetAppIDIfAvailable(nsString aAppUserModelID);
+  void DoIsAvailable(const nsMainThreadPtrHandle<dom::Promise>& aPromiseHolder);
+  void DoCheckForRemovals(
+      const nsMainThreadPtrHandle<dom::Promise>& aPromiseHolder);
+  void DoPopulateJumpList(
+      const nsTArray<dom::WindowsJumpListShortcutDescription>&&
+          aTaskDescriptions,
+      const nsAString& aCustomTitle,
+      const nsTArray<dom::WindowsJumpListShortcutDescription>&&
+          aCustomDescriptions,
+      const nsMainThreadPtrHandle<dom::Promise>& aPromiseHolder);
+  void DoClearJumpList(
+      const nsMainThreadPtrHandle<dom::Promise>& aPromiseHolder);
   void RemoveIconCacheAndGetJumplistShortcutURIs(IObjectArray* aObjArray,
                                                  nsTArray<nsString>& aURISpecs);
   void DeleteIconFromDisk(const nsAString& aPath);
-  nsresult RemoveIconCacheForAllItems();
-  void DoCommitListBuild(RefPtr<detail::DoneCommitListBuildCallback> aCallback);
-  void DoInitListBuild(RefPtr<dom::Promise>&& aPromise);
+  nsresult GetShellLinkFromDescription(
+      const dom::WindowsJumpListShortcutDescription& aDesc,
+      RefPtr<IShellLinkW>& aShellLink);
 
-  friend class WinTaskbar;
+  // This is written to once during construction on the main thread before the
+  // lazy helper thread is created. After that, the lazy helper thread might
+  // read from it.
+  nsString mAppUserModelId;
+
+  // This is only accessed by the lazy helper thread.
+  RefPtr<JumpListBackend> mJumpListBackend;
+
+  // This is only accessed by the main thread.
+  RefPtr<LazyIdleThread> mIOThread;
 };
 
 }  // namespace widget

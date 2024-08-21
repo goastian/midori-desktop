@@ -12,16 +12,17 @@
 
 #include "mozilla/widget/mozwayland.h"
 #include "mozilla/widget/gbm.h"
+#include "mozilla/widget/fractional-scale-v1-client-protocol.h"
 #include "mozilla/widget/idle-inhibit-unstable-v1-client-protocol.h"
 #include "mozilla/widget/relative-pointer-unstable-v1-client-protocol.h"
 #include "mozilla/widget/pointer-constraints-unstable-v1-client-protocol.h"
 #include "mozilla/widget/linux-dmabuf-unstable-v1-client-protocol.h"
 #include "mozilla/widget/viewporter-client-protocol.h"
 #include "mozilla/widget/xdg-activation-v1-client-protocol.h"
+#include "mozilla/widget/xdg-dbus-annotation-v1-client-protocol.h"
 #include "mozilla/widget/xdg-output-unstable-v1-client-protocol.h"
 
-namespace mozilla {
-namespace widget {
+namespace mozilla::widget {
 
 // Our general connection to Wayland display server,
 // holds our display connection and runs event loop.
@@ -48,6 +49,13 @@ class nsWaylandDisplay {
   }
   zwp_linux_dmabuf_v1* GetDmabuf() { return mDmabuf; };
   xdg_activation_v1* GetXdgActivation() { return mXdgActivation; };
+  xdg_dbus_annotation_manager_v1* GetXdgDbusAnnotationManager() {
+    return mXdgDbusAnnotationManager;
+  }
+  wp_fractional_scale_manager_v1* GetFractionalScaleManager() {
+    return mFractionalScaleManager;
+  }
+  bool IsPrimarySelectionEnabled() { return mIsPrimarySelectionEnabled; }
 
   void SetShm(wl_shm* aShm);
   void SetCompositor(wl_compositor* aCompositor);
@@ -60,6 +68,12 @@ class nsWaylandDisplay {
   void SetPointerConstraints(zwp_pointer_constraints_v1* aPointerConstraints);
   void SetDmabuf(zwp_linux_dmabuf_v1* aDmabuf);
   void SetXdgActivation(xdg_activation_v1* aXdgActivation);
+  void SetXdgDbusAnnotationManager(
+      xdg_dbus_annotation_manager_v1* aXdgDbusAnnotationManager);
+  void SetFractionalScaleManager(wp_fractional_scale_manager_v1* aManager) {
+    mFractionalScaleManager = aManager;
+  }
+  void EnablePrimarySelection() { mIsPrimarySelectionEnabled = true; }
 
   ~nsWaylandDisplay();
 
@@ -76,15 +90,17 @@ class nsWaylandDisplay {
   wp_viewporter* mViewporter = nullptr;
   zwp_linux_dmabuf_v1* mDmabuf = nullptr;
   xdg_activation_v1* mXdgActivation = nullptr;
+  xdg_dbus_annotation_manager_v1* mXdgDbusAnnotationManager = nullptr;
+  wp_fractional_scale_manager_v1* mFractionalScaleManager = nullptr;
   bool mExplicitSync = false;
+  bool mIsPrimarySelectionEnabled = false;
 };
 
 wl_display* WaylandDisplayGetWLDisplay();
 nsWaylandDisplay* WaylandDisplayGet();
 void WaylandDisplayRelease();
 
-}  // namespace widget
-}  // namespace mozilla
+}  // namespace mozilla::widget
 
 template <class T>
 static inline T* WaylandRegistryBind(struct wl_registry* wl_registry,

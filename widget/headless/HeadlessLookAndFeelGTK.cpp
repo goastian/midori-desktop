@@ -32,9 +32,6 @@ nsresult HeadlessLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::CaretWidth:
       aResult = 1;
       break;
-    case IntID::ShowCaretDuringSelection:
-      aResult = 0;
-      break;
     case IntID::SelectTextfieldsOnKeyFocus:
       aResult = 1;
       break;
@@ -87,22 +84,12 @@ nsresult HeadlessLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::TreeScrollLinesMax:
       aResult = 3;
       break;
-    case IntID::TabFocusModel:
-      aResult = nsIContent::eTabFocus_textControlsMask;
-      break;
     case IntID::ChosenMenuItemsShouldBlink:
       aResult = 1;
       break;
     case IntID::WindowsAccentColorInTitlebar:
-    case IntID::WindowsDefaultTheme:
-    case IntID::DWMCompositor:
       aResult = 0;
       res = NS_ERROR_NOT_IMPLEMENTED;
-      break;
-    case IntID::WindowsClassic:
-    case IntID::WindowsGlass:
-      aResult = 0;
-      res = NS_ERROR_FAILURE;
       break;
     case IntID::AlertNotificationOrigin:
       aResult = NS_ALERT_TOP;
@@ -124,9 +111,6 @@ nsresult HeadlessLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
       break;
     case IntID::ScrollbarButtonAutoRepeatBehavior:
       aResult = 0;
-      break;
-    case IntID::TooltipDelay:
-      aResult = 500;
       break;
     case IntID::SwipeAnimationEnabled:
       aResult = 0;

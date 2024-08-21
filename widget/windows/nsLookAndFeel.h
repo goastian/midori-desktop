@@ -6,13 +6,10 @@
 #ifndef __nsLookAndFeel
 #define __nsLookAndFeel
 
-#include <bitset>
 #include <windows.h>
 
 #include "nsXPLookAndFeel.h"
 #include "gfxFont.h"
-#include "mozilla/RangedArray.h"
-#include "nsIWindowsRegKey.h"
 
 /*
  * Gesture System Metrics
@@ -43,6 +40,14 @@
 #define SYS_COLOR_MAX 30
 #define SYS_COLOR_COUNT (SYS_COLOR_MAX - SYS_COLOR_MIN + 1)
 
+// Undocumented SPI, see bug 1712669 comment 4.
+#define MOZ_SPI_CURSORSIZE 0x2028
+#define MOZ_SPI_SETCURSORSIZE 0x2029
+
+namespace mozilla::widget::WinRegistry {
+class KeyWatcher;
+}
+
 class nsLookAndFeel final : public nsXPLookAndFeel {
  public:
   nsLookAndFeel();
@@ -58,30 +63,66 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
   char16_t GetPasswordCharacterImpl() override;
 
  private:
+  struct TitlebarColors {
+    // NOTE: These are the DWM accent colors, which might not match the
+    // UISettings/UWP accent color in some cases, see bug 1796730.
+    mozilla::Maybe<nscolor> mAccent;
+    mozilla::Maybe<nscolor> mAccentText;
+    mozilla::Maybe<nscolor> mAccentInactive;
+    mozilla::Maybe<nscolor> mAccentInactiveText;
+
+    bool mUseAccent = false;
+
+    struct Set {
+      nscolor mBg = 0;
+      nscolor mFg = 0;
+      nscolor mBorder = 0;
+    };
+
+    Set mActiveLight;
+    Set mActiveDark;
+
+    Set mInactiveLight;
+    Set mInactiveDark;
+
+    const Set& Get(mozilla::ColorScheme aScheme, bool aActive) const {
+      if (aScheme == mozilla::ColorScheme::Dark) {
+        return aActive ? mActiveDark : mInactiveDark;
+      }
+      return aActive ? mActiveLight : mInactiveLight;
+    }
+  };
+
+  TitlebarColors ComputeTitlebarColors();
+
   nscolor GetColorForSysColorIndex(int index);
 
   LookAndFeelFont GetLookAndFeelFontInternal(const LOGFONTW& aLogFont,
                                              bool aUseShellDlg);
 
+  uint32_t SystemColorFilter();
+
   LookAndFeelFont GetLookAndFeelFont(LookAndFeel::FontID anID);
 
   // Cached colors and flags indicating success in their retrieval.
   mozilla::Maybe<nscolor> mColorMenuHoverText;
-  mozilla::Maybe<nscolor> mColorAccent;
-  mozilla::Maybe<nscolor> mColorAccentText;
-  mozilla::Maybe<nscolor> mColorMediaText;
-  mozilla::Maybe<nscolor> mColorCommunicationsText;
 
   mozilla::Maybe<nscolor> mDarkHighlight;
   mozilla::Maybe<nscolor> mDarkHighlightText;
 
+  TitlebarColors mTitlebarColors;
+
+  nscolor mColorAccent = 0;
+  nscolor mColorAccentText = 0;
+
   nscolor mSysColorTable[SYS_COLOR_COUNT];
 
+  mozilla::UniquePtr<mozilla::widget::WinRegistry::KeyWatcher>
+      mColorFilterWatcher;
+  uint32_t mCurrentColorFilter = 0;
+
   bool mInitialized = false;
-
   void EnsureInit();
-
-  nsCOMPtr<nsIWindowsRegKey> mDwmKey;
 };
 
 #endif

@@ -36,7 +36,7 @@ class GtkCompositorWidget;
 class WindowSurfaceProvider final {
  public:
   WindowSurfaceProvider();
-  ~WindowSurfaceProvider() = default;
+  ~WindowSurfaceProvider();
 
   /**
    * Initializes the WindowSurfaceProvider by giving it the window
@@ -45,11 +45,12 @@ class WindowSurfaceProvider final {
    * while WindowSurfaceProvider is used.
    */
 #ifdef MOZ_WAYLAND
-  void Initialize(RefPtr<nsWindow> aWidget);
-  void Initialize(GtkCompositorWidget* aCompositorWidget);
+  bool Initialize(RefPtr<nsWindow> aWidget);
+  bool Initialize(GtkCompositorWidget* aCompositorWidget);
 #endif
 #ifdef MOZ_X11
-  void Initialize(Window aWindow, Visual* aVisual, int aDepth, bool aIsShaped);
+  bool Initialize(Window aWindow, bool aIsShaped);
+  Window GetXWindow() const { return mXWindow; }
 #endif
 
   /**
@@ -80,7 +81,7 @@ class WindowSurfaceProvider final {
    */
   mozilla::Mutex mMutex MOZ_UNANNOTATED;
   // WindowSurface needs to be re-created as underlying window was changed.
-  mozilla::Atomic<bool> mWindowSurfaceValid;
+  bool mWindowSurfaceValid;
 #ifdef MOZ_WAYLAND
   RefPtr<nsWindow> mWidget;
   // WindowSurfaceProvider is owned by GtkCompositorWidget so we don't need
@@ -90,7 +91,12 @@ class WindowSurfaceProvider final {
 #ifdef MOZ_X11
   bool mIsShaped;
   int mXDepth;
-  Window mXWindow;
+  // Make mXWindow atomic to allow it read from different threads
+  // and make tsan happy.
+  // We don't care much about actual mXWindow value (it may be valid XWindow or
+  // nullptr) because we invalidate mXWindow at compositor/renderer thread
+  // before it's release in unmap handler.
+  Atomic<Window, Relaxed> mXWindow;
   Visual* mXVisual;
 #endif
 };

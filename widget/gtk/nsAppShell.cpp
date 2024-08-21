@@ -23,11 +23,11 @@
 #include "mozilla/WidgetUtils.h"
 #include "nsIPowerManagerService.h"
 #ifdef MOZ_ENABLE_DBUS
-#  include <dbus/dbus-glib-lowlevel.h>
 #  include <gio/gio.h>
-#  include "WakeLockListener.h"
 #  include "nsIObserverService.h"
+#  include "WidgetUtilsGtk.h"
 #endif
+#include "WakeLockListener.h"
 #include "gfxPlatform.h"
 #include "nsAppRunner.h"
 #include "mozilla/XREAppData.h"
@@ -39,11 +39,13 @@
 #endif
 
 using namespace mozilla;
+using namespace mozilla::widget;
 using mozilla::widget::HeadlessScreenHelper;
 using mozilla::widget::ScreenHelperGTK;
 using mozilla::widget::ScreenManager;
 
 #define NOTIFY_TOKEN 0xFA
+#define QUIT_TOKEN 0xFB
 
 LazyLogModule gWidgetLog("Widget");
 LazyLogModule gWidgetDragLog("WidgetDrag");
@@ -51,9 +53,10 @@ LazyLogModule gWidgetWaylandLog("WidgetWayland");
 LazyLogModule gWidgetPopupLog("WidgetPopup");
 LazyLogModule gWidgetVsync("WidgetVsync");
 LazyLogModule gDmabufLog("Dmabuf");
-LazyLogModule gClipboardLog("WidgetClipboard");
 
 static GPollFunc sPollFunc;
+
+nsAppShell* sAppShell = nullptr;
 
 // Wrapper function to disable hang monitoring while waiting in poll().
 static gint PollWrapper(GPollFD* aUfds, guint aNfsd, gint aTimeout) {
@@ -141,13 +144,23 @@ gboolean nsAppShell::EventProcessorCallback(GIOChannel* source,
 
   unsigned char c;
   Unused << read(self->mPipeFDs[0], &c, 1);
-  NS_ASSERTION(c == (unsigned char)NOTIFY_TOKEN, "wrong token");
-
-  self->NativeEventCallback();
+  switch (c) {
+    case NOTIFY_TOKEN:
+      self->NativeEventCallback();
+      break;
+    case QUIT_TOKEN:
+      self->Exit();
+      break;
+    default:
+      NS_ASSERTION(false, "wrong token");
+      break;
+  }
   return TRUE;
 }
 
 nsAppShell::~nsAppShell() {
+  sAppShell = nullptr;
+
 #ifdef MOZ_ENABLE_DBUS
   StopDBusListening();
 #endif
@@ -158,16 +171,63 @@ nsAppShell::~nsAppShell() {
   if (mPipeFDs[1]) close(mPipeFDs[1]);
 }
 
+mozilla::StaticRefPtr<WakeLockListener> sWakeLockListener;
+static void AddScreenWakeLockListener() {
+  nsCOMPtr<nsIPowerManagerService> powerManager =
+      do_GetService(POWERMANAGERSERVICE_CONTRACTID);
+  if (powerManager) {
+    sWakeLockListener = new WakeLockListener();
+    powerManager->AddWakeLockListener(sWakeLockListener);
+  } else {
+    NS_WARNING(
+        "Failed to retrieve PowerManagerService, wakelocks will be broken!");
+  }
+}
+
+static void RemoveScreenWakeLockListener() {
+  nsCOMPtr<nsIPowerManagerService> powerManager =
+      do_GetService(POWERMANAGERSERVICE_CONTRACTID);
+  if (powerManager) {
+    powerManager->RemoveWakeLockListener(sWakeLockListener);
+    sWakeLockListener = nullptr;
+  }
+}
+
 #ifdef MOZ_ENABLE_DBUS
-static void SessionSleepCallback(DBusGProxy* aProxy, gboolean aSuspend,
-                                 gpointer data) {
+void nsAppShell::DBusSessionSleepCallback(GDBusProxy* aProxy,
+                                          gchar* aSenderName,
+                                          gchar* aSignalName,
+                                          GVariant* aParameters,
+                                          gpointer aUserData) {
+  if (g_strcmp0(aSignalName, "PrepareForSleep")) {
+    return;
+  }
   nsCOMPtr<nsIObserverService> observerService =
       mozilla::services::GetObserverService();
   if (!observerService) {
     return;
   }
+  if (!g_variant_is_of_type(aParameters, G_VARIANT_TYPE_TUPLE) ||
+      g_variant_n_children(aParameters) != 1) {
+    NS_WARNING(
+        nsPrintfCString("Unexpected location updated signal params type: %s\n",
+                        g_variant_get_type_string(aParameters))
+            .get());
+    return;
+  }
 
-  if (aSuspend) {
+  RefPtr<GVariant> variant =
+      dont_AddRef(g_variant_get_child_value(aParameters, 0));
+  if (!g_variant_is_of_type(variant, G_VARIANT_TYPE_BOOLEAN)) {
+    NS_WARNING(
+        nsPrintfCString("Unexpected location updated signal params type: %s\n",
+                        g_variant_get_type_string(aParameters))
+            .get());
+    return;
+  }
+
+  gboolean suspend = g_variant_get_boolean(variant);
+  if (suspend) {
     // Post sleep_notification
     observerService->NotifyObservers(nullptr, NS_WIDGET_SLEEP_OBSERVER_TOPIC,
                                      nullptr);
@@ -178,136 +238,125 @@ static void SessionSleepCallback(DBusGProxy* aProxy, gboolean aSuspend,
   }
 }
 
-static void TimedatePropertiesChangedCallback(DBusGProxy* aProxy,
-                                              char* interface,
-                                              GHashTable* aChanged,
-                                              char** aInvalidated,
-                                              gpointer aData) {
-  // dbus signals are not fine-grained enough for us to only react to timezone
-  // changes, so we need to ensure that timezone is one of the properties
-  // changed.
-  if (g_hash_table_contains(aChanged, "Timezone")) {
-    nsBaseAppShell::OnSystemTimezoneChange();
+void nsAppShell::DBusTimedatePropertiesChangedCallback(GDBusProxy* aProxy,
+                                                       gchar* aSenderName,
+                                                       gchar* aSignalName,
+                                                       GVariant* aParameters,
+                                                       gpointer aUserData) {
+  if (g_strcmp0(aSignalName, "PropertiesChanged")) {
+    return;
   }
+  nsBaseAppShell::OnSystemTimezoneChange();
 }
 
-static DBusHandlerResult ConnectionSignalFilter(DBusConnection* aConnection,
-                                                DBusMessage* aMessage,
-                                                void* aData) {
-  if (dbus_message_is_signal(aMessage, DBUS_INTERFACE_LOCAL, "Disconnected")) {
-    auto* appShell = static_cast<nsAppShell*>(aData);
-    appShell->StopDBusListening();
-    // We do not return DBUS_HANDLER_RESULT_HANDLED here because the connection
-    // might be shared and some other filters might want to do something.
+void nsAppShell::DBusConnectClientResponse(GObject* aObject,
+                                           GAsyncResult* aResult,
+                                           gpointer aUserData) {
+  GUniquePtr<GError> error;
+  RefPtr<GDBusProxy> proxyClient =
+      dont_AddRef(g_dbus_proxy_new_finish(aResult, getter_Transfers(error)));
+  if (!proxyClient) {
+    if (!IsCancelledGError(error.get())) {
+      NS_WARNING(
+          nsPrintfCString("Failed to connect to client: %s\n", error->message)
+              .get());
+    }
+    return;
   }
 
-  return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+  RefPtr self = static_cast<nsAppShell*>(aUserData);
+  if (!strcmp(g_dbus_proxy_get_name(proxyClient), "org.freedesktop.login1")) {
+    self->mLogin1Proxy = std::move(proxyClient);
+    g_signal_connect(self->mLogin1Proxy, "g-signal",
+                     G_CALLBACK(DBusSessionSleepCallback), self);
+  } else {
+    self->mTimedate1Proxy = std::move(proxyClient);
+    g_signal_connect(self->mTimedate1Proxy, "g-signal",
+                     G_CALLBACK(DBusTimedatePropertiesChangedCallback), self);
+  }
 }
 
 // Based on
 // https://github.com/lcp/NetworkManager/blob/240f47c892b4e935a3e92fc09eb15163d1fa28d8/src/nm-sleep-monitor-systemd.c
 // Use login1 to signal sleep and wake notifications.
 void nsAppShell::StartDBusListening() {
-  GUniquePtr<GError> error;
-  mDBusConnection = dbus_g_bus_get(DBUS_BUS_SYSTEM, getter_Transfers(error));
-  if (!mDBusConnection) {
-    NS_WARNING(nsPrintfCString("gds: Failed to open connection to bus %s\n",
-                               error->message)
-                   .get());
-    return;
-  }
+  MOZ_DIAGNOSTIC_ASSERT(!mLogin1Proxy, "Already configured?");
+  MOZ_DIAGNOSTIC_ASSERT(!mTimedate1Proxy, "Already configured?");
+  MOZ_DIAGNOSTIC_ASSERT(!mLogin1ProxyCancellable, "Already configured?");
+  MOZ_DIAGNOSTIC_ASSERT(!mTimedate1ProxyCancellable, "Already configured?");
 
-  DBusConnection* dbusConnection =
-      dbus_g_connection_get_connection(mDBusConnection);
+  mLogin1ProxyCancellable = dont_AddRef(g_cancellable_new());
+  mTimedate1ProxyCancellable = dont_AddRef(g_cancellable_new());
 
-  // Make sure we do not exit the entire program if DBus connection gets
-  // lost.
-  dbus_connection_set_exit_on_disconnect(dbusConnection, false);
+  g_dbus_proxy_new_for_bus(
+      G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, nullptr,
+      "org.freedesktop.login1", "/org/freedesktop/login1",
+      "org.freedesktop.login1.Manager", mLogin1ProxyCancellable,
+      reinterpret_cast<GAsyncReadyCallback>(DBusConnectClientResponse), this);
 
-  // Listening to signals the DBus connection is going to get so we will
-  // know when it is lost and we will be able to disconnect cleanly.
-  dbus_connection_add_filter(dbusConnection, ConnectionSignalFilter, this,
-                             nullptr);
-
-  mLogin1Proxy = dbus_g_proxy_new_for_name(
-      mDBusConnection, "org.freedesktop.login1", "/org/freedesktop/login1",
-      "org.freedesktop.login1.Manager");
-
-  if (!mLogin1Proxy) {
-    NS_WARNING("gds: error creating login dbus proxy\n");
-    return;
-  }
-
-  dbus_g_proxy_add_signal(mLogin1Proxy, "PrepareForSleep", G_TYPE_BOOLEAN,
-                          G_TYPE_INVALID);
-  dbus_g_proxy_connect_signal(mLogin1Proxy, "PrepareForSleep",
-                              G_CALLBACK(SessionSleepCallback), this, nullptr);
-
-  mTimedate1Proxy = dbus_g_proxy_new_for_name(
-      mDBusConnection, "org.freedesktop.timedate1",
-      "/org/freedesktop/timedate1", "org.freedesktop.DBus.Properties");
-
-  if (!mTimedate1Proxy) {
-    NS_WARNING("gds: error creating timedate dbus proxy\n");
-    return;
-  }
-
-  dbus_g_proxy_add_signal(
-      mTimedate1Proxy, "PropertiesChanged", G_TYPE_STRING,
-      dbus_g_type_get_map("GHashTable", G_TYPE_STRING, G_TYPE_VALUE),
-      G_TYPE_STRV, G_TYPE_INVALID);
-  dbus_g_proxy_connect_signal(mTimedate1Proxy, "PropertiesChanged",
-                              G_CALLBACK(TimedatePropertiesChangedCallback),
-                              this, nullptr);
+  g_dbus_proxy_new_for_bus(
+      G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, nullptr,
+      "org.freedesktop.timedate1", "/org/freedesktop/timedate1",
+      "org.freedesktop.DBus.Properties", mTimedate1ProxyCancellable,
+      reinterpret_cast<GAsyncReadyCallback>(DBusConnectClientResponse), this);
 }
 
 void nsAppShell::StopDBusListening() {
-  // If mDBusConnection isn't initialized, that means we are not really
-  // listening.
-  if (!mDBusConnection) {
-    return;
-  }
-  dbus_connection_remove_filter(
-      dbus_g_connection_get_connection(mDBusConnection), ConnectionSignalFilter,
-      this);
-
   if (mLogin1Proxy) {
-    dbus_g_proxy_disconnect_signal(mLogin1Proxy, "PrepareForSleep",
-                                   G_CALLBACK(SessionSleepCallback), this);
-    g_object_unref(mLogin1Proxy);
-    mLogin1Proxy = nullptr;
+    g_signal_handlers_disconnect_matched(mLogin1Proxy, G_SIGNAL_MATCH_DATA, 0,
+                                         0, nullptr, nullptr, this);
   }
+  if (mLogin1ProxyCancellable) {
+    g_cancellable_cancel(mLogin1ProxyCancellable);
+    mLogin1ProxyCancellable = nullptr;
+  }
+  mLogin1Proxy = nullptr;
 
   if (mTimedate1Proxy) {
-    dbus_g_proxy_disconnect_signal(
-        mTimedate1Proxy, "PropertiesChanged",
-        G_CALLBACK(TimedatePropertiesChangedCallback), this);
-    g_object_unref(mTimedate1Proxy);
-    mTimedate1Proxy = nullptr;
+    g_signal_handlers_disconnect_matched(mTimedate1Proxy, G_SIGNAL_MATCH_DATA,
+                                         0, 0, nullptr, nullptr, this);
   }
+  if (mTimedate1ProxyCancellable) {
+    g_cancellable_cancel(mTimedate1ProxyCancellable);
+    mTimedate1ProxyCancellable = nullptr;
+  }
+  mTimedate1Proxy = nullptr;
+}
+#endif
 
-  dbus_g_connection_unref(mDBusConnection);
-  mDBusConnection = nullptr;
+void nsAppShell::TermSignalHandler(int signo) {
+  if (signo != SIGTERM) {
+    NS_WARNING("Wrong signal!");
+    return;
+  }
+  sAppShell->ScheduleQuitEvent();
 }
 
-#endif
+void nsAppShell::InstallTermSignalHandler() {
+  if (!XRE_IsParentProcess() || PR_GetEnv("MOZ_DISABLE_SIG_HANDLER") ||
+      !sAppShell) {
+    return;
+  }
+
+  struct sigaction act = {}, oldact;
+  act.sa_handler = TermSignalHandler;
+  sigfillset(&act.sa_mask);
+
+  if (NS_WARN_IF(sigaction(SIGTERM, nullptr, &oldact) != 0)) {
+    return;
+  }
+  if (oldact.sa_handler != SIG_DFL) {
+    NS_WARNING("SIGTERM signal handler is already set?");
+  }
+
+  sigaction(SIGTERM, &act, nullptr);
+}
 
 nsresult nsAppShell::Init() {
   mozilla::hal::Init();
 
 #ifdef MOZ_ENABLE_DBUS
   if (XRE_IsParentProcess()) {
-    nsCOMPtr<nsIPowerManagerService> powerManagerService =
-        do_GetService(POWERMANAGERSERVICE_CONTRACTID);
-
-    if (powerManagerService) {
-      powerManagerService->AddWakeLockListener(
-          WakeLockListener::GetSingleton());
-    } else {
-      NS_WARNING(
-          "Failed to retrieve PowerManagerService, wakelocks will be broken!");
-    }
-
     StartDBusListening();
   }
 #endif
@@ -369,7 +418,8 @@ nsresult nsAppShell::Init() {
     gchar* name = gdk_pixbuf_format_get_name(format);
     if (strcmp(name, "jpeg") && strcmp(name, "png") && strcmp(name, "gif") &&
         strcmp(name, "bmp") && strcmp(name, "ico") && strcmp(name, "xpm") &&
-        strcmp(name, "svg") && strcmp(name, "webp") && strcmp(name, "avif")) {
+        strcmp(name, "svg") && strcmp(name, "webp") && strcmp(name, "avif") &&
+        strcmp(name, "jxl")) {
       gdk_pixbuf_format_set_disabled(format, TRUE);
     }
     g_free(name);
@@ -402,6 +452,8 @@ nsresult nsAppShell::Init() {
   mTag = g_source_attach(source, nullptr);
   g_source_unref(source);
 
+  sAppShell = this;
+
   return nsBaseAppShell::Init();
 failed:
   close(mPipeFDs[0]);
@@ -410,8 +462,26 @@ failed:
   return NS_ERROR_FAILURE;
 }
 
+NS_IMETHODIMP nsAppShell::Run() {
+  if (XRE_IsParentProcess()) {
+    AddScreenWakeLockListener();
+  }
+
+  nsresult rv = nsBaseAppShell::Run();
+
+  if (XRE_IsParentProcess()) {
+    RemoveScreenWakeLockListener();
+  }
+  return rv;
+}
+
 void nsAppShell::ScheduleNativeEventCallback() {
   unsigned char buf[] = {NOTIFY_TOKEN};
+  Unused << write(mPipeFDs[1], buf, 1);
+}
+
+void nsAppShell::ScheduleQuitEvent() {
+  unsigned char buf[] = {QUIT_TOKEN};
   Unused << write(mPipeFDs[1], buf, 1);
 }
 

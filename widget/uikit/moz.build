@@ -7,13 +7,20 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "Widget")
 
+with Files("*TextInput*"):
+    BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
+
 SOURCES += [
     "GfxInfo.cpp",
+    "MediaKeysEventSourceFactory.cpp",
     "nsAppShell.mm",
+    "nsBidiKeyboard.mm",
     "nsLookAndFeel.mm",
-    "nsScreenManager.mm",
+    "nsNativeThemeUIKit.mm",
     "nsWidgetFactory.mm",
     "nsWindow.mm",
+    "TextInputHandler.mm",
+    "UIKitUtils.mm",
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")
@@ -21,4 +28,12 @@ include("/ipc/chromium/chromium-config.mozbuild")
 FINAL_LIBRARY = "xul"
 LOCAL_INCLUDES += [
     "/widget",
+]
+
+XPCOM_MANIFESTS += [
+    "components.conf",
+]
+
+OS_LIBS += [
+    "-framework UIKit",
 ]

@@ -57,6 +57,8 @@ using namespace mozilla::dom;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 
+LazyLogModule sWidgetDragServiceLog("WidgetDragService");
+
 #define DRAGIMAGES_PREF "nglayout.enable_drag_images"
 
 nsBaseDragService::nsBaseDragService()
@@ -366,7 +368,7 @@ nsBaseDragService::InvokeDragSession(
       nsCOMPtr<nsITransferable> trans =
           do_CreateInstance("@mozilla.org/widget/transferable;1");
       trans->Init(nullptr);
-      trans->SetRequestingPrincipal(mSourceNode->NodePrincipal());
+      trans->SetDataPrincipal(mSourceNode->NodePrincipal());
       trans->SetContentPolicyType(mContentPolicyType);
       trans->SetCookieJarSettings(aCookieJarSettings);
       mutableArray->AppendElement(trans);
@@ -376,8 +378,8 @@ nsBaseDragService::InvokeDragSession(
       nsCOMPtr<nsITransferable> trans =
           do_QueryElementAt(aTransferableArray, i);
       if (trans) {
-        // Set the requestingPrincipal on the transferable.
-        trans->SetRequestingPrincipal(mSourceNode->NodePrincipal());
+        // Set the dataPrincipal on the transferable.
+        trans->SetDataPrincipal(mSourceNode->NodePrincipal());
         trans->SetContentPolicyType(mContentPolicyType);
         trans->SetCookieJarSettings(aCookieJarSettings);
       }
@@ -421,7 +423,7 @@ nsBaseDragService::InvokeDragSessionWithImage(
       mSourceWindowContext ? mSourceWindowContext->TopWindowContext() : nullptr;
 
   mScreenPosition = aDragEvent->ScreenPoint(CallerType::System);
-  mInputSource = aDragEvent->MozInputSource();
+  mInputSource = aDragEvent->InputSource(CallerType::System);
 
   // If dragging within a XUL tree and no custom drag image was
   // set, the region argument to InvokeDragSessionWithImage needs
@@ -470,7 +472,7 @@ nsBaseDragService::InvokeDragSessionWithRemoteImage(
   mSourceTopWindowContext = mDragStartData->GetSourceTopWindowContext();
 
   mScreenPosition = aDragEvent->ScreenPoint(CallerType::System);
-  mInputSource = aDragEvent->MozInputSource();
+  mInputSource = aDragEvent->InputSource(CallerType::System);
 
   nsresult rv = InvokeDragSession(
       aDOMNode, aPrincipal, aCsp, aCookieJarSettings, aTransferableArray,
@@ -502,7 +504,7 @@ nsBaseDragService::InvokeDragSessionWithSelection(
 
   mScreenPosition.x = aDragEvent->ScreenX(CallerType::System);
   mScreenPosition.y = aDragEvent->ScreenY(CallerType::System);
-  mInputSource = aDragEvent->MozInputSource();
+  mInputSource = aDragEvent->InputSource(CallerType::System);
 
   // just get the focused node from the selection
   // XXXndeakin this should actually be the deepest node that contains both
@@ -702,7 +704,9 @@ nsBaseDragService::FireDragEventAtSource(EventMessage aEventMessage,
   }
   event.mModifiers = aKeyModifiers;
 
-  if (widget) {
+  // Most drag events aren't able to converted to MouseEvent except to
+  // eDragStart and eDragEnd.
+  if (widget && event.CanConvertToInputData()) {
     // Send the drag event to APZ, which needs to know about them to be
     // able to accurately detect the end of a drag gesture.
     widget->DispatchEventToAPZOnly(&event);
@@ -738,7 +742,7 @@ static PresShell* GetPresShellForContent(nsINode* aDOMNode) {
 
   RefPtr<Document> document = content->GetComposedDoc();
   if (document) {
-    document->FlushPendingNotifications(FlushType::Display);
+    document->FlushPendingNotifications(FlushType::Layout);
     return document->GetPresShell();
   }
 
@@ -1020,6 +1024,10 @@ bool nsBaseDragService::RemoveAllChildProcesses() {
   }
   mChildProcesses.Clear();
   return true;
+}
+
+bool nsBaseDragService::MustUpdateDataTransfer(EventMessage aMessage) {
+  return false;
 }
 
 NS_IMETHODIMP

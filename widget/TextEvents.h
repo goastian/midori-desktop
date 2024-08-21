@@ -104,14 +104,43 @@ struct AlternativeCharCode {
  ******************************************************************************/
 
 struct ShortcutKeyCandidate {
-  ShortcutKeyCandidate() : mCharCode(0), mIgnoreShift(0) {}
-  ShortcutKeyCandidate(uint32_t aCharCode, bool aIgnoreShift)
-      : mCharCode(aCharCode), mIgnoreShift(aIgnoreShift) {}
+  enum class ShiftState : bool {
+    // Can ignore `Shift` modifier state when comparing the key combination.
+    // E.g., Ctrl + Shift + `:` in the US keyboard layout may match with
+    // Ctrl + `:` shortcut.
+    Ignorable,
+    // `Shift` modifier state should be respected.  I.e., Ctrl + `;` in the US
+    // keyboard layout never matches with Ctrl + Shift + `;` shortcut.
+    MatchExactly,
+  };
+
+  enum class SkipIfEarlierHandlerDisabled : bool {
+    // Even if an earlier handler is disabled, this may match with another
+    // handler for avoiding inaccessible shortcut with the active keyboard
+    // layout.
+    No,
+    // If an earlier handler (i.e., preferred handler) is disabled, this should
+    // not try to match.  E.g., Ctrl + `-` in the French keyboard layout when
+    // the zoom level is the minimum value, it should not match with Ctrl + `6`
+    // shortcut (French keyboard layout introduces `-` when pressing Digit6 key
+    // without Shift, and Shift + Digit6 introduces `6`).
+    Yes,
+  };
+
+  ShortcutKeyCandidate() = default;
+  ShortcutKeyCandidate(
+      uint32_t aCharCode, ShiftState aShiftState,
+      SkipIfEarlierHandlerDisabled aSkipIfEarlierHandlerDisabled)
+      : mCharCode(aCharCode),
+        mShiftState(aShiftState),
+        mSkipIfEarlierHandlerDisabled(aSkipIfEarlierHandlerDisabled) {}
+
   // The mCharCode value which must match keyboard shortcut definition.
-  uint32_t mCharCode;
-  // true if Shift state can be ignored.  Otherwise, Shift key state must
-  // match keyboard shortcut definition.
-  bool mIgnoreShift;
+  uint32_t mCharCode = 0;
+
+  ShiftState mShiftState = ShiftState::MatchExactly;
+  SkipIfEarlierHandlerDisabled mSkipIfEarlierHandlerDisabled =
+      SkipIfEarlierHandlerDisabled::No;
 };
 
 /******************************************************************************
@@ -124,10 +153,10 @@ struct ShortcutKeyCandidate {
 struct IgnoreModifierState {
   // When mShift is true, Shift key state will be ignored.
   bool mShift;
-  // When mOS is true, OS key state will be ignored.
-  bool mOS;
+  // When mMeta is true, Meta key state will be ignored.
+  bool mMeta;
 
-  IgnoreModifierState() : mShift(false), mOS(false) {}
+  IgnoreModifierState() : mShift(false), mMeta(false) {}
 };
 
 /******************************************************************************
@@ -165,8 +194,9 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
 
   WidgetKeyboardEvent(bool aIsTrusted, EventMessage aMessage,
                       nsIWidget* aWidget,
-                      EventClassID aEventClassID = eKeyboardEventClass)
-      : WidgetInputEvent(aIsTrusted, aMessage, aWidget, aEventClassID),
+                      EventClassID aEventClassID = eKeyboardEventClass,
+                      const WidgetEventTime* aTime = nullptr)
+      : WidgetInputEvent(aIsTrusted, aMessage, aWidget, aEventClassID, aTime),
         mNativeKeyEvent(nullptr),
         mKeyCode(0),
         mCharCode(0),
@@ -235,13 +265,12 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
                               // option key is used as AltGraph key on macOS.
                               MODIFIER_ALT |
 #endif  // #ifndef XP_MAXOSX
-                              MODIFIER_CONTROL | MODIFIER_META | MODIFIER_OS));
+                              MODIFIER_CONTROL | MODIFIER_META));
   }
 
   bool IsInputtingLineBreak() const {
     return mMessage == eKeyPress && mKeyNameIndex == KEY_NAME_INDEX_Enter &&
-           !(mModifiers &
-             (MODIFIER_ALT | MODIFIER_CONTROL | MODIFIER_META | MODIFIER_OS));
+           !(mModifiers & (MODIFIER_ALT | MODIFIER_CONTROL | MODIFIER_META));
   }
 
   /**
@@ -259,16 +288,15 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
     // So, for compatibility with them, we should fire keypress event for
     // Ctrl + Enter too.
     return mMessage == eKeyPress && mKeyNameIndex == KEY_NAME_INDEX_Enter &&
-           !(mModifiers &
-             (MODIFIER_ALT | MODIFIER_META | MODIFIER_OS | MODIFIER_SHIFT));
+           !(mModifiers & (MODIFIER_ALT | MODIFIER_META | MODIFIER_SHIFT));
   }
 
   WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eKeyboardEventClass,
                "Duplicate() must be overridden by sub class");
     // Not copying widget, it is a weak reference.
-    WidgetKeyboardEvent* result =
-        new WidgetKeyboardEvent(false, mMessage, nullptr);
+    WidgetKeyboardEvent* result = new WidgetKeyboardEvent(
+        false, mMessage, nullptr, eKeyboardEventClass, this);
     result->AssignKeyEventData(*this, true);
     result->mEditCommandsForSingleLineEditor =
         mEditCommandsForSingleLineEditor.Clone();
@@ -289,7 +317,7 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
     // demonstrate user's intent to play media.
     const bool isCombiningWithOperationKeys = (IsControl() && !IsAltGraph()) ||
                                               (IsAlt() && !IsAltGraph()) ||
-                                              IsMeta() || IsOS();
+                                              IsMeta();
     const bool isEnterOrSpaceKey =
         mKeyNameIndex == KEY_NAME_INDEX_Enter || mKeyCode == NS_VK_SPACE;
     return (PseudoCharCode() || isEnterOrSpaceKey) &&
@@ -303,6 +331,26 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
               mKeyCode == dom::KeyboardEvent_Binding::DOM_VK_V ||
               mKeyCode == dom::KeyboardEvent_Binding::DOM_VK_X) &&
              IsAccel()));
+  }
+
+  // Returns true if this event is likely an user activation for a link or
+  // a link-like button, where modifier keys are likely be used for controlling
+  // where the link is opened.
+  //
+  // This returns false if the keyboard event is more likely an user-defined
+  // shortcut key.
+  bool CanReflectModifiersToUserActivation() const {
+    MOZ_ASSERT(CanUserGestureActivateTarget(),
+               "Consumer should check CanUserGestureActivateTarget first");
+    // 'carriage return' and 'space' are supported user gestures for activating
+    // a link or a button.
+    // A button often behaves like a link, by calling window.open inside its
+    // event handler.
+    //
+    // Access keys can also activate links/buttons, but access keys have their
+    // own modifiers, and those modifiers are not appropriate for reflecting to
+    // the user activation nor controlling where the link is opened.
+    return mKeyNameIndex == KEY_NAME_INDEX_Enter || mKeyCode == NS_VK_SPACE;
   }
 
   [[nodiscard]] bool ShouldWorkAsSpaceKey() const {
@@ -346,8 +394,6 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
       // legacy modifier keys:
       case KEY_NAME_INDEX_Hyper:
       case KEY_NAME_INDEX_Super:
-      // obsolete modifier key:
-      case KEY_NAME_INDEX_OS:
         return false;
       default:
         return true;
@@ -710,7 +756,6 @@ class WidgetKeyboardEvent final : public WidgetInputEvent {
       case KEY_NAME_INDEX_Alt:
       case KEY_NAME_INDEX_Control:
       case KEY_NAME_INDEX_Meta:
-      case KEY_NAME_INDEX_OS:
       case KEY_NAME_INDEX_Shift:
         return true;
       default:
@@ -863,8 +908,10 @@ class WidgetCompositionEvent : public WidgetGUIEvent {
   virtual WidgetCompositionEvent* AsCompositionEvent() override { return this; }
 
   WidgetCompositionEvent(bool aIsTrusted, EventMessage aMessage,
-                         nsIWidget* aWidget)
-      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, eCompositionEventClass),
+                         nsIWidget* aWidget,
+                         const WidgetEventTime* aTime = nullptr)
+      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, eCompositionEventClass,
+                       aTime),
         mNativeIMEContext(aWidget),
         mOriginalMessage(eVoidEvent) {}
 
@@ -873,7 +920,7 @@ class WidgetCompositionEvent : public WidgetGUIEvent {
                "Duplicate() must be overridden by sub class");
     // Not copying widget, it is a weak reference.
     WidgetCompositionEvent* result =
-        new WidgetCompositionEvent(false, mMessage, nullptr);
+        new WidgetCompositionEvent(false, mMessage, nullptr, this);
     result->AssignCompositionEventData(*this, true);
     result->mFlags = mFlags;
     return result;
@@ -893,6 +940,11 @@ class WidgetCompositionEvent : public WidgetGUIEvent {
   // If the instance is a clone of another event, mOriginalMessage stores
   // the another event's mMessage.
   EventMessage mOriginalMessage;
+
+  // Composition ID considered by TextComposition.  If the event has not been
+  // handled by TextComposition yet, this is 0.  And also if the event is for
+  // a composition synthesized in a content process, this is always 0.
+  uint32_t mCompositionId = 0;
 
   void AssignCompositionEventData(const WidgetCompositionEvent& aEvent,
                                   bool aCopyTargets) {
@@ -980,7 +1032,7 @@ class WidgetQueryContentEvent : public WidgetGUIEvent {
         mWithFontRanges(false),
         mNeedsToFlushLayout(aOtherEvent.mNeedsToFlushLayout) {}
 
-  virtual WidgetEvent* Duplicate() const override {
+  WidgetEvent* Duplicate() const override {
     // This event isn't an internal event of any DOM event.
     NS_ASSERTION(!IsAllowedToDispatchDOMEvent(),
                  "WidgetQueryContentEvent needs to support Duplicate()");
@@ -1054,8 +1106,6 @@ class WidgetQueryContentEvent : public WidgetGUIEvent {
     mInput.mLength = aLength;
     Init(aOptions);
   }
-
-  bool NeedsToFlushLayout() const { return mNeedsToFlushLayout; }
 
   void RequestFontRanges() {
     MOZ_ASSERT(mMessage == eQueryTextContent);
@@ -1392,41 +1442,36 @@ class WidgetSelectionEvent : public WidgetGUIEvent {
  ******************************************************************************/
 
 class InternalEditorInputEvent : public InternalUIEvent {
- private:
-  InternalEditorInputEvent()
-      : mData(VoidString()),
-        mInputType(EditorInputType::eUnknown),
-        mIsComposing(false) {}
-
  public:
+  InternalEditorInputEvent() = delete;
   virtual InternalEditorInputEvent* AsEditorInputEvent() override {
     return this;
   }
 
   InternalEditorInputEvent(bool aIsTrusted, EventMessage aMessage,
-                           nsIWidget* aWidget = nullptr)
-      : InternalUIEvent(aIsTrusted, aMessage, aWidget, eEditorInputEventClass),
-        mData(VoidString()),
-        mInputType(EditorInputType::eUnknown) {}
+                           nsIWidget* aWidget = nullptr,
+                           const WidgetEventTime* aTime = nullptr)
+      : InternalUIEvent(aIsTrusted, aMessage, aWidget, eEditorInputEventClass,
+                        aTime) {}
 
   virtual WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eEditorInputEventClass,
                "Duplicate() must be overridden by sub class");
     // Not copying widget, it is a weak reference.
     InternalEditorInputEvent* result =
-        new InternalEditorInputEvent(false, mMessage, nullptr);
+        new InternalEditorInputEvent(false, mMessage, nullptr, this);
     result->AssignEditorInputEventData(*this, true);
     result->mFlags = mFlags;
     return result;
   }
 
-  nsString mData;
+  nsString mData = VoidString();
   RefPtr<dom::DataTransfer> mDataTransfer;
   OwningNonNullStaticRangeArray mTargetRanges;
 
-  EditorInputType mInputType;
+  EditorInputType mInputType = EditorInputType::eUnknown;
 
-  bool mIsComposing;
+  bool mIsComposing = false;
 
   void AssignEditorInputEventData(const InternalEditorInputEvent& aEvent,
                                   bool aCopyTargets) {
@@ -1450,8 +1495,49 @@ class InternalEditorInputEvent : public InternalUIEvent {
 
  private:
   static const char16_t* const kInputTypeNames[];
-  typedef nsTHashMap<nsStringHashKey, EditorInputType> InputTypeHashtable;
+  using InputTypeHashtable = nsTHashMap<nsStringHashKey, EditorInputType>;
   static InputTypeHashtable* sInputTypeHashtable;
+};
+
+/******************************************************************************
+ * mozilla::InternalLegacyTextEvent
+ ******************************************************************************/
+
+class InternalLegacyTextEvent : public InternalUIEvent {
+ public:
+  InternalLegacyTextEvent() = delete;
+
+  virtual InternalLegacyTextEvent* AsLegacyTextEvent() override { return this; }
+
+  InternalLegacyTextEvent(bool aIsTrusted, EventMessage aMessage,
+                          nsIWidget* aWidget = nullptr,
+                          const WidgetEventTime* aTime = nullptr)
+      : InternalUIEvent(aIsTrusted, aMessage, aWidget, eLegacyTextEventClass,
+                        aTime) {}
+
+  virtual WidgetEvent* Duplicate() const override {
+    MOZ_ASSERT(mClass == eLegacyTextEventClass,
+               "Duplicate() must be overridden by sub class");
+    // Not copying widget, it is a weak reference.
+    InternalLegacyTextEvent* result =
+        new InternalLegacyTextEvent(false, mMessage, nullptr, this);
+    result->AssignLegacyTextEventData(*this, true);
+    result->mFlags = mFlags;
+    return result;
+  }
+
+  nsString mData;
+  RefPtr<dom::DataTransfer> mDataTransfer;
+  EditorInputType mInputType = EditorInputType::eUnknown;
+
+  void AssignLegacyTextEventData(const InternalLegacyTextEvent& aEvent,
+                                 bool aCopyTargets) {
+    AssignUIEventData(aEvent, aCopyTargets);
+
+    mData = aEvent.mData;
+    mDataTransfer = aEvent.mDataTransfer;
+    mInputType = aEvent.mInputType;
+  }
 };
 
 }  // namespace mozilla

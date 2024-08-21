@@ -63,7 +63,7 @@ function readFromClipboard()
     return "";
   trans.init(getLoadContext());
   trans.addDataFlavor('text/html');
-  clip.getData(trans,clipid.kGlobalClipboard);
+  clip.getData(trans, clipid.kGlobalClipboard, SpecialPowers.wrap(window).browsingContext.currentWindowContext);
   var str = {};
   trans.getTransferData("text/html",str);
   if (str)
@@ -92,7 +92,6 @@ function initAndRunTests()
   result = readFromClipboard();
   ok(expect.test(result), "data on system pasteboard is wrapped with charset metadata");
 
-  // eslint-disable-next-line no-unsanitized/property
   $("display").innerHTML =
     '<em>source:</em> <pre>' + encodeHtmlEntities(source) + '</pre><br/>' +
     '<em>result:</em> <pre>' + encodeHtmlEntities(result) + '</pre>';

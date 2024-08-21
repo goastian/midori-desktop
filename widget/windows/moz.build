@@ -39,6 +39,7 @@ EXPORTS += [
 ]
 
 EXPORTS.mozilla += [
+    "ScreenHelperWin.h",
     "ShellHeaderOnlyUtils.h",
     "ToastNotificationHeaderOnlyUtils.h",
     "UrlmonHeaderOnlyUtils.h",
@@ -52,7 +53,9 @@ EXPORTS.mozilla.widget += [
     "CompositorWidgetChild.h",
     "CompositorWidgetParent.h",
     "InProcessWinCompositorWidget.h",
+    "JumpListBuilder.h",
     "nsWindowLoggedMessages.h",
+    "OSKInputPaneManager.h",
     "WinCompositorWidget.h",
     "WinCompositorWindowThread.h",
     "WindowsEMF.h",
@@ -60,6 +63,7 @@ EXPORTS.mozilla.widget += [
     "WinEventObserver.h",
     "WinMessages.h",
     "WinModifierKeyState.h",
+    "WinRegistry.h",
     "WinTaskbar.h",
     "WinWindowOcclusionTracker.h",
 ]
@@ -67,12 +71,13 @@ EXPORTS.mozilla.widget += [
 UNIFIED_SOURCES += [
     "AudioSession.cpp",
     "CompositorWidgetChild.cpp",
+    "DirectManipulationOwner.cpp",
     "GfxInfo.cpp",
     "IEnumFE.cpp",
     "IMMHandler.cpp",
-    "InkCollector.cpp",
-    "JumpListItem.cpp",
+    "JumpListBuilder.cpp",
     "KeyboardLayout.cpp",
+    "LegacyJumpListItem.cpp",
     "LSPAnnotator.cpp",
     "nsAppShell.cpp",
     "nsClipboard.cpp",
@@ -110,6 +115,7 @@ UNIFIED_SOURCES += [
     "WinEventObserver.cpp",
     "WinIMEHandler.cpp",
     "WinPointerEvents.cpp",
+    "WinRegistry.cpp",
     "WinTaskbar.cpp",
     "WinTextEventDispatcherListener.cpp",
     "WinUtils.cpp",
@@ -120,7 +126,7 @@ UNIFIED_SOURCES += [
 SOURCES += [
     "CompositorWidgetParent.cpp",
     "InProcessWinCompositorWidget.cpp",
-    "JumpListBuilder.cpp",
+    "LegacyJumpListBuilder.cpp",
     "MediaKeysEventSourceFactory.cpp",
     "nsBidiKeyboard.cpp",
     "nsFilePicker.cpp",
@@ -131,11 +137,6 @@ SOURCES += [
     "WindowsSMTCProvider.cpp",
     "WindowsUIUtils.cpp",
     "WinMouseScrollHandler.cpp",
-]
-
-# These files redefine the winsdk api version macro and we don't want it to leak to other files.
-SOURCES += [
-    "DirectManipulationOwner.cpp",
 ]
 
 # Needs INITGUID and we don't allow INITGUID in unified sources since bug 970429.
@@ -178,6 +179,7 @@ LOCAL_INCLUDES += [
     "/layout/generic",
     "/layout/style",
     "/layout/xul",
+    "/toolkit/components/jsoncpp/include",
     "/toolkit/xre",
     "/widget",
     "/widget/headless",
@@ -189,16 +191,18 @@ DEFINES["MOZ_APP_NAME"] = '"%s"' % CONFIG["MOZ_APP_NAME"]
 # Turn `firefox` into `Firefox`.
 DEFINES["MOZ_TOAST_APP_NAME"] = '"%s"' % CONFIG["MOZ_APP_NAME"].title()
 
-for var in ("MOZ_ENABLE_D3D10_LAYER",):
-    if CONFIG[var]:
-        DEFINES[var] = True
+USE_LIBS += [
+    "jsoncpp",
+]
 
 OS_LIBS += [
     "ktmw32",
     "rpcrt4",
     "urlmon",
+    "winmm",
 ]
 
+# mingw is missing Windows toast notification definitions.
 if CONFIG["CC_TYPE"] == "clang-cl":
     SOURCES += [
         "ToastNotification.cpp",

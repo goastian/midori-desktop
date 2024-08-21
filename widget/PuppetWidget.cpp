@@ -241,7 +241,7 @@ void PuppetWidget::Invalidate(const LayoutDeviceIntRect& aRect) {
   if (mBrowserChild && !aRect.IsEmpty() && !mWidgetPaintTask.IsPending()) {
     mWidgetPaintTask = new WidgetPaintTask(this);
     nsCOMPtr<nsIRunnable> event(mWidgetPaintTask.get());
-    SchedulerGroup::Dispatch(TaskCategory::Other, event.forget());
+    SchedulerGroup::Dispatch(event.forget());
   }
 }
 
@@ -645,7 +645,7 @@ nsresult PuppetWidget::RequestIMEToCommitComposition(bool aCancel) {
   bool isCommitted = false;
   nsAutoString committedString;
   if (NS_WARN_IF(!mBrowserChild->SendRequestIMEToCommitComposition(
-          aCancel, &isCommitted, &committedString))) {
+          aCancel, composition->Id(), &isCommitted, &committedString))) {
     return NS_ERROR_FAILURE;
   }
 
@@ -673,7 +673,7 @@ nsresult PuppetWidget::RequestIMEToCommitComposition(bool aCancel) {
   mIgnoreCompositionEvents = true;
 
   Unused << mBrowserChild->SendOnEventNeedingAckHandled(
-      eCompositionCommitRequestHandled);
+      eCompositionCommitRequestHandled, composition->Id());
 
   // NOTE: PuppetWidget might be destroyed already.
   return NS_OK;
@@ -900,17 +900,14 @@ void PuppetWidget::SetCursor(const Cursor& aCursor) {
     return;
   }
 
-  bool hasCustomCursor = false;
-  Maybe<mozilla::ipc::BigBuffer> customCursorData;
-  size_t length = 0;
-  IntSize customCursorSize;
-  int32_t stride = 0;
-  auto format = SurfaceFormat::B8G8R8A8;
   ImageResolution resolution = aCursor.mResolution;
+  Maybe<IPCImage> customCursor;
   if (aCursor.IsCustom()) {
-    int32_t width = 0, height = 0;
+    int32_t width = 0;
+    int32_t height = 0;
     aCursor.mContainer->GetWidth(&width);
     aCursor.mContainer->GetHeight(&height);
+
     const int32_t flags =
         imgIContainer::FLAG_SYNC_DECODE | imgIContainer::FLAG_ASYNC_NOTIFY;
     RefPtr<SourceSurface> surface;
@@ -928,22 +925,17 @@ void PuppetWidget::SetCursor(const Cursor& aCursor) {
       surface =
           aCursor.mContainer->GetFrame(imgIContainer::FRAME_CURRENT, flags);
     }
+
     if (surface) {
       if (RefPtr<DataSourceSurface> dataSurface = surface->GetDataSurface()) {
-        hasCustomCursor = true;
-        customCursorData =
-            nsContentUtils::GetSurfaceData(*dataSurface, &length, &stride);
-        customCursorSize = dataSurface->GetSize();
-        format = dataSurface->GetFormat();
+        customCursor = nsContentUtils::SurfaceToIPCImage(*dataSurface);
       }
     }
   }
 
   if (!mBrowserChild->SendSetCursor(
-          aCursor.mDefaultCursor, hasCustomCursor, std::move(customCursorData),
-          customCursorSize.width, customCursorSize.height, resolution.mX,
-          resolution.mY, stride, format, aCursor.mHotspotX, aCursor.mHotspotY,
-          force)) {
+          aCursor.mDefaultCursor, std::move(customCursor), resolution.mX,
+          resolution.mY, aCursor.mHotspotX, aCursor.mHotspotY, force)) {
     return;
   }
   mCursor = aCursor;
@@ -997,13 +989,6 @@ void PuppetWidget::OnMemoryPressure(layers::MemoryPressureReason aWhy) {
 bool PuppetWidget::NeedsPaint() {
   // e10s popups are handled by the parent process, so never should be painted
   // here
-  if (XRE_IsContentProcess() &&
-      StaticPrefs::browser_tabs_remote_desktopbehavior() &&
-      mWindowType == WindowType::Popup) {
-    NS_WARNING("Trying to paint an e10s popup in the child process!");
-    return false;
-  }
-
   return mVisible;
 }
 

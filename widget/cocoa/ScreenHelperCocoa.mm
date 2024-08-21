@@ -9,6 +9,7 @@
 #import <Cocoa/Cocoa.h>
 
 #include "mozilla/Logging.h"
+#include "nsCocoaFeatures.h"
 #include "nsCocoaUtils.h"
 #include "nsObjCExceptions.h"
 
@@ -79,19 +80,20 @@ ScreenHelperCocoa::~ScreenHelperCocoa() {
 static already_AddRefed<Screen> MakeScreen(NSScreen* aScreen) {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  DesktopToLayoutDeviceScale contentsScaleFactor(nsCocoaUtils::GetBackingScaleFactor(aScreen));
+  DesktopToLayoutDeviceScale contentsScaleFactor(
+      nsCocoaUtils::GetBackingScaleFactor(aScreen));
   CSSToLayoutDeviceScale defaultCssScaleFactor(contentsScaleFactor.scale);
   NSRect frame = [aScreen frame];
-  LayoutDeviceIntRect rect =
-      nsCocoaUtils::CocoaRectToGeckoRectDevPix(frame, contentsScaleFactor.scale);
+  LayoutDeviceIntRect rect = nsCocoaUtils::CocoaRectToGeckoRectDevPix(
+      frame, contentsScaleFactor.scale);
   frame = [aScreen visibleFrame];
-  LayoutDeviceIntRect availRect =
-      nsCocoaUtils::CocoaRectToGeckoRectDevPix(frame, contentsScaleFactor.scale);
+  LayoutDeviceIntRect availRect = nsCocoaUtils::CocoaRectToGeckoRectDevPix(
+      frame, contentsScaleFactor.scale);
 
   // aScreen may be capable of displaying multiple pixel depths, for example by
-  // transitioning to an HDR-capable depth when required by a window displayed on
-  // the screen. We want to note the maximum capabilities of the screen, so we use
-  // the largest depth it offers.
+  // transitioning to an HDR-capable depth when required by a window displayed
+  // on the screen. We want to note the maximum capabilities of the screen, so
+  // we use the largest depth it offers.
   uint32_t pixelDepth = 0;
   const NSWindowDepth* depths = [aScreen supportedWindowDepths];
   for (size_t d = 0; NSWindowDepth depth = depths[d]; d++) {
@@ -108,6 +110,26 @@ static already_AddRefed<Screen> MakeScreen(NSScreen* aScreen) {
     pixelDepth = MAX_REPORTED_PIXEL_DEPTH;
   }
 
+  // What's the maximum color component value this screen can display? This
+  // is a reasonable stand-in for measuring peak brightness.
+  CGFloat componentValueMax =
+      aScreen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+
+  // Should we treat this as HDR? Based on spec at
+  // https://drafts.csswg.org/mediaqueries-5/#dynamic-range, we'll consider it
+  // HDR if it has pixel depth greater than 24, and if has high peak brightness,
+  // which we measure by checking if it can represent component values greater
+  // than 1.0.
+  //
+  // Also, on HDR screens, users may want to force SDR by setting a different
+  // colorspace, for example by using the "Photography (P3 D65)" preset. In that
+  // case, componentValueMax will be 1.0 and we want to treat the display as
+  // SDR.
+  bool isHDR = pixelDepth > 24 && componentValueMax > 1.0;
+
+  // Double-check HDR against the platform capabilities.
+  isHDR &= nsCocoaFeatures::OnBigSurOrLater();
+
   float dpi = 96.0f;
   CGDirectDisplayID displayID =
       [[[aScreen deviceDescription] objectForKey:@"NSScreenNumber"] intValue];
@@ -116,16 +138,18 @@ static already_AddRefed<Screen> MakeScreen(NSScreen* aScreen) {
     dpi = rect.height / (heightMM / MM_PER_INCH_FLOAT);
   }
   MOZ_LOG(sScreenLog, LogLevel::Debug,
-          ("New screen [%d %d %d %d (%d %d %d %d) %d %f %f %f]", rect.x, rect.y, rect.width,
-           rect.height, availRect.x, availRect.y, availRect.width, availRect.height, pixelDepth,
-           contentsScaleFactor.scale, defaultCssScaleFactor.scale, dpi));
+          ("New screen [%d %d %d %d (%d %d %d %d) %d %f %f %f]", rect.x, rect.y,
+           rect.width, rect.height, availRect.x, availRect.y, availRect.width,
+           availRect.height, pixelDepth, contentsScaleFactor.scale,
+           defaultCssScaleFactor.scale, dpi));
 
   // Getting the refresh rate is a little hard on OS X. We could use
   // CVDisplayLinkGetNominalOutputVideoRefreshPeriod, but that's a little
   // involved. Ideally we could query it from vsync. For now, we leave it out.
   RefPtr<Screen> screen =
-      new Screen(rect, availRect, pixelDepth, pixelDepth, 0, contentsScaleFactor,
-                 defaultCssScaleFactor, dpi, Screen::IsPseudoDisplay::No);
+      new Screen(rect, availRect, pixelDepth, pixelDepth, 0,
+                 contentsScaleFactor, defaultCssScaleFactor, dpi,
+                 Screen::IsPseudoDisplay::No, Screen::IsHDR(isHDR));
   return screen.forget();
 
   NS_OBJC_END_TRY_BLOCK_RETURN(nullptr);
@@ -164,7 +188,8 @@ NSScreen* ScreenHelperCocoa::CocoaScreenForScreen(nsIScreen* aScreen) {
     aScreen->GetRect(&rect.x, &rect.y, &rect.width, &rect.height);
     aScreen->GetContentsScaleFactor(&scale);
     NSRect frame = [screen frame];
-    LayoutDeviceIntRect frameRect = nsCocoaUtils::CocoaRectToGeckoRectDevPix(frame, scale);
+    LayoutDeviceIntRect frameRect =
+        nsCocoaUtils::CocoaRectToGeckoRectDevPix(frame, scale);
     if (rect == frameRect) {
       return screen;
     }

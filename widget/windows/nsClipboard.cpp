@@ -47,10 +47,7 @@
 #include "nsMimeTypes.h"
 #include "imgITools.h"
 #include "imgIContainer.h"
-
-using mozilla::LogLevel;
-
-static mozilla::LazyLogModule gWin32ClipboardLog("nsClipboard");
+#include "WinUtils.h"
 
 /* static */
 UINT nsClipboard::GetClipboardFileDescriptorFormatA() {
@@ -399,11 +396,10 @@ static void OleGetClipboardResultToString(const HRESULT aHres,
 // See
 // <https://docs.microsoft.com/en-us/windows/win32/api/ole2/nf-ole2-olegetclipboard>.
 static void LogOleGetClipboardResult(const HRESULT aHres) {
-  if (MOZ_LOG_TEST(gWin32ClipboardLog, LogLevel::Debug)) {
+  if (MOZ_CLIPBOARD_LOG_ENABLED()) {
     nsAutoCString hresString;
     OleGetClipboardResultToString(aHres, hresString);
-    MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug,
-            ("OleGetClipboard result: %s", hresString.get()));
+    MOZ_CLIPBOARD_LOG("OleGetClipboard result: %s", hresString.get());
   }
 }
 
@@ -438,11 +434,10 @@ static void OleSetClipboardResultToString(HRESULT aHres, nsACString& aResult) {
 // See
 // <https://docs.microsoft.com/en-us/windows/win32/api/ole2/nf-ole2-olesetclipboard>.
 static void LogOleSetClipboardResult(const HRESULT aHres) {
-  if (MOZ_LOG_TEST(gWin32ClipboardLog, LogLevel::Debug)) {
+  if (MOZ_CLIPBOARD_LOG_ENABLED()) {
     nsAutoCString hresString;
     OleSetClipboardResultToString(aHres, hresString);
-    MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug,
-            ("OleSetClipboard result: %s", hresString.get()));
+    MOZ_CLIPBOARD_LOG("OleSetClipboard result: %s", hresString.get());
   }
 }
 
@@ -479,9 +474,8 @@ static void RepeatedlyTryOleSetClipboard(IDataObject* aDataObj) {
 
 //-------------------------------------------------------------------------
 NS_IMETHODIMP nsClipboard::SetNativeClipboardData(
-    nsITransferable* aTransferable, nsIClipboardOwner* aOwner,
-    int32_t aWhichClipboard) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug, ("%s", __FUNCTION__));
+    nsITransferable* aTransferable, int32_t aWhichClipboard) {
+  MOZ_CLIPBOARD_LOG("%s", __FUNCTION__);
 
   if (aWhichClipboard != kGlobalClipboard) {
     return NS_ERROR_FAILURE;
@@ -516,9 +510,9 @@ NS_IMETHODIMP nsClipboard::SetNativeClipboardData(
           // uses delayed rendering.) This a11y tree walk causes an unacceptable
           // hang, particularly when the a11y cache is disabled. We choose the
           // lesser of the two performance/memory evils here and force immediate
-          // rendering.
+          // rendering as part of our workaround.
           return mightNeedToFlush == MightNeedToFlush::Yes &&
-                 mozilla::NeedsWindows11SuggestedActionsWorkaround();
+                 mozilla::IsWin1122H2OrLater();
       }
     }();
     if (doFlush) {
@@ -535,7 +529,7 @@ NS_IMETHODIMP nsClipboard::SetNativeClipboardData(
 //-------------------------------------------------------------------------
 nsresult nsClipboard::GetGlobalData(HGLOBAL aHGBL, void** aData,
                                     uint32_t* aLen) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Verbose, ("%s", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s", __FUNCTION__);
 
   // Allocate a new memory buffer and copy the data from global memory.
   // Recall that win98 allocates to nearest DWORD boundary. As a safety
@@ -592,8 +586,7 @@ nsresult nsClipboard::GetGlobalData(HGLOBAL aHGBL, void** aData,
 nsresult nsClipboard::GetNativeDataOffClipboard(nsIWidget* aWidget,
                                                 UINT /*aIndex*/, UINT aFormat,
                                                 void** aData, uint32_t* aLen) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug,
-          ("%s: overload taking nsIWidget*.", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s: overload taking nsIWidget*.", __FUNCTION__);
 
   HGLOBAL hglb;
   nsresult result = NS_ERROR_FAILURE;
@@ -611,12 +604,11 @@ nsresult nsClipboard::GetNativeDataOffClipboard(nsIWidget* aWidget,
 // <https://docs.microsoft.com/en-us/windows/win32/api/objidl/nn-objidl-idataobject#methods>.
 static void LogIDataObjectMethodResult(const HRESULT aHres,
                                        const nsCString& aMethodName) {
-  if (MOZ_LOG_TEST(gWin32ClipboardLog, LogLevel::Debug)) {
+  if (MOZ_CLIPBOARD_LOG_ENABLED()) {
     nsAutoCString hresString;
     IDataObjectMethodResultToString(aHres, hresString);
-    MOZ_LOG(
-        gWin32ClipboardLog, LogLevel::Debug,
-        ("IDataObject::%s result: %s", aMethodName.get(), hresString.get()));
+    MOZ_CLIPBOARD_LOG("IDataObject::%s result : %s", aMethodName.get(),
+                      hresString.get());
   }
 }
 
@@ -661,8 +653,7 @@ nsresult nsClipboard::GetNativeDataOffClipboard(IDataObject* aDataObject,
                                                 UINT aIndex, UINT aFormat,
                                                 const char* aMIMEImageFormat,
                                                 void** aData, uint32_t* aLen) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug,
-          ("%s: overload taking IDataObject*.", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s: overload taking IDataObject*.", __FUNCTION__);
 
   nsresult result = NS_ERROR_FAILURE;
   *aData = nullptr;
@@ -885,8 +876,7 @@ nsresult nsClipboard::GetNativeDataOffClipboard(IDataObject* aDataObject,
 
       case TYMED_GDI: {
 #ifdef DEBUG
-        MOZ_LOG(gWin32ClipboardLog, LogLevel::Info,
-                ("*********************** TYMED_GDI\n"));
+        MOZ_CLIPBOARD_LOG("*********************** TYMED_GDI");
 #endif
       } break;
 
@@ -904,7 +894,7 @@ nsresult nsClipboard::GetNativeDataOffClipboard(IDataObject* aDataObject,
 nsresult nsClipboard::GetDataFromDataObject(IDataObject* aDataObject,
                                             UINT anIndex, nsIWidget* aWindow,
                                             nsITransferable* aTransferable) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug, ("%s", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s", __FUNCTION__);
 
   // make sure we have a good transferable
   if (!aTransferable) {
@@ -1119,7 +1109,7 @@ bool nsClipboard ::FindPlatformHTML(IDataObject* inDataObject, UINT inIndex,
 bool nsClipboard ::FindUnicodeFromPlainText(IDataObject* inDataObject,
                                             UINT inIndex, void** outData,
                                             uint32_t* outDataLen) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug, ("%s", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s", __FUNCTION__);
 
   // We are looking for text/plain and we failed to find it on the clipboard
   // first, so try again with CF_TEXT. If that is present, convert it to
@@ -1157,7 +1147,7 @@ bool nsClipboard ::FindUnicodeFromPlainText(IDataObject* inDataObject,
 //
 bool nsClipboard ::FindURLFromLocalFile(IDataObject* inDataObject, UINT inIndex,
                                         void** outData, uint32_t* outDataLen) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug, ("%s", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s", __FUNCTION__);
 
   bool dataFound = false;
 
@@ -1223,7 +1213,7 @@ bool nsClipboard ::FindURLFromLocalFile(IDataObject* inDataObject, UINT inIndex,
 //
 bool nsClipboard ::FindURLFromNativeURL(IDataObject* inDataObject, UINT inIndex,
                                         void** outData, uint32_t* outDataLen) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug, ("%s", __FUNCTION__));
+  MOZ_CLIPBOARD_LOG("%s", __FUNCTION__);
 
   bool dataFound = false;
 
@@ -1318,22 +1308,33 @@ bool nsClipboard ::IsInternetShortcut(const nsAString& inFileName) {
 NS_IMETHODIMP
 nsClipboard::GetNativeClipboardData(nsITransferable* aTransferable,
                                     int32_t aWhichClipboard) {
-  MOZ_LOG(gWin32ClipboardLog, LogLevel::Debug,
-          ("%s aWhichClipboard=%i", __FUNCTION__, aWhichClipboard));
+  MOZ_DIAGNOSTIC_ASSERT(aTransferable);
+  MOZ_DIAGNOSTIC_ASSERT(
+      nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
 
-  // make sure we have a good transferable
-  if (!aTransferable || aWhichClipboard != kGlobalClipboard) {
-    return NS_ERROR_FAILURE;
-  }
+  MOZ_CLIPBOARD_LOG("%s aWhichClipboard=%i", __FUNCTION__, aWhichClipboard);
 
   nsresult res;
-
   // This makes sure we can use the OLE functionality for the clipboard
   IDataObject* dataObj;
   if (S_OK == RepeatedlyTryOleGetClipboard(&dataObj)) {
     // Use OLE IDataObject for clipboard operations
-    MOZ_LOG(gWin32ClipboardLog, LogLevel::Verbose,
-            ("%s: use OLE IDataObject.", __FUNCTION__));
+    MOZ_CLIPBOARD_LOG("    use OLE IDataObject:");
+    if (MOZ_CLIPBOARD_LOG_ENABLED()) {
+      IEnumFORMATETC* pEnum = nullptr;
+      if (S_OK == dataObj->EnumFormatEtc(DATADIR_GET, &pEnum)) {
+        FORMATETC fEtc;
+        while (S_OK == pEnum->Next(1, &fEtc, nullptr)) {
+          nsAutoString format;
+          mozilla::widget::WinUtils::GetClipboardFormatAsString(fEtc.cfFormat,
+                                                                format);
+          MOZ_CLIPBOARD_LOG("        FORMAT %s",
+                            NS_ConvertUTF16toUTF8(format).get());
+        }
+      }
+      pEnum->Release();
+    }
+
     res = GetDataFromDataObject(dataObj, 0, nullptr, aTransferable);
     dataObj->Release();
   } else {
@@ -1343,37 +1344,37 @@ nsClipboard::GetNativeClipboardData(nsITransferable* aTransferable,
   return res;
 }
 
-NS_IMETHODIMP
-nsClipboard::EmptyClipboard(int32_t aWhichClipboard) {
+nsresult nsClipboard::EmptyNativeClipboardData(int32_t aWhichClipboard) {
+  MOZ_DIAGNOSTIC_ASSERT(
+      nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
   // Some programs such as ZoneAlarm monitor clipboard usage and then open the
   // clipboard to scan it.  If we i) empty and then ii) set data, then the
   // 'set data' can sometimes fail with access denied becacuse another program
   // has the clipboard open.  So to avoid this race condition for OpenClipboard
   // we do not empty the clipboard when we're setting it.
-  if (aWhichClipboard == kGlobalClipboard && !mEmptyingForSetData) {
-    RepeatedlyTryOleSetClipboard(nullptr);
-  }
-  return nsBaseClipboard::EmptyClipboard(aWhichClipboard);
+  RepeatedlyTryOleSetClipboard(nullptr);
+  return NS_OK;
+}
+
+mozilla::Result<int32_t, nsresult>
+nsClipboard::GetNativeClipboardSequenceNumber(int32_t aWhichClipboard) {
+  MOZ_DIAGNOSTIC_ASSERT(kGlobalClipboard == aWhichClipboard);
+  return (int32_t)::GetClipboardSequenceNumber();
 }
 
 //-------------------------------------------------------------------------
-NS_IMETHODIMP nsClipboard::HasDataMatchingFlavors(
-    const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard,
-    bool* _retval) {
-  *_retval = false;
-  if (aWhichClipboard != kGlobalClipboard) {
-    return NS_OK;
-  }
-
-  for (auto& flavor : aFlavorList) {
+mozilla::Result<bool, nsresult>
+nsClipboard::HasNativeClipboardDataMatchingFlavors(
+    const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard) {
+  MOZ_DIAGNOSTIC_ASSERT(
+      nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
+  for (const auto& flavor : aFlavorList) {
     UINT format = GetFormat(flavor.get());
     if (IsClipboardFormatAvailable(format)) {
-      *_retval = true;
-      break;
+      return true;
     }
   }
-
-  return NS_OK;
+  return false;
 }
 
 //-------------------------------------------------------------------------
@@ -1422,6 +1423,12 @@ nsresult nsClipboard::SaveStorageOrStream(IDataObject* aDataObject, UINT aIndex,
   }
 
   if (stm.tymed == TYMED_ISTORAGE) {
+    // should never happen -- but theoretically possible, given an ill-behaved
+    // data-source
+    if (stm.pstg == nullptr) {
+      return NS_ERROR_FAILURE;
+    }
+
     RefPtr<IStorage> file;
     hres = StgCreateStorageEx(
         aFileName.Data(), STGM_CREATE | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
@@ -1441,6 +1448,11 @@ nsresult nsClipboard::SaveStorageOrStream(IDataObject* aDataObject, UINT aIndex,
   }
 
   MOZ_ASSERT(stm.tymed == TYMED_ISTREAM);
+  // should never happen -- but possible given an ill-behaved data-source, and
+  // has been seen in the wild (bug 1895681)
+  if (stm.pstm == nullptr) {
+    return NS_ERROR_FAILURE;
+  }
 
   HANDLE handle = CreateFile(aFileName.Data(), GENERIC_WRITE, FILE_SHARE_READ,
                              NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);

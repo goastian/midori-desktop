@@ -7,7 +7,6 @@
 #include "nsTouchBar.h"
 #include "nsTouchBarInput.h"
 #include "nsTouchBarUpdater.h"
-#include "nsTouchBarNativeAPIDefines.h"
 
 #include "nsIBaseWindow.h"
 #include "nsIWidget.h"
@@ -15,17 +14,11 @@
 // defined in nsCocoaWindow.mm.
 extern BOOL sTouchBarIsInitialized;
 
-#if !defined(MAC_OS_X_VERSION_10_12_2) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12_2
-@interface BaseWindow (NSTouchBarProvider)
-@property(strong) NSTouchBar* touchBar;
-@end
-#endif
-
 NS_IMPL_ISUPPORTS(nsTouchBarUpdater, nsITouchBarUpdater);
 
 NS_IMETHODIMP
-nsTouchBarUpdater::UpdateTouchBarInputs(nsIBaseWindow* aWindow,
-                                        const nsTArray<RefPtr<nsITouchBarInput>>& aInputs) {
+nsTouchBarUpdater::UpdateTouchBarInputs(
+    nsIBaseWindow* aWindow, const nsTArray<RefPtr<nsITouchBarInput>>& aInputs) {
   if (!sTouchBarIsInitialized || !aWindow) {
     return NS_OK;
   }
@@ -43,15 +36,19 @@ nsTouchBarUpdater::UpdateTouchBarInputs(nsIBaseWindow* aWindow,
         continue;
       }
 
-      NSTouchBarItemIdentifier newIdentifier = [TouchBarInput nativeIdentifierWithXPCOM:input];
+      NSTouchBarItemIdentifier newIdentifier =
+          [TouchBarInput nativeIdentifierWithXPCOM:input];
       // We don't support updating the Share scrubber since it's a special
       // Apple-made component that behaves differently from the other inputs.
-      if ([newIdentifier isEqualToString:[TouchBarInput nativeIdentifierWithType:@"scrubber"
-                                                                         withKey:@"share"]]) {
+      if ([newIdentifier
+              isEqualToString:[TouchBarInput
+                                  nativeIdentifierWithType:@"scrubber"
+                                                   withKey:@"share"]]) {
         continue;
       }
 
-      TouchBarInput* convertedInput = [[TouchBarInput alloc] initWithXPCOM:input];
+      TouchBarInput* convertedInput =
+          [[TouchBarInput alloc] initWithXPCOM:input];
       [(nsTouchBar*)cocoaWin.touchBar updateItem:convertedInput];
     }
   }
@@ -60,7 +57,8 @@ nsTouchBarUpdater::UpdateTouchBarInputs(nsIBaseWindow* aWindow,
 }
 
 NS_IMETHODIMP
-nsTouchBarUpdater::ShowPopover(nsIBaseWindow* aWindow, nsITouchBarInput* aPopover, bool aShowing) {
+nsTouchBarUpdater::ShowPopover(nsIBaseWindow* aWindow,
+                               nsITouchBarInput* aPopover, bool aShowing) {
   if (!sTouchBarIsInitialized || !aPopover || !aWindow) {
     return NS_OK;
   }
@@ -73,10 +71,12 @@ nsTouchBarUpdater::ShowPopover(nsIBaseWindow* aWindow, nsITouchBarInput* aPopove
   if ([cocoaWin respondsToSelector:@selector(touchBar)]) {
     // We don't need to completely reinitialize the popover. We only need its
     // identifier to look it up in [nsTouchBar mappedLayoutItems].
-    NSTouchBarItemIdentifier popoverIdentifier = [TouchBarInput nativeIdentifierWithXPCOM:aPopover];
+    NSTouchBarItemIdentifier popoverIdentifier =
+        [TouchBarInput nativeIdentifierWithXPCOM:aPopover];
 
     TouchBarInput* popoverItem =
-        [[(nsTouchBar*)cocoaWin.touchBar mappedLayoutItems] objectForKey:popoverIdentifier];
+        [[(nsTouchBar*)cocoaWin.touchBar mappedLayoutItems]
+            objectForKey:popoverIdentifier];
 
     [(nsTouchBar*)cocoaWin.touchBar showPopover:popoverItem showing:aShowing];
   }

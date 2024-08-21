@@ -5,8 +5,11 @@
 
 #include "mozilla/widget/NativeMenuSupport.h"
 
+#include "mozilla/StaticPrefs_widget.h"
 #include "MainThreadUtils.h"
 #include "NativeMenuGtk.h"
+#include "DBusMenu.h"
+#include "nsWindow.h"
 
 namespace mozilla::widget {
 
@@ -14,7 +17,14 @@ void NativeMenuSupport::CreateNativeMenuBar(nsIWidget* aParent,
                                             dom::Element* aMenuBarElement) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread(),
                      "Attempting to create native menu bar on wrong thread!");
-  // TODO
+
+#ifdef MOZ_ENABLE_DBUS
+  if (aMenuBarElement && StaticPrefs::widget_gtk_global_menu_enabled() &&
+      DBusMenuFunctions::Init()) {
+    static_cast<nsWindow*>(aParent)->SetDBusMenuBar(
+        DBusMenuBar::Create(aMenuBarElement));
+  }
+#endif
 }
 
 already_AddRefed<NativeMenu> NativeMenuSupport::CreateNativeContextMenu(

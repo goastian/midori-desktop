@@ -14,13 +14,14 @@
 #include <type_traits>
 #include <unistd.h>
 
-#include "AndroidGraphics.h"
 #include "AndroidBridge.h"
 #include "AndroidBridgeUtilities.h"
 #include "AndroidCompositorWidget.h"
 #include "AndroidContentController.h"
+#include "AndroidDragEvent.h"
 #include "AndroidUiThread.h"
 #include "AndroidView.h"
+#include "AndroidWidgetUtils.h"
 #include "gfxContext.h"
 #include "GeckoEditableSupport.h"
 #include "GeckoViewOutputStream.h"
@@ -58,6 +59,8 @@
 #include "nsIWidgetListener.h"
 #include "nsIWindowWatcher.h"
 #include "nsIAppWindow.h"
+#include "nsIPrintSettings.h"
+#include "nsIPrintSettingsService.h"
 
 #include "mozilla/Logging.h"
 #include "mozilla/MiscEvents.h"
@@ -180,6 +183,13 @@ bool DispatchToUiThread(const char* aName, Lambda&& aLambda) {
 
 namespace mozilla {
 namespace widget {
+
+// For double click detection
+static int64_t sLastMouseDownTime = 0;
+static int32_t sLastMouseButtons = 0;
+static int32_t sLastClickCount = 0;
+static float sLastMouseDownX = 0;
+static float sLastMouseDownY = 0;
 
 using WindowPtr = jni::NativeWeakPtr<GeckoViewSupport>;
 
@@ -304,11 +314,7 @@ class NPZCSupport final
     MOZ_ASSERT(!!win);
 #endif  // defined(DEBUG)
 
-    // Use vsync for touch resampling on API level 19 and above.
-    // See gfxAndroidPlatform::CreateGlobalHardwareVsyncSource() for comparison.
-    if (jni::GetAPIVersion() >= 19) {
-      mAndroidVsync = AndroidVsync::GetInstance();
-    }
+    mAndroidVsync = AndroidVsync::GetInstance();
   }
 
   ~NPZCSupport() {
@@ -544,6 +550,28 @@ class NPZCSupport final
         ConvertScrollDirections(aHandledResult.mOverscrollDirections));
   }
 
+  static bool IsIntoDoubleClickThreshold(float aX, float aY) {
+    int32_t deltaX = abs((int32_t)floorf(sLastMouseDownX - aX));
+    int32_t deltaY = abs((int32_t)floorf(sLastMouseDownY - aY));
+    int32_t threshold = StaticPrefs::widget_double_click_threshold();
+
+    return (deltaX * deltaX + deltaY * deltaY < threshold * threshold);
+  }
+
+  static bool IsDoubleClick(int64_t aTime, float aX, float aY, int buttons) {
+    if (sLastMouseButtons != buttons) {
+      return false;
+    }
+
+    int64_t deltaTime = aTime - sLastMouseDownTime;
+    if (deltaTime < (int64_t)StaticPrefs::widget_double_click_min() ||
+        deltaTime > (int64_t)StaticPrefs::widget_double_click_timeout()) {
+      return false;
+    }
+
+    return IsIntoDoubleClickThreshold(aX, aY);
+  }
+
  public:
   int32_t HandleMouseEvent(int32_t aAction, int64_t aTime, int32_t aMetaState,
                            float aX, float aY, int buttons) {
@@ -569,6 +597,16 @@ class NPZCSupport final
         mouseType = MouseInput::MOUSE_DOWN;
         buttonType = GetButtonType(buttons ^ mPreviousButtons);
         mPreviousButtons = buttons;
+
+        if (IsDoubleClick(aTime, aX, aY, buttons)) {
+          sLastClickCount++;
+        } else {
+          sLastClickCount = 1;
+        }
+        sLastMouseDownTime = aTime;
+        sLastMouseDownX = aX;
+        sLastMouseDownY = aY;
+        sLastMouseButtons = buttons;
         break;
       case java::sdk::MotionEvent::ACTION_UP:
         mouseType = MouseInput::MOUSE_UP;
@@ -577,6 +615,10 @@ class NPZCSupport final
         break;
       case java::sdk::MotionEvent::ACTION_MOVE:
         mouseType = MouseInput::MOUSE_MOVE;
+
+        if (!IsIntoDoubleClickThreshold(aX, aY)) {
+          sLastClickCount = 0;
+        }
         break;
       case java::sdk::MotionEvent::ACTION_HOVER_MOVE:
         mouseType = MouseInput::MOUSE_MOVE;
@@ -607,9 +649,27 @@ class NPZCSupport final
       return INPUT_RESULT_IGNORED;
     }
 
-    PostInputEvent([input = std::move(input), result](nsWindow* window) {
+    PostInputEvent([input = std::move(input), result,
+                    clickCount = sLastClickCount](nsWindow* window) {
       WidgetMouseEvent mouseEvent = input.ToWidgetEvent(window);
+      mouseEvent.mClickCount = clickCount;
       window->ProcessUntransformedAPZEvent(&mouseEvent, result);
+      if (MouseInput::SECONDARY_BUTTON == input.mButtonType) {
+        if ((StaticPrefs::ui_context_menus_after_mouseup() &&
+             MouseInput::MOUSE_UP == input.mType) ||
+            (!StaticPrefs::ui_context_menus_after_mouseup() &&
+             MouseInput::MOUSE_DOWN == input.mType)) {
+          MouseInput contextMenu = input;
+
+          // Actually we don't dispatch context menu event to APZ since we don't
+          // handle it on APZ yet. If handling it, we need to consider how to
+          // dispatch it on APZ thread. It may cause a race condition.
+          contextMenu.mType = MouseInput::MOUSE_CONTEXTMENU;
+
+          WidgetMouseEvent contextMenuEvent = contextMenu.ToWidgetEvent(window);
+          window->ProcessUntransformedAPZEvent(&contextMenuEvent, result);
+        }
+      }
     });
 
     switch (result.GetStatus()) {
@@ -824,6 +884,19 @@ class NPZCSupport final
       mObserver = nullptr;
     }
     mListeningToVsync = aNeedVsync;
+  }
+
+  void HandleDragEvent(int32_t aAction, int64_t aTime, float aX, float aY,
+                       jni::Object::Param aDropData) {
+    // APZ handles some drag event type on APZ thread, but it cannot handle all
+    // types.
+    MOZ_ASSERT(NS_IsMainThread());
+
+    if (auto window = mWindow.Access()) {
+      if (nsWindow* gkWindow = window->GetNsWindow()) {
+        gkWindow->OnDragEvent(aAction, aTime, aX, aY, aDropData);
+      }
+    }
   }
 
   void ConsumeMotionEventsFromResampler() {
@@ -1237,6 +1310,9 @@ class LayerViewSupport final
   void SyncPauseCompositor() {
     MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
 
+    // Set this true prior to attempting to pause the compositor, so that if
+    // pausing fails the subsequent recovery knows to initialize the compositor
+    // in a paused state.
     mCompositorPaused = true;
 
     if (mUiCompositorControllerChild) {
@@ -1271,8 +1347,12 @@ class LayerViewSupport final
   void SyncResumeCompositor() {
     MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
 
+    // Set this false prior to attempting to resume the compositor, so that if
+    // resumption fails the subsequent recovery knows to initialize the
+    // compositor in a resumed state.
+    mCompositorPaused = false;
+
     if (mUiCompositorControllerChild) {
-      mCompositorPaused = false;
       bool resumed = mUiCompositorControllerChild->Resume();
       if (!resumed) {
         gfxCriticalNote
@@ -1288,12 +1368,19 @@ class LayerViewSupport final
       jni::Object::Param aSurfaceControl) {
     MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
 
+    // Set this false prior to attempting to resume the compositor, so that if
+    // resumption fails the subsequent recovery knows to initialize the
+    // compositor in a resumed state.
+    mCompositorPaused = false;
+
     mX = aX;
     mY = aY;
     mWidth = aWidth;
     mHeight = aHeight;
-    mSurfaceControl =
-        java::sdk::SurfaceControl::GlobalRef::From(aSurfaceControl);
+    if (StaticPrefs::widget_android_use_surfacecontrol_AtStartup()) {
+      mSurfaceControl =
+          java::sdk::SurfaceControl::GlobalRef::From(aSurfaceControl);
+    }
     if (mSurfaceControl) {
       // When using SurfaceControl, we create a child Surface to render in to
       // rather than rendering directly in to the Surface provided by the
@@ -1331,8 +1418,6 @@ class LayerViewSupport final
     }
 
     mRequestedNewSurface = false;
-
-    mCompositorPaused = false;
 
     class OnResumedEvent : public nsAppShell::Event {
       GeckoSession::Compositor::GlobalRef mCompositor;
@@ -1809,12 +1894,10 @@ void GeckoViewSupport::AttachAccessibility(
           sessionAccessibility);
 }
 
-auto GeckoViewSupport::OnLoadRequest(mozilla::jni::String::Param aUri,
-                                     int32_t aWindowType, int32_t aFlags,
-                                     mozilla::jni::String::Param aTriggeringUri,
-                                     bool aHasUserGesture,
-                                     bool aIsTopLevel) const
-    -> java::GeckoResult::LocalRef {
+auto GeckoViewSupport::OnLoadRequest(
+    mozilla::jni::String::Param aUri, int32_t aWindowType, int32_t aFlags,
+    mozilla::jni::String::Param aTriggeringUri, bool aHasUserGesture,
+    bool aIsTopLevel) const -> java::GeckoResult::LocalRef {
   GeckoSession::Window::LocalRef window(mGeckoViewWindow);
   if (!window) {
     return nullptr;
@@ -2232,15 +2315,6 @@ RefPtr<MozPromise<bool, bool, false>> nsWindow::OnLoadRequest(
              : nullptr;
 }
 
-void nsWindow::OnUpdateSessionStore(mozilla::jni::Object::Param aBundle) {
-  auto geckoViewSupport(mGeckoViewSupport.Access());
-  if (!geckoViewSupport) {
-    return;
-  }
-
-  geckoViewSupport->OnUpdateSessionStore(aBundle);
-}
-
 float nsWindow::GetDPI() {
   float dpi = 160.0f;
 
@@ -2572,14 +2646,141 @@ void nsWindow::ShowDynamicToolbar() {
   acc->OnShowDynamicToolbar();
 }
 
-void GeckoViewSupport::OnUpdateSessionStore(
-    mozilla::jni::Object::Param aBundle) {
-  GeckoSession::Window::LocalRef window(mGeckoViewWindow);
-  if (!window) {
+static EventMessage convertDragEventActionToGeckoEvent(int32_t aAction) {
+  switch (aAction) {
+    case java::sdk::DragEvent::ACTION_DRAG_ENTERED:
+      return eDragEnter;
+    case java::sdk::DragEvent::ACTION_DRAG_EXITED:
+      return eDragExit;
+    case java::sdk::DragEvent::ACTION_DRAG_LOCATION:
+      return eDragOver;
+    case java::sdk::DragEvent::ACTION_DROP:
+      return eDrop;
+  }
+  return eVoidEvent;
+}
+
+void nsWindow::OnDragEvent(int32_t aAction, int64_t aTime, float aX, float aY,
+                           jni::Object::Param aDropData) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  RefPtr<nsDragService> dragService = nsDragService::GetInstance();
+  if (!dragService) {
     return;
   }
 
-  window->OnUpdateSessionStore(aBundle);
+  LayoutDeviceIntPoint point =
+      LayoutDeviceIntPoint(int32_t(floorf(aX)), int32_t(floorf(aY)));
+
+  if (aAction == java::sdk::DragEvent::ACTION_DRAG_STARTED) {
+    dragService->SetDragEndPoint(point);
+    return;
+  }
+
+  if (aAction == java::sdk::DragEvent::ACTION_DRAG_ENDED) {
+    dragService->EndDragSession(false, 0);
+    return;
+  }
+
+  EventMessage message = convertDragEventActionToGeckoEvent(aAction);
+
+  if (message == eDragEnter) {
+    dragService->StartDragSession();
+    // For compatibility, we have to set temporary data.
+    auto dropData =
+        mozilla::java::GeckoDragAndDrop::DropData::Ref::From(aDropData);
+    nsDragService::SetDropData(dropData);
+  }
+
+  nsCOMPtr<nsIDragSession> dragSession;
+  dragService->GetCurrentSession(getter_AddRefs(dragSession));
+  if (dragSession) {
+    switch (message) {
+      case eDragOver:
+        dragService->SetDragEndPoint(point);
+        dragService->FireDragEventAtSource(eDrag, 0);
+        break;
+      case eDrop: {
+        bool canDrop = false;
+        dragSession->GetCanDrop(&canDrop);
+        if (!canDrop) {
+          nsCOMPtr<nsINode> sourceNode;
+          dragSession->GetSourceNode(getter_AddRefs(sourceNode));
+          if (!sourceNode) {
+            dragService->EndDragSession(false, 0);
+          }
+          return;
+        }
+        auto dropData =
+            mozilla::java::GeckoDragAndDrop::DropData::Ref::From(aDropData);
+        nsDragService::SetDropData(dropData);
+        dragService->SetDragEndPoint(point);
+        break;
+      }
+      default:
+        break;
+    }
+
+    dragSession->SetDragAction(nsIDragService::DRAGDROP_ACTION_MOVE);
+  }
+
+  WidgetDragEvent geckoEvent(true, message, this);
+  geckoEvent.mRefPoint = point;
+  geckoEvent.mTimeStamp = nsWindow::GetEventTimeStamp(aTime);
+  geckoEvent.mModifiers = 0;  // DragEvent has no modifiers
+  DispatchInputEvent(&geckoEvent);
+
+  if (!dragSession) {
+    return;
+  }
+
+  switch (message) {
+    case eDragExit: {
+      nsCOMPtr<nsINode> sourceNode;
+      dragSession->GetSourceNode(getter_AddRefs(sourceNode));
+      if (!sourceNode) {
+        // We're leaving a window while doing a drag that was
+        // initiated in a different app. End the drag session,
+        // since we're done with it for now (until the user
+        // drags back into mozilla).
+        dragService->EndDragSession(false, 0);
+      }
+      break;
+    }
+    case eDrop:
+      dragService->EndDragSession(true, 0);
+      break;
+    default:
+      break;
+  }
+}
+
+void nsWindow::StartDragAndDrop(java::sdk::Bitmap::LocalRef aBitmap) {
+  if (mozilla::jni::NativeWeakPtr<LayerViewSupport>::Accessor lvs{
+          mLayerViewSupport.Access()}) {
+    const auto& compositor = lvs->GetJavaCompositor();
+
+    DispatchToUiThread(
+        "nsWindow::StartDragAndDrop",
+        [compositor = GeckoSession::Compositor::GlobalRef(compositor),
+         bitmap = java::sdk::Bitmap::GlobalRef(aBitmap)] {
+          compositor->StartDragAndDrop(bitmap);
+        });
+  }
+}
+
+void nsWindow::UpdateDragImage(java::sdk::Bitmap::LocalRef aBitmap) {
+  if (mozilla::jni::NativeWeakPtr<LayerViewSupport>::Accessor lvs{
+          mLayerViewSupport.Access()}) {
+    const auto& compositor = lvs->GetJavaCompositor();
+
+    DispatchToUiThread(
+        "nsWindow::UpdateDragImage",
+        [compositor = GeckoSession::Compositor::GlobalRef(compositor),
+         bitmap = java::sdk::Bitmap::GlobalRef(aBitmap)] {
+          compositor->UpdateDragImage(bitmap);
+        });
+  }
 }
 
 void nsWindow::OnSizeChanged(const gfx::IntSize& aSize) {
@@ -3083,29 +3284,7 @@ static already_AddRefed<DataSourceSurface> GetCursorImage(
     return nullptr;
   }
 
-  RefPtr<DataSourceSurface> srcDataSurface = surface->GetDataSurface();
-  if (NS_WARN_IF(!srcDataSurface)) {
-    return nullptr;
-  }
-
-  DataSourceSurface::ScopedMap sourceMap(srcDataSurface,
-                                         DataSourceSurface::READ);
-
-  destDataSurface = gfx::Factory::CreateDataSourceSurfaceWithStride(
-      srcDataSurface->GetSize(), SurfaceFormat::R8G8B8A8,
-      sourceMap.GetStride());
-  if (NS_WARN_IF(!destDataSurface)) {
-    return nullptr;
-  }
-
-  DataSourceSurface::ScopedMap destMap(destDataSurface,
-                                       DataSourceSurface::READ_WRITE);
-
-  SwizzleData(sourceMap.GetData(), sourceMap.GetStride(), surface->GetFormat(),
-              destMap.GetData(), destMap.GetStride(), SurfaceFormat::R8G8B8A8,
-              destDataSurface->GetSize());
-
-  return destDataSurface.forget();
+  return AndroidWidgetUtils::GetDataSourceSurfaceForAndroidBitmap(surface);
 }
 
 static int32_t GetCursorType(nsCursor aCursor) {

@@ -27,12 +27,6 @@
 #include "transport/runnable_utils.h"
 #include "WinUtils.h"
 
-// Win 8+ (_WIN32_WINNT_WIN8)
-#ifndef EVENT_OBJECT_CLOAKED
-#  define EVENT_OBJECT_CLOAKED 0x8017
-#  define EVENT_OBJECT_UNCLOAKED 0x8018
-#endif
-
 namespace mozilla::widget {
 
 // Can be called on Main thread
@@ -887,10 +881,6 @@ void WinWindowOcclusionTracker::WindowOcclusionCalculator::Initialize() {
   CALC_LOG(LogLevel::Info, "Initialize()");
 
 #ifndef __MINGW32__
-  if (!IsWin10OrLater()) {
-    return;
-  }
-
   RefPtr<IVirtualDesktopManager> desktopManager;
   HRESULT hr = ::CoCreateInstance(
       CLSID_VirtualDesktopManager, NULL, CLSCTX_INPROC_SERVER,

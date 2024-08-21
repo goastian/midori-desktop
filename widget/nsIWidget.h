@@ -58,10 +58,15 @@ class WidgetGUIEvent;
 class WidgetInputEvent;
 class WidgetKeyboardEvent;
 struct FontRange;
-
-enum class StyleWindowShadow : uint8_t;
 enum class ColorScheme : uint8_t;
 enum class WindowButtonType : uint8_t;
+
+enum class WindowShadow : uint8_t {
+  None,
+  Menu,
+  Panel,
+  Tooltip,
+};
 
 #if defined(MOZ_WIDGET_ANDROID)
 namespace ipc {
@@ -663,12 +668,6 @@ class nsIWidget : public nsISupports {
   virtual void SetModal(bool aModal) = 0;
 
   /**
-   * Make the non-modal window opened by modal window fake-modal, that will
-   * call SetFakeModal(false) on destroy on Cocoa.
-   */
-  virtual void SetFakeModal(bool aModal) { SetModal(aModal); }
-
-  /**
    * Are we app modal. Currently only implemented on Cocoa.
    */
   virtual bool IsRunningAppModal() { return false; }
@@ -778,10 +777,6 @@ class nsIWidget : public nsISupports {
    */
   virtual void Resize(double aX, double aY, double aWidth, double aHeight,
                       bool aRepaint) = 0;
-
-  virtual mozilla::Maybe<bool> IsResizingNativeWidget() {
-    return mozilla::Nothing();
-  }
 
   /**
    * Resize the widget so that the inner client area has the given size.
@@ -1048,7 +1043,7 @@ class nsIWidget : public nsISupports {
    *
    * Ignored on child widgets and on non-Mac platforms.
    */
-  virtual void SetWindowShadowStyle(mozilla::StyleWindowShadow aStyle) = 0;
+  virtual void SetWindowShadowStyle(mozilla::WindowShadow aStyle) = 0;
 
   /**
    * Set the opacity of the window.
@@ -1218,14 +1213,6 @@ class nsIWidget : public nsISupports {
    * Always called on the main thread.
    */
   virtual void PrepareWindowEffects() = 0;
-
-  /**
-   * Called on the main thread at the end of WebRender display list building.
-   */
-  virtual void AddWindowOverlayWebRenderCommands(
-      mozilla::layers::WebRenderBridgeChild* aWrBridge,
-      mozilla::wr::DisplayListBuilder& aBuilder,
-      mozilla::wr::IpcResourceUpdateQueue& aResources) {}
 
   /**
    * Called when Gecko knows which themed widgets exist in this window.
@@ -1410,6 +1397,8 @@ class nsIWidget : public nsISupports {
                               const nsAString& xulWinClass,
                               const nsAString& xulWinName) = 0;
 
+  virtual void SetIsEarlyBlankWindow(bool) {}
+
   /**
    * Enables/Disables system capture of any and all events that would cause a
    * popup to be rolled up. aListener should be set to a non-null value for
@@ -1437,19 +1426,6 @@ class nsIWidget : public nsISupports {
    * included, including those not targeted at this nsIwidget instance.
    */
   virtual bool HasPendingInputEvent() = 0;
-
-  /**
-   * If set to true, the window will draw its contents into the titlebar
-   * instead of below it.
-   *
-   * Ignored on any platform that does not support it. Ignored by widgets that
-   * do not represent windows.
-   * May result in a resize event, so should only be called from places where
-   * reflow and painting is allowed.
-   *
-   * @param aState Whether drawing into the titlebar should be activated.
-   */
-  virtual void SetDrawsInTitlebar(bool aState) = 0;
 
   /*
    * Determine whether the widget shows a resize widget. If it does,
@@ -1992,6 +1968,11 @@ class nsIWidget : public nsISupports {
   virtual CompositorBridgeChild* GetRemoteRenderer() { return nullptr; }
 
   /**
+   * If there is a remote renderer, pause or resume it.
+   */
+  virtual void PauseOrResumeCompositor(bool aPause);
+
+  /**
    * Clear WebRender resources
    */
   virtual void ClearCachedWebrenderResources() {}
@@ -2045,6 +2026,11 @@ class nsIWidget : public nsISupports {
   virtual TextEventDispatcherListener*
   GetNativeTextEventDispatcherListener() = 0;
 
+  /**
+   * Trigger an animation to zoom to the given |aRect|.
+   * |aRect| should be relative to the layout viewport of the widget's root
+   * document
+   */
   virtual void ZoomToRect(const uint32_t& aPresShellId,
                           const ScrollableLayerGuid::ViewID& aViewId,
                           const CSSRect& aRect, const uint32_t& aFlags) = 0;

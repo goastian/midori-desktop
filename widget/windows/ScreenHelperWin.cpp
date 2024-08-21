@@ -7,8 +7,11 @@
 #include "ScreenHelperWin.h"
 
 #include "mozilla/Logging.h"
+#include "mozilla/gfx/DeviceManagerDx.h"
 #include "nsTArray.h"
 #include "WinUtils.h"
+
+#include <dxgi.h>
 
 static mozilla::LazyLogModule sScreenLog("WidgetScreen");
 
@@ -74,8 +77,13 @@ static void GetDisplayInfo(const char16ptr_t aName,
   }
 }
 
+struct CollectMonitorsParam {
+  nsTArray<RefPtr<Screen>> screens;
+};
+
 BOOL CALLBACK CollectMonitors(HMONITOR aMon, HDC, LPRECT, LPARAM ioParam) {
-  auto screens = reinterpret_cast<nsTArray<RefPtr<Screen>>*>(ioParam);
+  CollectMonitorsParam* cmParam =
+      reinterpret_cast<CollectMonitorsParam*>(ioParam);
   BOOL success = FALSE;
   MONITORINFOEX info;
   info.cbSize = sizeof(MONITORINFOEX);
@@ -123,34 +131,43 @@ BOOL CALLBACK CollectMonitors(HMONITOR aMon, HDC, LPRECT, LPARAM ioParam) {
   GetDisplayInfo(info.szDevice, orientation, angle, isPseudoDisplay,
                  refreshRate);
 
+  auto* manager = gfx::DeviceManagerDx::Get();
+  bool isHDR = manager ? manager->MonitorHDREnabled(aMon) : false;
+
   MOZ_LOG(sScreenLog, LogLevel::Debug,
           ("New screen [%s (%s) %d %u %f %f %f %d %d %d]",
            ToString(rect).c_str(), ToString(availRect).c_str(), pixelDepth,
            refreshRate, contentsScaleFactor.scale, defaultCssScaleFactor.scale,
-           dpi, isPseudoDisplay, orientation, angle));
+           dpi, isPseudoDisplay, uint32_t(orientation), angle));
   auto screen = MakeRefPtr<Screen>(
       rect, availRect, pixelDepth, pixelDepth, refreshRate, contentsScaleFactor,
       defaultCssScaleFactor, dpi, Screen::IsPseudoDisplay(isPseudoDisplay),
-      orientation, angle);
+      Screen::IsHDR(isHDR), orientation, angle);
   if (info.dwFlags & MONITORINFOF_PRIMARY) {
     // The primary monitor must be the first element of the screen list.
-    screens->InsertElementAt(0, std::move(screen));
+    cmParam->screens.InsertElementAt(0, std::move(screen));
   } else {
-    screens->AppendElement(std::move(screen));
+    cmParam->screens.AppendElement(std::move(screen));
   }
   return TRUE;
 }
 
+/* static */
 void ScreenHelperWin::RefreshScreens() {
   MOZ_LOG(sScreenLog, LogLevel::Debug, ("Refreshing screens"));
 
-  AutoTArray<RefPtr<Screen>, 4> screens;
+  auto* manager = gfx::DeviceManagerDx::Get();
+  if (XRE_IsParentProcess() && manager) {
+    manager->UpdateMonitorInfo();
+  }
+
+  CollectMonitorsParam cmParam;
   BOOL result = ::EnumDisplayMonitors(
-      nullptr, nullptr, (MONITORENUMPROC)CollectMonitors, (LPARAM)&screens);
+      nullptr, nullptr, (MONITORENUMPROC)CollectMonitors, (LPARAM)&cmParam);
   if (!result) {
     NS_WARNING("Unable to EnumDisplayMonitors");
   }
-  ScreenManager::Refresh(std::move(screens));
+  ScreenManager::Refresh(std::move(cmParam.screens));
 }
 
 }  // namespace widget

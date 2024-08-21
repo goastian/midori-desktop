@@ -19,7 +19,7 @@ using mozilla::ipc::IPCResult;
 
 namespace mozilla {
 
-NS_IMPL_ISUPPORTS(ClipboardWriteRequestParent, nsIAsyncSetClipboardDataCallback)
+NS_IMPL_ISUPPORTS(ClipboardWriteRequestParent, nsIAsyncClipboardRequestCallback)
 
 ClipboardWriteRequestParent::ClipboardWriteRequestParent(
     ContentParent* aManager)
@@ -27,7 +27,9 @@ ClipboardWriteRequestParent::ClipboardWriteRequestParent(
 
 ClipboardWriteRequestParent::~ClipboardWriteRequestParent() = default;
 
-nsresult ClipboardWriteRequestParent::Init(const int32_t& aClipboardType) {
+nsresult ClipboardWriteRequestParent::Init(
+    const int32_t& aClipboardType,
+    mozilla::dom::WindowContext* aSettingWindowContext) {
   nsCOMPtr<nsIClipboard> clipboard(do_GetService(kCClipboardCID));
   if (!clipboard) {
     Unused << PClipboardWriteRequestParent::Send__delete__(this,
@@ -35,8 +37,9 @@ nsresult ClipboardWriteRequestParent::Init(const int32_t& aClipboardType) {
     return NS_ERROR_FAILURE;
   }
 
-  nsresult rv = clipboard->AsyncSetData(aClipboardType, this,
-                                        getter_AddRefs(mAsyncSetClipboardData));
+  nsresult rv =
+      clipboard->AsyncSetData(aClipboardType, aSettingWindowContext, this,
+                              getter_AddRefs(mAsyncSetClipboardData));
   if (NS_FAILED(rv)) {
     Unused << PClipboardWriteRequestParent::Send__delete__(this, rv);
     return rv;
@@ -57,10 +60,12 @@ NS_IMETHODIMP ClipboardWriteRequestParent::OnComplete(nsresult aResult) {
 IPCResult ClipboardWriteRequestParent::RecvSetData(
     const IPCTransferable& aTransferable) {
   if (!mManager->ValidatePrincipal(
-          aTransferable.requestingPrincipal(),
-          {ContentParent::ValidatePrincipalOptions::AllowNullPtr})) {
+          aTransferable.dataPrincipal(),
+          {ContentParent::ValidatePrincipalOptions::AllowNullPtr,
+           ContentParent::ValidatePrincipalOptions::AllowExpanded,
+           ContentParent::ValidatePrincipalOptions::AllowSystem})) {
     ContentParent::LogAndAssertFailedPrincipalValidationInfo(
-        aTransferable.requestingPrincipal(), __func__);
+        aTransferable.dataPrincipal(), __func__);
   }
 
   if (!mAsyncSetClipboardData) {
@@ -89,7 +94,9 @@ IPCResult ClipboardWriteRequestParent::RecvSetData(
 }
 
 IPCResult ClipboardWriteRequestParent::Recv__delete__(nsresult aReason) {
+#ifndef FUZZING_SNAPSHOT
   MOZ_DIAGNOSTIC_ASSERT(NS_FAILED(aReason));
+#endif
   nsCOMPtr<nsIAsyncSetClipboardData> clipboardData =
       std::move(mAsyncSetClipboardData);
   if (clipboardData) {

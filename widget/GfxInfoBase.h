@@ -64,10 +64,17 @@ class GfxInfoBase : public nsIGfxInfo,
   NS_IMETHOD GetFeatureLog(JSContext*, JS::MutableHandle<JS::Value>) override;
   NS_IMETHOD GetActiveCrashGuards(JSContext*,
                                   JS::MutableHandle<JS::Value>) override;
+  NS_IMETHOD GetFontVisibilityDetermination(
+      nsIGfxInfo::FontVisibilityDeviceDetermination*
+          aFontVisibilityDetermination) override;
+  NS_IMETHOD GetFontVisibilityDeterminationStr(
+      nsAString& aFontVisibilityDeterminationStr) override;
   NS_IMETHOD GetContentBackend(nsAString& aContentBackend) override;
   NS_IMETHOD GetAzureCanvasBackend(nsAString& aBackend) override;
   NS_IMETHOD GetAzureContentBackend(nsAString& aBackend) override;
   NS_IMETHOD GetUsingGPUProcess(bool* aOutValue) override;
+  NS_IMETHOD GetUsingRemoteCanvas(bool* aOutValue) override;
+  NS_IMETHOD GetUsingAcceleratedCanvas(bool* aOutValue) override;
   NS_IMETHOD GetIsHeadless(bool* aIsHeadless) override;
   NS_IMETHOD GetTargetFrameRate(uint32_t* aTargetFrameRate) override;
   NS_IMETHOD GetCodecSupportInfo(nsACString& aCodecSupportInfo) override;
@@ -157,6 +164,9 @@ class GfxInfoBase : public nsIGfxInfo,
       const nsTArray<GfxDriverInfo>& aDriverInfo, nsAString& aSuggestedVersion,
       int32_t aFeature, nsACString& aFailureId, OperatingSystem os,
       bool aForAllowing);
+
+  std::pair<nsIGfxInfo::FontVisibilityDeviceDetermination, nsString>*
+  GetFontVisibilityDeterminationPair();
 
   bool IsFeatureAllowlisted(int32_t aFeature) const;
 

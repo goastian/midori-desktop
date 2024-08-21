@@ -13,6 +13,7 @@
 #include "nsIObserver.h"
 #include <gtk/gtk.h>
 #include "nsITimer.h"
+#include "GUniquePtr.h"
 
 class nsICookieJarSettings;
 class nsWindow;
@@ -22,6 +23,70 @@ namespace gfx {
 class SourceSurface;
 }
 }  // namespace mozilla
+
+class DragData final {
+ public:
+  NS_INLINE_DECL_REFCOUNTING(DragData)
+
+  explicit DragData(GdkAtom aDataFlavor, const void* aData, uint32_t aDataLen)
+      : mDataFlavor(aDataFlavor),
+        mDragDataLen(aDataLen),
+        mDragData(moz_xmemdup(aData, aDataLen)) {
+    // kURLMime (text/x-moz-url) is received as UTF16 raw data as
+    // Gtk doesn't recognize it as URI format. We need to flip it to URI
+    // format.
+    if (IsURIFlavor()) {
+      ConvertToMozURIList();
+    }
+  }
+  explicit DragData(GdkAtom aDataFlavor, gchar** aDragUris);
+
+  GdkAtom GetFlavor() const { return mDataFlavor; }
+
+  // Try to convert text/uri-list or _NETSCAPE_URL MIME to x-moz-url MIME type
+  // which is used internally.
+  RefPtr<DragData> ConvertToMozURL() const;
+
+  // Try to convert text/uri-list MIME to application/x-moz-file MIME type.
+  RefPtr<DragData> ConvertToFile() const;
+
+  bool Export(nsITransferable* aTransferable, uint32_t aItemIndex);
+
+  bool IsImageFlavor() const;
+  bool IsFileFlavor() const;
+  bool IsTextFlavor() const;
+  bool IsURIFlavor() const;
+
+  int GetURIsNum() const;
+
+#ifdef MOZ_LOGGING
+  void Print() const;
+#endif
+
+ private:
+  explicit DragData(GdkAtom aDataFlavor) : mDataFlavor(aDataFlavor) {}
+  ~DragData() = default;
+
+  void ConvertToMozURIList();
+
+  GdkAtom mDataFlavor = nullptr;
+
+  bool mAsURIData = false;
+
+  // In a rare case we export
+  bool mDragDataDOMEndings = false;
+
+  // Data obtained from Gtk
+  uint32_t mDragDataLen = 0;
+  mozilla::UniqueFreePtr<void> mDragData;
+  mozilla::GUniquePtr<gchar*> mDragUris;
+
+  // Data which can be passed to transferable. In some cases we can use Gtk data
+  // directly but in most cases we need to do UTF8/UTF16 conversion
+  // and perform line break;
+  nsString mData;
+  nsTArray<nsString> mUris;
+};
 
 /**
  * Native GTK DragService wrapper
@@ -159,14 +224,18 @@ class nsDragService final : public nsBaseDragService, public nsIObserver {
   mozilla::LayoutDeviceIntPoint mPendingWindowPoint;
   RefPtr<GdkDragContext> mPendingDragContext;
 
-  // We cache all data for the current drag context,
-  // because waiting for the data in GetTargetDragData can be very slow.
-  nsTHashMap<nsCStringHashKey, nsTArray<uint8_t>> mCachedData;
-  // mCachedData are tied to mCachedDragContext. mCachedDragContext is not
-  // ref counted and may be already deleted on Gtk side.
-  // We used it for mCachedData invalidation only and can't be used for
-  // any D&D operation.
+  // mCachedDragData/mCachedDragFlavors are tied to mCachedDragContext.
+  // mCachedDragContext is not ref counted and may be already deleted
+  // on Gtk side.
+  // We used it for mCachedDragData/mCachedDragFlavors invalidation
+  // only and can't be used for any D&D operation.
   uintptr_t mCachedDragContext;
+  nsTHashMap<void*, RefPtr<DragData>> mCachedDragData;
+  nsTArray<GdkAtom> mCachedDragFlavors;
+
+  void SetCachedDragContext(GdkDragContext* aDragContext);
+
+  nsTHashMap<nsCStringHashKey, mozilla::GUniquePtr<gchar*>> mCachedUris;
 
   guint mPendingTime;
 
@@ -193,22 +262,15 @@ class nsDragService final : public nsBaseDragService, public nsIObserver {
 
   // is it OK to drop on us?
   bool mCanDrop;
+  int mWaitingForDragDataRequests = 0;
 
-  // have we received our drag data?
-  bool mTargetDragDataReceived;
-  // last data received and its length
-  void* mTargetDragData;
-  uint32_t mTargetDragDataLen;
   // is the current target drag context contain a list?
   bool IsTargetContextList(void);
+  bool IsDragFlavorAvailable(GdkAtom aRequestedFlavor);
+
   // this will get the native data from the last target given a
   // specific flavor
-  void GetTargetDragData(GdkAtom aFlavor, nsTArray<nsCString>& aDropFlavors);
-  // this will reset all of the target vars
-  void TargetResetData(void);
-  // Ensure our data cache belongs to aDragContext and clear the cache if
-  // aDragContext is different than mCachedDragContext.
-  void EnsureCachedDataValidForContext(GdkDragContext* aDragContext);
+  RefPtr<DragData> GetDragData(GdkAtom aRequestedFlavor);
 
   // source side vars
 
@@ -242,7 +304,6 @@ class nsDragService final : public nsBaseDragService, public nsIObserver {
 #ifdef MOZ_LOGGING
   const char* GetDragServiceTaskName(nsDragService::DragTask aTask);
 #endif
-  void GetDragFlavors(nsTArray<nsCString>& aFlavors);
   gboolean DispatchDropEvent();
   static uint32_t GetCurrentModifiers();
 
@@ -259,6 +320,28 @@ class nsDragService final : public nsBaseDragService, public nsIObserver {
   guint mTempFileTimerID;
   // How deep we're nested in event loops
   int mEventLoopDepth;
+
+ public:
+  static GdkAtom sJPEGImageMimeAtom;
+  static GdkAtom sJPGImageMimeAtom;
+  static GdkAtom sPNGImageMimeAtom;
+  static GdkAtom sGIFImageMimeAtom;
+  static GdkAtom sCustomTypesMimeAtom;
+  static GdkAtom sURLMimeAtom;
+  static GdkAtom sRTFMimeAtom;
+  static GdkAtom sTextMimeAtom;
+  static GdkAtom sMozUrlTypeAtom;
+  static GdkAtom sMimeListTypeAtom;
+  static GdkAtom sTextUriListTypeAtom;
+  static GdkAtom sTextPlainUTF8TypeAtom;
+  static GdkAtom sXdndDirectSaveTypeAtom;
+  static GdkAtom sTabDropTypeAtom;
+  static GdkAtom sFileMimeAtom;
+  static GdkAtom sPortalFileAtom;
+  static GdkAtom sPortalFileTransferAtom;
+  static GdkAtom sFilePromiseURLMimeAtom;
+  static GdkAtom sFilePromiseMimeAtom;
+  static GdkAtom sNativeImageMimeAtom;
 };
 
 #endif  // nsDragService_h__

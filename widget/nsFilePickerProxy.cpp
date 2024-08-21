@@ -12,6 +12,7 @@
 #include "mozilla/dom/Directory.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/BrowserChild.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/IPCBlobUtils.h"
 
 using namespace mozilla::dom;
@@ -24,18 +25,19 @@ nsFilePickerProxy::nsFilePickerProxy()
 nsFilePickerProxy::~nsFilePickerProxy() = default;
 
 NS_IMETHODIMP
-nsFilePickerProxy::Init(mozIDOMWindowProxy* aParent, const nsAString& aTitle,
-                        nsIFilePicker::Mode aMode) {
-  BrowserChild* browserChild = BrowserChild::GetFrom(aParent);
+nsFilePickerProxy::Init(BrowsingContext* aBrowsingContext,
+                        const nsAString& aTitle, nsIFilePicker::Mode aMode) {
+  BrowserChild* browserChild =
+      BrowserChild::GetFrom(aBrowsingContext->GetDocShell());
   if (!browserChild) {
     return NS_ERROR_FAILURE;
   }
 
-  mParent = nsPIDOMWindowOuter::From(aParent);
-
+  mBrowsingContext = aBrowsingContext;
   mMode = aMode;
 
-  browserChild->SendPFilePickerConstructor(this, aTitle, aMode);
+  browserChild->SendPFilePickerConstructor(this, aTitle, aMode,
+                                           aBrowsingContext);
 
   mIPCActive = true;
   return NS_OK;
@@ -144,10 +146,18 @@ nsFilePickerProxy::Open(nsIFilePickerShownCallback* aCallback) {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsFilePickerProxy::Close() {
+  SendClose();
+
+  return NS_OK;
+}
+
 mozilla::ipc::IPCResult nsFilePickerProxy::Recv__delete__(
     const MaybeInputData& aData, const nsIFilePicker::ResultCode& aResult) {
-  nsPIDOMWindowInner* inner =
-      mParent ? mParent->GetCurrentInnerWindow() : nullptr;
+  auto* inner = mBrowsingContext->GetDOMWindow()
+                    ? mBrowsingContext->GetDOMWindow()->GetCurrentInnerWindow()
+                    : nullptr;
 
   if (NS_WARN_IF(!inner)) {
     return IPC_OK();

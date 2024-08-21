@@ -26,6 +26,7 @@
 #include "nsTArray.h"
 #include "nsXULAppAPI.h"
 #include "nsIXULAppInfo.h"
+#include "mozilla/BinarySearch.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_gfx.h"
@@ -42,6 +43,11 @@
 #include "gfxPlatform.h"
 #include "gfxConfig.h"
 #include "DriverCrashGuard.h"
+
+#ifdef MOZ_WIDGET_ANDROID
+#  include <set>
+#  include "AndroidBuild.h"
+#endif
 
 using namespace mozilla::widget;
 using namespace mozilla;
@@ -267,8 +273,17 @@ static const char* GetPrefNameForFeature(int32_t aFeature) {
     case nsIGfxInfo::FEATURE_AV1_HW_DECODE:
       name = BLOCKLIST_PREF_BRANCH "av1.hw-decode";
       break;
+    case nsIGfxInfo::FEATURE_VIDEO_SOFTWARE_OVERLAY:
+      name = BLOCKLIST_PREF_BRANCH "video-software-overlay";
+      break;
     case nsIGfxInfo::FEATURE_WEBGL_USE_HARDWARE:
       name = BLOCKLIST_PREF_BRANCH "webgl-use-hardware";
+      break;
+    case nsIGfxInfo::FEATURE_OVERLAY_VP_AUTO_HDR:
+      name = BLOCKLIST_PREF_BRANCH "overlay-vp-auto-hdr";
+      break;
+    case nsIGfxInfo::FEATURE_OVERLAY_VP_SUPER_RESOLUTION:
+      name = BLOCKLIST_PREF_BRANCH "overlay-vp-super-resolution";
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected nsIGfxInfo feature?!");
@@ -546,13 +561,25 @@ static int32_t BlocklistFeatureToGfxFeature(const nsAString& aFeature) {
   if (aFeature.EqualsLiteral("ACCELERATED_CANVAS2D")) {
     return nsIGfxInfo::FEATURE_ACCELERATED_CANVAS2D;
   }
+  if (aFeature.EqualsLiteral("FEATURE_OVERLAY_VP_AUTO_HDR")) {
+    return nsIGfxInfo::FEATURE_OVERLAY_VP_AUTO_HDR;
+  }
+  if (aFeature.EqualsLiteral("FEATURE_OVERLAY_VP_SUPER_RESOLUTION")) {
+    return nsIGfxInfo::FEATURE_OVERLAY_VP_SUPER_RESOLUTION;
+  }
+  if (aFeature.EqualsLiteral("ALL")) {
+    return GfxDriverInfo::allFeatures;
+  }
+  if (aFeature.EqualsLiteral("OPTIONAL")) {
+    return GfxDriverInfo::optionalFeatures;
+  }
 
   // If we don't recognize the feature, it may be new, and something
   // this version doesn't understand.  So, nothing to do.  This is
   // different from feature not being specified at all, in which case
   // this method should not get called and we should continue with the
-  // "all features" blocklisting.
-  return -1;
+  // "optional features" blocklisting.
+  return 0;
 }
 
 static int32_t BlocklistFeatureStatusToGfxFeatureStatus(
@@ -683,7 +710,7 @@ static bool BlocklistEntryToDriverInfo(const nsACString& aBlocklistEntry,
       aDriverInfo.mDriverVendor = dataValue;
     } else if (key.EqualsLiteral("feature")) {
       aDriverInfo.mFeature = BlocklistFeatureToGfxFeature(dataValue);
-      if (aDriverInfo.mFeature < 0) {
+      if (aDriverInfo.mFeature == 0) {
         // If we don't recognize the feature, we do not want to proceed.
         gfxWarning() << "Unrecognized feature " << value.get();
         return false;
@@ -1171,7 +1198,9 @@ int32_t GfxInfoBase::FindBlocklistedDeviceInList(
 
     if (match || info[i].mDriverVersion == GfxDriverInfo::allDriverVersions) {
       if (info[i].mFeature == GfxDriverInfo::allFeatures ||
-          info[i].mFeature == aFeature) {
+          info[i].mFeature == aFeature ||
+          (info[i].mFeature == GfxDriverInfo::optionalFeatures &&
+           OnlyAllowFeatureOnKnownConfig(aFeature))) {
         status = info[i].mFeatureStatus;
         if (!info[i].mRuleId.IsEmpty()) {
           aFailureId = info[i].mRuleId.get();
@@ -1259,8 +1288,7 @@ bool GfxInfoBase::DoesDriverVendorMatch(const nsAString& aBlocklistVendor,
 }
 
 bool GfxInfoBase::IsFeatureAllowlisted(int32_t aFeature) const {
-  return aFeature == nsIGfxInfo::FEATURE_VIDEO_OVERLAY ||
-         aFeature == nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY;
+  return aFeature == nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY;
 }
 
 nsresult GfxInfoBase::GetFeatureStatusImpl(
@@ -1872,6 +1900,213 @@ GfxInfoBase::GetIsHeadless(bool* aIsHeadless) {
   return NS_OK;
 }
 
+#if defined(MOZ_WIDGET_ANDROID)
+
+const char* chromebookProductList[] = {
+    "asuka",    "asurada",   "atlas",    "auron",    "banjo",     "banon",
+    "bob",      "brask",     "brya",     "buddy",    "butterfly", "candy",
+    "caroline", "cave",      "celes",    "chell",    "cherry",    "clapper",
+    "coral",    "corsola",   "cyan",     "daisy",    "dedede",    "drallion",
+    "edgar",    "elm",       "enguarde", "eve",      "expresso",  "falco",
+    "fizz",     "gandof",    "glimmer",  "gnawty",   "grunt",     "guado",
+    "guybrush", "hana",      "hatch",    "heli",     "jacuzzi",   "kalista",
+    "kefka",    "kevin",     "kip",      "kukui",    "lars",      "leon",
+    "link",     "lulu",      "lumpy",    "mccloud",  "monroe",    "nami",
+    "nautilus", "ninja",     "nissa",    "nocturne", "nyan",      "octopus",
+    "orco",     "panther",   "parrot",   "peach",    "peppy",     "puff",
+    "pyro",     "quawks",    "rammus",   "reef",     "reks",      "relm",
+    "rikku",    "samus",     "sand",     "sarien",   "scarlet",   "sentry",
+    "setzer",   "skyrim",    "snappy",   "soraka",   "squawks",   "staryu",
+    "stout",    "strongbad", "stumpy",   "sumo",     "swanky",    "terra",
+    "tidus",    "tricky",    "trogdor",  "ultima",   "veyron",    "volteer",
+    "winky",    "wizpig",    "wolf",     "x86",      "zako",      "zork"};
+
+bool ProductIsChromebook(nsCString product) {
+  size_t result;
+  return BinarySearchIf(
+      chromebookProductList, 0, ArrayLength(chromebookProductList),
+      [&](const char* const aValue) -> int {
+        return strcmp(product.get(), aValue);
+      },
+      &result);
+}
+#endif
+
+using Device = nsIGfxInfo::FontVisibilityDeviceDetermination;
+static StaticAutoPtr<std::pair<Device, nsString>> ret;
+
+std::pair<Device, nsString>* GfxInfoBase::GetFontVisibilityDeterminationPair() {
+  if (!ret) {
+    ret = new std::pair<Device, nsString>();
+    ret->first = Device::Unassigned;
+    ret->second = u""_ns;
+    ClearOnShutdown(&ret);
+  }
+
+  if (ret->first != Device::Unassigned) {
+    return ret;
+  }
+
+#if defined(MOZ_WIDGET_ANDROID)
+  auto androidReleaseVersion = strtol(
+      java::sdk::Build::VERSION::RELEASE()->ToCString().get(), nullptr, 10);
+
+  auto androidManufacturer = java::sdk::Build::MANUFACTURER()->ToCString();
+  nsContentUtils::ASCIIToLower(androidManufacturer);
+
+  auto androidBrand = java::sdk::Build::BRAND()->ToCString();
+  nsContentUtils::ASCIIToLower(androidBrand);
+
+  auto androidModel = java::sdk::Build::MODEL()->ToCString();
+  nsContentUtils::ASCIIToLower(androidModel);
+
+  auto androidProduct = java::sdk::Build::PRODUCT()->ToCString();
+  nsContentUtils::ASCIIToLower(androidProduct);
+
+  auto androidProductIsChromebook = ProductIsChromebook(androidProduct);
+
+  if (androidReleaseVersion < 4 || androidReleaseVersion > 20) {
+    // Something is screwy, oh well.
+    ret->second.AppendASCII("Unknown Release Version - ");
+    ret->first = Device::Android_Unknown_Release_Version;
+  } else if (androidReleaseVersion <= 8) {
+    ret->second.AppendASCII("Android <9 - ");
+    ret->first = Device::Android_sub_9;
+  } else if (androidReleaseVersion <= 11) {
+    ret->second.AppendASCII("Android 9-11 - ");
+    ret->first = Device::Android_9_11;
+  } else if (androidReleaseVersion > 11) {
+    ret->second.AppendASCII("Android 12+ - ");
+    ret->first = Device::Android_12_plus;
+  } else {
+    MOZ_CRASH_UNSAFE_PRINTF(
+        "Somehow wound up in GetFontVisibilityDeterminationPair with a release "
+        "version of %li",
+        androidReleaseVersion);
+  }
+
+  if (androidManufacturer == "google" && androidModel == androidProduct &&
+      androidProductIsChromebook) {
+    // Chromebook font set coming later
+    ret->second.AppendASCII("Chromebook - ");
+    ret->first = Device::Android_Chromebook;
+  }
+  if (androidBrand == "amazon") {
+    // Amazon Fire font set coming later
+    ret->second.AppendASCII("Amazon - ");
+    ret->first = Device::Android_Amazon;
+  }
+  if (androidBrand == "peloton") {
+    // We don't know how to categorize fonts on this system
+    ret->second.AppendASCII("Peloton - ");
+    ret->first = Device::Android_Unknown_Peloton;
+  }
+  if (androidProduct == "vbox86p") {
+    ret->second.AppendASCII("vbox - ");
+    // We can't categorize fonts when running in an emulator on a Desktop
+    ret->first = Device::Android_Unknown_vbox;
+  }
+  if (androidModel.Find("mitv"_ns) != kNotFound && androidBrand == "xiaomi") {
+    // We don't know how to categorize fonts on this system
+    ret->second.AppendASCII("mitv - ");
+    ret->first = Device::Android_Unknown_mitv;
+  }
+
+  ret->second.AppendPrintf(
+      "release_version_str=%s, release_version=%li",
+      java::sdk::Build::VERSION::RELEASE()->ToCString().get(),
+      androidReleaseVersion);
+  ret->second.AppendPrintf(
+      ", manufacturer=%s, brand=%s, model=%s, product=%s, chromebook=%s",
+      androidManufacturer.get(), androidBrand.get(), androidModel.get(),
+      androidProduct.get(), androidProductIsChromebook ? "yes" : "no");
+
+#elif defined(XP_LINUX)
+  ret->first = Device::Linux_Unknown;
+
+  long versionMajor = 0;
+  FILE* fp = fopen("/etc/os-release", "r");
+  if (fp) {
+    char buf[512];
+    while (fgets(buf, sizeof(buf), fp)) {
+      if (strncmp(buf, "VERSION_ID=\"", 12) == 0) {
+        ret->second.AppendPrintf("VERSION_ID=%.11s", buf + 11);
+        versionMajor = strtol(buf + 12, nullptr, 10);
+        if (ret->first != Device::Linux_Unknown) {
+          break;
+        }
+      }
+
+      if (strncmp(buf, "ID=", 3) == 0) {
+        ret->second.AppendPrintf("ID=%.6s", buf + 3);
+        if (strncmp(buf + 3, "ubuntu", 6) == 0) {
+          ret->first = Device::Linux_Ubuntu_any;
+        } else if (strncmp(buf + 3, "fedora", 6) == 0) {
+          ret->first = Device::Linux_Fedora_any;
+        }
+
+        if (versionMajor) {
+          break;
+        }
+      }
+    }
+    fclose(fp);
+  }
+  if (ret->first == Device::Linux_Ubuntu_any) {
+    if (versionMajor == 20) {
+      ret->first = Device::Linux_Ubuntu_20;
+      ret->second.Insert(u"Ubuntu 20 - ", 0);
+    } else if (versionMajor == 22) {
+      ret->first = Device::Linux_Ubuntu_22;
+      ret->second.Insert(u"Ubuntu 22 - ", 0);
+    } else {
+      ret->second.Insert(u"Ubuntu Unknown - ", 0);
+    }
+  } else if (ret->first == Device::Linux_Fedora_any) {
+    if (versionMajor == 38) {
+      ret->first = Device::Linux_Fedora_38;
+      ret->second.Insert(u"Fedora 38 - ", 0);
+    } else if (versionMajor == 39) {
+      ret->first = Device::Linux_Fedora_39;
+      ret->second.Insert(u"Fedora 39 - ", 0);
+    } else {
+      ret->second.Insert(u"Fedora Unknown - ", 0);
+    }
+  } else {
+    ret->second.Insert(u"Linux Unknown - ", 0);
+  }
+
+#elif defined(XP_MACOSX)
+  ret->first = Device::MacOS_Platform;
+  ret->second.AppendASCII("macOS Platform");
+#elif defined(XP_WIN)
+  ret->first = Device::Windows_Platform;
+  ret->second.AppendASCII("Windows Platform");
+#else
+  ret->first = Device::Unknown_Platform;
+  ret->second.AppendASCII("Unknown Platform");
+#endif
+
+  return ret;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetFontVisibilityDetermination(
+    Device* aFontVisibilityDetermination) {
+  auto ret = GetFontVisibilityDeterminationPair();
+
+  *aFontVisibilityDetermination = ret->first;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetFontVisibilityDeterminationStr(
+    nsAString& aFontVisibilityDeterminationStr) {
+  auto ret = GetFontVisibilityDeterminationPair();
+  aFontVisibilityDeterminationStr.Assign(ret->second);
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 GfxInfoBase::GetContentBackend(nsAString& aContentBackend) {
   BackendType backend = gfxPlatform::GetPlatform()->GetDefaultContentBackend();
@@ -1923,6 +2158,18 @@ GfxInfoBase::GetUsingGPUProcess(bool* aOutValue) {
   }
 
   *aOutValue = !!gpu->GetGPUChild();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetUsingRemoteCanvas(bool* aOutValue) {
+  *aOutValue = gfx::gfxVars::RemoteCanvasEnabled();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetUsingAcceleratedCanvas(bool* aOutValue) {
+  *aOutValue = gfx::gfxVars::UseAcceleratedCanvas2D();
   return NS_OK;
 }
 

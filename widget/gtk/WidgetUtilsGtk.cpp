@@ -176,7 +176,8 @@ const char* GetSnapInstanceName() {
     if (!snapName) {
       return nullptr;
     }
-    if (g_strcmp0(snapName, MOZ_APP_NAME)) {
+    if (g_strcmp0(snapName, MOZ_APP_NAME) &&
+        g_strcmp0(snapName, MOZ_APP_NAME "-devel")) {
       return nullptr;
     }
     // Intentionally leaked, as keeping a pointer to the environment forever
@@ -324,7 +325,7 @@ RefPtr<FocusRequestPromise> RequestWaylandFocusPromise() {
     return nullptr;
   }
 
-  GdkWindow* gdkWindow = gtk_widget_get_window(sourceWindow->GetGtkWidget());
+  GdkWindow* gdkWindow = sourceWindow->GetToplevelGdkWindow();
   if (!gdkWindow) {
     return nullptr;
   }
@@ -491,6 +492,10 @@ bool IsGnomeDesktopEnvironment() {
 bool IsKdeDesktopEnvironment() {
   static bool sIsKde = GetDesktopEnvironmentIdentifier().EqualsLiteral("kde");
   return sIsKde;
+}
+
+bool IsCancelledGError(GError* aGError) {
+  return g_error_matches(aGError, G_IO_ERROR, G_IO_ERROR_CANCELLED);
 }
 
 }  // namespace mozilla::widget

@@ -4,25 +4,45 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ThemeCocoa.h"
-
-#include "cocoa/MacThemeGeometryType.h"
 #include "gfxPlatform.h"
-#include "mozilla/ClearOnShutdown.h"
-#include "mozilla/gfx/Helpers.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/ServoStyleConsts.h"
 
 namespace mozilla::widget {
 
-LayoutDeviceIntSize ThemeCocoa::GetMinimumWidgetSize(
-    nsPresContext* aPresContext, nsIFrame* aFrame,
-    StyleAppearance aAppearance) {
-  if (aAppearance == StyleAppearance::MozMenulistArrowButton) {
-    auto size =
-        GetScrollbarSize(aPresContext, StyleScrollbarWidth::Auto, Overlay::No);
-    return {size, size};
+NS_IMETHODIMP
+ThemeCocoa::DrawWidgetBackground(gfxContext* aContext, nsIFrame* aFrame,
+                                 StyleAppearance aAppearance,
+                                 const nsRect& aRect, const nsRect& aDirtyRect,
+                                 DrawOverflow aDrawOverflow) {
+  switch (aAppearance) {
+    case StyleAppearance::Tooltip:
+      // Cocoa tooltip background and border are already drawn by the
+      // OS window server.
+      return NS_OK;
+    default:
+      break;
   }
-  return Theme::GetMinimumWidgetSize(aPresContext, aFrame, aAppearance);
+  return Theme::DrawWidgetBackground(aContext, aFrame, aAppearance, aRect,
+                                     aDirtyRect, aDrawOverflow);
+}
+
+bool ThemeCocoa::CreateWebRenderCommandsForWidget(
+    mozilla::wr::DisplayListBuilder& aBuilder,
+    mozilla::wr::IpcResourceUpdateQueue& aResources,
+    const mozilla::layers::StackingContextHelper& aSc,
+    mozilla::layers::RenderRootStateManager* aManager, nsIFrame* aFrame,
+    StyleAppearance aAppearance, const nsRect& aRect) {
+  switch (aAppearance) {
+    case StyleAppearance::Tooltip:
+      // Cocoa tooltip background and border are already drawn by the
+      // OS window server.
+      return true;
+    default:
+      break;
+  }
+  return Theme::CreateWebRenderCommandsForWidget(
+      aBuilder, aResources, aSc, aManager, aFrame, aAppearance, aRect);
 }
 
 }  // namespace mozilla::widget

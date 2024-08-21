@@ -1003,7 +1003,9 @@ class TSFTextStore final : public ITextStoreACP,
 
   // While mContentForTSF is valid, this returns the text stored by it.
   // Otherwise, return the current text content retrieved by eQueryTextContent.
-  bool GetCurrentText(nsAString& aTextContent);
+  enum class AllowToFlushLayoutIfNoCache { No, Yes };
+  bool GetCurrentText(nsAString& aTextContent,
+                      AllowToFlushLayoutIfNoCache aAllowToFlushLayoutIfNoCache);
 
   class MouseTracker final {
    public:
@@ -1073,6 +1075,9 @@ class TSFTextStore final : public ITextStoreACP,
   // During the document is locked, we shouldn't destroy the instance.
   // If this is true, the instance will be destroyed after unlocked.
   bool mPendingDestroy = false;
+  // When we need to create native caret with the latest selection, but we're
+  // initializing selection, this is set to true.
+  bool mPendingToCreateNativeCaret = false;
   // If this is false, MaybeFlushPendingNotifications() will clear the
   // mContentForTSF.
   bool mDeferClearingContentForTSF = false;
@@ -1102,6 +1107,10 @@ class TSFTextStore final : public ITextStoreACP,
   bool mBeingDestroyed = false;
   // Whether we're in the private browsing mode.
   bool mInPrivateBrowsing = true;
+  // Debug flag to check whether we're initializing mContentForTSF and
+  // mSelectionForTSF.
+  bool mIsInitializingContentForTSF = false;
+  bool mIsInitializingSelectionForTSF = false;
 
   // TSF thread manager object for the current application
   static StaticRefPtr<ITfThreadMgr> sThreadMgr;

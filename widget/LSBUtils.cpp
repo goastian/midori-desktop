@@ -113,7 +113,8 @@ bool GetLSBRelease(nsACString& aDistributor, nsACString& aDescription,
   options.wait = true;
 
   base::ProcessHandle process;
-  Result<Ok, ipc::LaunchError> err = base::LaunchApp(argv, options, &process);
+  Result<Ok, ipc::LaunchError> err =
+      base::LaunchApp(argv, std::move(options), &process);
   close(pipefd[1]);
   if (err.isErr()) {
     NS_WARNING("Failed to spawn lsb_release!");
@@ -129,7 +130,7 @@ bool GetLSBRelease(nsACString& aDistributor, nsACString& aDescription,
   }
 
   char dist[256], desc[256], release[256], codename[256];
-  if (fscanf(stream,
+  if (fscanf(stream.get(),
              "Distributor ID:\t%255[^\n]\n"
              "Description:\t%255[^\n]\n"
              "Release:\t%255[^\n]\n"

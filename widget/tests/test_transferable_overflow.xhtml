@@ -48,7 +48,9 @@
     //
     // To avoid intermittents, we only check the file descriptor counts on non-Windows.
     // test_bug1123480.xhtml will do some basic testing for Windows.
-    const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+    const {AppConstants} = ChromeUtils.importESModule(
+      "resource://gre/modules/AppConstants.sys.mjs"
+    );
     return AppConstants.platform !== 'win';
   }
 
@@ -78,7 +80,9 @@
   }
 
   function RunTest() {
-    const {PrivateBrowsingUtils} = ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+    const {PrivateBrowsingUtils} = ChromeUtils.importESModule(
+      "resource://gre/modules/PrivateBrowsingUtils.sys.mjs"
+    );
 
     var win = window.browsingContext.topChromeWindow.open("about:blank", "_blank", "chrome, width=500, height=200");
     ok(win, "should open window");
@@ -127,7 +131,7 @@
     }
 
     // Check whether the clipboard data can be read, and simulatenously trigger mData -> mCacheFD.
-    Services.clipboard.getData(Transfer2, Services.clipboard.kGlobalClipboard);
+    Services.clipboard.getData(Transfer2, Services.clipboard.kGlobalClipboard, SpecialPowers.wrap(window).browsingContext.currentWindowContext);
     checkTransferableText(Transfer2, BIG_STRING, "transferable after retrieving from clipboard");
     if (isFDCountingSupported()) {
       is(getClipboardCacheFDCount(), initialFdCount + 1, "should use a file for BIG_STRING (read from clipboard).");

@@ -19,7 +19,7 @@
 /**
  * Native Win32 Application shell wrapper
  */
-class nsAppShell : public nsBaseAppShell {
+class nsAppShell final : public nsBaseAppShell {
  public:
   nsAppShell()
       : mEventWnd(nullptr),
@@ -39,7 +39,6 @@ class nsAppShell : public nsBaseAppShell {
 
  protected:
   NS_IMETHOD Run() override;
-  NS_IMETHOD Exit() override;
   NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
                      const char16_t* aData) override;
 
@@ -50,6 +49,7 @@ class nsAppShell : public nsBaseAppShell {
   static LRESULT CALLBACK EventWindowProc(HWND, UINT, WPARAM, LPARAM);
 
  protected:
+  nsresult InitHiddenWindow();
   HWND mEventWnd;
   bool mNativeCallbackPending;
 

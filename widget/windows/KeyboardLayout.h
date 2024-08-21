@@ -9,10 +9,12 @@
 #include "mozilla/RefPtr.h"
 #include "nscore.h"
 #include "nsString.h"
+#include "nsTArray.h"
 #include "nsWindow.h"
 #include "nsWindowDefs.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/TextEventDispatcher.h"
 #include "mozilla/widget/WinMessages.h"
 #include "mozilla/widget/WinModifierKeyState.h"
@@ -130,6 +132,17 @@ class MOZ_STACK_CLASS UniCharsAndModifiers final {
 struct DeadKeyEntry {
   char16_t BaseChar;
   char16_t CompositeChar;
+
+  DeadKeyEntry(char16_t aBaseChar, char16_t aCompositeChar)
+      : BaseChar(aBaseChar), CompositeChar(aCompositeChar) {}
+
+  bool operator<(const DeadKeyEntry& aOther) const {
+    return this->BaseChar < aOther.BaseChar;
+  }
+
+  bool operator==(const DeadKeyEntry& aOther) const {
+    return this->BaseChar == aOther.BaseChar;
+  }
 };
 
 class DeadKeyTable {
@@ -624,6 +637,7 @@ class MOZ_STACK_CLASS NativeKey final {
   bool IsKeyDownMessage() const {
     return mMsg.message == WM_KEYDOWN || mMsg.message == WM_SYSKEYDOWN;
   }
+  bool IsSysKeyDownMessage() const { return mMsg.message == WM_SYSKEYDOWN; }
   bool IsKeyUpMessage() const {
     return mMsg.message == WM_KEYUP || mMsg.message == WM_SYSKEYUP;
   }
@@ -787,6 +801,11 @@ class MOZ_STACK_CLASS NativeKey final {
 
   static MSG sLastKeyMSG;
 
+  // Set to non-zero if we receive a WM_KEYDOWN message which introduces only
+  // a high surrogate.  Then, it'll be cleared when next keydown or char message
+  // is received.
+  static char16_t sPendingHighSurrogate;
+
   static bool IsEmptyMSG(const MSG& aMSG) {
     return !memcmp(&aMSG, &sEmptyMSG, sizeof(MSG));
   }
@@ -807,8 +826,34 @@ class KeyboardLayout {
  public:
   static KeyboardLayout* GetInstance();
   static void Shutdown();
-  static HKL GetActiveLayout();
-  static nsCString GetActiveLayoutName();
+
+  /**
+   * GetLayout() returns a keyboard layout which has already been loaded in the
+   * singleton instance or active keyboard layout.
+   */
+  static HKL GetLayout() {
+    if (!sInstance || sInstance->mIsPendingToRestoreKeyboardLayout) {
+      return ::GetKeyboardLayout(0);
+    }
+    return sInstance->mKeyboardLayout;
+  }
+
+  /**
+   * GetLoadedLayout() returns a keyboard layout which was loaded in the
+   * singleton instance.  This may be different from the active keyboard layout
+   * on the system if we override the keyboard layout for synthesizing native
+   * key events for tests.
+   */
+  HKL GetLoadedLayout() { return mKeyboardLayout; }
+
+  /**
+   * GetLoadedLayoutName() returns the name of the loaded keyboard layout in the
+   * singleton instance.
+   */
+  nsCString GetLoadedLayoutName() {
+    return KeyboardLayout::GetLayoutName(mKeyboardLayout);
+  }
+
   static void NotifyIdleServiceOfUserActivity();
 
   static bool IsPrintableCharKey(uint8_t aVirtualKey);
@@ -908,11 +953,6 @@ class KeyboardLayout {
    */
   static CodeNameIndex ConvertScanCodeToCodeNameIndex(UINT aScanCode);
 
-  HKL GetLayout() const {
-    return mIsPendingToRestoreKeyboardLayout ? ::GetKeyboardLayout(0)
-                                             : mKeyboardLayout;
-  }
-
   /**
    * This wraps MapVirtualKeyEx() API with MAPVK_VK_TO_VSC.
    */
@@ -933,17 +973,17 @@ class KeyboardLayout {
   ~KeyboardLayout();
 
   static KeyboardLayout* sInstance;
-  static nsIUserIdleServiceInternal* sIdleService;
+  static StaticRefPtr<nsIUserIdleServiceInternal> sIdleService;
 
   struct DeadKeyTableListEntry {
     DeadKeyTableListEntry* next;
     uint8_t data[1];
   };
 
-  HKL mKeyboardLayout;
+  HKL mKeyboardLayout = nullptr;
 
-  VirtualKey mVirtualKeys[NS_NUM_OF_KEYS];
-  DeadKeyTableListEntry* mDeadKeyTableListHead;
+  VirtualKey mVirtualKeys[NS_NUM_OF_KEYS] = {};
+  DeadKeyTableListEntry* mDeadKeyTableListHead = nullptr;
   // When mActiveDeadKeys is empty, it's not in dead key sequence.
   // Otherwise, it contains virtual keycodes which are pressed in current
   // dead key sequence.
@@ -953,22 +993,19 @@ class KeyboardLayout {
   // mActiveDeadKeys.
   nsTArray<VirtualKey::ShiftState> mDeadKeyShiftStates;
 
-  bool mIsOverridden;
-  bool mIsPendingToRestoreKeyboardLayout;
-  bool mHasAltGr;
+  bool mIsOverridden = false;
+  bool mIsPendingToRestoreKeyboardLayout = false;
+  bool mHasAltGr = false;
 
   static inline int32_t GetKeyIndex(uint8_t aVirtualKey);
-  static int CompareDeadKeyEntries(const void* aArg1, const void* aArg2,
-                                   void* aData);
   static bool AddDeadKeyEntry(char16_t aBaseChar, char16_t aCompositeChar,
-                              DeadKeyEntry* aDeadKeyArray, uint32_t aEntries);
+                              nsTArray<DeadKeyEntry>& aDeadKeyArray);
   bool EnsureDeadKeyActive(bool aIsActive, uint8_t aDeadKey,
                            const PBYTE aDeadKeyKbdState);
   uint32_t GetDeadKeyCombinations(uint8_t aDeadKey,
                                   const PBYTE aDeadKeyKbdState,
                                   uint16_t aShiftStatesWithBaseChars,
-                                  DeadKeyEntry* aDeadKeyArray,
-                                  uint32_t aMaxEntries);
+                                  nsTArray<DeadKeyEntry>& aDeadKeyArray);
   /**
    * Activates or deactivates dead key state.
    */
@@ -989,7 +1026,7 @@ class KeyboardLayout {
    * Gets the keyboard layout name of aLayout.  Be careful, this may be too
    * slow to call at handling user input.
    */
-  nsCString GetLayoutName(HKL aLayout) const;
+  static nsCString GetLayoutName(HKL aLayout);
 
   /**
    * InitNativeKey() must be called when actually widget receives WM_KEYDOWN or

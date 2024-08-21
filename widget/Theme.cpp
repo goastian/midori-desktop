@@ -18,6 +18,7 @@
 #include "mozilla/gfx/Types.h"
 #include "mozilla/gfx/Filters.h"
 #include "mozilla/RelativeLuminanceUtils.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "nsCSSColorUtils.h"
@@ -188,8 +189,8 @@ void Theme::LookAndFeelChanged() {
   }
 }
 
-auto Theme::GetDPIRatio(nsPresContext* aPc, StyleAppearance aAppearance)
-    -> DPIRatio {
+auto Theme::GetDPIRatio(nsPresContext* aPc,
+                        StyleAppearance aAppearance) -> DPIRatio {
   // Widgets react to zoom, except scrollbars.
   if (IsWidgetScrollbarPart(aAppearance)) {
     return GetScrollbarDrawing().GetDPIRatioForScrollbarPart(aPc);
@@ -197,8 +198,8 @@ auto Theme::GetDPIRatio(nsPresContext* aPc, StyleAppearance aAppearance)
   return DPIRatio(float(AppUnitsPerCSSPixel()) / aPc->AppUnitsPerDevPixel());
 }
 
-auto Theme::GetDPIRatio(nsIFrame* aFrame, StyleAppearance aAppearance)
-    -> DPIRatio {
+auto Theme::GetDPIRatio(nsIFrame* aFrame,
+                        StyleAppearance aAppearance) -> DPIRatio {
   return GetDPIRatio(aFrame->PresContext(), aAppearance);
 }
 
@@ -227,7 +228,7 @@ std::tuple<sRGBColor, sRGBColor, sRGBColor> Theme::ComputeCheckboxColors(
       auto bg = ComputeBorderColor(aState, aColors, OutlineCoversBorder::No);
       auto fg = aColors.HighContrast()
                     ? aColors.System(StyleSystemColor::Graytext)
-                    : sRGBColor::White(.8f);
+                    : sRGBColor::White(aColors.IsDark() ? .4f : .8f);
       return std::make_tuple(bg, bg, fg);
     }
 
@@ -295,6 +296,9 @@ std::pair<sRGBColor, sRGBColor> Theme::ComputeButtonColors(
   bool isHovered = aState.HasState(ElementState::HOVER);
 
   nscolor backgroundColor = [&] {
+    if (aState.HasState(ElementState::AUTOFILL)) {
+      return aColors.SystemNs(StyleSystemColor::MozAutofillBackground);
+    }
     if (isDisabled) {
       return aColors.SystemNs(StyleSystemColor::MozButtondisabledface);
     }
@@ -307,12 +311,6 @@ std::pair<sRGBColor, sRGBColor> Theme::ComputeButtonColors(
     return aColors.SystemNs(StyleSystemColor::Buttonface);
   }();
 
-  if (aState.HasState(ElementState::AUTOFILL)) {
-    backgroundColor = NS_ComposeColors(
-        backgroundColor,
-        aColors.SystemNs(StyleSystemColor::MozAutofillBackground));
-  }
-
   const sRGBColor borderColor =
       ComputeBorderColor(aState, aColors, OutlineCoversBorder::Yes);
   return std::make_pair(sRGBColor::FromABGR(backgroundColor), borderColor);
@@ -322,17 +320,14 @@ std::pair<sRGBColor, sRGBColor> Theme::ComputeTextfieldColors(
     const ElementState& aState, const Colors& aColors,
     OutlineCoversBorder aOutlineCoversBorder) {
   nscolor backgroundColor = [&] {
+    if (aState.HasState(ElementState::AUTOFILL)) {
+      return aColors.SystemNs(StyleSystemColor::MozAutofillBackground);
+    }
     if (aState.HasState(ElementState::DISABLED)) {
       return aColors.SystemNs(StyleSystemColor::MozDisabledfield);
     }
     return aColors.SystemNs(StyleSystemColor::Field);
   }();
-
-  if (aState.HasState(ElementState::AUTOFILL)) {
-    backgroundColor = NS_ComposeColors(
-        backgroundColor,
-        aColors.SystemNs(StyleSystemColor::MozAutofillBackground));
-  }
 
   const sRGBColor borderColor =
       ComputeBorderColor(aState, aColors, aOutlineCoversBorder);
@@ -754,9 +749,14 @@ void Theme::PaintMenulist(PaintBackendData& aDrawTarget,
   }
 }
 
-void Theme::PaintMenulistArrowButton(nsIFrame* aFrame, DrawTarget& aDrawTarget,
-                                     const LayoutDeviceRect& aRect,
-                                     const ElementState& aState) {
+enum class PhysicalArrowDirection {
+  Right,
+  Left,
+  Bottom,
+};
+
+void Theme::PaintMenulistArrow(nsIFrame* aFrame, DrawTarget& aDrawTarget,
+                               const LayoutDeviceRect& aRect) {
   // not const: these may be negated in-place below
   float polygonX[] = {-4.0f, -0.5f, 0.5f, 4.0f,  4.0f,
                       3.0f,  0.0f,  0.0f, -3.0f, -4.0f};
@@ -764,29 +764,42 @@ void Theme::PaintMenulistArrowButton(nsIFrame* aFrame, DrawTarget& aDrawTarget,
                       -2.0f, 1.5f, 1.5f, -2.0f, -2.0f};
 
   const float kPolygonSize = kMinimumDropdownArrowButtonWidth;
+  const auto direction = [&] {
+    const auto wm = aFrame->GetWritingMode();
+    switch (wm.GetBlockDir()) {
+      case WritingMode::BlockDir::LR:
+        return PhysicalArrowDirection::Right;
+      case WritingMode::BlockDir::RL:
+        return PhysicalArrowDirection::Left;
+      case WritingMode::BlockDir::TB:
+        return PhysicalArrowDirection::Bottom;
+    }
+    MOZ_ASSERT_UNREACHABLE("Unknown direction?");
+    return PhysicalArrowDirection::Bottom;
+  }();
 
   auto const [xs, ys] = [&] {
     using Pair = std::pair<const float*, const float*>;
-    switch (aFrame->GetWritingMode().GetBlockDir()) {
-      case WritingMode::BlockDir::eBlockRL:
+    switch (direction) {
+      case PhysicalArrowDirection::Left:
         // rotate 90°: [[0,1],[-1,0]]
         for (float& f : polygonY) {
           f = -f;
         }
         return Pair(polygonY, polygonX);
 
-      case WritingMode::BlockDir::eBlockLR:
+      case PhysicalArrowDirection::Right:
         // rotate 270°: [[0,-1],[1,0]]
         for (float& f : polygonX) {
           f = -f;
         }
         return Pair(polygonY, polygonX);
 
-      case WritingMode::BlockDir::eBlockTB:
+      case PhysicalArrowDirection::Bottom:
         // rotate 0°: [[1,0],[0,1]]
         return Pair(polygonX, polygonY);
     }
-    MOZ_ASSERT_UNREACHABLE("unhandled BlockDir");
+    MOZ_ASSERT_UNREACHABLE("Unknown direction?");
     return Pair(polygonX, polygonY);
   }();
 
@@ -879,11 +892,18 @@ void Theme::PaintRange(nsIFrame* aFrame, PaintBackendData& aPaintData,
     tickMarkSize = LayoutDeviceSize(tickMarkHeight, tickMarkWidth);
     thumbRect.x = aRect.x + (aRect.width - thumbRect.width) / 2;
 
-    thumbRect.y =
-        aRect.y + (aRect.height - thumbRect.height) * (1.0 - progress);
-    float midPoint = thumbRect.Center().Y();
-    trackClipRect.SetBoxY(aRect.Y(), midPoint);
-    progressClipRect.SetBoxY(midPoint, aRect.YMost());
+    if (rangeFrame->IsUpwards()) {
+      thumbRect.y =
+          aRect.y + (aRect.height - thumbRect.height) * (1.0 - progress);
+      float midPoint = thumbRect.Center().Y();
+      trackClipRect.SetBoxY(aRect.Y(), midPoint);
+      progressClipRect.SetBoxY(midPoint, aRect.YMost());
+    } else {
+      thumbRect.y = aRect.y + (aRect.height - thumbRect.height) * progress;
+      float midPoint = thumbRect.Center().Y();
+      trackClipRect.SetBoxY(midPoint, aRect.YMost());
+      progressClipRect.SetBoxY(aRect.Y(), midPoint);
+    }
   }
 
   const CSSCoord borderWidth = 1.0f;
@@ -1039,11 +1059,17 @@ void Theme::PaintProgress(nsIFrame* aFrame, PaintBackendData& aPaintData,
 template <typename PaintBackendData>
 void Theme::PaintButton(nsIFrame* aFrame, PaintBackendData& aPaintData,
                         const LayoutDeviceRect& aRect,
-                        const ElementState& aState, const Colors& aColors,
-                        DPIRatio aDpiRatio) {
+                        StyleAppearance aAppearance, const ElementState& aState,
+                        const Colors& aColors, DPIRatio aDpiRatio) {
   const CSSCoord radius = 4.0f;
   auto [backgroundColor, borderColor] =
       ComputeButtonColors(aState, aColors, aFrame);
+
+  if (aAppearance == StyleAppearance::Toolbarbutton &&
+      (!aState.HasState(ElementState::HOVER) ||
+       aState.HasState(ElementState::DISABLED))) {
+    borderColor = sTransparent;
+  }
 
   ThemeDrawing::PaintRoundedRectWithRadius(aPaintData, aRect, backgroundColor,
                                            borderColor, kButtonBorderWidth,
@@ -1073,9 +1099,6 @@ bool Theme::CreateWebRenderCommandsForWidget(
     const mozilla::layers::StackingContextHelper& aSc,
     mozilla::layers::RenderRootStateManager* aManager, nsIFrame* aFrame,
     StyleAppearance aAppearance, const nsRect& aRect) {
-  if (!StaticPrefs::widget_non_native_theme_webrender()) {
-    return false;
-  }
   WebRenderBackendData data{aBuilder, aResources, aSc, aManager};
   return DoDrawWidgetBackground(data, aFrame, aAppearance, aRect,
                                 DrawOverflow::Yes);
@@ -1114,6 +1137,17 @@ static ScrollbarDrawing::ScrollbarKind ComputeScrollbarKind(
              : ScrollbarDrawing::ScrollbarKind::VerticalLeft;
 }
 
+static ScrollbarDrawing::ScrollbarKind ComputeScrollbarKindForScrollCorner(
+    nsIFrame* aFrame) {
+  ScrollContainerFrame* sf = do_QueryFrame(aFrame->GetParent());
+  if (!sf) {
+    return ScrollbarDrawing::ScrollbarKind::VerticalRight;
+  }
+  return sf->IsScrollbarOnRight()
+             ? ScrollbarDrawing::ScrollbarKind::VerticalRight
+             : ScrollbarDrawing::ScrollbarKind::VerticalLeft;
+}
+
 template <typename PaintBackendData>
 bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
                                    nsIFrame* aFrame,
@@ -1127,16 +1161,8 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
   const nscoord twipsPerPixel = pc->AppUnitsPerDevPixel();
   const auto devPxRect = ToSnappedRect(aRect, twipsPerPixel, aPaintData);
 
-  const DocumentState docState = pc->Document()->GetDocumentState();
+  const DocumentState docState = pc->Document()->State();
   ElementState elementState = GetContentState(aFrame, aAppearance);
-  if (aAppearance == StyleAppearance::MozMenulistArrowButton) {
-    // HTML select and XUL menulist dropdown buttons get state from the
-    // parent.
-    nsIFrame* parentFrame = aFrame->GetParent();
-    aFrame = parentFrame;
-    elementState = GetContentState(parentFrame, aAppearance);
-  }
-
   // Paint the outline iff we're asked to draw overflow and we have
   // outline-style: auto.
   if (aDrawOverflow == DrawOverflow::Yes &&
@@ -1179,6 +1205,7 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
     case StyleAppearance::Textarea:
     case StyleAppearance::Textfield:
     case StyleAppearance::NumberInput:
+    case StyleAppearance::PasswordInput:
       PaintTextField(aPaintData, devPxRect, elementState, colors, dpiRatio);
       break;
     case StyleAppearance::Listbox:
@@ -1193,7 +1220,7 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
         // TODO: Need to figure out how to best draw this using WR.
         return false;
       } else {
-        PaintMenulistArrowButton(aFrame, aPaintData, devPxRect, elementState);
+        PaintMenulistArrow(aFrame, aPaintData, devPxRect);
       }
       break;
     case StyleAppearance::Tooltip: {
@@ -1204,18 +1231,6 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
           colors.System(StyleSystemColor::Infobackground),
           colors.System(StyleSystemColor::Infotext), strokeWidth, strokeRadius,
           dpiRatio);
-      break;
-    }
-    case StyleAppearance::Menuitem: {
-      ThemeDrawing::FillRect(aPaintData, devPxRect, [&] {
-        if (CheckBooleanAttr(aFrame, nsGkAtoms::menuactive)) {
-          if (elementState.HasState(ElementState::DISABLED)) {
-            return colors.System(StyleSystemColor::MozMenuhoverdisabled);
-          }
-          return colors.System(StyleSystemColor::MozMenuhover);
-        }
-        return sTransparent;
-      }());
       break;
     }
     case StyleAppearance::SpinnerUpbutton:
@@ -1281,7 +1296,7 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
           colors, dpiRatio);
     }
     case StyleAppearance::Scrollcorner: {
-      auto kind = ComputeScrollbarKind(aFrame, false);
+      auto kind = ComputeScrollbarKindForScrollCorner(aFrame);
       return GetScrollbarDrawing().PaintScrollCorner(
           aPaintData, devPxRect, kind, aFrame,
           *nsLayoutUtils::StyleForScrollbar(aFrame), docState, colors,
@@ -1310,8 +1325,9 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
       break;
     }
     case StyleAppearance::Button:
-      PaintButton(aFrame, aPaintData, devPxRect, elementState, colors,
-                  dpiRatio);
+    case StyleAppearance::Toolbarbutton:
+      PaintButton(aFrame, aPaintData, devPxRect, aAppearance, elementState,
+                  colors, dpiRatio);
       break;
     case StyleAppearance::FocusOutline:
       PaintAutoStyleOutline(aFrame, aPaintData, devPxRect, colors, dpiRatio);
@@ -1334,7 +1350,6 @@ void Theme::PaintAutoStyleOutline(nsIFrame* aFrame,
                                   const LayoutDeviceRect& aRect,
                                   const Colors& aColors, DPIRatio aDpiRatio) {
   const auto& accentColor = aColors.Accent();
-  const bool solid = StaticPrefs::widget_non_native_theme_solid_outline_style();
   LayoutDeviceCoord strokeWidth(ThemeDrawing::SnapBorderWidth(2.0f, aDpiRatio));
 
   LayoutDeviceRect rect(aRect);
@@ -1389,11 +1404,10 @@ void Theme::PaintAutoStyleOutline(nsIFrame* aFrame,
     }
   };
 
-  DrawRect(accentColor.Get());
-
-  if (solid) {
-    return;
-  }
+  auto primaryColor = aColors.HighContrast()
+                          ? aColors.System(StyleSystemColor::Selecteditem)
+                          : accentColor.Get();
+  DrawRect(primaryColor);
 
   offset += strokeWidth;
 
@@ -1401,7 +1415,10 @@ void Theme::PaintAutoStyleOutline(nsIFrame* aFrame,
       LayoutDeviceCoord(ThemeDrawing::SnapBorderWidth(1.0f, aDpiRatio));
   rect.Inflate(strokeWidth);
 
-  DrawRect(accentColor.GetForeground());
+  auto secondaryColor = aColors.HighContrast()
+                            ? aColors.System(StyleSystemColor::Canvastext)
+                            : accentColor.GetForeground();
+  DrawRect(secondaryColor);
 }
 
 LayoutDeviceIntMargin Theme::GetWidgetBorder(nsDeviceContext* aContext,
@@ -1411,10 +1428,12 @@ LayoutDeviceIntMargin Theme::GetWidgetBorder(nsDeviceContext* aContext,
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
     case StyleAppearance::NumberInput:
+    case StyleAppearance::PasswordInput:
     case StyleAppearance::Listbox:
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
     case StyleAppearance::Button:
+    case StyleAppearance::Toolbarbutton:
       // Return the border size from the UA sheet, even though what we paint
       // doesn't actually match that. We know this is the UA sheet border
       // because we disable native theming when different border widths are
@@ -1462,9 +1481,7 @@ bool Theme::GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
   CSSIntMargin overflow;
   switch (aAppearance) {
     case StyleAppearance::FocusOutline: {
-      // 2px * one segment, or 2px + 1px
-      const auto width =
-          StaticPrefs::widget_non_native_theme_solid_outline_style() ? 2 : 3;
+      const auto width = 3;
       overflow.SizeTo(width, width, width, width);
       break;
     }
@@ -1478,10 +1495,12 @@ bool Theme::GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
     case StyleAppearance::Textarea:
     case StyleAppearance::Textfield:
     case StyleAppearance::NumberInput:
+    case StyleAppearance::PasswordInput:
     case StyleAppearance::Listbox:
     case StyleAppearance::MenulistButton:
     case StyleAppearance::Menulist:
     case StyleAppearance::Button:
+    case StyleAppearance::Toolbarbutton:
       // 2px for each segment, plus 1px separation, but we paint 1px inside
       // the border area so 4px overflow.
       overflow.SizeTo(4, 4, 4, 4);
@@ -1530,7 +1549,7 @@ UniquePtr<ScrollbarDrawing> Theme::ScrollbarStyle() {
     return MakeUnique<ScrollbarDrawingWin11>();
   }
   return MakeUnique<ScrollbarDrawingWin>();
-#elif MOZ_WIDGET_COCOA
+#elif defined(MOZ_WIDGET_COCOA) || defined(MOZ_WIDGET_UIKIT)
   return MakeUnique<ScrollbarDrawingCocoa>();
 #elif MOZ_WIDGET_GTK
   return MakeUnique<ScrollbarDrawingGTK>();
@@ -1647,14 +1666,15 @@ bool Theme::ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame,
     case StyleAppearance::ScrollbarVertical:
     case StyleAppearance::Scrollcorner:
     case StyleAppearance::Button:
+    case StyleAppearance::Toolbarbutton:
     case StyleAppearance::Listbox:
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
     case StyleAppearance::NumberInput:
+    case StyleAppearance::PasswordInput:
     case StyleAppearance::MozMenulistArrowButton:
     case StyleAppearance::SpinnerUpbutton:
     case StyleAppearance::SpinnerDownbutton:
-    case StyleAppearance::Menuitem:
     case StyleAppearance::Tooltip:
       return !IsWidgetStyled(aPresContext, aFrame, aAppearance);
     default:

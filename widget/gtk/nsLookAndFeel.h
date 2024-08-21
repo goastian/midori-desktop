@@ -16,6 +16,13 @@
 enum WidgetNodeType : int;
 struct _GtkStyle;
 typedef struct _GDBusProxy GDBusProxy;
+typedef struct _GtkCssProvider GtkCssProvider;
+typedef struct _GFile GFile;
+typedef struct _GFileMonitor GFileMonitor;
+
+namespace mozilla {
+enum class StyleGtkThemeFamily : uint8_t;
+}
 
 class nsLookAndFeel final : public nsXPLookAndFeel {
  public:
@@ -35,11 +42,21 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
 
   bool GetDefaultDrawInTitlebar() override;
 
+  nsXPLookAndFeel::TitlebarAction GetTitlebarAction(
+      TitlebarEvent aEvent) override;
+
   void GetThemeInfo(nsACString&) override;
 
   static const nscolor kBlack = NS_RGB(0, 0, 0);
   static const nscolor kWhite = NS_RGB(255, 255, 255);
   void OnColorSchemeSettingChanged();
+
+  struct ColorPair {
+    nscolor mBg = kWhite;
+    nscolor mFg = kBlack;
+  };
+
+  using ThemeFamily = mozilla::StyleGtkThemeFamily;
 
  protected:
   static bool WidgetUsesImage(WidgetNodeType aNodeType);
@@ -47,18 +64,18 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
   static bool ShouldHonorThemeScrollbarColors();
   mozilla::Maybe<ColorScheme> ComputeColorSchemeSetting();
 
+  void WatchDBus();
+  void UnwatchDBus();
+
   // We use up to two themes (one light, one dark), which might have different
   // sets of fonts and colors.
   struct PerThemeData {
     nsCString mName;
-
     bool mIsDark = false;
     bool mHighContrast = false;
     bool mPreferDarkTheme = false;
 
-    // NOTE(emilio): This is unused, but if we need to we can use it to override
-    // system colors with standins like we do for the non-native theme.
-    bool mCompatibleWithHTMLLightColors = false;
+    ThemeFamily mFamily{0};
 
     // Cached fonts
     nsString mDefaultFontName;
@@ -71,45 +88,46 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
     gfxFontStyle mMenuFontStyle;
 
     // Cached colors
-    nscolor mInfoBackground = kWhite;
-    nscolor mInfoText = kBlack;
-    nscolor mMenuBackground = kWhite;
-    nscolor mMenuText = kBlack;
-    nscolor mMenuTextInactive = kWhite;
-    nscolor mMenuHover = kWhite;
-    nscolor mMenuHoverText = kBlack;
-    nscolor mButtonDefault = kWhite;
-    nscolor mButtonText = kBlack;
-    nscolor mButtonHoverText = kBlack;
-    nscolor mButtonHoverFace = kWhite;
-    nscolor mButtonActiveText = kBlack;
-    nscolor mFrameOuterLightBorder = kBlack;
-    nscolor mFrameInnerDarkBorder = kBlack;
+    nscolor mGrayText = kBlack;
+    ColorPair mInfo;
+    ColorPair mMenu;
+    ColorPair mMenuHover;
+    ColorPair mHeaderBar;
+    ColorPair mHeaderBarInactive;
+    ColorPair mButton;
+    ColorPair mButtonHover;
+    ColorPair mButtonActive;
+    nscolor mButtonBorder = kBlack;
+    nscolor mThreeDHighlight = kBlack;
+    nscolor mThreeDShadow = kBlack;
     nscolor mOddCellBackground = kWhite;
     nscolor mNativeHyperLinkText = kBlack;
     nscolor mNativeVisitedHyperLinkText = kBlack;
+    // FIXME: This doesn't seem like it'd be sound since we use Window for
+    // -moz-Combobox... But I guess we rely on chrome code not setting
+    // appearance: none on selects or overriding the color if they do.
     nscolor mComboBoxText = kBlack;
-    nscolor mComboBoxBackground = kWhite;
-    nscolor mFieldText = kBlack;
-    nscolor mFieldBackground = kWhite;
-    nscolor mMozWindowText = kBlack;
-    nscolor mMozWindowBackground = kWhite;
+    ColorPair mField;
+    ColorPair mWindow;
+    ColorPair mDialog;
+    ColorPair mSidebar;
+    nscolor mSidebarBorder = kBlack;
+
     nscolor mMozWindowActiveBorder = kBlack;
     nscolor mMozWindowInactiveBorder = kBlack;
-    nscolor mMozCellHighlightBackground = kWhite;
-    nscolor mMozCellHighlightText = kBlack;
-    nscolor mTextSelectedText = kBlack;
-    nscolor mTextSelectedBackground = kWhite;
-    nscolor mAccentColor = kWhite;
-    nscolor mAccentColorText = kWhite;
-    nscolor mSelectedItem = kWhite;
-    nscolor mSelectedItemText = kBlack;
-    nscolor mMozColHeaderText = kBlack;
-    nscolor mMozColHeaderHoverText = kBlack;
-    nscolor mTitlebarText = kBlack;
-    nscolor mTitlebarBackground = kWhite;
-    nscolor mTitlebarInactiveText = kBlack;
-    nscolor mTitlebarInactiveBackground = kWhite;
+
+    ColorPair mCellHighlight;
+    ColorPair mSelectedText;
+    ColorPair mAccent;
+    ColorPair mSelectedItem;
+
+    ColorPair mMozColHeader;
+    ColorPair mMozColHeaderHover;
+    ColorPair mMozColHeaderActive;
+
+    ColorPair mTitlebar;
+    ColorPair mTitlebarInactive;
+
     nscolor mThemedScrollbar = kWhite;
     nscolor mThemedScrollbarInactive = kWhite;
     nscolor mThemedScrollbarThumb = kBlack;
@@ -119,6 +137,7 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
 
     float mCaretRatio = 0.0f;
     int32_t mTitlebarRadius = 0;
+    int32_t mTitlebarButtonSpacing = 0;
     char16_t mInvisibleCharacter = 0;
     bool mMenuSupportsDrag = false;
 
@@ -147,7 +166,10 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
     return mSystemThemeOverridden ? mAltTheme : mSystemTheme;
   }
 
+  uint32_t mDBusID = 0;
   RefPtr<GDBusProxy> mDBusSettingsProxy;
+  RefPtr<GFile> mKdeColors;
+  RefPtr<GFileMonitor> mKdeColorsMonitor;
   mozilla::Maybe<ColorScheme> mColorSchemePreference;
   int32_t mCaretBlinkTime = 0;
   int32_t mCaretBlinkCount = -1;
@@ -161,6 +183,13 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
   int32_t mCSDMaximizeButtonPosition = 0;
   int32_t mCSDMinimizeButtonPosition = 0;
   int32_t mCSDCloseButtonPosition = 0;
+  TitlebarAction mDoubleClickAction = TitlebarAction::None;
+  TitlebarAction mMiddleClickAction = TitlebarAction::None;
+
+  RefPtr<GtkCssProvider> mRoundedCornerProvider;
+  void UpdateRoundedBottomCornerStyles();
+
+  void ClearRoundedCornerProvider();
 
   void EnsureInit() {
     if (mInitialized) {
@@ -173,8 +202,11 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
 
   void RestoreSystemTheme();
   void InitializeGlobalSettings();
+  // Returns whether we found an alternative theme.
+  bool ConfigureAltTheme();
   void ConfigureAndInitializeAltTheme();
   void ConfigureFinalEffectiveTheme();
+  void MaybeApplyAdwaitaOverrides();
 };
 
 #endif

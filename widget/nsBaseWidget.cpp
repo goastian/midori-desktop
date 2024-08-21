@@ -101,10 +101,6 @@ static void debug_RegisterPrefCallbacks();
 static int32_t gNumWidgets;
 #endif
 
-#ifdef XP_MACOSX
-#  include "nsCocoaFeatures.h"
-#endif
-
 using namespace mozilla::dom;
 using namespace mozilla::layers;
 using namespace mozilla::ipc;
@@ -154,7 +150,8 @@ nsBaseWidget::nsBaseWidget(BorderStyle aBorderStyle)
       mIMEHasQuit(false),
       mIsFullyOccluded(false),
       mNeedFastSnaphot(false),
-      mCurrentPanGestureBelongsToSwipe(false) {
+      mCurrentPanGestureBelongsToSwipe(false),
+      mIsPIPWindow(false) {
 #ifdef NOISY_WIDGET_LEAKS
   gNumWidgets++;
   printf("WIDGETS+ = %d\n", gNumWidgets);
@@ -419,6 +416,7 @@ void nsBaseWidget::BaseCreate(nsIWidget* aParent, widget::InitData* aInitData) {
     mPopupLevel = aInitData->mPopupLevel;
     mPopupType = aInitData->mPopupHint;
     mHasRemoteContent = aInitData->mHasRemoteContent;
+    mIsPIPWindow = aInitData->mPIPWindow;
   }
 
   if (aParent) {
@@ -548,6 +546,12 @@ nsIWidget* nsBaseWidget::GetTopLevelWidget() {
 nsIWidget* nsBaseWidget::GetSheetWindowParent(void) { return nullptr; }
 
 float nsBaseWidget::GetDPI() { return 96.0f; }
+
+void nsBaseWidget::NotifyAPZOfDPIChange() {
+  if (mAPZC) {
+    mAPZC->SetDPI(GetDPI());
+  }
+}
 
 CSSToLayoutDeviceScale nsIWidget::GetDefaultScale() {
   double devPixelsPerCSSPixel = StaticPrefs::layout_css_devPixelsPerPx();
@@ -996,6 +1000,18 @@ void nsBaseWidget::CreateCompositor() {
   CreateCompositor(rect.Width(), rect.Height());
 }
 
+void nsIWidget::PauseOrResumeCompositor(bool aPause) {
+  auto* renderer = GetRemoteRenderer();
+  if (!renderer) {
+    return;
+  }
+  if (aPause) {
+    renderer->SendPause();
+  } else {
+    renderer->SendResume();
+  }
+}
+
 already_AddRefed<GeckoContentController>
 nsBaseWidget::CreateRootContentController() {
   RefPtr<GeckoContentController> controller =
@@ -1050,19 +1066,15 @@ void nsBaseWidget::UpdateZoomConstraints(
     const uint32_t& aPresShellId, const ScrollableLayerGuid::ViewID& aViewId,
     const Maybe<ZoomConstraints>& aConstraints) {
   if (!mCompositorSession || !mAPZC) {
-    if (mInitialZoomConstraints) {
-      MOZ_ASSERT(mInitialZoomConstraints->mPresShellID == aPresShellId);
-      MOZ_ASSERT(mInitialZoomConstraints->mViewID == aViewId);
-      if (!aConstraints) {
-        mInitialZoomConstraints.reset();
-      }
-    }
-
+    MOZ_ASSERT_IF(mInitialZoomConstraints,
+                  mInitialZoomConstraints->mViewID == aViewId);
     if (aConstraints) {
-      // We have some constraints, but the compositor and APZC aren't created
-      // yet. Save these so we can use them later.
+      // We have some constraints, but the compositor and APZC aren't
+      // created yet. Save these so we can use them later.
       mInitialZoomConstraints = Some(
           InitialZoomConstraints(aPresShellId, aViewId, aConstraints.ref()));
+    } else {
+      mInitialZoomConstraints.reset();
     }
     return;
   }
@@ -1088,8 +1100,10 @@ nsEventStatus nsBaseWidget::ProcessUntransformedAPZEvent(
   UniquePtr<WidgetEvent> original(aEvent->Duplicate());
   DispatchEvent(aEvent, status);
 
-  if (mAPZC && !InputAPZContext::WasRoutedToChildProcess() && inputBlockId) {
-    // EventStateManager did not route the event into the child process.
+  if (mAPZC && !InputAPZContext::WasRoutedToChildProcess() &&
+      !InputAPZContext::WasDropped() && inputBlockId) {
+    // EventStateManager did not route the event into the child process and
+    // the event was dispatched in the parent process.
     // It's safe to communicate to APZ that the event has been processed.
     // Note that here aGuid.mLayersId might be different from
     // mCompositorSession->RootLayerTreeId() because the event might have gotten
@@ -1166,18 +1180,22 @@ class DispatchEventOnMainThread : public Runnable {
 template <class InputType, class EventType>
 class DispatchInputOnControllerThread : public Runnable {
  public:
+  enum class APZOnly { Yes, No };
   DispatchInputOnControllerThread(const EventType& aEvent,
                                   IAPZCTreeManager* aAPZC,
-                                  nsBaseWidget* aWidget)
+                                  nsBaseWidget* aWidget,
+                                  APZOnly aAPZOnly = APZOnly::No)
       : mozilla::Runnable("DispatchInputOnControllerThread"),
         mMainMessageLoop(MessageLoop::current()),
         mInput(aEvent),
         mAPZC(aAPZC),
-        mWidget(aWidget) {}
+        mWidget(aWidget),
+        mAPZOnly(aAPZOnly) {}
 
   NS_IMETHOD Run() override {
     APZEventResult result = mAPZC->InputBridge()->ReceiveInputEvent(mInput);
-    if (result.GetStatus() == nsEventStatus_eConsumeNoDefault) {
+    if (mAPZOnly == APZOnly::Yes ||
+        result.GetStatus() == nsEventStatus_eConsumeNoDefault) {
       return NS_OK;
     }
     RefPtr<Runnable> r = new DispatchEventOnMainThread<InputType, EventType>(
@@ -1191,6 +1209,7 @@ class DispatchInputOnControllerThread : public Runnable {
   InputType mInput;
   RefPtr<IAPZCTreeManager> mAPZC;
   nsBaseWidget* mWidget;
+  const APZOnly mAPZOnly;
 };
 
 void nsBaseWidget::DispatchTouchInput(MultiTouchInput& aInput,
@@ -1258,6 +1277,7 @@ nsIWidget::ContentAndAPZEventStatus nsBaseWidget::DispatchInputEvent(
     WidgetInputEvent* aEvent) {
   nsIWidget::ContentAndAPZEventStatus status;
   MOZ_ASSERT(NS_IsMainThread());
+
   if (mAPZC) {
     if (APZThreadUtils::IsControllerThread()) {
       APZEventResult result = mAPZC->InputBridge()->ReceiveInputEvent(*aEvent);
@@ -1268,34 +1288,45 @@ nsIWidget::ContentAndAPZEventStatus nsBaseWidget::DispatchInputEvent(
       status.mContentStatus = ProcessUntransformedAPZEvent(aEvent, result);
       return status;
     }
-    if (WidgetWheelEvent* wheelEvent = aEvent->AsWheelEvent()) {
-      RefPtr<Runnable> r =
-          new DispatchInputOnControllerThread<ScrollWheelInput,
-                                              WidgetWheelEvent>(*wheelEvent,
-                                                                mAPZC, this);
-      APZThreadUtils::RunOnControllerThread(std::move(r));
-      status.mContentStatus = nsEventStatus_eConsumeDoDefault;
-      return status;
+    // Most drag events aren't able to converted to MouseEvent except to
+    // eDragStart and eDragEnd.
+    const bool canDispatchToApzc =
+        !aEvent->AsDragEvent() ||
+        aEvent->AsDragEvent()->CanConvertToInputData();
+    if (canDispatchToApzc) {
+      if (WidgetWheelEvent* wheelEvent = aEvent->AsWheelEvent()) {
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<ScrollWheelInput,
+                                                WidgetWheelEvent>(*wheelEvent,
+                                                                  mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      if (WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent()) {
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<MouseInput, WidgetMouseEvent>(
+                *mouseEvent, mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      if (WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent()) {
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<MultiTouchInput,
+                                                WidgetTouchEvent>(*touchEvent,
+                                                                  mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      // Allow dispatching keyboard/drag events on Gecko thread
+      // without sending them to APZ
+
+      // FIXME: APZ can handle keyboard events now, we should
+      // be sending them to APZ here
+      MOZ_ASSERT(aEvent->AsKeyboardEvent() || aEvent->AsDragEvent());
     }
-    if (WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent()) {
-      RefPtr<Runnable> r =
-          new DispatchInputOnControllerThread<MouseInput, WidgetMouseEvent>(
-              *mouseEvent, mAPZC, this);
-      APZThreadUtils::RunOnControllerThread(std::move(r));
-      status.mContentStatus = nsEventStatus_eConsumeDoDefault;
-      return status;
-    }
-    if (WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent()) {
-      RefPtr<Runnable> r =
-          new DispatchInputOnControllerThread<MultiTouchInput,
-                                              WidgetTouchEvent>(*touchEvent,
-                                                                mAPZC, this);
-      APZThreadUtils::RunOnControllerThread(std::move(r));
-      status.mContentStatus = nsEventStatus_eConsumeDoDefault;
-      return status;
-    }
-    // Allow dispatching keyboard events on Gecko thread.
-    MOZ_ASSERT(aEvent->AsKeyboardEvent());
   }
 
   DispatchEvent(aEvent, status.mContentStatus);
@@ -1305,8 +1336,22 @@ nsIWidget::ContentAndAPZEventStatus nsBaseWidget::DispatchInputEvent(
 void nsBaseWidget::DispatchEventToAPZOnly(mozilla::WidgetInputEvent* aEvent) {
   MOZ_ASSERT(NS_IsMainThread());
   if (mAPZC) {
-    MOZ_ASSERT(APZThreadUtils::IsControllerThread());
-    mAPZC->InputBridge()->ReceiveInputEvent(*aEvent);
+    if (APZThreadUtils::IsControllerThread()) {
+      mAPZC->InputBridge()->ReceiveInputEvent(*aEvent);
+      return;
+    }
+
+    if (WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent()) {
+      RefPtr<Runnable> r =
+          new DispatchInputOnControllerThread<MouseInput, WidgetMouseEvent>(
+              *mouseEvent, mAPZC, this,
+              DispatchInputOnControllerThread<MouseInput,
+                                              WidgetMouseEvent>::APZOnly::Yes);
+      APZThreadUtils::RunOnControllerThread(std::move(r));
+      return;
+    }
+
+    MOZ_ASSERT_UNREACHABLE("Not implemented yet");
   }
 }
 
@@ -1391,11 +1436,11 @@ already_AddRefed<WebRenderLayerManager> nsBaseWidget::CreateCompositorSession(
 #elif defined(MOZ_WIDGET_ANDROID)
     MOZ_ASSERT(supportsAcceleration);
     options.SetAllowSoftwareWebRenderOGL(
-        StaticPrefs::gfx_webrender_software_opengl_AtStartup());
+        gfx::gfxVars::AllowSoftwareWebRenderOGL());
 #elif defined(MOZ_WIDGET_GTK)
     if (supportsAcceleration) {
       options.SetAllowSoftwareWebRenderOGL(
-          StaticPrefs::gfx_webrender_software_opengl_AtStartup());
+          gfx::gfxVars::AllowSoftwareWebRenderOGL());
     }
 #endif
 
@@ -2309,6 +2354,12 @@ nsBaseWidget::SwipeInfo nsBaseWidget::SendMayStartSwipe(
 WidgetWheelEvent nsBaseWidget::MayStartSwipeForAPZ(
     const PanGestureInput& aPanInput, const APZEventResult& aApzResult) {
   WidgetWheelEvent event = aPanInput.ToWidgetEvent(this);
+
+  // Ignore swipe-to-navigation in PiP window.
+  if (mIsPIPWindow) {
+    return event;
+  }
+
   if (aPanInput.AllowsSwipe()) {
     SwipeInfo swipeInfo = SendMayStartSwipe(aPanInput);
     event.mCanTriggerSwipe = swipeInfo.wantsSwipe;
@@ -2350,6 +2401,11 @@ WidgetWheelEvent nsBaseWidget::MayStartSwipeForAPZ(
 }
 
 bool nsBaseWidget::MayStartSwipeForNonAPZ(const PanGestureInput& aPanInput) {
+  // Ignore swipe-to-navigation in PiP window.
+  if (mIsPIPWindow) {
+    return false;
+  }
+
   if (aPanInput.mType == PanGestureInput::PANGESTURE_MAYSTART ||
       aPanInput.mType == PanGestureInput::PANGESTURE_START) {
     mCurrentPanGestureBelongsToSwipe = false;

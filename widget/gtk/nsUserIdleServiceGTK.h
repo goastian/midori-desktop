@@ -9,47 +9,70 @@
 #define nsUserIdleServiceGTK_h__
 
 #include "nsUserIdleService.h"
-#ifdef MOZ_X11
-#  include <X11/Xlib.h>
-#  include <X11/Xutil.h>
-#  include <gdk/gdkx.h>
-#endif
+#include "mozilla/AppShutdown.h"
+#include "mozilla/UniquePtr.h"
 
-#ifdef MOZ_X11
-typedef struct {
-  Window window;               // Screen saver window
-  int state;                   // ScreenSaver(Off,On,Disabled)
-  int kind;                    // ScreenSaver(Blanked,Internal,External)
-  unsigned long til_or_since;  // milliseconds since/til screensaver kicks in
-  unsigned long idle;          // milliseconds idle
-  unsigned long event_mask;    // event stuff
-} XScreenSaverInfo;
-#endif
+class nsUserIdleServiceGTK;
+
+class UserIdleServiceImpl {
+ public:
+  explicit UserIdleServiceImpl(nsUserIdleServiceGTK* aUserIdleService)
+      : mUserIdleServiceGTK(aUserIdleService){};
+
+  virtual bool PollIdleTime(uint32_t* aIdleTime) = 0;
+  virtual bool ProbeImplementation() = 0;
+
+  virtual ~UserIdleServiceImpl() = default;
+
+ protected:
+  nsUserIdleServiceGTK* mUserIdleServiceGTK;
+};
+
+#define IDLE_SERVICE_MUTTER 0
+#define IDLE_SERVICE_XSCREENSAVER 1
+#define IDLE_SERVICE_NONE 2
 
 class nsUserIdleServiceGTK : public nsUserIdleService {
  public:
   NS_INLINE_DECL_REFCOUNTING_INHERITED(nsUserIdleServiceGTK, nsUserIdleService)
 
+  // The idle time in ms
   virtual bool PollIdleTime(uint32_t* aIdleTime) override;
 
   static already_AddRefed<nsUserIdleServiceGTK> GetInstance() {
     RefPtr<nsUserIdleServiceGTK> idleService =
         nsUserIdleService::GetInstance().downcast<nsUserIdleServiceGTK>();
     if (!idleService) {
+      // Avoid late instantiation or resurrection during shutdown.
+      if (mozilla::AppShutdown::IsInOrBeyond(
+              mozilla::ShutdownPhase::AppShutdownConfirmed)) {
+        return nullptr;
+      }
       idleService = new nsUserIdleServiceGTK();
+      idleService->ProbeService();
     }
 
     return idleService.forget();
   }
 
- private:
-  ~nsUserIdleServiceGTK();
-#ifdef MOZ_X11
-  XScreenSaverInfo* mXssInfo;
-#endif
+  void ProbeService();
+  void AcceptServiceCallback();
+  void RejectAndTryNextServiceCallback();
 
  protected:
-  nsUserIdleServiceGTK();
+  nsUserIdleServiceGTK() = default;
+
+ private:
+  ~nsUserIdleServiceGTK() = default;
+
+  mozilla::UniquePtr<UserIdleServiceImpl> mIdleService;
+#ifdef MOZ_ENABLE_DBUS
+  int mIdleServiceType = IDLE_SERVICE_MUTTER;
+#else
+  int mIdleServiceType = IDLE_SERVICE_XSCREENSAVER;
+#endif
+  // We have a working idle service.
+  bool mIdleServiceInitialized = false;
 };
 
 #endif  // nsUserIdleServiceGTK_h__

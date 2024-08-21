@@ -1,5 +1,5 @@
-/* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=4:tabstop=4:
+/* -*- Mode: C; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim:expandtab:shiftwidth=2:tabstop=2:
  */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -18,35 +18,12 @@
 /*
  * MozContainer
  *
- * This class serves three purposes in the nsIWidget implementation.
+ * This class serves two purposes in the nsIWidget implementation.
  *
  *   - It provides objects to receive signals from GTK for events on native
  *     windows.
  *
- *   - It provides GdkWindow to draw content on Wayland or when Gtk+ renders
- *     client side decorations to mShell.
- *
- *   - It provides a container parent for GtkWidgets.  The only GtkWidgets
- *     that need this in Mozilla are the GtkSockets for windowed plugins (Xt
- *     and XEmbed).
- *
- * Note that the window hierarchy in Mozilla differs from conventional
- * GtkWidget hierarchies.
- *
- * Mozilla's hierarchy exists through the GdkWindow hierarchy, and all child
- * GdkWindows (within a child nsIWidget hierarchy) belong to one MozContainer
- * GtkWidget.  If the MozContainer is unrealized or its GdkWindows are
- * destroyed for some other reason, then the hierarchy no longer exists.  (In
- * conventional GTK clients, the hierarchy is recorded by the GtkWidgets, and
- * so can be re-established after destruction of the GdkWindows.)
- *
- * One consequence of this is that the MozContainer does not know which of its
- * GdkWindows should parent child GtkWidgets.  (Conventional GtkContainers
- * determine which GdkWindow to assign child GtkWidgets.)
- *
- * Therefore, when adding a child GtkWidget to a MozContainer,
- * gtk_widget_set_parent_window should be called on the child GtkWidget before
- * it is realized.
+ *   - It provides GdkWindow to draw content.
  */
 
 #define MOZ_CONTAINER_TYPE (moz_container_get_type())
@@ -60,17 +37,22 @@
   (G_TYPE_CHECK_CLASS_TYPE((klass), MOZ_CONTAINER_TYPE))
 #define MOZ_CONTAINER_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS((obj), MOZ_CONTAINER_TYPE, MozContainerClass))
+#ifdef MOZ_WAYLAND
+#  define MOZ_WL_CONTAINER(obj) (&MOZ_CONTAINER(obj)->data.wl_container)
+#endif
 
 typedef struct _MozContainer MozContainer;
 typedef struct _MozContainerClass MozContainerClass;
 
 struct _MozContainer {
   GtkContainer container;
-  GList* children;
-  gboolean force_default_visual;
+  gboolean destroyed;
+  struct Data {
+    gboolean force_default_visual = false;
 #ifdef MOZ_WAYLAND
-  MozContainerWayland wl_container;
+    MozContainerWayland wl_container;
 #endif
+  } data;
 };
 
 struct _MozContainerClass {
@@ -83,6 +65,7 @@ void moz_container_unmap(GtkWidget* widget);
 void moz_container_put(MozContainer* container, GtkWidget* child_widget, gint x,
                        gint y);
 void moz_container_force_default_visual(MozContainer* container);
+void moz_container_class_init(MozContainerClass* klass);
 
 class nsWindow;
 nsWindow* moz_container_get_nsWindow(MozContainer* container);

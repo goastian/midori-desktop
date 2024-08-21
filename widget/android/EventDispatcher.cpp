@@ -21,12 +21,6 @@
 #include "mozilla/java/EventCallbackWrappers.h"
 #include "mozilla/jni/GeckoBundleUtils.h"
 
-// Disable the C++ 2a warning. See bug #1509926
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wc++2a-compat"
-#endif
-
 namespace mozilla {
 namespace widget {
 
@@ -129,9 +123,9 @@ nsresult UnboxBundle(JSContext* aCx, const jni::Object::LocalRef& aData,
     nsresult rv = UnboxValue(aCx, values->GetElement(i), &value);
     if (rv == NS_ERROR_INVALID_ARG && !JS_IsExceptionPending(aCx)) {
       JS_ReportErrorUTF8(
-          aCx, u8"Invalid event data property %s",
-          NS_ConvertUTF16toUTF8(
-              nsString(reinterpret_cast<const char16_t*>(keyChars), keyLen))
+          aCx, "Invalid event data property %s",
+          NS_ConvertUTF16toUTF8(reinterpret_cast<const char16_t*>(keyChars),
+                                keyLen)
               .get());
     }
     NS_ENSURE_SUCCESS(rv, rv);
@@ -770,7 +764,3 @@ nsresult EventDispatcher::UnboxBundle(JSContext* aCx, jni::Object::Param aData,
 
 }  // namespace widget
 }  // namespace mozilla
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#endif

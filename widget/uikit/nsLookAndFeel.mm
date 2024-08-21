@@ -13,6 +13,8 @@
 #include "gfxFont.h"
 #include "gfxFontConstants.h"
 
+using namespace mozilla;
+
 nsLookAndFeel::nsLookAndFeel() : mInitialized(false) {}
 
 nsLookAndFeel::~nsLookAndFeel() {}
@@ -22,7 +24,8 @@ static nscolor GetColorFromUIColor(UIColor* aColor) {
   CGColorSpaceModel model = CGColorSpaceGetModel(CGColorGetColorSpace(cgColor));
   const CGFloat* components = CGColorGetComponents(cgColor);
   if (model == kCGColorSpaceModelRGB) {
-    return NS_RGB((unsigned int)(components[0] * 255.0), (unsigned int)(components[1] * 255.0),
+    return NS_RGB((unsigned int)(components[0] * 255.0),
+                  (unsigned int)(components[1] * 255.0),
                   (unsigned int)(components[2] * 255.0));
   } else if (model == kCGColorSpaceModelMonochrome) {
     unsigned int val = (unsigned int)(components[0] * 255.0);
@@ -40,7 +43,8 @@ void nsLookAndFeel::RefreshImpl() {
   mInitialized = false;
 }
 
-nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
+nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aColorScheme,
+                                       nscolor& aResult) {
   EnsureInit();
 
   nsresult res = NS_OK;
@@ -54,7 +58,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
       break;
     case ColorID::Highlighttext:
     case ColorID::MozMenuhovertext:
-      aResult = mColorTextSelectForeground;
+      aResult = NS_SAME_AS_FOREGROUND_COLOR;
       break;
     case ColorID::IMESelectedRawTextBackground:
     case ColorID::IMESelectedConvertedTextBackground:
@@ -88,7 +92,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
     case ColorID::Captiontext:
     case ColorID::Menutext:
     case ColorID::Infotext:
-    case ColorID::MozMenubartext:
     case ColorID::Windowtext:
       aResult = mColorDarkText;
       break;
@@ -154,11 +157,11 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
       aResult = NS_RGB(0xaa, 0xaa, 0xaa);
       break;
     case ColorID::Window:
-    case ColorID::MozField:
+    case ColorID::Field:
     case ColorID::MozCombobox:
       aResult = NS_RGB(0xff, 0xff, 0xff);
       break;
-    case ColorID::MozFieldtext:
+    case ColorID::Fieldtext:
     case ColorID::MozComboboxtext:
       aResult = mColorDarkText;
       break;
@@ -172,35 +175,14 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
     case ColorID::MozColheaderhovertext:
       aResult = mColorDarkText;
       break;
-    case ColorID::MozDragtargetzone:
-    case ColorID::MozMacChromeActive:
-    case ColorID::MozMacChromeInactive:
-      aResult = NS_RGB(0xaa, 0xaa, 0xaa);
-      break;
     case ColorID::MozMacFocusring:
       aResult = NS_RGB(0x3F, 0x98, 0xDD);
-      break;
-    case ColorID::MozMacMenushadow:
-      aResult = NS_RGB(0xA3, 0xA3, 0xA3);
-      break;
-    case ColorID::MozMacMenutextdisable:
-      aResult = NS_RGB(0x88, 0x88, 0x88);
-      break;
-    case ColorID::MozMacMenutextselect:
-      aResult = NS_RGB(0xaa, 0xaa, 0xaa);
       break;
     case ColorID::MozMacDisabledtoolbartext:
       aResult = NS_RGB(0x3F, 0x3F, 0x3F);
       break;
-    case ColorID::MozMacMenuselect:
-      aResult = NS_RGB(0xaa, 0xaa, 0xaa);
-      break;
-    case ColorID::MozButtondefault:
-      aResult = NS_RGB(0xDC, 0xDC, 0xDC);
-      break;
     case ColorID::MozCellhighlight:
     case ColorID::Selecteditem:
-    case ColorID::MozMacSecondaryhighlight:
       // For inactive list selection
       aResult = NS_RGB(0xaa, 0xaa, 0xaa);
       break;
@@ -213,13 +195,18 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
       aResult = NS_TRANSPARENT;
       break;
     case ColorID::MozNativehyperlinktext:
-      // There appears to be no available system defined color. HARDCODING to the appropriate color.
+      // There appears to be no available system defined color. HARDCODING to
+      // the appropriate color.
       aResult = NS_RGB(0x14, 0x4F, 0xAE);
       break;
     case ColorID::MozNativevisitedhyperlinktext:
-      // Safari defaults to the MacOS color implementation for visited links, which in turn uses
-      // systemPurpleColor, so we do the same here.
+      // Safari defaults to the MacOS color implementation for visited links,
+      // which in turn uses systemPurpleColor, so we do the same here.
       aResult = GetColorFromUIColor([UIColor systemPurpleColor]);
+      break;
+    case ColorID::TargetTextBackground:
+    case ColorID::TargetTextForeground:
+      aResult = GetStandinForNativeColor(aID, aColorScheme);
       break;
     default:
       NS_WARNING("Someone asked nsILookAndFeel for a color I don't know about");
@@ -249,9 +236,6 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::CaretWidth:
       aResult = 1;
       break;
-    case IntID::ShowCaretDuringSelection:
-      aResult = 0;
-      break;
     case IntID::SelectTextfieldsOnKeyFocus:
       // Select textfield content when focused by kbd
       // used by nsEventStateManager::sTextfieldSelectModel
@@ -274,6 +258,19 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::ScrollArrowStyle:
       aResult = eScrollArrow_None;
       break;
+    case IntID::UseOverlayScrollbars:
+    case IntID::AllowOverlayScrollbarsOverlap:
+      aResult = 1;
+      break;
+    case IntID::ScrollbarDisplayOnMouseMove:
+      aResult = 0;
+      break;
+    case IntID::ScrollbarFadeBeginDelay:
+      aResult = 450;
+      break;
+    case IntID::ScrollbarFadeDuration:
+      aResult = 200;
+      break;
     case IntID::TreeOpenDelay:
       aResult = 1000;
       break;
@@ -288,18 +285,6 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
       break;
     case IntID::TreeScrollLinesMax:
       aResult = 3;
-      break;
-    case IntID::DWMCompositor:
-    case IntID::WindowsClassic:
-    case IntID::WindowsDefaultTheme:
-      aResult = 0;
-      res = NS_ERROR_NOT_IMPLEMENTED;
-      break;
-    case IntID::MacGraphiteTheme:
-      aResult = 0;
-      break;
-    case IntID::TabFocusModel:
-      aResult = 1;  // default to just textboxes
       break;
     case IntID::ScrollToClick:
       aResult = 0;
@@ -346,12 +331,13 @@ nsLookAndFeel::NativeGetFloat(FloatID aID, float& aResult) {
   return res;
 }
 
-bool nsLookAndFeel::NativeGetFont(FontID aID, nsString& aFontName, gfxFontStyle& aFontStyle) {
+bool nsLookAndFeel::NativeGetFont(FontID aID, nsString& aFontName,
+                                  gfxFontStyle& aFontStyle) {
   // hack for now
-  if (aID == FontID::Window || aID == FontID::Document) {
-    aFontStyle.style = FontSlantStyle::Normal();
-    aFontStyle.weight = FontWeight::Normal();
-    aFontStyle.stretch = FontStretch::Normal();
+  if (aID == FontID::Caption || aID == FontID::Menu) {
+    aFontStyle.style = FontSlantStyle::NORMAL;
+    aFontStyle.weight = FontWeight::NORMAL;
+    aFontStyle.stretch = FontStretch::NORMAL;
     aFontStyle.size = 14;
     aFontStyle.systemFont = true;
 
@@ -368,14 +354,6 @@ void nsLookAndFeel::EnsureInit() {
     return;
   }
   mInitialized = true;
-
-  nscolor color;
-  GetColor(ColorID::TextSelectBackground, color);
-  if (color == 0x000000) {
-    mColorTextSelectForeground = NS_RGB(0xff, 0xff, 0xff);
-  } else {
-    mColorTextSelectForeground = NS_SAME_AS_FOREGROUND_COLOR;
-  }
 
   mColorDarkText = GetColorFromUIColor([UIColor darkTextColor]);
 

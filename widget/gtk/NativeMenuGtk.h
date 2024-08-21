@@ -1,4 +1,3 @@
-
 /* -*- Mode: c++; tab-width: 2; indent-tabs-mode: nil; -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -7,9 +6,12 @@
 #ifndef mozilla_widget_NativeMenuGtk_h
 #define mozilla_widget_NativeMenuGtk_h
 
+#include "mozilla/RefCounted.h"
 #include "mozilla/widget/NativeMenu.h"
 #include "mozilla/EventForwards.h"
 #include "GRefPtr.h"
+
+struct xdg_dbus_annotation_v1;
 
 namespace mozilla {
 
@@ -19,7 +21,8 @@ class Element;
 
 namespace widget {
 
-class MenuModel;
+class MenuModelGMenu;
+class MenubarModelDBus;
 
 class NativeMenuGtk : public NativeMenu {
  public:
@@ -54,9 +57,34 @@ class NativeMenuGtk : public NativeMenu {
 
   bool mPoppedUp = false;
   RefPtr<GtkWidget> mNativeMenu;
-  RefPtr<MenuModel> mMenuModel;
+  RefPtr<MenuModelGMenu> mMenuModel;
   nsTArray<NativeMenu::Observer*> mObservers;
 };
+
+#ifdef MOZ_ENABLE_DBUS
+
+class DBusMenuBar final : public RefCounted<DBusMenuBar> {
+ public:
+  MOZ_DECLARE_REFCOUNTED_TYPENAME(DBusMenuBar)
+  static RefPtr<DBusMenuBar> Create(dom::Element*);
+  ~DBusMenuBar();
+
+ protected:
+  explicit DBusMenuBar(dom::Element* aElement);
+
+  static void NameOwnerChangedCallback(GObject*, GParamSpec*, gpointer);
+  void OnNameOwnerChanged();
+
+  nsCString mObjectPath;
+  RefPtr<MenubarModelDBus> mMenuModel;
+  RefPtr<DbusmenuServer> mServer;
+  RefPtr<GDBusProxy> mProxy;
+#  ifdef MOZ_WAYLAND
+  xdg_dbus_annotation_v1* mAnnotation = nullptr;
+#  endif
+};
+
+#endif
 
 }  // namespace widget
 }  // namespace mozilla

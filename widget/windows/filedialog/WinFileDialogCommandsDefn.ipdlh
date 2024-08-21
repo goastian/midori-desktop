@@ -44,6 +44,19 @@ struct Results {
   uint32_t selectedFileTypeIndex;
 };
 
+// Homolog of filedialog::Err. (Always Err::Kind::RemoteError, by definition.)
+struct RemoteError {
+  // An enum (`filedialog::Error::Location`) describing the compile-time location
+  // where the error was detected.
+  //
+  // (This value is validated at use-sites; if the child process sends a bad
+  // value, nothing of import will happen.)
+  uint32_t where;
+  // An error code describing the error itself more precisely. Its semantics
+  // depend on the context provided by `where`, but it's probably an HRESULT.
+  uint32_t why;
+};
+
 } // namespace filedialog
 } // namespace widget
 } // namespace mozilla

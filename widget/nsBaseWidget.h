@@ -194,7 +194,7 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   }
   void SetTransparencyMode(TransparencyMode aMode) override;
   TransparencyMode GetTransparencyMode() override;
-  void SetWindowShadowStyle(mozilla::StyleWindowShadow aStyle) override {}
+  void SetWindowShadowStyle(mozilla::WindowShadow) override {}
   void SetShowsToolbarButton(bool aShow) override {}
   void SetSupportsNativeFullscreen(bool aSupportsNativeFullscreen) override {}
   void SetWindowAnimationType(WindowAnimationType aType) override {}
@@ -272,7 +272,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   }
   bool HasPendingInputEvent() override;
   void SetIcon(const nsAString& aIconSpec) override {}
-  void SetDrawsInTitlebar(bool aState) override {}
   bool ShowsResizeIndicator(LayoutDeviceIntRect* aResizerRect) override;
   void FreeNativeData(void* data, uint32_t aDataType) override {}
   nsresult ActivateNativeMenuItemAt(const nsAString& indexString) override {
@@ -355,6 +354,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   // theme changes.
   void NotifyThemeChanged(mozilla::widget::ThemeChangeKind);
 
+  void NotifyAPZOfDPIChange();
+
 #ifdef ACCESSIBILITY
   // Get the accessible for the window.
   mozilla::a11y::LocalAccessible* GetRootAccessible();
@@ -365,13 +366,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   bool IsSmallPopup() const;
 
   PopupLevel GetPopupLevel() { return mPopupLevel; }
-
-  // return true if this is a popup widget with a native titlebar
-  bool IsPopupWithTitleBar() const {
-    return (mWindowType == WindowType::Popup &&
-            mBorderStyle != BorderStyle::Default &&
-            mBorderStyle & BorderStyle::Title);
-  }
 
   void ReparentNativeWidget(nsIWidget* aNewParent) override {}
 
@@ -676,6 +670,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   void FreeShutdownObserver();
   void FreeLocalesChangedObserver();
 
+  bool IsPIPWindow() const { return mIsPIPWindow; };
+
   nsIWidgetListener* mWidgetListener;
   nsIWidgetListener* mAttachedWidgetListener;
   nsIWidgetListener* mPreviouslyAttachedWidgetListener;
@@ -723,6 +719,9 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   // scrolling. It is reset to false once a new gesture starts (as indicated by
   // a PANGESTURE_(MAY)START event).
   bool mCurrentPanGestureBelongsToSwipe;
+
+  // It's PictureInPicture window.
+  bool mIsPIPWindow : 1;
 
   struct InitialZoomConstraints {
     InitialZoomConstraints(const uint32_t& aPresShellID,

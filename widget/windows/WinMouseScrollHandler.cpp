@@ -21,6 +21,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/WheelEventBinding.h"
 #include "mozilla/StaticPrefs_mousewheel.h"
+#include "mozilla/widget/WinRegistry.h"
 
 #include <psapi.h>
 
@@ -336,7 +337,7 @@ ModifierKeyState MouseScrollHandler::GetModifierKeyState(UINT aMessage) {
   // MouseScrollHandler::Device::Elantech::HandleKeyMessage().)
   if ((aMessage == MOZ_WM_MOUSEVWHEEL || aMessage == WM_MOUSEWHEEL) &&
       !result.IsControl() && Device::Elantech::IsZooming()) {
-    // XXX Do we need to unset MODIFIER_SHIFT, MODIFIER_ALT, MODIFIER_OS too?
+    // XXX Do we need to unset MODIFIER_SHIFT, MODIFIER_ALT, MODIFIER_META too?
     //     If one of them are true, the default action becomes not zooming.
     result.Unset(MODIFIER_ALTGRAPH);
     result.Set(MODIFIER_CONTROL);
@@ -803,30 +804,6 @@ bool MouseScrollHandler::LastEventInfo::InitWheelEvent(
     // If the scroll delta mode isn't per line scroll, we shouldn't allow to
     // override the system scroll speed setting.
     aWheelEvent.mAllowToOverrideSystemScrollSpeed = false;
-  } else if (!MouseScrollHandler::sInstance->mSystemSettings
-                  .IsOverridingSystemScrollSpeedAllowed()) {
-    // If the system settings are customized by either the user or
-    // the mouse utility, we shouldn't allow to override the system scroll
-    // speed setting.
-    aWheelEvent.mAllowToOverrideSystemScrollSpeed = false;
-  } else {
-    // For suppressing too fast scroll, we should ensure that the maximum
-    // overridden delta value should be less than overridden scroll speed
-    // with default scroll amount.
-    double defaultScrollAmount = mIsVertical
-                                     ? SystemSettings::DefaultScrollLines()
-                                     : SystemSettings::DefaultScrollChars();
-    double maxDelta = WidgetWheelEvent::ComputeOverriddenDelta(
-        defaultScrollAmount, mIsVertical);
-    if (maxDelta != defaultScrollAmount) {
-      double overriddenDelta =
-          WidgetWheelEvent::ComputeOverriddenDelta(Abs(delta), mIsVertical);
-      if (overriddenDelta > maxDelta) {
-        // Suppress to fast scroll since overriding system scroll speed with
-        // current delta value causes too big delta value.
-        aWheelEvent.mAllowToOverrideSystemScrollSpeed = false;
-      }
-    }
   }
 
   MOZ_LOG(
@@ -1002,12 +979,6 @@ void MouseScrollHandler::SystemSettings::TrustedScrollSettingsDriver() {
   // XXX We're not sure about other touchpad drivers...
 }
 
-bool MouseScrollHandler::SystemSettings::
-    IsOverridingSystemScrollSpeedAllowed() {
-  return mScrollLines == DefaultScrollLines() &&
-         mScrollChars == DefaultScrollChars();
-}
-
 /******************************************************************************
  *
  * UserPrefs
@@ -1157,10 +1128,9 @@ void MouseScrollHandler::Device::SynTP::Init() {
   sMinorVersion = -1;
 
   wchar_t buf[40];
-  bool foundKey = WinUtils::GetRegistryKey(
-      HKEY_LOCAL_MACHINE, L"Software\\Synaptics\\SynTP\\Install",
-      L"DriverVersion", buf, sizeof buf);
-  if (!foundKey) {
+  if (!WinRegistry::GetString(
+          HKEY_LOCAL_MACHINE, u"Software\\Synaptics\\SynTP\\Install"_ns,
+          u"DriverVersion"_ns, buf, WinRegistry::kLegacyWinUtilsStringFlags)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::SynTP::Init(): "
              "SynTP driver is not found"));
@@ -1204,16 +1174,12 @@ void MouseScrollHandler::Device::Elantech::Init() {
 int32_t MouseScrollHandler::Device::Elantech::GetDriverMajorVersion() {
   wchar_t buf[40];
   // The driver version is found in one of these two registry keys.
-  bool foundKey = WinUtils::GetRegistryKey(HKEY_CURRENT_USER,
-                                           L"Software\\Elantech\\MainOption",
-                                           L"DriverVersion", buf, sizeof buf);
-  if (!foundKey) {
-    foundKey =
-        WinUtils::GetRegistryKey(HKEY_CURRENT_USER, L"Software\\Elantech",
-                                 L"DriverVersion", buf, sizeof buf);
-  }
-
-  if (!foundKey) {
+  if (!WinRegistry::GetString(
+          HKEY_CURRENT_USER, u"Software\\Elantech\\MainOption"_ns,
+          u"DriverVersion"_ns, buf, WinRegistry::kLegacyWinUtilsStringFlags) &&
+      !WinRegistry::GetString(HKEY_CURRENT_USER, u"Software\\Elantech"_ns,
+                              u"DriverVersion"_ns, buf,
+                              WinRegistry::kLegacyWinUtilsStringFlags)) {
     return 0;
   }
 
@@ -1399,10 +1365,9 @@ void MouseScrollHandler::Device::Apoint::Init() {
   sMinorVersion = -1;
 
   wchar_t buf[40];
-  bool foundKey =
-      WinUtils::GetRegistryKey(HKEY_LOCAL_MACHINE, L"Software\\Alps\\Apoint",
-                               L"ProductVer", buf, sizeof buf);
-  if (!foundKey) {
+  if (!WinRegistry::GetString(HKEY_LOCAL_MACHINE, u"Software\\Alps\\Apoint"_ns,
+                              u"ProductVer"_ns, buf,
+                              WinRegistry::kLegacyWinUtilsStringFlags)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::Apoint::Init(): "
              "Apoint driver is not found"));
@@ -1429,19 +1394,20 @@ void MouseScrollHandler::Device::Apoint::Init() {
 
 /* static */
 bool MouseScrollHandler::Device::TrackPoint::IsDriverInstalled() {
-  if (WinUtils::HasRegistryKey(HKEY_CURRENT_USER,
-                               L"Software\\Lenovo\\TrackPoint")) {
+  if (WinRegistry::HasKey(HKEY_CURRENT_USER,
+                          u"Software\\Lenovo\\TrackPoint"_ns)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::TrackPoint::IsDriverInstalled(): "
              "Lenovo's TrackPoint driver is found"));
     return true;
   }
 
-  if (WinUtils::HasRegistryKey(HKEY_CURRENT_USER,
-                               L"Software\\Alps\\Apoint\\TrackPoint")) {
+  if (WinRegistry::HasKey(HKEY_CURRENT_USER,
+                          u"Software\\Alps\\Apoint\\TrackPoint"_ns)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::TrackPoint::IsDriverInstalled(): "
              "Alps's TrackPoint driver is found"));
+    return true;
   }
 
   return false;
@@ -1455,8 +1421,8 @@ bool MouseScrollHandler::Device::TrackPoint::IsDriverInstalled() {
 
 /* static */
 bool MouseScrollHandler::Device::UltraNav::IsObsoleteDriverInstalled() {
-  if (WinUtils::HasRegistryKey(HKEY_CURRENT_USER,
-                               L"Software\\Lenovo\\UltraNav")) {
+  if (WinRegistry::HasKey(HKEY_CURRENT_USER,
+                          u"Software\\Lenovo\\UltraNav"_ns)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::UltraNav::IsObsoleteDriverInstalled(): "
              "Lenovo's UltraNav driver is found"));
@@ -1464,15 +1430,15 @@ bool MouseScrollHandler::Device::UltraNav::IsObsoleteDriverInstalled() {
   }
 
   bool installed = false;
-  if (WinUtils::HasRegistryKey(HKEY_CURRENT_USER,
-                               L"Software\\Synaptics\\SynTPEnh\\UltraNavUSB")) {
+  if (WinRegistry::HasKey(HKEY_CURRENT_USER,
+                          u"Software\\Synaptics\\SynTPEnh\\UltraNavUSB"_ns)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::UltraNav::IsObsoleteDriverInstalled(): "
              "Synaptics's UltraNav (USB) driver is found"));
     installed = true;
-  } else if (WinUtils::HasRegistryKey(
+  } else if (WinRegistry::HasKey(
                  HKEY_CURRENT_USER,
-                 L"Software\\Synaptics\\SynTPEnh\\UltraNavPS2")) {
+                 u"Software\\Synaptics\\SynTPEnh\\UltraNavPS2"_ns)) {
     MOZ_LOG(gMouseScrollLog, LogLevel::Info,
             ("MouseScroll::Device::UltraNav::IsObsoleteDriverInstalled(): "
              "Synaptics's UltraNav (PS/2) driver is found"));

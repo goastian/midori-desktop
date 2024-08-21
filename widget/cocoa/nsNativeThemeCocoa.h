@@ -32,13 +32,6 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
   using ThemeCocoa = mozilla::widget::ThemeCocoa;
 
  public:
-  enum class MenuIcon : uint8_t {
-    eCheckmark,
-    eMenuArrow,
-    eMenuDownScrollArrow,
-    eMenuUpScrollArrow
-  };
-
   enum class CheckboxOrRadioState : uint8_t { eOff, eOn, eIndeterminate };
 
   enum class ButtonType : uint8_t {
@@ -47,8 +40,6 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
     eSquareBezelPushButton,
     eArrowButton,
     eHelpButton,
-    eTreeTwistyPointingRight,
-    eTreeTwistyPointingDown,
     eDisclosureButtonClosed,
     eDisclosureButtonOpen
   };
@@ -61,28 +52,17 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
 
   struct ControlParams {
     ControlParams()
-        : disabled(false), insideActiveWindow(false), pressed(false), focused(false), rtl(false) {}
+        : disabled(false),
+          insideActiveWindow(false),
+          pressed(false),
+          focused(false),
+          rtl(false) {}
 
     bool disabled : 1;
     bool insideActiveWindow : 1;
     bool pressed : 1;
     bool focused : 1;
     bool rtl : 1;
-  };
-
-  struct MenuIconParams {
-    MenuIcon icon = MenuIcon::eCheckmark;
-    bool disabled = false;
-    bool insideActiveMenuItem = false;
-    bool centerHorizontally = false;
-    bool rtl = false;
-  };
-
-  struct MenuItemParams {
-    bool checked = false;
-    bool disabled = false;
-    bool selected = false;
-    bool rtl = false;
   };
 
   struct CheckboxOrRadioParams {
@@ -149,12 +129,6 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
     bool rtl = false;
   };
 
-  struct TreeHeaderCellParams {
-    ControlParams controlParams;
-    TreeSortDirection sortDirection = eTreeSortDirection_Natural;
-    bool lastTreeHeaderCell = false;
-  };
-
   struct ScaleParams {
     int32_t value = 0;
     int32_t min = 0;
@@ -168,9 +142,6 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
 
   enum Widget : uint8_t {
     eColorFill,       // mozilla::gfx::sRGBColor
-    eMenuIcon,        // MenuIconParams
-    eMenuItem,        // MenuItemParams
-    eMenuSeparator,   // MenuItemParams
     eCheckbox,        // CheckboxOrRadioParams
     eRadio,           // CheckboxOrRadioParams
     eButton,          // ButtonParams
@@ -180,34 +151,21 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
     eSpinButtonDown,  // SpinButtonParams
     eSegment,         // SegmentParams
     eSeparator,
-    eToolbar,    // bool
     eStatusBar,  // bool
     eGroupBox,
     eTextField,           // TextFieldParams
     eSearchField,         // TextFieldParams
     eProgressBar,         // ProgressParams
     eMeter,               // MeterParams
-    eTreeHeaderCell,      // TreeHeaderCellParams
     eScale,               // ScaleParams
     eMultilineTextField,  // bool
     eListBox,
-    eActiveSourceListSelection,    // bool
-    eInactiveSourceListSelection,  // bool
     eTabPanel,
   };
 
   struct WidgetInfo {
     static WidgetInfo ColorFill(const mozilla::gfx::sRGBColor& aParams) {
       return WidgetInfo(Widget::eColorFill, aParams);
-    }
-    static WidgetInfo MenuIcon(const MenuIconParams& aParams) {
-      return WidgetInfo(Widget::eMenuIcon, aParams);
-    }
-    static WidgetInfo MenuItem(const MenuItemParams& aParams) {
-      return WidgetInfo(Widget::eMenuItem, aParams);
-    }
-    static WidgetInfo MenuSeparator(const MenuItemParams& aParams) {
-      return WidgetInfo(Widget::eMenuSeparator, aParams);
     }
     static WidgetInfo Checkbox(const CheckboxOrRadioParams& aParams) {
       return WidgetInfo(Widget::eCheckbox, aParams);
@@ -233,10 +191,15 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
     static WidgetInfo Segment(const SegmentParams& aParams) {
       return WidgetInfo(Widget::eSegment, aParams);
     }
-    static WidgetInfo Separator() { return WidgetInfo(Widget::eSeparator, false); }
-    static WidgetInfo Toolbar(bool aParams) { return WidgetInfo(Widget::eToolbar, aParams); }
-    static WidgetInfo StatusBar(bool aParams) { return WidgetInfo(Widget::eStatusBar, aParams); }
-    static WidgetInfo GroupBox() { return WidgetInfo(Widget::eGroupBox, false); }
+    static WidgetInfo Separator() {
+      return WidgetInfo(Widget::eSeparator, false);
+    }
+    static WidgetInfo StatusBar(bool aParams) {
+      return WidgetInfo(Widget::eStatusBar, aParams);
+    }
+    static WidgetInfo GroupBox() {
+      return WidgetInfo(Widget::eGroupBox, false);
+    }
     static WidgetInfo TextField(const TextFieldParams& aParams) {
       return WidgetInfo(Widget::eTextField, aParams);
     }
@@ -249,9 +212,6 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
     static WidgetInfo Meter(const MeterParams& aParams) {
       return WidgetInfo(Widget::eMeter, aParams);
     }
-    static WidgetInfo TreeHeaderCell(const TreeHeaderCellParams& aParams) {
-      return WidgetInfo(Widget::eTreeHeaderCell, aParams);
-    }
     static WidgetInfo Scale(const ScaleParams& aParams) {
       return WidgetInfo(Widget::eScale, aParams);
     }
@@ -259,13 +219,9 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
       return WidgetInfo(Widget::eMultilineTextField, aParams);
     }
     static WidgetInfo ListBox() { return WidgetInfo(Widget::eListBox, false); }
-    static WidgetInfo ActiveSourceListSelection(bool aParams) {
-      return WidgetInfo(Widget::eActiveSourceListSelection, aParams);
+    static WidgetInfo TabPanel(bool aParams) {
+      return WidgetInfo(Widget::eTabPanel, aParams);
     }
-    static WidgetInfo InactiveSourceListSelection(bool aParams) {
-      return WidgetInfo(Widget::eInactiveSourceListSelection, aParams);
-    }
-    static WidgetInfo TabPanel(bool aParams) { return WidgetInfo(Widget::eTabPanel, aParams); }
 
     template <typename T>
     T Params() const {
@@ -277,11 +233,13 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
 
    private:
     template <typename T>
-    WidgetInfo(enum Widget aWidget, const T& aParams) : mVariant(aParams), mWidget(aWidget) {}
+    WidgetInfo(enum Widget aWidget, const T& aParams)
+        : mVariant(aParams), mWidget(aWidget) {}
 
-    mozilla::Variant<mozilla::gfx::sRGBColor, MenuIconParams, MenuItemParams, CheckboxOrRadioParams,
-                     ButtonParams, DropdownParams, SpinButtonParams, SegmentParams, TextFieldParams,
-                     ProgressParams, MeterParams, TreeHeaderCellParams, ScaleParams, bool>
+    mozilla::Variant<mozilla::gfx::sRGBColor, CheckboxOrRadioParams,
+                     ButtonParams, DropdownParams, SpinButtonParams,
+                     SegmentParams, TextFieldParams, ProgressParams,
+                     MeterParams, ScaleParams, bool>
         mVariant;
 
     enum Widget mWidget;
@@ -292,111 +250,113 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
   NS_DECL_ISUPPORTS_INHERITED
 
   // The nsITheme interface.
-  NS_IMETHOD DrawWidgetBackground(gfxContext* aContext, nsIFrame* aFrame,
-                                  StyleAppearance aAppearance, const nsRect& aRect,
-                                  const nsRect& aDirtyRect, DrawOverflow) override;
-  bool CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBuilder& aBuilder,
-                                        mozilla::wr::IpcResourceUpdateQueue& aResources,
-                                        const mozilla::layers::StackingContextHelper& aSc,
-                                        mozilla::layers::RenderRootStateManager* aManager,
-                                        nsIFrame* aFrame, StyleAppearance aAppearance,
-                                        const nsRect& aRect) override;
-  [[nodiscard]] LayoutDeviceIntMargin GetWidgetBorder(nsDeviceContext* aContext, nsIFrame* aFrame,
-                                                      StyleAppearance aAppearance) override;
+  NS_IMETHOD DrawWidgetBackground(gfxContext* aContext, nsIFrame*,
+                                  StyleAppearance, const nsRect& aRect,
+                                  const nsRect& aDirtyRect,
+                                  DrawOverflow) override;
+  bool CreateWebRenderCommandsForWidget(
+      mozilla::wr::DisplayListBuilder& aBuilder,
+      mozilla::wr::IpcResourceUpdateQueue& aResources,
+      const mozilla::layers::StackingContextHelper& aSc,
+      mozilla::layers::RenderRootStateManager* aManager, nsIFrame*,
+      StyleAppearance, const nsRect& aRect) override;
+  [[nodiscard]] LayoutDeviceIntMargin GetWidgetBorder(nsDeviceContext* aContext,
+                                                      nsIFrame*,
+                                                      StyleAppearance) override;
 
-  bool GetWidgetPadding(nsDeviceContext* aContext, nsIFrame* aFrame, StyleAppearance aAppearance,
+  bool GetWidgetPadding(nsDeviceContext* aContext, nsIFrame*, StyleAppearance,
                         LayoutDeviceIntMargin* aResult) override;
 
-  virtual bool GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
-                                 StyleAppearance aAppearance, nsRect* aOverflowRect) override;
+  bool GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame*, StyleAppearance,
+                         nsRect* aOverflowRect) override;
 
-  LayoutDeviceIntSize GetMinimumWidgetSize(nsPresContext*, nsIFrame*, StyleAppearance) override;
-  NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, StyleAppearance aAppearance, nsAtom* aAttribute,
-                                bool* aShouldRepaint, const nsAttrValue* aOldValue) override;
+  LayoutDeviceIntSize GetMinimumWidgetSize(nsPresContext*, nsIFrame*,
+                                           StyleAppearance) override;
+  NS_IMETHOD WidgetStateChanged(nsIFrame*, StyleAppearance, nsAtom* aAttribute,
+                                bool* aShouldRepaint,
+                                const nsAttrValue* aOldValue) override;
   NS_IMETHOD ThemeChanged() override;
-  bool ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame,
-                           StyleAppearance aAppearance) override;
-  bool WidgetIsContainer(StyleAppearance aAppearance) override;
+  bool ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame*,
+                           StyleAppearance) override;
+  bool WidgetIsContainer(StyleAppearance) override;
   bool ThemeDrawsFocusForWidget(nsIFrame*, StyleAppearance) override;
   bool ThemeNeedsComboboxDropmarker() override;
-  virtual bool WidgetAppearanceDependsOnWindowFocus(StyleAppearance aAppearance) override;
-  virtual ThemeGeometryType ThemeGeometryTypeForWidget(nsIFrame* aFrame,
-                                                       StyleAppearance aAppearance) override;
-  virtual Transparency GetWidgetTransparency(nsIFrame* aFrame,
-                                             StyleAppearance aAppearance) override;
-  mozilla::Maybe<WidgetInfo> ComputeWidgetInfo(nsIFrame* aFrame, StyleAppearance aAppearance,
+  bool WidgetAppearanceDependsOnWindowFocus(StyleAppearance) override;
+  ThemeGeometryType ThemeGeometryTypeForWidget(nsIFrame*,
+                                               StyleAppearance) override;
+  Transparency GetWidgetTransparency(nsIFrame*, StyleAppearance) override;
+  mozilla::Maybe<WidgetInfo> ComputeWidgetInfo(nsIFrame*, StyleAppearance,
                                                const nsRect& aRect);
-  void DrawProgress(CGContextRef context, const HIRect& inBoxRect, const ProgressParams& aParams);
+  void DrawProgress(CGContextRef context, const HIRect& inBoxRect,
+                    const ProgressParams& aParams);
 
  protected:
   virtual ~nsNativeThemeCocoa();
 
-  LayoutDeviceIntMargin DirectionAwareMargin(const LayoutDeviceIntMargin& aMargin,
-                                             nsIFrame* aFrame);
+  LayoutDeviceIntMargin DirectionAwareMargin(const LayoutDeviceIntMargin&,
+                                             nsIFrame*);
   nsIFrame* SeparatorResponsibility(nsIFrame* aBefore, nsIFrame* aAfter);
-  ControlParams ComputeControlParams(nsIFrame* aFrame, mozilla::dom::ElementState aEventState);
-  MenuIconParams ComputeMenuIconParams(nsIFrame* aParams, mozilla::dom::ElementState aEventState,
-                                       MenuIcon aIcon);
-  MenuItemParams ComputeMenuItemParams(nsIFrame* aFrame, mozilla::dom::ElementState aEventState,
-                                       bool aIsChecked);
-  SegmentParams ComputeSegmentParams(nsIFrame* aFrame, mozilla::dom::ElementState aEventState,
-                                     SegmentType aSegmentType);
-  TextFieldParams ComputeTextFieldParams(nsIFrame* aFrame, mozilla::dom::ElementState aEventState);
-  ProgressParams ComputeProgressParams(nsIFrame* aFrame, mozilla::dom::ElementState aEventState,
+  ControlParams ComputeControlParams(nsIFrame*, mozilla::dom::ElementState);
+  SegmentParams ComputeSegmentParams(nsIFrame*, mozilla::dom::ElementState,
+                                     SegmentType);
+  TextFieldParams ComputeTextFieldParams(nsIFrame*, mozilla::dom::ElementState);
+  ProgressParams ComputeProgressParams(nsIFrame*, mozilla::dom::ElementState,
                                        bool aIsHorizontal);
-  MeterParams ComputeMeterParams(nsIFrame* aFrame);
-  TreeHeaderCellParams ComputeTreeHeaderCellParams(nsIFrame* aFrame,
-                                                   mozilla::dom::ElementState aEventState);
-  mozilla::Maybe<ScaleParams> ComputeHTMLScaleParams(nsIFrame* aFrame,
-                                                     mozilla::dom::ElementState aEventState);
+  MeterParams ComputeMeterParams(nsIFrame*);
+  mozilla::Maybe<ScaleParams> ComputeHTMLScaleParams(
+      nsIFrame*, mozilla::dom::ElementState);
 
   // HITheme drawing routines
-  void DrawMeter(CGContextRef context, const HIRect& inBoxRect, const MeterParams& aParams);
-  void DrawSegment(CGContextRef cgContext, const HIRect& inBoxRect, const SegmentParams& aParams);
+  void DrawMeter(CGContextRef context, const HIRect& inBoxRect,
+                 const MeterParams& aParams);
+  void DrawSegment(CGContextRef cgContext, const HIRect& inBoxRect,
+                   const SegmentParams& aParams);
   void DrawSegmentBackground(CGContextRef cgContext, const HIRect& inBoxRect,
                              const SegmentParams& aParams);
-  void DrawTabPanel(CGContextRef context, const HIRect& inBoxRect, bool aIsInsideActiveWindow);
-  void DrawScale(CGContextRef context, const HIRect& inBoxRect, const ScaleParams& aParams);
-  void DrawCheckboxOrRadio(CGContextRef cgContext, bool inCheckbox, const HIRect& inBoxRect,
+  void DrawTabPanel(CGContextRef context, const HIRect& inBoxRect,
+                    bool aIsInsideActiveWindow);
+  void DrawScale(CGContextRef context, const HIRect& inBoxRect,
+                 const ScaleParams& aParams);
+  void DrawCheckboxOrRadio(CGContextRef cgContext, bool inCheckbox,
+                           const HIRect& inBoxRect,
                            const CheckboxOrRadioParams& aParams);
   void DrawSearchField(CGContextRef cgContext, const HIRect& inBoxRect,
                        const TextFieldParams& aParams);
   void DrawTextField(CGContextRef cgContext, const HIRect& inBoxRect,
                      const TextFieldParams& aParams);
-  void DrawPushButton(CGContextRef cgContext, const HIRect& inBoxRect, ButtonType aButtonType,
-                      ControlParams aControlParams);
-  void DrawSquareBezelPushButton(CGContextRef cgContext, const HIRect& inBoxRect,
+  void DrawPushButton(CGContextRef cgContext, const HIRect& inBoxRect,
+                      ButtonType aButtonType, ControlParams aControlParams);
+  void DrawSquareBezelPushButton(CGContextRef cgContext,
+                                 const HIRect& inBoxRect,
                                  ControlParams aControlParams);
   void DrawHelpButton(CGContextRef cgContext, const HIRect& inBoxRect,
                       ControlParams aControlParams);
   void DrawDisclosureButton(CGContextRef cgContext, const HIRect& inBoxRect,
-                            ControlParams aControlParams, NSControlStateValue aState);
-  NSString* GetMenuIconName(const MenuIconParams& aParams);
-  NSSize GetMenuIconSize(MenuIcon aIcon);
-  void DrawMenuIcon(CGContextRef cgContext, const CGRect& aRect, const MenuIconParams& aParams);
-  void DrawMenuItem(CGContextRef cgContext, const CGRect& inBoxRect, const MenuItemParams& aParams);
-  void DrawMenuSeparator(CGContextRef cgContext, const CGRect& inBoxRect,
-                         const MenuItemParams& aParams);
-  void DrawHIThemeButton(CGContextRef cgContext, const HIRect& aRect, ThemeButtonKind aKind,
-                         ThemeButtonValue aValue, ThemeDrawState aState,
-                         ThemeButtonAdornment aAdornment, const ControlParams& aParams);
-  void DrawButton(CGContextRef context, const HIRect& inBoxRect, const ButtonParams& aParams);
-  void DrawTreeHeaderCell(CGContextRef context, const HIRect& inBoxRect,
-                          const TreeHeaderCellParams& aParams);
-  void DrawDropdown(CGContextRef context, const HIRect& inBoxRect, const DropdownParams& aParams);
-  HIThemeButtonDrawInfo SpinButtonDrawInfo(ThemeButtonKind aKind, const SpinButtonParams& aParams);
+                            ControlParams aControlParams,
+                            NSControlStateValue aState);
+  void DrawHIThemeButton(CGContextRef cgContext, const HIRect& aRect,
+                         ThemeButtonKind aKind, ThemeButtonValue aValue,
+                         ThemeDrawState aState, ThemeButtonAdornment aAdornment,
+                         const ControlParams& aParams);
+  void DrawButton(CGContextRef context, const HIRect& inBoxRect,
+                  const ButtonParams& aParams);
+  void DrawDropdown(CGContextRef context, const HIRect& inBoxRect,
+                    const DropdownParams& aParams);
+  HIThemeButtonDrawInfo SpinButtonDrawInfo(ThemeButtonKind aKind,
+                                           const SpinButtonParams& aParams);
   void DrawSpinButtons(CGContextRef context, const HIRect& inBoxRect,
                        const SpinButtonParams& aParams);
-  void DrawSpinButton(CGContextRef context, const HIRect& inBoxRect, SpinButton aDrawnButton,
-                      const SpinButtonParams& aParams);
-  void DrawToolbar(CGContextRef cgContext, const CGRect& inBoxRect, bool aIsMain);
-  void DrawStatusBar(CGContextRef cgContext, const HIRect& inBoxRect, bool aIsMain);
-  void DrawMultilineTextField(CGContextRef cgContext, const CGRect& inBoxRect, bool aIsFocused);
-  void DrawSourceListSelection(CGContextRef aContext, const CGRect& aRect, bool aWindowIsActive,
-                               bool aSelectionIsActive);
-
+  void DrawSpinButton(CGContextRef context, const HIRect& inBoxRect,
+                      SpinButton aDrawnButton, const SpinButtonParams& aParams);
+  void DrawToolbar(CGContextRef cgContext, const CGRect& inBoxRect,
+                   bool aIsMain);
+  void DrawStatusBar(CGContextRef cgContext, const HIRect& inBoxRect,
+                     bool aIsMain);
+  void DrawMultilineTextField(CGContextRef cgContext, const CGRect& inBoxRect,
+                              bool aIsFocused);
   void RenderWidget(const WidgetInfo& aWidgetInfo, mozilla::ColorScheme,
-                    mozilla::gfx::DrawTarget& aDrawTarget, const mozilla::gfx::Rect& aWidgetRect,
+                    mozilla::gfx::DrawTarget& aDrawTarget,
+                    const mozilla::gfx::Rect& aWidgetRect,
                     const mozilla::gfx::Rect& aDirtyRect, float aScale);
 
  private:
@@ -411,7 +371,6 @@ class nsNativeThemeCocoa : public mozilla::widget::ThemeCocoa {
   NSComboBoxCell* mComboBoxCell;
   NSProgressBarCell* mProgressBarCell;
   NSLevelIndicatorCell* mMeterBarCell;
-  NSTableHeaderCell* mTreeHeaderCell;
   MOZCellDrawWindow* mCellDrawWindow = nil;
   MOZCellDrawView* mCellDrawView;
 };

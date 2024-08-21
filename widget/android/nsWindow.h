@@ -7,6 +7,7 @@
 #ifndef NSWINDOW_H_
 #define NSWINDOW_H_
 
+#include "AndroidGraphics.h"
 #include "nsBaseWidget.h"
 #include "gfxPoint.h"
 #include "nsIUserIdleServiceInternal.h"
@@ -69,8 +70,6 @@ class nsWindow final : public nsBaseWidget {
       nsIPrincipal* aTriggeringPrincipal, bool aHasUserGesture,
       bool aIsTopLevel);
 
-  void OnUpdateSessionStore(mozilla::jni::Object::Param aBundle);
-
  private:
   // Unique ID given to each widget, used to map Surfaces to widgets
   // in the CompositorSurfaceManager.
@@ -126,6 +125,12 @@ class nsWindow final : public nsBaseWidget {
   void PassExternalResponse(mozilla::java::WebResponse::Param aResponse);
 
   void ShowDynamicToolbar();
+
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void OnDragEvent(
+      int32_t aAction, int64_t aTime, float aX, float aY,
+      mozilla::jni::Object::Param aDropData);
+  void StartDragAndDrop(mozilla::java::sdk::Bitmap::LocalRef aBitmap);
+  void UpdateDragImage(mozilla::java::sdk::Bitmap::LocalRef aBitmap);
 
   void DetachNatives();
 
