@@ -4,6 +4,7 @@
 // The origin we use in most of the tests.
 const TEST_ORIGIN = NetUtil.newURI("http://example.org");
 const TEST_ORIGIN_HTTPS = NetUtil.newURI("https://example.org");
+const TEST_ORIGIN_NOTUPDATED = NetUtil.newURI("https://example.net");
 const TEST_ORIGIN_2 = NetUtil.newURI("http://example.com");
 const TEST_ORIGIN_3 = NetUtil.newURI("https://example2.com:8080");
 const TEST_PERMISSION = "test-permission";
@@ -17,6 +18,10 @@ function promiseTimeout(delay) {
 add_task(async function do_test() {
   // setup a profile.
   do_get_profile();
+
+  // setup the time for removeAllSince() before defaults are loaded
+  let since = Number(Date.now());
+  await promiseTimeout(20);
 
   // create a file in the temp directory with the defaults.
   let file = do_get_tempdir();
@@ -39,6 +44,9 @@ add_task(async function do_test() {
   );
   conv.writeString(
     "host\t" + TEST_PERMISSION + "\t1\t" + TEST_ORIGIN_2.host + "\n"
+  );
+  conv.writeString(
+    "host\t" + TEST_PERMISSION + "\t1\t" + TEST_ORIGIN_NOTUPDATED.host + "\n"
   );
   conv.writeString(
     "origin\t" + TEST_PERMISSION + "\t1\t" + TEST_ORIGIN_3.spec + "\n"
@@ -75,6 +83,11 @@ add_task(async function do_test() {
     TEST_ORIGIN_HTTPS,
     {}
   );
+  let principalNotUpdated =
+    Services.scriptSecurityManager.createContentPrincipal(
+      TEST_ORIGIN_NOTUPDATED,
+      {}
+    );
   let principal2 = Services.scriptSecurityManager.createContentPrincipal(
     TEST_ORIGIN_2,
     {}
@@ -84,17 +97,7 @@ add_task(async function do_test() {
     {}
   );
 
-  let attrs = { inIsolatedMozBrowser: true };
-  let principal4 = Services.scriptSecurityManager.createContentPrincipal(
-    TEST_ORIGIN,
-    attrs
-  );
-  let principal5 = Services.scriptSecurityManager.createContentPrincipal(
-    TEST_ORIGIN_3,
-    attrs
-  );
-
-  attrs = { userContextId: 1 };
+  let attrs = { userContextId: 1 };
   let principal1UserContext =
     Services.scriptSecurityManager.createContentPrincipal(TEST_ORIGIN, attrs);
   attrs = { privateBrowsingId: 1 };
@@ -121,11 +124,11 @@ add_task(async function do_test() {
   );
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
-    pm.testPermissionFromPrincipal(principal3, TEST_PERMISSION)
+    pm.testPermissionFromPrincipal(principalNotUpdated, TEST_PERMISSION)
   );
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
-    pm.testPermissionFromPrincipal(principal4, TEST_PERMISSION)
+    pm.testPermissionFromPrincipal(principal3, TEST_PERMISSION)
   );
   // Depending on the prefs there are two scenarios here:
   // 1. We isolate by private browsing: The permission mgr should
@@ -136,12 +139,6 @@ add_task(async function do_test() {
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
     pm.testPermissionFromPrincipal(principal1PrivateBrowsing, TEST_PERMISSION)
-  );
-
-  // Didn't add
-  Assert.equal(
-    Ci.nsIPermissionManager.UNKNOWN_ACTION,
-    pm.testPermissionFromPrincipal(principal5, TEST_PERMISSION)
   );
 
   // the permission should exist in the enumerator.
@@ -157,6 +154,22 @@ add_task(async function do_test() {
   // but should not have been written to the DB
   await checkCapabilityViaDB(null);
 
+  // removeallsince should not get rid of defaults
+  pm.removeAllSince(since);
+
+  Assert.equal(
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    pm.testPermissionFromPrincipal(principal, TEST_PERMISSION)
+  );
+  Assert.equal(
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    pm.testPermissionFromPrincipal(principalNotUpdated, TEST_PERMISSION)
+  );
+  Assert.equal(
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    pm.testPermissionFromPrincipal(principal3, TEST_PERMISSION)
+  );
+
   // remove all should not throw and the default should remain
   pm.removeAll();
 
@@ -166,11 +179,11 @@ add_task(async function do_test() {
   );
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
-    pm.testPermissionFromPrincipal(principal3, TEST_PERMISSION)
+    pm.testPermissionFromPrincipal(principalNotUpdated, TEST_PERMISSION)
   );
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
-    pm.testPermissionFromPrincipal(principal4, TEST_PERMISSION)
+    pm.testPermissionFromPrincipal(principal3, TEST_PERMISSION)
   );
   // Default permission should have also been added for private browsing.
   Assert.equal(
@@ -227,6 +240,10 @@ add_task(async function do_test() {
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
     pm.testPermissionFromPrincipal(principal, TEST_PERMISSION)
+  );
+  Assert.equal(
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    pm.testPermissionFromPrincipal(principalNotUpdated, TEST_PERMISSION)
   );
   // Make sure default imports work for private browsing after removeAll.
   Assert.equal(
@@ -337,10 +354,14 @@ add_task(async function do_test() {
   // check default permissions and removeAllSince work as expected.
   pm.removeAll(); // ensure only defaults are there.
 
-  // default for both principals is allow.
+  // default for principals is allow.
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
     pm.testPermissionFromPrincipal(principal, TEST_PERMISSION)
+  );
+  Assert.equal(
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    pm.testPermissionFromPrincipal(principalNotUpdated, TEST_PERMISSION)
   );
   Assert.equal(
     Ci.nsIPermissionManager.ALLOW_ACTION,
@@ -360,7 +381,8 @@ add_task(async function do_test() {
   );
   await promiseTimeout(20);
 
-  let since = Number(Date.now());
+  // update since to now
+  since = Number(Date.now());
   await promiseTimeout(20);
 
   // explicitly add a permission which overrides the default for the first
@@ -384,8 +406,12 @@ add_task(async function do_test() {
     Ci.nsIPermissionManager.ALLOW_ACTION,
     pm.testPermissionFromPrincipal(principal, TEST_PERMISSION)
   );
-
-  // but the permission for principal2 should remain as we added that before |since|.
+  // the default permission for principal that wasn't updated should be allowed
+  Assert.equal(
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    pm.testPermissionFromPrincipal(principalNotUpdated, TEST_PERMISSION)
+  );
+  // but the default permission for principal2 should remain as we added that before |since|.
   Assert.equal(
     Ci.nsIPermissionManager.DENY_ACTION,
     pm.testPermissionFromPrincipal(principal2, TEST_PERMISSION)

@@ -143,7 +143,6 @@ add_task(function test() {
     insertHost("bar.ca", "A", 1, 0, 0, 0, 1000, true),
     insertHost("localhost", "A", 1, 0, 0, 0, 0, false),
     insertHost("127.0.0.1", "A", 1, 0, 0, 0, 0, false),
-    insertHost("263.123.555.676", "A", 1, 0, 0, 0, 0, false),
     insertHost("file:///some/path/to/file.html", "A", 1, 0, 0, 0, 0, false),
     insertHost("file:///another/file.html", "A", 1, 0, 0, 0, 0, false),
     insertHost(
@@ -179,21 +178,19 @@ add_task(function test() {
   let expected = [
     ["http://foo.com", "A", 1, 0, 0],
     ["http://foo.com", "C", 1, 0, 0],
-    ["http://foo.com^inBrowser=1", "A", 1, 0, 0],
     ["http://sub.foo.com", "B", 1, 0, 0],
     ["http://subber.sub.foo.com", "B", 1, 0, 0],
 
     ["https://foo.com", "A", 1, 0, 0],
     ["https://foo.com", "C", 1, 0, 0],
-    ["https://foo.com^inBrowser=1", "A", 1, 0, 0],
     ["https://sub.foo.com", "B", 1, 0, 0],
     ["https://subber.sub.foo.com", "B", 1, 0, 0],
 
     // bar.ca will have both http:// and https:// for all entries, because there are no associated history entries
     ["http://bar.ca", "B", 1, 0, 0],
     ["https://bar.ca", "B", 1, 0, 0],
-    ["http://bar.ca^inBrowser=1", "A", 1, 0, 0],
-    ["https://bar.ca^inBrowser=1", "A", 1, 0, 0],
+    ["http://bar.ca", "A", 1, 0, 0],
+    ["https://bar.ca", "A", 1, 0, 0],
     ["file:///some/path/to/file.html", "A", 1, 0, 0],
     ["file:///another/file.html", "A", 1, 0, 0],
 
@@ -202,11 +199,9 @@ add_task(function test() {
     ["https://localhost", "A", 1, 0, 0],
     ["http://127.0.0.1", "A", 1, 0, 0],
     ["https://127.0.0.1", "A", 1, 0, 0],
-    ["http://263.123.555.676", "A", 1, 0, 0],
-    ["https://263.123.555.676", "A", 1, 0, 0],
   ];
 
-  let found = expected.map(it => 0);
+  let found = expected.map(() => 0);
 
   // This will force the permission-manager to reload the data.
   Services.obs.notifyObservers(null, "testonly-reload-permissions-from-disk");

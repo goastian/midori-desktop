@@ -10,7 +10,10 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ContentPrincipal.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/Document.h"
+#include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/ExpandedPrincipal.h"
 #include "mozilla/net/NeckoMessageUtils.h"
 #include "mozilla/Permission.h"
@@ -29,6 +32,7 @@
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
 #include "nsCRT.h"
+#include "nsDebug.h"
 #include "nsEffectiveTLDService.h"
 #include "nsIConsoleService.h"
 #include "nsIUserIdleService.h"
@@ -40,6 +44,7 @@
 #include "nsIURIMutator.h"
 #include "nsIWritablePropertyBag2.h"
 #include "nsReadLine.h"
+#include "nsStringFwd.h"
 #include "nsTHashSet.h"
 #include "nsToolkitCompsCID.h"
 
@@ -102,8 +107,8 @@ bool HasDefaultPref(const nsACString& aType) {
   // A list of permissions that can have a fallback default permission
   // set under the permissions.default.* pref.
   static const nsLiteralCString kPermissionsWithDefaults[] = {
-      "camera"_ns, "microphone"_ns, "geo"_ns, "desktop-notification"_ns,
-      "shortcuts"_ns};
+      "camera"_ns,    "microphone"_ns,      "geo"_ns, "desktop-notification"_ns,
+      "shortcuts"_ns, "screen-wake-lock"_ns};
 
   if (!aType.IsEmpty()) {
     for (const auto& perm : kPermissionsWithDefaults) {
@@ -127,7 +132,7 @@ static const nsLiteralCString kPreloadPermissions[] = {
     // interception when a user has disabled storage for a specific site.  Once
     // service worker interception moves to the parent process this should be
     // removed.  See bug 1428130.
-    "cookie"_ns};
+    "cookie"_ns, "https-only-load-insecure"_ns};
 
 // NOTE: nullptr can be passed as aType - if it is this function will return
 // "false" unconditionally.
@@ -151,8 +156,8 @@ bool IsPreloadPermission(const nsACString& aType) {
 // This is because perms are sent to the content process in bulk by perm key.
 // Non-preloaded, but OA stripped permissions would not be accessible by sites
 // in private browsing / non-default user context.
-static constexpr std::array<nsLiteralCString, 1> kStripOAPermissions = {
-    {"cookie"_ns}};
+static constexpr std::array<nsLiteralCString, 2> kStripOAPermissions = {
+    {"cookie"_ns, "https-only-load-insecure"_ns}};
 
 bool IsOAForceStripPermission(const nsACString& aType) {
   if (aType.IsEmpty()) {
@@ -169,8 +174,9 @@ bool IsOAForceStripPermission(const nsACString& aType) {
 // Array of permission prefixes which should be isolated only by site.
 // These site-scoped permissions are stored under their site's principal.
 // GetAllForPrincipal also needs to look for these especially.
-static constexpr std::array<nsLiteralCString, 2> kSiteScopedPermissions = {
-    {"3rdPartyStorage^"_ns, "AllowStorageAccessRequest^"_ns}};
+static constexpr std::array<nsLiteralCString, 3> kSiteScopedPermissions = {
+    {"3rdPartyStorage^"_ns, "AllowStorageAccessRequest^"_ns,
+     "3rdPartyFrameStorage^"_ns}};
 
 bool IsSiteScopedPermission(const nsACString& aType) {
   if (aType.IsEmpty()) {
@@ -179,6 +185,29 @@ bool IsSiteScopedPermission(const nsACString& aType) {
   for (const auto& perm : kSiteScopedPermissions) {
     if (aType.Length() >= perm.Length() &&
         Substring(aType, 0, perm.Length()) == perm) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Array of permission type prefixes which have a secondary key encoded in the
+// permission type. These permissions will not be stored in-process with the
+// secondary key, but updates to them will cause "perm-changed" notifications on
+// processes for that key.
+static constexpr std::array<nsLiteralCString, 3> kSecondaryKeyedPermissions = {
+    {"3rdPartyStorage^"_ns, "AllowStorageAccessRequest^"_ns,
+     "3rdPartyFrameStorage^"_ns}};
+
+bool GetSecondaryKey(const nsACString& aType, nsACString& aSecondaryKey) {
+  aSecondaryKey.Truncate();
+  if (aType.IsEmpty()) {
+    return false;
+  }
+  for (const auto& perm : kSecondaryKeyedPermissions) {
+    if (aType.Length() > perm.Length() &&
+        Substring(aType, 0, perm.Length()) == perm) {
+      aSecondaryKey = Substring(aType, perm.Length());
       return true;
     }
   }
@@ -279,17 +308,6 @@ nsresult GetPrincipalFromOrigin(const nsACString& aOrigin, bool aForceStripOA,
   return NS_OK;
 }
 
-nsresult GetPrincipal(nsIURI* aURI, bool aIsInIsolatedMozBrowserElement,
-                      nsIPrincipal** aPrincipal) {
-  OriginAttributes attrs(aIsInIsolatedMozBrowserElement);
-  nsCOMPtr<nsIPrincipal> principal =
-      BasePrincipal::CreateContentPrincipal(aURI, attrs);
-  NS_ENSURE_TRUE(principal, NS_ERROR_FAILURE);
-
-  principal.forget(aPrincipal);
-  return NS_OK;
-}
-
 nsresult GetPrincipal(nsIURI* aURI, nsIPrincipal** aPrincipal) {
   OriginAttributes attrs;
   nsCOMPtr<nsIPrincipal> principal =
@@ -340,7 +358,6 @@ already_AddRefed<nsIURI> GetNextSubDomainURI(nsIURI* aURI) {
 nsresult UpgradeHostToOriginAndInsert(
     const nsACString& aHost, const nsCString& aType, uint32_t aPermission,
     uint32_t aExpireType, int64_t aExpireTime, int64_t aModificationTime,
-    bool aIsInIsolatedMozBrowserElement,
     std::function<nsresult(const nsACString& aOrigin, const nsCString& aType,
                            uint32_t aPermission, uint32_t aExpireType,
                            int64_t aExpireTime, int64_t aModificationTime)>&&
@@ -367,8 +384,7 @@ nsresult UpgradeHostToOriginAndInsert(
     }
 
     nsCOMPtr<nsIPrincipal> principal;
-    rv = GetPrincipal(uri, aIsInIsolatedMozBrowserElement,
-                      getter_AddRefs(principal));
+    rv = GetPrincipal(uri, getter_AddRefs(principal));
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoCString origin;
@@ -483,8 +499,7 @@ nsresult UpgradeHostToOriginAndInsert(
 
       // We now have a URI which we can make a nsIPrincipal out of
       nsCOMPtr<nsIPrincipal> principal;
-      rv = GetPrincipal(uri, aIsInIsolatedMozBrowserElement,
-                        getter_AddRefs(principal));
+      rv = GetPrincipal(uri, getter_AddRefs(principal));
       if (NS_WARN_IF(NS_FAILED(rv))) continue;
 
       nsAutoCString origin;
@@ -531,8 +546,7 @@ nsresult UpgradeHostToOriginAndInsert(
     rv = NS_NewURI(getter_AddRefs(uri), "http://"_ns + hostSegment);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = GetPrincipal(uri, aIsInIsolatedMozBrowserElement,
-                      getter_AddRefs(principal));
+    rv = GetPrincipal(uri, getter_AddRefs(principal));
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = GetOriginFromPrincipal(principal, IsOAForceStripPermission(aType),
@@ -546,8 +560,7 @@ nsresult UpgradeHostToOriginAndInsert(
     rv = NS_NewURI(getter_AddRefs(uri), "https://"_ns + hostSegment);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = GetPrincipal(uri, aIsInIsolatedMozBrowserElement,
-                      getter_AddRefs(principal));
+    rv = GetPrincipal(uri, getter_AddRefs(principal));
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = GetOriginFromPrincipal(principal, IsOAForceStripPermission(aType),
@@ -572,6 +585,49 @@ bool IsPersistentExpire(uint32_t aExpire, const nsACString& aType) {
   bool res = (aExpire != nsIPermissionManager::EXPIRE_SESSION &&
               aExpire != nsIPermissionManager::EXPIRE_POLICY);
   return res;
+}
+
+nsresult NotifySecondaryKeyPermissionUpdateInContentProcess(
+    const nsACString& aType, uint32_t aPermission,
+    const nsACString& aSecondaryKey, nsIPrincipal* aTopPrincipal) {
+  NS_ENSURE_ARG_POINTER(aTopPrincipal);
+  MOZ_ASSERT(XRE_IsParentProcess());
+  AutoTArray<RefPtr<BrowsingContextGroup>, 5> bcGroups;
+  BrowsingContextGroup::GetAllGroups(bcGroups);
+  for (const auto& bcGroup : bcGroups) {
+    for (const auto& topBC : bcGroup->Toplevels()) {
+      CanonicalBrowsingContext* topCBC = topBC->Canonical();
+      RefPtr<nsIURI> topURI = topCBC->GetCurrentURI();
+      if (!topURI) {
+        continue;
+      }
+      bool thirdParty;
+      nsresult rv = aTopPrincipal->IsThirdPartyURI(topURI, &thirdParty);
+      if (NS_FAILED(rv)) {
+        continue;
+      }
+      if (!thirdParty) {
+        AutoTArray<RefPtr<BrowsingContext>, 5> bcs;
+        topBC->GetAllBrowsingContextsInSubtree(bcs);
+        for (const auto& bc : bcs) {
+          CanonicalBrowsingContext* cbc = bc->Canonical();
+          ContentParent* cp = cbc->GetContentParent();
+          if (!cp) {
+            continue;
+          }
+          if (cp->NeedsSecondaryKeyPermissionsUpdate(aSecondaryKey)) {
+            WindowGlobalParent* wgp = cbc->GetCurrentWindowGlobal();
+            if (!wgp) {
+              continue;
+            }
+            bool success = wgp->SendNotifyPermissionChange(aType, aPermission);
+            Unused << NS_WARN_IF(!success);
+          }
+        }
+      }
+    }
+  }
+  return NS_OK;
 }
 
 }  // namespace
@@ -1152,7 +1208,6 @@ nsresult PermissionManager::TryInitDB(bool aRemoveFile,
             entry.mExpireType = stmt->AsInt32(3);
             entry.mExpireTime = stmt->AsInt64(4);
             entry.mModificationTime = stmt->AsInt64(5);
-            entry.mIsInBrowserElement = static_cast<bool>(stmt->AsInt32(6));
 
             mMigrationEntries.AppendElement(entry);
           }
@@ -1307,7 +1362,6 @@ nsresult PermissionManager::TryInitDB(bool aRemoveFile,
             entry.mExpireType = stmt->AsInt32(3);
             entry.mExpireTime = stmt->AsInt64(4);
             entry.mModificationTime = stmt->AsInt64(5);
-            entry.mIsInBrowserElement = static_cast<bool>(stmt->AsInt32(6));
 
             mMigrationEntries.AppendElement(entry);
           }
@@ -1628,22 +1682,15 @@ NS_IMETHODIMP
 PermissionManager::AddFromPrincipalAndPersistInPrivateBrowsing(
     nsIPrincipal* aPrincipal, const nsACString& aType, uint32_t aPermission) {
   ENSURE_NOT_CHILD_PROCESS;
-  NS_ENSURE_ARG_POINTER(aPrincipal);
-  // We don't add the system principal because it actually has no URI and we
-  // always allow action for them.
-  if (aPrincipal->IsSystemPrincipal()) {
-    return NS_OK;
-  }
 
-  // Null principals can't meaningfully have persisted permissions attached to
-  // them, so we don't allow adding permissions for them.
-  if (aPrincipal->GetIsNullPrincipal()) {
-    return NS_OK;
-  }
+  bool isValidPermissionPrincipal = false;
+  nsresult rv = ShouldHandlePrincipalForPermission(aPrincipal,
+                                                   isValidPermissionPrincipal);
 
-  // Permissions may not be added to expanded principals.
-  if (IsExpandedPrincipal(aPrincipal)) {
-    return NS_ERROR_INVALID_ARG;
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (!isValidPermissionPrincipal) {
+    // return early if the principal is invalid for permissions
+    return rv;
   }
 
   // A modificationTime of zero will cause AddInternal to use now().
@@ -1663,7 +1710,6 @@ PermissionManager::AddFromPrincipal(nsIPrincipal* aPrincipal,
                                     uint32_t aPermission, uint32_t aExpireType,
                                     int64_t aExpireTime) {
   ENSURE_NOT_CHILD_PROCESS;
-  NS_ENSURE_ARG_POINTER(aPrincipal);
   NS_ENSURE_TRUE(aExpireType == nsIPermissionManager::EXPIRE_NEVER ||
                      aExpireType == nsIPermissionManager::EXPIRE_TIME ||
                      aExpireType == nsIPermissionManager::EXPIRE_SESSION ||
@@ -1675,21 +1721,14 @@ PermissionManager::AddFromPrincipal(nsIPrincipal* aPrincipal,
     return NS_OK;
   }
 
-  // We don't add the system principal because it actually has no URI and we
-  // always allow action for them.
-  if (aPrincipal->IsSystemPrincipal()) {
-    return NS_OK;
-  }
+  bool isValidPermissionPrincipal = false;
+  nsresult rv = ShouldHandlePrincipalForPermission(aPrincipal,
+                                                   isValidPermissionPrincipal);
 
-  // Null principals can't meaningfully have persisted permissions attached to
-  // them, so we don't allow adding permissions for them.
-  if (aPrincipal->GetIsNullPrincipal()) {
-    return NS_OK;
-  }
-
-  // Permissions may not be added to expanded principals.
-  if (IsExpandedPrincipal(aPrincipal)) {
-    return NS_ERROR_INVALID_ARG;
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (!isValidPermissionPrincipal) {
+    // return early if the principal is invalid for permissions
+    return rv;
   }
 
   // A modificationTime of zero will cause AddInternal to use now().
@@ -1697,6 +1736,28 @@ PermissionManager::AddFromPrincipal(nsIPrincipal* aPrincipal,
 
   return AddInternal(aPrincipal, aType, aPermission, 0, aExpireType,
                      aExpireTime, modificationTime, eNotify, eWriteToDB);
+}
+
+NS_IMETHODIMP
+PermissionManager::TestAddFromPrincipalByTime(nsIPrincipal* aPrincipal,
+                                              const nsACString& aType,
+                                              uint32_t aPermission,
+                                              int64_t aModificationTime) {
+  ENSURE_NOT_CHILD_PROCESS;
+
+  bool isValidPermissionPrincipal = false;
+  nsresult rv = ShouldHandlePrincipalForPermission(aPrincipal,
+                                                   isValidPermissionPrincipal);
+
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (!isValidPermissionPrincipal) {
+    // return early if the principal is invalid for permissions
+    return rv;
+  }
+
+  return AddInternal(aPrincipal, aType, aPermission, 0,
+                     nsIPermissionManager::EXPIRE_NEVER, 0, aModificationTime,
+                     eNotify, eWriteToDB);
 }
 
 nsresult PermissionManager::AddInternal(
@@ -1757,13 +1818,21 @@ nsresult PermissionManager::AddInternal(
 
     nsAutoCString permissionKey;
     GetKeyForPermission(aPrincipal, aType, permissionKey);
+    bool isSecondaryKeyed;
+    nsAutoCString secondaryKey;
+    isSecondaryKeyed = GetSecondaryKey(aType, secondaryKey);
+    if (isSecondaryKeyed) {
+      NotifySecondaryKeyPermissionUpdateInContentProcess(
+          aType, aPermission, secondaryKey, aPrincipal);
+    }
 
     nsTArray<ContentParent*> cplist;
     ContentParent::GetAll(cplist);
     for (uint32_t i = 0; i < cplist.Length(); ++i) {
       ContentParent* cp = cplist[i];
-      if (cp->NeedsPermissionsUpdate(permissionKey))
+      if (cp->NeedsPermissionsUpdate(permissionKey)) {
         Unused << cp->SendAddPermission(permission);
+      }
     }
   }
 
@@ -2126,6 +2195,10 @@ NS_IMETHODIMP
 PermissionManager::RemoveByType(const nsACString& aType) {
   ENSURE_NOT_CHILD_PROCESS;
 
+  // Need to make sure read is done before we get the type index. Type indexes
+  // are populated from DB.
+  EnsureReadCompleted();
+
   int32_t typeIndex = GetTypeIndex(aType, false);
   // If type == -1, the type isn't known,
   // so just return NS_OK
@@ -2143,6 +2216,10 @@ NS_IMETHODIMP
 PermissionManager::RemoveByTypeSince(const nsACString& aType,
                                      int64_t aModificationTime) {
   ENSURE_NOT_CHILD_PROCESS;
+
+  // Need to make sure read is done before we get the type index. Type indexes
+  // are populated from DB.
+  EnsureReadCompleted();
 
   int32_t typeIndex = GetTypeIndex(aType, false);
   // If type == -1, the type isn't known,
@@ -2485,6 +2562,34 @@ NS_IMETHODIMP PermissionManager::GetAllByTypes(
       aResult);
 }
 
+nsresult PermissionManager::ShouldHandlePrincipalForPermission(
+    nsIPrincipal* aPrincipal, bool& aIsPermissionPrincipalValid) {
+  NS_ENSURE_ARG_POINTER(aPrincipal);
+  // We don't add the system principal because it actually has no URI and we
+  // always allow action for them.
+  if (aPrincipal->IsSystemPrincipal()) {
+    aIsPermissionPrincipalValid = false;
+    return NS_OK;
+  }
+
+  // Null principals can't meaningfully have persisted permissions attached to
+  // them, so we don't allow adding permissions for them.
+  if (aPrincipal->GetIsNullPrincipal()) {
+    aIsPermissionPrincipalValid = false;
+    return NS_OK;
+  }
+
+  // Permissions may not be added to expanded principals.
+  if (IsExpandedPrincipal(aPrincipal)) {
+    aIsPermissionPrincipalValid = false;
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  // Permission principal is valid
+  aIsPermissionPrincipalValid = true;
+  return NS_OK;
+}
+
 nsresult PermissionManager::GetAllForPrincipalHelper(
     nsIPrincipal* aPrincipal, bool aSiteScopePermissions,
     nsTArray<RefPtr<nsIPermission>>& aResult) {
@@ -2608,10 +2713,12 @@ NS_IMETHODIMP PermissionManager::Observe(nsISupports* aSubject,
 
 nsresult PermissionManager::RemoveAllModifiedSince(int64_t aModificationTime) {
   ENSURE_NOT_CHILD_PROCESS;
-
+  // Skip remove calls for default permissions to avoid
+  // creating UNKNOWN_ACTION overrides in AddInternal
   return RemovePermissionEntries(
       [aModificationTime](const PermissionEntry& aPermEntry) {
-        return aModificationTime <= aPermEntry.mModificationTime;
+        return aModificationTime <= aPermEntry.mModificationTime &&
+               aPermEntry.mID != cIDPermissionIsDefault;
       });
 }
 
@@ -2986,7 +3093,7 @@ void PermissionManager::CompleteMigrations() {
   for (const MigrationEntry& entry : entries) {
     rv = UpgradeHostToOriginAndInsert(
         entry.mHost, entry.mType, entry.mPermission, entry.mExpireType,
-        entry.mExpireTime, entry.mModificationTime, entry.mIsInBrowserElement,
+        entry.mExpireTime, entry.mModificationTime,
         [&](const nsACString& aOrigin, const nsCString& aType,
             uint32_t aPermission, uint32_t aExpireType, int64_t aExpireTime,
             int64_t aModificationTime) {
@@ -3268,14 +3375,13 @@ nsresult PermissionManager::GetKeyForOrigin(const nsACString& aOrigin,
                                             nsACString& aKey) {
   aKey.Truncate();
 
-  // We only key origins for http, https, and ftp URIs. All origins begin with
+  // We only key origins for http, https URIs. All origins begin with
   // the URL which they apply to, which means that they should begin with their
   // scheme in the case where they are one of these interesting URIs. We don't
   // want to actually parse the URL here however, because this can be called on
   // hot paths.
   if (!StringBeginsWith(aOrigin, "http:"_ns) &&
-      !StringBeginsWith(aOrigin, "https:"_ns) &&
-      !StringBeginsWith(aOrigin, "ftp:"_ns)) {
+      !StringBeginsWith(aOrigin, "https:"_ns)) {
     return NS_OK;
   }
 
@@ -3296,8 +3402,7 @@ nsresult PermissionManager::GetKeyForOrigin(const nsACString& aOrigin,
   nsCOMPtr<nsIPrincipal> dbgPrincipal;
   MOZ_ALWAYS_SUCCEEDS(GetPrincipalFromOrigin(aOrigin, aForceStripOA,
                                              getter_AddRefs(dbgPrincipal)));
-  MOZ_ASSERT(dbgPrincipal->SchemeIs("http") ||
-             dbgPrincipal->SchemeIs("https") || dbgPrincipal->SchemeIs("ftp"));
+  MOZ_ASSERT(dbgPrincipal->SchemeIs("http") || dbgPrincipal->SchemeIs("https"));
   MOZ_ASSERT(dbgPrincipal->OriginAttributesRef() == attrs);
 #endif
 
@@ -3357,6 +3462,7 @@ PermissionManager::GetAllKeysForPrincipal(nsIPrincipal* aPrincipal) {
 
   nsTArray<std::pair<nsCString, nsCString>> pairs;
   nsCOMPtr<nsIPrincipal> prin = aPrincipal;
+
   while (prin) {
     // Add the pair to the list
     std::pair<nsCString, nsCString>* pair =
@@ -3608,7 +3714,7 @@ nsresult PermissionManager::ImportLatestDefaults() {
 
       rv = UpgradeHostToOriginAndInsert(
           entry.mHostOrOrigin, entry.mType, entry.mPermission,
-          nsIPermissionManager::EXPIRE_NEVER, 0, modificationTime, false,
+          nsIPermissionManager::EXPIRE_NEVER, 0, modificationTime,
           [&](const nsACString& aOrigin, const nsCString& aType,
               uint32_t aPermission, uint32_t aExpireType, int64_t aExpireTime,
               int64_t aModificationTime) {

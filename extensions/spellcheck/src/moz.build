@@ -20,9 +20,7 @@ XPCOM_MANIFESTS += [
 FINAL_LIBRARY = "xul"
 
 LOCAL_INCLUDES += [
-    "../hunspell/glue",
-    "../hunspell/src",
-    "/dom/base",
+    "../ipc",
 ]
 EXPORTS.mozilla += [
     "mozInlineSpellChecker.h",
