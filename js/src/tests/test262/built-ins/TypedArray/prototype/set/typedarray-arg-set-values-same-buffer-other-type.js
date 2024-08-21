@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -34,6 +35,7 @@ features: [TypedArray]
 var expected = {
   Float64Array: [1.0000002464512363, 42, 1.875, 4, 5, 6, 7, 8],
   Float32Array: [0, 42, 512.0001220703125, 4, 5, 6, 7, 8],
+  Float16Array: [0, 42, 513, 4, 5, 6, 7, 8],
   Int32Array: [1109917696, 42, 0, 4, 5, 6, 7, 8],
   Int16Array: [0, 42, 0, 4, 5, 6, 7, 8],
   Int8Array: [0, 42, 0, 66, 5, 6, 7, 8],

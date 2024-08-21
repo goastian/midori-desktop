@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !hasDisassembler() || wasmCompileMode() != "ion" || !getBuildConfiguration().x64 || getBuildConfiguration().simulator; include:codegen-x64-test.js
+// |jit-test| skip-if: !hasDisassembler() || wasmCompileMode() != "ion" || !getBuildConfiguration("x64") || getBuildConfiguration("simulator"); include:codegen-x64-test.js
 
 // There may be some redundant moves to set some operations up on x64 (that's
 // bug 1701164) so we avoid those with no_prefix/no_suffix flags when the issue
@@ -178,12 +178,12 @@ for ( [ty, expect_test] of
     `(module
        (func (export "f") (param $p1 ${ty}) (param $p2 ${ty}) (result i32)
          (local $x i32)
-         (set_local $x (i32.const 0x4D2))
+         (local.set $x (i32.const 0x4D2))
          (if (${ty}.eq (${ty}.and (local.get $p1) (local.get $p2))
                        (${ty}.const 0))
-           (set_local $x (i32.const 0x11D7))
+           (then (local.set $x (i32.const 0x11D7)))
          )
-         (get_local $x)
+         (local.get $x)
        )
     )`,
     'f',
@@ -216,12 +216,12 @@ for ( [imm, expect1, expect2] of
     `(module
        (func (export "f") (param $p1 i64) (result i32)
          (local $x i32)
-         (set_local $x (i32.const 0x4D2))
+         (local.set $x (i32.const 0x4D2))
          (if (i64.eq (i64.and (i64.const ${imm}) (local.get $p1))
                      (i64.const 0))
-           (set_local $x (i32.const 0x11D7))
+           (then (local.set $x (i32.const 0x11D7)))
          )
-         (get_local $x)
+         (local.get $x)
        )
     )`,
     'f',
@@ -249,7 +249,7 @@ function cmpSel32vs64(cmpTy, cmpOp, selTy) {
               )
             )`;
 }
-if (getBuildConfiguration().windows) {
+if (getBuildConfiguration("windows")) {
     for ( [cmpTy, cmpOp, selTy, insn1, insn2, insn3] of
           [ ['i32', 'le_s', 'i32',  '8b c3        mov %ebx, %eax',
                                     '3b ca        cmp %edx, %ecx',
@@ -326,7 +326,7 @@ for ( [pAnyCmp, pAnySel, cmpBytes, cmpArgL, cmovBytes, cmovArgL ] of
     )`,
     'f',
     // On Linux we have an extra move
-    (getBuildConfiguration().windows ? '' : '48 89 ..       mov %r.+, %r.+\n') +
+    (getBuildConfiguration("windows") ? '' : '48 89 ..       mov %r.+, %r.+\n') +
     // 'q*' because the disassembler shows 'q' only for the memory cases
     `48 89 ..       mov %r.+, %r.+
      ${cmpBytes}    cmpq*    ${cmpArgL}, %r.+

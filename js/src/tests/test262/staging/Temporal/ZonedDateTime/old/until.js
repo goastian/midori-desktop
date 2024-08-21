@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -88,7 +88,29 @@ assert.notSameValue(monthsDifference.months, 0);
 
 // no two different calendars
 var zdt1 = new Temporal.ZonedDateTime(0n, "UTC");
-var fakeJapanese = { toString() { return "japanese"; }};
+var fakeJapanese = {
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  id: "japanese",
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
+};
 var zdt2 = new Temporal.ZonedDateTime(0n, "UTC", fakeJapanese);
 assert.throws(RangeError, () => zdt1.until(zdt2));
 

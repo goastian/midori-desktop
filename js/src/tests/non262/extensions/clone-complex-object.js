@@ -11,8 +11,7 @@ var non_enumerable = { 'Array': [ 'length' ],
 // Set of properties on a cloned object that are legitimately non-configurable,
 // grouped by object type. The property name '0' stands in for any indexed
 // property.
-var non_configurable = { 'String': [ 0 ],
-                         '(typed array)': [ 0 ] };
+var non_configurable = { 'String': [ 0 ] };
 
 // Set of properties on a cloned object that are legitimately non-writable,
 // grouped by object type. The property name '0' stands in for any indexed

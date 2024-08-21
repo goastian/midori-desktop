@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -29,12 +29,12 @@ var poisoned = {
 
 assert.throws(RangeError, function() {
   Atomics.notify(i32a, Infinity, poisoned);
-}, '`Atomics.notify(i32a, Infinity, poisoned)` throws RangeError');
+});
 assert.throws(RangeError, function() {
   Atomics.notify(i32a, 4, poisoned);
-}, '`Atomics.notify(i32a, 4, poisoned)` throws RangeError');
+});
 assert.throws(RangeError, function() {
   Atomics.notify(i32a, 200, poisoned);
-}, '`Atomics.notify(i32a, 200, poisoned)` throws RangeError');
+});
 
 reportCompare(0, 0);

@@ -1,3 +1,5 @@
+// |jit-test| --enable-import-attributes
+
 load(libdir + "match.js");
 load(libdir + "asserts.js");
 
@@ -84,8 +86,7 @@ for (let parse of [parseAsModuleScript, parseAsClassicScript]) {
         )
     ]).assert(parse("x = import(foo);"));
 
-
-    if (getRealmConfiguration()['importAssertions']) {
+    if (getRealmConfiguration("importAttributes")) {
         program([
             expressionStatement(
                 importCall(
@@ -203,7 +204,7 @@ assertParseThrowsSyntaxError("x = import(");
 assertParseThrowsSyntaxError("x = import(1,");
 assertParseThrowsSyntaxError("x = import(1, 2");
 
-if (!getRealmConfiguration()['importAssertions']) {
+if (!getRealmConfiguration("importAttributes")) {
     assertParseThrowsSyntaxError("import(1, 2");
     assertParseThrowsSyntaxError("import(1, 2)");
     assertParseThrowsSyntaxError("x = import(1, 2)");

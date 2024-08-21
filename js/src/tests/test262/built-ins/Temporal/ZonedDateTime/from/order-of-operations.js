@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,8 +10,40 @@ features: [Temporal]
 ---*/
 
 const expected = [
+  // CopyDataProperties
+  "ownKeys options",
+  "getOwnPropertyDescriptor options.overflow",
+  "get options.overflow",
+  "getOwnPropertyDescriptor options.disambiguation",
+  "get options.disambiguation",
+  "getOwnPropertyDescriptor options.offset",
+  "get options.offset",
+  "getOwnPropertyDescriptor options.extra",
+  "get options.extra",
+  // ToTemporalCalendar
   "get item.calendar",
-  "has item.calendar.calendar",
+  "has item.calendar.dateAdd",
+  "has item.calendar.dateFromFields",
+  "has item.calendar.dateUntil",
+  "has item.calendar.day",
+  "has item.calendar.dayOfWeek",
+  "has item.calendar.dayOfYear",
+  "has item.calendar.daysInMonth",
+  "has item.calendar.daysInWeek",
+  "has item.calendar.daysInYear",
+  "has item.calendar.fields",
+  "has item.calendar.id",
+  "has item.calendar.inLeapYear",
+  "has item.calendar.mergeFields",
+  "has item.calendar.month",
+  "has item.calendar.monthCode",
+  "has item.calendar.monthDayFromFields",
+  "has item.calendar.monthsInYear",
+  "has item.calendar.weekOfYear",
+  "has item.calendar.year",
+  "has item.calendar.yearMonthFromFields",
+  "has item.calendar.yearOfWeek",
+  "get item.calendar.dateFromFields",
   "get item.calendar.fields",
   "call item.calendar.fields",
   // PrepareTemporalFields
@@ -49,27 +81,22 @@ const expected = [
   "get item.year",
   "get item.year.valueOf",
   "call item.year.valueOf",
-  "has item.timeZone.timeZone",
+  "has item.timeZone.getOffsetNanosecondsFor",
+  "has item.timeZone.getPossibleInstantsFor",
+  "has item.timeZone.id",
   // InterpretTemporalDateTimeFields
-  "get options.disambiguation",
   "get options.disambiguation.toString",
   "call options.disambiguation.toString",
-  "get options.offset",
   "get options.offset.toString",
   "call options.offset.toString",
-  "get options.overflow",
   "get options.overflow.toString",
   "call options.overflow.toString",
-  "get item.calendar.dateFromFields",
   "call item.calendar.dateFromFields",
-  // inside calendar.dateFromFields
-  "get options.overflow",
-  "get options.overflow.toString",
-  "call options.overflow.toString",
-  // InterpretISODateTimeOffset
-  "get item.timeZone.getPossibleInstantsFor",
-  "call item.timeZone.getPossibleInstantsFor",
+  // lookup in ToTemporalZonedDateTime
   "get item.timeZone.getOffsetNanosecondsFor",
+  "get item.timeZone.getPossibleInstantsFor",
+  // InterpretISODateTimeOffset
+  "call item.timeZone.getPossibleInstantsFor",
   "call item.timeZone.getOffsetNanosecondsFor",
 ];
 const actual = [];
@@ -95,6 +122,7 @@ function createOptionsObserver({ overflow = "constrain", disambiguation = "compa
     overflow,
     disambiguation,
     offset,
+    extra: "property",
   }, "options");
 }
 

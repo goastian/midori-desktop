@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,10 +13,12 @@ features: [Temporal]
 class CheckedAdd extends Temporal.Calendar {
   constructor() {
     super("iso8601");
+    this.called = 0;
   }
   dateAdd(date, duration, options, constructor) {
-    this.called = true;
-    assert.notSameValue(options, undefined, "options not undefined");
+    this.called += 1;
+    if (this.called == 2)
+      assert.notSameValue(options, undefined, "options not undefined");
     return super.dateAdd(date, duration, options, constructor);
   }
 }
@@ -26,8 +28,10 @@ const yearmonth = new Temporal.PlainYearMonth(2000, 3, calendar);
 const duration = { months: 1 };
 
 yearmonth.subtract(duration, undefined);
-yearmonth.subtract(duration);
+assert.sameValue(calendar.called, 2, "dateAdd should have been called twice");
 
-assert(calendar.called);
+calendar.called = 0;
+yearmonth.subtract(duration);
+assert.sameValue(calendar.called, 2, "dateAdd should have been called twice");
 
 reportCompare(0, 0);

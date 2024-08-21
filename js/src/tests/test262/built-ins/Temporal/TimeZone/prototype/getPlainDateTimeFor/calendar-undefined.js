@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -18,9 +18,9 @@ Object.defineProperty(Temporal.Calendar, "from", {
 });
 
 const result1 = timeZone.getPlainDateTimeFor(instant);
-assert.sameValue(result1.calendar.toString(), "iso8601");
+assert.sameValue(result1.calendarId, "iso8601");
 
 const result2 = timeZone.getPlainDateTimeFor(instant, undefined);
-assert.sameValue(result2.calendar.toString(), "iso8601");
+assert.sameValue(result2.calendarId, "iso8601");
 
 reportCompare(0, 0);

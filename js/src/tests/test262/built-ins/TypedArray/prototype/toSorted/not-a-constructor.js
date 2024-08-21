@@ -1,4 +1,4 @@
-// |reftest| shell-option(--enable-change-array-by-copy) skip-if(!Array.prototype.with||!xulRuntime.shell) -- change-array-by-copy is not enabled unconditionally, requires shell-options
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -30,7 +30,7 @@ assert.sameValue(
 
 assert.throws(TypeError, () => {
   new TypedArray.prototype.toSorted();
-}, '`new TypedArray.prototype.toSorted()` throws TypeError');
+});
 
 
 reportCompare(0, 0);

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,7 +10,7 @@ features: [Temporal]
 ---*/
 
 var duration = Temporal.Duration.from({
-  nanoseconds: Number.MAX_VALUE,
+  seconds: Number.MAX_SAFE_INTEGER,
 });
 
 var zonedDateTime = new Temporal.ZonedDateTime(0n, "UTC");

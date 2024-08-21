@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -35,16 +35,23 @@ const expected = [
 const actual = [];
 
 const instance = new Temporal.Instant(1_000_000_000_000_000_000n);
-instance.since(
-  TemporalHelpers.toPrimitiveObserver(actual, "1970-01-01T00:00Z", "other"),
-  TemporalHelpers.propertyBagObserver(actual, {
-    roundingIncrement: 1,
-    roundingMode: "halfExpand",
-    largestUnit: "hours",
-    smallestUnit: "minutes",
-    additional: true,
-  }, "options"),
-);
+const options = TemporalHelpers.propertyBagObserver(actual, {
+  roundingIncrement: 1,
+  roundingMode: "halfExpand",
+  largestUnit: "hours",
+  smallestUnit: "minutes",
+  additional: true,
+}, "options");
+
+instance.since(TemporalHelpers.toPrimitiveObserver(actual, "1970-01-01T00:00Z", "other"), options);
 assert.compareArray(actual, expected, "order of operations");
+
+actual.splice(0); // clear
+
+// short-circuit does not skip reading options
+instance.since(TemporalHelpers.toPrimitiveObserver(actual, "2001-09-09T01:46:40Z", "other"), options);
+assert.compareArray(actual, expected, "order of operations with identical instants");
+
+actual.splice(0); // clear
 
 reportCompare(0, 0);

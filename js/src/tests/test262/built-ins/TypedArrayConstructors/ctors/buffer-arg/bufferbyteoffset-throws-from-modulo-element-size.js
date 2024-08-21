@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -29,6 +30,6 @@ testWithTypedArrayConstructors(function(TA) {
   assert.throws(RangeError, function() {
     new TA(buffer, 0, undefined);
   });
-}, [ Float64Array, Float32Array, Int32Array, Int16Array, Uint32Array, Uint16Array ]);
+}, floatArrayConstructors.concat([ Int32Array, Int16Array, Uint32Array, Uint16Array ]));
 
 reportCompare(0, 0);

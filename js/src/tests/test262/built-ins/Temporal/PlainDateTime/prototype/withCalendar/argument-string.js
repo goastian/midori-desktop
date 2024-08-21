@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,7 +10,28 @@ includes: [temporalHelpers.js]
 ---*/
 
 const calendar = {
-  toString() { return "something special"; }
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  id: "something special",
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  toString() { return "something special"; },
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
 };
 const dt = new Temporal.PlainDateTime(1976, 11, 18, 15, 23, 30, 123, 456, 789, calendar);
 const result = dt.withCalendar("iso8601");
@@ -21,15 +42,11 @@ TemporalHelpers.assertPlainDateTime(
   "'iso8601' is a recognizable calendar"
 );
 
-const resultCalendar = result.calendar;
-
 assert.sameValue(
-  resultCalendar instanceof Temporal.Calendar,
-  true,
-  "underlying calendar is no longer a plain object"
+  result.getISOFields().calendar,
+  "iso8601",
+  "underlying calendar has changed and calendar slot stores a string"
 );
-
-assert.sameValue(resultCalendar.toString(), "iso8601", "underlying calendar has changed");
 
 assert.throws(
   RangeError,

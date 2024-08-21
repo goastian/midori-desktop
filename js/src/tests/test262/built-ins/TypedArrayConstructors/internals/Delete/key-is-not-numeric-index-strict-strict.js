@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 'use strict';
 // Copyright (C) 2020 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
@@ -42,7 +43,7 @@ testWithTypedArrayConstructors(function(TA) {
 
   assert.throws(TypeError, () => {
     delete sample.bar;
-  }, '`delete sample.bar` throws TypeError');
+  });
 
   assert.sameValue(delete sample.baz, true, 'The value of `delete sample.baz` is true');
 });

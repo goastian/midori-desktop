@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -20,8 +20,8 @@ class Calendar extends Temporal.Calendar {
   }
 
   dateUntil(d1, d2) {
-    assert.sameValue(d1.calendar, this, "d1.calendar");
-    assert.sameValue(d2.calendar, this, "d2.calendar");
+    assert.sameValue(d1.getCalendar(), this, "d1.calendar");
+    assert.sameValue(d2.getCalendar(), this, "d2.calendar");
     return new Temporal.Duration();
   }
 }

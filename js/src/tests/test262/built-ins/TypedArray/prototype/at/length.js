@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2020 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -18,13 +19,11 @@ assert.sameValue(
   'The value of `typeof TypedArray.prototype.at` is "function"'
 );
 
-assert.sameValue(
-  TypedArray.prototype.at.length, 1,
-  'The value of TypedArray.prototype.at.length is 1'
-);
-
-verifyNotEnumerable(TypedArray.prototype.at, 'length');
-verifyNotWritable(TypedArray.prototype.at, 'length');
-verifyConfigurable(TypedArray.prototype.at, 'length');
+verifyProperty(TypedArray.prototype.at, "length", {
+  value: 1,
+  writable: false,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

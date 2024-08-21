@@ -92,7 +92,6 @@ def extend_condition(condition, value):
 
 
 class JitTest:
-
     VALGRIND_CMD = []
     paths = (d for d in os.environ["PATH"].split(os.pathsep))
     valgrinds = (os.path.join(d, "valgrind") for d in paths)
@@ -344,6 +343,13 @@ class JitTest:
                     elif name.startswith("--"):
                         # // |jit-test| --ion-gvn=off; --no-sse4
                         test.jitflags.append(name)
+                    elif name.startswith("-P"):
+                        prefAndValue = name.split()
+                        assert (
+                            len(prefAndValue) == 2
+                        ), f"{name}: failed to parse preference"
+                        # // |jit-test| -P pref(=value)?
+                        test.jitflags.append("--setpref=" + prefAndValue[1])
                     else:
                         print(
                             "{}: warning: unrecognized |jit-test| attribute"
@@ -393,8 +399,10 @@ class JitTest:
 
         # We may have specified '-a' or '-d' twice: once via --jitflags, once
         # via the "|jit-test|" line.  Remove dups because they are toggles.
+        # Note: |dict.fromkeys(flags)| is similar to |set(flags)| but it
+        # preserves order.
         cmd = prefix + []
-        cmd += list(set(self.jitflags))
+        cmd += list(dict.fromkeys(self.jitflags))
         # Handle selfhosted XDR file.
         if self.selfhosted_xdr_mode != "off":
             cmd += [
@@ -488,7 +496,7 @@ def check_output(out, err, rc, timed_out, test, options):
         # Python 3 on Windows interprets process exit codes as unsigned
         # integers, where Python 2 used to allow signed integers. Account for
         # each possibility here.
-        if sys.platform == "win32" and rc in (3 - 2 ** 31, 3 + 2 ** 31):
+        if sys.platform == "win32" and rc in (3 - 2**31, 3 + 2**31):
             return True
 
         if sys.platform != "win32" and rc == -11:
@@ -584,13 +592,29 @@ def print_automation_format(ok, res, slog):
         return
     print("INFO exit-status     : {}".format(res.rc))
     print("INFO timed-out       : {}".format(res.timed_out))
+    warnings = []
     for line in res.out.splitlines():
+        # See Bug 1868693
+        if line.startswith("WARNING") and "unused DT entry" in line:
+            warnings.append(line)
+            continue
         print("INFO stdout          > " + line.strip())
     for line in res.err.splitlines():
+        # See Bug 1868693
+        if line.startswith("WARNING") and "unused DT entry" in line:
+            warnings.append(line)
+            continue
         print("INFO stderr         2> " + line.strip())
+    for line in warnings:
+        print("INFO (warn-stderr)  2> " + line.strip())
 
 
-def print_test_summary(num_tests, failures, complete, doing, options):
+def print_test_summary(num_tests, failures, complete, slow_tests, doing, options):
+    def test_details(res):
+        if options.show_failed:
+            return escape_cmdline(res.cmd)
+        return " ".join(res.test.jitflags + [res.test.relpath_tests])
+
     if failures:
         if options.write_failures:
             try:
@@ -615,21 +639,15 @@ def print_test_summary(num_tests, failures, complete, doing, options):
                 traceback.print_exc()
                 sys.stderr.write("---\n")
 
-        def show_test(res):
-            if options.show_failed:
-                print("    " + escape_cmdline(res.cmd))
-            else:
-                print("    " + " ".join(res.test.jitflags + [res.test.relpath_tests]))
-
         print("FAILURES:")
         for res in failures:
             if not res.timed_out:
-                show_test(res)
+                print("    " + test_details(res))
 
         print("TIMEOUTS:")
         for res in failures:
             if res.timed_out:
-                show_test(res)
+                print("    " + test_details(res))
     else:
         print(
             "PASSED ALL"
@@ -645,6 +663,23 @@ def print_test_summary(num_tests, failures, complete, doing, options):
         print("Result summary:")
         print("Passed: {:d}".format(num_tests - num_failures))
         print("Failed: {:d}".format(num_failures))
+
+    if num_tests != 0 and options.show_slow:
+        threshold = options.slow_test_threshold
+        fraction_fast = 1 - len(slow_tests) / num_tests
+        print(
+            "{:5.2f}% of tests ran in under {}s".format(fraction_fast * 100, threshold)
+        )
+
+        print("Slowest tests that took longer than {}s:".format(threshold))
+        slow_tests.sort(key=lambda res: res.dt, reverse=True)
+        any = False
+        for i in range(min(len(slow_tests), 20)):
+            res = slow_tests[i]
+            print("  {:6.2f} {}".format(res.dt, test_details(res)))
+            any = True
+        if not any:
+            print("None")
 
     return not failures
 
@@ -671,11 +706,14 @@ def process_test_results(results, num_tests, pb, options, slog):
     complete = False
     output_dict = {}
     doing = "before starting"
+    slow_tests = []
 
     if num_tests == 0:
         pb.finish(True)
         complete = True
-        return print_test_summary(num_tests, failures, complete, doing, options)
+        return print_test_summary(
+            num_tests, failures, complete, slow_tests, doing, options
+        )
 
     try:
         for i, res in enumerate(results):
@@ -729,6 +767,9 @@ def process_test_results(results, num_tests, pb, options, slog):
                     "SKIP": 0,
                 },
             )
+
+            if res.dt > options.slow_test_threshold:
+                slow_tests.append(res)
         complete = True
     except KeyboardInterrupt:
         print(
@@ -737,7 +778,7 @@ def process_test_results(results, num_tests, pb, options, slog):
         )
 
     pb.finish(True)
-    return print_test_summary(num_tests, failures, complete, doing, options)
+    return print_test_summary(num_tests, failures, complete, slow_tests, doing, options)
 
 
 def run_tests(tests, num_tests, prefix, options, remote=False):

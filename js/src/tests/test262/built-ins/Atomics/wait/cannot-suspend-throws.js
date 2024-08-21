@@ -1,4 +1,4 @@
-// |reftest| skip-if(xulRuntime.shell||!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- shell can block main thread, Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| skip-if(xulRuntime.shell||!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- shell can block main thread, Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -25,6 +25,6 @@ const i32a = new Int32Array(
 
 assert.throws(TypeError, function() {
   Atomics.wait(i32a, 0, 0, 0);
-}, '`Atomics.wait(i32a, 0, 0, 0)` throws TypeError');
+});
 
 reportCompare(0, 0);

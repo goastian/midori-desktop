@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,20 +13,12 @@ const instance = new Temporal.PlainDateTime(2000, 5, 2, 12, 34, 56, 987, 654, 32
 
 const calendar = "2016-12-31T23:59:60";
 
-let arg = { year: 1976, monthCode: "M11", day: 18, calendar };
-const result1 = instance.withPlainDate(arg);
+const arg = { year: 1976, monthCode: "M11", day: 18, calendar };
+const result = instance.withPlainDate(arg);
 TemporalHelpers.assertPlainDateTime(
-  result1,
+  result,
   1976, 11, "M11", 18, 12, 34, 56, 987, 654, 321,
   "leap second is a valid ISO string for calendar"
-);
-
-arg = { year: 1976, monthCode: "M11", day: 18, calendar: { calendar } };
-const result2 = instance.withPlainDate(arg);
-TemporalHelpers.assertPlainDateTime(
-  result2,
-  1976, 11, "M11", 18, 12, 34, 56, 987, 654, 321,
-  "leap second is a valid ISO string for calendar (nested property)"
 );
 
 reportCompare(0, 0);

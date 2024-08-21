@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,10 +8,10 @@ description: Time zone names are case insensitive
 features: [Temporal]
 ---*/
 
-const instance = new Temporal.Instant(0n); 
+const instance = new Temporal.Instant(0n);
 
 const timeZone = 'uTc';
 const result = instance.toZonedDateTime({ timeZone, calendar: "iso8601" });
-assert.sameValue(result.timeZone.id, 'UTC', `Time zone created from string "${timeZone}"`);
+assert.sameValue(result.timeZoneId, 'UTC', `Time zone created from string "${timeZone}"`);
 
 reportCompare(0, 0);

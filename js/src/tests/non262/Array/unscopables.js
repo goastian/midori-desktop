@@ -34,22 +34,10 @@ let expectedKeys = ["at",
 		    "flatMap",
 		    "includes",
 		    "keys",
-		    "values",
-                    "toReversed",
-                    "toSorted",
-                    "toSpliced"];
-
-if (typeof getBuildConfiguration === "undefined") {
-  var getBuildConfiguration = SpecialPowers.Cu.getJSTestingFunctions().getBuildConfiguration;
-}
-
-if (typeof getRealmConfiguration === "undefined") {
-  var getRealmConfiguration = SpecialPowers.Cu.getJSTestingFunctions().getRealmConfiguration;
-}
-
-if (!getBuildConfiguration().release_or_beta && getRealmConfiguration().enableArrayGrouping) {
-    expectedKeys.push("group", "groupToMap");
-}
+            "toReversed",
+            "toSorted",
+            "toSpliced",
+		    "values"];
 
 assertDeepEq(keys, expectedKeys);
 

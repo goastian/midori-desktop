@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -49,12 +49,10 @@ assert.throws(RangeError, () => Temporal.PlainDateTime.from(propertyBag, { overf
 assert.throws(RangeError, () => Temporal.PlainDateTime.from(propertyBag, { overflow: 2n }), "bigint");
 assert.throws(RangeError, () => Temporal.PlainDateTime.from(propertyBag, { overflow: {} }), "plain object");
 
-// toString property is read once by Calendar.dateFromFields() in the builtin
-// calendars, to get the option value for the date part, and then once again
-// internally to get the option value for the time part.
+// toString property should only be read and converted to a string once, because
+// a copied object with the resulting string on it is passed to
+// Calendar.dateFromFields().
 const expected = [
-  "get overflow.toString",
-  "call overflow.toString",
   "get overflow.toString",
   "call overflow.toString",
 ];

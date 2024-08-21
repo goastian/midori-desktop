@@ -23,6 +23,7 @@
 #include "debugger/Debugger.h"
 #include "ds/Sort.h"
 #include "jit/MacroAssembler.h"
+#include "js/ColumnNumber.h"  // JS::WasmFunctionIndex
 #include "wasm/WasmJS.h"
 #include "wasm/WasmStubs.h"
 #include "wasm/WasmValidate.h"
@@ -59,8 +60,6 @@ void DebugState::finalize(JS::GCContext* gcx) {
   }
 }
 
-static const uint32_t DefaultBinarySourceColumnNumber = 1;
-
 static const CallSite* SlowCallSiteSearchByOffset(const MetadataTier& metadata,
                                                   uint32_t offset) {
   for (const CallSite& callSite : metadata.callSites) {
@@ -84,21 +83,24 @@ bool DebugState::getAllColumnOffsets(Vector<ExprLoc>* offsets) {
       continue;
     }
     uint32_t offset = callSite.lineOrBytecode();
-    if (!offsets->emplaceBack(offset, DefaultBinarySourceColumnNumber,
-                              offset)) {
+    if (!offsets->emplaceBack(
+            offset,
+            JS::WasmFunctionIndex::DefaultBinarySourceColumnNumberOneOrigin,
+            offset)) {
       return false;
     }
   }
   return true;
 }
 
-bool DebugState::getOffsetLocation(uint32_t offset, size_t* lineno,
-                                   size_t* column) {
+bool DebugState::getOffsetLocation(uint32_t offset, uint32_t* lineno,
+                                   JS::LimitedColumnNumberOneOrigin* column) {
   if (!SlowCallSiteSearchByOffset(metadata(Tier::Debug), offset)) {
     return false;
   }
   *lineno = offset;
-  *column = DefaultBinarySourceColumnNumber;
+  *column = JS::LimitedColumnNumberOneOrigin(
+      JS::WasmFunctionIndex::DefaultBinarySourceColumnNumberOneOrigin);
   return true;
 }
 

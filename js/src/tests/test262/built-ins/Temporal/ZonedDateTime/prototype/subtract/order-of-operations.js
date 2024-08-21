@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -41,17 +41,18 @@ const expected = [
   "get duration.years",
   "get duration.years.valueOf",
   "call duration.years.valueOf",
-  // AddZonedDateTime
+  // lookup
   "get this.timeZone.getOffsetNanosecondsFor",
-  "call this.timeZone.getOffsetNanosecondsFor",
+  "get this.timeZone.getPossibleInstantsFor",
   "get this.calendar.dateAdd",
+  // AddZonedDateTime
+  "call this.timeZone.getOffsetNanosecondsFor",
   "call this.calendar.dateAdd",
   // ... inside Calendar.p.dateAdd
   "get options.overflow",
   "get options.overflow.toString",
   "call options.overflow.toString",
   // AddZonedDateTime again
-  "get this.timeZone.getPossibleInstantsFor",
   "call this.timeZone.getPossibleInstantsFor",
 ];
 const actual = [];

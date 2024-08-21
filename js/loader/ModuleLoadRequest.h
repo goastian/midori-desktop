@@ -11,7 +11,6 @@
 #include "ScriptLoadRequest.h"
 #include "ModuleLoaderBase.h"
 #include "mozilla/Assertions.h"
-#include "mozilla/MozPromise.h"
 #include "js/RootingAPI.h"
 #include "js/Value.h"
 #include "nsURIHashKey.h"
@@ -19,6 +18,7 @@
 
 namespace JS::loader {
 
+class LoadedScript;
 class ModuleScript;
 class ModuleLoaderBase;
 
@@ -36,7 +36,10 @@ class VisitedURLSet : public nsTHashtable<nsURIHashKey> {
 // multiple imports of the same module.
 
 class ModuleLoadRequest final : public ScriptLoadRequest {
-  ~ModuleLoadRequest() = default;
+  ~ModuleLoadRequest() {
+    MOZ_ASSERT(!mWaitingParentRequest);
+    MOZ_ASSERT(mAwaitingImports == 0);
+  }
 
   ModuleLoadRequest(const ModuleLoadRequest& aOther) = delete;
   ModuleLoadRequest(ModuleLoadRequest&& aOther) = delete;
@@ -47,11 +50,8 @@ class ModuleLoadRequest final : public ScriptLoadRequest {
                                                          ScriptLoadRequest)
   using SRIMetadata = mozilla::dom::SRIMetadata;
 
-  template <typename T>
-  using MozPromiseHolder = mozilla::MozPromiseHolder<T>;
-  using GenericPromise = mozilla::GenericPromise;
-
-  ModuleLoadRequest(nsIURI* aURI, ScriptFetchOptions* aFetchOptions,
+  ModuleLoadRequest(nsIURI* aURI, mozilla::dom::ReferrerPolicy aReferrerPolicy,
+                    ScriptFetchOptions* aFetchOptions,
                     const SRIMetadata& aIntegrity, nsIURI* aReferrer,
                     LoadContextBase* aContext, bool aIsTopLevel,
                     bool aIsDynamicImport, ModuleLoaderBase* aLoader,
@@ -69,6 +69,10 @@ class ModuleLoadRequest final : public ScriptLoadRequest {
 
   void SetReady() override;
   void Cancel() override;
+
+  void SetDynamicImport(LoadedScript* aReferencingScript,
+                        JS::Handle<JSString*> aSpecifier,
+                        JS::Handle<JSObject*> aPromise);
   void ClearDynamicImport();
 
   void ModuleLoaded();
@@ -83,13 +87,7 @@ class ModuleLoadRequest final : public ScriptLoadRequest {
     return mRootModule;
   }
 
-  bool IsModuleMarkedForBytecodeEncoding() const {
-    return mIsMarkedForBytecodeEncoding;
-  }
-  void MarkModuleForBytecodeEncoding() {
-    MOZ_ASSERT(!IsModuleMarkedForBytecodeEncoding());
-    mIsMarkedForBytecodeEncoding = true;
-  }
+  void MarkModuleForBytecodeEncoding() { MarkForBytecodeEncoding(); }
 
   // Convenience methods to call into the module loader for this request.
 
@@ -114,12 +112,16 @@ class ModuleLoadRequest final : public ScriptLoadRequest {
   void StartDynamicImport() { mLoader->StartDynamicImport(this); }
   void ProcessDynamicImport() { mLoader->ProcessDynamicImport(this); }
 
+  void ChildLoadComplete(bool aSuccess);
+
  private:
   void LoadFinished();
   void CancelImports();
   void CheckModuleDependenciesLoaded();
 
-  void AssertAllImportsReady() const;
+  void ChildModuleUnlinked();
+
+  void AssertAllImportsFinished() const;
   void AssertAllImportsCancelled() const;
 
  public:
@@ -128,11 +130,6 @@ class ModuleLoadRequest final : public ScriptLoadRequest {
 
   // Is this the top level request for a dynamic module import?
   const bool mIsDynamicImport;
-
-  // True if this module is planned to be saved in the bytecode cache.
-  // ModuleLoadRequest doesn't use ScriptLoadRequest::mScriptForBytecodeEncoding
-  // field because the JSScript reference isn't always avaialble for module.
-  bool mIsMarkedForBytecodeEncoding = false;
 
   // Pointer to the script loader, used to trigger actions when the module load
   // finishes.
@@ -146,20 +143,23 @@ class ModuleLoadRequest final : public ScriptLoadRequest {
   // failure.
   RefPtr<ModuleScript> mModuleScript;
 
-  // A promise that is completed on successful load of this module and all of
-  // its dependencies, indicating that the module is ready for instantiation and
-  // evaluation.
-  MozPromiseHolder<GenericPromise> mReady;
-
   // Array of imported modules.
   nsTArray<RefPtr<ModuleLoadRequest>> mImports;
+
+  // Parent module (i.e. importer of this module) that is waiting for this
+  // module and its dependencies to load, or null.
+  RefPtr<ModuleLoadRequest> mWaitingParentRequest;
+
+  // Number of child modules (i.e. imported modules) that this module is waiting
+  // for.
+  size_t mAwaitingImports = 0;
 
   // Set of module URLs visited while fetching the module graph this request is
   // part of.
   RefPtr<VisitedURLSet> mVisitedSet;
 
   // For dynamic imports, the details to pass to FinishDynamicImport.
-  JS::Heap<JS::Value> mDynamicReferencingPrivate;
+  RefPtr<LoadedScript> mDynamicReferencingScript;
   JS::Heap<JSString*> mDynamicSpecifier;
   JS::Heap<JSObject*> mDynamicPromise;
 };

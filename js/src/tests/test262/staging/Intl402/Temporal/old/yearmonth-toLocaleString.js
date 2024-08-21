@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -38,22 +38,5 @@ assert.sameValue(yearmonth.toLocaleString("en-US", { hour: "numeric" }), "11/197
 assert.sameValue(yearmonth.toLocaleString("en-US", { minute: "numeric" }), "11/1976");
 assert.sameValue(yearmonth.toLocaleString("en-US", { second: "numeric" }), "11/1976");
 assert.sameValue(yearmonth.toLocaleString("en-US", { weekday: "long" }), "11/1976");
-
-// works when the object's calendar is the same as the locale's calendar
-var ym = Temporal.PlainYearMonth.from({
-  era: "showa",
-  eraYear: 51,
-  month: 11,
-  calendar: "japanese"
-});
-var result = ym.toLocaleString("en-US-u-ca-japanese");
-assert(result === "11/51" || result === "11/51 S");
-
-// throws when the calendar is not equal to the locale calendar
-var ymISO = Temporal.PlainYearMonth.from({
-  year: 1976,
-  month: 11
-});
-assert.throws(RangeError, () => ymISO.toLocaleString("en-US-u-ca-japanese"));
 
 reportCompare(0, 0);

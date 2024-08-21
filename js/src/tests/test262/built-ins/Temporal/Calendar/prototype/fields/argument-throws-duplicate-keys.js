@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -15,7 +15,7 @@ features: [Temporal]
 
 const calendar = new Temporal.Calendar("iso8601");
 assert.throws(RangeError, () => calendar.fields(["day", "month", "day"]));
-assert.throws(RangeError, () => calendar.fields(["year", "month", "monthCode", "day", "hour", "minute", "second", "millisecond", "microsecond", "nanosecond", "year"]));
+assert.throws(RangeError, () => calendar.fields(["year", "month", "monthCode", "day", "year"]));
 
 const manyFields = {
   count: 0

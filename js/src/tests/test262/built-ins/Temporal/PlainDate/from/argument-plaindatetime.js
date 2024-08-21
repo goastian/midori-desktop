@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -18,7 +18,7 @@ features: [Temporal]
 TemporalHelpers.checkPlainDateTimeConversionFastPath((datetime, calendar) => {
   const result = Temporal.PlainDate.from(datetime);
   TemporalHelpers.assertPlainDate(result, 2000, 5, "M05", 2);
-  assert.sameValue(result.calendar, calendar, "calendar result");
+  assert.sameValue(result.getCalendar(), calendar, "calendar result");
 });
 
 reportCompare(0, 0);

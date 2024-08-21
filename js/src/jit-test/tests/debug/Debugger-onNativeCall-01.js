@@ -51,14 +51,24 @@ for (let i = 0; i < 5; i++) {
   g.f();
   assertEq(handlerCalled, true);
 
-  // The onNativeCall hook is *not* called when not in a debugger evaluation.
+  // The onNativeCall hook is also called when not in a debugger evaluation.
   rv.length = 0;
   g.f();
-  assertEqArray(rv, []);
+  assertEqArray(rv, ["print", "get", "print", "set", "push", "call"]);
 
   // The onNativeCall hook is *not* called when in a debugger evaluation
-  // associated with a different debugger.
+  // associated with a different debugger using exclusiveDebuggerOnEval.
   rv.length = 0;
+  dbg2.exclusiveDebuggerOnEval = true;
+  assertEq(dbg2.exclusiveDebuggerOnEval, true);
   gdbg2.executeInGlobal(`f()`);
   assertEqArray(rv, []);
+
+  // The onNativeCall hook is called when that same distinct debugger
+  // doesn't have the exclusiveDebuggerOnEval flag set to true
+  rv.length = 0;
+  dbg2.exclusiveDebuggerOnEval = false;
+  assertEq(dbg2.exclusiveDebuggerOnEval, false);
+  gdbg2.executeInGlobal(`f()`);
+  assertEqArray(rv, ["print", "get", "print", "set", "push", "call"]);
 }

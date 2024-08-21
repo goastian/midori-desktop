@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -30,15 +30,15 @@ const poisoned = {
 
 assert.throws(RangeError, function() {
   Atomics.wait(i32a, -Infinity, poisoned, poisoned);
-}, '`Atomics.wait(i32a, -Infinity, poisoned, poisoned)` throws RangeError');
+});
 assert.throws(RangeError, function() {
   Atomics.wait(i32a, -7.999, poisoned, poisoned);
-}, '`Atomics.wait(i32a, -7.999, poisoned, poisoned)` throws RangeError');
+});
 assert.throws(RangeError, function() {
   Atomics.wait(i32a, -1, poisoned, poisoned);
-}, '`Atomics.wait(i32a, -1, poisoned, poisoned)` throws RangeError');
+});
 assert.throws(RangeError, function() {
   Atomics.wait(i32a, -300, poisoned, poisoned);
-}, '`Atomics.wait(i32a, -300, poisoned, poisoned)` throws RangeError');
+});
 
 reportCompare(0, 0);

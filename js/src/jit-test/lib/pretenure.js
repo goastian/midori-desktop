@@ -1,6 +1,6 @@
 // Functions shared by gc/pretenure-*.js tests
 
-const is64bit = getBuildConfiguration()['pointer-byte-size'] === 8;
+const is64bit = getBuildConfiguration("pointer-byte-size") === 8;
 
 // Count of objects that will exceed the size of the nursery.
 const nurseryCount = is64bit ? 25000 : 50000;
@@ -22,8 +22,12 @@ function setupPretenureTest() {
   gczeal(0);
 
   // Restrict nursery size so we can fill it quicker, and ensure it is resized.
-  gcparam("minNurseryBytes", 1024 * 1024);
-  gcparam("maxNurseryBytes", 1024 * 1024);
+  let size = 1024 * 1024;
+  if (gcparam("semispaceNurseryEnabled")) {
+    size *= 2;
+  }
+  gcparam("minNurseryBytes", size);
+  gcparam("maxNurseryBytes", size);
 
   // Limit allocation threshold so we trigger major GCs sooner.
   gcparam("allocationThreshold", 1 /* MB */);
@@ -67,8 +71,14 @@ function allocateArrays(count, longLived) {
 }
 
 function gcCounts() {
-  return { minor: gcparam("minorGCNumber"),
-           major: gcparam("majorGCNumber") };
+  let major = gcparam("majorGCNumber")
+  let minor = gcparam("minorGCNumber");
+
+  // Only report minor collections that didn't happen as part of a major GC.
+  assertEq(minor >= major, true);
+  minor -= major;
+
+  return { minor, major };
 }
 
 function runTestAndCountCollections(thunk) {

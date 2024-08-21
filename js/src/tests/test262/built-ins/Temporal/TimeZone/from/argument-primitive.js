@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -22,6 +22,10 @@ const primitives = [
   "-01.1",
   "1994-11-05T08:15:30+25:00",
   "1994-11-05T13:15:30-25:00",
+  "+01:00:00",
+  "-010000",
+  "+03:30:00.000000001",
+  "-033000.1",
   7,
   4.2,
   12n,
@@ -38,7 +42,7 @@ const thisValues = [
 
 for (const thisValue of thisValues) {
   for (const primitive of primitives) {
-    assert.throws(RangeError, () => Temporal.TimeZone.from.call(thisValue, primitive));
+    assert.throws(typeof primitive === 'string' ? RangeError : TypeError, () => Temporal.TimeZone.from.call(thisValue, primitive));
   }
 
   const symbol = Symbol();

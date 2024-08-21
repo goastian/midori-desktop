@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -34,7 +35,7 @@ testWithTypedArrayConstructors(function(TA) {
 
   assert.throws(Test262Error, function() {
     sample.test262 = 1;
-  }, '`sample.test262 = 1` throws Test262Error');
+  });
 
   assert.sameValue(sample.test262, undefined, 'The value of sample.test262 is expected to equal `undefined`');
 });

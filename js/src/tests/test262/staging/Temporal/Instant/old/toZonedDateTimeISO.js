@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,7 +11,7 @@ features: [Temporal]
 var inst = Temporal.Instant.from("1976-11-18T14:23:30.123456789Z");
 
 // throws without parameter
-assert.throws(RangeError, () => inst.toZonedDateTimeISO());
+assert.throws(TypeError, () => inst.toZonedDateTimeISO());
 
 // time zone parameter UTC
 var tz = Temporal.TimeZone.from("UTC");

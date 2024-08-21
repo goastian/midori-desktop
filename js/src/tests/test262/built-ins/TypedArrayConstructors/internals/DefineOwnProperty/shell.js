@@ -53,7 +53,22 @@ var byteConversionValues = {
     -4294967296, // - ( 2 ** 32 )
     Infinity,
     -Infinity,
-    0
+    0,
+    2049,                         // an integer which rounds down under ties-to-even when cast to float16
+    2051,                         // an integer which rounds up under ties-to-even when cast to float16
+    0.00006103515625,             // smallest normal float16
+    0.00006097555160522461,       // largest subnormal float16
+    5.960464477539063e-8,         // smallest float16
+    2.9802322387695312e-8,        // largest double which rounds to 0 when cast to float16
+    2.980232238769532e-8,         // smallest double which does not round to 0 when cast to float16
+    8.940696716308594e-8,         // a double which rounds up to a subnormal under ties-to-even when cast to float16
+    1.4901161193847656e-7,        // a double which rounds down to a subnormal under ties-to-even when cast to float16
+    1.490116119384766e-7,         // the next double above the one on the previous line one
+    65504,                        // max finite float16
+    65520,                        // smallest double which rounds to infinity when cast to float16
+    65519.99999999999,            // largest double which does not round to infinity when cast to float16
+    0.000061005353927612305,      // smallest double which rounds to a non-subnormal when cast to float16
+    0.0000610053539276123         // largest double which rounds to a subnormal when cast to float16
   ],
 
   expected: {
@@ -98,7 +113,22 @@ var byteConversionValues = {
       0,    // -4294967296
       0,    // Infinity
       0,    // -Infinity
-      0
+      0,    // 0
+      1,    // 2049
+      3,    // 2051
+      0,    // 0.00006103515625
+      0,    // 0.00006097555160522461
+      0,    // 5.960464477539063e-8
+      0,    // 2.9802322387695312e-8
+      0,    // 2.980232238769532e-8
+      0,    // 8.940696716308594e-8
+      0,    // 1.4901161193847656e-7
+      0,    // 1.490116119384766e-7
+      -32,  // 65504
+      -16,  // 65520
+      -17,  // 65519.99999999999
+      0,    // 0.000061005353927612305
+      0     // 0.0000610053539276123
     ],
     Uint8: [
       127, // 127
@@ -141,7 +171,22 @@ var byteConversionValues = {
       0,   // -4294967296
       0,   // Infinity
       0,   // -Infinity
-      0
+      0,   // 0
+      1,   // 2049
+      3,   // 2051
+      0,   // 0.00006103515625
+      0,   // 0.00006097555160522461
+      0,   // 5.960464477539063e-8
+      0,   // 2.9802322387695312e-8
+      0,   // 2.980232238769532e-8
+      0,   // 8.940696716308594e-8
+      0,   // 1.4901161193847656e-7
+      0,   // 1.490116119384766e-7
+      224, // 65504
+      240, // 65520
+      239, // 65519.99999999999
+      0,   // 0.000061005353927612305
+      0    // 0.0000610053539276123
     ],
     Uint8Clamped: [
       127, // 127
@@ -184,7 +229,22 @@ var byteConversionValues = {
       0,   // -4294967296
       255, // Infinity
       0,   // -Infinity
-      0
+      0,   // 0
+      255, // 2049
+      255, // 2051
+      0,   // 0.00006103515625
+      0,   // 0.00006097555160522461
+      0,   // 5.960464477539063e-8
+      0,   // 2.9802322387695312e-8
+      0,   // 2.980232238769532e-8
+      0,   // 8.940696716308594e-8
+      0,   // 1.4901161193847656e-7
+      0,   // 1.490116119384766e-7
+      255, // 65504
+      255, // 65520
+      255, // 65519.99999999999
+      0,   // 0.000061005353927612305
+      0    // 0.0000610053539276123
     ],
     Int16: [
       127,    // 127
@@ -227,7 +287,22 @@ var byteConversionValues = {
       0,      // -4294967296
       0,      // Infinity
       0,      // -Infinity
-      0
+      0,      // 0
+      2049,   // 2049
+      2051,   // 2051
+      0,      // 0.00006103515625
+      0,      // 0.00006097555160522461
+      0,      // 5.960464477539063e-8
+      0,      // 2.9802322387695312e-8
+      0,      // 2.980232238769532e-8
+      0,      // 8.940696716308594e-8
+      0,      // 1.4901161193847656e-7
+      0,      // 1.490116119384766e-7
+      -32,    // 65504
+      -16,    // 65520
+      -17,    // 65519.99999999999
+      0,      // 0.000061005353927612305
+      0       // 0.0000610053539276123
     ],
     Uint16: [
       127,   // 127
@@ -270,7 +345,22 @@ var byteConversionValues = {
       0,     // -4294967296
       0,     // Infinity
       0,     // -Infinity
-      0
+      0,     // 0
+      2049,  // 2049
+      2051,  // 2051
+      0,     // 0.00006103515625
+      0,     // 0.00006097555160522461
+      0,     // 5.960464477539063e-8
+      0,     // 2.9802322387695312e-8
+      0,     // 2.980232238769532e-8
+      0,     // 8.940696716308594e-8
+      0,     // 1.4901161193847656e-7
+      0,     // 1.490116119384766e-7
+      65504, // 65504
+      65520, // 65520
+      65519, // 65519.99999999999
+      0,     // 0.000061005353927612305
+      0      // 0.0000610053539276123
     ],
     Int32: [
       127,         // 127
@@ -313,7 +403,22 @@ var byteConversionValues = {
       0,           // -4294967296
       0,           // Infinity
       0,           // -Infinity
-      0
+      0,           // 0
+      2049,        // 2049
+      2051,        // 2051
+      0,           // 0.00006103515625
+      0,           // 0.00006097555160522461
+      0,           // 5.960464477539063e-8
+      0,           // 2.9802322387695312e-8
+      0,           // 2.980232238769532e-8
+      0,           // 8.940696716308594e-8
+      0,           // 1.4901161193847656e-7
+      0,           // 1.490116119384766e-7
+      65504,       // 65504
+      65520,       // 65520
+      65519,       // 65519.99999999999
+      0,           // 0.000061005353927612305
+      0            // 0.0000610053539276123
     ],
     Uint32: [
       127,        // 127
@@ -356,50 +461,138 @@ var byteConversionValues = {
       0,          // -4294967296
       0,          // Infinity
       0,          // -Infinity
-      0
+      0,          // 0
+      2049,       // 2049
+      2051,       // 2051
+      0,          // 0.00006103515625
+      0,          // 0.00006097555160522461
+      0,          // 5.960464477539063e-8
+      0,          // 2.9802322387695312e-8
+      0,          // 2.980232238769532e-8
+      0,          // 8.940696716308594e-8
+      0,          // 1.4901161193847656e-7
+      0,          // 1.490116119384766e-7
+      65504,      // 65504
+      65520,      // 65520
+      65519,      // 65519.99999999999
+      0,          // 0.000061005353927612305
+      0           // 0.0000610053539276123
+    ],
+    Float16: [
+      127,                    // 127
+      128,                    // 128
+      32768,                  // 32767
+      32768,                  // 32768
+      Infinity,               // 2147483647
+      Infinity,               // 2147483648
+      255,                    // 255
+      256,                    // 256
+      Infinity,               // 65535
+      Infinity,               // 65536
+      Infinity,               // 4294967295
+      Infinity,               // 4294967296
+      Infinity,               // 9007199254740991
+      Infinity,               // 9007199254740992
+      1.099609375,            // 1.1
+      0.0999755859375,        // 0.1
+      0.5,                    // 0.5
+      0.5,                    // 0.50000001,
+      0.60009765625,          // 0.6
+      0.7001953125,           // 0.7
+      NaN,                    // undefined
+      -1,                     // -1
+      -0,                     // -0
+      -0.0999755859375,       // -0.1
+      -1.099609375,           // -1.1
+      NaN,                    // NaN
+      -127,                   // -127
+      -128,                   // -128
+      -32768,                 // -32767
+      -32768,                 // -32768
+      -Infinity,              // -2147483647
+      -Infinity,              // -2147483648
+      -255,                   // -255
+      -256,                   // -256
+      -Infinity,              // -65535
+      -Infinity,              // -65536
+      -Infinity,              // -4294967295
+      -Infinity,              // -4294967296
+      Infinity,               // Infinity
+      -Infinity,              // -Infinity
+      0,                      // 0
+      2048,                   // 2049
+      2052,                   // 2051
+      0.00006103515625,       // 0.00006103515625
+      0.00006097555160522461, // 0.00006097555160522461
+      5.960464477539063e-8,   // 5.960464477539063e-8
+      0,                      // 2.9802322387695312e-8
+      5.960464477539063e-8,   // 2.980232238769532e-8
+      1.1920928955078125e-7,  // 8.940696716308594e-8
+      1.1920928955078125e-7,  // 1.4901161193847656e-7
+      1.7881393432617188e-7,  // 1.490116119384766e-7
+      65504,                  // 65504
+      Infinity,               // 65520
+      65504,                  // 65519.99999999999
+      0.00006103515625,       // 0.000061005353927612305
+      0.00006097555160522461  // 0.0000610053539276123
     ],
     Float32: [
-      127,                  // 127
-      128,                  // 128
-      32767,                // 32767
-      32768,                // 32768
-      2147483648,           // 2147483647
-      2147483648,           // 2147483648
-      255,                  // 255
-      256,                  // 256
-      65535,                // 65535
-      65536,                // 65536
-      4294967296,           // 4294967295
-      4294967296,           // 4294967296
-      9007199254740992,     // 9007199254740991
-      9007199254740992,     // 9007199254740992
-      1.100000023841858,    // 1.1
-      0.10000000149011612,  // 0.1
-      0.5,                  // 0.5
-      0.5,                  // 0.50000001,
-      0.6000000238418579,   // 0.6
-      0.699999988079071,    // 0.7
-      NaN,                  // undefined
-      -1,                   // -1
-      -0,                   // -0
-      -0.10000000149011612, // -0.1
-      -1.100000023841858,   // -1.1
-      NaN,                  // NaN
-      -127,                 // -127
-      -128,                 // -128
-      -32767,               // -32767
-      -32768,               // -32768
-      -2147483648,          // -2147483647
-      -2147483648,          // -2147483648
-      -255,                 // -255
-      -256,                 // -256
-      -65535,               // -65535
-      -65536,               // -65536
-      -4294967296,          // -4294967295
-      -4294967296,          // -4294967296
-      Infinity,             // Infinity
-      -Infinity,            // -Infinity
-      0
+      127,                     // 127
+      128,                     // 128
+      32767,                   // 32767
+      32768,                   // 32768
+      2147483648,              // 2147483647
+      2147483648,              // 2147483648
+      255,                     // 255
+      256,                     // 256
+      65535,                   // 65535
+      65536,                   // 65536
+      4294967296,              // 4294967295
+      4294967296,              // 4294967296
+      9007199254740992,        // 9007199254740991
+      9007199254740992,        // 9007199254740992
+      1.100000023841858,       // 1.1
+      0.10000000149011612,     // 0.1
+      0.5,                     // 0.5
+      0.5,                     // 0.50000001,
+      0.6000000238418579,      // 0.6
+      0.699999988079071,       // 0.7
+      NaN,                     // undefined
+      -1,                      // -1
+      -0,                      // -0
+      -0.10000000149011612,    // -0.1
+      -1.100000023841858,      // -1.1
+      NaN,                     // NaN
+      -127,                    // -127
+      -128,                    // -128
+      -32767,                  // -32767
+      -32768,                  // -32768
+      -2147483648,             // -2147483647
+      -2147483648,             // -2147483648
+      -255,                    // -255
+      -256,                    // -256
+      -65535,                  // -65535
+      -65536,                  // -65536
+      -4294967296,             // -4294967295
+      -4294967296,             // -4294967296
+      Infinity,                // Infinity
+      -Infinity,               // -Infinity
+      0,                       // 0
+      2049,                    // 2049
+      2051,                    // 2051
+      0.00006103515625,        // 0.00006103515625
+      0.00006097555160522461,  // 0.00006097555160522461
+      5.960464477539063e-8,    // 5.960464477539063e-8
+      2.9802322387695312e-8,   // 2.9802322387695312e-8
+      2.9802322387695312e-8,   // 2.980232238769532e-8
+      8.940696716308594e-8,    // 8.940696716308594e-8
+      1.4901161193847656e-7,   // 1.4901161193847656e-7
+      1.4901161193847656e-7,   // 1.490116119384766e-7
+      65504,                   // 65504
+      65520,                   // 65520
+      65520,                   // 65519.99999999999
+      0.000061005353927612305, // 0.000061005353927612305
+      0.000061005353927612305  // 0.0000610053539276123
     ],
     Float64: [
       127,         // 127
@@ -442,7 +635,22 @@ var byteConversionValues = {
       -4294967296, // -4294967296
       Infinity,    // Infinity
       -Infinity,   // -Infinity
-      0
+      0,           // 0
+      2049,                    // 2049
+      2051,                    // 2051
+      0.00006103515625,        // 0.00006103515625
+      0.00006097555160522461,  // 0.00006097555160522461
+      5.960464477539063e-8,    // 5.960464477539063e-8
+      2.9802322387695312e-8,   // 2.9802322387695312e-8
+      2.980232238769532e-8,    // 2.980232238769532e-8
+      8.940696716308594e-8,    // 8.940696716308594e-8
+      1.4901161193847656e-7,   // 1.4901161193847656e-7
+      1.490116119384766e-7,    // 1.490116119384766e-7
+      65504,                   // 65504
+      65520,                   // 65520
+      65519.99999999999,       // 65519.99999999999
+      0.000061005353927612305, // 0.000061005353927612305
+      0.0000610053539276123    // 0.0000610053539276123
     ]
   }
 };
@@ -496,33 +704,45 @@ var NaNs = [
 description: |
     Collection of functions used to assert the correctness of TypedArray objects.
 defines:
-  - typedArrayConstructors
   - floatArrayConstructors
+  - nonClampedIntArrayConstructors
   - intArrayConstructors
+  - typedArrayConstructors
   - TypedArray
   - testWithTypedArrayConstructors
+  - nonAtomicsFriendlyTypedArrayConstructors
   - testWithAtomicsFriendlyTypedArrayConstructors
   - testWithNonAtomicsFriendlyTypedArrayConstructors
   - testTypedArrayConversions
 ---*/
 
-/**
- * Array containing every typed array constructor.
- */
-var typedArrayConstructors = [
+var floatArrayConstructors = [
   Float64Array,
-  Float32Array,
+  Float32Array
+];
+
+var nonClampedIntArrayConstructors = [
   Int32Array,
   Int16Array,
   Int8Array,
   Uint32Array,
   Uint16Array,
-  Uint8Array,
-  Uint8ClampedArray
+  Uint8Array
 ];
 
-var floatArrayConstructors = typedArrayConstructors.slice(0, 2);
-var intArrayConstructors = typedArrayConstructors.slice(2, 7);
+var intArrayConstructors = nonClampedIntArrayConstructors.concat([Uint8ClampedArray]);
+
+// Float16Array is a newer feature
+// adding it to this list unconditionally would cause implementations lacking it to fail every test which uses it
+if (typeof Float16Array !== 'undefined') {
+  floatArrayConstructors.push(Float16Array);
+}
+
+/**
+ * Array containing every non-bigint typed array constructor.
+ */
+
+var typedArrayConstructors = floatArrayConstructors.concat(intArrayConstructors);
 
 /**
  * The %TypedArray% intrinsic constructor function.
@@ -555,6 +775,7 @@ function testWithTypedArrayConstructors(f, selected) {
   }
 }
 
+var nonAtomicsFriendlyTypedArrayConstructors = floatArrayConstructors.concat([Uint8ClampedArray]);
 /**
  * Calls the provided function for every non-"Atomics Friendly" typed array constructor.
  *
@@ -562,11 +783,7 @@ function testWithTypedArrayConstructors(f, selected) {
  * @param {Array} selected - An optional Array with filtered typed arrays
  */
 function testWithNonAtomicsFriendlyTypedArrayConstructors(f) {
-  testWithTypedArrayConstructors(f, [
-    Float64Array,
-    Float32Array,
-    Uint8ClampedArray
-  ]);
+  testWithTypedArrayConstructors(f, nonAtomicsFriendlyTypedArrayConstructors);
 }
 
 /**
@@ -611,4 +828,32 @@ function testTypedArrayConversions(byteConversionValues, fn) {
       fn(TA, value, exp, initial);
     });
   });
+}
+
+/**
+ * Checks if the given argument is one of the float-based TypedArray constructors.
+ *
+ * @param {constructor} ctor - the value to check
+ * @returns {boolean}
+ */
+function isFloatTypedArrayConstructor(arg) {
+  return floatArrayConstructors.indexOf(arg) !== -1;
+}
+
+/**
+ * Determines the precision of the given float-based TypedArray constructor.
+ *
+ * @param {constructor} ctor - the value to check
+ * @returns {string} "half", "single", or "double" for Float16Array, Float32Array, and Float64Array respectively.
+ */
+function floatTypedArrayConstructorPrecision(FA) {
+  if (typeof Float16Array !== "undefined" && FA === Float16Array) {
+    return "half";
+  } else if (FA === Float32Array) {
+    return "single";
+  } else if (FA === Float64Array) {
+    return "double";
+  } else {
+    throw new Error("Malformed test - floatTypedArrayConstructorPrecision called with non-float TypedArray");
+  }
 }

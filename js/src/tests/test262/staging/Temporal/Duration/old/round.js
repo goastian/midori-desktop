@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -195,11 +195,11 @@ assert.sameValue(`${ hours25.round({
   }
 }) }`, "P1DT1H");
 
-// accepts datetime string equivalents or fields for relativeTo
+// accepts datetime strings or fields for relativeTo
 [
   "2020-01-01",
+  "20200101",
   "2020-01-01T00:00:00.000000000",
-  20200101n,
   {
     year: 2020,
     month: 1,
@@ -209,31 +209,25 @@ assert.sameValue(`${ hours25.round({
   assert.sameValue(`${ d.round({
     smallestUnit: "seconds",
     relativeTo
-  }) }`, "P5Y5M5W5DT5H5M5S");
+  }) }`, "P5Y6M10DT5H5M5S");
+});
+
+// does not accept non-string primitives for relativeTo
+[
+  20200101,
+  20200101n,
+  null,
+  true,
+].forEach(relativeTo => {
+  assert.throws(
+    TypeError, () => d.round({ smallestUnit: "seconds", relativeTo})
+  );
 });
 
 // throws on wrong offset for ZonedDateTime relativeTo string
 assert.throws(RangeError, () => d.round({
   smallestUnit: "seconds",
   relativeTo: "1971-01-01T00:00+02:00[-00:44:30]"
-}));
-
-// does not throw on HH:MM rounded offset for ZonedDateTime relativeTo string
-assert.sameValue(`${ d.round({
-  smallestUnit: "seconds",
-  relativeTo: "1971-01-01T00:00-00:45[-00:44:30]"
-}) }`, "P5Y5M5W5DT5H5M5S");
-
-// throws on HH:MM rounded offset for ZonedDateTime relativeTo property bag
-assert.throws(RangeError, () => d.round({
-  smallestUnit: "seconds",
-  relativeTo: {
-    year: 1971,
-    month: 1,
-    day: 1,
-    offset: "-00:45",
-    timeZone: "-00:44:30"
-  }
 }));
 
 // relativeTo object must contain at least the required correctly-spelled properties
@@ -332,24 +326,24 @@ var roundAndBalanceResults = {
     years: "P6Y",
     months: "P5Y6M",
     weeks: "P5Y5M6W",
-    days: "P5Y5M5W5D",
-    hours: "P5Y5M5W5DT5H",
-    minutes: "P5Y5M5W5DT5H5M",
-    seconds: "P5Y5M5W5DT5H5M5S",
-    milliseconds: "P5Y5M5W5DT5H5M5.005S",
-    microseconds: "P5Y5M5W5DT5H5M5.005005S",
-    nanoseconds: "P5Y5M5W5DT5H5M5.005005005S"
+    days: "P5Y6M10D",
+    hours: "P5Y6M10DT5H",
+    minutes: "P5Y6M10DT5H5M",
+    seconds: "P5Y6M10DT5H5M5S",
+    milliseconds: "P5Y6M10DT5H5M5.005S",
+    microseconds: "P5Y6M10DT5H5M5.005005S",
+    nanoseconds: "P5Y6M10DT5H5M5.005005005S"
   },
   months: {
     months: "P66M",
     weeks: "P65M6W",
-    days: "P65M5W5D",
-    hours: "P65M5W5DT5H",
-    minutes: "P65M5W5DT5H5M",
-    seconds: "P65M5W5DT5H5M5S",
-    milliseconds: "P65M5W5DT5H5M5.005S",
-    microseconds: "P65M5W5DT5H5M5.005005S",
-    nanoseconds: "P65M5W5DT5H5M5.005005005S"
+    days: "P66M10D",
+    hours: "P66M10DT5H",
+    minutes: "P66M10DT5H5M",
+    seconds: "P66M10DT5H5M5S",
+    milliseconds: "P66M10DT5H5M5.005S",
+    microseconds: "P66M10DT5H5M5.005005S",
+    nanoseconds: "P66M10DT5H5M5.005005005S"
   },
   weeks: {
     weeks: "P288W",
@@ -528,42 +522,42 @@ assert.sameValue(`${ d.round({
   smallestUnit: "hours",
   roundingIncrement: 3,
   relativeTo
-}) }`, "P5Y5M5W5DT6H");
+}) }`, "P5Y6M10DT6H");
 
 // rounds to an increment of minutes
 assert.sameValue(`${ d.round({
   smallestUnit: "minutes",
   roundingIncrement: 30,
   relativeTo
-}) }`, "P5Y5M5W5DT5H");
+}) }`, "P5Y6M10DT5H");
 
 // rounds to an increment of seconds
 assert.sameValue(`${ d.round({
   smallestUnit: "seconds",
   roundingIncrement: 15,
   relativeTo
-}) }`, "P5Y5M5W5DT5H5M");
+}) }`, "P5Y6M10DT5H5M");
 
 // rounds to an increment of milliseconds
 assert.sameValue(`${ d.round({
   smallestUnit: "milliseconds",
   roundingIncrement: 10,
   relativeTo
-}) }`, "P5Y5M5W5DT5H5M5.01S");
+}) }`, "P5Y6M10DT5H5M5.01S");
 
 // rounds to an increment of microseconds
 assert.sameValue(`${ d.round({
   smallestUnit: "microseconds",
   roundingIncrement: 10,
   relativeTo
-}) }`, "P5Y5M5W5DT5H5M5.00501S");
+}) }`, "P5Y6M10DT5H5M5.00501S");
 
 // rounds to an increment of nanoseconds
 assert.sameValue(`${ d.round({
   smallestUnit: "nanoseconds",
   roundingIncrement: 10,
   relativeTo
-}) }`, "P5Y5M5W5DT5H5M5.00500501S");
+}) }`, "P5Y6M10DT5H5M5.00500501S");
 
 // valid hour increments divide into 24
 [

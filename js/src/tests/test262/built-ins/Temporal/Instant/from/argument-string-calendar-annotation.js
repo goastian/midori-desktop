@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -16,7 +16,6 @@ const tests = [
   ["1970-01-01T00:00Z[u-ca=discord]", "annotation is ignored"],
   ["1970-01-01T00:00Z[!u-ca=discord]", "annotation with ! is ignored"],
   ["1970-01-01T00:00Z[u-ca=iso8601][u-ca=discord]", "two annotations are ignored"],
-  ["1970-01-01T00:00Z[u-ca=iso8601][!u-ca=discord]", "two annotations are ignored even with !"],
 ];
 
 tests.forEach(([arg, description]) => {

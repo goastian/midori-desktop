@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -10,12 +10,35 @@ features: [BigInt, Proxy, Temporal]
 const actual = [];
 
 const expected = [
-  'has timeZone.timeZone',
+  'has timeZone.getOffsetNanosecondsFor',
+  'has timeZone.getPossibleInstantsFor',
+  'has timeZone.id',
   'get timeZone.getOffsetNanosecondsFor',
   'call timeZone.getOffsetNanosecondsFor'
 ];
 
 const calendar = function() {};
+calendar.dateAdd = () => {};
+calendar.dateFromFields = () => {};
+calendar.dateUntil = () => {};
+calendar.day = () => {};
+calendar.dayOfWeek = () => {};
+calendar.dayOfYear = () => {};
+calendar.daysInMonth = () => {};
+calendar.daysInWeek = () => {};
+calendar.daysInYear = () => {};
+calendar.fields = () => {};
+calendar.id = "test-calendar";
+calendar.inLeapYear = () => {};
+calendar.mergeFields = () => {};
+calendar.month = () => {};
+calendar.monthCode = () => {};
+calendar.monthDayFromFields = () => {};
+calendar.monthsInYear = () => {};
+calendar.weekOfYear = () => {};
+calendar.year = () => {};
+calendar.yearMonthFromFields = () => {};
+calendar.yearOfWeek = () => {};
 
 const timeZone = TemporalHelpers.timeZoneObserver(actual, "timeZone", {
   getOffsetNanosecondsFor(instant) {

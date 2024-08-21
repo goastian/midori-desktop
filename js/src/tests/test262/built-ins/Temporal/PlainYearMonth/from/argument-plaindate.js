@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,7 +13,7 @@ const plainDate = Temporal.PlainDate.from("1976-11-18");
 const plainYearMonth = Temporal.PlainYearMonth.from(plainDate);
 TemporalHelpers.assertPlainYearMonth(plainYearMonth, 1976, 11, "M11");
 const fields = plainYearMonth.getISOFields();
-assert.sameValue(fields.calendar.id, "iso8601");
+assert.sameValue(fields.calendar, "iso8601", "calendar slot should store a string");
 assert.sameValue(fields.isoDay, 1, "isoDay");
 assert.sameValue(fields.isoMonth, 11, "isoMonth");
 assert.sameValue(fields.isoYear, 1976, "isoYear");

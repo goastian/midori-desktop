@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -14,9 +14,9 @@ const valids = [
   ["Europe/Vienna"],
   ["America/New_York"],
   ["Africa/CAIRO", "Africa/Cairo"],
-  ["Asia/Ulan_Bator", "Asia/Ulaanbaatar"],
-  ["GMT", "UTC"],
-  ["etc/gmt", "UTC"],
+  ["Asia/Ulan_Bator"],
+  ["GMT"],
+  ["etc/gmt", "Etc/GMT"],
   ["1994-11-05T08:15:30-05:00[America/New_York]", "America/New_York"],
   ["1994-11-05T08:15:30-05[America/New_York]", "America/New_York"],
   ["1994-11-05T08:15:30\u221205:00[America/New_York]", "America/New_York"],

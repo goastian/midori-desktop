@@ -137,10 +137,15 @@ rsync_filter_list = """
 + /mfbt/**
 + /nsprpub/**
 
++ /intl/bidi/**
+
 - /intl/icu/source/data
 - /intl/icu/source/test
 - /intl/icu/source/tools
 + /intl/icu/**
+
++ /intl/icu_capi/**
++ /intl/icu_segmenter_data/**
 
 - /intl/components/gtest
 + /intl/components/**
@@ -174,7 +179,7 @@ rsync_filter_list = """
 + /config/**
 + /python/**
 
-+ /.cargo/config.in
++ /.cargo/config.toml.in
 
 + /third_party/function2/**
 - /third_party/python/gyp
@@ -188,6 +193,7 @@ rsync_filter_list = """
 + /testing/moz.build
 + /testing/mozbase/**
 + /testing/performance/**
++ /testing/test/**
 + /testing/web-platform/*.ini
 + /testing/web-platform/*.py
 + /testing/web-platform/meta/streams/**
@@ -200,6 +206,9 @@ rsync_filter_list = """
 + /toolkit/mozapps/installer/package-name.mk
 
 + /xpcom/geckoprocesstypes_generator/**
+
+# List of prefs.
++ /modules/libpref/init/StaticPrefList.yaml
 
 # SpiderMonkey itself
 
@@ -284,7 +293,9 @@ def is_mozjs_cargo_member(line):
 def is_mozjs_crates_io_local_patch(line):
     """Checks if the line in patch.crates-io is mozjs-related"""
 
-    return any(f'path = "{p}' in line for p in ("js", "build", "third_party/rust"))
+    return any(
+        f'path = "{p}' in line for p in ("js", "build", "third_party/rust", "intl")
+    )
 
 
 def clean():

@@ -1,4 +1,3 @@
-// |reftest| shell-option(--enable-well-formed-unicode-strings) skip-if(!String.prototype.isWellFormed||!xulRuntime.shell) -- String.prototype.isWellFormed is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Jordan Harband. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -16,10 +15,10 @@ assert.sameValue(typeof String.prototype.isWellFormed, 'function');
 
 assert.throws(TypeError, function () {
   String.prototype.isWellFormed.call(undefined);
-}, '`String.prototype.isWellFormed.call(undefined)` throws TypeError');
+});
 
 assert.throws(TypeError, function () {
   String.prototype.isWellFormed.call(null);
-}, '`String.prototype.isWellFormed.call(null)` throws TypeError');
+});
 
 reportCompare(0, 0);

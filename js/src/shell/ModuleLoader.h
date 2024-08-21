@@ -36,15 +36,14 @@ class ModuleLoader {
                                       HandleValue referencingPrivate,
                                       HandleObject moduleRequest,
                                       HandleObject promise);
-  static bool GetSupportedImportAssertions(JSContext* cx,
-                                           JS::ImportAssertionVector& values);
 
   static bool DynamicImportDelayFulfilled(JSContext* cx, unsigned argc,
                                           Value* vp);
   static bool DynamicImportDelayRejected(JSContext* cx, unsigned argc,
                                          Value* vp);
 
-  bool loadAndExecute(JSContext* cx, HandleString path, MutableHandleValue);
+  bool loadAndExecute(JSContext* cx, HandleString path,
+                      HandleObject moduleRequestArg, MutableHandleValue);
   JSObject* resolveImportedModule(JSContext* cx, HandleValue referencingPrivate,
                                   HandleObject moduleRequest);
   bool populateImportMeta(JSContext* cx, HandleValue privateValue,
@@ -60,7 +59,8 @@ class ModuleLoader {
   bool tryDynamicImport(JSContext* cx, HandleValue referencingPrivate,
                         HandleObject moduleRequest, HandleObject promise,
                         MutableHandleValue rval);
-  JSObject* loadAndParse(JSContext* cx, HandleString path);
+  JSObject* loadAndParse(JSContext* cx, HandleString path,
+                         HandleObject moduleRequestArg);
   bool lookupModuleInRegistry(JSContext* cx, HandleString path,
                               MutableHandleObject moduleOut);
   bool addModuleToRegistry(JSContext* cx, HandleString path,

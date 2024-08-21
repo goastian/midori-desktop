@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,17 +12,12 @@ const tests = [
   ["1970-01-01T00:00[UTC][u-ca=iso8601]", "without !"],
   ["1970-01-01T00:00[UTC][!u-ca=iso8601]", "with !"],
   ["1970-01-01T00:00[UTC][u-ca=iso8601][u-ca=discord]", "second annotation ignored"],
-  ["1970-01-01T00:00[UTC][u-ca=iso8601][!u-ca=discord]", "second annotation ignored even with !"],
 ];
 
 tests.forEach(([arg, description]) => {
   const result = Temporal.ZonedDateTime.from(arg);
 
-  assert.sameValue(
-    result.calendar.toString(),
-    "iso8601",
-    `calendar annotation (${description})`
-  );
+  assert.sameValue(result.calendarId, "iso8601", `calendar annotation (${description})`);
 });
 
 reportCompare(0, 0);

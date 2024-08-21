@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !getBuildConfiguration()['decorators']
+// |jit-test| skip-if: !getBuildConfiguration("decorators")
 
 load(libdir + "asserts.js");
 
@@ -30,7 +30,11 @@ function checkDecoratorContext(kind, isPrivate, isStatic, name) {
     assertEq(context.private, isPrivate);
     assertEq(context.static, isStatic);
     assertEq(context.name, name);
-    assertEq(typeof context.addInitializer, "object");
+    if (isStatic) {
+      assertEq(typeof context.addInitializer, "undefined");
+    } else {
+      assertEq(typeof context.addInitializer, "function");
+    }
   }
 }
 

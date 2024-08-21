@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -22,6 +22,8 @@ for (const dateTime of invalidValues) {
   let callCount = 0;
 
   const timeZone = {
+    id: 'Etc/Test',
+    getPossibleInstantsFor() { return []; },
     getOffsetNanosecondsFor(instant, calendar) {
       callCount += 1;
       return dateTime;

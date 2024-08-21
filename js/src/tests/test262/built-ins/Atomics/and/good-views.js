@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| shell-option(--enable-float16array) skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2017 Mozilla Corporation.  All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,7 +11,7 @@ features: [ArrayBuffer, Atomics, DataView, SharedArrayBuffer, Symbol, TypedArray
 
 const sab = new SharedArrayBuffer(1024);
 const ab = new ArrayBuffer(16);
-const views = intArrayConstructors.slice();
+const views = nonClampedIntArrayConstructors.slice();
 
 testWithTypedArrayConstructors(function(TA) {
   // Make it interesting - use non-zero byteOffsets and non-zero indexes.

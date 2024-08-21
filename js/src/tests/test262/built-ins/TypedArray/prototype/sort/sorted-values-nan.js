@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -35,6 +36,6 @@ testWithTypedArrayConstructors(function(TA) {
   assert.sameValue(sample[4], Infinity, "#2 [4]");
   assert.sameValue(sample[5], NaN, "#2 [5]");
   assert.sameValue(sample[6], NaN, "#2 [6]");
-}, [Float64Array, Float32Array]);
+}, floatArrayConstructors);
 
 reportCompare(0, 0);

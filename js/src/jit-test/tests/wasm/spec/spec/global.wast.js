@@ -1,3 +1,4 @@
+// |jit-test| --setpref=wasm_gc=false
 /* Copyright 2021 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -291,7 +292,7 @@ assert_return(() => invoke($0, `get-7`, []), [value("f32", 8)]);
 assert_return(() => invoke($0, `get-8`, []), [value("f64", 9)]);
 
 // ./test/core/global.wast:229
-assert_return(() => invoke($0, `get-mr`, []), [value('externref', externref(10))]);
+assert_return(() => invoke($0, `get-mr`, []), [new ExternRefResult(10)]);
 
 // ./test/core/global.wast:231
 assert_return(() => invoke($0, `as-select-first`, []), [value("i32", 6)]);

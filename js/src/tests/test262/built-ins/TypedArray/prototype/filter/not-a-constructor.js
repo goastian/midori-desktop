@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2020 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -29,7 +30,7 @@ assert.sameValue(
 
 assert.throws(TypeError, () => {
   let u8 = new Uint8Array(1); new u8.filter(() => {});
-}, '`let u8 = new Uint8Array(1); new u8.filter(() => {})` throws TypeError');
+});
 
 
 reportCompare(0, 0);

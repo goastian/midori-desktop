@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2015 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -22,10 +23,11 @@ features: [Symbol.species]
 
 var desc = Object.getOwnPropertyDescriptor(TypedArray, Symbol.species);
 
-assert.sameValue(desc.get.name, "get [Symbol.species]");
-
-verifyNotEnumerable(desc.get, "name");
-verifyNotWritable(desc.get, "name");
-verifyConfigurable(desc.get, "name");
+verifyProperty(desc.get, "name", {
+  value: "get [Symbol.species]",
+  writable: false,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

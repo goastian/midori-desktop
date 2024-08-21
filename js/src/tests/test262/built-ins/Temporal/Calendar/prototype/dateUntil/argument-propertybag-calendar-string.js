@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,6 +10,13 @@ features: [Temporal]
 ---*/
 
 const instance = new Temporal.Calendar("iso8601");
+Object.defineProperty(instance, "dateFromFields", {
+  configurable: true,
+  enumerable: false,
+  get() {
+    TemporalHelpers.assertUnreachable("dateFromFields should not be looked up on receiver");
+  },
+});
 
 const calendar = "iso8601";
 

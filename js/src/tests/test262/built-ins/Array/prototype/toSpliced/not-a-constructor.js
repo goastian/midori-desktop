@@ -1,4 +1,3 @@
-// |reftest| shell-option(--enable-change-array-by-copy) skip-if(!Array.prototype.with||!xulRuntime.shell) -- change-array-by-copy is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -30,6 +29,6 @@ assert.sameValue(
 
 assert.throws(TypeError, () => {
   new Array.prototype.toSpliced();
-}, '`new Array.prototype.toSpliced()` throws TypeError');
+});
 
 reportCompare(0, 0);

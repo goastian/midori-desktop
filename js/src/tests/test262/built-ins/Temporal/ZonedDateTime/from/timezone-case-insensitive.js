@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,6 +10,6 @@ features: [Temporal]
 
 const timeZone = 'uTc';
 const result = Temporal.ZonedDateTime.from({ year: 2000, month: 5, day: 2, timeZone });
-assert.sameValue(result.timeZone.id, 'UTC', `Time zone created from string "${timeZone}"`);
+assert.sameValue(result.timeZoneId, 'UTC', `Time zone created from string "${timeZone}"`);
 
 reportCompare(0, 0);

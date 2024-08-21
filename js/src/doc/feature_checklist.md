@@ -9,12 +9,12 @@ work directly top-down)
   [Exposure Guidelines](https://wiki.mozilla.org/ExposureGuidelines) process. We
   historically haven't been amazing at sending intent-to-prototype emails, but
   we can always get better.
--  ☐ Create a shell option for the feature.
 -  ☐ Stage 2 or earlier proposals should be developed under compile time guards,
   disabled by default.
--  ☐ Create a browser preference for the feature.
+-  ☐ Create a preference for the feature in `modules/libpref/init/StaticPrefList.yaml`
+     and a command line option in `js/src/shell/js.cpp`.
 -  ☐ Implement the Feature.
--  ☐ Land feature disabled by pref and shell-option.
+-  ☐ Land feature disabled by pref.
 -  ☐ Import the test262 test cases for the feature, or enable them if they're
   already imported.  (See `js/src/test/Readme.txt` for guidance)
 -  ☐ Contact `fuzzing@mozilla.org` to arrange fuzzing for the feature.
@@ -22,10 +22,15 @@ work directly top-down)
   fuzzers as well that the feature is ready for fuzzing.
 -  ☐ Send an Intent to Ship Email to `dev-platform`.  This is also part of the
   [Exposure Guidelines](https://wiki.mozilla.org/ExposureGuidelines) process.
--  ☐ Ship the feature; default the preference to true and the command-line
-  option to true.
--  ☐ Open a followup bug to later remove the preference and the command line
-  option.
+-  ☐ Ship the feature:
+    -  ☐ default the preference to true.
+    -  ☐ Double check for any code that is currently `NIGHTLY_BUILD` that should now be built unconditionally, e.g. in `js/src/vm/JSObject.cpp`.
+         You may want to run a [central as beta simulation](https://wiki.mozilla.org/Sheriffing/How_To/Beta_simulations#TRUNK_AS_EARLY_BETA)
+         to make sure you've caught any lingering `NIGHTLY_BUILD` parts.
+    -  ☐ Update `	js/xpconnect/tests/chrome/test_xrayToJS.xhtml` for any changes to existing global objects.
+    -  ☐ For new globals, the following tests also need updates:
+          `dom/serviceworkers/test/test_serviceworker_interfaces.js`, `tests/mochitest/general/test_interfaces.js`, and `dom/workers/test/test_worker_interfaces.js`
+-  ☐ Open a followup bug to later remove the preference.
 
 
 ## Supplemental Checklists

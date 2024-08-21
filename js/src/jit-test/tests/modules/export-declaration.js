@@ -1,3 +1,5 @@
+// |jit-test| --enable-import-assertions
+
 load(libdir + "match.js");
 load(libdir + "asserts.js");
 
@@ -14,13 +16,13 @@ exportDeclaration = (declaration, specifiers, moduleRequest, isDefault) => Patte
     moduleRequest: moduleRequest,
     isDefault: isDefault
 });
-moduleRequest = (specifier, assertions) => Pattern({
+moduleRequest = (specifier, attributes) => Pattern({
     type: "ModuleRequest",
     source: specifier,
-    assertions: assertions
+    attributes: attributes
 });
-importAssertion = (key, value) => Pattern({
-    type: "ImportAssertion",
+importAttribute = (key, value) => Pattern({
+    type: "ImportAttribute",
     key: key,
     value : value
 });
@@ -386,7 +388,7 @@ program([
     )
 ]).assert(parseAsModule("export default 1234"));
 
-if (getRealmConfiguration()['importAssertions']) {
+if (getRealmConfiguration("importAttributes")) {
     program([
         exportDeclaration(
             null,
@@ -399,7 +401,7 @@ if (getRealmConfiguration()['importAssertions']) {
             moduleRequest(
                 lit("b"),
                 [
-                    importAssertion(ident('type'), lit('js')),
+                    importAttribute(ident('type'), lit('js')),
                 ]
             ),
             false
@@ -418,7 +420,7 @@ if (getRealmConfiguration()['importAssertions']) {
             moduleRequest(
                 lit("b"),
                 [
-                    importAssertion(ident('foo'), lit('bar')),
+                    importAttribute(ident('foo'), lit('bar')),
                 ],
             ),
             false
@@ -437,9 +439,9 @@ if (getRealmConfiguration()['importAssertions']) {
             moduleRequest(
                 lit("b"),
                 [
-                    importAssertion(ident('type'), lit('js')),
-                    importAssertion(ident('foo'), lit('bar')),
-                    importAssertion(ident('test'), lit('123')),
+                    importAttribute(ident('type'), lit('js')),
+                    importAttribute(ident('foo'), lit('bar')),
+                    importAttribute(ident('test'), lit('123')),
                 ]
             ),
             false
@@ -460,9 +462,9 @@ var loc = parseAsModule("export { a as b } from 'c'", {
 }).body[0].loc;
 
 assertEq(loc.start.line, 1);
-assertEq(loc.start.column, 0);
+assertEq(loc.start.column, 1);
 assertEq(loc.start.line, 1);
-assertEq(loc.end.column, 26);
+assertEq(loc.end.column, 27);
 
 assertThrowsInstanceOf(function () {
    parseAsModule("function f() { export a }");

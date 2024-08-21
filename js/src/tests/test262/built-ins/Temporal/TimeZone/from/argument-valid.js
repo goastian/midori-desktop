@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,10 +17,6 @@ const valids = [
   ["\u221201:00", "-01:00"],
   ["\u22120650", "-06:50"],
   ["\u221208", "-08:00"],
-  ["+01:00:00", "+01:00"],
-  ["-010000", "-01:00"],
-  ["+03:30:00.000000001", "+03:30:00.000000001"],
-  ["-033000.1", "-03:30:00.1"],
   ["UTC"],
   ["1994-11-05T08:15:30-05:00", "-05:00"],
   ["1994-11-05T08:15:30\u221205:00", "-05:00"],

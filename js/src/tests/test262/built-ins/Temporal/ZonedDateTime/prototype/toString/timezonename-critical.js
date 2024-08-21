@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -15,7 +15,8 @@ const tests = [
   ["+01:00", "1970-01-01T02:01:01.987654321+01:00[!+01:00]", "built-in offset"],
   [{
     getOffsetNanosecondsFor() { return 0; },
-    toString() { return "Etc/Custom"; },
+    getPossibleInstantsFor() { return []; },
+    id: "Etc/Custom",
   }, "1970-01-01T01:01:01.987654321+00:00[!Etc/Custom]", "custom"],
 ];
 

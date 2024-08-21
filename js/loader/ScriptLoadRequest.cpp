@@ -16,7 +16,6 @@
 #include "mozilla/Unused.h"
 #include "mozilla/Utf8.h"  // mozilla::Utf8Unit
 
-#include "js/OffThreadScriptCompilation.h"
 #include "js/SourceText.h"
 
 #include "ModuleLoadRequest.h"
@@ -33,15 +32,17 @@ namespace JS::loader {
 // ScriptFetchOptions
 //////////////////////////////////////////////////////////////
 
-NS_IMPL_CYCLE_COLLECTION(ScriptFetchOptions, mTriggeringPrincipal, mElement)
+NS_IMPL_CYCLE_COLLECTION(ScriptFetchOptions, mTriggeringPrincipal)
 
 ScriptFetchOptions::ScriptFetchOptions(
-    mozilla::CORSMode aCORSMode, mozilla::dom::ReferrerPolicy aReferrerPolicy,
-    nsIPrincipal* aTriggeringPrincipal, mozilla::dom::Element* aElement)
+    mozilla::CORSMode aCORSMode, const nsAString& aNonce,
+    mozilla::dom::RequestPriority aFetchPriority,
+    const ParserMetadata aParserMetadata, nsIPrincipal* aTriggeringPrincipal)
     : mCORSMode(aCORSMode),
-      mReferrerPolicy(aReferrerPolicy),
-      mTriggeringPrincipal(aTriggeringPrincipal),
-      mElement(aElement) {}
+      mNonce(aNonce),
+      mFetchPriority(aFetchPriority),
+      mParserMetadata(aParserMetadata),
+      mTriggeringPrincipal(aTriggeringPrincipal) {}
 
 ScriptFetchOptions::~ScriptFetchOptions() = default;
 
@@ -59,36 +60,36 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(ScriptLoadRequest)
 NS_IMPL_CYCLE_COLLECTION_CLASS(ScriptLoadRequest)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions, mCacheInfo, mLoadContext)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions, mCacheInfo, mLoadContext,
+                                  mLoadedScript)
   tmp->mScriptForBytecodeEncoding = nullptr;
   tmp->DropBytecodeCacheReferences();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFetchOptions, mCacheInfo, mLoadContext)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFetchOptions, mCacheInfo, mLoadContext,
+                                    mLoadedScript)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(ScriptLoadRequest)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mScriptForBytecodeEncoding)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
-ScriptLoadRequest::ScriptLoadRequest(ScriptKind aKind, nsIURI* aURI,
-                                     ScriptFetchOptions* aFetchOptions,
-                                     const SRIMetadata& aIntegrity,
-                                     nsIURI* aReferrer,
-                                     LoadContextBase* aContext)
+ScriptLoadRequest::ScriptLoadRequest(
+    ScriptKind aKind, nsIURI* aURI,
+    mozilla::dom::ReferrerPolicy aReferrerPolicy,
+    ScriptFetchOptions* aFetchOptions, const SRIMetadata& aIntegrity,
+    nsIURI* aReferrer, LoadContextBase* aContext)
     : mKind(aKind),
-      mState(State::Fetching),
+      mState(State::CheckingCache),
       mFetchSourceOnly(false),
-      mDataType(DataType::eUnknown),
+      mReferrerPolicy(aReferrerPolicy),
       mFetchOptions(aFetchOptions),
       mIntegrity(aIntegrity),
       mReferrer(aReferrer),
-      mScriptTextLength(0),
-      mScriptBytecode(),
-      mBytecodeOffset(0),
       mURI(aURI),
-      mLoadContext(aContext) {
+      mLoadContext(aContext),
+      mEarlyHintPreloaderId(0) {
   MOZ_ASSERT(mFetchOptions);
   if (mLoadContext) {
     mLoadContext->SetRequest(this);
@@ -98,7 +99,7 @@ ScriptLoadRequest::ScriptLoadRequest(ScriptKind aKind, nsIURI* aURI,
 ScriptLoadRequest::~ScriptLoadRequest() { DropJSObjects(this); }
 
 void ScriptLoadRequest::SetReady() {
-  MOZ_ASSERT(!IsReadyToRun());
+  MOZ_ASSERT(!IsFinished());
   mState = State::Ready;
 }
 
@@ -127,10 +128,9 @@ mozilla::dom::ScriptLoadContext* ScriptLoadRequest::GetScriptLoadContext() {
   return mLoadContext->AsWindowContext();
 }
 
-mozilla::loader::ComponentLoadContext*
-ScriptLoadRequest::GetComponentLoadContext() {
+mozilla::loader::SyncLoadContext* ScriptLoadRequest::GetSyncLoadContext() {
   MOZ_ASSERT(mLoadContext);
-  return mLoadContext->AsComponentContext();
+  return mLoadContext->AsSyncContext();
 }
 
 mozilla::dom::WorkerLoadContext* ScriptLoadRequest::GetWorkerLoadContext() {
@@ -153,104 +153,54 @@ const ModuleLoadRequest* ScriptLoadRequest::AsModuleRequest() const {
   return static_cast<const ModuleLoadRequest*>(this);
 }
 
-void ScriptLoadRequest::SetBytecode() {
-  MOZ_ASSERT(IsUnknownDataType());
-  mDataType = DataType::eBytecode;
-}
-
-bool ScriptLoadRequest::IsUTF8ParsingEnabled() {
-  if (HasLoadContext()) {
-    if (mLoadContext->IsWindowContext()) {
-      return mozilla::StaticPrefs::
-          dom_script_loader_external_scripts_utf8_parsing_enabled();
-    }
-    if (mLoadContext->IsWorkerContext()) {
-      return mozilla::StaticPrefs::
-          dom_worker_script_loader_utf8_parsing_enabled();
-    }
+void ScriptLoadRequest::NoCacheEntryFound() {
+  MOZ_ASSERT(IsCheckingCache());
+  MOZ_ASSERT(mURI);
+  // At the time where we check in the cache, the mBaseURL is not set, as this
+  // is resolved by the network. Thus we use the mURI, for checking the cache
+  // and later replace the mBaseURL using what the Channel->GetURI will provide.
+  switch (mKind) {
+    case ScriptKind::eClassic:
+    case ScriptKind::eImportMap:
+      mLoadedScript = new ClassicScript(mReferrerPolicy, mFetchOptions, mURI);
+      break;
+    case ScriptKind::eModule:
+      mLoadedScript = new ModuleScript(mReferrerPolicy, mFetchOptions, mURI);
+      break;
+    case ScriptKind::eEvent:
+      MOZ_ASSERT_UNREACHABLE("EventScripts are not using ScriptLoadRequest");
+      break;
   }
-  return false;
+  mState = State::Fetching;
 }
 
-void ScriptLoadRequest::ClearScriptSource() {
-  if (IsTextSource()) {
-    ClearScriptText();
-  }
+void ScriptLoadRequest::SetPendingFetchingError() {
+  MOZ_ASSERT(IsCheckingCache());
+  mState = State::PendingFetchingError;
 }
 
-void ScriptLoadRequest::MarkForBytecodeEncoding(JSScript* aScript) {
+void ScriptLoadRequest::MarkScriptForBytecodeEncoding(JSScript* aScript) {
   MOZ_ASSERT(!IsModuleRequest());
-  MOZ_ASSERT(!IsMarkedForBytecodeEncoding());
+  MOZ_ASSERT(!mScriptForBytecodeEncoding);
+  MarkForBytecodeEncoding();
   mScriptForBytecodeEncoding = aScript;
   HoldJSObjects(this);
 }
 
-bool ScriptLoadRequest::IsMarkedForBytecodeEncoding() const {
-  if (IsModuleRequest()) {
-    return AsModuleRequest()->IsModuleMarkedForBytecodeEncoding();
-  }
-
-  return !!mScriptForBytecodeEncoding;
+static bool IsInternalURIScheme(nsIURI* uri) {
+  return uri->SchemeIs("moz-extension") || uri->SchemeIs("resource") ||
+         uri->SchemeIs("chrome");
 }
 
-nsresult ScriptLoadRequest::GetScriptSource(JSContext* aCx,
-                                            MaybeSourceText* aMaybeSource) {
-  // If there's no script text, we try to get it from the element
-  if (HasScriptLoadContext() && GetScriptLoadContext()->mIsInline) {
-    nsAutoString inlineData;
-    GetScriptLoadContext()->GetScriptElement()->GetScriptText(inlineData);
-
-    size_t nbytes = inlineData.Length() * sizeof(char16_t);
-    JS::UniqueTwoByteChars chars(
-        static_cast<char16_t*>(JS_malloc(aCx, nbytes)));
-    if (!chars) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    memcpy(chars.get(), inlineData.get(), nbytes);
-
-    SourceText<char16_t> srcBuf;
-    if (!srcBuf.init(aCx, std::move(chars), inlineData.Length())) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    aMaybeSource->construct<SourceText<char16_t>>(std::move(srcBuf));
-    return NS_OK;
+void ScriptLoadRequest::SetBaseURLFromChannelAndOriginalURI(
+    nsIChannel* aChannel, nsIURI* aOriginalURI) {
+  // Fixup moz-extension: and resource: URIs, because the channel URI will
+  // point to file:, which won't be allowed to load.
+  if (aOriginalURI && IsInternalURIScheme(aOriginalURI)) {
+    mBaseURL = aOriginalURI;
+  } else {
+    aChannel->GetURI(getter_AddRefs(mBaseURL));
   }
-
-  size_t length = ScriptTextLength();
-  if (IsUTF16Text()) {
-    JS::UniqueTwoByteChars chars;
-    chars.reset(ScriptText<char16_t>().extractOrCopyRawBuffer());
-    if (!chars) {
-      JS_ReportOutOfMemory(aCx);
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    SourceText<char16_t> srcBuf;
-    if (!srcBuf.init(aCx, std::move(chars), length)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    aMaybeSource->construct<SourceText<char16_t>>(std::move(srcBuf));
-    return NS_OK;
-  }
-
-  MOZ_ASSERT(IsUTF8Text());
-  UniquePtr<Utf8Unit[], JS::FreePolicy> chars;
-  chars.reset(ScriptText<Utf8Unit>().extractOrCopyRawBuffer());
-  if (!chars) {
-    JS_ReportOutOfMemory(aCx);
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  SourceText<Utf8Unit> srcBuf;
-  if (!srcBuf.init(aCx, std::move(chars), length)) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  aMaybeSource->construct<SourceText<Utf8Unit>>(std::move(srcBuf));
-  return NS_OK;
 }
 
 //////////////////////////////////////////////////////////////

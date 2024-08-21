@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,9 +17,9 @@ Object.defineProperty(Temporal.Calendar, "from", {
 });
 
 const dateExplicit = new Temporal.PlainDate(...args, undefined);
-assert.sameValue(dateExplicit.calendar.toString(), "iso8601");
+assert.sameValue(dateExplicit.getISOFields().calendar, "iso8601", "calendar slot should store string");
 
 const dateImplicit = new Temporal.PlainDate(...args);
-assert.sameValue(dateImplicit.calendar.toString(), "iso8601");
+assert.sameValue(dateImplicit.getISOFields().calendar, "iso8601", "calendar slot should store string");
 
 reportCompare(0, 0);

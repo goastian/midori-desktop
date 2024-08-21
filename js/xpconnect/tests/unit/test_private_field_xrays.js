@@ -1,13 +1,11 @@
-'use strict'
-
-ChromeUtils.importESModule("resource://gre/modules/Preferences.sys.mjs");
+'use strict';
 
 add_task(async function () {
   let webnav = Services.appShell.createWindowlessBrowser(false);
 
   let docShell = webnav.docShell;
 
-  docShell.createAboutBlankContentViewer(null, null);
+  docShell.createAboutBlankDocumentViewer(null, null);
 
   let window = webnav.document.defaultView;
 

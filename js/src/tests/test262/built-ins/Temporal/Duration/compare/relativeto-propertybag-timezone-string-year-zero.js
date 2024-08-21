@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -15,13 +15,8 @@ const invalidStrings = [
 invalidStrings.forEach((timeZone) => {
   assert.throws(
     RangeError,
-    () => Temporal.Duration.compare(new Temporal.Duration(), new Temporal.Duration(), { relativeTo: { year: 2000, month: 5, day: 2, timeZone } }),
+    () => Temporal.Duration.compare(new Temporal.Duration(1), new Temporal.Duration(), { relativeTo: { year: 2000, month: 5, day: 2, timeZone } }),
     "reject minus zero as extended year"
-  );
-  assert.throws(
-    RangeError,
-    () => Temporal.Duration.compare(new Temporal.Duration(), new Temporal.Duration(), { relativeTo: { year: 2000, month: 5, day: 2, timeZone: { timeZone } } }),
-    "reject minus zero as extended year (nested property)"
   );
 });
 

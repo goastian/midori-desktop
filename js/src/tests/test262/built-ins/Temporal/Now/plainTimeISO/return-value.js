@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,6 +10,5 @@ features: [Temporal]
 
 const t = Temporal.Now.plainTimeISO();
 assert(t instanceof Temporal.PlainTime);
-assert.sameValue(t.calendar.id, "iso8601");
 
 reportCompare(0, 0);

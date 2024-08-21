@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !hasDisassembler() || !(wasmCompileMode() == "baseline" || wasmCompileMode() == "ion") || !(getBuildConfiguration().x64 && !getBuildConfiguration()["arm64-simulator"] && !getBuildConfiguration()["mips64-simulator"])
+// |jit-test| skip-if: !hasDisassembler() || !(wasmCompileMode() == "baseline" || wasmCompileMode() == "ion") || !(getBuildConfiguration("x64") && !getBuildConfiguration("arm64-simulator") && !getBuildConfiguration("mips64-simulator"))
 
 // We widen i32 results after calls on 64-bit platforms for two reasons:
 //
@@ -33,19 +33,18 @@ var ins = wasmEvalText(`
 )`, {'':{'wasm2import': function() {}}});
 
 switch (wasmCompileMode()) {
-case "ion":
-    assertEq(wasmDis(ins.exports.wasm2wasm, {tier:'stable', asString:true}).match(/call.*\n.*mov %eax, %eax/).length, 1);
-    assertEq(wasmDis(ins.exports.wasm2import, {tier:'stable', asString:true}).match(/call.*\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
-    assertEq(wasmDis(ins.exports.wasmIndirect, {tier:'stable', asString:true}).match(/call.*\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
+  case "ion":
+    assertEq(wasmDis(ins.exports.wasm2wasm, {tier:'stable', asString:true}).match(/call.*\n(?:.*lea.*%rsp\n)?.*mov %eax, %eax/).length, 1);
+    assertEq(wasmDis(ins.exports.wasm2import, {tier:'stable', asString:true}).match(/call.*\n(?:.*or \$0x00, %r14\n)?(?:.*movq.*\n)*(?:.*lea.*%rsp\n)?.*mov %eax, %eax/).length, 1);
+    assertEq(wasmDis(ins.exports.wasmIndirect, {tier:'stable', asString:true}).match(/call.*\n(?:.*movq.*\n)*(?:.*lea.*%rsp\n)?.*mov %eax, %eax/).length, 1);
     assertEq(wasmDis(ins.exports.instanceCall, {tier:'stable', asString:true}).match(/call.*\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
     break;
-case "baseline":
-    assertEq(wasmDis(ins.exports.wasm2wasm, {tier:'stable', asString:true}).match(/call.*\n.*add.*%rsp\n.*mov %eax, %eax/).length, 1);
-    assertEq(wasmDis(ins.exports.wasm2import, {tier:'stable', asString:true}).match(/call.*\n.*add.*%rsp\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
-    assertEq(wasmDis(ins.exports.wasmIndirect, {tier:'stable', asString:true}).match(/call.*\n.*add.*%rsp\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
-    assertEq(wasmDis(ins.exports.instanceCall, {tier:'stable', asString:true}).match(/call.*\n.*add.*%rsp\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
+  case "baseline":
+    assertEq(wasmDis(ins.exports.wasm2wasm, {tier:'stable', asString:true}).match(/call.*\n.*lea.*%rsp\n.*mov %eax, %eax/).length, 1);
+    assertEq(wasmDis(ins.exports.wasm2import, {tier:'stable', asString:true}).match(/call.*\n(?:.*or \$0x00, %r14\n)?.*lea.*%rsp\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
+    assertEq(wasmDis(ins.exports.wasmIndirect, {tier:'stable', asString:true}).match(/call.*\n.*lea.*%rsp\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
+    assertEq(wasmDis(ins.exports.instanceCall, {tier:'stable', asString:true}).match(/call.*\n.*lea.*%rsp\n(?:.*movq.*\n)*.*mov %eax, %eax/).length, 1);
     break;
-default:
+  default:
     throw "Unexpected compile mode";
 }
-

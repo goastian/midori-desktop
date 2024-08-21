@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -23,7 +23,7 @@ features: [Temporal]
 
 TemporalHelpers.checkToTemporalCalendarFastPath((temporalObject, calendar) => {
   const result = Temporal.PlainDateTime.from({ year: 2000, month: 5, day: 2, calendar: temporalObject });
-  assert.sameValue(result.calendar, calendar, "Temporal object coerced to calendar");
+  assert.sameValue(result.getCalendar(), calendar, "Temporal object coerced to calendar");
 });
 
 reportCompare(0, 0);

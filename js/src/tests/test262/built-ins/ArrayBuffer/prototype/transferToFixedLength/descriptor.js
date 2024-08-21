@@ -1,4 +1,3 @@
-// |reftest| skip -- resizable-arraybuffer,arraybuffer-transfer is not supported
 // Copyright (C) 2023 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -14,7 +13,7 @@ info: |
     Annex B.2 has the attributes { [[Writable]]: true, [[Enumerable]]: false,
     [[Configurable]]: true } unless otherwise specified.
 includes: [propertyHelper.js]
-features: [resizable-arraybuffer, arraybuffer-transfer]
+features: [arraybuffer-transfer]
 ---*/
 
 verifyProperty(ArrayBuffer.prototype, 'transferToFixedLength', {

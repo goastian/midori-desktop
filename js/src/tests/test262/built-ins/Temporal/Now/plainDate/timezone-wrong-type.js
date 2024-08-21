@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,31 +10,31 @@ description: >
 features: [BigInt, Symbol, Temporal]
 ---*/
 
-const rangeErrorTests = [
+const primitiveTests = [
   [null, "null"],
   [true, "boolean"],
   ["", "empty string"],
   [1, "number that doesn't convert to a valid ISO string"],
   [19761118, "number that would convert to a valid ISO string in other contexts"],
   [1n, "bigint"],
-  [new Temporal.Calendar("iso8601"), "calendar instance"],
 ];
 
-for (const [timeZone, description] of rangeErrorTests) {
-  assert.throws(RangeError, () => Temporal.Now.plainDate("iso8601", timeZone), `${description} does not convert to a valid ISO string`);
-  assert.throws(RangeError, () => Temporal.Now.plainDate("iso8601", { timeZone }), `${description} does not convert to a valid ISO string (nested property)`);
+for (const [timeZone, description] of primitiveTests) {
+  assert.throws(
+    typeof timeZone === 'string' ? RangeError : TypeError,
+    () => Temporal.Now.plainDate("iso8601", timeZone),
+    `${description} does not convert to a valid ISO string`
+  );
 }
 
 const typeErrorTests = [
   [Symbol(), "symbol"],
+  [{}, "object not implementing time zone protocol"],
+  [new Temporal.Calendar("iso8601"), "calendar instance"],
 ];
 
 for (const [timeZone, description] of typeErrorTests) {
   assert.throws(TypeError, () => Temporal.Now.plainDate("iso8601", timeZone), `${description} is not a valid object and does not convert to a string`);
-  assert.throws(TypeError, () => Temporal.Now.plainDate("iso8601", { timeZone }), `${description} is not a valid object and does not convert to a string (nested property)`);
 }
-
-const timeZone = undefined;
-assert.throws(RangeError, () => Temporal.Now.plainDate("iso8601", { timeZone }), `undefined is always a RangeError as nested property`);
 
 reportCompare(0, 0);

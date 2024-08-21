@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,7 +17,8 @@ const invalidStrings = [
 ];
 const timeZone = new Temporal.TimeZone("UTC");
 const instance = new Temporal.ZonedDateTime(0n, timeZone);
-invalidStrings.forEach((arg) => {
+invalidStrings.forEach((str) => {
+  const arg = { year: 1976, month: 11, day: 18, calendar: str };
   assert.throws(
     RangeError,
     () => instance.equals(arg),

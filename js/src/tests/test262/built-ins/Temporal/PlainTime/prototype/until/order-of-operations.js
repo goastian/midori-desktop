@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,9 +11,6 @@ features: [Temporal]
 
 const expected = [
   // ToTemporalTime
-  "get other.calendar",
-  "get other.calendar.toString",
-  "call other.calendar.toString",
   "get other.hour",
   "get other.hour.valueOf",
   "call other.hour.valueOf",
@@ -78,5 +75,21 @@ const options = TemporalHelpers.propertyBagObserver(actual, {
 
 const result = instance.until(other, options);
 assert.compareArray(actual, expected, "order of operations");
+
+actual.splice(0); // clear
+
+// short-circuit does not skip reading options
+const identicalPropertyBag = TemporalHelpers.propertyBagObserver(actual, {
+  hour: 12,
+  minute: 34,
+  second: 56,
+  millisecond: 987,
+  microsecond: 654,
+  nanosecond: 321,
+}, "other");
+instance.until(identicalPropertyBag, options);
+assert.compareArray(actual, expected, "order of operations with identical times");
+
+actual.splice(0); // clear
 
 reportCompare(0, 0);

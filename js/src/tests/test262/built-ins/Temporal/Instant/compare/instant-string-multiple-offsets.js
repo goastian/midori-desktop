@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,7 +9,7 @@ features: [Temporal]
 ---*/
 
 const epoch = new Temporal.Instant(0n);
-const str = "1970-01-01T00:02:00.000000000+00:02[+00:01:30.987654321]";
+const str = "1970-01-01T00:02:00.000000000+00:02[+01:30]";
 
 assert.sameValue(Temporal.Instant.compare(str, epoch), 0, "UTC offset determined from offset part of string (first argument)");
 assert.sameValue(Temporal.Instant.compare(epoch, str), 0, "UTC offset determined from offset part of string (second argument)");

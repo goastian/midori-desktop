@@ -1862,6 +1862,7 @@ class TypeAnalyzer {
   bool markPhiProducers();
   bool specializeValidFloatOps();
   bool tryEmitFloatOperations();
+  bool propagateUnbox();
 
   bool shouldSpecializeOsrPhis() const;
   MIRType guessPhiType(MPhi* phi) const;
@@ -2227,6 +2228,7 @@ bool TypeAnalyzer::adjustPhiInputs(MPhi* phi) {
         phi->replaceOperand(i, in->toBox()->input());
       } else {
         MInstruction* replacement;
+        MBasicBlock* predecessor = phi->block()->getPredecessor(i);
 
         if (phiType == MIRType::Double && IsFloatType(in->type())) {
           // Convert int32 operands to double.
@@ -2238,14 +2240,14 @@ bool TypeAnalyzer::adjustPhiInputs(MPhi* phi) {
             // See comment below
             if (in->type() != MIRType::Value) {
               MBox* box = MBox::New(alloc(), in);
-              in->block()->insertBefore(in->block()->lastIns(), box);
+              predecessor->insertAtEnd(box);
               in = box;
             }
 
             MUnbox* unbox =
                 MUnbox::New(alloc(), in, MIRType::Double, MUnbox::Fallible);
             unbox->setBailoutKind(BailoutKind::SpeculativePhi);
-            in->block()->insertBefore(in->block()->lastIns(), unbox);
+            predecessor->insertAtEnd(unbox);
             replacement = MToFloat32::New(alloc(), in);
           }
         } else {
@@ -2254,7 +2256,7 @@ bool TypeAnalyzer::adjustPhiInputs(MPhi* phi) {
           // below.
           if (in->type() != MIRType::Value) {
             MBox* box = MBox::New(alloc(), in);
-            in->block()->insertBefore(in->block()->lastIns(), box);
+            predecessor->insertAtEnd(box);
             in = box;
           }
 
@@ -2264,7 +2266,7 @@ bool TypeAnalyzer::adjustPhiInputs(MPhi* phi) {
         }
 
         replacement->setBailoutKind(BailoutKind::SpeculativePhi);
-        in->block()->insertBefore(in->block()->lastIns(), replacement);
+        predecessor->insertAtEnd(replacement);
         phi->replaceOperand(i, replacement);
       }
     }
@@ -2670,11 +2672,241 @@ bool TypeAnalyzer::checkFloatCoherency() {
   return true;
 }
 
+static bool HappensBefore(const MDefinition* earlier,
+                          const MDefinition* later) {
+  MOZ_ASSERT(earlier->block() == later->block());
+
+  for (auto* ins : *earlier->block()) {
+    if (ins == earlier) {
+      return true;
+    }
+    if (ins == later) {
+      return false;
+    }
+  }
+  MOZ_CRASH("earlier and later are instructions in the block");
+}
+
+// Propagate type information from dominating unbox instructions.
+//
+// This optimization applies for example for self-hosted String.prototype
+// functions.
+//
+// Example:
+// ```
+// String.prototype.id = function() {
+//   // Strict mode to avoid ToObject on primitive this-values.
+//   "use strict";
+//
+//   // Template string to apply ToString on the this-value.
+//   return `${this}`;
+// };
+//
+// function f(s) {
+//   // Assume |s| is a string value.
+//   return s.id();
+// }
+// ```
+//
+// Compiles into: (Graph after Scalar Replacement)
+//
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                             Block 0                                       │
+// │ resumepoint 1 0 2 2                                                       │
+// │ 0 parameter THIS_SLOT                                           Value     │
+// │ 1 parameter 0                                                   Value     │
+// │ 2 constant undefined                                            Undefined │
+// │ 3 start                                                                   │
+// │ 4 checkoverrecursed                                                       │
+// │ 5 unbox parameter1 to String (fallible)                         String    │
+// │ 6 constant object 1d908053e088 (String)                         Object    │
+// │ 7 guardshape constant6:Object                                   Object    │
+// │ 8 slots guardshape7:Object                                      Slots     │
+// │ 9 loaddynamicslot slots8:Slots (slot 53)                        Value     │
+// │ 10 constant 0x0                                                 Int32     │
+// │ 11 unbox loaddynamicslot9 to Object (fallible)                  Object    │
+// │ 12 nurseryobject                                                Object    │
+// │ 13 guardspecificfunction unbox11:Object nurseryobject12:Object  Object    │
+// │ 14 goto block1                                                            │
+// └──────────────────────────────────┬────────────────────────────────────────┘
+//                                    │
+// ┌──────────────────────────────────▼────────────────────────────────────────┐
+// │                               Block 1                                     │
+// │ ((0)) resumepoint 15 1 15 15 | 1 13 1 0 2 2                               │
+// │ 15 constant undefined                                           Undefined │
+// │ 16 tostring parameter1:Value                                    String    │
+// │ 18 goto block2                                                            │
+// └──────────────────────────────────┬────────────────────────────────────────┘
+//                                    │
+//                     ┌──────────────▼──────────────┐
+//                     │           Block 2           │
+//                     │ resumepoint 16 1 0 2 2      │
+//                     │ 19 return tostring16:String │
+//                     └─────────────────────────────┘
+//
+// The Unbox instruction is used as a type guard. The ToString instruction
+// doesn't use the type information from the preceding Unbox instruction and
+// therefore has to assume its operand can be any value.
+//
+// When instead propagating the type information from the preceding Unbox
+// instruction, this graph is constructed after the "Apply types" phase:
+//
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                             Block 0                                       │
+// │ resumepoint 1 0 2 2                                                       │
+// │ 0 parameter THIS_SLOT                                           Value     │
+// │ 1 parameter 0                                                   Value     │
+// │ 2 constant undefined                                            Undefined │
+// │ 3 start                                                                   │
+// │ 4 checkoverrecursed                                                       │
+// │ 5 unbox parameter1 to String (fallible)                         String    │
+// │ 6 constant object 1d908053e088 (String)                         Object    │
+// │ 7 guardshape constant6:Object                                   Object    │
+// │ 8 slots guardshape7:Object                                      Slots     │
+// │ 9 loaddynamicslot slots8:Slots (slot 53)                        Value     │
+// │ 10 constant 0x0                                                 Int32     │
+// │ 11 unbox loaddynamicslot9 to Object (fallible)                  Object    │
+// │ 12 nurseryobject                                                Object    │
+// │ 13 guardspecificfunction unbox11:Object nurseryobject12:Object  Object    │
+// │ 14 goto block1                                                            │
+// └──────────────────────────────────┬────────────────────────────────────────┘
+//                                    │
+// ┌──────────────────────────────────▼────────────────────────────────────────┐
+// │                               Block 1                                     │
+// │ ((0)) resumepoint 15 1 15 15 | 1 13 1 0 2 2                               │
+// │ 15 constant undefined                                           Undefined │
+// │ 20 unbox parameter1 to String (fallible)                        String    │
+// │ 16 tostring parameter1:Value                                    String    │
+// │ 18 goto block2                                                            │
+// └──────────────────────────────────┬────────────────────────────────────────┘
+//                                    │
+//                     ┌──────────────▼─────────────────────┐
+//                     │           Block 2                  │
+//                     │ resumepoint 16 1 0 2 2             │
+//                     │ 21 box tostring16:String     Value │
+//                     │ 19 return box21:Value              │
+//                     └────────────────────────────────────┘
+//
+// GVN will later merge both Unbox instructions and fold away the ToString
+// instruction, so we get this final graph:
+//
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                             Block 0                                       │
+// │ resumepoint 1 0 2 2                                                       │
+// │ 0 parameter THIS_SLOT                                           Value     │
+// │ 1 parameter 0                                                   Value     │
+// │ 2 constant undefined                                            Undefined │
+// │ 3 start                                                                   │
+// │ 4 checkoverrecursed                                                       │
+// │ 5 unbox parameter1 to String (fallible)                         String    │
+// │ 6 constant object 1d908053e088 (String)                         Object    │
+// │ 7 guardshape constant6:Object                                   Object    │
+// │ 8 slots guardshape7:Object                                      Slots     │
+// │ 22 loaddynamicslotandunbox slots8:Slots (slot 53)               Object    │
+// │ 11 nurseryobject                                                Object    │
+// │ 12 guardspecificfunction load22:Object nurseryobject11:Object   Object    │
+// │ 13 goto block1                                                            │
+// └──────────────────────────────────┬────────────────────────────────────────┘
+//                                    │
+// ┌──────────────────────────────────▼────────────────────────────────────────┐
+// │                               Block 1                                     │
+// │ ((0)) resumepoint 2 1 2 2 | 1 12 1 0 2 2                                  │
+// │ 14 goto block2                                                            │
+// └──────────────────────────────────┬────────────────────────────────────────┘
+//                                    │
+//                     ┌──────────────▼─────────────────────┐
+//                     │           Block 2                  │
+//                     │ resumepoint 5 1 0 2 2              │
+//                     │ 15 return parameter1:Value         │
+//                     └────────────────────────────────────┘
+//
+bool TypeAnalyzer::propagateUnbox() {
+  // Visit the blocks in post-order, so that the type information of the closest
+  // unbox operation is used.
+  for (PostorderIterator block(graph.poBegin()); block != graph.poEnd();
+       block++) {
+    if (mir->shouldCancel("Propagate Unbox")) {
+      return false;
+    }
+
+    // Iterate over all instructions to look for unbox instructions.
+    for (MInstructionIterator iter(block->begin()); iter != block->end();
+         iter++) {
+      if (!iter->isUnbox()) {
+        continue;
+      }
+
+      auto* unbox = iter->toUnbox();
+      auto* input = unbox->input();
+
+      // Ignore unbox operations on typed values.
+      if (input->type() != MIRType::Value) {
+        continue;
+      }
+
+      // Ignore unbox to floating point types, because propagating boxed Int32
+      // values as Double can lead to repeated bailouts when later instructions
+      // expect Int32 inputs.
+      if (IsFloatingPointType(unbox->type())) {
+        continue;
+      }
+
+      // Inspect other uses of |input| to propagate the unboxed type information
+      // from |unbox|.
+      for (auto uses = input->usesBegin(); uses != input->usesEnd();) {
+        auto* use = *uses++;
+
+        // Ignore resume points.
+        if (!use->consumer()->isDefinition()) {
+          continue;
+        }
+        auto* def = use->consumer()->toDefinition();
+
+        // Ignore any unbox operations, including the current |unbox|.
+        if (def->isUnbox()) {
+          continue;
+        }
+
+        // Ignore phi nodes, because we don't yet support them.
+        if (def->isPhi()) {
+          continue;
+        }
+
+        // The unbox operation needs to happen before the other use, otherwise
+        // we can't propagate the type information.
+        if (unbox->block() == def->block()) {
+          if (!HappensBefore(unbox, def)) {
+            continue;
+          }
+        } else {
+          if (!unbox->block()->dominates(def->block())) {
+            continue;
+          }
+        }
+
+        // Replace the use with |unbox|, so that GVN knows about the actual
+        // value type and can more easily fold unnecessary operations. If the
+        // instruction actually needs a boxed input, the BoxPolicy type policy
+        // will simply unwrap the unbox instruction.
+        use->replaceProducer(unbox);
+
+        // The uses in the MIR graph no longer reflect the uses in the bytecode,
+        // so we have to mark |input| as implicitly used.
+        input->setImplicitlyUsedUnchecked();
+      }
+    }
+  }
+  return true;
+}
+
 bool TypeAnalyzer::analyze() {
   if (!tryEmitFloatOperations()) {
     return false;
   }
   if (!specializePhis()) {
+    return false;
+  }
+  if (!propagateUnbox()) {
     return false;
   }
   if (!insertConversions()) {
@@ -3365,7 +3597,8 @@ static bool IsResumableMIRType(MIRType type) {
     case MIRType::Elements:
     case MIRType::Pointer:
     case MIRType::Int64:
-    case MIRType::RefOrNull:
+    case MIRType::WasmAnyRef:
+    case MIRType::WasmArrayData:
     case MIRType::StackResults:
     case MIRType::IntPtr:
       return false;
@@ -4111,6 +4344,103 @@ bool jit::EliminateRedundantGCBarriers(MIRGraph& graph) {
   return true;
 }
 
+bool jit::MarkLoadsUsedAsPropertyKeys(MIRGraph& graph) {
+  // When a string is used as a property key, or as the key for a Map or Set, we
+  // require it to be atomized. To avoid repeatedly atomizing the same string,
+  // this analysis looks for cases where we are loading a value from the slot of
+  // an object (which includes access to global variables and global lexicals)
+  // and using it as a property key, and marks those loads. During codegen,
+  // marked loads will check whether the value loaded is a non-atomized string.
+  // If it is, we will atomize the string and update the stored value, ensuring
+  // that future loads from the same slot will not have to atomize again.
+  JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys, "Begin");
+
+  for (ReversePostorderIterator block = graph.rpoBegin();
+       block != graph.rpoEnd(); block++) {
+    for (MInstructionIterator insIter(block->begin());
+         insIter != block->end();) {
+      MInstruction* ins = *insIter;
+      insIter++;
+
+      MDefinition* idVal = nullptr;
+      if (ins->isGetPropertyCache()) {
+        idVal = ins->toGetPropertyCache()->idval();
+      } else if (ins->isHasOwnCache()) {
+        idVal = ins->toHasOwnCache()->idval();
+      } else if (ins->isSetPropertyCache()) {
+        idVal = ins->toSetPropertyCache()->idval();
+      } else if (ins->isGetPropSuperCache()) {
+        idVal = ins->toGetPropSuperCache()->idval();
+      } else if (ins->isMegamorphicLoadSlotByValue()) {
+        idVal = ins->toMegamorphicLoadSlotByValue()->idVal();
+      } else if (ins->isMegamorphicHasProp()) {
+        idVal = ins->toMegamorphicHasProp()->idVal();
+      } else if (ins->isMegamorphicSetElement()) {
+        idVal = ins->toMegamorphicSetElement()->index();
+      } else if (ins->isProxyGetByValue()) {
+        idVal = ins->toProxyGetByValue()->idVal();
+      } else if (ins->isProxyHasProp()) {
+        idVal = ins->toProxyHasProp()->idVal();
+      } else if (ins->isProxySetByValue()) {
+        idVal = ins->toProxySetByValue()->idVal();
+      } else if (ins->isIdToStringOrSymbol()) {
+        idVal = ins->toIdToStringOrSymbol()->idVal();
+      } else if (ins->isGuardSpecificAtom()) {
+        idVal = ins->toGuardSpecificAtom()->input();
+      } else if (ins->isToHashableString()) {
+        idVal = ins->toToHashableString()->input();
+      } else if (ins->isToHashableValue()) {
+        idVal = ins->toToHashableValue()->input();
+      } else if (ins->isMapObjectHasValueVMCall()) {
+        idVal = ins->toMapObjectHasValueVMCall()->value();
+      } else if (ins->isMapObjectGetValueVMCall()) {
+        idVal = ins->toMapObjectGetValueVMCall()->value();
+      } else if (ins->isSetObjectHasValueVMCall()) {
+        idVal = ins->toSetObjectHasValueVMCall()->value();
+      } else {
+        continue;
+      }
+      JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys,
+              "Analyzing property access %s%d with idVal %s%d", ins->opName(),
+              ins->id(), idVal->opName(), idVal->id());
+
+      // Skip intermediate nodes.
+      do {
+        if (idVal->isLexicalCheck()) {
+          idVal = idVal->toLexicalCheck()->input();
+          JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys,
+                  "- Skipping lexical check. idVal is now %s%d",
+                  idVal->opName(), idVal->id());
+          continue;
+        }
+        if (idVal->isUnbox() && idVal->type() == MIRType::String) {
+          idVal = idVal->toUnbox()->input();
+          JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys,
+                  "- Skipping unbox. idVal is now %s%d", idVal->opName(),
+                  idVal->id());
+          continue;
+        }
+        break;
+      } while (true);
+
+      if (idVal->isLoadFixedSlot()) {
+        JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys,
+                "- SUCCESS: Marking fixed slot");
+        idVal->toLoadFixedSlot()->setUsedAsPropertyKey();
+      } else if (idVal->isLoadDynamicSlot()) {
+        JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys,
+                "- SUCCESS: Marking dynamic slot");
+        idVal->toLoadDynamicSlot()->setUsedAsPropertyKey();
+      } else {
+        JitSpew(JitSpew_MarkLoadsUsedAsPropertyKeys, "- SKIP: %s not supported",
+                idVal->opName());
+      }
+    }
+  }
+
+  return true;
+}
+
 static bool NeedsKeepAlive(MInstruction* slotsOrElements, MInstruction* use) {
   MOZ_ASSERT(slotsOrElements->type() == MIRType::Elements ||
              slotsOrElements->type() == MIRType::Slots);
@@ -4121,6 +4451,10 @@ static bool NeedsKeepAlive(MInstruction* slotsOrElements, MInstruction* use) {
 
   // Allocating a BigInt can GC, so we have to keep the object alive.
   if (use->type() == MIRType::BigInt) {
+    return true;
+  }
+  if (use->isLoadTypedArrayElementHole() &&
+      Scalar::isBigIntType(use->toLoadTypedArrayElementHole()->arrayType())) {
     return true;
   }
 
@@ -4145,12 +4479,14 @@ static bool NeedsKeepAlive(MInstruction* slotsOrElements, MInstruction* use) {
       case MDefinition::Opcode::StoreFixedSlot:
       case MDefinition::Opcode::LoadElement:
       case MDefinition::Opcode::LoadElementAndUnbox:
+      case MDefinition::Opcode::LoadElementHole:
       case MDefinition::Opcode::StoreElement:
       case MDefinition::Opcode::StoreHoleValueElement:
       case MDefinition::Opcode::InitializedLength:
       case MDefinition::Opcode::ArrayLength:
       case MDefinition::Opcode::BoundsCheck:
       case MDefinition::Opcode::GuardElementNotHole:
+      case MDefinition::Opcode::InArray:
       case MDefinition::Opcode::SpectreMaskIndex:
       case MDefinition::Opcode::DebugEnterGCUnsafeRegion:
       case MDefinition::Opcode::DebugLeaveGCUnsafeRegion:
@@ -4207,14 +4543,6 @@ bool jit::AddKeepAliveInstructions(MIRGraph& graph) {
           MOZ_ASSERT_IF(!use->toStoreElementHole()->object()->isUnbox() &&
                             !ownerObject->isUnbox(),
                         use->toStoreElementHole()->object() == ownerObject);
-          continue;
-        }
-
-        if (use->isInArray()) {
-          // See StoreElementHole case above.
-          MOZ_ASSERT_IF(
-              !use->toInArray()->object()->isUnbox() && !ownerObject->isUnbox(),
-              use->toInArray()->object() == ownerObject);
           continue;
         }
 
@@ -4633,13 +4961,15 @@ bool jit::FoldLoadsWithUnbox(MIRGenerator* mir, MIRGraph& graph) {
         case MDefinition::Opcode::LoadFixedSlot: {
           auto* loadIns = load->toLoadFixedSlot();
           replacement = MLoadFixedSlotAndUnbox::New(
-              graph.alloc(), loadIns->object(), loadIns->slot(), mode, type);
+              graph.alloc(), loadIns->object(), loadIns->slot(), mode, type,
+              loadIns->usedAsPropertyKey());
           break;
         }
         case MDefinition::Opcode::LoadDynamicSlot: {
           auto* loadIns = load->toLoadDynamicSlot();
           replacement = MLoadDynamicSlotAndUnbox::New(
-              graph.alloc(), loadIns->slots(), loadIns->slot(), mode, type);
+              graph.alloc(), loadIns->slots(), loadIns->slot(), mode, type,
+              loadIns->usedAsPropertyKey());
           break;
         }
         case MDefinition::Opcode::LoadElement: {

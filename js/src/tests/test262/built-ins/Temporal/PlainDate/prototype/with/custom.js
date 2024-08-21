@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,7 +9,9 @@ features: [Temporal]
 ---*/
 
 const result = new Temporal.PlainDate(1920, 5, 3);
-const options = {};
+const options = {
+  extra: "property",
+};
 let calls = 0;
 class CustomCalendar extends Temporal.Calendar {
   constructor() {
@@ -23,7 +25,9 @@ class CustomCalendar extends Temporal.Calendar {
     assert.sameValue(args[0].month, 11, "First argument: month");
     assert.sameValue(args[0].monthCode, "M11", "First argument: monthCode");
     assert.sameValue(args[0].year, 43, "First argument: year");
-    assert.sameValue(args[1], options, "Second argument");
+    assert.notSameValue(args[1], options, "Second argument is a copy of options");
+    assert.sameValue(args[1].extra, "property", "All properties are copied");
+    assert.sameValue(Object.getPrototypeOf(args[1]), null, "Copy has null prototype");
     return result;
   }
 }

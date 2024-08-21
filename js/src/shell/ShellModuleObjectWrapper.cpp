@@ -16,6 +16,7 @@
 #include "js/CallArgs.h"              // JS::CallArgs
 #include "js/CallNonGenericMethod.h"  // CallNonGenericMethod
 #include "js/Class.h"                 // JSClass, JSCLASS_*
+#include "js/ColumnNumber.h"          // JS::ColumnNumberOneOrigin
 #include "js/ErrorReport.h"           // JS_ReportErrorASCII
 #include "js/PropertyAndElement.h"    // JS_GetProperty
 #include "js/PropertySpec.h"  // JSPropertySpec, JS_PSG, JS_PS_END, JSFunctionSpec, JS_FN, JS_FN_END
@@ -84,6 +85,7 @@ using mozilla::Span;
   DEFINE_NATIVE_CLASS_IMPL(CLASS)
 
 DEFINE_CLASS(ModuleRequestObject)
+DEFINE_NATIVE_CLASS(ImportAttribute)
 DEFINE_NATIVE_CLASS(ImportEntry)
 DEFINE_NATIVE_CLASS(ExportEntry)
 DEFINE_NATIVE_CLASS(RequestedModule)
@@ -205,6 +207,12 @@ static Value Uint32OrUndefinedValue(mozilla::Maybe<uint32_t> x) {
   return Uint32Value(x.value());
 }
 
+static Value ColumnNumberOneOriginValue(JS::ColumnNumberOneOrigin x) {
+  uint32_t column = x.oneOriginValue();
+  MOZ_ASSERT(column <= INT32_MAX);
+  return Int32Value(column);
+}
+
 static Value StatusValue(ModuleStatus status) {
   return Int32Value(int32_t(status));
 }
@@ -274,6 +282,17 @@ bool SpanToArrayFilter(JSContext* cx, JS::Handle<JSObject*> owner,
   return true;
 }
 
+template <class T>
+bool SpanToNullableArrayFilter(JSContext* cx, JS::Handle<JSObject*> owner,
+                               Span<const typename T::Target> from,
+                               JS::MutableHandle<JS::Value> to) {
+  if (from.Length() == 0) {
+    to.setNull();
+    return true;
+  }
+  return SpanToArrayFilter<T>(cx, owner, from, to);
+}
+
 template <class T, typename RawGetterT, typename FilterT>
 bool ShellModuleNativeWrapperGetter(JSContext* cx, const JS::CallArgs& args,
                                     RawGetterT rawGetter, FilterT filter) {
@@ -306,14 +325,22 @@ bool ShellModuleNativeWrapperGetter(JSContext* cx, const JS::CallArgs& args,
         cx, args);                                                             \
   }
 
+DEFINE_GETTER_FUNCTIONS(ImportAttribute, key, StringOrNullValue, IdentFilter);
+DEFINE_GETTER_FUNCTIONS(ImportAttribute, value, StringOrNullValue, IdentFilter);
+
+static const JSPropertySpec ShellImportAttributeWrapper_accessors[] = {
+    JS_PSG("key", ShellImportAttributeWrapper_keyGetter, 0),
+    JS_PSG("value", ShellImportAttributeWrapper_valueGetter, 0), JS_PS_END};
+
 DEFINE_GETTER_FUNCTIONS(ModuleRequestObject, specifier, StringOrNullValue,
                         IdentFilter)
-DEFINE_GETTER_FUNCTIONS(ModuleRequestObject, assertions, ObjectOrNullValue,
-                        IdentFilter)
+DEFINE_NATIVE_GETTER_FUNCTIONS(
+    ModuleRequestObject, attributes,
+    SpanToNullableArrayFilter<ShellImportAttributeWrapper>);
 
 static const JSPropertySpec ShellModuleRequestObjectWrapper_accessors[] = {
     JS_PSG("specifier", ShellModuleRequestObjectWrapper_specifierGetter, 0),
-    JS_PSG("assertions", ShellModuleRequestObjectWrapper_assertionsGetter, 0),
+    JS_PSG("attributes", ShellModuleRequestObjectWrapper_attributesGetter, 0),
     JS_PS_END};
 
 DEFINE_GETTER_FUNCTIONS(ImportEntry, moduleRequest, ObjectOrNullValue,
@@ -321,7 +348,8 @@ DEFINE_GETTER_FUNCTIONS(ImportEntry, moduleRequest, ObjectOrNullValue,
 DEFINE_GETTER_FUNCTIONS(ImportEntry, importName, StringOrNullValue, IdentFilter)
 DEFINE_GETTER_FUNCTIONS(ImportEntry, localName, StringValue, IdentFilter)
 DEFINE_GETTER_FUNCTIONS(ImportEntry, lineNumber, Uint32Value, IdentFilter)
-DEFINE_GETTER_FUNCTIONS(ImportEntry, columnNumber, Uint32Value, IdentFilter)
+DEFINE_GETTER_FUNCTIONS(ImportEntry, columnNumber, ColumnNumberOneOriginValue,
+                        IdentFilter)
 
 static const JSPropertySpec ShellImportEntryWrapper_accessors[] = {
     JS_PSG("moduleRequest", ShellImportEntryWrapper_moduleRequestGetter, 0),
@@ -337,7 +365,8 @@ DEFINE_GETTER_FUNCTIONS(ExportEntry, moduleRequest, ObjectOrNullValue,
 DEFINE_GETTER_FUNCTIONS(ExportEntry, importName, StringOrNullValue, IdentFilter)
 DEFINE_GETTER_FUNCTIONS(ExportEntry, localName, StringOrNullValue, IdentFilter)
 DEFINE_GETTER_FUNCTIONS(ExportEntry, lineNumber, Uint32Value, IdentFilter)
-DEFINE_GETTER_FUNCTIONS(ExportEntry, columnNumber, Uint32Value, IdentFilter)
+DEFINE_GETTER_FUNCTIONS(ExportEntry, columnNumber, ColumnNumberOneOriginValue,
+                        IdentFilter)
 
 static const JSPropertySpec ShellExportEntryWrapper_accessors[] = {
     JS_PSG("exportName", ShellExportEntryWrapper_exportNameGetter, 0),
@@ -351,7 +380,8 @@ static const JSPropertySpec ShellExportEntryWrapper_accessors[] = {
 DEFINE_GETTER_FUNCTIONS(RequestedModule, moduleRequest, ObjectOrNullValue,
                         SingleFilter<ShellModuleRequestObjectWrapper>)
 DEFINE_GETTER_FUNCTIONS(RequestedModule, lineNumber, Uint32Value, IdentFilter)
-DEFINE_GETTER_FUNCTIONS(RequestedModule, columnNumber, Uint32Value, IdentFilter)
+DEFINE_GETTER_FUNCTIONS(RequestedModule, columnNumber,
+                        ColumnNumberOneOriginValue, IdentFilter)
 
 static const JSPropertySpec ShellRequestedModuleWrapper_accessors[] = {
     JS_PSG("moduleRequest", ShellRequestedModuleWrapper_moduleRequestGetter, 0),
@@ -459,6 +489,8 @@ static const JSPropertySpec ShellModuleObjectWrapper_accessors[] = {
 
 DEFINE_CREATE(ModuleRequestObject, ShellModuleRequestObjectWrapper_accessors,
               nullptr)
+DEFINE_NATIVE_CREATE(ImportAttribute, ShellImportAttributeWrapper_accessors,
+                     nullptr)
 DEFINE_NATIVE_CREATE(ImportEntry, ShellImportEntryWrapper_accessors, nullptr)
 DEFINE_NATIVE_CREATE(ExportEntry, ShellExportEntryWrapper_accessors, nullptr)
 DEFINE_NATIVE_CREATE(RequestedModule, ShellRequestedModuleWrapper_accessors,

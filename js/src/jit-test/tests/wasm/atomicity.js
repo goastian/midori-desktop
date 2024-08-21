@@ -37,9 +37,8 @@ if (getCoreCount() < NUMAGENTS) {
 // Most of the simulators have poor support for mutual exclusion and are anyway
 // too slow; avoid intermittent failures and timeouts.
 
-let conf = getBuildConfiguration();
-if (conf["arm-simulator"] || conf["arm64-simulator"] ||
-    conf["mips-simulator"] || conf["mips64-simulator"])
+if (getBuildConfiguration("arm-simulator") || getBuildConfiguration("arm64-simulator") ||
+    getBuildConfiguration("mips32-simulator") || getBuildConfiguration("mips64-simulator"))
 {
     if (DEBUG > 0)
         print("Atomicity test disabled on simulator");
@@ -160,7 +159,7 @@ function makeModule(id) {
   (drop (i32.atomic.rmw.add ${BARRIER} (i32.const 1)))
   (loop $c1
    (if (i32.lt_s (i32.atomic.load ${BARRIER}) (local.get $barrierValue))
-       (br $c1)))
+       (then (br $c1))))
   ;; End barrier
 `;
 
@@ -204,7 +203,7 @@ function makeModule(id) {
    (local.set $n (i32.const ${ITERATIONS}))
    (loop $outer
     (if (local.get $n)
-        (block
+        (then (block
          ${isMaster ? `;; Init
 (${prefix}.atomic.store${width} ${loc} (${prefix}.const ${distribute(initial)}))` : ``}
          ${barrier}
@@ -234,7 +233,7 @@ ${(() => {
           (br_if $wait_done (${prefix}.ne (${prefix}.atomic.load${width}${view} ${loc}) (${prefix}.const ${distribute(expected)}))))
          ${barrier}
          (local.set $n (i32.sub (local.get $n) (i32.const 1)))
-         (br $outer))))
+         (br $outer)))))
   (local.get $barrierValue))`;
     }
 

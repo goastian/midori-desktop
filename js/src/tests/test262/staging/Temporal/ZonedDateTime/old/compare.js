@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -112,7 +112,29 @@ assert.throws(TypeError, () => Temporal.ZonedDateTime.compare(zdt1, {
 assert.sameValue(Temporal.ZonedDateTime.compare(zdt1, zdt1.withTimeZone("+05:30")), 0);
 
 // disregards calendar IDs if exact times and time zones are equal
-var fakeJapanese = { toString() { return "japanese"; }};
+var fakeJapanese = {
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  id: "japanese",
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
+};
 assert.sameValue(Temporal.ZonedDateTime.compare(zdt1, zdt1.withCalendar(fakeJapanese)), 0);
 
 // compares exact time, not clock time

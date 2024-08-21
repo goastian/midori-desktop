@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -33,18 +33,18 @@ var poisonedToPrimitive = {
 
 assert.throws(Test262Error, function() {
   Atomics.wait(i32a, 0, 0, poisonedValueOf);
-}, '`Atomics.wait(i32a, 0, 0, poisonedValueOf)` throws Test262Error');
+});
 
 assert.throws(Test262Error, function() {
   Atomics.wait(i32a, 0, 0, poisonedToPrimitive);
-}, '`Atomics.wait(i32a, 0, 0, poisonedToPrimitive)` throws Test262Error');
+});
 
 assert.throws(TypeError, function() {
   Atomics.wait(i32a, 0, 0, Symbol("foo"));
-}, '`Atomics.wait(i32a, 0, 0, Symbol("foo"))` throws TypeError');
+});
 
 assert.throws(TypeError, function() {
   Atomics.wait(i32a, 0, 0, Symbol("foo"));
-}, '`Atomics.wait(i32a, 0, 0, Symbol("foo"))` throws TypeError');
+});
 
 reportCompare(0, 0);

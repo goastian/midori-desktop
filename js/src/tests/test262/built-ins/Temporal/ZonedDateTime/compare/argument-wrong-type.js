@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,7 +13,7 @@ features: [BigInt, Symbol, Temporal]
 const timeZone = new Temporal.TimeZone("UTC");
 const other = new Temporal.ZonedDateTime(0n, timeZone);
 
-const rangeErrorTests = [
+const primitiveTests = [
   [undefined, "undefined"],
   [null, "null"],
   [true, "boolean"],
@@ -23,9 +23,17 @@ const rangeErrorTests = [
   [1n, "bigint"],
 ];
 
-for (const [arg, description] of rangeErrorTests) {
-  assert.throws(RangeError, () => Temporal.ZonedDateTime.compare(arg, other), `${description} does not convert to a valid ISO string (first argument)`);
-  assert.throws(RangeError, () => Temporal.ZonedDateTime.compare(other, arg), `${description} does not convert to a valid ISO string (second argument)`);
+for (const [arg, description] of primitiveTests) {
+  assert.throws(
+    typeof arg === 'string' ? RangeError : TypeError,
+    () => Temporal.ZonedDateTime.compare(arg, other),
+    `${description} does not convert to a valid ISO string (first argument)`
+  );
+  assert.throws(
+    typeof arg === 'string' ? RangeError : TypeError,
+    () => Temporal.ZonedDateTime.compare(other, arg),
+    `${description} does not convert to a valid ISO string (second argument)`
+  );
 }
 
 const typeErrorTests = [

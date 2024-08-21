@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,6 +11,9 @@ features: [Temporal, Array.prototype.includes]
 class SeasonCalendar extends Temporal.Calendar {
   constructor() {
     super("iso8601");
+  }
+  get id() {
+    return "season";
   }
   toString() {
     return "season";
@@ -36,23 +39,25 @@ class SeasonCalendar extends Temporal.Calendar {
     return super.dateFromFields({
       ...fields,
       monthCode
-    }, options);
+    }, options).withCalendar(this);
   }
   yearMonthFromFields(fields, options) {
     var monthCode = this._isoMonthCode(fields);
     delete fields.month;
-    return super.yearMonthFromFields({
+    const { isoYear, isoMonth, isoDay } = super.yearMonthFromFields({
       ...fields,
       monthCode
-    }, options);
+    }, options).getISOFields();
+    return new Temporal.PlainYearMonth(isoYear, isoMonth, this, isoDay);
   }
   monthDayFromFields(fields, options) {
     var monthCode = this._isoMonthCode(fields);
     delete fields.month;
-    return super.monthDayFromFields({
+    const { isoYear, isoMonth, isoDay } = super.monthDayFromFields({
       ...fields,
       monthCode
-    }, options);
+    }, options).getISOFields();
+    return new Temporal.PlainMonthDay(isoMonth, isoDay, this, isoYear);
   }
   fields(fields) {
     fields = fields.slice();
@@ -69,7 +74,7 @@ var monthday = new Temporal.PlainMonthDay(9, 15, calendar);
 var zoned = new Temporal.ZonedDateTime(1568505600000000000n, "UTC", calendar);
 var propDesc = {
   get() {
-    return this.calendar.season(this);
+    return this.getCalendar().season(this);
   },
   configurable: true
 };

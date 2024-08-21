@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,7 +9,29 @@ features: [Temporal]
 ---*/
 
 const dt1 = new Temporal.PlainDateTime(2000, 1, 1, 0, 0, 0, 0, 0, 0);
-const dt2 = new Temporal.PlainDateTime(2000, 1, 1, 0, 0, 0, 0, 0, 0, {});
+const dt2 = new Temporal.PlainDateTime(2000, 1, 1, 0, 0, 0, 0, 0, 0, {
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  id: "custom",
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
+});
 
 assert.throws(
   RangeError,

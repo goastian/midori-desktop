@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -16,10 +16,12 @@ class CustomCalendar extends Temporal.Calendar {
   }
   dateAdd(plainDate, duration, options) {
     ++calls;
-    TemporalHelpers.assertPlainDate(plainDate, 2000, 3, "M03", 31, "plainDate argument");
-    TemporalHelpers.assertDuration(duration, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, "duration argument");
-    assert.sameValue(typeof options, "object", "options argument: type");
-    assert.sameValue(Object.getPrototypeOf(options), null, "options argument: prototype");
+    if (calls == 2) {
+      TemporalHelpers.assertPlainDate(plainDate, 2000, 3, "M03", 31, "plainDate argument");
+      TemporalHelpers.assertDuration(duration, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, "duration argument");
+      assert.sameValue(typeof options, "object", "options argument: type");
+      assert.sameValue(Object.getPrototypeOf(options), null, "options argument: prototype");
+    }
     return super.dateAdd(plainDate, duration, options);
   }
 }
@@ -27,6 +29,6 @@ class CustomCalendar extends Temporal.Calendar {
 const plainYearMonth = new Temporal.PlainYearMonth(2000, 3, new CustomCalendar());
 const result = plainYearMonth.subtract({ months: 10 });
 TemporalHelpers.assertPlainYearMonth(result, 1999, 5, "M05");
-assert.sameValue(calls, 1, "should have called dateAdd");
+assert.sameValue(calls, 2, "should have called dateAdd 2 times");
 
 reportCompare(0, 0);

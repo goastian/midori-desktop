@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,10 +17,26 @@ const cal = {
   year() { return 2008; },
   month() { return 9; },
   monthCode() { return "M09"; },
-  day() { return 6; }
+  day() { return 6; },
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  inLeapYear() {},
+  mergeFields() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
 };
 const pdt = new Temporal.PlainDateTime(1995, 12, 7, 3, 24, 30, 0, 0, 0);
-assert.sameValue(pdt.calendar.toString(), "iso8601", "PlainDateTime with ISO calendar");
+assert.sameValue(pdt.calendarId, "iso8601", "PlainDateTime with ISO calendar");
 const pd = new Temporal.PlainDate(2010, 11, 12, cal);
 const shifted = pdt.withPlainDate(pd);
 
@@ -33,7 +49,7 @@ TemporalHelpers.assertPlainDateTime(
 );
 
 assert.sameValue(
-  shifted.calendar,
+  shifted.getCalendar(),
   cal,
   "calendar is changed if receiver has ISO calendar (2)"
 );

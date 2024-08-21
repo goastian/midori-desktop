@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -14,7 +14,7 @@ function test(isoString, components) {
     assert.sameValue(date.year, y);
     assert.sameValue(date.month, m);
     assert.sameValue(date.day, d);
-    assert.sameValue(date.calendar.id, cid);
+    assert.sameValue(date.calendarId, cid);
 }
 function generateTest(dateTimeString, zoneString) {
   var components = [

@@ -1,5 +1,3 @@
-// |jit-test| --enable-array-from-async; skip-if: !Array.fromAsync|| !('oomTest' in this)
-
 // Basic Smoke Test
 async function* asyncGen(n) {
     for (let i = 0; i < n; i++) {

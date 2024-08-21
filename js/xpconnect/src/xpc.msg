@@ -139,6 +139,7 @@ XPC_MSG_DEF(NS_ERROR_FIRST_HEADER_FIELD_COMPONENT_EMPTY, "Couldn't extract first
 XPC_MSG_DEF(NS_ERROR_ALREADY_CONNECTED              , "The connection is already established")
 XPC_MSG_DEF(NS_ERROR_NOT_CONNECTED                  , "The connection does not exist")
 XPC_MSG_DEF(NS_ERROR_CONNECTION_REFUSED             , "The connection was refused")
+XPC_MSG_DEF(NS_ERROR_SUPERFLUOS_AUTH                , "User refused navigation to potentially unsafe URL with embedded credentials/superfluos authentication")
 
 /* Error codes return from the proxy */
 XPC_MSG_DEF(NS_ERROR_PROXY_CONNECTION_REFUSED           , "The connection to the proxy server was refused")
@@ -253,3 +254,8 @@ XPC_MSG_DEF(NS_ERROR_DATABASE_CHANGED                 , "Flushing the profiles t
 /* Codes related to URILoader */
 XPC_MSG_DEF(NS_ERROR_PARSED_DATA_CACHED               , "The data from a channel has already been parsed and cached so it doesn't need to be reparsed from the original source.")
 XPC_MSG_DEF(NS_BINDING_CANCELLED_OLD_LOAD             , "The async request has been cancelled by another async request")
+
+XPC_MSG_DEF(NS_ERROR_WDBA_NO_PROGID                   , "The ProgID classes had not been registered.")
+XPC_MSG_DEF(NS_ERROR_WDBA_HASH_CHECK                  , "The existing UserChoice Hash could not be verified.")
+XPC_MSG_DEF(NS_ERROR_WDBA_REJECTED                    , "UserChoice was set, but checking the default did not return our ProgID.")
+XPC_MSG_DEF(NS_ERROR_WDBA_BUILD                       , "The existing UserChoice Hash was verified, but we're on an older, unsupported Windows build, so do not attempt to update the UserChoice hash.")

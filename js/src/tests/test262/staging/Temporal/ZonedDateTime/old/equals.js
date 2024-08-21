@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,13 +9,32 @@ features: [Temporal]
 ---*/
 
 var tz = {
+  getOffsetNanosecondsFor() { return -5 * 3600_000_000_000; },
   getPossibleInstantsFor(pdt) { return Temporal.TimeZone.from("-05:00").getPossibleInstantsFor(pdt); },
-  toString() { return "America/New_York"; },
+  id: "America/New_York",
 };
 var cal = {
   dateFromFields(...args) { return Temporal.Calendar.from("iso8601").dateFromFields(...args); },
-  toString() { return "gregory"; },
+  id: "gregory",
+  dateAdd() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
   fields(fieldNames) { return fieldNames; },
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
 };
 var zdt = new Temporal.ZonedDateTime(0n, tz, cal);
 

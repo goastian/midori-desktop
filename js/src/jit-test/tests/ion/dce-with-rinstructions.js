@@ -9,7 +9,6 @@ var warp = true;
 // Prevent GC from cancelling/discarding Ion compilations.
 gczeal(0);
 
-var config = getBuildConfiguration();
 var max = 200;
 
 // Check that we are able to remove the operation inside recover test functions (denoted by "rop..."),
@@ -1567,13 +1566,13 @@ function rhypot_object_4args(i) {
 var uceFault_random = eval(`(${uceFault})`.replace('uceFault', 'uceFault_random'));
 function rrandom(i) {
     // setRNGState() exists only in debug builds
-    if(config.debug) setRNGState(2, 1+i);
+    if (getBuildConfiguration("debug")) setRNGState(2, 1+i);
 
     var x = Math.random();
     if (uceFault_random(i) || uceFault_random(i)) {
       // TODO(Warp): Conditional operator ?: prevents recovering operands.
-      // assertEq(x, config.debug ? setRNGState(2, 1+i) || Math.random() : x);
-      if (config.debug) {
+      // assertEq(x, getBuildConfiguration("debug") ? setRNGState(2, 1+i) || Math.random() : x);
+      if (getBuildConfiguration("debug")) {
         assertEq(x, setRNGState(2, 1+i) || Math.random());
       } else {
         assertEq(x, x);
@@ -1984,6 +1983,26 @@ function rnantozero_negzero(i) {
     return i;
 }
 
+let uceFault_ratomicsislockfree_true = eval(`(${uceFault})`.replace('uceFault', 'uceFault_ratomicsislockfree_true'));
+function ratomicsislockfree_true(i) {
+    var x = [1, 2, 4, 8][i & 3];
+    var y = Atomics.isLockFree(x);
+    if (uceFault_ratomicsislockfree_true(i) || uceFault_ratomicsislockfree_true(i))
+        assertEq(y, true);
+    assertRecoveredOnBailout(y, true);
+    return i;
+}
+
+let uceFault_ratomicsislockfree_false = eval(`(${uceFault})`.replace('uceFault', 'uceFault_ratomicsislockfree_false'));
+function ratomicsislockfree_false(i) {
+    var x = [-1, 0, 3, 1000][i & 3];
+    var y = Atomics.isLockFree(x);
+    if (uceFault_ratomicsislockfree_false(i) || uceFault_ratomicsislockfree_false(i))
+        assertEq(y, false);
+    assertRecoveredOnBailout(y, true);
+    return i;
+}
+
 for (j = 100 - max; j < 100; j++) {
     with({}){} // Do not Ion-compile this loop.
     let i = j < 2 ? (Math.abs(j) % 50) + 2 : j;
@@ -2185,6 +2204,8 @@ for (j = 100 - max; j < 100; j++) {
     rnantozero_nan(i);
     rnantozero_poszero(i);
     rnantozero_negzero(i);
+    ratomicsislockfree_true(i);
+    ratomicsislockfree_false(i);
 }
 
 // Test that we can refer multiple time to the same recover instruction, as well

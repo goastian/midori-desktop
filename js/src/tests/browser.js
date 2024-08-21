@@ -41,10 +41,10 @@
   var URL = global.URL;
 
   var document = global.document;
-  var documentAll = global.document.all;
   var documentDocumentElement = global.document.documentElement;
   var DocumentCreateElement = global.document.createElement;
 
+  var DocumentPrototypeAllGetter = ObjectGetOwnPropertyDescriptor(global.Document.prototype, "all").get;
   var EventTargetPrototypeAddEventListener = global.EventTarget.prototype.addEventListener;
   var HTMLElementPrototypeStyleSetter =
     ObjectGetOwnPropertyDescriptor(global.HTMLElement.prototype, "style").set;
@@ -210,7 +210,7 @@
   var createIsHTMLDDA = global.createIsHTMLDDA;
   if (typeof createIsHTMLDDA !== "function") {
     createIsHTMLDDA = function() {
-      return documentAll;
+      return ReflectApply(DocumentPrototypeAllGetter, document, []);
     };
 
     global.createIsHTMLDDA = createIsHTMLDDA;
@@ -441,19 +441,6 @@
    ****************************************/
 
   function jsTestDriverBrowserInit() {
-    // Unset all options before running any test code, cf. the call to
-    // |shellOptionsClear| in shell.js' set-up code.
-    for (var optionName of ["strict_mode"]) {
-      if (!HasOwnProperty(SpecialPowersCu, optionName))
-        throw "options is out of sync with Components.utils";
-
-      // Option is set, toggle it to unset. (Reading an option is a cheap
-      // operation, but setting is relatively expensive, so only assign if
-      // necessary.)
-      if (SpecialPowersCu[optionName])
-        SpecialPowersCu[optionName] = false;
-    }
-
     // Initialize with an empty set, because we just turned off all options.
     currentOptions = Object.create(null);
 
@@ -472,6 +459,10 @@
         properties[propertycaptures[1]] = decodeURIComponent(propertycaptures[2]);
       }
     }
+
+    // The test path may contain \ separators for the path.
+    // Bug 1877606: use / consistently
+    properties.test = properties.test.replace(/\\/g, "/");
 
     global.gTestPath = properties.test;
 

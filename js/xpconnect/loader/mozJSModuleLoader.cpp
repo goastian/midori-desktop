@@ -4,13 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "ScriptLoadRequest.h"
+#include "mozilla/Assertions.h"  // MOZ_ASSERT, MOZ_ASSERT_IF
 #include "mozilla/Attributes.h"
 #include "mozilla/ArrayUtils.h"  // mozilla::ArrayLength
+#include "mozilla/RefPtr.h"      // RefPtr, mozilla::StaticRefPtr
 #include "mozilla/Utf8.h"        // mozilla::Utf8Unit
 
 #include <cstdarg>
 
 #include "mozilla/Logging.h"
+#include "mozilla/dom/RequestBinding.h"
 #ifdef ANDROID
 #  include <android/log.h>
 #endif
@@ -42,6 +46,7 @@
 #include "nsIFileURL.h"
 #include "nsIJARURI.h"
 #include "nsIChannel.h"
+#include "nsIStreamListener.h"
 #include "nsNetUtil.h"
 #include "nsJSUtils.h"
 #include "xpcprivate.h"
@@ -63,9 +68,13 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScriptPreloader.h"
 #include "mozilla/ScopeExit.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/AutoEntryScript.h"
 #include "mozilla/dom/ReferrerPolicyBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/WorkerCommon.h"  // dom::GetWorkerPrivateFromContext
+#include "mozilla/dom/WorkerPrivate.h"  // dom::WorkerPrivate, dom::AutoSyncLoopHolder
+#include "mozilla/dom/WorkerRunnable.h"  // dom::MainThreadStopSyncLoopRunnable
 #include "mozilla/Unused.h"
 
 using namespace mozilla;
@@ -299,7 +308,7 @@ class MOZ_STACK_CLASS ModuleLoaderInfo {
       : mLocation(nullptr),
         mURI(aRequest->mURI),
         mIsModule(true),
-        mSkipCheck(aRequest->GetComponentLoadContext()->mSkipCheck) {}
+        mSkipCheck(aRequest->GetSyncLoadContext()->mSkipCheck) {}
 
   SkipCheckForBrokenURLOrZeroSized getSkipCheckForBrokenURLOrZeroSized() const {
     return mSkipCheck;
@@ -445,6 +454,13 @@ void mozJSModuleLoader::InitStatics() {
   MOZ_ASSERT(!sSelf);
   sSelf = new mozJSModuleLoader();
   RegisterWeakMemoryReporter(sSelf);
+
+  dom::AutoJSAPI jsapi;
+  jsapi.Init();
+  JSContext* cx = jsapi.cx();
+  sSelf->InitSharedGlobal(cx);
+
+  NonSharedGlobalSyncModuleLoaderScope::InitStatics();
 }
 
 void mozJSModuleLoader::UnloadLoaders() {
@@ -476,13 +492,46 @@ void mozJSModuleLoader::ShutdownLoaders() {
   }
 }
 
-mozJSModuleLoader* mozJSModuleLoader::GetOrCreateDevToolsLoader() {
+mozJSModuleLoader* mozJSModuleLoader::GetOrCreateDevToolsLoader(
+    JSContext* aCx) {
   if (sDevToolsLoader) {
     return sDevToolsLoader;
   }
   sDevToolsLoader = new mozJSModuleLoader();
   RegisterWeakMemoryReporter(sDevToolsLoader);
+
+  sDevToolsLoader->InitSharedGlobal(aCx);
+
   return sDevToolsLoader;
+}
+
+void mozJSModuleLoader::InitSyncModuleLoaderForGlobal(
+    nsIGlobalObject* aGlobal) {
+  MOZ_ASSERT(!mLoaderGlobal);
+  MOZ_ASSERT(!mModuleLoader);
+
+  RefPtr<SyncScriptLoader> scriptLoader = new SyncScriptLoader;
+  mModuleLoader = new SyncModuleLoader(scriptLoader, aGlobal);
+  mLoaderGlobal = aGlobal->GetGlobalJSObject();
+}
+
+void mozJSModuleLoader::DisconnectSyncModuleLoaderFromGlobal() {
+  MOZ_ASSERT(mLoaderGlobal);
+  MOZ_ASSERT(mModuleLoader);
+
+  mLoaderGlobal = nullptr;
+  Unload();
+}
+
+/* static */
+bool mozJSModuleLoader::IsSharedSystemGlobal(nsIGlobalObject* aGlobal) {
+  return sSelf->IsLoaderGlobal(aGlobal->GetGlobalJSObject());
+}
+
+/* static */
+bool mozJSModuleLoader::IsDevToolsLoaderGlobal(nsIGlobalObject* aGlobal) {
+  return sDevToolsLoader &&
+         sDevToolsLoader->IsLoaderGlobal(aGlobal->GetGlobalJSObject());
 }
 
 // This requires that the keys be strings and the values be pointers.
@@ -636,44 +685,224 @@ void mozJSModuleLoader::CreateLoaderGlobal(JSContext* aCx,
   xpc::SetLocationForGlobal(global, aLocation);
 
   MOZ_ASSERT(!mModuleLoader);
-  RefPtr<ComponentScriptLoader> scriptLoader = new ComponentScriptLoader;
-  mModuleLoader = new ComponentModuleLoader(scriptLoader, backstagePass);
+  RefPtr<SyncScriptLoader> scriptLoader = new SyncScriptLoader;
+  mModuleLoader = new SyncModuleLoader(scriptLoader, backstagePass);
   backstagePass->InitModuleLoader(mModuleLoader);
 
   aGlobal.set(global);
 }
 
-JSObject* mozJSModuleLoader::GetSharedGlobal(JSContext* aCx) {
-  if (!mLoaderGlobal) {
-    JS::RootedObject globalObj(aCx);
+void mozJSModuleLoader::InitSharedGlobal(JSContext* aCx) {
+  JS::RootedObject globalObj(aCx);
 
-    CreateLoaderGlobal(
-        aCx, IsDevToolsLoader() ? "DevTools global"_ns : "shared JSM global"_ns,
-        &globalObj);
+  CreateLoaderGlobal(
+      aCx, IsDevToolsLoader() ? "DevTools global"_ns : "shared JSM global"_ns,
+      &globalObj);
 
-    // If we fail to create a module global this early, we're not going to
-    // get very far, so just bail out now.
-    MOZ_RELEASE_ASSERT(globalObj);
-    mLoaderGlobal = globalObj;
+  // If we fail to create a module global this early, we're not going to
+  // get very far, so just bail out now.
+  MOZ_RELEASE_ASSERT(globalObj);
+  mLoaderGlobal = globalObj;
 
-    // AutoEntryScript required to invoke debugger hook, which is a
-    // Gecko-specific concept at present.
-    dom::AutoEntryScript aes(globalObj, "module loader report global");
-    JS_FireOnNewGlobalObject(aes.cx(), globalObj);
+  // AutoEntryScript required to invoke debugger hook, which is a
+  // Gecko-specific concept at present.
+  dom::AutoEntryScript aes(globalObj, "module loader report global");
+  JS_FireOnNewGlobalObject(aes.cx(), globalObj);
+}
+
+// Read script file on the main thread and pass it back to worker.
+class ScriptReaderRunnable final : public nsIRunnable,
+                                   public nsINamed,
+                                   public nsIStreamListener {
+ public:
+  ScriptReaderRunnable(dom::WorkerPrivate* aWorkerPrivate,
+                       nsIEventTarget* aSyncLoopTarget,
+                       const nsCString& aLocation)
+      : mLocation(aLocation),
+        mRv(NS_ERROR_FAILURE),
+        mWorkerPrivate(aWorkerPrivate),
+        mSyncLoopTarget(aSyncLoopTarget) {}
+
+  NS_DECL_THREADSAFE_ISUPPORTS
+
+  nsCString& Data() { return mData; }
+
+  nsresult Result() const { return mRv; }
+
+  // nsIRunnable
+
+  NS_IMETHOD
+  Run() override {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    nsresult rv = StartReadScriptFromLocation();
+    if (NS_FAILED(rv)) {
+      OnComplete(rv);
+    }
+
+    return NS_OK;
   }
 
-  return mLoaderGlobal;
+  // nsINamed
+
+  NS_IMETHOD
+  GetName(nsACString& aName) override {
+    aName.AssignLiteral("ScriptReaderRunnable");
+    return NS_OK;
+  }
+
+  // nsIStreamListener
+
+  NS_IMETHOD OnDataAvailable(nsIRequest* aRequest, nsIInputStream* aInputStream,
+                             uint64_t aOffset, uint32_t aCount) override {
+    uint32_t read = 0;
+    return aInputStream->ReadSegments(AppendSegmentToData, this, aCount, &read);
+  }
+
+  // nsIRequestObserver
+
+  NS_IMETHOD OnStartRequest(nsIRequest* aRequest) override { return NS_OK; }
+
+  NS_IMETHOD OnStopRequest(nsIRequest* aRequest,
+                           nsresult aStatusCode) override {
+    OnComplete(aStatusCode);
+    return NS_OK;
+  }
+
+ private:
+  ~ScriptReaderRunnable() = default;
+
+  static nsresult AppendSegmentToData(nsIInputStream* aInputStream,
+                                      void* aClosure, const char* aRawSegment,
+                                      uint32_t aToOffset, uint32_t aCount,
+                                      uint32_t* outWrittenCount) {
+    auto* self = static_cast<ScriptReaderRunnable*>(aClosure);
+    self->mData.Append(aRawSegment, aCount);
+    *outWrittenCount = aCount;
+    return NS_OK;
+  }
+
+  void OnComplete(nsresult aRv) {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    mRv = aRv;
+
+    RefPtr<dom::MainThreadStopSyncLoopRunnable> runnable =
+        new dom::MainThreadStopSyncLoopRunnable(std::move(mSyncLoopTarget),
+                                                mRv);
+    MOZ_ALWAYS_TRUE(runnable->Dispatch(mWorkerPrivate));
+
+    mWorkerPrivate = nullptr;
+    mSyncLoopTarget = nullptr;
+  }
+
+  nsresult StartReadScriptFromLocation() {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    ModuleLoaderInfo info(mLocation);
+    nsresult rv = info.EnsureScriptChannel();
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    return info.ScriptChannel()->AsyncOpen(this);
+  }
+
+ private:
+  nsAutoCString mLocation;
+  nsCString mData;
+  nsresult mRv;
+
+  // This pointer is guaranteed to be alive until OnComplete, given
+  // the worker thread is synchronously waiting with AutoSyncLoopHolder::Run
+  // until the corresponding WorkerPrivate::StopSyncLoop is called by
+  // MainThreadStopSyncLoopRunnable, which is dispatched from OnComplete.
+  dom::WorkerPrivate* mWorkerPrivate;
+
+  nsCOMPtr<nsIEventTarget> mSyncLoopTarget;
+};
+
+NS_IMPL_ISUPPORTS(ScriptReaderRunnable, nsIRunnable, nsINamed,
+                  nsIStreamListener)
+
+/* static */
+nsresult mozJSModuleLoader::ReadScriptOnMainThread(JSContext* aCx,
+                                                   const nsCString& aLocation,
+                                                   nsCString& aData) {
+  dom::WorkerPrivate* workerPrivate = dom::GetWorkerPrivateFromContext(aCx);
+  MOZ_ASSERT(workerPrivate);
+
+  dom::AutoSyncLoopHolder syncLoop(workerPrivate, dom::WorkerStatus::Canceling);
+  nsCOMPtr<nsISerialEventTarget> syncLoopTarget =
+      syncLoop.GetSerialEventTarget();
+  if (!syncLoopTarget) {
+    return NS_ERROR_DOM_INVALID_STATE_ERR;
+  }
+
+  RefPtr<ScriptReaderRunnable> runnable =
+      new ScriptReaderRunnable(workerPrivate, syncLoopTarget, aLocation);
+
+  if (NS_FAILED(NS_DispatchToMainThread(runnable))) {
+    return NS_ERROR_FAILURE;
+  }
+
+  syncLoop.Run();
+
+  if (NS_FAILED(runnable->Result())) {
+    return runnable->Result();
+  }
+
+  aData = std::move(runnable->Data());
+
+  return NS_OK;
+}
+
+/* static */
+nsresult mozJSModuleLoader::LoadSingleModuleScriptOnWorker(
+    SyncModuleLoader* aModuleLoader, JSContext* aCx,
+    JS::loader::ModuleLoadRequest* aRequest, MutableHandleScript aScriptOut) {
+  nsAutoCString location;
+  nsresult rv = aRequest->mURI->GetSpec(location);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCString data;
+  rv = ReadScriptOnMainThread(aCx, location, data);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  CompileOptions options(aCx);
+  ScriptPreloader::FillCompileOptionsForCachedStencil(options);
+  options.setFileAndLine(location.BeginReading(), 1);
+  SetModuleOptions(options);
+
+  JS::SourceText<mozilla::Utf8Unit> srcBuf;
+  if (!srcBuf.init(aCx, data.get(), data.Length(),
+                   JS::SourceOwnership::Borrowed)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  RefPtr<JS::Stencil> stencil =
+      CompileStencil(aCx, options, srcBuf, /* aIsModule = */ true);
+  if (!stencil) {
+    return NS_ERROR_FAILURE;
+  }
+
+  aScriptOut.set(InstantiateStencil(aCx, stencil, /* aIsModule = */ true));
+
+  return NS_OK;
 }
 
 /* static */
 nsresult mozJSModuleLoader::LoadSingleModuleScript(
-    ComponentModuleLoader* aModuleLoader, JSContext* aCx,
+    SyncModuleLoader* aModuleLoader, JSContext* aCx,
     JS::loader::ModuleLoadRequest* aRequest, MutableHandleScript aScriptOut) {
   AUTO_PROFILER_MARKER_TEXT(
       "ChromeUtils.importESModule static import", JS,
       MarkerOptions(MarkerStack::Capture(),
                     MarkerInnerWindowIdFromJSContext(aCx)),
       nsContentUtils::TruncatedURLForDisplay(aRequest->mURI));
+
+  if (!NS_IsMainThread()) {
+    return LoadSingleModuleScriptOnWorker(aModuleLoader, aCx, aRequest,
+                                          aScriptOut);
+  }
 
   ModuleLoaderInfo info(aRequest);
   nsresult rv = info.EnsureResolvedURI();
@@ -692,10 +921,12 @@ nsresult mozJSModuleLoader::LoadSingleModuleScript(
 #ifdef STARTUP_RECORDER_ENABLED
   if (aModuleLoader == sSelf->mModuleLoader) {
     sSelf->RecordImportStack(aCx, aRequest);
-  } else {
-    MOZ_ASSERT(sDevToolsLoader);
-    MOZ_ASSERT(aModuleLoader == sDevToolsLoader->mModuleLoader);
+  } else if (sDevToolsLoader &&
+             aModuleLoader == sDevToolsLoader->mModuleLoader) {
     sDevToolsLoader->RecordImportStack(aCx, aRequest);
+  } else {
+    // NOTE: Do not record import stack for non-shared globals, given the
+    //       loader is associated with the global only while importing.
   }
 #endif
 
@@ -745,8 +976,8 @@ JSObject* mozJSModuleLoader::PrepareObjectForLocation(JSContext* aCx,
                                                       nsIFile* aModuleFile,
                                                       nsIURI* aURI,
                                                       bool aRealFile) {
-  RootedObject globalObj(aCx, GetSharedGlobal(aCx));
-  NS_ENSURE_TRUE(globalObj, nullptr);
+  RootedObject globalObj(aCx, GetSharedGlobal());
+  MOZ_ASSERT(globalObj);
   JSAutoRealm ar(aCx, globalObj);
 
   // |thisObj| is the object we set properties on for a particular .jsm.
@@ -891,6 +1122,17 @@ nsresult mozJSModuleLoader::ObjectForLocation(
 }
 
 /* static */
+void mozJSModuleLoader::SetModuleOptions(CompileOptions& aOptions) {
+  aOptions.setModule();
+
+  // Top level await is not supported in synchronously loaded modules.
+  aOptions.topLevelAwait = false;
+
+  // Make all top-level `vars` available in `ModuleEnvironmentObject`.
+  aOptions.deoptimizeModuleGlobalVars = true;
+}
+
+/* static */
 nsresult mozJSModuleLoader::GetScriptForLocation(
     JSContext* aCx, ModuleLoaderInfo& aInfo, nsIFile* aModuleFile,
     bool aUseMemMap, MutableHandleScript aScriptOut, char** aLocationOut) {
@@ -950,12 +1192,7 @@ nsresult mozJSModuleLoader::GetScriptForLocation(
     ScriptPreloader::FillCompileOptionsForCachedStencil(options);
     options.setFileAndLine(nativePath.get(), 1);
     if (aInfo.IsModule()) {
-      options.setModule();
-      // Top level await is not supported in synchronously loaded modules.
-      options.topLevelAwait = false;
-
-      // Make all top-level `vars` available in `ModuleEnvironmentObject`.
-      options.deoptimizeModuleGlobalVars = true;
+      SetModuleOptions(options);
     } else {
       options.setForceStrictMode();
       options.setNonSyntacticScope(true);
@@ -1042,7 +1279,10 @@ nsresult mozJSModuleLoader::GetScriptForLocation(
 }
 
 void mozJSModuleLoader::UnloadModules() {
+  MOZ_ASSERT(!mIsUnloaded);
+
   mInitialized = false;
+  mIsUnloaded = true;
 
   if (mLoaderGlobal) {
     MOZ_ASSERT(JS_HasExtensibleLexicalEnvironment(mLoaderGlobal));
@@ -1150,6 +1390,11 @@ nsresult mozJSModuleLoader::IsModuleLoaded(const nsACString& aLocation,
                                            bool* retval) {
   MOZ_ASSERT(nsContentUtils::IsCallerChrome());
 
+  if (mIsUnloaded) {
+    *retval = false;
+    return NS_OK;
+  }
+
   mInitialized = true;
   ModuleLoaderInfo info(aLocation);
   if (mImports.Get(info.Key())) {
@@ -1183,6 +1428,11 @@ nsresult mozJSModuleLoader::IsJSModuleLoaded(const nsACString& aLocation,
                                              bool* retval) {
   MOZ_ASSERT(nsContentUtils::IsCallerChrome());
 
+  if (mIsUnloaded) {
+    *retval = false;
+    return NS_OK;
+  }
+
   mInitialized = true;
   ModuleLoaderInfo info(aLocation);
   if (mImports.Get(info.Key())) {
@@ -1197,6 +1447,11 @@ nsresult mozJSModuleLoader::IsJSModuleLoaded(const nsACString& aLocation,
 nsresult mozJSModuleLoader::IsESModuleLoaded(const nsACString& aLocation,
                                              bool* retval) {
   MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  if (mIsUnloaded) {
+    *retval = false;
+    return NS_OK;
+  }
 
   mInitialized = true;
   ModuleLoaderInfo info(aLocation);
@@ -1250,7 +1505,7 @@ nsresult mozJSModuleLoader::GetLoadedJSAndESModules(
 #ifdef STARTUP_RECORDER_ENABLED
 void mozJSModuleLoader::RecordImportStack(JSContext* aCx,
                                           const nsACString& aLocation) {
-  if (!Preferences::GetBool("browser.startup.record", false)) {
+  if (!StaticPrefs::browser_startup_record()) {
     return;
   }
 
@@ -1260,7 +1515,7 @@ void mozJSModuleLoader::RecordImportStack(JSContext* aCx,
 
 void mozJSModuleLoader::RecordImportStack(
     JSContext* aCx, JS::loader::ModuleLoadRequest* aRequest) {
-  if (!Preferences::GetBool("browser.startup.record", false)) {
+  if (!StaticPrefs::browser_startup_record()) {
     return;
   }
 
@@ -1491,6 +1746,11 @@ nsresult mozJSModuleLoader::Import(JSContext* aCx, const nsACString& aLocation,
                                    JS::MutableHandleObject aModuleGlobal,
                                    JS::MutableHandleObject aModuleExports,
                                    bool aIgnoreExports) {
+  if (mIsUnloaded) {
+    JS_ReportErrorASCII(aCx, "Module loaded is already unloaded");
+    return NS_ERROR_FAILURE;
+  }
+
   mInitialized = true;
 
   AUTO_PROFILER_MARKER_TEXT(
@@ -1776,6 +2036,11 @@ nsresult mozJSModuleLoader::ImportESModule(
         aSkipCheck /* = SkipCheckForBrokenURLOrZeroSized::No */) {
   using namespace JS::loader;
 
+  if (mIsUnloaded) {
+    JS_ReportErrorASCII(aCx, "Module loaded is already unloaded");
+    return NS_ERROR_FAILURE;
+  }
+
   mInitialized = true;
 
   // Called from ChromeUtils::ImportESModule.
@@ -1787,9 +2052,10 @@ nsresult mozJSModuleLoader::ImportESModule(
                     MarkerInnerWindowIdFromJSContext(aCx)),
       Substring(aLocation, 0, std::min(size_t(128), aLocation.Length())));
 
-  RootedObject globalObj(aCx, GetSharedGlobal(aCx));
-  NS_ENSURE_TRUE(globalObj, NS_ERROR_FAILURE);
-  MOZ_ASSERT(xpc::Scriptability::Get(globalObj).Allowed());
+  RootedObject globalObj(aCx, GetSharedGlobal());
+  MOZ_ASSERT(globalObj);
+  MOZ_ASSERT_IF(NS_IsMainThread(),
+                xpc::Scriptability::Get(globalObj).Allowed());
 
   // The module loader should be instantiated when fetching the shared global
   MOZ_ASSERT(mModuleLoader);
@@ -1805,19 +2071,22 @@ nsresult mozJSModuleLoader::ImportESModule(
   MOZ_ASSERT(principal);
 
   RefPtr<ScriptFetchOptions> options = new ScriptFetchOptions(
-      CORS_NONE, dom::ReferrerPolicy::No_referrer, principal);
+      CORS_NONE, /* aNonce = */ u""_ns, dom::RequestPriority::Auto,
+      ParserMetadata::NotParserInserted, principal);
 
-  RefPtr<ComponentLoadContext> context = new ComponentLoadContext();
+  RefPtr<SyncLoadContext> context = new SyncLoadContext();
   context->mSkipCheck = aSkipCheck;
 
   RefPtr<VisitedURLSet> visitedSet =
       ModuleLoadRequest::NewVisitedSetForTopLevelImport(uri);
 
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      uri, options, dom::SRIMetadata(),
+      uri, dom::ReferrerPolicy::No_referrer, options, dom::SRIMetadata(),
       /* aReferrer = */ nullptr, context,
       /* aIsTopLevel = */ true,
       /* aIsDynamicImport = */ false, mModuleLoader, visitedSet, nullptr);
+
+  request->NoCacheEntryFound();
 
   rv = request->StartModuleLoad();
   if (NS_FAILED(rv)) {
@@ -1831,7 +2100,7 @@ nsresult mozJSModuleLoader::ImportESModule(
     return rv;
   }
 
-  MOZ_ASSERT(request->IsReadyToRun());
+  MOZ_ASSERT(request->IsFinished());
   if (!request->mModuleScript) {
     mModuleLoader->MaybeReportLoadError(aCx);
     return NS_ERROR_FAILURE;
@@ -1917,6 +2186,62 @@ size_t mozJSModuleLoader::ModuleEntry::SizeOfIncludingThis(
   n += aMallocSizeOf(location);
 
   return n;
+}
+
+//----------------------------------------------------------------------
+
+/* static */
+MOZ_THREAD_LOCAL(mozJSModuleLoader*)
+NonSharedGlobalSyncModuleLoaderScope::sTlsActiveLoader;
+
+void NonSharedGlobalSyncModuleLoaderScope::InitStatics() {
+  sTlsActiveLoader.infallibleInit();
+}
+
+NonSharedGlobalSyncModuleLoaderScope::NonSharedGlobalSyncModuleLoaderScope(
+    JSContext* aCx, nsIGlobalObject* aGlobal) {
+  MOZ_ASSERT_IF(NS_IsMainThread(),
+                !mozJSModuleLoader::IsSharedSystemGlobal(aGlobal));
+  MOZ_ASSERT_IF(NS_IsMainThread(),
+                !mozJSModuleLoader::IsDevToolsLoaderGlobal(aGlobal));
+
+  mAsyncModuleLoader = aGlobal->GetModuleLoader(aCx);
+  MOZ_ASSERT(mAsyncModuleLoader,
+             "The consumer should guarantee the global returns non-null module "
+             "loader");
+
+  mLoader = new mozJSModuleLoader();
+  RegisterWeakMemoryReporter(mLoader);
+  mLoader->InitSyncModuleLoaderForGlobal(aGlobal);
+
+  mAsyncModuleLoader->CopyModulesTo(mLoader->mModuleLoader);
+
+  mMaybeOverride.emplace(mAsyncModuleLoader, mLoader->mModuleLoader);
+
+  MOZ_ASSERT(!sTlsActiveLoader.get());
+  sTlsActiveLoader.set(mLoader);
+}
+
+NonSharedGlobalSyncModuleLoaderScope::~NonSharedGlobalSyncModuleLoaderScope() {
+  MOZ_ASSERT(sTlsActiveLoader.get() == mLoader);
+  sTlsActiveLoader.set(nullptr);
+
+  mLoader->DisconnectSyncModuleLoaderFromGlobal();
+  UnregisterWeakMemoryReporter(mLoader);
+}
+
+void NonSharedGlobalSyncModuleLoaderScope::Finish() {
+  mLoader->mModuleLoader->MoveModulesTo(mAsyncModuleLoader);
+}
+
+/* static */
+bool NonSharedGlobalSyncModuleLoaderScope::IsActive() {
+  return !!sTlsActiveLoader.get();
+}
+
+/*static */
+mozJSModuleLoader* NonSharedGlobalSyncModuleLoaderScope::ActiveLoader() {
+  return sTlsActiveLoader.get();
 }
 
 //----------------------------------------------------------------------

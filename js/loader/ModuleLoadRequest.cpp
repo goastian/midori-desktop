@@ -27,19 +27,24 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(ModuleLoadRequest)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(ModuleLoadRequest,
                                                 ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mLoader, mModuleScript, mImports, mRootModule)
+  if (tmp->mWaitingParentRequest) {
+    tmp->mWaitingParentRequest->ChildModuleUnlinked();
+  }
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mLoader, mRootModule, mModuleScript, mImports,
+                                  mWaitingParentRequest,
+                                  mDynamicReferencingScript)
   tmp->ClearDynamicImport();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ModuleLoadRequest,
                                                   ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mLoader, mModuleScript, mImports,
-                                    mRootModule)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mLoader, mRootModule, mModuleScript,
+                                    mImports, mWaitingParentRequest,
+                                    mDynamicReferencingScript)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(ModuleLoadRequest,
                                                ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mDynamicReferencingPrivate)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mDynamicSpecifier)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mDynamicPromise)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
@@ -52,13 +57,14 @@ VisitedURLSet* ModuleLoadRequest::NewVisitedSetForTopLevelImport(nsIURI* aURI) {
 }
 
 ModuleLoadRequest::ModuleLoadRequest(
-    nsIURI* aURI, ScriptFetchOptions* aFetchOptions,
+    nsIURI* aURI, mozilla::dom::ReferrerPolicy aReferrerPolicy,
+    ScriptFetchOptions* aFetchOptions,
     const mozilla::dom::SRIMetadata& aIntegrity, nsIURI* aReferrer,
     LoadContextBase* aContext, bool aIsTopLevel, bool aIsDynamicImport,
     ModuleLoaderBase* aLoader, VisitedURLSet* aVisitedSet,
     ModuleLoadRequest* aRootModule)
-    : ScriptLoadRequest(ScriptKind::eModule, aURI, aFetchOptions, aIntegrity,
-                        aReferrer, aContext),
+    : ScriptLoadRequest(ScriptKind::eModule, aURI, aReferrerPolicy,
+                        aFetchOptions, aIntegrity, aReferrer, aContext),
       mIsTopLevel(aIsTopLevel),
       mIsDynamicImport(aIsDynamicImport),
       mLoader(aLoader),
@@ -81,25 +87,32 @@ void ModuleLoadRequest::Cancel() {
     return;
   }
 
+  if (IsFinished()) {
+    return;
+  }
+
   ScriptLoadRequest::Cancel();
+
   mModuleScript = nullptr;
   CancelImports();
-  mReady.RejectIfExists(NS_ERROR_DOM_ABORT_ERR, __func__);
+
+  if (mWaitingParentRequest) {
+    ChildLoadComplete(false);
+  }
 }
 
 void ModuleLoadRequest::SetReady() {
+  MOZ_ASSERT(!IsFinished());
+
   // Mark a module as ready to execute. This means that this module and all it
   // dependencies have had their source loaded, parsed as a module and the
   // modules instantiated.
-  //
-  // The mReady promise is used to ensure that when all dependencies of a module
-  // have become ready, DependenciesLoaded is called on that module
-  // request. This is set up in StartFetchingModuleDependencies.
-
-  AssertAllImportsReady();
 
   ScriptLoadRequest::SetReady();
-  mReady.ResolveIfExists(true, __func__);
+
+  if (mWaitingParentRequest) {
+    ChildLoadComplete(true);
+  }
 }
 
 void ModuleLoadRequest::ModuleLoaded() {
@@ -113,7 +126,7 @@ void ModuleLoadRequest::ModuleLoaded() {
     return;
   }
 
-  MOZ_ASSERT(IsFetching());
+  MOZ_ASSERT(IsFetching() || IsPendingFetchingError());
 
   mModuleScript = mLoader->GetFetchedModule(mURI);
   if (IsErrored()) {
@@ -135,7 +148,7 @@ void ModuleLoadRequest::LoadFailed() {
     return;
   }
 
-  MOZ_ASSERT(IsFetching());
+  MOZ_ASSERT(IsFetching() || IsPendingFetchingError());
   MOZ_ASSERT(!mModuleScript);
 
   Cancel();
@@ -147,16 +160,21 @@ void ModuleLoadRequest::ModuleErrored() {
 
   LOG(("ScriptLoadRequest (%p): Module errored", this));
 
-  if (IsCanceled()) {
+  if (IsCanceled() || IsCancelingImports()) {
     return;
   }
 
-  MOZ_ASSERT(!IsReadyToRun());
+  MOZ_ASSERT(!IsFinished());
 
   CheckModuleDependenciesLoaded();
   MOZ_ASSERT(IsErrored());
 
   CancelImports();
+  if (IsFinished()) {
+    // Cancelling an outstanding import will error this request.
+    return;
+  }
+
   SetReady();
   LoadFinished();
 }
@@ -175,6 +193,7 @@ void ModuleLoadRequest::DependenciesLoaded() {
   MOZ_ASSERT(!IsErrored());
 
   CheckModuleDependenciesLoaded();
+  AssertAllImportsFinished();
   SetReady();
   LoadFinished();
 }
@@ -185,6 +204,7 @@ void ModuleLoadRequest::CheckModuleDependenciesLoaded() {
   if (!mModuleScript || mModuleScript->HasParseError()) {
     return;
   }
+
   for (const auto& childRequest : mImports) {
     ModuleScript* childScript = childRequest->mModuleScript;
     if (!childScript) {
@@ -193,15 +213,31 @@ void ModuleLoadRequest::CheckModuleDependenciesLoaded() {
            childRequest.get()));
       return;
     }
+
+    MOZ_DIAGNOSTIC_ASSERT(mModuleScript->HadImportMap() ==
+                          childScript->HadImportMap());
   }
 
   LOG(("ScriptLoadRequest (%p):   all ok", this));
 }
 
 void ModuleLoadRequest::CancelImports() {
+  State origState = mState;
+
+  // To prevent reentering ModuleErrored() for this request via mImports[i]'s
+  // ChildLoadComplete().
+  mState = State::CancelingImports;
+
   for (size_t i = 0; i < mImports.Length(); i++) {
+    if (mLoader->IsFetchingAndHasWaitingRequest(mImports[i])) {
+      LOG(("CancelImports import %p is fetching and has waiting\n",
+           mImports[i].get()));
+      continue;
+    }
     mImports[i]->Cancel();
   }
+
+  mState = origState;
 }
 
 void ModuleLoadRequest::LoadFinished() {
@@ -213,16 +249,38 @@ void ModuleLoadRequest::LoadFinished() {
   mLoader->OnModuleLoadComplete(request);
 }
 
+void ModuleLoadRequest::ChildModuleUnlinked() {
+  // This module was waiting for a child request, but the child reqeust
+  // got unlinked by CC and will never complete.
+  // It also means this module itself is also in the cycle, and will be
+  // unlinked or has already been unlinked, and will be collected.
+  // There's no need to normally finish the module request.
+  // Just reflect the awaiting imports count, so that the assertion in the
+  // destructor passes.
+  MOZ_ASSERT(mAwaitingImports > 0);
+  mAwaitingImports--;
+}
+
+void ModuleLoadRequest::SetDynamicImport(LoadedScript* aReferencingScript,
+                                         JS::Handle<JSString*> aSpecifier,
+                                         JS::Handle<JSObject*> aPromise) {
+  mDynamicReferencingScript = aReferencingScript;
+  mDynamicSpecifier = aSpecifier;
+  mDynamicPromise = aPromise;
+
+  mozilla::HoldJSObjects(this);
+}
+
 void ModuleLoadRequest::ClearDynamicImport() {
-  mDynamicReferencingPrivate = JS::UndefinedValue();
+  mDynamicReferencingScript = nullptr;
   mDynamicSpecifier = nullptr;
   mDynamicPromise = nullptr;
 }
 
-inline void ModuleLoadRequest::AssertAllImportsReady() const {
+inline void ModuleLoadRequest::AssertAllImportsFinished() const {
 #ifdef DEBUG
   for (const auto& request : mImports) {
-    MOZ_ASSERT(request->IsReadyToRun());
+    MOZ_ASSERT(request->IsFinished());
   }
 #endif
 }

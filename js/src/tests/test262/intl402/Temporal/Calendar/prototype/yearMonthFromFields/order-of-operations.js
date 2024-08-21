@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -69,7 +69,7 @@ const arg2 = new Proxy(options, {
 
 const result = instance.yearMonthFromFields(arg1, arg2);
 TemporalHelpers.assertPlainYearMonth(result, 1, 1, "M01", "yearMonth result", "ce", 1);
-assert.sameValue(result.calendar, instance, "calendar result");
+assert.sameValue(result.getISOFields().calendar, "gregory", "calendar slot should store a string");
 assert.compareArray(actual, expected, "order of operations");
 
 reportCompare(0, 0);

@@ -1,4 +1,4 @@
-// |reftest| shell-option(--enable-array-from-async) skip-if(!Array.fromAsync||!xulRuntime.shell) async -- Array.fromAsync is not enabled unconditionally, requires shell-options
+// |reftest| async
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -26,7 +26,7 @@ asyncTest(async function () {
     "get items.length",
     "get items.length.valueOf",
     "call items.length.valueOf",
-    "get items.0",
-    "get items.1",
+    "get items[0]",
+    "get items[1]",
   ]);
 });

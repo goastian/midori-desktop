@@ -1,9 +1,7 @@
-// |jit-test| skip-if: !wasmGcEnabled()
+// |jit-test| skip-if: !wasmGcEnabled(); test-also=--gc-zeal=2
 
 // This tests a bunch of wasm struct stuff, but not i8 or i16 fields.
 // See structs2.js for i8/i16 field tests.
-
-var conf = getBuildConfiguration();
 
 var bin = wasmTextToBinary(
     `(module
@@ -67,7 +65,7 @@ var bin = wasmTextToBinary(
       (func (export "mk_int_node") (param i32) (param externref) (result eqref)
        (struct.new $int_node (local.get 0) (local.get 1)))
 
-      ;; Too big to fit in an InlineTypedObject.
+      ;; Too big to fit in an inline WasmGcObject.
 
       (type $bigger (struct
                      (field $a i32)
@@ -202,29 +200,23 @@ assertEq(ins.x1(12), 36)
 assertEq(ins.x2(8), Math.PI)
 
 var point = ins.mk_point();
-assertEq(0 in point, true);
-assertEq(1 in point, true);
-assertEq(2 in point, false);
-assertEq(point[0], 37);
-assertEq(point[1], 42);
+assertEq(wasmGcReadField(point, 0), 37);
+assertEq(wasmGcReadField(point, 1), 42);
 
 var int_node = ins.mk_int_node(78, point);
-assertEq(int_node[0], 78);
-assertEq(int_node[1], point);
+assertEq(wasmGcReadField(int_node, 0), 78);
+assertEq(wasmGcReadField(int_node, 1), point);
 
 var bigger = ins.mk_bigger();
 for ( let i=0; i < 52; i++ )
-    assertEq(bigger[i], i);
-
-assertEq(bigger[-1], undefined);
-assertEq(bigger[52], undefined);
+    assertEq(wasmGcReadField(bigger, i), i);
 
 var withfloats = ins.mk_withfloats(1/3, Math.PI, bigger, 5/6, 0x1337);
-assertEq(withfloats[0], Math.fround(1/3));
-assertEq(withfloats[1], Math.PI);
-assertEq(withfloats[2], bigger);
-assertEq(withfloats[3], Math.fround(5/6));
-assertEq(withfloats[4], 0x1337);
+assertEq(wasmGcReadField(withfloats, 0), Math.fround(1/3));
+assertEq(wasmGcReadField(withfloats, 1), Math.PI);
+assertEq(wasmGcReadField(withfloats, 2), bigger);
+assertEq(wasmGcReadField(withfloats, 3), Math.fround(5/6));
+assertEq(wasmGcReadField(withfloats, 4), 0x1337);
 
 // A simple stress test
 
@@ -241,11 +233,15 @@ var stress = wasmTextToBinary(
          (br $loop)))
        (local.get $list)))`);
 var stressIns = new WebAssembly.Instance(new WebAssembly.Module(stress)).exports;
-var stressLevel = conf.x64 && !conf.tsan && !conf.asan && !conf.valgrind ? 100000 : 1000;
+var stressLevel =
+    getBuildConfiguration("x64") && !getBuildConfiguration("tsan") &&
+            !getBuildConfiguration("asan") && !getBuildConfiguration("valgrind")
+        ? 100000
+        : 1000;
 var the_list = stressIns.iota1(stressLevel);
 for (let i=1; i <= stressLevel; i++) {
-    assertEq(the_list[0], i);
-    the_list = the_list[1];
+    assertEq(wasmGcReadField(the_list, 0), i);
+    the_list = wasmGcReadField(the_list, 1);
 }
 assertEq(the_list, null);
 
@@ -273,10 +269,10 @@ assertEq(the_list, null);
             (i64.const 0x3141592653589793)))
 
           (func (export "low") (param $p eqref) (result i32)
-           (i32.wrap/i64 (struct.get $big 1 (ref.cast (ref null $big) (local.get $p)))))
+           (i32.wrap_i64 (struct.get $big 1 (ref.cast (ref null $big) (local.get $p)))))
 
           (func (export "high") (param $p eqref) (result i32)
-           (i32.wrap/i64 (i64.shr_u
+           (i32.wrap_i64 (i64.shr_u
                           (struct.get $big 1 (ref.cast (ref null $big) (local.get $p)))
                           (i64.const 32))))
 
@@ -289,19 +285,19 @@ assertEq(the_list, null);
 
     let v = ins.mk();
     assertEq(typeof v, "object");
-    assertEq(v[0], 0x7aaaaaaa);
-    assertEq(v[1], 0x4201020337n);
+    assertEq(wasmGcReadField(v, 0), 0x7aaaaaaa);
+    assertEq(wasmGcReadField(v, 1), 0x4201020337n);
     assertEq(ins.low(v), 0x01020337);
     assertEq(ins.high(v), 0x42);
-    assertEq(v[2], 0x6bbbbbbb);
+    assertEq(wasmGcReadField(v, 2), 0x6bbbbbbb);
 
     ins.set(v);
-    assertEq(v[0], 0x7aaaaaaa);
-    assertEq(v[1], 0x3333333376544567n);
-    assertEq(v[2], 0x6bbbbbbb);
+    assertEq(wasmGcReadField(v, 0), 0x7aaaaaaa);
+    assertEq(wasmGcReadField(v, 1), 0x3333333376544567n);
+    assertEq(wasmGcReadField(v, 2), 0x6bbbbbbb);
 
     ins.set2(v);
-    assertEq(v[1], 0x3141592653589793n);
+    assertEq(wasmGcReadField(v, 1), 0x3141592653589793n);
     assertEq(ins.low(v), 0x53589793);
     assertEq(ins.high(v), 0x31415926)
 }
@@ -330,14 +326,14 @@ assertEq(the_list, null);
           (func (export "update1") (param $hi i32) (param $lo i32)
            (struct.set $big 1 (global.get $g)
             (i64.or
-             (i64.shl (i64.extend_u/i32 (local.get $hi)) (i64.const 32))
-             (i64.extend_u/i32 (local.get $lo)))))
+             (i64.shl (i64.extend_i32_u (local.get $hi)) (i64.const 32))
+             (i64.extend_i32_u (local.get $lo)))))
 
           (func (export "get1_low") (result i32)
-           (i32.wrap/i64 (struct.get $big 1 (global.get $g))))
+           (i32.wrap_i64 (struct.get $big 1 (global.get $g))))
 
           (func (export "get1_high") (result i32)
-           (i32.wrap/i64
+           (i32.wrap_i64
             (i64.shr_u (struct.get $big 1 (global.get $g)) (i64.const 32))))
 
           (func (export "update2") (param $x i32)
@@ -351,28 +347,28 @@ assertEq(the_list, null);
     let ins = wasmEvalText(txt).exports;
 
     let v = ins.make();
-    assertEq(v[0], 0x7aaaaaaa);
-    assertEq(v[1], 0x4201020337n);
-    assertEq(v[2], 0x6bbbbbbb);
+    assertEq(wasmGcReadField(v, 0), 0x7aaaaaaa);
+    assertEq(wasmGcReadField(v, 1), 0x4201020337n);
+    assertEq(wasmGcReadField(v, 2), 0x6bbbbbbb);
 
     ins.update0(0x45367101);
-    assertEq(v[0], 0x45367101);
+    assertEq(wasmGcReadField(v, 0), 0x45367101);
     assertEq(ins.get0(), 0x45367101);
-    assertEq(v[1], 0x4201020337n);
-    assertEq(v[2], 0x6bbbbbbb);
+    assertEq(wasmGcReadField(v, 1), 0x4201020337n);
+    assertEq(wasmGcReadField(v, 2), 0x6bbbbbbb);
 
     ins.update2(0x62345123);
-    assertEq(v[0], 0x45367101);
-    assertEq(v[1], 0x4201020337n);
+    assertEq(wasmGcReadField(v, 0), 0x45367101);
+    assertEq(wasmGcReadField(v, 1), 0x4201020337n);
     assertEq(ins.get2(), 0x62345123);
-    assertEq(v[2], 0x62345123);
+    assertEq(wasmGcReadField(v, 2), 0x62345123);
 
     ins.update1(0x77777777, 0x22222222);
-    assertEq(v[0], 0x45367101);
+    assertEq(wasmGcReadField(v, 0), 0x45367101);
     assertEq(ins.get1_low(), 0x22222222);
     assertEq(ins.get1_high(), 0x77777777);
-    assertEq(v[1], 0x7777777722222222n);
-    assertEq(v[2], 0x62345123);
+    assertEq(wasmGcReadField(v, 1), 0x7777777722222222n);
+    assertEq(wasmGcReadField(v, 2), 0x62345123);
 }
 
 
@@ -457,16 +453,6 @@ assertErrorMessage(() => ins.pop(),
     assertEq(ins.testf(10), 10);
     assertEq(ins.testg(10), 20);
 }
-
-// Test that field names must be unique in the module.
-
-assertErrorMessage(() => wasmTextToBinary(
-    `(module
-      (type $s (struct (field $x i32)))
-      (type $t (struct (field $x i32)))
-     )`),
-                  SyntaxError,
-                  /duplicate identifier for field/);
 
 // negative tests
 
@@ -600,12 +586,8 @@ WebAssembly.CompileError, /signature index references non-signature/);
           (func (export "make") (result eqref)
            (struct.new $s (i32.const 37) (i64.const 42))))`).exports;
     let v = ins.make();
-    assertErrorMessage(() => v[0] = 12,
-                       Error,
-                       /setting immutable field/);
-    assertErrorMessage(() => v[1] = 12,
-                       Error,
-                       /setting immutable field/);
+    assertErrorMessage(() => v[0] = 12, TypeError, /can't modify/);
+    assertErrorMessage(() => v[1] = 12, TypeError, /can't modify/);
 }
 
 // Function should not reference struct type: binary test
@@ -683,42 +665,38 @@ assertErrorMessage(() => new WebAssembly.Module(bad),
     let exports = wasmEvalText(txt).exports;
 }
 
-//////////////////////////////////////////////////////////////////////////////
-//
-// Checks for requests to create structs with more than MaxStructFields, where
-// MaxStructFields == 1000.
-
-function structNewOfManyFields(numFields) {
-    let defString = "(type $s (struct ";
-    for (i = 0; i < numFields; i++) {
-        defString += "(field i32) ";
-    }
-    defString += "))";
-
-    let insnString = "(struct.new $s ";
-    for (i = 0; i < numFields; i++) {
-        insnString += "(i32.const 1337) ";
-    }
-    insnString += ")";
-
-    return "(module " +
-           defString +
-           " (func (export \"create\") (result eqref) " +
-           insnString +
-           "))";
-}
-
+// Exercise stack maps and GC
 {
-    // 2000 fields is allowable
-    let exports = wasmEvalText(structNewOfManyFields(2000)).exports;
-    let s = exports.create();
-    assertEq(s, s);
-}
-{
-    // but 2001 is not
-    assertErrorMessage(() => wasmEvalText(structNewOfManyFields(2001)),
-                       WebAssembly.CompileError,
-                       /too many fields in struct/);
-}
+  // Zeal will cause us to allocate structs via instance call, requiring live registers
+  // to be spilled, and then GC values traced while on the stack.
+  gczeal(2, 1);
 
-// FIXME: also check struct.new_default, once it is available in both compilers.
+  {
+    const { test } = wasmEvalText(`(module
+      (type $s (struct (field i32)))
+      (func (export "test") (param i32) (result i32)
+        local.get 0
+        (struct.new $s (i32.const 234))
+        (struct.new $s (i32.const 345))
+        drop
+        drop
+      )
+    )`).exports;
+    assertEq(test(123), 123);
+  }
+  {
+    const { test } = wasmEvalText(`(module
+      (type $s (struct (field f32)))
+      (func (export "test") (param f32) (result f32)
+        local.get 0
+        (struct.new $s (f32.const 234))
+        (struct.new $s (f32.const 345))
+        drop
+        drop
+      )
+    )`).exports;
+    assertEq(test(123), 123);
+  }
+
+  gczeal(0);
+}

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -26,13 +26,16 @@ const expected = [
 ];
 const options = TemporalHelpers.propertyBagObserver(actual, { extra: 5 }, "options");
 
+let dateAddCalls = 0;
 class CustomCalendar extends Temporal.Calendar {
   constructor() {
     super("iso8601");
   }
   dateAdd(date, duration, options) {
     const result = super.dateAdd(date, duration, options);
-    options.overflow = 'meatloaf';
+    dateAddCalls++;
+    if (dateAddCalls == 2)
+      options.overflow = 'meatloaf';
     return result;
   }
   yearMonthFromFields(...args) {

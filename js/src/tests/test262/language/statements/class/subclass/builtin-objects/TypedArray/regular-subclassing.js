@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -14,19 +15,11 @@ info: |
   call to the TypedArray constructor to create and initialize the subclass
   instance with the internal state necessary to support the
   %TypedArray%.prototype built-in methods.
+includes: [testTypedArray.js]
+features: [TypedArray]
 ---*/
 
-[
-  Int8Array,
-  Uint8Array,
-  Uint8ClampedArray,
-  Int16Array,
-  Uint16Array,
-  Int32Array,
-  Uint32Array,
-  Float32Array,
-  Float64Array
-].forEach(function(Constructor) {
+testWithTypedArrayConstructors(function(Constructor) {
   class Typed extends Constructor {}
 
   var arr = new Typed(2);

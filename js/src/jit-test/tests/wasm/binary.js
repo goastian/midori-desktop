@@ -79,8 +79,8 @@ wasmEval(moduleWithSections([v2vSigSection]));
 wasmEval(moduleWithSections([sigSection([i2vSig])]));
 wasmEval(moduleWithSections([sigSection([v2vSig, i2vSig])]));
 
-assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([{args:[], ret:100}])])), CompileError, /bad type/);
-assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([{args:[100], ret:VoidCode}])])), CompileError, /bad type/);
+assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([{args:[], ret:33}])])), CompileError, /bad type/);
+assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([{args:[33], ret:VoidCode}])])), CompileError, /bad type/);
 
 assertThrowsInstanceOf(() => wasmEval(moduleWithSections([sigSection([]), declSection([0])])), CompileError, /signature index out of range/);
 assertThrowsInstanceOf(() => wasmEval(moduleWithSections([v2vSigSection, declSection([1])])), CompileError, /signature index out of range/);
@@ -108,10 +108,10 @@ wasmEval(moduleWithSections([tableSection(0)]));
 wasmEval(moduleWithSections([elemSection([])]));
 wasmEval(moduleWithSections([tableSection(0), elemSection([])]));
 wasmEval(moduleWithSections([tableSection(1), elemSection([{offset:1, elems:[]}])]));
-assertErrorMessage(() => wasmEval(moduleWithSections([tableSection(1), elemSection([{offset:0, elems:[0]}])])), CompileError, /table element out of range/);
+assertErrorMessage(() => wasmEval(moduleWithSections([tableSection(1), elemSection([{offset:0, elems:[0]}])])), CompileError, /element index out of range/);
 wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(1), elemSection([{offset:0, elems:[0]}]), bodySection([v2vBody])]));
 wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(2), elemSection([{offset:0, elems:[0,0]}]), bodySection([v2vBody])]));
-assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(2), elemSection([{offset:0, elems:[0,1]}]), bodySection([v2vBody])])), CompileError, /table element out of range/);
+assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(2), elemSection([{offset:0, elems:[0,1]}]), bodySection([v2vBody])])), CompileError, /element index out of range/);
 wasmEval(moduleWithSections([v2vSigSection, declSection([0,0,0]), tableSection(4), elemSection([{offset:0, elems:[0,1,0,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
 wasmEval(moduleWithSections([sigSection([v2vSig,i2vSig]), declSection([0,0,1]), tableSection(3), elemSection([{offset:0,elems:[0,1,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
 
@@ -119,7 +119,7 @@ wasmEval(moduleWithSections([tableSection0()]));
 
 wasmEval(moduleWithSections([memorySection(0)]));
 
-function invalidMemorySection2() {
+function memorySection2() {
     var body = [];
     body.push(...varU32(2));           // number of memories
     body.push(...varU32(0x0));
@@ -130,7 +130,11 @@ function invalidMemorySection2() {
 }
 
 wasmEval(moduleWithSections([memorySection0()]));
-assertErrorMessage(() => wasmEval(moduleWithSections([invalidMemorySection2()])), CompileError, /number of memories must be at most one/);
+if (wasmMultiMemoryEnabled()) {
+    wasmEval(moduleWithSections([memorySection2()]));
+} else {
+    assertErrorMessage(() => wasmEval(moduleWithSections([memorySection2()])), CompileError, /number of memories must be at most one/);
+}
 
 // Test early 'end'
 const bodyMismatch = /(function body length mismatch)|(operators remaining after end of function)/;
@@ -249,12 +253,16 @@ let reservedGc = {};
 if (wasmGcEnabled()) {
     reservedGc = {
       // Structure operations
-      0x07: true, 0x08: true, 0x03: true, 0x04: true, 0x05: true, 0x06: true,
+      0x00: true, 0x01: true, 0x02: true, 0x03: true, 0x04: true, 0x05: true,
       // Array operations
-      0x1b: true, 0x1a: true, 0x1c: true, 0x1d: true, 0x10: true, 0x13: true,
-      0x14: true, 0x15: true, 0x16: true, 0x17: true, 0x18: true,
+      0x06: true, 0x07: true, 0x08: true, 0x09: true, 0x0a: true, 0x0b: true,
+      0x0c: true, 0x0d: true, 0x0e: true, 0x0f: true, 0x10: true, 0x11: true,
+      0x12: true, 0x13: true,
       // Ref operations
-      0x44: true, 0x45: true, 0x46: true, 0x47: true,
+      0x14: true, 0x15: true, 0x16: true, 0x17: true, 0x18: true, 0x19: true,
+      0x1a: true, 0x1b: true,
+      // i31 operations
+      0x1c: true, 0x1d: true, 0x1e: true,
     };
 }
 for (let i = 0; i < 256; i++) {

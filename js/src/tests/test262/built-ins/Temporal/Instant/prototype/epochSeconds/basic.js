@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,7 +13,7 @@ assert.sameValue(afterEpoch.epochSeconds, 217175010, "epochSeconds post epoch");
 assert.sameValue(typeof afterEpoch.epochSeconds, "number", "epochSeconds value is a number");
 
 const beforeEpoch = new Temporal.Instant(-217175010_876_543_211n);
-assert.sameValue(beforeEpoch.epochSeconds, -217175010, "epochSeconds pre epoch");
+assert.sameValue(beforeEpoch.epochSeconds, -217175011, "epochSeconds pre epoch");
 assert.sameValue(typeof beforeEpoch.epochSeconds, "number", "epochSeconds value is a number");
 
 reportCompare(0, 0);

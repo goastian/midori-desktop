@@ -1,17 +1,5 @@
 // |jit-test| skip-if: !wasmGcEnabled()
 
-// Test the maximum depth limit
-{
-  const MaxDepth = 31;
-  let types = `(type (struct))\n`;
-  for (let depth = 1; depth <= MaxDepth + 1; depth++) {
-    types += `(type (sub ${depth - 1} (struct)))\n`;
-  }
-  wasmFailValidateText(`(module
-    ${types}
-  )`, /too deep/);
-}
-
 // Test all possible casting combinations of the following graph:
 //
 //  A1       A2
@@ -83,18 +71,18 @@ function testAllCasts(types) {
   for (let name in types) {
     let type = types[name];
     if (type.super === null) {
-      typeSection += `(type \$${name} (struct))\n`;
+      typeSection += `(type \$${name} (sub (struct)))\n`;
     } else {
       typeSection += `(type \$${name} (sub \$${type.super} (struct)))\n`;
     }
     funcSection += `
       (func (export "new${name}") (result externref)
         struct.new_default \$${name}
-        extern.externalize
+        extern.convert_any
       )
       (func (export "is${name}") (param externref) (result i32)
         local.get 0
-        extern.internalize
+        any.convert_extern
         ref.test (ref \$${name})
       )`;
   }
@@ -126,3 +114,72 @@ function testAllCasts(types) {
   }
 }
 testAllCasts(TYPES);
+
+// Test that combinations of ref.test and ref.cast compile correctly.
+// (These can be optimized together.)
+{
+  const { make, test1, test2, test3, test4 } = wasmEvalText(`(module
+    (type $a (array i32))
+    (func (export "make") (param i32) (result anyref)
+      local.get 0
+      local.get 0
+      array.new_fixed $a 2
+    )
+    (func (export "test1") (param anyref) (result i32)
+      (if (ref.test (ref $a) (local.get 0))
+        (then
+          (ref.cast (ref $a) (local.get 0))
+          (array.get $a (i32.const 0))
+          return
+        )
+      )
+      i32.const -1
+    )
+    (func (export "test2") (param anyref) (result i32)
+      (if (ref.test (ref $a) (local.get 0))
+        (then)
+        (else
+          (ref.cast (ref $a) (local.get 0))
+          (array.get $a (i32.const 0))
+          return
+        )
+      )
+      i32.const -1
+    )
+    (func (export "test3") (param anyref) (result i32)
+      (if (ref.test (ref $a) (local.get 0))
+        (then
+          (if (ref.test (ref $a) (local.get 0))
+            (then)
+            (else
+              (ref.cast (ref $a) (local.get 0))
+              (array.get $a (i32.const 0))
+              return
+            )
+          )
+        )
+      )
+      i32.const -1
+    )
+    (func (export "test4") (param anyref) (result i32)
+      (if (ref.test (ref $a) (local.get 0))
+        (then
+          (if (ref.test (ref $a) (local.get 0))
+            (then
+              local.get 0
+              ref.cast (ref $a)
+              ref.cast (ref $a)
+              (array.get $a (i32.const 0))
+              return
+            )
+          )
+        )
+      )
+      i32.const -1
+    )
+  )`).exports;
+  assertEq(test1(make(99)), 99);
+  assertEq(test2(make(99)), -1);
+  assertEq(test3(make(99)), -1);
+  assertEq(test4(make(99)), 99);
+}

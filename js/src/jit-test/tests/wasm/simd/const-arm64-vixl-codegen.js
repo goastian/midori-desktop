@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !wasmSimdEnabled() || !hasDisassembler() || wasmCompileMode() != "baseline" || !getBuildConfiguration().arm64
+// |jit-test| skip-if: !wasmSimdEnabled() || !hasDisassembler() || wasmCompileMode() != "baseline" || !getBuildConfiguration("arm64")
 
 // Test that the vixl logic for v128 constant loads is at least somewhat
 // reasonable.
@@ -10,7 +10,7 @@ ${lead}str     x23, \\[sp, #..\\]`;
 
 var suffix =
 `${lead}b       #\\+0x8 \\(addr 0x.*\\)
-${lead}brk     #0x0`;
+${lead}brk     #0xf000`;
 
 for ( let [bits, expected, values] of [
     // If high == low and the byte is 0 or ff then a single movi is sufficient.

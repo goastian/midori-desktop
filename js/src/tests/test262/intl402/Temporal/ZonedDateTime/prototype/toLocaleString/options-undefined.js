@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,8 +9,17 @@ features: [BigInt, Temporal]
 ---*/
 
 const datetime = new Temporal.ZonedDateTime(957270896_987_650_000n, "UTC");
-const defaultFormatter = new Intl.DateTimeFormat('en', Object.create(null));
-const expected = defaultFormatter.format(datetime);
+const defaultFormatter = new Intl.DateTimeFormat('en', {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+  timeZoneName: "short",
+  timeZone: "UTC",
+});
+const expected = defaultFormatter.format(datetime.toInstant());
 
 const actualExplicit = datetime.toLocaleString('en', undefined);
 assert.sameValue(actualExplicit, expected, "default locale is determined by Intl.DateTimeFormat");

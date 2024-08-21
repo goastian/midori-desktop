@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -28,9 +28,9 @@ zdt = Temporal.ZonedDateTime.from("-001000-10-29T10:46:38.271986102+00:00[UTC]")
 assert.sameValue(`${ zdt.toInstant() }`, "-001000-10-29T10:46:38.271986102Z");
 
 // year 0 leap day
-var zdt = Temporal.ZonedDateTime.from("0000-02-29T00:00-00:01:15[-00:01:15]");
-assert.sameValue(`${ zdt.toInstant() }`, "0000-02-29T00:01:15Z");
-zdt = Temporal.ZonedDateTime.from("+000000-02-29T00:00-00:01:15[-00:01:15]");
-assert.sameValue(`${ zdt.toInstant() }`, "0000-02-29T00:01:15Z");
+var zdt = Temporal.ZonedDateTime.from("0000-02-29T00:00-00:01[-00:01]");
+assert.sameValue(`${ zdt.toInstant() }`, "0000-02-29T00:01:00Z");
+zdt = Temporal.ZonedDateTime.from("+000000-02-29T00:00-00:01[-00:01]");
+assert.sameValue(`${ zdt.toInstant() }`, "0000-02-29T00:01:00Z");
 
 reportCompare(0, 0);

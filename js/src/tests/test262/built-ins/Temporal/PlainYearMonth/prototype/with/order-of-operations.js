@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,8 +13,17 @@ const expected = [
   // RejectObjectWithCalendarOrTimeZone
   "get fields.calendar",
   "get fields.timeZone",
-  // CalendarFields
+  // CopyDataProperties
+  "ownKeys options",
+  "getOwnPropertyDescriptor options.overflow",
+  "get options.overflow",
+  "getOwnPropertyDescriptor options.extra",
+  "get options.extra",
+  // lookup
   "get this.calendar.fields",
+  "get this.calendar.mergeFields",
+  "get this.calendar.yearMonthFromFields",
+  // CalendarFields
   "call this.calendar.fields",
   // PrepareTemporalFields on receiver
   "get this.calendar.month",
@@ -34,13 +43,10 @@ const expected = [
   "get fields.year.valueOf",
   "call fields.year.valueOf",
   // CalendarMergeFields
-  "get this.calendar.mergeFields",
   "call this.calendar.mergeFields",
   // CalendarYearMonthFromFields
-  "get this.calendar.yearMonthFromFields",
   "call this.calendar.yearMonthFromFields",
   // inside Calendar.p.yearMonthFromFields
-  "get options.overflow",
   "get options.overflow.toString",
   "call options.overflow.toString",
 ];
@@ -57,7 +63,10 @@ const fields = TemporalHelpers.propertyBagObserver(actual, {
   monthCode: "M01",
 }, "fields");
 
-const options = TemporalHelpers.propertyBagObserver(actual, { overflow: "constrain" }, "options");
+const options = TemporalHelpers.propertyBagObserver(actual, {
+  overflow: "constrain",
+  extra: "property",
+}, "options");
 
 instance.with(fields, options);
 assert.compareArray(actual, expected, "order of operations");

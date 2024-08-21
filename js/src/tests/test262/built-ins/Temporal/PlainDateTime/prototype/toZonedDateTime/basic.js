@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,7 +12,7 @@ const dt = new Temporal.PlainDateTime(2020, 1, 1, 0, 0);
 const zdt = dt.toZonedDateTime("UTC");
 
 assert.sameValue(zdt.epochNanoseconds, 1577836800000000000n, "nanoseconds");
-assert.sameValue(zdt.calendar.toString(), "iso8601", "calendar");
-assert.sameValue(zdt.timeZone.toString(), "UTC", "timezone");
+assert.sameValue(zdt.calendarId, "iso8601", "calendar");
+assert.sameValue(zdt.timeZoneId, "UTC", "timezone");
 
 reportCompare(0, 0);

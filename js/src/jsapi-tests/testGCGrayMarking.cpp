@@ -267,7 +267,7 @@ bool TestJSWeakMapWithGrayUnmarking(MarkKeyOrDelegate markKey,
   // orderings.
   unsigned markOrderings = weakMapMarkColor == keyOrDelegateMarkColor ? 2 : 1;
 
-  JS_SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
+  JS::SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
 
   for (unsigned markOrder = 0; markOrder < markOrderings; markOrder++) {
     CHECK(CreateJSWeakMapObjects(&weakMap, &key, &value));
@@ -305,7 +305,7 @@ bool TestJSWeakMapWithGrayUnmarking(MarkKeyOrDelegate markKey,
     CHECK(value->color() == expectedValueColor);
   }
 
-  JS_UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
+  JS::UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
 
   return true;
 }
@@ -329,8 +329,9 @@ bool CreateJSWeakMapObjects(JSObject** weakMapOut, JSObject** keyOut,
   RootedObject weakMap(cx, JS::NewWeakMapObject(cx));
   CHECK(weakMap);
 
+  JS::RootedValue keyValue(cx, ObjectValue(*key));
   JS::RootedValue valueValue(cx, ObjectValue(*value));
-  CHECK(SetWeakMapEntry(cx, weakMap, key, valueValue));
+  CHECK(SetWeakMapEntry(cx, weakMap, keyValue, valueValue));
 
   *weakMapOut = weakMap;
   *keyOut = key;
@@ -396,7 +397,7 @@ bool TestInternalWeakMapWithGrayUnmarking(CellColor keyMarkColor,
   // orderings.
   unsigned markOrderings = keyMarkColor == delegateMarkColor ? 2 : 1;
 
-  JS_SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
+  JS::SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
 
   for (unsigned markOrder = 0; markOrder < markOrderings; markOrder++) {
     CHECK(CreateInternalWeakMapObjects(&weakMap, &key, &value));
@@ -434,7 +435,7 @@ bool TestInternalWeakMapWithGrayUnmarking(CellColor keyMarkColor,
     CHECK(value->color() == expectedColor);
   }
 
-  JS_UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
+  JS::UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
 
   return true;
 }

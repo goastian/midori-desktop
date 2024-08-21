@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,12 +11,8 @@ features: [Temporal]
 
 const calendar = "IsO8601";
 
-let arg = { monthCode: "M11", day: 18, calendar };
-const result1 = Temporal.PlainMonthDay.from(arg);
-TemporalHelpers.assertPlainMonthDay(result1, "M11", 18, "Calendar is case-insensitive");
-
-arg = { monthCode: "M11", day: 18, calendar: { calendar } };
-const result2 = Temporal.PlainMonthDay.from(arg);
-TemporalHelpers.assertPlainMonthDay(result2, "M11", 18, "Calendar is case-insensitive (nested property)");
+const arg = { monthCode: "M11", day: 18, calendar };
+const result = Temporal.PlainMonthDay.from(arg);
+TemporalHelpers.assertPlainMonthDay(result, "M11", 18, "Calendar is case-insensitive");
 
 reportCompare(0, 0);

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,9 +13,6 @@ const expected = [
   "get options.overflow",
   "get options.overflow.toString",
   "call options.overflow.toString",
-  "get fields.calendar",
-  "get fields.calendar.toString",
-  "call fields.calendar.toString",
   // ToTemporalTimeRecord
   "get fields.hour",
   "get fields.hour.valueOf",

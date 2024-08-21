@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,6 +17,5 @@ function test(timeZoneIdentifier, expectedOffsetString, description) {
 test("UTC", "+00:00", "offset of UTC is +00:00");
 test("+01:00", "+01:00", "positive offset");
 test("-05:00", "-05:00", "negative offset");
-test("+00:44:59.123456789", "+00:44:59.123456789", "sub-minute offset is not rounded");
 
 reportCompare(0, 0);

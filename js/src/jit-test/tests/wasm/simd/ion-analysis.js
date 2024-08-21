@@ -11,7 +11,7 @@
 // We test that the expected transformation applies, and that the machine code
 // generates the expected result.
 
-var isArm64 = getBuildConfiguration().arm64;
+var isArm64 = getBuildConfiguration("arm64");
 
 // 32-bit permutation that is not a rotation.
 let perm32x4_pattern = [4, 5, 6, 7, 12, 13, 14, 15, 8, 9, 10, 11, 0, 1, 2, 3];
@@ -757,6 +757,60 @@ for ( let lanes of ['i8x16', 'i16x8', 'i32x4', 'i64x2'] ) {
     }
 }
 
+// Zero extending int values.
+{
+  const zeroExtTypes = [
+    {ty: '8x16', size: 1, ch: 'b'},
+    {ty: '16x8', size: 2, ch: 'w'},
+    {ty: '32x4', size: 4, ch: 'd'},
+    {ty: '64x2', size: 8, ch: 'q'}];
+  function generateZeroExtend (src, dest, inv) {
+    const ar = new Array(16);
+    for (let i = 0, j = 0; i < ar.length; i++) {
+      if ((i % dest) >= src) {
+        ar[i] = (inv ? 0 : 16) + (i % 16);
+        continue;
+      }
+      ar[i] = j++ + (inv ? 16 : 0);
+    }
+    return ar.join(' ');
+  }
+  for (let i = 0; i < 3; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      const result = `shuffle -> zero-extend ${zeroExtTypes[i].ty} to ${zeroExtTypes[j].ty}`;
+      const pat = generateZeroExtend(zeroExtTypes[i].size, zeroExtTypes[j].size, false);
+      wasmCompile(`(module (func (param v128) (result v128) (i8x16.shuffle ${pat} (local.get 0) (v128.const i32x4 0 0 0 0))))`);
+      assertEq(wasmSimdAnalysis(), result);
+
+      const patInv = generateZeroExtend(zeroExtTypes[i].size, zeroExtTypes[j].size, true);
+      wasmCompile(`(module (func (param v128) (result v128) (i8x16.shuffle ${patInv} (v128.const i32x4 0 0 0 0) (local.get 0))))`);
+      assertEq(wasmSimdAnalysis(), result);
+
+      // Test in wasm by "hidding" zero constant as an argument.
+      const ins = wasmEvalText(`(module
+        (func $t (param v128) (result v128) (i8x16.shuffle ${pat} (local.get 0) (v128.const i32x4 0 0 0 0)))
+        (func $check (param v128) (param v128) (result v128) (i8x16.shuffle ${pat} (local.get 0) (local.get 1)))
+        (func (export "test") (result i32)
+          v128.const i32x4 0xff01ee02 0xdd03cc04 0xaa059906 0x88776655
+          call $t
+          v128.const i32x4 0xff01ee02 0xdd03cc04 0xaa059906 0x88776655
+          v128.const i32x4 0 0 0 0
+          call $check
+          i8x16.eq
+          i8x16.bitmask
+        ))`);
+      assertEq(ins.exports.test(), 0xffff);
+    }
+  }
+
+  // Some patterns that look like zero extend.
+  for (let pat of ["0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30"]) {
+    wasmCompile(`(module (func (param v128) (result v128) (i8x16.shuffle ${pat} (local.get 0) (v128.const i32x4 0 0 0 0))))`);
+    const res = wasmSimdAnalysis();
+    assertEq(!res.includes("shuffle -> zero-extend"), true);
+  }
+}
+
 // Constant folding scalar->simd.  There are functional tests for all these in
 // ad-hack.js so here we only check that the transformation is triggered.
 
@@ -800,8 +854,8 @@ for ( let [ty128,size] of [['i8x16',1], ['i16x8',2], ['i32x4',4]] ) {
                    (memory (export "mem") 1 1)
                    (func $f (param v128) (result i32)
                        (if (result i32) (${operation} (local.get 0))
-                           (i32.const 42)
-                           (i32.const 37)))
+                           (then (i32.const 42))
+                           (else (i32.const 37))))
                    (func (export "run") (result i32)
                      (call $f (v128.load (i32.const 16)))))`);
         assertEq(wasmSimdAnalysis(), folded ? "simd128-to-scalar-and-branch -> folded" : "none");
@@ -812,8 +866,8 @@ for ( let [ty128,size] of [['i8x16',1], ['i16x8',2], ['i32x4',4]] ) {
                    (memory (export "mem") 1 1)
                    (func $f (param v128) (result i32)
                        (if (result i32) (i32.eqz (${operation} (local.get 0)))
-                           (i32.const 42)
-                           (i32.const 37)))
+                           (then (i32.const 42))
+                           (else (i32.const 37))))
                    (func (export "run") (result i32)
                      (call $f (v128.load (i32.const 16)))))`);
         assertEq(wasmSimdAnalysis(), folded ? "simd128-to-scalar-and-branch -> folded" : "none");

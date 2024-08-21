@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -30,14 +30,8 @@ const expected = [
   "call options.timeZoneName.toString",
   "get this.timeZone.getOffsetNanosecondsFor",
   "call this.timeZone.getOffsetNanosecondsFor",
-  "get this.timeZone.getOffsetNanosecondsFor",
-  "call this.timeZone.getOffsetNanosecondsFor",
-  "get this.timeZone[Symbol.toPrimitive]",
-  "get this.timeZone.toString",
-  "call this.timeZone.toString",
-  "get this.calendar[Symbol.toPrimitive]",
-  "get this.calendar.toString",
-  "call this.calendar.toString",
+  "get this.timeZone.id",
+  "get this.calendar.id",
 ];
 const actual = [];
 
@@ -80,14 +74,8 @@ const expectedForFractionalSecondDigits = [
   "call options.timeZoneName.toString",
   "get this.timeZone.getOffsetNanosecondsFor",
   "call this.timeZone.getOffsetNanosecondsFor",
-  "get this.timeZone.getOffsetNanosecondsFor",
-  "call this.timeZone.getOffsetNanosecondsFor",
-  "get this.timeZone[Symbol.toPrimitive]",
-  "get this.timeZone.toString",
-  "call this.timeZone.toString",
-  "get this.calendar[Symbol.toPrimitive]",
-  "get this.calendar.toString",
-  "call this.calendar.toString",
+  "get this.timeZone.id",
+  "get this.calendar.id",
 ];
 
 instance.toString(

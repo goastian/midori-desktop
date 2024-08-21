@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -76,7 +77,7 @@ features: [align-detached-buffer-semantics-with-web-reality, TypedArray]
 ---*/
 
 testWithTypedArrayConstructors(function(FA) {
-  var precision = FA === Float32Array ? "single" : "double";
+  var precision = floatTypedArrayConstructorPrecision(FA);
   var samples = new FA(1);
   var controls, idx, aNaN;
 
@@ -92,16 +93,16 @@ testWithTypedArrayConstructors(function(FA) {
 
       assert(
         samples[i] !== samples[i],
-        'The result of `(samples[i] !== samples[i])` is true'
+        `The result of \`(samples[i] !== samples[i])\` is true (${precision} precision)`
       );
 
       assert(
         controls[i] !== controls[i],
-        'The result of `(controls[i] !== controls[i])` is true'
+        `The result of \`(controls[i] !== controls[i])\` is true (${precision} precision)`
       );
     }
   }
-}, [Float32Array, Float64Array]);
+}, floatArrayConstructors);
 
 
 reportCompare(0, 0);

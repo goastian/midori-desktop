@@ -1,4 +1,4 @@
-// |reftest| skip -- decorators is not supported
+// |reftest| skip-if(!(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('decorators'))) -- decorators is not enabled unconditionally
 // This file was procedurally generated from the following sources:
 // - src/decorator/decorator-call-expr-identifier-reference-yield.case
 // - src/decorator/syntax/valid/cls-expr-decorators-valid-syntax.template
@@ -27,8 +27,8 @@ info: |
 
     DecoratorMemberExpression[Yield, Await] :
       IdentifierReference[?Yield, ?Await]
-      PrivateIdentifier
       DecoratorMemberExpression[?Yield, ?Await] . IdentifierName
+      DecoratorMemberExpression[?Yield, ?Await] . PrivateIdentifier
 
     IdentifierReference[Yield, Await] :
       [~Yield] yield

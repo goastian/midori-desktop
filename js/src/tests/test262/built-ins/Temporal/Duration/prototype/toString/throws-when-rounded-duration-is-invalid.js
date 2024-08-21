@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -37,11 +37,11 @@ features: [Temporal]
 ---*/
 
 var duration = Temporal.Duration.from({
-  seconds: Number.MAX_VALUE,
-  milliseconds: Number.MAX_VALUE,
+  seconds: Number.MAX_SAFE_INTEGER,
+  milliseconds: 999,
 });
 
-var options = {smallestUnit: "seconds"};
+var options = {smallestUnit: "seconds", roundingMode: "ceil"};
 
 assert.throws(RangeError, () => duration.toString(options));
 

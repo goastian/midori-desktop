@@ -66,14 +66,15 @@ BEGIN_TEST(testArrayBuffer_bug720949_steal) {
     CHECK(v.isInt32(MAGIC_VALUE_2));
 
     // Steal the contents
-    void* contents = JS::StealArrayBufferContents(cx, obj);
+    mozilla::UniquePtr<void, JS::FreePolicy> contents{
+        JS::StealArrayBufferContents(cx, obj)};
     CHECK(contents != nullptr);
 
     CHECK(JS::IsDetachedArrayBufferObject(obj));
 
     // Transfer to a new ArrayBuffer
-    JS::RootedObject dst(cx,
-                         JS::NewArrayBufferWithContents(cx, size, contents));
+    JS::RootedObject dst(
+        cx, JS::NewArrayBufferWithContents(cx, size, std::move(contents)));
     CHECK(JS::IsArrayBufferObject(dst));
     {
       JS::AutoCheckCannotGC nogc;
@@ -171,11 +172,11 @@ END_TEST(testArrayBuffer_bug720949_viewList)
 
 BEGIN_TEST(testArrayBuffer_customFreeFunc) {
   ExternalData data("One two three four");
+  auto dataPointer = data.pointer();
 
   // The buffer takes ownership of the data.
   JS::RootedObject buffer(
-      cx, JS::NewExternalArrayBuffer(cx, data.len(), data.contents(),
-                                     &ExternalData::freeCallback, &data));
+      cx, JS::NewExternalArrayBuffer(cx, data.len(), std::move(dataPointer)));
   CHECK(buffer);
   CHECK(!data.wasFreed());
 
@@ -199,9 +200,8 @@ END_TEST(testArrayBuffer_customFreeFunc)
 BEGIN_TEST(testArrayBuffer_staticContents) {
   ExternalData data("One two three four");
 
-  // When not passing a free function, the buffer doesn't own the data.
-  JS::RootedObject buffer(
-      cx, JS::NewExternalArrayBuffer(cx, data.len(), data.contents(), nullptr));
+  JS::RootedObject buffer(cx, JS::NewArrayBufferWithUserOwnedContents(
+                                  cx, data.len(), data.contents()));
   CHECK(buffer);
   CHECK(!data.wasFreed());
 
@@ -226,9 +226,9 @@ END_TEST(testArrayBuffer_staticContents)
 BEGIN_TEST(testArrayBuffer_stealDetachExternal) {
   static const char dataBytes[] = "One two three four";
   ExternalData data(dataBytes);
+  auto dataPointer = data.pointer();
   JS::RootedObject buffer(
-      cx, JS::NewExternalArrayBuffer(cx, data.len(), data.contents(),
-                                     &ExternalData::freeCallback, &data));
+      cx, JS::NewExternalArrayBuffer(cx, data.len(), std::move(dataPointer)));
   CHECK(buffer);
   CHECK(!data.wasFreed());
 
@@ -260,9 +260,9 @@ BEGIN_TEST(testArrayBuffer_serializeExternal) {
   }
 
   ExternalData data("One two three four");
+  auto dataPointer = data.pointer();
   JS::RootedObject externalBuffer(
-      cx, JS::NewExternalArrayBuffer(cx, data.len(), data.contents(),
-                                     &ExternalData::freeCallback, &data));
+      cx, JS::NewExternalArrayBuffer(cx, data.len(), std::move(dataPointer)));
   CHECK(externalBuffer);
   CHECK(!data.wasFreed());
 
@@ -308,14 +308,14 @@ END_TEST(testArrayBuffer_serializeExternal)
 
 BEGIN_TEST(testArrayBuffer_copyData) {
   ExternalData data1("One two three four");
-  JS::RootedObject buffer1(cx, JS::NewExternalArrayBuffer(
-                                   cx, data1.len(), data1.contents(), nullptr));
+  JS::RootedObject buffer1(cx, JS::NewArrayBufferWithUserOwnedContents(
+                                   cx, data1.len(), data1.contents()));
 
   CHECK(buffer1);
 
   ExternalData data2("Six");
-  JS::RootedObject buffer2(cx, JS::NewExternalArrayBuffer(
-                                   cx, data2.len(), data2.contents(), nullptr));
+  JS::RootedObject buffer2(cx, JS::NewArrayBufferWithUserOwnedContents(
+                                   cx, data2.len(), data2.contents()));
 
   CHECK(buffer2);
 
@@ -367,15 +367,15 @@ BEGIN_TEST(testArrayBuffer_copyDataAcrossGlobals) {
   JS::RootedObject buffer1(cx);
   {
     js::AutoRealm realm(cx, otherGlobal);
-    buffer1 =
-        JS::NewExternalArrayBuffer(cx, data1.len(), data1.contents(), nullptr);
+    buffer1 = JS::NewArrayBufferWithUserOwnedContents(cx, data1.len(),
+                                                      data1.contents());
   }
   CHECK(buffer1);
   CHECK(JS_WrapObject(cx, &buffer1));
 
   ExternalData data2("Six");
-  JS::RootedObject buffer2(cx, JS::NewExternalArrayBuffer(
-                                   cx, data2.len(), data2.contents(), nullptr));
+  JS::RootedObject buffer2(cx, JS::NewArrayBufferWithUserOwnedContents(
+                                   cx, data2.len(), data2.contents()));
 
   CHECK(buffer2);
 
@@ -424,8 +424,8 @@ END_TEST(testArrayBuffer_copyDataAcrossGlobals)
 
 BEGIN_TEST(testArrayBuffer_ArrayBufferClone) {
   ExternalData data("One two three four");
-  JS::RootedObject externalBuffer(
-      cx, JS::NewExternalArrayBuffer(cx, data.len(), data.contents(), nullptr));
+  JS::RootedObject externalBuffer(cx, JS::NewArrayBufferWithUserOwnedContents(
+                                          cx, data.len(), data.contents()));
 
   CHECK(externalBuffer);
 

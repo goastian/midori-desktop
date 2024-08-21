@@ -162,12 +162,12 @@ If the referent is an error created with an engine internal message template
 this is a string which is the name of the template; `undefined` otherwise.
 
 ### `errorLineNumber`
-If the referent is an Error object, this is the line number at which the
-referent was created; `undefined`  otherwise.
+If the referent is an Error object, this is the 1-origin line number at which
+the referent was created; `undefined`  otherwise.
 
 ### `errorColumnNumber`
-If the referent is an Error object, this is the column number at which the
-referent was created; `undefined`  otherwise.
+If the referent is an Error object, this is the 1-origin column number in
+UTF-16 code units at which the referent was created; `undefined`  otherwise.
 
 ### `isBoundFunction`
 If the referent is a debuggee function, returns `true` if the referent is a
@@ -465,16 +465,18 @@ referent as viewed from a particular compartment. Given a
 `Debugger.Object` instance that presents <i>o</i> as it would be seen
 by code in <i>d</i>'s compartment.
 
-### `makeDebuggeeNativeFunction(value)`
-If <i>value</i> is a native function in the debugger's compartment, create
-an equivalent function for the same native in the debuggee's realm, and
-return a `Debugger.Object` instance for the new function.  The new function
-can be accessed by code in the debuggee without going through a cross
-compartment wrapper.
-
 ### `isSameNative(value)`
 If <i>value</i> is a native function in the debugger's compartment, return
 whether the referent is a native function for the same C++ native.
+
+### `isSameNativeWithJitInfo(value)`
+If <i>value</i> is a native function in the debugger's compartment, return
+whether the referent is a native function for the same C++ native with the
+same JSJitInfo pointer value.
+
+This can be used to distinguish functions with shared native function
+implementation with different JSJitInfo pointer to define the underlying
+functionality.
 
 ### `isNativeGetterWithJitInfo()`
 Return whether the referent is a native getter function with JSJitInfo.
@@ -544,13 +546,28 @@ on objects associated with that debugger will be called during the evaluation.
 ### `executeInGlobalWithBindings(code, bindings, [options])`
 Like `executeInGlobal`, but evaluate <i>code</i> using the referent as the
 variable object, but with a lexical environment extended with bindings
-from the object <i>bindings</i>. For each own enumerable property of
-<i>bindings</i> named <i>name</i> whose value is <i>value</i>, include a
-variable in the lexical environment in which <i>code</i> is evaluated
-named <i>name</i>, whose value is <i>value</i>. Each <i>value</i> must
-be a debuggee value. (This is not like a `with` statement: <i>code</i>
-may access, assign to, and delete the introduced bindings without having
-any effect on the <i>bindings</i> object.)
+from the object <i>bindings</i>.
+
+An extra environment is created with bindings specified by <i>bindings</i>.
+The environment contains bindings corresponding to each own enumerable property
+of <i>bindings</i>, where the property name <i>name</i> as binding name,
+and the property value <i>value</i> as binding's initial value.
+
+If `options.useInnerBindings` is not specified or is specified as `false`,
+it emulates where the bindings environment is placed outside of global,
+which means, if the binding conflicts with any global variable declared in
+the <i>code</i>, or any existing global variable, the binding is ignored.
+
+If `options.useInnerBindings` is speified as `true`, it directly performs as
+the bindings environment is placed inside the global, and the provided bindings
+shadow the global variables.
+
+Each <i>value</i> must be a debuggee value.
+
+This is not like a `with` statement: <i>code</i> may access, assign to, and
+delete the introduced bindings without having any effect on the passed
+<i>bindings</i> object, because the properties are copied to a new object for
+each invocation.
 
 This method allows debugger code to introduce temporary bindings that
 are visible to the given debuggee code and which refer to debugger-held

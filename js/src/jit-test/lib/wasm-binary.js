@@ -44,10 +44,18 @@ const F64Code          = 0x7c;
 const V128Code         = 0x7b;
 const AnyFuncCode      = 0x70;
 const ExternRefCode    = 0x6f;
+const AnyRefCode       = 0x6e;
 const EqRefCode        = 0x6d;
-const OptRefCode       = 0x6c;
+const OptRefCode       = 0x63; // (ref null $t), needs heap type immediate
+const RefCode          = 0x64; // (ref $t), needs heap type immediate
 const FuncCode         = 0x60;
+const StructCode       = 0x5f;
+const ArrayCode        = 0x5e;
 const VoidCode         = 0x40;
+const BadType          = 0x79; // reserved for testing
+const RecGroupCode     = 0x4e;
+const SubFinalTypeCode = 0x4f;
+const SubNoFinalTypeCode = 0x50;
 
 // Opcodes
 const UnreachableCode  = 0x00
@@ -60,6 +68,9 @@ const EndCode          = 0x0b;
 const ReturnCode       = 0x0f;
 const CallCode         = 0x10;
 const CallIndirectCode = 0x11;
+const ReturnCallCode   = 0x12;
+const ReturnCallIndirectCode = 0x13;
+const ReturnCallRefCode      = 0x15;
 const DelegateCode     = 0x18;
 const DropCode         = 0x1a;
 const SelectCode       = 0x1b;
@@ -116,21 +127,6 @@ const RefFuncCode      = 0xd2;
 // SIMD opcodes
 const V128LoadCode = 0x00;
 const V128StoreCode = 0x0b;
-const I32x4DotSI16x8Code = 0xba;
-const F32x4CeilCode = 0xd8;
-const F32x4FloorCode = 0xd9;
-const F32x4TruncCode = 0xda;
-const F32x4NearestCode = 0xdb;
-const F64x2CeilCode = 0xdc;
-const F64x2FloorCode = 0xdd;
-const F64x2TruncCode = 0xde;
-const F64x2NearestCode = 0xdf;
-const F32x4PMinCode = 0xea;
-const F32x4PMaxCode = 0xeb;
-const F64x2PMinCode = 0xf6;
-const F64x2PMaxCode = 0xf7;
-const V128Load32ZeroCode = 0xfc;
-const V128Load64ZeroCode = 0xfd;
 
 // Relaxed SIMD opcodes.
 const I8x16RelaxedSwizzleCode = 0x100;
@@ -138,10 +134,10 @@ const I32x4RelaxedTruncSSatF32x4Code = 0x101;
 const I32x4RelaxedTruncUSatF32x4Code = 0x102;
 const I32x4RelaxedTruncSatF64x2SZeroCode = 0x103;
 const I32x4RelaxedTruncSatF64x2UZeroCode = 0x104;
-const F32x4RelaxedFmaCode = 0x105;
-const F32x4RelaxedFnmaCode = 0x106;
-const F64x2RelaxedFmaCode = 0x107;
-const F64x2RelaxedFnmaCode = 0x108;
+const F32x4RelaxedMaddCode = 0x105;
+const F32x4RelaxedNmaddCode = 0x106;
+const F64x2RelaxedMaddCode = 0x107;
+const F64x2RelaxedNmaddCode = 0x108;
 const I8x16RelaxedLaneSelectCode = 0x109;
 const I16x8RelaxedLaneSelectCode = 0x10a;
 const I32x4RelaxedLaneSelectCode = 0x10b;
@@ -150,9 +146,9 @@ const F32x4RelaxedMinCode = 0x10d;
 const F32x4RelaxedMaxCode = 0x10e;
 const F64x2RelaxedMinCode = 0x10f;
 const F64x2RelaxedMaxCode = 0x110;
-const I16x8RelaxedQ15MulrS = 0x111;
-const I16x8DotI8x16I7x16S = 0x112;
-const I32x4DotI8x16I7x16AddS = 0x113;
+const I16x8RelaxedQ15MulrSCode = 0x111;
+const I16x8DotI8x16I7x16SCode = 0x112;
+const I32x4DotI8x16I7x16AddSCode = 0x113;
 
 const FirstInvalidOpcode = 0xc5;
 const LastInvalidOpcode = 0xfa;
@@ -167,12 +163,17 @@ const MozPrefix = 0xff;
 
 const definedOpcodes =
     [0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
-     ...(wasmExceptionsEnabled() ? [0x06, 0x07, 0x08, 0x09] : []),
+     0x06, 0x07, 0x08, 0x09,
+     ...(wasmExnRefEnabled() ? [0x0a] : []),
      0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
      0x10, 0x11,
-     ...(wasmFunctionReferencesEnabled() ? [0x14] : []),
-     ...(wasmExceptionsEnabled() ? [0x18, 0x19] : []),
+     ...(wasmTailCallsEnabled() ? [0x12, 0x13] : []),
+     ...(wasmGcEnabled() ? [0x14] : []),
+     ...(wasmTailCallsEnabled() &&
+         wasmGcEnabled() ? [0x15] : []),
+     0x18, 0x19,
      0x1a, 0x1b, 0x1c,
+     ...(wasmExnRefEnabled() ? [0x1f] : []),
      0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26,
      0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
      0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
@@ -223,6 +224,7 @@ const ElemDropCode = 0x0d;      // Pending
 const TableCopyCode = 0x0e;     // Pending
 
 const StructNew = 0x00;         // UNOFFICIAL
+const StructNewDefault = 0x01;  // UNOFFICIAL
 const StructGet = 0x03;         // UNOFFICIAL
 const StructSet = 0x06;         // UNOFFICIAL
 
@@ -237,14 +239,15 @@ const TagCode          = 0x04;
 const HasMaximumFlag   = 0x1;
 
 function toU8(array) {
-    for (let b of array)
-        assertEq(b < 256, true);
+    for (const [i, b] of array.entries()) {
+        assertEq(b < 256, true, `expected byte at index ${i} but got ${b}`);
+    }
     return Uint8Array.from(array);
 }
 
 function varU32(u32) {
-    assertEq(u32 >= 0, true);
-    assertEq(u32 < Math.pow(2,32), true);
+    assertEq(u32 >= 0, true, `varU32 input must be number between 0 and 2^32-1, got ${u32}`);
+    assertEq(u32 < Math.pow(2,32), true, `varU32 input must be number between 0 and 2^32-1, got ${u32}`);
     var bytes = [];
     do {
         var byte = u32 & 0x7f;
@@ -257,8 +260,8 @@ function varU32(u32) {
 }
 
 function varS32(s32) {
-    assertEq(s32 >= -Math.pow(2,31), true);
-    assertEq(s32 < Math.pow(2,31), true);
+    assertEq(s32 >= -Math.pow(2,31), true, `varS32 input must be number between -2^31 and 2^31-1, got ${s32}`);
+    assertEq(s32 < Math.pow(2,31), true, `varS32 input must be number between -2^31 and 2^31-1, got ${s32}`);
     var bytes = [];
     do {
         var byte = s32 & 0x7f;
@@ -289,36 +292,228 @@ function encodedString(name, len) {
     return varU32(len === undefined ? nameBytes.length : len).concat(nameBytes);
 }
 
-function moduleWithSections(sectionArray) {
-    var bytes = moduleHeaderThen();
-    for (let section of sectionArray) {
+function moduleWithSections(sections) {
+    const bytes = moduleHeaderThen();
+    for (const section of sections) {
         bytes.push(section.name);
         bytes.push(...varU32(section.body.length));
-        bytes.push(...section.body);
+        for (let byte of section.body) {
+            bytes.push(byte);
+        }
     }
     return toU8(bytes);
 }
 
-function sigSection(sigs) {
+/**
+ * Creates a type section for a module. Example:
+ *
+ *     typeSection([
+ *         // (type (func (param i32 i64)))
+ *         { kind: FuncCode, args: [I32Code, I64Code], ret: [] },
+ *         // (type (func (result (ref 123))))
+ *         { kind: FuncCode, args: [], ret: [[RefCode, ...varS32(123)]] },
+ *
+ *         // GC types are supported:
+ *         { kind: StructCode, fields: [I32Code, { mut: true, type: [RefCode, ...varS32(123)] }] },
+ *         { kind: ArrayCode, elem: { mut: true, type: I32Code } }] },
+ *         { kind: ArrayCode, elem: { mut: true, type: [RefCode, ...varS32(123)] } }] },
+ *
+ *         // Recursion groups can be created with the recGroup function
+ *         recGroup([
+ *             { kind: StructCode, fields: [I32Code, I64Code] },
+ *             { kind: StructCode, sub: 5, fields: [I32Code, I64Code, I32Code] },
+ *         ]),
+ *     ])
+ *
+ * ## Full documentation
+ *
+ * This function takes an array of type objects in one of the following formats:
+ *
+ *     { kind: FuncCode, args: <ResultType>, ret: <ResultType> }
+ *     { kind: StructCode, fields: [<FieldType>] }
+ *     { kind: ArrayCode, elem: <FieldType> }
+ *
+ * Each type object can also have the following optional fields:
+ *
+ *   - `sub: <number>`: Makes the type a subtype of the given type index.
+ *     By default it will not have any parent types.
+ *   - `final: <boolean>`: Controls whether the type is final. Default `true`.
+ *
+ * And finally, types can be placed in a recursion group by wrapping them
+ * with the `recGroup` function.
+ *
+ * ### ResultType
+ *
+ * A result type is a vector of value types. You provide this as an array
+ * where each entry is the bytes for the type. For example, for a function
+ * with `(return i32 (ref 123))`, you might provide:
+ *
+ *     [[I32Code], [RefCode, ...varS32(123)]]
+ *
+ * If a value type is only a single byte, you can pass it directly instead of
+ * passing an array:
+ *
+ *     [I32Code, [RefCode, ...varS32(123)]]
+ *
+ * If there is only a single value type, you can omit the outer array too:
+ *
+ *     I32Code // same as [I32Code], same as [[I32Code]]
+ *
+ * And finally, `VoidCode` is a special case that results in an empty vector.
+ *
+ *     VoidCode // same as []
+ *
+ * Note that if you want to encode a single type, but that type has multiple
+ * bytes, you will need to keep the outermost array.
+ *
+ *     [I32Code, I64Code]        // sugar for [[I32Code], [I64Code]], so two types
+ *     [RefCode, ...varS32(123)] // will be interpreted as [[RefCode], [123]],
+ *                               // i.e. two types - not what you want
+ *
+ * ### FieldType
+ *
+ * A field type is used for struct and array values, and is a value type plus
+ * mutability info. The general form looks like:
+ *
+ *     { mut: <boolean>, type: <bytes> }
+ *
+ * For example, `(mut i32)` would look like:
+ *
+ *     { mut: true, type: [I32Code] }
+ *
+ * If the type is a single byte, you can omit the array:
+ *
+ *     { mut: true, type: I32Code }
+ *
+ * And if you wish for the field to be immutable, you can provide the type only:
+ *
+ *     I32Code // same as { mut: false, type: I32Code }
+ *
+ */
+function typeSection(types) {
     var body = [];
-    body.push(...varU32(sigs.length));
-    for (let sig of sigs) {
-        body.push(...varU32(FuncCode));
-        body.push(...varU32(sig.args.length));
-        for (let arg of sig.args)
-            body.push(...varU32(arg));
-        if (sig.ret == VoidCode) {
-            body.push(...varU32(0));
-        } else if (typeof sig.ret == "number") {
-            body.push(...varU32(1));
-            body.push(...varU32(sig.ret));
+    body.push(...varU32(types.length)); // technically a count of recursion groups
+    for (const type of types) {
+        if (type.isRecursionGroup) {
+            body.push(RecGroupCode);
+            body.push(...varU32(type.types.length));
+            for (const t of type.types) {
+                for (const byte of _encodeType(t)) {
+                    body.push(byte);
+                }
+            }
         } else {
-            body.push(...varU32(sig.ret.length));
-            for (let r of sig.ret)
-                body.push(...varU32(r));
+            for (const byte of _encodeType(type)) {
+                body.push(byte);
+            }
         }
     }
     return { name: typeId, body };
+}
+
+function recGroup(types) {
+    return { isRecursionGroup: true, types };
+}
+
+/**
+ * Returns a "normalized" version of all the ResultType stuff from `typeSection`,
+ * i.e. an array of array of bytes for each value type.
+ */
+function _resultType(input) {
+    if (input === VoidCode) {
+        return [];
+    }
+    if (typeof input === "number") {
+        input = [input];
+    }
+    input = input.map(valType => Array.isArray(valType) ? valType : [valType]);
+    return input;
+}
+
+/**
+ * Returns a "normalized" version of FieldType from `typeSection`, i.e. an object
+ * of the form `{ mut: <boolean>, type: <bytes> }`.
+ */
+function _fieldType(input) {
+    if (typeof input !== "object" || Array.isArray(input)) {
+        input = { mut: false, type: input };
+    }
+    if (!Array.isArray(input.type)) {
+        input.type = [input.type];
+    }
+    return input;
+}
+
+/**
+ * Encodes a type object from `typeSection`. This basically corresponds to `subtypeDef`
+ * in the GC spec doc.
+ */
+function _encodeType(typeObj) {
+    const typeBytes = [];
+    // Types are now final by default.
+    const final = typeObj.final ?? true;
+    if (typeObj.sub !== undefined) {
+        typeBytes.push(final ? SubFinalTypeCode : SubNoFinalTypeCode);
+        typeBytes.push(...varU32(1), ...varU32(typeObj.sub));
+    }
+    else if (final == false) {
+        // This type is extensible even if no supertype is defined.
+        typeBytes.push(SubNoFinalTypeCode);
+        typeBytes.push(0x00);
+    }
+    typeBytes.push(typeObj.kind);
+    switch (typeObj.kind) {
+    case FuncCode: {
+        const args = _resultType(typeObj.args);
+        const ret = _resultType(typeObj.ret);
+        typeBytes.push(...varU32(args.length));
+        for (const t of args) {
+            typeBytes.push(...t);
+        }
+        typeBytes.push(...varU32(ret.length));
+        for (const t of ret) {
+            typeBytes.push(...t);
+        }
+    } break;
+    case StructCode: {
+        // fields
+        typeBytes.push(...varU32(typeObj.fields.length));
+        for (const f of typeObj.fields) {
+            typeBytes.push(..._encodeFieldType(f));
+        }
+    } break;
+    case ArrayCode: {
+        // elem
+        typeBytes.push(..._encodeFieldType(typeObj.elem));
+    } break;
+    default:
+        throw new Error(`unknown type kind ${typeObj.kind} in type section`);
+    }
+    return typeBytes;
+}
+
+function _encodeFieldType(fieldTypeObj) {
+    fieldTypeObj = _fieldType(fieldTypeObj);
+    return [...fieldTypeObj.type, fieldTypeObj.mut ? 0x01 : 0x00];
+}
+
+/**
+ * A convenience function to create a type section containing only function
+ * types. This is basically sugar for `typeSection`, although you do not have
+ * to provide `kind: FuncCode` on each definition as you would there.
+ *
+ * Example:
+ *
+ *     sigSection([
+ *         // (type (func (param i32 i64)))
+ *         { args: [I32Code, I64Code], ret: [] },
+ *         // (type (func (result (ref 123))))
+ *         { args: [], ret: [[RefCode, ...varS32(123)]] },
+ *     ])
+ *
+ */
+function sigSection(sigs) {
+    return typeSection(sigs.map(sig => ({ kind: FuncCode, ...sig })));
 }
 
 function declSection(decls) {
@@ -333,7 +528,9 @@ function funcBody(func, withEndCode=true) {
     var body = varU32(func.locals.length);
     for (let local of func.locals)
         body.push(...varU32(local));
-    body = body.concat(...func.body);
+    for (let byte of func.body) {
+        body.push(byte);
+    }
     if (withEndCode)
         body.push(EndCode);
     body.splice(0, 0, ...varU32(body.length));

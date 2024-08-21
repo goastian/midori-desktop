@@ -1,5 +1,3 @@
-// |jit-test| module
-
 let result = null;
 let error = null;
 let promise = import("nonexistent.js");

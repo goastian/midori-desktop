@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -37,27 +38,27 @@ testWithTypedArrayConstructors(function(TA) {
 
   assert.throws(Test262Error, function() {
     sample["0"] = obj;
-  }, '`sample["0"] = obj` throws Test262Error');
+  });
 
   assert.throws(Test262Error, function() {
     sample["1.1"] = obj;
-  }, '`sample["1.1"] = obj` throws Test262Error');
+  });
 
   assert.throws(Test262Error, function() {
     sample["-0"] = obj;
-  }, '`sample["-0"] = obj` throws Test262Error');
+  });
 
   assert.throws(Test262Error, function() {
     sample["-1"] = obj;
-  }, '`sample["-1"] = obj` throws Test262Error');
+  });
 
   assert.throws(Test262Error, function() {
     sample["1"] = obj;
-  }, '`sample["1"] = obj` throws Test262Error');
+  });
 
   assert.throws(Test262Error, function() {
     sample["2"] = obj;
-  }, '`sample["2"] = obj` throws Test262Error');
+  });
 });
 
 reportCompare(0, 0);

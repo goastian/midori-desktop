@@ -10,6 +10,7 @@
 #include "mozilla/MemoryReporting.h"
 
 #include "gc/Barrier.h"
+#include "gc/SweepingAPI.h"
 #include "js/GCHashTable.h"
 #include "vm/PropertyKey.h"
 #include "vm/PropMap.h"
@@ -39,7 +40,7 @@ struct BaseShapeHasher {
            key.unbarrieredGet()->proto() == lookup.proto;
   }
 };
-using BaseShapeSet = JS::WeakCache<
+using BaseShapeSet = WeakCache<
     JS::GCHashSet<WeakHeapPtr<BaseShape*>, BaseShapeHasher, SystemAllocPolicy>>;
 
 // Hash policy for the per-zone initialPropMaps set, mapping property key + info
@@ -62,8 +63,8 @@ struct InitialPropMapHasher {
   }
 };
 using InitialPropMapSet =
-    JS::WeakCache<JS::GCHashSet<WeakHeapPtr<SharedPropMap*>,
-                                InitialPropMapHasher, SystemAllocPolicy>>;
+    WeakCache<JS::GCHashSet<WeakHeapPtr<SharedPropMap*>, InitialPropMapHasher,
+                            SystemAllocPolicy>>;
 
 // Helper class to hash information relevant for all shapes.
 struct ShapeBaseHasher {
@@ -117,8 +118,8 @@ struct InitialShapeHasher {
   }
 };
 using InitialShapeSet =
-    JS::WeakCache<JS::GCHashSet<WeakHeapPtr<SharedShape*>, InitialShapeHasher,
-                                SystemAllocPolicy>>;
+    WeakCache<JS::GCHashSet<WeakHeapPtr<SharedShape*>, InitialShapeHasher,
+                            SystemAllocPolicy>>;
 
 // Hash policy for the per-zone propMapShapes set storing shared shapes with
 // shared property maps.
@@ -158,8 +159,8 @@ struct PropMapShapeHasher {
   }
 };
 using PropMapShapeSet =
-    JS::WeakCache<JS::GCHashSet<WeakHeapPtr<SharedShape*>, PropMapShapeHasher,
-                                SystemAllocPolicy>>;
+    WeakCache<JS::GCHashSet<WeakHeapPtr<SharedShape*>, PropMapShapeHasher,
+                            SystemAllocPolicy>>;
 
 // Hash policy for the per-zone proxyShapes set storing shapes for proxy objects
 // in the zone.
@@ -170,8 +171,8 @@ struct ProxyShapeHasher : public ShapeBaseHasher {
   }
 };
 using ProxyShapeSet =
-    JS::WeakCache<JS::GCHashSet<WeakHeapPtr<ProxyShape*>, ProxyShapeHasher,
-                                SystemAllocPolicy>>;
+    WeakCache<JS::GCHashSet<WeakHeapPtr<ProxyShape*>, ProxyShapeHasher,
+                            SystemAllocPolicy>>;
 
 // Hash policy for the per-zone wasmGCShapes set storing shapes for Wasm GC
 // objects in the zone.
@@ -199,8 +200,8 @@ struct WasmGCShapeHasher : public ShapeBaseHasher {
   }
 };
 using WasmGCShapeSet =
-    JS::WeakCache<JS::GCHashSet<WeakHeapPtr<WasmGCShape*>, WasmGCShapeHasher,
-                                SystemAllocPolicy>>;
+    WeakCache<JS::GCHashSet<WeakHeapPtr<WasmGCShape*>, WasmGCShapeHasher,
+                            SystemAllocPolicy>>;
 
 struct ShapeZone {
   // Set of all base shapes in the Zone.
@@ -235,7 +236,7 @@ struct ShapeZone {
   void fixupPropMapShapeTableAfterMovingGC();
 
 #ifdef JSGC_HASH_TABLE_CHECKS
-  void checkTablesAfterMovingGC();
+  void checkTablesAfterMovingGC(JS::Zone* zone);
 #endif
 };
 

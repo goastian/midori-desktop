@@ -48,15 +48,13 @@ if CONFIG["JS_HAS_INTL_API"]:
         "icu",
     ]
 
-if CONFIG["MOZ_ICU4X"]:
-    USE_LIBS += ["icu4xdata"]
-
 USE_LIBS += [
+    "fdlibm",
     "nspr",
     "zlib",
 ]
 
-if CONFIG["OS_ARCH"] not in ("WINNT", "HP-UX"):
+if CONFIG["OS_ARCH"] != "WINNT":
     OS_LIBS += [
         "m",
     ]
@@ -84,9 +82,18 @@ if CONFIG["OS_ARCH"] == "WINNT":
         "bcrypt",
         "ntdll",
     ]
+    # Version string comparison is generally wrong, but by the time it would
+    # actually matter, either bug 1489995 would be fixed, or the build would
+    # require version >= 1.78.
+    if CONFIG["RUSTC_VERSION"] and CONFIG["RUSTC_VERSION"] >= "1.78.0":
+        OS_LIBS += [
+            "synchronization",
+        ]
 
-if CONFIG["MOZ_NEEDS_LIBATOMIC"]:
-    OS_LIBS += ["atomic"]
+OS_LIBS += CONFIG["LIBATOMIC_LIBS"]
+
+if CONFIG["TARGET_OS"] == "iOS":
+    OS_LIBS += ["-framework BrowserEngineCore"]
 
 OS_LIBS += CONFIG["REALTIME_LIBS"]
 

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -47,18 +47,18 @@ const poisonedToPrimitive = {
 
 assert.throws(Test262Error, function() {
   Atomics.notify(i32a, poisonedValueOf, poisonedValueOf);
-}, '`Atomics.notify(i32a, poisonedValueOf, poisonedValueOf)` throws Test262Error');
+});
 
 assert.throws(Test262Error, function() {
   Atomics.notify(i32a, poisonedToPrimitive, poisonedToPrimitive);
-}, '`Atomics.notify(i32a, poisonedToPrimitive, poisonedToPrimitive)` throws Test262Error');
+});
 
 assert.throws(TypeError, function() {
   Atomics.notify(i32a, Symbol("foo"), poisonedValueOf);
-}, '`Atomics.notify(i32a, Symbol("foo"), poisonedValueOf)` throws TypeError');
+});
 
 assert.throws(TypeError, function() {
   Atomics.notify(i32a, Symbol("foo"), poisonedToPrimitive);
-}, '`Atomics.notify(i32a, Symbol("foo"), poisonedToPrimitive)` throws TypeError');
+});
 
 reportCompare(0, 0);

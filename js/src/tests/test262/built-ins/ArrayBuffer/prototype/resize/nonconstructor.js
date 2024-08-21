@@ -1,4 +1,4 @@
-// |reftest| skip -- resizable-arraybuffer is not supported
+// |reftest| shell-option(--enable-arraybuffer-resizable) skip-if(!ArrayBuffer.prototype.resize||!xulRuntime.shell) -- resizable-arraybuffer is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -12,13 +12,11 @@ info: |
     Built-in function objects that are not identified as constructors do not
     implement the [[Construct]] internal method unless otherwise specified
     in the description of a particular function.
-features: [resizable-arraybuffer]
+includes: [isConstructor.js]
+features: [resizable-arraybuffer, Reflect.construct]
 ---*/
 
-assert.sameValue(
-  Object.prototype.hasOwnProperty.call(ArrayBuffer.prototype.resize, 'prototype'),
-  false
-);
+assert(!isConstructor(ArrayBuffer.prototype.resize), "ArrayBuffer.prototype.resize is not a constructor");
 
 var arrayBuffer = new ArrayBuffer(8);
 assert.throws(TypeError, function() {

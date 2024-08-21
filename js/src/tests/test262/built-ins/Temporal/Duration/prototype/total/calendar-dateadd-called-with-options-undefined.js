@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -16,20 +16,13 @@ const timeZone = TemporalHelpers.oneShiftTimeZone(new Temporal.Instant(0n), 3600
 const relativeTo = new Temporal.ZonedDateTime(0n, timeZone, calendar);
 
 // Total of a calendar unit where larger calendar units have to be converted
-// down, to cover the path that goes through UnbalanceDurationRelative
-// The calls come from these paths:
-// Duration.total() ->
-//   UnbalanceDurationRelative -> MoveRelativeDate -> calendar.dateAdd() (3x)
-//   BalanceDuration ->
-//     AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd()
-//     NanosecondsToDays -> AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd() (2x)
-//   RoundDuration ->
-//     MoveRelativeZonedDateTime -> AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd()
-//     NanosecondsToDays -> AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd()
+// down, to cover the path that goes through UnbalanceDateDurationRelative
+// The calls come from the path:
+// Duration.total() -> UnbalanceDateDurationRelative -> calendar.dateAdd()
 
 const instance1 = new Temporal.Duration(1, 1, 1, 1, 1);
 instance1.total({ unit: "days", relativeTo });
-assert.sameValue(calendar.dateAddCallCount, 8, "converting larger calendar units down");
+assert.sameValue(calendar.dateAddCallCount, 1, "converting larger calendar units down");
 
 // Total of a calendar unit where smaller calendar units have to be converted
 // up, to cover the path that goes through MoveRelativeZonedDateTime
@@ -38,15 +31,13 @@ assert.sameValue(calendar.dateAddCallCount, 8, "converting larger calendar units
 //   MoveRelativeZonedDateTime -> AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd()
 //   BalanceDuration ->
 //     AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd()
-//     NanosecondsToDays -> AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd() (2x)
 //   RoundDuration ->
-//     MoveRelativeZonedDateTime -> AddZonedDateTime -> BuiltinTimeZoneGetInstantFor -> calendar.dateAdd()
 //     MoveRelativeDate -> calendar.dateAdd()
 
 calendar.dateAddCallCount = 0;
 
 const instance2 = new Temporal.Duration(0, 0, 1, 1);
 instance2.total({ unit: "weeks", relativeTo });
-assert.sameValue(calendar.dateAddCallCount, 6, "converting smaller calendar units up");
+assert.sameValue(calendar.dateAddCallCount, 3, "converting smaller calendar units up");
 
 reportCompare(0, 0);

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -9,6 +9,8 @@ features: [BigInt, Temporal]
 const calendar = Temporal.Calendar.from('iso8601');
 
 const timeZone = {
+  id: 'Etc/Test',
+  getPossibleInstantsFor() { return []; },
   getOffsetNanosecondsFor(instant) {
     return -Number(instant.epochNanoseconds % 86400000000000n);
   }

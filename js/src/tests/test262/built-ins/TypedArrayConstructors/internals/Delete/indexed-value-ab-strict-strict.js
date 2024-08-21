@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 'use strict';
 // Copyright (C) 2020 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
@@ -40,16 +41,16 @@ testWithTypedArrayConstructors(function(TA) {
 
   assert.throws(TypeError, () => {
     delete sample["0"];
-  }, '`delete sample["0"]` throws TypeError');
+  });
   assert.throws(TypeError, () => {
     delete sample["1"];
-  }, '`delete sample["1"]` throws TypeError');
+  });
   assert.throws(TypeError, () => {
     delete sample[0];
-  }, '`delete sample[0]` throws TypeError');
+  });
   assert.throws(TypeError, () => {
     delete sample[0];
-  }, '`delete sample[0]` throws TypeError');
+  });
 });
 
 reportCompare(0, 0);

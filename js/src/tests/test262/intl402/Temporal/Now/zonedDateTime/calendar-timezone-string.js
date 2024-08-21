@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,9 +10,9 @@ features: [Temporal]
 
 const zdt = Temporal.Now.zonedDateTime("gregory", "America/Los_Angeles");
 assert(zdt instanceof Temporal.ZonedDateTime);
-assert(zdt.calendar instanceof Temporal.Calendar);
-assert.sameValue(zdt.calendar.id, "gregory");
-assert(zdt.timeZone instanceof Temporal.TimeZone);
-assert.sameValue(zdt.timeZone.id, "America/Los_Angeles");
+assert.sameValue(typeof zdt.getISOFields().calendar, "string", "calendar slot should store a string");
+assert.sameValue(zdt.calendarId, "gregory");
+assert.sameValue(typeof zdt.getISOFields().timeZone, "string", "time zone slot should store a string");
+assert.sameValue(zdt.timeZoneId, "America/Los_Angeles");
 
 reportCompare(0, 0);

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,27 +10,31 @@ description: >
 features: [BigInt, Symbol, Temporal]
 ---*/
 
-const rangeErrorTests = [
+const primitiveTests = [
   [null, "null"],
   [true, "boolean"],
   ["", "empty string"],
   [1, "number that doesn't convert to a valid ISO string"],
   [1n, "bigint"],
-  [new Temporal.TimeZone("UTC"), "time zone instance"],
 ];
 
-for (const [arg, description] of rangeErrorTests) {
-  assert.throws(RangeError, () => Temporal.Now.plainDateTime(arg), `${description} does not convert to a valid ISO string`);
-  assert.throws(RangeError, () => Temporal.Now.plainDateTime({ calendar: arg }), `${description} does not convert to a valid ISO string (in property bag)`);
+for (const [arg, description] of primitiveTests) {
+  assert.throws(
+    typeof arg === 'string' ? RangeError : TypeError,
+    () => Temporal.Now.plainDateTime(arg),
+    `${description} does not convert to a valid ISO string`
+  );
 }
 
 const typeErrorTests = [
   [Symbol(), "symbol"],
+  [{}, "plain object that doesn't implement the protocol"],
+  [new Temporal.TimeZone("UTC"), "time zone instance"],
+  [Temporal.Calendar, "Temporal.Calendar, object"],
 ];
 
 for (const [arg, description] of typeErrorTests) {
   assert.throws(TypeError, () => Temporal.Now.plainDateTime(arg), `${description} is not a valid object and does not convert to a string`);
-  assert.throws(TypeError, () => Temporal.Now.plainDateTime({ calendar: arg }), `${description} is not a valid object and does not convert to a string (in property bag)`);
 }
 
 reportCompare(0, 0);

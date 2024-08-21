@@ -9,6 +9,7 @@
 #include "mozilla/EnumeratedRange.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/Try.h"
 #include "mozilla/Vector.h"
 
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "jit/ProcessExecutableMemory.h"
 #include "js/StreamConsumer.h"
 #include "wasm/WasmCode.h"
 #include "wasm/WasmCodegenTypes.h"
@@ -451,12 +453,34 @@ CoderResult CodePackedTypeCode(Coder<mode>& coder,
 }
 
 template <CoderMode mode>
+CoderResult CodeTypeDefRef(Coder<mode>& coder,
+                           CoderArg<mode, const TypeDef*> item) {
+  static constexpr uint32_t NullTypeIndex = UINT32_MAX;
+  static_assert(NullTypeIndex > MaxTypes, "invariant");
+
+  if constexpr (mode == MODE_DECODE) {
+    uint32_t typeIndex;
+    MOZ_TRY(CodePod(coder, &typeIndex));
+    if (typeIndex != NullTypeIndex) {
+      *item = &coder.types_->type(typeIndex);
+    }
+    return Ok();
+  } else if constexpr (mode == MODE_SIZE) {
+    return coder.writeBytes(nullptr, sizeof(uint32_t));
+  } else {
+    uint32_t typeIndex = !*item ? NullTypeIndex : coder.types_->indexOf(**item);
+    return CodePod(coder, &typeIndex);
+  }
+}
+
+template <CoderMode mode>
 CoderResult CodeValType(Coder<mode>& coder, CoderArg<mode, ValType> item) {
   return CodePackedTypeCode(coder, item->addressOfPacked());
 }
 
 template <CoderMode mode>
-CoderResult CodeFieldType(Coder<mode>& coder, CoderArg<mode, FieldType> item) {
+CoderResult CodeStorageType(Coder<mode>& coder,
+                            CoderArg<mode, StorageType> item) {
   return CodePackedTypeCode(coder, item->addressOfPacked());
 }
 
@@ -509,7 +533,7 @@ CoderResult CodeFuncType(Coder<mode>& coder, CoderArg<mode, FuncType> item) {
 template <CoderMode mode>
 CoderResult CodeStructField(Coder<mode>& coder,
                             CoderArg<mode, StructField> item) {
-  MOZ_TRY(CodeFieldType(coder, &item->type));
+  MOZ_TRY(CodeStorageType(coder, &item->type));
   MOZ_TRY(CodePod(coder, &item->offset));
   MOZ_TRY(CodePod(coder, &item->isMutable));
   return Ok();
@@ -521,14 +545,18 @@ CoderResult CodeStructType(Coder<mode>& coder,
   WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::StructType, 136);
   MOZ_TRY((CodeVector<mode, StructField, &CodeStructField<mode>>(
       coder, &item->fields_)));
-  MOZ_TRY(CodePod(coder, &item->size_));
+  if constexpr (mode == MODE_DECODE) {
+    if (!item->init()) {
+      return Err(OutOfMemory());
+    }
+  }
   return Ok();
 }
 
 template <CoderMode mode>
 CoderResult CodeArrayType(Coder<mode>& coder, CoderArg<mode, ArrayType> item) {
   WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::ArrayType, 16);
-  MOZ_TRY(CodeFieldType(coder, &item->elementType_));
+  MOZ_TRY(CodeStorageType(coder, &item->elementType_));
   MOZ_TRY(CodePod(coder, &item->isMutable_));
   return Ok();
 }
@@ -536,7 +564,10 @@ CoderResult CodeArrayType(Coder<mode>& coder, CoderArg<mode, ArrayType> item) {
 template <CoderMode mode>
 CoderResult CodeTypeDef(Coder<mode>& coder, CoderArg<mode, TypeDef> item) {
   WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::TypeDef, 376);
-  // TypeDef is a tagged union that begins with kind = None. This implies that
+  MOZ_TRY(CodeTypeDefRef(coder, &item->superTypeDef_));
+  MOZ_TRY(CodePod(coder, &item->subTypingDepth_));
+  MOZ_TRY(CodePod(coder, &item->isFinal_));
+  // TypeDef is a tagged union containing kind = None. This implies that
   // we must manually initialize the variant that we decode.
   if constexpr (mode == MODE_DECODE) {
     MOZ_RELEASE_ASSERT(item->kind_ == TypeDefKind::None);
@@ -573,6 +604,10 @@ CoderResult CodeTypeDef(Coder<mode>& coder, CoderArg<mode, TypeDef> item) {
   return Ok();
 }
 
+using RecGroupIndexMap =
+    HashMap<const RecGroup*, uint32_t, PointerHasher<const RecGroup*>,
+            SystemAllocPolicy>;
+
 template <CoderMode mode>
 CoderResult CodeTypeContext(Coder<mode>& coder,
                             CoderArg<mode, TypeContext> item) {
@@ -589,6 +624,22 @@ CoderResult CodeTypeContext(Coder<mode>& coder,
     // Decode each recursion group
     for (uint32_t recGroupIndex = 0; recGroupIndex < numRecGroups;
          recGroupIndex++) {
+      // Decode if this recursion group is equivalent to a previous recursion
+      // group
+      uint32_t canonRecGroupIndex;
+      MOZ_TRY(CodePod(coder, &canonRecGroupIndex));
+      MOZ_RELEASE_ASSERT(canonRecGroupIndex <= recGroupIndex);
+
+      // If the decoded index is not ours, we must re-use the previous decoded
+      // recursion group.
+      if (canonRecGroupIndex != recGroupIndex) {
+        SharedRecGroup recGroup = item->groups()[canonRecGroupIndex];
+        if (!item->addRecGroup(recGroup)) {
+          return Err(OutOfMemory());
+        }
+        continue;
+      }
+
       // Decode the number of types in the recursion group
       uint32_t numTypes;
       MOZ_TRY(CodePod(coder, &numTypes));
@@ -614,9 +665,44 @@ CoderResult CodeTypeContext(Coder<mode>& coder,
     uint32_t numRecGroups = item->groups().length();
     MOZ_TRY(CodePod(coder, &numRecGroups));
 
+    // We must be careful to only encode every unique recursion group only once
+    // and in module order. The reason for this is that encoding type def
+    // references uses the module type index map, which only stores the first
+    // type index a type was canonicalized to.
+    //
+    // Using this map to encode both recursion groups would turn the following
+    // type section from:
+    //
+    // 0: (type (struct (field 0)))
+    // 1: (type (struct (field 1))) ;; identical to 0
+    //
+    // into:
+    //
+    // 0: (type (struct (field 0)))
+    // 1: (type (struct (field 0))) ;; not identical to 0!
+    RecGroupIndexMap canonRecGroups;
+
     // Encode each recursion group
     for (uint32_t groupIndex = 0; groupIndex < numRecGroups; groupIndex++) {
       SharedRecGroup group = item->groups()[groupIndex];
+
+      // Find the index of the first time this recursion group was encoded, or
+      // set it to this index if it hasn't been encoded.
+      RecGroupIndexMap::AddPtr canonRecGroupIndex =
+          canonRecGroups.lookupForAdd(group.get());
+      if (!canonRecGroupIndex) {
+        if (!canonRecGroups.add(canonRecGroupIndex, group.get(), groupIndex)) {
+          return Err(OutOfMemory());
+        }
+      }
+
+      // Encode the canon index for this recursion group
+      MOZ_TRY(CodePod(coder, &canonRecGroupIndex->value()));
+
+      // Don't encode this recursion group if we've already encoded it
+      if (canonRecGroupIndex->value() != groupIndex) {
+        continue;
+      }
 
       // Encode the number of types in the recursion group
       uint32_t numTypes = group->numTypes();
@@ -667,10 +753,19 @@ CoderResult CodeGlobalDesc(Coder<mode>& coder,
 template <CoderMode mode>
 CoderResult CodeTagType(Coder<mode>& coder, CoderArg<mode, TagType> item) {
   WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::TagType, 232);
-  MOZ_TRY(
-      (CodeVector<mode, ValType, &CodeValType<mode>>(coder, &item->argTypes_)));
-  MOZ_TRY(CodePodVector(coder, &item->argOffsets_));
-  MOZ_TRY(CodePod(coder, &item->size_));
+  // We skip serializing/deserializing the size and argOffsets fields because
+  // those are computed from the argTypes field when we deserialize.
+  if constexpr (mode == MODE_DECODE) {
+    ValTypeVector argTypes;
+    MOZ_TRY((CodeVector<MODE_DECODE, ValType, &CodeValType<MODE_DECODE>>(
+        coder, &argTypes)));
+    if (!item->initialize(std::move(argTypes))) {
+      return Err(OutOfMemory());
+    }
+  } else {
+    MOZ_TRY((CodeVector<mode, ValType, &CodeValType<mode>>(coder,
+                                                           &item->argTypes())));
+  }
   return Ok();
 }
 
@@ -685,22 +780,26 @@ CoderResult CodeTagDesc(Coder<mode>& coder, CoderArg<mode, TagDesc> item) {
 }
 
 template <CoderMode mode>
-CoderResult CodeElemSegment(Coder<mode>& coder,
-                            CoderArg<mode, ElemSegment> item) {
-  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::ElemSegment, 184);
+CoderResult CodeModuleElemSegment(Coder<mode>& coder,
+                                  CoderArg<mode, ModuleElemSegment> item) {
+  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::ModuleElemSegment, 232);
   MOZ_TRY(CodePod(coder, &item->kind));
   MOZ_TRY(CodePod(coder, &item->tableIndex));
   MOZ_TRY(CodeRefType(coder, &item->elemType));
   MOZ_TRY((CodeMaybe<mode, InitExpr, &CodeInitExpr<mode>>(
       coder, &item->offsetIfActive)));
-  MOZ_TRY(CodePodVector(coder, &item->elemFuncIndices));
+  MOZ_TRY(CodePod(coder, &item->encoding));
+  MOZ_TRY(CodePodVector(coder, &item->elemIndices));
+  MOZ_TRY(CodePod(coder, &item->elemExpressions.count));
+  MOZ_TRY(CodePodVector(coder, &item->elemExpressions.exprBytes));
   return Ok();
 }
 
 template <CoderMode mode>
 CoderResult CodeDataSegment(Coder<mode>& coder,
                             CoderArg<mode, DataSegment> item) {
-  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::DataSegment, 136);
+  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::DataSegment, 144);
+  MOZ_TRY(CodePod(coder, &item->memoryIndex));
   MOZ_TRY((CodeMaybe<mode, InitExpr, &CodeInitExpr<mode>>(
       coder, &item->offsetIfActive)));
   MOZ_TRY(CodePodVector(coder, &item->bytes));
@@ -858,7 +957,10 @@ CoderResult CodeSymbolicLinkArray(
 template <CoderMode mode>
 CoderResult CodeLinkData(Coder<mode>& coder,
                          CoderArg<mode, wasm::LinkData> item) {
-  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::LinkData, 7608);
+  // SymbolicLinkArray depends on SymbolicAddress::Limit, which is changed
+  // often. Exclude symbolicLinks field from trip wire value calculation.
+  WASM_VERIFY_SERIALIZATION_FOR_SIZE(
+      wasm::LinkData, 48 + sizeof(wasm::LinkData::SymbolicLinkArray));
   if constexpr (mode == MODE_ENCODE) {
     MOZ_ASSERT(item->tier == Tier::Serialized);
   }
@@ -880,7 +982,8 @@ CoderResult CodeModuleSegment(Coder<MODE_DECODE>& coder,
   MOZ_TRY(CodePod(coder, &length));
 
   // Allocate the code bytes
-  UniqueCodeBytes bytes = AllocateCodeBytes(length);
+  Maybe<jit::AutoMarkJitCodeWritableForThread> writable;
+  UniqueCodeBytes bytes = AllocateCodeBytes(writable, length);
   if (!bytes) {
     return Err(OutOfMemory());
   }
@@ -932,7 +1035,7 @@ template <CoderMode mode>
 CoderResult CodeMetadataTier(Coder<mode>& coder,
                              CoderArg<mode, wasm::MetadataTier> item,
                              const uint8_t* codeStart) {
-  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::MetadataTier, 856);
+  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::MetadataTier, 896);
   MOZ_TRY(Magic(coder, Marker::MetadataTier));
   MOZ_TRY(CodePodVector(coder, &item->funcToCodeRange));
   MOZ_TRY(CodePodVector(coder, &item->codeRanges));
@@ -942,13 +1045,14 @@ CoderResult CodeMetadataTier(Coder<mode>& coder,
   MOZ_TRY(CodePodVector(coder, &item->funcExports));
   MOZ_TRY(CodeStackMaps(coder, &item->stackMaps, codeStart));
   MOZ_TRY(CodePodVector(coder, &item->tryNotes));
+  MOZ_TRY(CodePodVector(coder, &item->codeRangeUnwindInfos));
   return Ok();
 }
 
 template <CoderMode mode>
 CoderResult CodeMetadata(Coder<mode>& coder,
                          CoderArg<mode, wasm::Metadata> item) {
-  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::Metadata, 408);
+  WASM_VERIFY_SERIALIZATION_FOR_SIZE(wasm::Metadata, 448);
   if constexpr (mode == MODE_ENCODE) {
     // Serialization doesn't handle asm.js or debug enabled modules
     MOZ_ASSERT(!item->debugEnabled && item->debugFuncTypeIndices.empty());
@@ -959,6 +1063,7 @@ CoderResult CodeMetadata(Coder<mode>& coder,
   MOZ_TRY(CodePod(coder, &item->pod()));
   MOZ_TRY((CodeRefPtr<mode, const TypeContext, &CodeTypeContext>(
       coder, &item->types)));
+  MOZ_TRY(CodePodVector(coder, &item->memories));
   MOZ_TRY((CodeVector<mode, GlobalDesc, &CodeGlobalDesc<mode>>(
       coder, &item->globals)));
   MOZ_TRY((
@@ -1068,9 +1173,19 @@ CoderResult CodeModule(Coder<MODE_DECODE>& coder, MutableModule* item) {
 
   MOZ_RELEASE_ASSERT(EqualContainers(currentBuildId, deserializedBuildId));
 
+  CustomSectionVector customSections;
+  MOZ_TRY(Magic(coder, Marker::CustomSections));
+  MOZ_TRY(
+      (CodeVector<MODE_DECODE, CustomSection, &CodeCustomSection<MODE_DECODE>>(
+          coder, &customSections)));
+
   LinkData linkData(Tier::Serialized);
   MOZ_TRY(Magic(coder, Marker::LinkData));
   MOZ_TRY(CodeLinkData(coder, &linkData));
+
+  SharedCode code;
+  MOZ_TRY(Magic(coder, Marker::Code));
+  MOZ_TRY(CodeSharedCode(coder, &code, linkData, customSections));
 
   ImportVector imports;
   MOZ_TRY(Magic(coder, Marker::Imports));
@@ -1089,22 +1204,12 @@ CoderResult CodeModule(Coder<MODE_DECODE>& coder, MutableModule* item) {
                                   &CodeDataSegment<MODE_DECODE>>>(
       coder, &dataSegments)));
 
-  ElemSegmentVector elemSegments;
+  // This must happen after deserializing code so we get type definitions.
+  ModuleElemSegmentVector elemSegments;
   MOZ_TRY(Magic(coder, Marker::ElemSegments));
-  MOZ_TRY((CodeVector<MODE_DECODE, SharedElemSegment,
-                      &CodeRefPtr<MODE_DECODE, const ElemSegment,
-                                  &CodeElemSegment<MODE_DECODE>>>(
-      coder, &elemSegments)));
-
-  CustomSectionVector customSections;
-  MOZ_TRY(Magic(coder, Marker::CustomSections));
   MOZ_TRY(
-      (CodeVector<MODE_DECODE, CustomSection, &CodeCustomSection<MODE_DECODE>>(
-          coder, &customSections)));
-
-  SharedCode code;
-  MOZ_TRY(Magic(coder, Marker::Code));
-  MOZ_TRY(CodeSharedCode(coder, &code, linkData, customSections));
+      (CodeVector<MODE_DECODE, ModuleElemSegment,
+                  &CodeModuleElemSegment<MODE_DECODE>>(coder, &elemSegments)));
 
   *item = js_new<Module>(*code, std::move(imports), std::move(exports),
                          std::move(dataSegments), std::move(elemSegments),
@@ -1126,8 +1231,13 @@ CoderResult CodeModule(Coder<mode>& coder, CoderArg<mode, Module> item,
     return Err(OutOfMemory());
   }
   MOZ_TRY(CodePodVector(coder, &currentBuildId));
+  MOZ_TRY(Magic(coder, Marker::CustomSections));
+  MOZ_TRY((CodeVector<mode, CustomSection, &CodeCustomSection<mode>>(
+      coder, &item->customSections_)));
   MOZ_TRY(Magic(coder, Marker::LinkData));
   MOZ_TRY(CodeLinkData(coder, &linkData));
+  MOZ_TRY(Magic(coder, Marker::Code));
+  MOZ_TRY(CodeSharedCode(coder, &item->code_, linkData));
   MOZ_TRY(Magic(coder, Marker::Imports));
   MOZ_TRY(
       (CodeVector<mode, Import, &CodeImport<mode>>(coder, &item->imports_)));
@@ -1140,15 +1250,8 @@ CoderResult CodeModule(Coder<mode>& coder, CoderArg<mode, Module> item,
                   &CodeRefPtr<mode, const DataSegment, CodeDataSegment<mode>>>(
           coder, &item->dataSegments_)));
   MOZ_TRY(Magic(coder, Marker::ElemSegments));
-  MOZ_TRY(
-      (CodeVector<mode, SharedElemSegment,
-                  &CodeRefPtr<mode, const ElemSegment, CodeElemSegment<mode>>>(
-          coder, &item->elemSegments_)));
-  MOZ_TRY(Magic(coder, Marker::CustomSections));
-  MOZ_TRY((CodeVector<mode, CustomSection, &CodeCustomSection<mode>>(
-      coder, &item->customSections_)));
-  MOZ_TRY(Magic(coder, Marker::Code));
-  MOZ_TRY(CodeSharedCode(coder, &item->code_, linkData));
+  MOZ_TRY((CodeVector<mode, ModuleElemSegment, CodeModuleElemSegment<mode>>(
+      coder, &item->elemSegments_)));
   return Ok();
 }
 
@@ -1218,8 +1321,7 @@ void Module::initGCMallocBytesExcludingCode() {
   (void)CodeVector<MODE, SharedDataSegment,
                    &CodeRefPtr<MODE, const DataSegment, CodeDataSegment<MODE>>>(
       coder, &dataSegments_);
-  (void)CodeVector<MODE, SharedElemSegment,
-                   &CodeRefPtr<MODE, const ElemSegment, CodeElemSegment<MODE>>>(
+  (void)CodeVector<MODE, ModuleElemSegment, CodeModuleElemSegment<MODE>>(
       coder, &elemSegments_);
   (void)CodeVector<MODE, CustomSection, &CodeCustomSection<MODE>>(
       coder, &customSections_);

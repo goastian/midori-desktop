@@ -19,46 +19,50 @@ from operator import itemgetter
 UNSUPPORTED_FEATURES = set(
     [
         "tail-call-optimization",
-        "Intl.Segmenter",  # Bug 1423593
         "Intl.Locale-info",  # Bug 1693576
         "Intl.DurationFormat",  # Bug 1648139
         "Atomics.waitAsync",  # Bug 1467846
         "legacy-regexp",  # Bug 1306461
-        "json-modules",  # Bug 1670176
-        "resizable-arraybuffer",  # Bug 1670026
-        "Temporal",  # Bug 1519167
-        "regexp-v-flag",  # Bug 1713657
-        "decorators",  # Bug 1435869
-        "regexp-duplicate-named-groups",  # Bug 1773135
-        "symbols-as-weakmap-keys",  # Bug 1710433
-        "arraybuffer-transfer",  # Bug 1519163
-        "json-parse-with-source",  # Bug 1658310
+        "set-methods",  # Bug 1805038
+        "explicit-resource-management",  # Bug 1569081
+        "regexp-modifiers",
     ]
 )
 FEATURE_CHECK_NEEDED = {
     "Atomics": "!this.hasOwnProperty('Atomics')",
     "FinalizationRegistry": "!this.hasOwnProperty('FinalizationRegistry')",
     "SharedArrayBuffer": "!this.hasOwnProperty('SharedArrayBuffer')",
+    "Temporal": "!this.hasOwnProperty('Temporal')",
     "WeakRef": "!this.hasOwnProperty('WeakRef')",
-    "array-grouping": "!Array.prototype.group",  # Bug 1792650
-    "change-array-by-copy": "!Array.prototype.with",  # Bug 1811054
-    "Array.fromAsync": "!Array.fromAsync",  # Bug 1746209
-    "String.prototype.isWellFormed": "!String.prototype.isWellFormed",
-    "String.prototype.toWellFormed": "!String.prototype.toWellFormed",
+    "decorators": "!(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('decorators'))",  # Bug 1435869
+    "iterator-helpers": "!this.hasOwnProperty('Iterator')",  # Bug 1568906
+    "Intl.Segmenter": "!Intl.Segmenter",  # Bug 1423593
+    "resizable-arraybuffer": "!ArrayBuffer.prototype.resize",  # Bug 1670026
+    "uint8array-base64": "!Uint8Array.fromBase64",  # Bug 1862220
+    "json-parse-with-source": "!JSON.hasOwnProperty('isRawJSON')",  # Bug 1658310
+    "Float16Array": "!this.hasOwnProperty('Float16Array')",
+    "regexp-duplicate-named-groups": "!(this.hasOwnProperty('getBuildConfiguration')&&!getBuildConfiguration('release_or_beta'))",
 }
 RELEASE_OR_BETA = set(
     [
-        "Intl.NumberFormat-v3",  # Bug 1795756
+        "symbols-as-weakmap-keys",
     ]
 )
 SHELL_OPTIONS = {
     "import-assertions": "--enable-import-assertions",
+    "import-attributes": "--enable-import-attributes",
     "ShadowRealm": "--enable-shadow-realms",
-    "array-grouping": "--enable-array-grouping",
-    "change-array-by-copy": "--enable-change-array-by-copy",
-    "Array.fromAsync": "--enable-array-from-async",
-    "String.prototype.isWellFormed": "--enable-well-formed-unicode-strings",
-    "String.prototype.toWellFormed": "--enable-well-formed-unicode-strings",
+    "iterator-helpers": "--enable-iterator-helpers",
+    "symbols-as-weakmap-keys": "--enable-symbols-as-weakmap-keys",
+    "resizable-arraybuffer": "--enable-arraybuffer-resizable",
+    "uint8array-base64": "--enable-uint8array-base64",
+    "json-parse-with-source": "--enable-json-parse-with-source",
+    "Float16Array": "--enable-float16array",
+    "regexp-duplicate-named-groups": "--enable-regexp-duplicate-named-groups",
+}
+
+INCLUDE_FEATURE_DETECTED_OPTIONAL_SHELL_OPTIONS = {
+    "testTypedArray.js": "Float16Array",
 }
 
 
@@ -376,7 +380,7 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
                 refTestSkipIf.append(
                     (
                         "(this.hasOwnProperty('getBuildConfiguration')"
-                        "&&getBuildConfiguration()['arm64-simulator'])",
+                        "&&getBuildConfiguration('arm64-simulator'))",
                         "ARM64 Simulator cannot emulate atomics",
                     )
                 )
@@ -389,6 +393,19 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
                 refTestOptions.extend(
                     ("shell-option({})".format(opt) for opt in sorted(shellOptions))
                 )
+
+    # Optional shell options. Some tests use feature detection for additional
+    # test coverage. We want to get this extra coverage without having to skip
+    # these tests in browser builds.
+    if "includes" in testRec:
+        optionalShellOptions = (
+            SHELL_OPTIONS[INCLUDE_FEATURE_DETECTED_OPTIONAL_SHELL_OPTIONS[include]]
+            for include in testRec["includes"]
+            if include in INCLUDE_FEATURE_DETECTED_OPTIONAL_SHELL_OPTIONS
+        )
+        refTestOptions.extend(
+            ("shell-option({})".format(opt) for opt in sorted(optionalShellOptions))
+        )
 
     # Includes for every test file in a directory is collected in a single
     # shell.js file per directory level. This is done to avoid adding all
@@ -514,9 +531,10 @@ def process_test262(test262Dir, test262OutDir, strictTests, externManifests):
     explicitIncludes[os.path.join("built-ins", "TypedArrays")] = [
         "detachArrayBuffer.js"
     ]
+    explicitIncludes[os.path.join("built-ins", "Temporal")] = ["temporalHelpers.js"]
 
     # Process all test directories recursively.
-    for (dirPath, dirNames, fileNames) in os.walk(testDir):
+    for dirPath, dirNames, fileNames in os.walk(testDir):
         relPath = os.path.relpath(dirPath, testDir)
         if relPath == ".":
             continue
@@ -556,10 +574,14 @@ def process_test262(test262Dir, test262OutDir, strictTests, externManifests):
                 convert = convertFixtureFile(testSource, testName)
             else:
                 convert = convertTestFile(
-                    test262parser, testSource, testName, includeSet, strictTests
+                    test262parser,
+                    testSource,
+                    testName,
+                    includeSet,
+                    strictTests,
                 )
 
-            for (newFileName, newSource, externRefTest) in convert:
+            for newFileName, newSource, externRefTest in convert:
                 writeTestFile(test262OutDir, newFileName, newSource)
 
                 if externRefTest is not None:
@@ -591,7 +613,7 @@ def fetch_local_changes(inDir, outDir, srcDir, strictTests):
     # TODO: fail if it's in the default branch? or require a branch name?
     # Checks for unstaged or non committed files. A clean branch provides a clean status.
     status = subprocess.check_output(
-        ("git -C %s status --porcelain" % srcDir).split(" ")
+        ("git -C %s status --porcelain" % srcDir).split(" "), encoding="utf-8"
     )
 
     if status.strip():
@@ -602,31 +624,35 @@ def fetch_local_changes(inDir, outDir, srcDir, strictTests):
 
     # Captures the branch name to be used on the output
     branchName = subprocess.check_output(
-        ("git -C %s rev-parse --abbrev-ref HEAD" % srcDir).split(" ")
+        ("git -C %s rev-parse --abbrev-ref HEAD" % srcDir).split(" "), encoding="utf-8"
     ).split("\n")[0]
 
     # Fetches the file names to import
     files = subprocess.check_output(
-        ("git -C %s diff main --diff-filter=ACMR --name-only" % srcDir).split(" ")
+        ("git -C %s diff main --diff-filter=ACMR --name-only" % srcDir).split(" "),
+        encoding="utf-8",
     )
 
     # Fetches the deleted files to print an output log. This can be used to
     # set up the skip list, if necessary.
     deletedFiles = subprocess.check_output(
-        ("git -C %s diff main --diff-filter=D --name-only" % srcDir).split(" ")
+        ("git -C %s diff main --diff-filter=D --name-only" % srcDir).split(" "),
+        encoding="utf-8",
     )
 
     # Fetches the modified files as well for logging to support maintenance
     # in the skip list.
     modifiedFiles = subprocess.check_output(
-        ("git -C %s diff main --diff-filter=M --name-only" % srcDir).split(" ")
+        ("git -C %s diff main --diff-filter=M --name-only" % srcDir).split(" "),
+        encoding="utf-8",
     )
 
     # Fetches the renamed files for the same reason, this avoids duplicate
     # tests if running the new local folder and the general imported Test262
     # files.
     renamedFiles = subprocess.check_output(
-        ("git -C %s diff main --diff-filter=R --summary" % srcDir).split(" ")
+        ("git -C %s diff main --diff-filter=R --summary" % srcDir).split(" "),
+        encoding="utf-8",
     )
 
     # Print some friendly output

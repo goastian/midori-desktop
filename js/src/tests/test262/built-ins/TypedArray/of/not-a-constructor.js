@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2020 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -25,7 +26,7 @@ assert.sameValue(isConstructor(TypedArray.of), false, 'isConstructor(TypedArray.
 
 assert.throws(TypeError, () => {
   new TypedArray.of(1, 2, 3, 4);
-}, '`new TypedArray.of(1, 2, 3, 4)` throws TypeError');
+});
 
 
 reportCompare(0, 0);

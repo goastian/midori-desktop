@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2015 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -23,10 +24,11 @@ includes: [propertyHelper.js, testTypedArray.js]
 features: [TypedArray]
 ---*/
 
-assert.sameValue(TypedArray.prototype.forEach.length, 1);
-
-verifyNotEnumerable(TypedArray.prototype.forEach, "length");
-verifyNotWritable(TypedArray.prototype.forEach, "length");
-verifyConfigurable(TypedArray.prototype.forEach, "length");
+verifyProperty(TypedArray.prototype.forEach, "length", {
+  value: 1,
+  writable: false,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

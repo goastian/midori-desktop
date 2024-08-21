@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,11 +10,39 @@ features: [Temporal]
 ---*/
 
 const expected = [
-  // GetTemporalCalendarWithISODefault
+  // CopyDataProperties
+  "ownKeys options",
+  "getOwnPropertyDescriptor options.overflow",
+  "get options.overflow",
+  "getOwnPropertyDescriptor options.extra",
+  "get options.extra",
+  // GetTemporalCalendarSlotValueWithISODefault
   "get fields.calendar",
-  "has fields.calendar.calendar",
-  // CalendarFields
+  "has fields.calendar.dateAdd",
+  "has fields.calendar.dateFromFields",
+  "has fields.calendar.dateUntil",
+  "has fields.calendar.day",
+  "has fields.calendar.dayOfWeek",
+  "has fields.calendar.dayOfYear",
+  "has fields.calendar.daysInMonth",
+  "has fields.calendar.daysInWeek",
+  "has fields.calendar.daysInYear",
+  "has fields.calendar.fields",
+  "has fields.calendar.id",
+  "has fields.calendar.inLeapYear",
+  "has fields.calendar.mergeFields",
+  "has fields.calendar.month",
+  "has fields.calendar.monthCode",
+  "has fields.calendar.monthDayFromFields",
+  "has fields.calendar.monthsInYear",
+  "has fields.calendar.weekOfYear",
+  "has fields.calendar.year",
+  "has fields.calendar.yearMonthFromFields",
+  "has fields.calendar.yearOfWeek",
+  // lookup
+  "get fields.calendar.dateFromFields",
   "get fields.calendar.fields",
+  // CalendarFields
   "call fields.calendar.fields",
   // PrepareTemporalFields
   "get fields.day",
@@ -48,15 +76,9 @@ const expected = [
   "get fields.year.valueOf",
   "call fields.year.valueOf",
   // InterpretTemporalDateTimeFields
-  "get options.overflow",
   "get options.overflow.toString",
   "call options.overflow.toString",
-  "get fields.calendar.dateFromFields",
   "call fields.calendar.dateFromFields",
-  // inside Calendar.p.dateFromFields
-  "get options.overflow",
-  "get options.overflow.toString",
-  "call options.overflow.toString",
 ];
 const actual = [];
 
@@ -74,7 +96,10 @@ const fields = TemporalHelpers.propertyBagObserver(actual, {
   calendar: TemporalHelpers.calendarObserver(actual, "fields.calendar"),
 }, "fields");
 
-const options = TemporalHelpers.propertyBagObserver(actual, { overflow: "constrain" }, "options");
+const options = TemporalHelpers.propertyBagObserver(actual, {
+  overflow: "constrain",
+  extra: "property",
+}, "options");
 
 Temporal.PlainDateTime.from(fields, options);
 assert.compareArray(actual, expected, "order of operations");

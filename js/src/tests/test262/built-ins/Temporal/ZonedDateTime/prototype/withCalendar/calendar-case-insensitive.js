@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,10 +8,32 @@ description: Calendar names are case-insensitive
 features: [Temporal]
 ---*/
 
-const instance = new Temporal.ZonedDateTime(1_000_000_000_000_000_000n, "UTC", { id: "replace-me" });
+const instance = new Temporal.ZonedDateTime(1_000_000_000_000_000_000n, "UTC", {
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  id: "replace-me",
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
+});
 
 const arg = "iSo8601";
 const result = instance.withCalendar(arg);
-assert.sameValue(result.calendar.id, "iso8601", "Calendar is case-insensitive");
+assert.sameValue(result.calendarId, "iso8601", "Calendar is case-insensitive");
 
 reportCompare(0, 0);

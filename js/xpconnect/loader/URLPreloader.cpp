@@ -15,6 +15,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
+#include "mozilla/Try.h"
 #include "mozilla/Unused.h"
 #include "mozilla/Vector.h"
 #include "mozilla/scache/StartupCache.h"
@@ -221,9 +222,10 @@ Result<Ok, nsresult> URLPreloader::WriteCache() {
   }
 
   {
-    AutoFDClose fd;
+    AutoFDClose raiiFd;
     MOZ_TRY(cacheFile->OpenNSPRFileDesc(PR_WRONLY | PR_CREATE_FILE, 0644,
-                                        &fd.rwget()));
+                                        getter_Transfers(raiiFd)));
+    const auto fd = raiiFd.get();
 
     nsTArray<URLEntry*> entries;
     for (const auto& entry : mCachedURLs.Values()) {

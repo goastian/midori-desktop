@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -20,9 +20,9 @@ const expected = [
   "get options.smallestUnit.toString",
   "call options.smallestUnit.toString",
   "get options.timeZone",
-  "has options.timeZone.timeZone",
-  "get options.timeZone.getOffsetNanosecondsFor",
-  "call options.timeZone.getOffsetNanosecondsFor",
+  "has options.timeZone.getOffsetNanosecondsFor",
+  "has options.timeZone.getPossibleInstantsFor",
+  "has options.timeZone.id",
   "get options.timeZone.getOffsetNanosecondsFor",
   "call options.timeZone.getOffsetNanosecondsFor",
 ];

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -21,6 +21,6 @@ assert.sameValue(calendar.dateFromFieldsCallCount, 1, "dateFromFields should be 
 calendar.dateFromFieldsCallCount = 0;
 
 Temporal.ZonedDateTime.compare(arg2, arg1);
-assert.sameValue(calendar.dateFromFieldsCallCount, 1, "dateFromFields should be called on the property bag's calendar (first argument)");
+assert.sameValue(calendar.dateFromFieldsCallCount, 1, "dateFromFields should be called on the property bag's calendar (second argument)");
 
 reportCompare(0, 0);

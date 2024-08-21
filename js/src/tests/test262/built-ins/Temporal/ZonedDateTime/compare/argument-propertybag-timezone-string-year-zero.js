@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -23,17 +23,6 @@ invalidStrings.forEach((timeZone) => {
     RangeError,
     () => Temporal.ZonedDateTime.compare(datetime, { year: 2020, month: 5, day: 2, timeZone }),
     "reject minus zero as extended year (second argument)"
-  );
-
-  assert.throws(
-    RangeError,
-    () => Temporal.ZonedDateTime.compare({ year: 2020, month: 5, day: 2, timeZone: { timeZone } }, datetime),
-    "reject minus zero as extended year (nested property, first argument)"
-  );
-  assert.throws(
-    RangeError,
-    () => Temporal.ZonedDateTime.compare(datetime, { year: 2020, month: 5, day: 2, timeZone: { timeZone } }),
-    "reject minus zero as extended year (nested property, second argument)"
   );
 });
 

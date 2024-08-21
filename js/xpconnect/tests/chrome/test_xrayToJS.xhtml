@@ -32,8 +32,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     }
   }
 
-  var { AppConstants } = SpecialPowers.ChromeUtils.import(
-    "resource://gre/modules/AppConstants.jsm"
+  var { AppConstants } = SpecialPowers.ChromeUtils.importESModule(
+    "resource://gre/modules/AppConstants.sys.mjs"
   );
   var isNightlyBuild = AppConstants.NIGHTLY_BUILD;
   var isReleaseOrBeta = AppConstants.RELEASE_OR_BETA;
@@ -219,6 +219,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   // DO NOT CHANGE WTIHOUT REVIEW FROM AN XPCONNECT PEER.
   var gPrototypeProperties = {};
   var gConstructorProperties = {};
+  // Properties which cannot be invoked if callable without potentially
+  // rendering the object useless.
+  var gStatefulProperties = {};
   function constructorProps(arr) {
     // Some props live on all constructors
     return arr.concat(["prototype", "length", "name"]);
@@ -247,7 +250,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
                       "getOwnPropertyNames", "getOwnPropertySymbols",
                       "preventExtensions", "freeze", "fromEntries", "isFrozen", "seal",
                       "isSealed", "assign", "getPrototypeOf", "values",
-                      "entries", "isExtensible", "hasOwn"]);
+                      "entries", "isExtensible", "hasOwn", "groupBy"]);
   gPrototypeProperties.Array =
     ["length", "toSource", "toString", "toLocaleString", "join", "reverse", "sort", "push",
       "pop", "shift", "unshift", "splice", "concat", "slice", "lastIndexOf", "indexOf",
@@ -280,7 +283,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     ["constructor", "toSource", "toString", "compile", "exec", "test",
      Symbol.match, Symbol.matchAll, Symbol.replace, Symbol.search, Symbol.split,
      "flags", "dotAll", "global", "hasIndices", "ignoreCase", "multiline", "source", "sticky",
-     "unicode"];
+     "unicode", "unicodeSets"];
   gConstructorProperties.RegExp =
     constructorProps(["input", "lastMatch", "lastParen",
                       "leftContext", "rightContext", "$1", "$2", "$3", "$4",
@@ -290,25 +293,30 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   gPrototypeProperties.Promise =
     ["constructor", "catch", "then", "finally", Symbol.toStringTag];
   gConstructorProperties.Promise =
-    constructorProps(["resolve", "reject", "all", "allSettled", "any", "race", Symbol.species]);
+    constructorProps(["resolve", "reject", "all", "allSettled", "any", "race",
+                      "withResolvers", Symbol.species]);
 
   gPrototypeProperties.ArrayBuffer =
-    ["constructor", "byteLength", "slice", Symbol.toStringTag];
+    ["constructor", "byteLength", "detached", "slice", Symbol.toStringTag, "transfer", "transferToFixedLength", "maxByteLength", "resizable", "resize"];
   gConstructorProperties.ArrayBuffer =
     constructorProps(["isView", Symbol.species]);
+  gStatefulProperties.ArrayBuffer = ["transfer", "transferToFixedLength"]
 
-  gPrototypeProperties.SharedArrayBuffer = ["constructor", "slice", "byteLength", Symbol.toStringTag];
+  gPrototypeProperties.SharedArrayBuffer = ["constructor", "slice", "byteLength", "detached", Symbol.toStringTag, "transfer", "transferToFixedLength", "maxByteLength", "growable", "grow"];
   gConstructorProperties.SharedArrayBuffer = constructorProps([Symbol.species]);
+  gStatefulProperties.SharedArrayBuffer = ["transfer", "transferToFixedLength"]
 
   gPrototypeProperties.Map =
     ["constructor", "size", Symbol.toStringTag, "get", "has", "set", "delete",
      "keys", "values", "clear", "forEach", "entries", Symbol.iterator];
   gConstructorProperties.Map =
-    constructorProps([Symbol.species]);
+    constructorProps(["groupBy", Symbol.species]);
 
   gPrototypeProperties.Set =
-    ["constructor", "size", Symbol.toStringTag, "has", "add", "delete",
-     "keys", "values", "clear", "forEach", "entries", Symbol.iterator];
+     [Symbol.toStringTag, Symbol.iterator, "add", "clear", "constructor", "delete",
+      "difference", "entries", "forEach", "has", "intersection", "isDisjointFrom",
+      "isSubsetOf", "isSupersetOf", "keys", "size", "symmetricDifference", "union",
+      "values"];
   gConstructorProperties.Set =
     constructorProps([Symbol.species]);
 
@@ -354,11 +362,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     return typedArrayClasses.includes(classname);
   }
 
-  function propertyIsGetter(obj, name, classname) {
+  function propertyIsGetter(obj, name) {
     return !!Object.getOwnPropertyDescriptor(obj, name).get;
   }
 
-  function testProtoCallables(protoCallables, xray, xrayProto, localProto) {
+  function testProtoCallables(protoCallables, xray, xrayProto, localProto, callablesExcluded) {
+    // Handle undefined callablesExcluded.
+    let dontCall = callablesExcluded ?? [];
     for (let name of protoCallables) {
       info("Running tests for property: " + name);
       // Test both methods and getter properties.
@@ -383,7 +393,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
       is(lookupCallable(xray), method, "Proto props resolve on the instance");
       let local = lookupCallable(localProto);
       is(method.length, local.length, "Function.length identical");
-      if (!method.length) {
+      if (!method.length && !dontCall.includes(name)) {
         is(method.call(xray) + "", local.call(xray) + "",
            "Xray and local method results stringify identically");
 
@@ -469,12 +479,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     let protoCallables = protoProps.filter(name => propertyIsGetter(localProto, name, classname) ||
                                                    typeof localProto[name] == 'function' &&
                                                    name != 'constructor');
+    let callablesExcluded = gStatefulProperties[classname];
     ok(!!protoCallables.length, "Need something to test");
     is(xrayProto, iwin[classname].prototype, "Xray proto is correct");
     is(xrayProto, xray.__proto__, "Proto accessors agree");
     var protoProto = classname == "Object" ? null : iwin.Object.prototype;
     is(Object.getPrototypeOf(xrayProto), protoProto, "proto proto is correct");
-    testProtoCallables(protoCallables, xray, xrayProto, localProto);
+    testProtoCallables(protoCallables, xray, xrayProto, localProto, callablesExcluded);
     is(Object.getOwnPropertyNames(xrayProto).sort().toSource(),
        protoProps.toSource(), "getOwnPropertyNames works");
     is(Object.getOwnPropertySymbols(xrayProto).map(uneval).sort().toSource(),
@@ -791,7 +802,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     checkThrows(function() { trickyObject.hasOwnProperty = 33; }, /shadow/,
                 "Should reject shadowing of pre-existing inherited properties over Xrays");
 
-    checkThrows(function() { Object.defineProperty(trickyObject, 'rejectedProp', { get() {}}); },
+    checkThrows(function() { Object.defineProperty(trickyObject, 'rejectedProp', { get() { return undefined; }}); },
                 /accessor property/, "Should reject accessor property definition");
   }
 
@@ -1049,7 +1060,7 @@ for (var prop of props) {
     is(t.delete(null), true, "Key null can be deleted");
 
     let values = [];
-    t.forEach((value, key) => values.push(value));
+    t.forEach((value) => values.push(value));
     is(values.toString(), "a,5", "forEach enumerates values correctly");
 
     t.clear();

@@ -1,4 +1,3 @@
-// |reftest| skip -- resizable-arraybuffer is not supported
 // Copyright (C) 2021 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -10,7 +9,7 @@ info: |
   1. Let O be the this value.
   2. Perform ? RequireInternalSlot(O, [[ArrayBufferData]]).
   [...]
-features: [resizable-arraybuffer, Symbol, BigInt]
+features: [arraybuffer-transfer, Symbol, BigInt]
 ---*/
 
 assert.sameValue(typeof ArrayBuffer.prototype.transfer, "function");

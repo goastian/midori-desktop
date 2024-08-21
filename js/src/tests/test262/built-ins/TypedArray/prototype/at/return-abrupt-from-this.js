@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2020 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -21,22 +22,22 @@ assert.sameValue(
 
 assert.throws(TypeError, () => {
   TypedArray.prototype.at.call(undefined);
-}, '`TypedArray.prototype.at.call(undefined)` throws TypeError');
+});
 
 assert.throws(TypeError, () => {
   TypedArray.prototype.at.call(null);
-}, '`TypedArray.prototype.at.call(null)` throws TypeError');
+});
 
 testWithTypedArrayConstructors(TA => {
   assert.sameValue(typeof TA.prototype.at, 'function', 'The value of `typeof TA.prototype.at` is "function"');
 
   assert.throws(TypeError, () => {
     TA.prototype.at.call(undefined);
-  }, '`TA.prototype.at.call(undefined)` throws TypeError');
+  });
 
   assert.throws(TypeError, () => {
     TA.prototype.at.call(null);
-  }, '`TA.prototype.at.call(null)` throws TypeError');
+  });
 });
 
 reportCompare(0, 0);

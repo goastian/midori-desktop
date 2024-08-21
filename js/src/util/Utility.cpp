@@ -19,6 +19,7 @@
 
 #include "util/Poison.h"
 #include "vm/HelperThreads.h"
+#include "vm/JSContext.h"
 
 using namespace js;
 
@@ -92,14 +93,6 @@ void InitLargeAllocLimit() {
 }  // namespace js
 #endif
 
-#if defined(JS_GC_ALLOW_EXTRA_POISONING)
-#  if defined(DEBUG)
-bool js::gExtraPoisoningEnabled = true;
-#  else
-bool js::gExtraPoisoningEnabled = false;
-#  endif
-#endif
-
 JS_PUBLIC_DATA arena_id_t js::MallocArena;
 JS_PUBLIC_DATA arena_id_t js::ArrayBufferContentsArena;
 JS_PUBLIC_DATA arena_id_t js::StringBufferArena;
@@ -127,7 +120,7 @@ extern void js::AssertJSStringBufferInCorrectArena(const void* ptr) {
 //  returns an arenaId if MOZ_DEBUG is defined. Otherwise, this function is
 //  a no-op.
 #if defined(MOZ_MEMORY) && defined(MOZ_DEBUG)
-  if (ptr) {
+  if (ptr && !TlsContext.get()->nursery().isInside(ptr)) {
     jemalloc_ptr_info_t ptrInfo{};
     jemalloc_ptr_info(ptr, &ptrInfo);
     MOZ_ASSERT(ptrInfo.tag != TagUnknown);

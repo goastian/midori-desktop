@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !wasmGcEnabled()
+// |jit-test| skip-if: !wasmGcEnabled(); test-also=--gc-zeal=2
 
 // We'll be running some binary-format tests shortly.
 
@@ -42,22 +42,24 @@ function checkInvalid(body, errorMessage) {
                 (local.set $tmp (global.get $k))
                 (global.set $k (i32.add (local.get $tmp) (i32.const 1)))
                 (if (result (ref null $wabbit)) (i32.le_s (local.get $n) (i32.const 2))
-                    (struct.new $wabbit (local.get $tmp) (ref.null $wabbit) (ref.null $wabbit))
-                    (block (result (ref null $wabbit))
+                    (then (struct.new $wabbit (local.get $tmp) (ref.null $wabbit) (ref.null $wabbit)))
+                    (else
+                      (block (result (ref null $wabbit))
                       (struct.new $wabbit
                                   (local.get $tmp)
                                   (call $make (i32.sub (local.get $n) (i32.const 1)))
-                                  (call $make (i32.sub (local.get $n) (i32.const 2)))))))
+                                  (call $make (i32.sub (local.get $n) (i32.const 2))))))))
 
           (func (export "accumulate") (result i32)
                 (call $accum (global.get $g)))
 
           (func $accum (param $w (ref null $wabbit)) (result i32)
                 (if (result i32) (ref.is_null (local.get $w))
-                    (i32.const 0)
-                    (i32.add (struct.get $wabbit 0 (local.get $w))
+                    (then (i32.const 0))
+                    (else
+                      (i32.add (struct.get $wabbit 0 (local.get $w))
                              (i32.sub (call $accum (struct.get $wabbit 1 (local.get $w)))
-                                      (call $accum (struct.get $wabbit 2 (local.get $w)))))))
+                                      (call $accum (struct.get $wabbit 2 (local.get $w))))))))
 
           (func (export "reverse")
                 (call $reverse (global.get $g)))
@@ -65,25 +67,27 @@ function checkInvalid(body, errorMessage) {
           (func $reverse (param $w (ref null $wabbit))
                 (local $tmp (ref null $wabbit))
                 (if (i32.eqz (ref.is_null (local.get $w)))
-                    (block
-                     (struct.set $wabbit 0 (local.get $w) (i32.mul (i32.const 2) (struct.get $wabbit 0 (local.get $w))))
-                     (local.set $tmp (struct.get $wabbit 1 (local.get $w)))
-                     (struct.set $wabbit 1 (local.get $w) (struct.get $wabbit 2 (local.get $w)))
-                     (struct.set $wabbit 2 (local.get $w) (local.get $tmp))
-                     (call $reverse (struct.get $wabbit 1 (local.get $w)))
-                     (call $reverse (struct.get $wabbit 2 (local.get $w))))))
+                    (then
+                      (block
+                        (struct.set $wabbit 0 (local.get $w) (i32.mul (i32.const 2) (struct.get $wabbit 0 (local.get $w))))
+                        (local.set $tmp (struct.get $wabbit 1 (local.get $w)))
+                        (struct.set $wabbit 1 (local.get $w) (struct.get $wabbit 2 (local.get $w)))
+                        (struct.set $wabbit 2 (local.get $w) (local.get $tmp))
+                        (call $reverse (struct.get $wabbit 1 (local.get $w)))
+                        (call $reverse (struct.get $wabbit 2 (local.get $w)))))))
 
           (func (export "print")
                 (call $pr (global.get $g)))
 
           (func $pr (param $w (ref null $wabbit))
                 (if (i32.eqz (ref.is_null (local.get $w)))
-                    (block
-                     (call $print_lp)
-                     (call $print_int (struct.get $wabbit 0 (local.get $w)))
-                     (call $pr (struct.get $wabbit 1 (local.get $w)))
-                     (call $pr (struct.get $wabbit 2 (local.get $w)))
-                     (call $print_rp))))
+                    (then 
+                      (block
+                        (call $print_lp)
+                        (call $print_int (struct.get $wabbit 0 (local.get $w)))
+                        (call $pr (struct.get $wabbit 1 (local.get $w)))
+                        (call $pr (struct.get $wabbit 2 (local.get $w)))
+                        (call $print_rp)))))
          )`);
 
     let s = "";
@@ -116,10 +120,24 @@ function checkInvalid(body, errorMessage) {
 
 wasmEvalText(
     `(module
-      (type $node (struct (field (mut (ref null $node)))))
+      (type $node (sub (struct (field (mut (ref null $node))))))
       (type $nix (sub $node (struct (field (mut (ref null $node))) (field i32))))
       (func $f (param $p (ref null $node)) (param $q (ref null $nix))
        (struct.set $node 0 (local.get $p) (local.get $q))))`);
+
+// ref.cast: if the downcast succeeds we get the original pointer
+
+assertEq(wasmEvalText(
+  `(module
+    (type $node (sub (struct (field i32))))
+    (type $node2 (sub $node (struct (field i32) (field f32))))
+    (func $f (param $p (ref null $node)) (result (ref null $node2))
+     (ref.cast (ref null $node2) (local.get $p)))
+    (func (export "test") (result i32)
+     (local $n (ref null $node))
+     (local.set $n (struct.new $node2 (i32.const 0) (f32.const 12)))
+     (ref.eq (call $f (local.get $n)) (local.get $n))))`).exports.test(),
+       1);
 
 // ref.cast: if the pointer is null we trap
 
@@ -146,25 +164,12 @@ wasmEvalText(
     (func (export "test") (result eqref)
      (call $f (ref.null $node))))`).exports.test();
 
-// ref.cast: if the downcast succeeds we get the original pointer
-
-assertEq(wasmEvalText(
-    `(module
-      (type $node (struct (field i32)))
-      (type $node2 (sub $node (struct (field i32) (field f32))))
-      (func $f (param $p (ref null $node)) (result (ref null $node2))
-       (ref.cast (ref null $node2) (local.get $p)))
-      (func (export "test") (result i32)
-       (local $n (ref null $node))
-       (local.set $n (struct.new $node2 (i32.const 0) (f32.const 12)))
-       (ref.eq (call $f (local.get $n)) (local.get $n))))`).exports.test(),
-         1);
 
 // And once more with mutable fields
 
 assertEq(wasmEvalText(
     `(module
-      (type $node (struct (field (mut i32))))
+      (type $node (sub (struct (field (mut i32)))))
       (type $node2 (sub $node (struct (field (mut i32)) (field f32))))
       (func $f (param $p (ref null $node)) (result (ref null $node2))
        (ref.cast (ref null $node2) (local.get $p)))
@@ -210,11 +215,11 @@ assertEq(wasmEvalText(
   let a = makeA();
 
   let b = makeB();
-  assertEq(b[0], 0);
-  assertEq(b[1], 0);
+  assertEq(wasmGcReadField(b, 0), 0);
+  assertEq(wasmGcReadField(b, 1), 0);
 
   let c = makeC();
-  assertEq(c[0], null);
+  assertEq(wasmGcReadField(c, 0), null);
 }
 
 // struct.new_default: valid if all struct fields are defaultable

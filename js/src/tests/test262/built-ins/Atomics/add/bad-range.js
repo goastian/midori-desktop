@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
+// |reftest| shell-option(--enable-float16array) skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration('arm64-simulator'))) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2017 Mozilla Corporation.  All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,14 +11,14 @@ features: [ArrayBuffer, Atomics, DataView, SharedArrayBuffer, Symbol, TypedArray
 ---*/
 
 const buffer = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
-const views = intArrayConstructors.slice();
+const views = nonClampedIntArrayConstructors.slice();
 
 testWithTypedArrayConstructors(function(TA) {
   let view = new TA(buffer);
   testWithAtomicsOutOfBoundsIndices(function(IdxGen) {
     assert.throws(RangeError, function() {
       Atomics.add(view, IdxGen(view), 10);
-    }, '`Atomics.add(view, IdxGen(view), 10)` throws RangeError');
+    });
   });
 }, views);
 

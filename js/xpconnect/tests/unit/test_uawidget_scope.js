@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const {NetUtil} = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
 const {TestUtils} = ChromeUtils.importESModule("resource://testing-common/TestUtils.sys.mjs");
 
 function getWindowlessBrowser(url) {
@@ -13,7 +12,7 @@ function getWindowlessBrowser(url) {
   let webnav = Services.appShell.createWindowlessBrowser(false);
 
   let docShell = webnav.docShell;
-  docShell.createAboutBlankContentViewer(principal, principal);
+  docShell.createAboutBlankDocumentViewer(principal, principal);
 
   let document = webnav.document;
   let video = document.createElement("video");

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,6 +17,5 @@ assert.sameValue(result.isoSecond, 56, "isoSecond result");
 assert.sameValue(result.isoMillisecond, 987, "isoMillisecond result");
 assert.sameValue(result.isoMicrosecond, 654, "isoMicrosecond result");
 assert.sameValue(result.isoNanosecond, 321, "isoNanosecond result");
-assert.sameValue(result.calendar.id, "iso8601", "calendar result");
 
 reportCompare(0, 0);

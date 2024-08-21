@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,12 +8,35 @@ description: If calendarName is "never", the calendar ID should be omitted.
 features: [Temporal]
 ---*/
 
+const calendarMethods = {
+  dateAdd() {},
+  dateFromFields() {},
+  dateUntil() {},
+  day() {},
+  dayOfWeek() {},
+  dayOfYear() {},
+  daysInMonth() {},
+  daysInWeek() {},
+  daysInYear() {},
+  fields() {},
+  inLeapYear() {},
+  mergeFields() {},
+  month() {},
+  monthCode() {},
+  monthDayFromFields() {},
+  monthsInYear() {},
+  weekOfYear() {},
+  year() {},
+  yearMonthFromFields() {},
+  yearOfWeek() {},
+};
+
 const tests = [
   [[], "2000-05", "built-in ISO"],
-  [[{ toString() { return "custom"; } }], "2000-05-01", "custom"],
-  [[{ toString() { return "iso8601"; } }], "2000-05", "custom with iso8601 toString"],
-  [[{ toString() { return "ISO8601"; } }], "2000-05-01", "custom with caps toString"],
-  [[{ toString() { return "\u0131so8601"; } }], "2000-05-01", "custom with dotless i toString"],
+  [[{ id: "custom", ...calendarMethods }], "2000-05-01", "custom"],
+  [[{ id: "iso8601", ...calendarMethods }], "2000-05", "custom with iso8601 id"],
+  [[{ id: "ISO8601", ...calendarMethods }], "2000-05-01", "custom with caps id"],
+  [[{ id: "\u0131so8601", ...calendarMethods }], "2000-05-01", "custom with dotless i id"],
 ];
 
 for (const [args, expected, description] of tests) {

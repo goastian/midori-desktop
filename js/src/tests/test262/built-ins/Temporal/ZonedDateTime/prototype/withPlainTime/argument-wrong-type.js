@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,7 +12,7 @@ features: [BigInt, Symbol, Temporal]
 
 const instance = new Temporal.ZonedDateTime(1_000_000_000_000_000_000n, "UTC");
 
-const rangeErrorTests = [
+const primitiveTests = [
   [null, "null"],
   [true, "boolean"],
   ["", "empty string"],
@@ -20,8 +20,12 @@ const rangeErrorTests = [
   [1n, "bigint"],
 ];
 
-for (const [arg, description] of rangeErrorTests) {
-  assert.throws(RangeError, () => instance.withPlainTime(arg), `${description} does not convert to a valid ISO string`);
+for (const [arg, description] of primitiveTests) {
+  assert.throws(
+    typeof arg === 'string' ? RangeError : TypeError,
+    () => instance.withPlainTime(arg),
+    `${description} does not convert to a valid ISO string`
+  );
 }
 
 const typeErrorTests = [

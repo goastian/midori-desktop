@@ -1,4 +1,4 @@
-// |jit-test| skip-if: !getBuildConfiguration()['decorators']
+// |jit-test| skip-if: !getBuildConfiguration("decorators")
 
 load(libdir + "asserts.js");
 
@@ -44,6 +44,20 @@ Reflect.parse("class c {accessor\n* field(a) {}}");
 Reflect.parse("{accessor, field(a)}");
 Reflect.parse("class c {static accessor x = 1;}");
 Reflect.parse("class c {accessor #y = 2;}");
+Reflect.parse("class c {static dec1(){}; static {@c.dec1 class d{@c.dec1 field}}}");
+Reflect.parse("class c {static #dec1(){}; static {@c.#dec1 class d{@c.#dec1 field}}}");
+Reflect.parse("class c {@as field = false;}");
+Reflect.parse("class c {@accessor field = false;}");
+Reflect.parse("class c {@assert field = false;}");
+Reflect.parse("class c {@async field = false;}");
+Reflect.parse("class c {@await field = false;}");
+Reflect.parse("class c {@each field = false;}");
+Reflect.parse("class c {@from field = false;}");
+Reflect.parse("class c {@get field = false;}");
+Reflect.parse("class c {@meta field = false;}");
+Reflect.parse("class c {@of field = false;}");
+Reflect.parse("class c {@set field = false;}");
+Reflect.parse("class c {@target field = false;}");
 
 assertThrowsInstanceOf(() => Reflect.parse("class c {@ method() {};}"), SyntaxError);
 assertThrowsInstanceOf(() => Reflect.parse("class c {@((a, b, c => {}) method(a, b) {};}"), SyntaxError);
@@ -66,3 +80,93 @@ assertThrowsInstanceOf(() => Reflect.parse("class c {async accessor foo() {}}"),
 assertThrowsInstanceOf(() => Reflect.parse("class c {accessor set field(a) {}}"), SyntaxError);
 assertThrowsInstanceOf(() => Reflect.parse("class c {accessor *field(a) {}}"), SyntaxError);
 assertThrowsInstanceOf(() => Reflect.parse("class c {accessor *field(a) {}}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@dec[0] x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@new dec() x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@super x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@super() x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@super.dec() x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@import \"decorator\" x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@dec`template` x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@import.meta.url x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@new.target x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@obj.first?.second x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@class x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@function() x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@{} x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@[] x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@\"string\" x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@`string` x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@/[a-z]+/ x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@true x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@1n x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@this x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@null x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@... x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@let x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@static x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@yield x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@if x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@enum x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@implements x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@foo().bar.prop x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@foo.bar().prop x}"), SyntaxError);
+assertThrowsInstanceOf(() => Reflect.parse("class c {@foo.bar().prop() x}"), SyntaxError);
+
+// assert we have the right syntax tree
+const syntax = Reflect.parse("class c {}");
+assertEq(syntax.type, "Program");
+assertEq(syntax.body.length, 1);
+assertEq(syntax.body[0].type, "ClassStatement");
+assertEq(syntax.body[0].id.type, "Identifier");
+assertEq(syntax.body[0].id.name, "c");
+assertEq(syntax.body[0].decorators, null);
+
+// assert decrorators on a class
+const syntax2 = Reflect.parse("@dec @dec2 class c {}");
+assertEq(syntax2.type, "Program");
+assertEq(syntax2.body.length, 1);
+assertEq(syntax2.body[0].decorators.type, "SequenceExpression");
+assertEq(syntax2.body[0].decorators.expressions.length, 2);
+assertEq(syntax2.body[0].decorators.expressions[0].type, "Identifier");
+assertEq(syntax2.body[0].decorators.expressions[0].name, "dec");
+assertEq(syntax2.body[0].decorators.expressions[1].type, "Identifier");
+assertEq(syntax2.body[0].decorators.expressions[1].name, "dec2");
+
+// assert decorators on class fields
+const syntax3 = Reflect.parse("class c {@dec1 @dec2 field = false;}");
+assertEq(syntax3.type, "Program");
+assertEq(syntax3.body.length, 1);
+assertEq(syntax3.body[0].decorators, null);
+assertEq(syntax3.body[0].body[0].type, "ClassField");
+assertEq(syntax3.body[0].body[0].decorators.type, "SequenceExpression");
+assertEq(syntax3.body[0].body[0].decorators.expressions.length, 2);
+assertEq(syntax3.body[0].body[0].decorators.expressions[0].type, "Identifier");
+assertEq(syntax3.body[0].body[0].decorators.expressions[0].name, "dec1");
+assertEq(syntax3.body[0].body[0].decorators.expressions[1].type, "Identifier");
+assertEq(syntax3.body[0].body[0].decorators.expressions[1].name, "dec2");
+
+// assert decorators on accessors
+const syntax4 = Reflect.parse("class c {@dec1 @dec2 accessor field = false;}");
+assertEq(syntax3.type, "Program");
+assertEq(syntax3.body.length, 1);
+assertEq(syntax3.body[0].decorators, null);
+assertEq(syntax3.body[0].body[0].type, "ClassField");
+assertEq(syntax3.body[0].body[0].decorators.type, "SequenceExpression");
+assertEq(syntax3.body[0].body[0].decorators.expressions.length, 2);
+assertEq(syntax3.body[0].body[0].decorators.expressions[0].type, "Identifier");
+assertEq(syntax3.body[0].body[0].decorators.expressions[0].name, "dec1");
+assertEq(syntax3.body[0].body[0].decorators.expressions[1].type, "Identifier");
+assertEq(syntax3.body[0].body[0].decorators.expressions[1].name, "dec2");
+
+// assert decorators on methods
+const syntax5 = Reflect.parse("class c {@dec1 @dec2 method() {};}");
+assertEq(syntax5.type, "Program");
+assertEq(syntax5.body.length, 1);
+assertEq(syntax5.body[0].decorators, null);
+assertEq(syntax5.body[0].body[0].type, "ClassMethod");
+assertEq(syntax5.body[0].body[0].decorators.type, "SequenceExpression");
+assertEq(syntax5.body[0].body[0].decorators.expressions.length, 2);
+assertEq(syntax5.body[0].body[0].decorators.expressions[0].type, "Identifier");
+assertEq(syntax5.body[0].body[0].decorators.expressions[0].name, "dec1");
+assertEq(syntax5.body[0].body[0].decorators.expressions[1].type, "Identifier");
+assertEq(syntax5.body[0].body[0].decorators.expressions[1].name, "dec2");

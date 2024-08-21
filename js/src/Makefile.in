@@ -43,7 +43,7 @@ check-js-msg::
 	(cd $(topsrcdir) && $(PYTHON3) $(topsrcdir)/config/check_js_msg_encoding.py);
 
 check-jit-test::
-	$(JITTEST_SANITIZER_ENV) $(wildcard $(RUN_TEST_PROGRAM)) $(PYTHON3) -u $(srcdir)/jit-test/jit_test.py \
+	$(JITTEST_SANITIZER_ENV) $(PYTHON3) -u $(srcdir)/jit-test/jit_test.py \
 	        --no-slow --no-progress --format=automation --jitflags=all \
 			$(JITTEST_VALGRIND_FLAG) \
 			$(JITTEST_EXTRA_ARGS) \
@@ -52,7 +52,7 @@ check-jit-test::
 check:: check-js-msg
 
 check-jstests:
-	$(wildcard $(RUN_TEST_PROGRAM)) $(PYTHON3) -u $(srcdir)/tests/jstests.py \
+	$(PYTHON3) -u $(srcdir)/tests/jstests.py \
 		--no-progress --format=automation --timeout 300 \
 		$(JSTESTS_EXTRA_ARGS) \
 		$(DIST)/bin/js$(BIN_SUFFIX)
@@ -76,30 +76,13 @@ endif
 
 CFLAGS += $(MOZ_ZLIB_CFLAGS)
 
-# Silence warnings on AIX/HP-UX from non-GNU compilers
-ifndef GNU_CC
-ifeq ($(OS_ARCH),AIX)
-# Suppress warnings from xlC
-# 1540-1281: offsetof() on null non-POD types
-# 1540-1608: anonymous unions using static data members
-CFLAGS		+= -qsuppress=1540-1281 -qsuppress=1540-1608
-CXXFLAGS	+= -qsuppress=1540-1281 -qsuppress=1540-1608
-endif
-ifeq ($(OS_ARCH),HP-UX)
-# Suppress warnings from aCC
-# 3055: anonymous unions declaring types
-# 4189: offsetof() on non-POD types
-CFLAGS		+= +W3055,4189
-CXXFLAGS	+= +W3055,4189
-endif
-endif
 ifeq ($(OS_ARCH),SunOS)
 ifeq ($(TARGET_CPU),sparc)
 
-ifdef GNU_CC
+ifneq ($(CC_TYPE),clang-cl)
 CFLAGS   += -mcpu=v9
 CXXFLAGS += -mcpu=v9
-endif # GNU_CC
+endif # !clang-cl
 
 endif
 endif

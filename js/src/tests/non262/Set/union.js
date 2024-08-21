@@ -1,65 +1,300 @@
-/*
- * Any copyright is dedicated to the Public Domain.
- * https://creativecommons.org/publicdomain/zero/1.0/
- */
+// |reftest| shell-option(--enable-new-set-methods) skip-if(!Set.prototype.union)
 
-if (typeof getBuildConfiguration === "undefined") {
-    var getBuildConfiguration =
-        SpecialPowers.Cu.getJSTestingFunctions().getBuildConfiguration;
+assertEq(typeof Set.prototype.union, "function");
+assertDeepEq(Object.getOwnPropertyDescriptor(Set.prototype.union, "length"), {
+  value: 1, writable: false, enumerable: false, configurable: true,
+});
+assertDeepEq(Object.getOwnPropertyDescriptor(Set.prototype.union, "name"), {
+  value: "union", writable: false, enumerable: false, configurable: true,
+});
+
+const emptySet = new Set();
+const emptySetLike = new SetLike();
+const emptyMap = new Map();
+
+function asMap(values) {
+  return new Map(values.map(v => [v, v]));
 }
 
-if (typeof getRealmConfiguration === "undefined") {
-    var getRealmConfiguration =
-        SpecialPowers.Cu.getJSTestingFunctions().getRealmConfiguration;
+// Union of two empty sets is an empty set.
+assertSetContainsExactOrderedItems(emptySet.union(emptySet), []);
+assertSetContainsExactOrderedItems(emptySet.union(emptySetLike), []);
+assertSetContainsExactOrderedItems(emptySet.union(emptyMap), []);
+
+// Test native Set, Set-like, and Map objects.
+for (let values of [
+  [], [1], [1, 2], [1, true, null, {}],
+]) {
+  // Union with an empty set.
+  assertSetContainsExactOrderedItems(new Set(values).union(emptySet), values);
+  assertSetContainsExactOrderedItems(new Set(values).union(emptySetLike), values);
+  assertSetContainsExactOrderedItems(new Set(values).union(emptyMap), values);
+  assertSetContainsExactOrderedItems(emptySet.union(new Set(values)), values);
+  assertSetContainsExactOrderedItems(emptySet.union(new SetLike(values)), values);
+  assertSetContainsExactOrderedItems(emptySet.union(asMap(values)), values);
+
+  // Two sets with the exact same values.
+  assertSetContainsExactOrderedItems(new Set(values).union(new Set(values)), values);
+  assertSetContainsExactOrderedItems(new Set(values).union(new SetLike(values)), values);
+  assertSetContainsExactOrderedItems(new Set(values).union(asMap(values)), values);
+
+  // Union of the same set object.
+  let set = new Set(values);
+  assertSetContainsExactOrderedItems(set.union(set), values);
 }
 
-if (getBuildConfiguration()['new-set-methods'] && getRealmConfiguration().enableNewSetMethods) {
+// Check property accesses are in the correct order.
+{
+  let log = [];
 
-    assertEq(typeof Set.prototype.union, 'function');
-    assertEq(Set.prototype.union.length, 1);
-    assertEq(Set.prototype.union.name, 'union');
+  let sizeValue = 0;
 
-    assertSetContainsExactOrderedItems(new Set([1, true, null]).union(new Set()), [1, true, null]);
-    assertSetContainsExactOrderedItems(new Set([1, true, null]).union([1, true, null]), [1, true, null]);
-    assertSetContainsExactOrderedItems(new Set([1, 2, 3]).union([2, 3, 4]), [1, 2, 3, 4]);
-    assertSetContainsExactOrderedItems(new Set([1, 2, 3]).union([4]), [1, 2, 3, 4]);
-    // Works when the argument is a custom iterable which follows the Symbol.iterator protocol
-    assertSetContainsExactOrderedItems(new Set([1, 2, 3]).union(makeArrayIterator([3, 4])), [1, 2, 3, 4]);
-    assertSetContainsExactOrderedItems(new Set(['a']).union('abc'), ['a', 'b', 'c']);
-
-    // Works when the `this` is a custom iterable which follows the Symbol.iterator protocol
-    assertSetContainsExactOrderedItems(Set.prototype.union.call(makeArrayIterator([1, 2, 3, 3, 2]), [4, 5, 6]), [1, 2, 3, 4, 5, 6]);
-
-    // Does not modify the original set object
-    const set = new Set([1]);
-    assertEq(set.union([2]) !== set, true);
-
-    // Argument must be iterable
-    assertThrowsInstanceOf(function () {
-        const set = new Set();
-        set.union();
-    }, TypeError);
-    for (const arg of [null, {}, true, 1, undefined, NaN, Symbol()]) {
-        assertThrowsInstanceOf(function () {
-            const set = new Set();
-            set.union(arg);
-        }, TypeError);
+  let {proxy: keysIter} = LoggingProxy({
+    next() {
+      log.push("next()");
+      return {done: true};
     }
+  }, log);
 
-    // `this` must be an Object
-    for (const arg of [null, undefined, Symbol()]) {
-        assertThrowsInstanceOf(function () {
-            Set.prototype.union.call(arg, []);
-        }, TypeError);
-    }
+  let {proxy: setLike} = LoggingProxy({
+    size: {
+      valueOf() {
+        log.push("valueOf()");
+        return sizeValue;
+      }
+    },
+    has() {
+      throw new Error("Unexpected call to |has| method");
+    },
+    keys() {
+      log.push("keys()");
+      return keysIter;
+    },
+  }, log);
 
-    // `this` must be iterable
-    assertThrowsInstanceOf(function () {
-        Set.prototype.union.call({}, []);
-    }, TypeError);
-} else {
-    assertEq(typeof Set.prototype.union, 'undefined');
+  assertSetContainsExactOrderedItems(emptySet.union(setLike), []);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+    "[[get]]", "has",
+    "[[get]]", "keys",
+    "keys()",
+    "[[get]]", "next",
+    "next()",
+  ]);
+}
+
+// Check input validation.
+{
+  let log = [];
+
+  const nonCallable = {};
+  let sizeValue = 0;
+
+  let {proxy: keysIter} = LoggingProxy({
+    next: nonCallable,
+  }, log);
+
+  let {proxy: setLike, obj: setLikeObj} = LoggingProxy({
+    size: {
+      valueOf() {
+        log.push("valueOf()");
+        return sizeValue;
+      }
+    },
+    has() {
+      throw new Error("Unexpected call to |has| method");
+    },
+    keys() {
+      log.push("keys()");
+      return keysIter;
+    },
+  }, log);
+
+  log.length = 0;
+  assertThrowsInstanceOf(() => emptySet.union(setLike), TypeError);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+    "[[get]]", "has",
+    "[[get]]", "keys",
+    "keys()",
+    "[[get]]", "next",
+  ]);
+
+  // Change |keys| to return a non-object value.
+  setLikeObj.keys = () => 123;
+
+  log.length = 0;
+  assertThrowsInstanceOf(() => emptySet.union(setLike), TypeError);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+    "[[get]]", "has",
+    "[[get]]", "keys",
+  ]);
+
+  // Change |keys| to a non-callable value.
+  setLikeObj.keys = nonCallable;
+
+  log.length = 0;
+  assertThrowsInstanceOf(() => emptySet.union(setLike), TypeError);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+    "[[get]]", "has",
+    "[[get]]", "keys",
+  ]);
+
+  // Change |has| to a non-callable value.
+  setLikeObj.has = nonCallable;
+
+  log.length = 0;
+  assertThrowsInstanceOf(() => emptySet.union(setLike), TypeError);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+    "[[get]]", "has",
+  ]);
+
+  // Change |size| to NaN.
+  sizeValue = NaN;
+
+  log.length = 0;
+  assertThrowsInstanceOf(() => emptySet.union(setLike), TypeError);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+  ]);
+
+  // Change |size| to undefined.
+  sizeValue = undefined;
+
+  log.length = 0;
+  assertThrowsInstanceOf(() => emptySet.union(setLike), TypeError);
+
+  assertEqArray(log, [
+    "[[get]]", "size",
+    "valueOf()",
+  ]);
+}
+
+// Doesn't accept Array as an input.
+assertThrowsInstanceOf(() => emptySet.union([]), TypeError);
+
+// Works with Set subclasses.
+{
+  class MySet extends Set {}
+
+  let myEmptySet = new MySet;
+
+  assertSetContainsExactOrderedItems(emptySet.union(myEmptySet), []);
+  assertSetContainsExactOrderedItems(myEmptySet.union(myEmptySet), []);
+  assertSetContainsExactOrderedItems(myEmptySet.union(emptySet), []);
+}
+
+// Doesn't access any properties on the this-value.
+{
+  let log = [];
+
+  let {proxy: setProto} = LoggingProxy(Set.prototype, log);
+
+  let set = new Set([1, 2, 3]);
+  Object.setPrototypeOf(set, setProto);
+
+  assertSetContainsExactOrderedItems(Set.prototype.union.call(set, emptySet), [1, 2, 3]);
+
+  assertEqArray(log, []);
+}
+
+// Throws a TypeError when the this-value isn't a Set object.
+for (let thisValue of [
+  null, undefined, true, "", {}, new Map, new Proxy(new Set, {}),
+]) {
+  assertThrowsInstanceOf(() => Set.prototype.union.call(thisValue, emptySet), TypeError);
+}
+
+// Doesn't return the original Set object.
+{
+  let set = new Set([1]);
+  assertEq(set.union(emptySet) !== set, true);
+  assertEq(set.union(new Set([2])) !== set, true);
+}
+
+// Test insertion order
+{
+  let set = new Set([1, 2]);
+
+  // Case 1: Input is empty.
+  assertSetContainsExactOrderedItems(set.union(new Set([])), [1, 2]);
+
+  // Case 2: Input has fewer elements.
+  assertSetContainsExactOrderedItems(set.union(new Set([3])), [1, 2, 3]);
+
+  // Case 3: Input has same number of elements.
+  assertSetContainsExactOrderedItems(set.union(new Set([3, 4])), [1, 2, 3, 4]);
+
+  // Case 4: Input has more elements.
+  assertSetContainsExactOrderedItems(set.union(new Set([3, 4, 5])), [1, 2, 3, 4, 5]);
+}
+
+// Test that the input set is copied after accessing the |next| property of the keys iterator.
+{
+  let set = new Set([1, 2, 3]);
+
+  let setLike = {
+    size: 0,
+    has() {
+      throw new Error("Unexpected call to |has| method");
+    },
+    keys() {
+      return {
+        get next() {
+          // Clear the set when getting the |next| method.
+          set.clear();
+
+          // And then add a single new key.
+          set.add(4);
+
+          return function() {
+            return {done: true};
+          };
+        }
+      };
+    },
+  };
+
+  // The result should consist of the single, newly added key.
+  assertSetContainsExactOrderedItems(set.union(setLike), [4]);
+}
+
+// Tests which modify any built-ins should appear last, because modifications may disable
+// optimised code paths.
+
+// Doesn't call the built-in |Set.prototype.{has, keys, size}| functions.
+const SetPrototypeHas = Object.getOwnPropertyDescriptor(Set.prototype, "has");
+const SetPrototypeKeys = Object.getOwnPropertyDescriptor(Set.prototype, "keys");
+const SetPrototypeSize = Object.getOwnPropertyDescriptor(Set.prototype, "size");
+
+delete Set.prototype.has;
+delete Set.prototype.keys;
+delete Set.prototype.size;
+
+try {
+  let set = new Set([1, 2, 3]);
+  let other = new SetLike([1, 2, 3]);
+  assertSetContainsExactOrderedItems(set.union(other), [1, 2, 3]);
+} finally {
+  Object.defineProperty(Set.prototype, "has", SetPrototypeHas);
+  Object.defineProperty(Set.prototype, "keys", SetPrototypeKeys);
+  Object.defineProperty(Set.prototype, "size", SetPrototypeSize);
 }
 
 if (typeof reportCompare === "function")
-    reportCompare(true, true);
+  reportCompare(true, true);

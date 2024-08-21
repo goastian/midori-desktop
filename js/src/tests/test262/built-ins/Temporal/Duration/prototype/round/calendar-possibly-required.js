@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -46,8 +46,8 @@ assert.throws(
   "rounding a week Duration fails without largest/smallest unit"
 );
 
-TemporalHelpers.assertDuration(duration3.round(relativeToYears), 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, "round week duration to years");
-TemporalHelpers.assertDuration(duration3.round(relativeToMonths), 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, "round week duration to months");
+TemporalHelpers.assertDuration(duration3.round(relativeToYears), 0, 1, 0, 4, 0, 0, 0, 0, 0, 0, "round week duration to years");
+TemporalHelpers.assertDuration(duration3.round(relativeToMonths), 0, 1, 0, 4, 0, 0, 0, 0, 0, 0, "round week duration to months");
 TemporalHelpers.assertDuration(duration3.round(relativeToWeeks), 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, "round week duration to weeks");
 TemporalHelpers.assertDuration(duration3.round(relativeToDays), 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, "round week duration to days");
 

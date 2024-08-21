@@ -138,7 +138,6 @@
 #include "nsBaseHashtable.h"
 #include "nsHashKeys.h"
 #include "nsWrapperCache.h"
-#include "nsStringBuffer.h"
 #include "nsDeque.h"
 
 #include "nsIScriptSecurityManager.h"
@@ -560,7 +559,6 @@ class XPCJSRuntime final : public mozilla::CycleCollectedJSRuntime {
   JSObject* UnprivilegedJunkScope(const mozilla::fallible_t&);
 
   bool IsUnprivilegedJunkScope(JSObject*);
-  JSObject* LoaderGlobal();
 
   void DeleteSingletonScopes();
 
@@ -610,7 +608,6 @@ class XPCJSRuntime final : public mozilla::CycleCollectedJSRuntime {
   JS::GCSliceCallback mPrevGCSliceCallback;
   JS::DoCycleCollectionCallback mPrevDoCycleCollectionCallback;
   mozilla::WeakPtr<SandboxPrivate> mUnprivilegedJunkScope;
-  JS::PersistentRootedObject mLoaderGlobal;
   RefPtr<AsyncFreeSnowWhite> mAsyncSnowWhiteFreer;
 
   friend class XPCJSContext;
@@ -1428,7 +1425,6 @@ class XPCWrappedNative final : public nsIXPConnectWrappedNative {
 
   static nsresult WrapNewGlobal(JSContext* cx, xpcObjectHelper& nativeHelper,
                                 nsIPrincipal* principal,
-                                bool initStandardClasses,
                                 JS::RealmOptions& aOptions,
                                 XPCWrappedNative** wrappedGlobal);
 
@@ -2194,6 +2190,7 @@ struct GlobalProperties {
   bool ChromeUtils : 1;
   bool CSS : 1;
   bool CSSRule : 1;
+  bool CustomStateSet : 1;
   bool Directory : 1;
   bool Document : 1;
   bool DOMException : 1;
@@ -2206,6 +2203,7 @@ struct GlobalProperties {
   bool FormData : 1;
   bool Headers : 1;
   bool IOUtils : 1;
+  bool InspectorCSSParser : 1;
   bool InspectorUtils : 1;
   bool MessageChannel : 1;
   bool MIDIInputMap : 1;
@@ -2407,18 +2405,6 @@ class MOZ_STACK_CLASS StackScopedCloneOptions : public OptionsBase {
 JSObject* CreateGlobalObject(JSContext* cx, const JSClass* clasp,
                              nsIPrincipal* principal,
                              JS::RealmOptions& aOptions);
-
-// Modify the provided compartment options, consistent with |aPrincipal| and
-// with globally-cached values of various preferences.
-//
-// Call this function *before* |aOptions| is used to create the corresponding
-// global object, as not all of the options it sets can be modified on an
-// existing global object.  (The type system should make this obvious, because
-// you can't get a *mutable* JS::RealmOptions& from an existing global
-// object.)
-void InitGlobalObjectOptions(JS::RealmOptions& aOptions,
-                             bool aIsSystemPrincipal,
-                             bool aShouldResistFingerprinting);
 
 // Finish initializing an already-created, not-yet-exposed-to-script global
 // object.  This will attach a Components object (if necessary) and call

@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,11 +8,11 @@ description: Appropriate error thrown if primitive input cannot convert to a val
 features: [Temporal]
 ---*/
 
-assert.throws(RangeError, () => Temporal.Duration.from(undefined), "undefined");
-assert.throws(RangeError, () => Temporal.Duration.from(null), "null");
-assert.throws(RangeError, () => Temporal.Duration.from(true), "boolean");
+assert.throws(TypeError, () => Temporal.Duration.from(undefined), "undefined");
+assert.throws(TypeError, () => Temporal.Duration.from(null), "null");
+assert.throws(TypeError, () => Temporal.Duration.from(true), "boolean");
 assert.throws(TypeError, () => Temporal.Duration.from(Symbol()), "Symbol");
-assert.throws(RangeError, () => Temporal.Duration.from(5), "number");
-assert.throws(RangeError, () => Temporal.Duration.from(5n), "bigint");
+assert.throws(TypeError, () => Temporal.Duration.from(5), "number");
+assert.throws(TypeError, () => Temporal.Duration.from(5n), "bigint");
 
 reportCompare(0, 0);

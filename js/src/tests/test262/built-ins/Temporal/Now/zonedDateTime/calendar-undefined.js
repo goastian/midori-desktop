@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,7 +8,7 @@ description: Throws when the calendar argument is undefined
 features: [Temporal]
 ---*/
 
-assert.throws(RangeError, () => Temporal.Now.zonedDateTime(), "implicit");
-assert.throws(RangeError, () => Temporal.Now.zonedDateTime(undefined), "implicit");
+assert.throws(TypeError, () => Temporal.Now.zonedDateTime(), "implicit");
+assert.throws(TypeError, () => Temporal.Now.zonedDateTime(undefined), "implicit");
 
 reportCompare(0, 0);

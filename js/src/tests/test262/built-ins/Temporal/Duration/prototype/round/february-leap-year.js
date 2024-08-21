@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,8 +11,8 @@ features: [Temporal]
 
 // Based on a test case by André Bargull <andre.bargull@gmail.com>
 
-// Note: February in a leap year.
-const relativeTo = new Temporal.PlainDate(1972, 2, 1);
+// Note: One day after February in a leap year.
+const relativeTo = new Temporal.PlainDate(1972, 3, 1);
 
 const options = {
   largestUnit: "years",

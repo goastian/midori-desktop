@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -20,7 +20,7 @@ function test(isoString, components) {
   assert.sameValue(datetime.millisecond, ms);
   assert.sameValue(datetime.microsecond, µs);
   assert.sameValue(datetime.nanosecond, ns);
-  assert.sameValue(datetime.calendar.id, cid);
+  assert.sameValue(datetime.calendarId, cid);
 }
 function generateTest(dateTimeString, zoneString) {
   var components = [
@@ -39,7 +39,7 @@ function generateTest(dateTimeString, zoneString) {
   test(`${ dateTimeString }:30.123456789${ zoneString }`, components);
 }
 
-//valid strings 
+//valid strings
 [
   "+0100[Europe/Vienna]",
   "+01:00[Europe/Vienna]",

@@ -47,6 +47,7 @@
 #include "nsContentUtils.h"
 #include "nsScriptError.h"
 #include "nsJSUtils.h"
+#include "nsRFPService.h"
 #include "prsystem.h"
 
 #include "xpcprivate.h"
@@ -152,7 +153,6 @@ void nsXPConnect::InitStatics() {
   // as possible to avoid missing any classes' creations.
   JS::SetLogCtorDtorFunctions(NS_LogCtor, NS_LogDtor);
 #endif
-  ReadOnlyPage::Init();
 
   gSelf = new nsXPConnect();
   gOnceAliveNowDead = false;
@@ -189,12 +189,13 @@ void xpc::ErrorBase::Init(JSErrorBase* aReport) {
   if (!aReport->filename) {
     mFileName.SetIsVoid(true);
   } else {
-    CopyUTF8toUTF16(mozilla::MakeStringSpan(aReport->filename), mFileName);
+    CopyUTF8toUTF16(mozilla::MakeStringSpan(aReport->filename.c_str()),
+                    mFileName);
   }
 
   mSourceId = aReport->sourceId;
   mLineNumber = aReport->lineno;
-  mColumn = aReport->column;
+  mColumn = aReport->column.oneOriginValue();
 }
 
 void xpc::ErrorNote::Init(JSErrorNotes::Note* aNote) {
@@ -481,22 +482,27 @@ JSObject* CreateGlobalObject(JSContext* cx, const JSClass* clasp,
 }
 
 void InitGlobalObjectOptions(JS::RealmOptions& aOptions,
-                             bool aIsSystemPrincipal,
-                             bool aShouldResistFingerprinting) {
-  bool shouldDiscardSystemSource = ShouldDiscardSystemSource();
-
+                             bool aIsSystemPrincipal, bool aSecureContext,
+                             bool aForceUTC, bool aAlwaysUseFdlibm,
+                             bool aLocaleEnUS) {
   if (aIsSystemPrincipal) {
     // Make toSource functions [ChromeOnly]
     aOptions.creationOptions().setToSourceEnabled(true);
     // Make sure [SecureContext] APIs are visible:
     aOptions.creationOptions().setSecureContext(true);
     aOptions.behaviors().setClampAndJitterTime(false);
+    aOptions.behaviors().setDiscardSource(ShouldDiscardSystemSource());
+    MOZ_ASSERT(aSecureContext,
+               "aIsSystemPrincipal should imply aSecureContext");
+  } else {
+    aOptions.creationOptions().setSecureContext(aSecureContext);
   }
-  aOptions.behaviors().setShouldResistFingerprinting(
-      aShouldResistFingerprinting);
 
-  if (shouldDiscardSystemSource) {
-    aOptions.behaviors().setDiscardSource(aIsSystemPrincipal);
+  aOptions.creationOptions().setForceUTC(aForceUTC);
+  aOptions.creationOptions().setAlwaysUseFdlibm(aAlwaysUseFdlibm);
+  if (aLocaleEnUS) {
+    nsCString locale = nsRFPService::GetSpoofedJSLocale();
+    aOptions.creationOptions().setLocaleCopyZ(locale.get());
   }
 }
 
@@ -545,8 +551,14 @@ nsresult InitClassesWithNewWrappedGlobal(JSContext* aJSContext,
   // If this changes, ShouldRFP needs to be updated accordingly.
   MOZ_RELEASE_ASSERT(aPrincipal->IsSystemPrincipal());
 
+  // Similarly we can thus hardcode the RTPCallerType.
+  aOptions.behaviors().setReduceTimerPrecisionCallerType(
+      RTPCallerTypeToToken(RTPCallerType::SystemPrincipal));
+
   InitGlobalObjectOptions(aOptions, /* aSystemPrincipal */ true,
-                          /* aShouldResistFingerprinting */ false);
+                          /* aSecureContext */ true,
+                          /* aForceUTC */ false, /* aAlwaysUseFdlibm */ false,
+                          /* aLocaleEnUS */ false);
 
   // Call into XPCWrappedNative to make a new global object, scope, and global
   // prototype.
@@ -554,8 +566,7 @@ nsresult InitClassesWithNewWrappedGlobal(JSContext* aJSContext,
   MOZ_ASSERT(helper.GetScriptableFlags() & XPC_SCRIPTABLE_IS_GLOBAL_OBJECT);
   RefPtr<XPCWrappedNative> wrappedGlobal;
   nsresult rv = XPCWrappedNative::WrapNewGlobal(
-      aJSContext, helper, aPrincipal, aFlags & xpc::INIT_JS_STANDARD_CLASSES,
-      aOptions, getter_AddRefs(wrappedGlobal));
+      aJSContext, helper, aPrincipal, aOptions, getter_AddRefs(wrappedGlobal));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Grab a copy of the global and enter its compartment.
@@ -618,7 +629,7 @@ nsCString GetFunctionName(JSContext* cx, HandleObject obj) {
     return GetFunctionName(cx, vobj);
   }
 
-  RootedString funName(cx, JS_GetFunctionDisplayId(fun));
+  RootedString funName(cx, JS_GetMaybePartialFunctionDisplayId(fun));
   RootedScript script(cx, JS_GetFunctionScript(cx, fun));
   const char* filename = script ? JS_GetScriptFilename(script) : "anonymous";
   const char* filenameSuffix = strrchr(filename, '/');

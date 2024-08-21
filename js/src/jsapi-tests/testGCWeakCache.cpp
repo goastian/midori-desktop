@@ -6,10 +6,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "gc/Policy.h"
+#include "gc/SweepingAPI.h"
 #include "gc/Zone.h"
 #include "js/GCHashTable.h"
 #include "js/RootingAPI.h"
-#include "js/SweepingAPI.h"
 
 #include "jsapi-tests/tests.h"
 
@@ -29,7 +29,7 @@ BEGIN_TEST(testWeakCacheSet) {
   using ObjectSet =
       GCHashSet<HeapPtr<JSObject*>, StableCellHasher<HeapPtr<JSObject*>>,
                 SystemAllocPolicy>;
-  using Cache = JS::WeakCache<ObjectSet>;
+  using Cache = WeakCache<ObjectSet>;
   Cache cache(JS::GetObjectZone(tenured1));
 
   cache.put(tenured1);
@@ -68,7 +68,7 @@ BEGIN_TEST(testWeakCacheMap) {
 
   using ObjectMap = js::GCHashMap<HeapPtr<JSObject*>, uint32_t,
                                   js::StableCellHasher<HeapPtr<JSObject*>>>;
-  using Cache = JS::WeakCache<ObjectMap>;
+  using Cache = WeakCache<ObjectMap>;
   Cache cache(JS::GetObjectZone(tenured1), cx);
 
   cache.put(tenured1, 1);
@@ -92,6 +92,39 @@ BEGIN_TEST(testWeakCacheMap) {
 }
 END_TEST(testWeakCacheMap)
 
+BEGIN_TEST(testWeakCacheMapWithUniquePtr) {
+  JS::RootedObject tenured1(cx, JS_NewPlainObject(cx));
+  JS::RootedObject tenured2(cx, JS_NewPlainObject(cx));
+  JS_GC(cx);
+  JS::RootedObject nursery1(cx, JS_NewPlainObject(cx));
+  JS::RootedObject nursery2(cx, JS_NewPlainObject(cx));
+
+  using ObjectMap = js::GCHashMap<HeapPtr<JSObject*>, UniquePtr<uint32_t>,
+                                  js::StableCellHasher<HeapPtr<JSObject*>>>;
+  using Cache = WeakCache<ObjectMap>;
+  Cache cache(JS::GetObjectZone(tenured1), cx);
+
+  cache.put(tenured1, MakeUnique<uint32_t>(1));
+  cache.put(tenured2, MakeUnique<uint32_t>(2));
+  cache.put(nursery1, MakeUnique<uint32_t>(3));
+  cache.put(nursery2, MakeUnique<uint32_t>(4));
+
+  JS_GC(cx);
+  CHECK(cache.has(tenured1));
+  CHECK(cache.has(tenured2));
+  CHECK(cache.has(nursery1));
+  CHECK(cache.has(nursery2));
+
+  tenured2 = nursery2 = nullptr;
+  JS_GC(cx);
+  CHECK(cache.has(tenured1));
+  CHECK(cache.has(nursery1));
+  CHECK(cache.count() == 2);
+
+  return true;
+}
+END_TEST(testWeakCacheMapWithUniquePtr)
+
 // Exercise WeakCache<GCVector>.
 BEGIN_TEST(testWeakCacheGCVector) {
   // Create two objects tenured and two in the nursery. If zeal is on,
@@ -103,7 +136,7 @@ BEGIN_TEST(testWeakCacheGCVector) {
   JS::RootedObject nursery1(cx, JS_NewPlainObject(cx));
   JS::RootedObject nursery2(cx, JS_NewPlainObject(cx));
 
-  using ObjectVector = JS::WeakCache<GCVector<HeapPtr<JSObject*>>>;
+  using ObjectVector = WeakCache<GCVector<HeapPtr<JSObject*>>>;
   ObjectVector cache(JS::GetObjectZone(tenured1), cx);
 
   CHECK(cache.append(tenured1));
@@ -231,7 +264,7 @@ BEGIN_TEST(testIncrementalWeakCacheSweeping) {
   AutoLeaveZeal nozeal(cx);
 
   JS_SetGCParameter(cx, JSGC_INCREMENTAL_GC_ENABLED, true);
-  JS_SetGCZeal(cx, 17, 1000000);
+  JS::SetGCZeal(cx, 17, 1000000);
 
   CHECK(TestSet());
   CHECK(TestMap());
@@ -239,7 +272,7 @@ BEGIN_TEST(testIncrementalWeakCacheSweeping) {
   CHECK(TestReplaceDyingInMap());
   CHECK(TestUniqueIDLookups());
 
-  JS_SetGCZeal(cx, 0, 0);
+  JS::SetGCZeal(cx, 0, 0);
   JS_SetGCParameter(cx, JSGC_INCREMENTAL_GC_ENABLED, false);
 
   return true;
@@ -280,7 +313,7 @@ bool TestSet() {
   using ObjectSet =
       GCHashSet<HeapPtr<JSObject*>, StableCellHasher<HeapPtr<JSObject*>>,
                 TempAllocPolicy>;
-  using Cache = JS::WeakCache<ObjectSet>;
+  using Cache = WeakCache<ObjectSet>;
   Cache cache(JS::GetObjectZone(global), cx);
 
   // Sweep empty cache.
@@ -409,7 +442,7 @@ bool TestMap() {
   using ObjectMap =
       GCHashMap<HeapPtr<JSObject*>, uint32_t,
                 StableCellHasher<HeapPtr<JSObject*>>, TempAllocPolicy>;
-  using Cache = JS::WeakCache<ObjectMap>;
+  using Cache = WeakCache<ObjectMap>;
   Cache cache(JS::GetObjectZone(global), cx);
 
   // Sweep empty cache.
@@ -540,7 +573,7 @@ bool TestReplaceDyingInSet() {
   // Test replacing dying entries with ones that have the same key using the
   // various APIs.
 
-  using Cache = JS::WeakCache<
+  using Cache = WeakCache<
       GCHashSet<NumberAndObjectEntry, StableCellHasher<NumberAndObjectEntry>,
                 TempAllocPolicy>>;
   Cache cache(JS::GetObjectZone(global), cx);
@@ -599,9 +632,8 @@ bool TestReplaceDyingInMap() {
   // Test replacing dying entries with ones that have the same key using the
   // various APIs.
 
-  using Cache =
-      JS::WeakCache<GCHashMap<uint32_t, HeapPtr<JSObject*>,
-                              DefaultHasher<uint32_t>, TempAllocPolicy>>;
+  using Cache = WeakCache<GCHashMap<uint32_t, HeapPtr<JSObject*>,
+                                    DefaultHasher<uint32_t>, TempAllocPolicy>>;
   Cache cache(JS::GetObjectZone(global), cx);
 
   RootedObject value1(cx, JS_NewPlainObject(cx));
@@ -663,7 +695,7 @@ bool TestUniqueIDLookups() {
   const size_t DeadFactor = 3;
   const size_t ObjectCount = 100;
 
-  using Cache = JS::WeakCache<
+  using Cache = WeakCache<
       GCHashSet<ObjectEntry, StableCellHasher<ObjectEntry>, TempAllocPolicy>>;
   Cache cache(JS::GetObjectZone(global), cx);
 

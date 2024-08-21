@@ -43,6 +43,18 @@ Setting this to `false` prevents this `Debugger` instance from requiring any
 code coverage instrumentation, but it does not guarantee that the
 instrumentation is not present.
 
+### `exclusiveDebuggerOnEval`
+A boolean value indicating whether other Debugger instances should
+have their hook functions called when this instance uses:
+* Debugger.Frame.evalWithBindings,
+* Debugger.Object.executeInGlobalWithBindings
+* Debugger.Object.call
+When set to true, other Debugger instances are not notified.
+
+### `inspectNativeCallArguments`
+A boolean value, to be set to true in order to pass the two last
+arguments of `onNativeCall` hook.
+
 ### `uncaughtExceptionHook`
 Either `null` or a function that SpiderMonkey calls when a call to a
 debug event handler, breakpoint handler, or similar
@@ -74,6 +86,13 @@ debugger developers. For example, an uncaught exception hook may have
 access to browser-level features like the `alert` function, which this
 API's implementation does not, making it possible to present debugger
 errors to the developer in a way suited to the context.)
+
+### `shouldAvoidSideEffects`
+A boolean value used to ask a side-effectful native code to abort.
+
+If set to true, `JS::dbg::ShouldAvoidSideEffects(cx)` returns true.
+Native code can opt into this to support debugger who wants to perform
+side-effect-free evaluation.
 
 
 ## Debugger Handler Functions
@@ -159,6 +178,14 @@ has one of the following values:
 `get`: The native is the getter for a property which is being accessed.
 `set`: The native is the setter for a property being written to.
 `call`: Any call not fitting into the above categories.
+
+<i>object</i> is a [`Debugger.Object`][object] reference to the object
+ onto which the native method is called, if any.
+<i>args</i> is a [`Debugger.Object`][object] for the array of arguments
+being passed to the native function.
+
+The two last arguments, <i>object</i> and <i>args</i> are only passed
+if `Debugger.inspectNativeCallArguments` is set to true.
 
 This method should return a [resumption value][rv] specifying how the debuggee's
 execution should proceed. If a return value is overridden for a constructor
@@ -398,12 +425,6 @@ instances for all debuggee scripts.
   The script must at least partially cover the given source line. If this
   property is present, the `url` property must be present as well.
 
-* `column`
-
-  The script must include given column on the line given by the `line`property.
-  If this property is present, the `url` and `line` properties must both be
-  present as well.
-
 * `innermost`
 
   If this property is present and true, the script must be the innermost
@@ -553,3 +574,4 @@ The functions described below are not called with a `this` value.
 [vf]: Debugger.Frame.md#visible-frames
 [tracking-allocs]: Debugger.Memory.md#trackingallocationsites
 [frame]: Debugger.Frame.md
+[object]: Debugger.Object.md

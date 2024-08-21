@@ -22,7 +22,7 @@
 #include "js/SourceText.h"
 #include "js/StructuredClone.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIException.h"  // for nsIStackFrame
 #include "nsIScriptContext.h"
 #include "nsIScriptObjectPrincipal.h"
@@ -50,6 +50,7 @@
 #include "mozilla/dom/DOMParserBinding.h"
 #include "mozilla/dom/DOMTokenListBinding.h"
 #include "mozilla/dom/ElementBinding.h"
+#include "mozilla/dom/ElementInternalsBinding.h"
 #include "mozilla/dom/EventBinding.h"
 #include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/IndexedDatabaseManager.h"
@@ -237,14 +238,16 @@ static bool SandboxImport(JSContext* cx, unsigned argc, Value* vp) {
     JSAutoRealm ar(cx, funobj);
 
     RootedValue funval(cx, ObjectValue(*funobj));
-    JSFunction* fun = JS_ValueToFunction(cx, funval);
+    JS::Rooted<JSFunction*> fun(cx, JS_ValueToFunction(cx, funval));
     if (!fun) {
       XPCThrower::Throw(NS_ERROR_INVALID_ARG, cx);
       return false;
     }
 
     // Use the actual function name as the name.
-    funname = JS_GetFunctionId(fun);
+    if (!JS_GetFunctionId(cx, fun, &funname)) {
+      return false;
+    }
     if (!funname) {
       XPCThrower::Throw(NS_ERROR_INVALID_ARG, cx);
       return false;
@@ -308,7 +311,7 @@ static bool SandboxFetch(JSContext* cx, JS::HandleObject scope,
   }
 
   BindingCallContext callCx(cx, "fetch");
-  RequestOrUSVString request;
+  RequestOrUTF8String request;
   if (!request.Init(callCx, args[0], "Argument 1")) {
     return false;
   }
@@ -899,6 +902,8 @@ bool xpc::GlobalProperties::Parse(JSContext* cx, JS::HandleObject obj) {
       CSS = true;
     } else if (JS_LinearStringEqualsLiteral(nameStr, "CSSRule")) {
       CSSRule = true;
+    } else if (JS_LinearStringEqualsLiteral(nameStr, "CustomStateSet")) {
+      CustomStateSet = true;
     } else if (JS_LinearStringEqualsLiteral(nameStr, "Document")) {
       Document = true;
     } else if (JS_LinearStringEqualsLiteral(nameStr, "Directory")) {
@@ -923,6 +928,8 @@ bool xpc::GlobalProperties::Parse(JSContext* cx, JS::HandleObject obj) {
       Headers = true;
     } else if (JS_LinearStringEqualsLiteral(nameStr, "IOUtils")) {
       IOUtils = true;
+    } else if (JS_LinearStringEqualsLiteral(nameStr, "InspectorCSSParser")) {
+      InspectorCSSParser = true;
     } else if (JS_LinearStringEqualsLiteral(nameStr, "InspectorUtils")) {
       InspectorUtils = true;
     } else if (JS_LinearStringEqualsLiteral(nameStr, "MessageChannel")) {
@@ -1025,6 +1032,11 @@ bool xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj) {
     return false;
   }
 
+  if (CustomStateSet &&
+      !dom::CustomStateSet_Binding::GetConstructorObject(cx)) {
+    return false;
+  }
+
   if (Directory && !dom::Directory_Binding::GetConstructorObject(cx))
     return false;
 
@@ -1062,6 +1074,11 @@ bool xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj) {
   }
 
   if (IOUtils && !dom::IOUtils_Binding::GetConstructorObject(cx)) {
+    return false;
+  }
+
+  if (InspectorCSSParser &&
+      !dom::InspectorCSSParser_Binding::GetConstructorObject(cx)) {
     return false;
   }
 
@@ -1264,7 +1281,7 @@ nsresult ApplyAddonContentScriptCSP(nsISupports* prinOrSop) {
 
   csp = new nsCSPContext();
   MOZ_TRY(
-      csp->SetRequestContextWithPrincipal(clonedPrincipal, selfURI, u""_ns, 0));
+      csp->SetRequestContextWithPrincipal(clonedPrincipal, selfURI, ""_ns, 0));
 
   MOZ_TRY(csp->AppendPolicy(baseCSP, false, false));
 

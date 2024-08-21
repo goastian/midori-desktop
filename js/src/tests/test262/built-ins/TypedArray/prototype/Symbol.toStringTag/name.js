@@ -1,3 +1,4 @@
+// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2015 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -22,10 +23,11 @@ features: [Symbol.toStringTag]
 
 var desc = Object.getOwnPropertyDescriptor(TypedArray.prototype, Symbol.toStringTag);
 
-assert.sameValue(desc.get.name, "get [Symbol.toStringTag]");
-
-verifyNotEnumerable(desc.get, "name");
-verifyNotWritable(desc.get, "name");
-verifyConfigurable(desc.get, "name");
+verifyProperty(desc.get, "name", {
+  value: "get [Symbol.toStringTag]",
+  writable: false,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

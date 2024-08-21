@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,22 +9,22 @@ description: >
 features: [Temporal]
 ---*/
 
-const testCases = {
-  "Etc/GMT": "UTC",
-  "Etc/GMT+0": "UTC",
-  "Etc/GMT-0": "UTC",
-  "Etc/GMT0": "UTC",
-  "Etc/Greenwich": "UTC",
-  "Etc/UCT": "UTC",
-  "Etc/UTC": "UTC",
-  "Etc/Universal": "UTC",
-  "Etc/Zulu": "UTC",
-};
+const testCases = [
+  "Etc/GMT",
+  "Etc/GMT+0",
+  "Etc/GMT-0",
+  "Etc/GMT0",
+  "Etc/Greenwich",
+  "Etc/UCT",
+  "Etc/UTC",
+  "Etc/Universal",
+  "Etc/Zulu",
+];
 
-for (let [id, canonical] of Object.entries(testCases)) {
+for (let id of testCases) {
   let tz = new Temporal.TimeZone(id);
 
-  assert.sameValue(tz.id, canonical);
+  assert.sameValue(tz.id, id);
 }
 
 reportCompare(0, 0);

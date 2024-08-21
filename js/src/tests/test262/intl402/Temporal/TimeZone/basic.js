@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,8 +12,11 @@ const valid = [
   ["Europe/Vienna"],
   ["America/New_York"],
   ["Africa/CAIRO", "Africa/Cairo"],
-  ["Asia/Ulan_Bator", "Asia/Ulaanbaatar"],
-  ["GMT", "UTC"],
+  ["africa/cairo", "Africa/Cairo"],
+  ["Asia/Ulaanbaatar"],
+  ["Asia/Ulan_Bator"],
+  ["UTC"],
+  ["GMT"]
 ];
 for (const [zone, id = zone] of valid) {
   const result = new Temporal.TimeZone(zone);

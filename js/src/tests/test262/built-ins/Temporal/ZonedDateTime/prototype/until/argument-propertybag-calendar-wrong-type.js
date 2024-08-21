@@ -1,4 +1,4 @@
-// |reftest| skip -- Temporal is not supported
+// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,7 +13,7 @@ features: [BigInt, Symbol, Temporal]
 const timeZone = new Temporal.TimeZone("UTC");
 const instance = new Temporal.ZonedDateTime(0n, timeZone);
 
-const rangeErrorTests = [
+const primitiveTests = [
   [null, "null"],
   [true, "boolean"],
   ["", "empty string"],
@@ -21,30 +21,26 @@ const rangeErrorTests = [
   [1n, "bigint"],
 ];
 
-for (const [calendar, description] of rangeErrorTests) {
-  let arg = { year: 2019, monthCode: "M11", day: 1, calendar };
-  assert.throws(RangeError, () => instance.until(arg), `${description} does not convert to a valid ISO string`);
-
-  arg = { year: 2019, monthCode: "M11", day: 1, calendar: { calendar } };
-  assert.throws(RangeError, () => instance.until(arg), `${description} does not convert to a valid ISO string (nested property)`);
+for (const [calendar, description] of primitiveTests) {
+  const arg = { year: 2019, monthCode: "M11", day: 1, calendar };
+  assert.throws(
+    typeof calendar === 'string' ? RangeError : TypeError,
+    () => instance.until(arg),
+    `${description} does not convert to a valid ISO string`
+  );
 }
 
 const typeErrorTests = [
   [Symbol(), "symbol"],
-  [{}, "plain object"],  // TypeError due to missing dateFromFields()
-  [Temporal.Calendar, "Temporal.Calendar, object"],  // ditto
+  [{}, "plain object that doesn't implement the protocol"],
+  [new Temporal.TimeZone("UTC"), "time zone instance"],
+  [Temporal.Calendar, "Temporal.Calendar, object"],
   [Temporal.Calendar.prototype, "Temporal.Calendar.prototype, object"],  // fails brand check in dateFromFields()
 ];
 
 for (const [calendar, description] of typeErrorTests) {
-  let arg = { year: 2019, monthCode: "M11", day: 1, calendar };
+  const arg = { year: 2019, monthCode: "M11", day: 1, calendar };
   assert.throws(TypeError, () => instance.until(arg), `${description} is not a valid property bag and does not convert to a string`);
-
-  arg = { year: 2019, monthCode: "M11", day: 1, calendar: { calendar } };
-  assert.throws(TypeError, () => instance.until(arg), `${description} is not a valid property bag and does not convert to a string (nested property)`);
 }
-
-const arg = { year: 2019, monthCode: "M11", day: 1, calendar: { calendar: undefined } };
-assert.throws(RangeError, () => instance.until(arg), `nested undefined calendar property is always a RangeError`);
 
 reportCompare(0, 0);
