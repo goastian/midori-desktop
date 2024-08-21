@@ -4,20 +4,18 @@
 
 //! Specified types for counter properties.
 
-#[cfg(feature = "servo-layout-2013")]
+#[cfg(feature = "servo")]
 use crate::computed_values::list_style_type::T as ListStyleType;
+#[cfg(feature = "gecko")]
+use crate::counter_style::CounterStyle;
 use crate::parser::{Parse, ParserContext};
 use crate::values::generics::counters as generics;
 use crate::values::generics::counters::CounterPair;
-#[cfg(feature = "gecko")]
-use crate::values::generics::CounterStyle;
 use crate::values::specified::image::Image;
-#[cfg(any(feature = "gecko", feature = "servo-layout-2020"))]
 use crate::values::specified::Attr;
 use crate::values::specified::Integer;
 use crate::values::CustomIdent;
 use cssparser::{Parser, Token};
-#[cfg(any(feature = "gecko", feature = "servo-layout-2013"))]
 use selectors::parser::SelectorParseErrorKind;
 use style_traits::{ParseError, StyleParseErrorKind};
 
@@ -103,13 +101,8 @@ fn parse_counters<'i, 't>(
             Ok(&Token::Function(ref name))
                 if counter_type == CounterType::Reset && name.eq_ignore_ascii_case("reversed") =>
             {
-                input.parse_nested_block(|input| {
-                    let location = input.current_source_location();
-                    Ok((
-                        CustomIdent::from_ident(location, input.expect_ident()?, &["none"])?,
-                        true,
-                    ))
-                })?
+                input
+                    .parse_nested_block(|input| Ok((CustomIdent::parse(input, &["none"])?, true)))?
             },
             Ok(t) => {
                 let t = t.clone();
@@ -156,7 +149,7 @@ pub type Content = generics::GenericContent<Image>;
 pub type ContentItem = generics::GenericContentItem<Image>;
 
 impl Content {
-    #[cfg(feature = "servo-layout-2013")]
+    #[cfg(feature = "servo")]
     fn parse_counter_style(_: &ParserContext, input: &mut Parser) -> ListStyleType {
         input
             .try_parse(|input| {
@@ -168,12 +161,13 @@ impl Content {
 
     #[cfg(feature = "gecko")]
     fn parse_counter_style(context: &ParserContext, input: &mut Parser) -> CounterStyle {
+        use crate::counter_style::CounterStyleParsingFlags;
         input
             .try_parse(|input| {
                 input.expect_comma()?;
-                CounterStyle::parse(context, input)
+                CounterStyle::parse(context, input, CounterStyleParsingFlags::empty())
             })
-            .unwrap_or(CounterStyle::decimal())
+            .unwrap_or_else(|_| CounterStyle::decimal())
     }
 }
 
@@ -199,41 +193,39 @@ impl Parse for Content {
             return Ok(generics::Content::None);
         }
 
-        let mut content = vec![];
-        let mut has_alt_content = false;
+        let mut items = thin_vec::ThinVec::new();
+        let mut alt_start = None;
         loop {
-            #[cfg(any(feature = "gecko", feature = "servo-layout-2020"))]
-            {
+            if alt_start.is_none() {
                 if let Ok(image) = input.try_parse(|i| Image::parse_forbid_none(context, i)) {
-                    content.push(generics::ContentItem::Image(image));
+                    items.push(generics::ContentItem::Image(image));
                     continue;
                 }
             }
-            match input.next() {
-                Ok(&Token::QuotedString(ref value)) => {
-                    content.push(generics::ContentItem::String(
+            let Ok(t) = input.next() else { break };
+            match *t {
+                Token::QuotedString(ref value) => {
+                    items.push(generics::ContentItem::String(
                         value.as_ref().to_owned().into(),
                     ));
                 },
-                Ok(&Token::Function(ref name)) => {
+                Token::Function(ref name) => {
+                    // FIXME(emilio): counter() / counters() should be valid per spec past
+                    // the alt marker, but it's likely non-trivial to support and other
+                    // browsers don't support it either, so restricting it for now.
                     let result = match_ignore_ascii_case! { &name,
-                        #[cfg(any(feature = "gecko", feature = "servo-layout-2013"))]
-                        "counter" => input.parse_nested_block(|input| {
-                            let location = input.current_source_location();
-                            let name = CustomIdent::from_ident(location, input.expect_ident()?, &[])?;
+                        "counter" if alt_start.is_none() => input.parse_nested_block(|input| {
+                            let name = CustomIdent::parse(input, &[])?;
                             let style = Content::parse_counter_style(context, input);
                             Ok(generics::ContentItem::Counter(name, style))
                         }),
-                        #[cfg(any(feature = "gecko", feature = "servo-layout-2013"))]
-                        "counters" => input.parse_nested_block(|input| {
-                            let location = input.current_source_location();
-                            let name = CustomIdent::from_ident(location, input.expect_ident()?, &[])?;
+                        "counters" if alt_start.is_none() => input.parse_nested_block(|input| {
+                            let name = CustomIdent::parse(input, &[])?;
                             input.expect_comma()?;
                             let separator = input.expect_string()?.as_ref().to_owned().into();
                             let style = Content::parse_counter_style(context, input);
                             Ok(generics::ContentItem::Counters(name, separator, style))
                         }),
-                        #[cfg(any(feature = "gecko", feature = "servo-layout-2020"))]
                         "attr" => input.parse_nested_block(|input| {
                             Ok(generics::ContentItem::Attr(Attr::parse_function(context, input)?))
                         }),
@@ -245,18 +237,16 @@ impl Parse for Content {
                             ))
                         }
                     }?;
-                    content.push(result);
+                    items.push(result);
                 },
-                #[cfg(any(feature = "gecko", feature = "servo-layout-2013"))]
-                Ok(&Token::Ident(ref ident)) => {
-                    content.push(match_ignore_ascii_case! { &ident,
+                Token::Ident(ref ident) if alt_start.is_none() => {
+                    items.push(match_ignore_ascii_case! { &ident,
                         "open-quote" => generics::ContentItem::OpenQuote,
                         "close-quote" => generics::ContentItem::CloseQuote,
                         "no-open-quote" => generics::ContentItem::NoOpenQuote,
                         "no-close-quote" => generics::ContentItem::NoCloseQuote,
                         #[cfg(feature = "gecko")]
-                        "-moz-alt-content" => {
-                            has_alt_content = true;
+                        "-moz-alt-content" if context.in_ua_sheet() => {
                             generics::ContentItem::MozAltContent
                         },
                         "-moz-label-content" if context.chrome_rules_enabled() => {
@@ -270,17 +260,26 @@ impl Parse for Content {
                         }
                     });
                 },
-                Err(_) => break,
-                Ok(t) => {
+                Token::Delim('/')
+                    if alt_start.is_none() &&
+                        !items.is_empty() &&
+                        static_prefs::pref!("layout.css.content.alt-text.enabled") =>
+                {
+                    alt_start = Some(items.len());
+                },
+                ref t => {
                     let t = t.clone();
                     return Err(input.new_unexpected_token_error(t));
                 },
             }
         }
-        // We don't allow to parse `-moz-alt-content` in multiple positions.
-        if content.is_empty() || (has_alt_content && content.len() != 1) {
+        if items.is_empty() {
             return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
-        Ok(generics::Content::Items(content.into()))
+        let alt_start = alt_start.unwrap_or(items.len());
+        Ok(generics::Content::Items(generics::GenericContentItems {
+            items,
+            alt_start,
+        }))
     }
 }

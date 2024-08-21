@@ -5,6 +5,7 @@
 //! Generic types for font stuff.
 
 use crate::parser::{Parse, ParserContext};
+use crate::values::animated::ToAnimatedZero;
 use crate::One;
 use byteorder::{BigEndian, ReadBytesExt};
 use cssparser::Parser;
@@ -215,9 +216,7 @@ pub enum FontStyle<Angle> {
 
 /// A generic value for the `font-size-adjust` property.
 ///
-/// https://www.w3.org/TR/css-fonts-4/#font-size-adjust-prop
-/// https://github.com/w3c/csswg-drafts/issues/6160
-/// https://github.com/w3c/csswg-drafts/issues/6288
+/// https://drafts.csswg.org/css-fonts-5/#font-size-adjust-prop
 #[allow(missing_docs)]
 #[repr(u8)]
 #[derive(
@@ -236,22 +235,22 @@ pub enum FontStyle<Angle> {
     ToResolvedValue,
     ToShmem,
 )]
-pub enum GenericFontSizeAdjust<Number> {
+pub enum GenericFontSizeAdjust<Factor> {
     #[animation(error)]
     None,
-    // 'ex-height' is the implied basis, so the keyword can be omitted
-    ExHeight(Number),
     #[value_info(starts_with_keyword)]
-    CapHeight(Number),
+    ExHeight(Factor),
     #[value_info(starts_with_keyword)]
-    ChWidth(Number),
+    CapHeight(Factor),
     #[value_info(starts_with_keyword)]
-    IcWidth(Number),
+    ChWidth(Factor),
     #[value_info(starts_with_keyword)]
-    IcHeight(Number),
+    IcWidth(Factor),
+    #[value_info(starts_with_keyword)]
+    IcHeight(Factor),
 }
 
-impl<Number: ToCss> ToCss for GenericFontSizeAdjust<Number> {
+impl<Factor: ToCss> ToCss for GenericFontSizeAdjust<Factor> {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
@@ -267,5 +266,51 @@ impl<Number: ToCss> ToCss for GenericFontSizeAdjust<Number> {
 
         dest.write_str(prefix)?;
         value.to_css(dest)
+    }
+}
+
+/// A generic value for the `line-height` property.
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToCss,
+    ToShmem,
+    Parse,
+)]
+#[repr(C, u8)]
+pub enum GenericLineHeight<N, L> {
+    /// `normal`
+    Normal,
+    /// `-moz-block-height`
+    #[cfg(feature = "gecko")]
+    #[parse(condition = "ParserContext::in_ua_sheet")]
+    MozBlockHeight,
+    /// `<number>`
+    Number(N),
+    /// `<length-percentage>`
+    Length(L),
+}
+
+pub use self::GenericLineHeight as LineHeight;
+
+impl<N, L> ToAnimatedZero for LineHeight<N, L> {
+    #[inline]
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        Err(())
+    }
+}
+
+impl<N, L> LineHeight<N, L> {
+    /// Returns `normal`.
+    #[inline]
+    pub fn normal() -> Self {
+        LineHeight::Normal
     }
 }

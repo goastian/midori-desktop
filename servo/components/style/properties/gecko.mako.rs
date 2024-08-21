@@ -13,19 +13,17 @@
 use crate::Atom;
 use app_units::Au;
 use crate::computed_value_flags::*;
-use crate::custom_properties::CustomPropertiesMap;
+use crate::custom_properties::ComputedCustomProperties;
 use crate::gecko_bindings::bindings;
 % for style_struct in data.style_structs:
 use crate::gecko_bindings::bindings::Gecko_Construct_Default_${style_struct.gecko_ffi_name};
 use crate::gecko_bindings::bindings::Gecko_CopyConstruct_${style_struct.gecko_ffi_name};
 use crate::gecko_bindings::bindings::Gecko_Destroy_${style_struct.gecko_ffi_name};
 % endfor
-use crate::gecko_bindings::bindings::Gecko_CopyCounterStyle;
 use crate::gecko_bindings::bindings::Gecko_EnsureImageLayersLength;
 use crate::gecko_bindings::bindings::Gecko_nsStyleFont_SetLang;
 use crate::gecko_bindings::bindings::Gecko_nsStyleFont_CopyLangFrom;
 use crate::gecko_bindings::structs;
-use crate::gecko_bindings::structs::nsCSSPropertyID;
 use crate::gecko_bindings::structs::mozilla::PseudoStyleType;
 use crate::gecko::data::PerDocumentStyleData;
 use crate::logical_geometry::WritingMode;
@@ -35,11 +33,10 @@ use crate::rule_tree::StrongRuleNode;
 use crate::selector_parser::PseudoElement;
 use servo_arc::{Arc, UniqueArc};
 use std::mem::{forget, MaybeUninit, ManuallyDrop};
-use std::{cmp, ops, ptr};
-use crate::values::{self, CustomIdent, KeyframesName};
-use crate::values::computed::{BorderStyle, Percentage, Time, TransitionProperty};
+use std::{ops, ptr};
+use crate::values;
+use crate::values::computed::{BorderStyle, Time, Zoom};
 use crate::values::computed::font::FontSize;
-use crate::values::generics::column::ColumnCount;
 
 
 pub mod style_structs {
@@ -65,8 +62,9 @@ impl ComputedValues {
 
     pub fn new(
         pseudo: Option<<&PseudoElement>,
-        custom_properties: Option<Arc<CustomPropertiesMap>>,
+        custom_properties: ComputedCustomProperties,
         writing_mode: WritingMode,
+        effective_zoom: Zoom,
         flags: ComputedValueFlags,
         rules: Option<StrongRuleNode>,
         visited_style: Option<Arc<ComputedValues>>,
@@ -77,6 +75,7 @@ impl ComputedValues {
         ComputedValuesInner::new(
             custom_properties,
             writing_mode,
+            effective_zoom,
             flags,
             rules,
             visited_style,
@@ -88,8 +87,9 @@ impl ComputedValues {
 
     pub fn default_values(doc: &structs::Document) -> Arc<Self> {
         ComputedValuesInner::new(
-            /* custom_properties = */ None,
-            /* writing_mode = */ WritingMode::empty(), // FIXME(bz): This seems dubious
+            ComputedCustomProperties::default(),
+            WritingMode::empty(), // FIXME(bz): This seems dubious
+            Zoom::ONE,
             ComputedValueFlags::empty(),
             /* rules = */ None,
             /* visited_style = */ None,
@@ -118,7 +118,7 @@ impl ComputedValues {
         if !self.is_pseudo_style() {
             return None;
         }
-        PseudoElement::from_pseudo_type(self.0.mPseudoType)
+        PseudoElement::from_pseudo_type(self.0.mPseudoType, None)
     }
 
     #[inline]
@@ -171,6 +171,7 @@ impl Clone for ComputedValuesInner {
             custom_properties: self.custom_properties.clone(),
             writing_mode: self.writing_mode.clone(),
             flags: self.flags.clone(),
+            effective_zoom: self.effective_zoom,
             rules: self.rules.clone(),
             visited_style: if self.visited_style.is_null() {
                 ptr::null()
@@ -195,8 +196,9 @@ impl Drop for ComputedValuesInner {
 
 impl ComputedValuesInner {
     pub fn new(
-        custom_properties: Option<Arc<CustomPropertiesMap>>,
+        custom_properties: ComputedCustomProperties,
         writing_mode: WritingMode,
+        effective_zoom: Zoom,
         flags: ComputedValueFlags,
         rules: Option<StrongRuleNode>,
         visited_style: Option<Arc<ComputedValues>>,
@@ -210,6 +212,7 @@ impl ComputedValuesInner {
             rules,
             visited_style: visited_style.map_or(ptr::null(), |p| Arc::into_raw(p)) as *const _,
             flags,
+            effective_zoom,
             % for style_struct in data.style_structs:
             ${style_struct.gecko_name}: Arc::into_raw(${style_struct.ident}) as *const _,
             % endfor
@@ -430,68 +433,6 @@ def set_gecko_property(ffi_name, expr):
     }
 </%def>
 
-<%def name="impl_split_style_coord(ident, gecko_ffi_name, index)">
-    #[allow(non_snake_case)]
-    pub fn set_${ident}(&mut self, v: longhands::${ident}::computed_value::T) {
-        self.${gecko_ffi_name}.${index} = v;
-    }
-    #[allow(non_snake_case)]
-    pub fn copy_${ident}_from(&mut self, other: &Self) {
-        self.${gecko_ffi_name}.${index} =
-            other.${gecko_ffi_name}.${index}.clone();
-    }
-    #[allow(non_snake_case)]
-    pub fn reset_${ident}(&mut self, other: &Self) {
-        self.copy_${ident}_from(other)
-    }
-
-    #[allow(non_snake_case)]
-    pub fn clone_${ident}(&self) -> longhands::${ident}::computed_value::T {
-        self.${gecko_ffi_name}.${index}.clone()
-    }
-</%def>
-
-<%def name="copy_sides_style_coord(ident)">
-    <% gecko_ffi_name = "m" + to_camel_case(ident) %>
-    #[allow(non_snake_case)]
-    pub fn copy_${ident}_from(&mut self, other: &Self) {
-        % for side in SIDES:
-            self.${gecko_ffi_name}.data_at_mut(${side.index})
-                .copy_from(&other.${gecko_ffi_name}.data_at(${side.index}));
-        % endfor
-        ${ caller.body() }
-    }
-
-    #[allow(non_snake_case)]
-    pub fn reset_${ident}(&mut self, other: &Self) {
-        self.copy_${ident}_from(other)
-    }
-</%def>
-
-<%def name="impl_corner_style_coord(ident, gecko_ffi_name, corner)">
-    #[allow(non_snake_case)]
-    pub fn set_${ident}(&mut self, v: longhands::${ident}::computed_value::T) {
-        self.${gecko_ffi_name}.${corner} = v;
-    }
-    #[allow(non_snake_case)]
-    pub fn copy_${ident}_from(&mut self, other: &Self) {
-        self.${gecko_ffi_name}.${corner} =
-            other.${gecko_ffi_name}.${corner}.clone();
-    }
-    #[allow(non_snake_case)]
-    pub fn reset_${ident}(&mut self, other: &Self) {
-        self.copy_${ident}_from(other)
-    }
-    #[allow(non_snake_case)]
-    pub fn clone_${ident}(&self) -> longhands::${ident}::computed_value::T {
-        self.${gecko_ffi_name}.${corner}.clone()
-    }
-</%def>
-
-<%def name="impl_logical(name, **kwargs)">
-    ${helpers.logical_setter(name)}
-</%def>
-
 <%def name="impl_style_struct(style_struct)">
 /// A wrapper for ${style_struct.gecko_ffi_name}, to be able to manually construct / destruct /
 /// clone it.
@@ -516,17 +457,30 @@ impl ops::DerefMut for ${style_struct.gecko_struct_name} {
 impl ${style_struct.gecko_struct_name} {
     #[allow(dead_code, unused_variables)]
     pub fn default(document: &structs::Document) -> Arc<Self> {
+% if style_struct.document_dependent:
         unsafe {
             let mut result = UniqueArc::<Self>::new_uninit();
-            // FIXME(bug 1595895): Zero the memory to keep valgrind happy, but
-            // these looks like Valgrind false-positives at a quick glance.
-            ptr::write_bytes::<Self>(result.as_mut_ptr(), 0, 1);
             Gecko_Construct_Default_${style_struct.gecko_ffi_name}(
                 result.as_mut_ptr() as *mut _,
                 document,
             );
             UniqueArc::assume_init(result).shareable()
         }
+% else:
+        lazy_static! {
+            static ref DEFAULT: Arc<${style_struct.gecko_struct_name}> = unsafe {
+                let mut result = UniqueArc::<${style_struct.gecko_struct_name}>::new_uninit();
+                Gecko_Construct_Default_${style_struct.gecko_ffi_name}(
+                    result.as_mut_ptr() as *mut _,
+                    std::ptr::null(),
+                );
+                let arc = UniqueArc::assume_init(result).shareable();
+                arc.mark_as_intentionally_leaked();
+                arc
+            };
+        };
+        DEFAULT.clone()
+% endif
     }
 }
 
@@ -551,41 +505,19 @@ impl Clone for ${style_struct.gecko_struct_name} {
 }
 </%def>
 
-<%def name="impl_simple_type_with_conversion(ident, gecko_ffi_name)">
-    #[allow(non_snake_case)]
-    pub fn set_${ident}(&mut self, v: longhands::${ident}::computed_value::T) {
-        self.${gecko_ffi_name} = From::from(v)
-    }
-
-    <% impl_simple_copy(ident, gecko_ffi_name) %>
-
-    #[allow(non_snake_case)]
-    pub fn clone_${ident}(&self) -> longhands::${ident}::computed_value::T {
-        From::from(self.${gecko_ffi_name})
-    }
-</%def>
-
 <%def name="impl_font_settings(ident, gecko_type, tag_type, value_type, gecko_value_type)">
-    <%
-    gecko_ffi_name = to_camel_case_lower(ident)
-    %>
+    <% gecko_ffi_name = to_camel_case_lower(ident) %>
 
     pub fn set_${ident}(&mut self, v: longhands::${ident}::computed_value::T) {
         let iter = v.0.iter().map(|other| structs::${gecko_type} {
             mTag: other.tag.0,
             mValue: other.value as ${gecko_value_type},
         });
-        self.mFont.${gecko_ffi_name}.assign_from_iter_pod(iter);
+        self.mFont.${gecko_ffi_name}.clear();
+        self.mFont.${gecko_ffi_name}.extend(iter);
     }
 
-    pub fn copy_${ident}_from(&mut self, other: &Self) {
-        let iter = other.mFont.${gecko_ffi_name}.iter().map(|s| *s);
-        self.mFont.${gecko_ffi_name}.assign_from_iter_pod(iter);
-    }
-
-    pub fn reset_${ident}(&mut self, other: &Self) {
-        self.copy_${ident}_from(other)
-    }
+    <% impl_simple_copy(ident, "mFont." + gecko_ffi_name) %>
 
     pub fn clone_${ident}(&self) -> longhands::${ident}::computed_value::T {
         use crate::values::generics::font::{FontSettings, FontTag, ${tag_type}};
@@ -610,11 +542,10 @@ impl Clone for ${style_struct.gecko_struct_name} {
     def longhand_method(longhand):
         args = dict(ident=longhand.ident, gecko_ffi_name=longhand.gecko_ffi_name)
 
-        # get the method and pass additional keyword or type-specific arguments
         if longhand.logical:
-            method = impl_logical
-            args.update(name=longhand.name)
-        elif longhand.keyword:
+            return
+        # get the method and pass additional keyword or type-specific arguments
+        if longhand.keyword:
             method = impl_keyword
             args.update(keyword=longhand.keyword)
             if "font" in longhand.ident:
@@ -725,9 +656,7 @@ fn static_assert() {
     % endfor
 
     % for corner in CORNERS:
-    <% impl_corner_style_coord("border_%s_radius" % corner,
-                               "mBorderRadius",
-                               corner) %>
+    ${impl_simple("border_%s_radius" % corner, "mBorderRadius.%s" % corner)}
     % endfor
 
     <%
@@ -777,12 +706,8 @@ fn static_assert() {
                   skip_longhands="${skip_margin_longhands}
                                   ${skip_scroll_margin_longhands}">
     % for side in SIDES:
-    <% impl_split_style_coord("margin_%s" % side.ident,
-                              "mMargin",
-                              side.index) %>
-    <% impl_split_style_coord("scroll_margin_%s" % side.ident,
-                              "mScrollMargin",
-                              side.index) %>
+    ${impl_simple("margin_%s" % side.ident, "mMargin.%s" % side.index)}
+    ${impl_simple("scroll_margin_%s" % side.ident, "mScrollMargin.%s" % side.index)}
     % endfor
 </%self:impl_trait>
 
@@ -793,10 +718,8 @@ fn static_assert() {
                                   ${skip_scroll_padding_longhands}">
 
     % for side in SIDES:
-    <% impl_split_style_coord("padding_%s" % side.ident,
-                              "mPadding",
-                              side.index) %>
-    <% impl_split_style_coord("scroll_padding_%s" % side.ident, "mScrollPadding", side.index) %>
+    ${impl_simple("padding_%s" % side.ident, "mPadding.%s" % side.index)}
+    ${impl_simple("scroll_padding_%s" % side.ident, "mScrollPadding.%s" % side.index)}
     % endfor
 </%self:impl_trait>
 
@@ -805,17 +728,14 @@ fn static_assert() {
 
 <% skip_position_longhands = " ".join(x.ident for x in SIDES) %>
 <%self:impl_trait style_struct_name="Position"
-                  skip_longhands="${skip_position_longhands}
-                                  masonry-auto-flow">
+                  skip_longhands="${skip_position_longhands}">
     % for side in SIDES:
-    <% impl_split_style_coord(side.ident, "mOffset", side.index) %>
+    ${impl_simple(side.ident, "mOffset.%s" % side.index)}
     % endfor
     pub fn set_computed_justify_items(&mut self, v: values::specified::JustifyItems) {
         debug_assert_ne!(v.0, crate::values::specified::align::AlignFlags::LEGACY);
         self.mJustifyItems.computed = v;
     }
-
-    ${impl_simple_type_with_conversion("masonry_auto_flow", "mMasonryAutoFlow")}
 </%self:impl_trait>
 
 <%self:impl_trait style_struct_name="Outline"
@@ -955,33 +875,11 @@ fn static_assert() {
     }
 
 
-    ${impl_simple_type_with_conversion("font_language_override", "mFont.languageOverride")}
-    ${impl_simple_type_with_conversion("font_variant_ligatures", "mFont.variantLigatures")}
-    ${impl_simple_type_with_conversion("font_variant_east_asian", "mFont.variantEastAsian")}
-    ${impl_simple_type_with_conversion("font_variant_numeric", "mFont.variantNumeric")}
-
-    #[allow(non_snake_case)]
-    pub fn clone__moz_min_font_size_ratio(
-        &self,
-    ) -> longhands::_moz_min_font_size_ratio::computed_value::T {
-        Percentage(self.mMinFontSizeRatio as f32 / 100.)
-    }
-
-    #[allow(non_snake_case)]
-    pub fn set__moz_min_font_size_ratio(&mut self, v: longhands::_moz_min_font_size_ratio::computed_value::T) {
-        let scaled = v.0 * 100.;
-        let percentage = if scaled > 255. {
-            255.
-        } else if scaled < 0. {
-            0.
-        } else {
-            scaled
-        };
-
-        self.mMinFontSizeRatio = percentage as u8;
-    }
-
-    ${impl_simple_copy('_moz_min_font_size_ratio', 'mMinFontSizeRatio')}
+    ${impl_simple("_moz_min_font_size_ratio", "mMinFontSizeRatio")}
+    ${impl_simple("font_language_override", "mFont.languageOverride")}
+    ${impl_simple("font_variant_ligatures", "mFont.variantLigatures")}
+    ${impl_simple("font_variant_east_asian", "mFont.variantEastAsian")}
+    ${impl_simple("font_variant_numeric", "mFont.variantNumeric")}
 </%self:impl_trait>
 
 <%def name="impl_coordinated_property_copy(type, ident, gecko_ffi_name)">
@@ -1037,50 +935,6 @@ fn static_assert() {
     }
     ${impl_coordinated_property_copy(type, ident, gecko_ffi_name)}
     ${impl_coordinated_property_count(type, ident, gecko_ffi_name)}
-</%def>
-
-<%def name="impl_animation_keyword(ident, gecko_ffi_name, keyword, cast_type='u8')">
-    #[allow(non_snake_case)]
-    pub fn set_animation_${ident}<I>(&mut self, v: I)
-    where
-        I: IntoIterator<Item = longhands::animation_${ident}::computed_value::single_value::T>,
-        I::IntoIter: ExactSizeIterator + Clone
-    {
-        use crate::properties::longhands::animation_${ident}::single_value::computed_value::T as Keyword;
-
-        let v = v.into_iter();
-
-        debug_assert_ne!(v.len(), 0);
-        let input_len = v.len();
-        self.mAnimations.ensure_len(input_len);
-
-        self.mAnimation${gecko_ffi_name}Count = input_len as u32;
-
-        for (gecko, servo) in self.mAnimations.iter_mut().take(input_len as usize).zip(v) {
-            let result = match servo {
-                % for value in keyword.values_for("gecko"):
-                    Keyword::${to_camel_case(value)} =>
-                        structs::${keyword.gecko_constant(value)} ${keyword.maybe_cast(cast_type)},
-                % endfor
-            };
-            gecko.m${gecko_ffi_name} = result;
-        }
-    }
-    #[allow(non_snake_case)]
-    pub fn animation_${ident}_at(&self, index: usize)
-        -> longhands::animation_${ident}::computed_value::SingleComputedValue {
-        use crate::properties::longhands::animation_${ident}::single_value::computed_value::T as Keyword;
-        match self.mAnimations[index].m${gecko_ffi_name} ${keyword.maybe_cast("u32")} {
-            % for value in keyword.values_for("gecko"):
-                structs::${keyword.gecko_constant(value)} => Keyword::${to_camel_case(value)},
-            % endfor
-            % if keyword.gecko_inexhaustive:
-            _ => panic!("Found unexpected value for animation-${ident}"),
-            % endif
-        }
-    }
-    ${impl_coordinated_property_copy('animation', ident, gecko_ffi_name)}
-    ${impl_coordinated_property_count('animation', ident, gecko_ffi_name)}
 </%def>
 
 <% skip_box_longhands= """display contain""" %>
@@ -1492,55 +1346,7 @@ fn static_assert() {
     <% impl_simple_image_array_property("blend_mode", "background", "mImage", "mBlendMode", "Background") %>
 </%self:impl_trait>
 
-<%self:impl_trait style_struct_name="List" skip_longhands="list-style-type">
-    pub fn set_list_style_type(&mut self, v: longhands::list_style_type::computed_value::T) {
-        use nsstring::{nsACString, nsCStr};
-        use self::longhands::list_style_type::computed_value::T;
-        match v {
-            T::None => unsafe {
-                bindings::Gecko_SetCounterStyleToNone(&mut self.mCounterStyle)
-            }
-            T::CounterStyle(s) => s.to_gecko_value(&mut self.mCounterStyle),
-            T::String(s) => unsafe {
-                bindings::Gecko_SetCounterStyleToString(
-                    &mut self.mCounterStyle,
-                    &nsCStr::from(&s) as &nsACString,
-                )
-            }
-        }
-    }
-
-    pub fn copy_list_style_type_from(&mut self, other: &Self) {
-        unsafe {
-            Gecko_CopyCounterStyle(&mut self.mCounterStyle, &other.mCounterStyle);
-        }
-    }
-
-    pub fn reset_list_style_type(&mut self, other: &Self) {
-        self.copy_list_style_type_from(other)
-    }
-
-    pub fn clone_list_style_type(&self) -> longhands::list_style_type::computed_value::T {
-        use self::longhands::list_style_type::computed_value::T;
-        use crate::values::Either;
-        use crate::values::generics::CounterStyle;
-        use crate::gecko_bindings::bindings;
-
-        let name = unsafe {
-            bindings::Gecko_CounterStyle_GetName(&self.mCounterStyle)
-        };
-        if !name.is_null() {
-            let name = unsafe { Atom::from_raw(name) };
-            if name == atom!("none") {
-                return T::None;
-            }
-        }
-        let result = CounterStyle::from_gecko_value(&self.mCounterStyle);
-        match result {
-            Either::First(counter_style) => T::CounterStyle(counter_style),
-            Either::Second(string) => T::String(string),
-        }
-    }
+<%self:impl_trait style_struct_name="List">
 </%self:impl_trait>
 
 <%self:impl_trait style_struct_name="Table">
@@ -1552,74 +1358,13 @@ fn static_assert() {
 <%self:impl_trait style_struct_name="InheritedBox">
 </%self:impl_trait>
 
-<%self:impl_trait style_struct_name="InheritedTable"
-                  skip_longhands="border-spacing">
-
-    pub fn set_border_spacing(&mut self, v: longhands::border_spacing::computed_value::T) {
-        self.mBorderSpacingCol = v.horizontal().0;
-        self.mBorderSpacingRow = v.vertical().0;
-    }
-
-    pub fn copy_border_spacing_from(&mut self, other: &Self) {
-        self.mBorderSpacingCol = other.mBorderSpacingCol;
-        self.mBorderSpacingRow = other.mBorderSpacingRow;
-    }
-
-    pub fn reset_border_spacing(&mut self, other: &Self) {
-        self.copy_border_spacing_from(other)
-    }
-
-    pub fn clone_border_spacing(&self) -> longhands::border_spacing::computed_value::T {
-        longhands::border_spacing::computed_value::T::new(
-            Au(self.mBorderSpacingCol).into(),
-            Au(self.mBorderSpacingRow).into()
-        )
-    }
+<%self:impl_trait style_struct_name="InheritedTable">
 </%self:impl_trait>
-
 
 <%self:impl_trait style_struct_name="InheritedText">
 </%self:impl_trait>
 
-<%self:impl_trait style_struct_name="Text" skip_longhands="initial-letter">
-    pub fn set_initial_letter(&mut self, v: longhands::initial_letter::computed_value::T) {
-        use crate::values::generics::text::InitialLetter;
-        match v {
-            InitialLetter::Normal => {
-                self.mInitialLetterSize = 0.;
-                self.mInitialLetterSink = 0;
-            },
-            InitialLetter::Specified(size, sink) => {
-                self.mInitialLetterSize = size;
-                if let Some(sink) = sink {
-                    self.mInitialLetterSink = sink;
-                } else {
-                    self.mInitialLetterSink = size.floor() as i32;
-                }
-            }
-        }
-    }
-
-    pub fn copy_initial_letter_from(&mut self, other: &Self) {
-        self.mInitialLetterSize = other.mInitialLetterSize;
-        self.mInitialLetterSink = other.mInitialLetterSink;
-    }
-
-    pub fn reset_initial_letter(&mut self, other: &Self) {
-        self.copy_initial_letter_from(other)
-    }
-
-    pub fn clone_initial_letter(&self) -> longhands::initial_letter::computed_value::T {
-        use crate::values::generics::text::InitialLetter;
-
-        if self.mInitialLetterSize == 0. && self.mInitialLetterSink == 0 {
-            InitialLetter::Normal
-        } else if self.mInitialLetterSize.floor() as i32 == self.mInitialLetterSink {
-            InitialLetter::Specified(self.mInitialLetterSize, None)
-        } else {
-            InitialLetter::Specified(self.mInitialLetterSize, Some(self.mInitialLetterSink))
-        }
-    }
+<%self:impl_trait style_struct_name="Text">
 </%self:impl_trait>
 
 <% skip_svg_longhands = """
@@ -1640,33 +1385,7 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
 </%self:impl_trait>
 
 <%self:impl_trait style_struct_name="Column"
-                  skip_longhands="column-count column-rule-width column-rule-style">
-
-    #[allow(unused_unsafe)]
-    pub fn set_column_count(&mut self, v: longhands::column_count::computed_value::T) {
-        use crate::gecko_bindings::structs::{nsStyleColumn_kColumnCountAuto, nsStyleColumn_kMaxColumnCount};
-
-        self.mColumnCount = match v {
-            ColumnCount::Integer(integer) => {
-                cmp::min(integer.0 as u32, unsafe { nsStyleColumn_kMaxColumnCount })
-            },
-            ColumnCount::Auto => nsStyleColumn_kColumnCountAuto
-        };
-    }
-
-    ${impl_simple_copy('column_count', 'mColumnCount')}
-
-    pub fn clone_column_count(&self) -> longhands::column_count::computed_value::T {
-        use crate::gecko_bindings::structs::{nsStyleColumn_kColumnCountAuto, nsStyleColumn_kMaxColumnCount};
-        if self.mColumnCount != nsStyleColumn_kColumnCountAuto {
-            debug_assert!(self.mColumnCount >= 1 &&
-                          self.mColumnCount <= nsStyleColumn_kMaxColumnCount);
-            ColumnCount::Integer((self.mColumnCount as i32).into())
-        } else {
-            ColumnCount::Auto
-        }
-    }
-
+                  skip_longhands="column-rule-width column-rule-style">
     pub fn set_column_rule_style(&mut self, v: longhands::column_rule_style::computed_value::T) {
         self.mColumnRuleStyle = v;
         // NB: This is needed to correctly handling the initial value of
@@ -1704,15 +1423,17 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
                           animation-direction animation-fill-mode
                           animation-play-state animation-iteration-count
                           animation-timing-function animation-composition animation-timeline
-                          transition-duration transition-delay
+                          transition-behavior transition-duration transition-delay
                           transition-timing-function transition-property
                           scroll-timeline-name scroll-timeline-axis
                           view-timeline-name view-timeline-axis view-timeline-inset""" %>
 
 <%self:impl_trait style_struct_name="UI" skip_longhands="${skip_ui_longhands}">
+    ${impl_coordinated_property('transition', 'behavior', 'Behavior')}
     ${impl_coordinated_property('transition', 'delay', 'Delay')}
     ${impl_coordinated_property('transition', 'duration', 'Duration')}
     ${impl_coordinated_property('transition', 'timing_function', 'TimingFunction')}
+    ${impl_coordinated_property('transition', 'property', 'Property')}
 
     pub fn transition_combined_duration_at(&self, index: usize) -> Time {
         // https://drafts.csswg.org/css-transitions/#transition-combined-duration
@@ -1722,114 +1443,14 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
         )
     }
 
-    pub fn set_transition_property<I>(&mut self, v: I)
-    where
-        I: IntoIterator<Item = longhands::transition_property::computed_value::single_value::T>,
-        I::IntoIter: ExactSizeIterator
-    {
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_no_properties;
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_variable;
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSProperty_UNKNOWN;
-
-        let v = v.into_iter();
-
-        if v.len() != 0 {
-            self.mTransitions.ensure_len(v.len());
-            self.mTransitionPropertyCount = v.len() as u32;
-            for (servo, gecko) in v.zip(self.mTransitions.iter_mut()) {
-                unsafe { gecko.mUnknownProperty.clear() };
-
-                match servo {
-                    TransitionProperty::Unsupported(ident) => {
-                        gecko.mProperty = eCSSProperty_UNKNOWN;
-                        gecko.mUnknownProperty.mRawPtr = ident.0.into_addrefed();
-                    },
-                    TransitionProperty::Custom(name) => {
-                        gecko.mProperty = eCSSPropertyExtra_variable;
-                        gecko.mUnknownProperty.mRawPtr = name.into_addrefed();
-                    }
-                    _ => gecko.mProperty = servo.to_nscsspropertyid().unwrap(),
-                }
-            }
-        } else {
-            // In gecko |none| is represented by eCSSPropertyExtra_no_properties.
-            self.mTransitionPropertyCount = 1;
-            self.mTransitions[0].mProperty = eCSSPropertyExtra_no_properties;
-        }
-    }
-
     /// Returns whether there are any transitions specified.
     pub fn specifies_transitions(&self) -> bool {
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_all_properties;
         if self.mTransitionPropertyCount == 1 &&
-            self.mTransitions[0].mProperty == eCSSPropertyExtra_all_properties &&
             self.transition_combined_duration_at(0).seconds() <= 0.0f32 {
             return false;
         }
-
         self.mTransitionPropertyCount > 0
     }
-
-    pub fn transition_property_at(&self, index: usize)
-        -> longhands::transition_property::computed_value::SingleComputedValue {
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_no_properties;
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_variable;
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSProperty_UNKNOWN;
-
-        let property = self.mTransitions[index].mProperty;
-        if property == eCSSProperty_UNKNOWN {
-            let atom = self.mTransitions[index].mUnknownProperty.mRawPtr;
-            debug_assert!(!atom.is_null());
-            TransitionProperty::Unsupported(CustomIdent(unsafe{
-                Atom::from_raw(atom)
-            }))
-        } else if property == eCSSPropertyExtra_variable {
-            let atom = self.mTransitions[index].mUnknownProperty.mRawPtr;
-            debug_assert!(!atom.is_null());
-            TransitionProperty::Custom(unsafe{
-                Atom::from_raw(atom)
-            })
-        } else if property == eCSSPropertyExtra_no_properties {
-            // Actually, we don't expect TransitionProperty::Unsupported also
-            // represents "none", but if the caller wants to convert it, it is
-            // fine. Please use it carefully.
-            //
-            // FIXME(emilio): This is a hack, is this reachable?
-            TransitionProperty::Unsupported(CustomIdent(atom!("none")))
-        } else {
-            property.into()
-        }
-    }
-
-    pub fn transition_nscsspropertyid_at(&self, index: usize) -> nsCSSPropertyID {
-        self.mTransitions[index].mProperty
-    }
-
-    pub fn copy_transition_property_from(&mut self, other: &Self) {
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_variable;
-        use crate::gecko_bindings::structs::nsCSSPropertyID::eCSSProperty_UNKNOWN;
-        self.mTransitions.ensure_len(other.mTransitions.len());
-
-        let count = other.mTransitionPropertyCount;
-        self.mTransitionPropertyCount = count;
-
-        for (index, transition) in self.mTransitions.iter_mut().enumerate().take(count as usize) {
-            transition.mProperty = other.mTransitions[index].mProperty;
-            unsafe { transition.mUnknownProperty.clear() };
-            if transition.mProperty == eCSSProperty_UNKNOWN ||
-               transition.mProperty == eCSSPropertyExtra_variable {
-                let atom = other.mTransitions[index].mUnknownProperty.mRawPtr;
-                debug_assert!(!atom.is_null());
-                transition.mUnknownProperty.mRawPtr = unsafe { Atom::from_raw(atom) }.into_addrefed();
-            }
-        }
-    }
-
-    pub fn reset_transition_property(&mut self, other: &Self) {
-        self.copy_transition_property_from(other)
-    }
-
-    ${impl_coordinated_property_count('transition', 'property', 'Property')}
 
     pub fn animations_equals(&self, other: &Self) -> bool {
         return self.mAnimationNameCount == other.mAnimationNameCount
@@ -1845,48 +1466,13 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
             && unsafe { bindings::Gecko_StyleAnimationsEquals(&self.mAnimations, &other.mAnimations) }
     }
 
-    pub fn set_animation_name<I>(&mut self, v: I)
-    where
-        I: IntoIterator<Item = longhands::animation_name::computed_value::single_value::T>,
-        I::IntoIter: ExactSizeIterator
-    {
-        let v = v.into_iter();
-        debug_assert_ne!(v.len(), 0);
-        self.mAnimations.ensure_len(v.len());
-
-        self.mAnimationNameCount = v.len() as u32;
-        for (servo, gecko) in v.zip(self.mAnimations.iter_mut()) {
-            let atom = servo.0.as_atom().clone();
-            unsafe { bindings::Gecko_SetAnimationName(gecko, atom.into_addrefed()); }
-        }
-    }
-    pub fn animation_name_at(&self, index: usize)
-        -> longhands::animation_name::computed_value::SingleComputedValue {
-        use crate::properties::longhands::animation_name::single_value::SpecifiedValue as AnimationName;
-
-        let atom = self.mAnimations[index].mName.mRawPtr;
-        AnimationName(KeyframesName::from_atom(unsafe { Atom::from_raw(atom) }))
-    }
-    pub fn copy_animation_name_from(&mut self, other: &Self) {
-        self.mAnimationNameCount = other.mAnimationNameCount;
-        unsafe { bindings::Gecko_CopyAnimationNames(&mut self.mAnimations, &other.mAnimations); }
-    }
-
-    pub fn reset_animation_name(&mut self, other: &Self) {
-        self.copy_animation_name_from(other)
-    }
-
-    ${impl_coordinated_property_count('animation', 'name', 'Name')}
+    ${impl_coordinated_property('animation', 'name', 'Name')}
     ${impl_coordinated_property('animation', 'delay', 'Delay')}
     ${impl_coordinated_property('animation', 'duration', 'Duration')}
-    ${impl_animation_keyword('direction', 'Direction',
-                             data.longhands_by_name["animation-direction"].keyword)}
-    ${impl_animation_keyword('fill_mode', 'FillMode',
-                             data.longhands_by_name["animation-fill-mode"].keyword)}
-    ${impl_animation_keyword('play_state', 'PlayState',
-                             data.longhands_by_name["animation-play-state"].keyword)}
-    ${impl_animation_keyword('composition', 'Composition',
-                             data.longhands_by_name["animation-composition"].keyword)}
+    ${impl_coordinated_property('animation', 'direction', 'Direction')}
+    ${impl_coordinated_property('animation', 'fill_mode', 'FillMode')}
+    ${impl_coordinated_property('animation', 'play_state', 'PlayState')}
+    ${impl_coordinated_property('animation', 'composition', 'Composition')}
     ${impl_coordinated_property('animation', 'iteration_count', 'IterationCount')}
     ${impl_coordinated_property('animation', 'timeline', 'Timeline')}
     ${impl_coordinated_property('animation', 'timing_function', 'TimingFunction')}

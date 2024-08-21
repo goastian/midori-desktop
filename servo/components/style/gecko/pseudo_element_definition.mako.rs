@@ -130,15 +130,22 @@ impl PseudoElement {
 
     /// Construct a pseudo-element from a `PseudoStyleType`.
     #[inline]
-    pub fn from_pseudo_type(type_: PseudoStyleType) -> Option<Self> {
+    pub fn from_pseudo_type(type_: PseudoStyleType, functional_pseudo_parameter: Option<AtomIdent>) -> Option<Self> {
         match type_ {
             % for pseudo in PSEUDOS:
             % if pseudo.is_simple_pseudo_element():
                 PseudoStyleType::${pseudo.pseudo_ident} => {
+                    debug_assert!(functional_pseudo_parameter.is_none());
                     Some(${pseudo_element_variant(pseudo)})
                 },
             % endif
             % endfor
+            PseudoStyleType::highlight => {
+                match functional_pseudo_parameter {
+                    Some(p) => Some(PseudoElement::Highlight(p)),
+                    None => None
+                }
+            }
             _ => None,
         }
     }
@@ -192,34 +199,29 @@ impl PseudoElement {
         // We don't need to support tree pseudos because functional
         // pseudo-elements needs arguments, and thus should be created
         // via other methods.
-        match_ignore_ascii_case! { name,
-            % for pseudo in SIMPLE_PSEUDOS:
-            "${pseudo.value[1:]}" => {
-                return Some(${pseudo_element_variant(pseudo)})
-            },
-            % endfor
-            // Alias some legacy prefixed pseudos to their standardized name at parse time:
-            "-moz-selection" => {
-                return Some(PseudoElement::Selection);
-            },
-            "-moz-placeholder" => {
-                return Some(PseudoElement::Placeholder);
-            },
-            "-moz-list-bullet" | "-moz-list-number" => {
-                return Some(PseudoElement::Marker);
-            },
-            _ => {
-                if starts_with_ignore_ascii_case(name, "-moz-tree-") {
-                    return PseudoElement::tree_pseudo_element(name, Default::default())
-                }
-                const WEBKIT_PREFIX: &str = "-webkit-";
-                if allow_unkown_webkit && starts_with_ignore_ascii_case(name, WEBKIT_PREFIX) {
-                    let part = string_as_ascii_lowercase(&name[WEBKIT_PREFIX.len()..]);
-                    return Some(PseudoElement::UnknownWebkit(part.into()));
-                }
+        ascii_case_insensitive_phf_map! {
+            pseudo -> PseudoElement = {
+                % for pseudo in SIMPLE_PSEUDOS:
+                "${pseudo.value[1:]}" => ${pseudo_element_variant(pseudo)},
+                % endfor
+                // Alias some legacy prefixed pseudos to their standardized name at parse time:
+                "-moz-selection" => PseudoElement::Selection,
+                "-moz-placeholder" => PseudoElement::Placeholder,
+                "-moz-list-bullet" => PseudoElement::Marker,
+                "-moz-list-number" => PseudoElement::Marker,
             }
         }
-
+        if let Some(p) = pseudo::get(name) {
+            return Some(p.clone());
+        }
+        if starts_with_ignore_ascii_case(name, "-moz-tree-") {
+            return PseudoElement::tree_pseudo_element(name, Default::default())
+        }
+        const WEBKIT_PREFIX: &str = "-webkit-";
+        if allow_unkown_webkit && starts_with_ignore_ascii_case(name, WEBKIT_PREFIX) {
+            let part = string_as_ascii_lowercase(&name[WEBKIT_PREFIX.len()..]);
+            return Some(PseudoElement::UnknownWebkit(part.into()));
+        }
         None
     }
 

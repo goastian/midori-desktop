@@ -294,11 +294,9 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 .add_flags(ComputedValueFlags::SELF_OR_ANCESTOR_HAS_SIZE_CONTAINER_TYPE);
         }
 
-        #[cfg(feature = "servo-layout-2013")]
-        {
-            if self.style.get_parent_column().is_multicol() {
-                self.style.add_flags(ComputedValueFlags::CAN_BE_FRAGMENTED);
-            }
+        #[cfg(feature = "servo")]
+        if self.style.get_parent_column().is_multicol() {
+            self.style.add_flags(ComputedValueFlags::CAN_BE_FRAGMENTED);
         }
     }
 
@@ -482,15 +480,15 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
 
     fn adjust_for_contain(&mut self) {
         let box_style = self.style.get_box();
-        debug_assert_eq!(
-            box_style.clone_contain(),
-            box_style.clone_effective_containment()
-        );
         let container_type = box_style.clone_container_type();
         let content_visibility = box_style.clone_content_visibility();
         if container_type == ContainerType::Normal &&
             content_visibility == ContentVisibility::Visible
         {
+            debug_assert_eq!(
+                box_style.clone_contain(),
+                box_style.clone_effective_containment()
+            );
             return;
         }
         let old_contain = box_style.clone_contain();
@@ -522,11 +520,41 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             },
         }
         if new_contain == old_contain {
+            debug_assert_eq!(
+                box_style.clone_contain(),
+                box_style.clone_effective_containment()
+            );
             return;
         }
         self.style
             .mutate_box()
             .set_effective_containment(new_contain);
+    }
+
+    /// content-visibility: auto should force contain-intrinsic-size to gain
+    /// an auto value
+    ///
+    /// <https://github.com/w3c/csswg-drafts/issues/8407>
+    fn adjust_for_contain_intrinsic_size(&mut self) {
+        let content_visibility = self.style.get_box().clone_content_visibility();
+        if content_visibility != ContentVisibility::Auto {
+            return;
+        }
+
+        let pos = self.style.get_position();
+        let new_width = pos.clone_contain_intrinsic_width().add_auto_if_needed();
+        let new_height = pos.clone_contain_intrinsic_height().add_auto_if_needed();
+        if new_width.is_none() && new_height.is_none() {
+            return;
+        }
+
+        let pos = self.style.mutate_position();
+        if let Some(width) = new_width {
+            pos.set_contain_intrinsic_width(width);
+        }
+        if let Some(height) = new_height {
+            pos.set_contain_intrinsic_height(height);
+        }
     }
 
     /// Handles the relevant sections in:
@@ -599,7 +627,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             return;
         }
 
-        debug_assert_eq!(self.style.get_box().clone_display(), Display::Block);
         // TODO We actually want style from parent rather than layout
         // parent, so that this fixup doesn't happen incorrectly when
         // when <fieldset> has "display: contents".
@@ -834,7 +861,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         };
 
         if appearance == Appearance::Menulist {
-            if self.style.get_inherited_text().clone_line_height() == LineHeight::normal() {
+            if self.style.get_font().clone_line_height() == LineHeight::normal() {
                 return;
             }
             if self.style.pseudo.is_some() {
@@ -847,7 +874,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 return;
             }
             self.style
-                .mutate_inherited_text()
+                .mutate_font()
                 .set_line_height(LineHeight::normal());
         }
     }
@@ -948,6 +975,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         self.adjust_for_position();
         self.adjust_for_overflow();
         self.adjust_for_contain();
+        self.adjust_for_contain_intrinsic_size();
         #[cfg(feature = "gecko")]
         {
             self.adjust_for_table_text_align();

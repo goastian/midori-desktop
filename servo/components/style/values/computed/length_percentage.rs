@@ -25,10 +25,13 @@
 //! our expectations.
 
 use super::{Context, Length, Percentage, ToComputedValue};
+use crate::gecko_bindings::structs::GeckoFontMetrics;
 use crate::values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
 use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
+use crate::values::generics::calc::{CalcUnits, PositivePercentageBasis};
 use crate::values::generics::{calc, NonNegative};
-use crate::values::specified::length::FontBaseSize;
+use crate::values::resolved::{Context as ResolvedContext, ToResolvedValue};
+use crate::values::specified::length::{FontBaseSize, LineHeightBase};
 use crate::values::{specified, CSSFloat};
 use crate::{Zero, ZeroNoPercent};
 use app_units::Au;
@@ -162,6 +165,25 @@ impl MallocSizeOf for LengthPercentage {
     }
 }
 
+impl ToResolvedValue for LengthPercentage {
+    type ResolvedValue = Self;
+
+    fn to_resolved_value(self, context: &ResolvedContext) -> Self::ResolvedValue {
+        if context.style.effective_zoom.is_one() {
+            return self;
+        }
+        match self.unpack() {
+            Unpacked::Length(l) => Self::new_length(l.to_resolved_value(context)),
+            Unpacked::Percentage(..) | Unpacked::Calc(..) => self,
+        }
+    }
+
+    #[inline]
+    fn from_resolved_value(value: Self::ResolvedValue) -> Self {
+        value
+    }
+}
+
 /// An unpacked `<length-percentage>` that borrows the `calc()` variant.
 #[derive(Clone, Debug, PartialEq, ToCss)]
 enum Unpacked<'a> {
@@ -241,7 +263,7 @@ impl LengthPercentage {
         // TODO: This could in theory take ownership of the calc node in `v` if
         // possible instead of cloning.
         let mut node = v.to_calc_node().into_owned();
-        node.map(std::ops::Neg::neg);
+        node.negate();
 
         let new_node = CalcNode::Sum(
             vec![
@@ -252,6 +274,22 @@ impl LengthPercentage {
         );
 
         Self::new_calc(new_node, clamping_mode)
+    }
+
+    /// Given a list of `LengthPercentage` values, construct the value representing
+    /// `calc(100% - the sum of the list)`.
+    pub fn hundred_percent_minus_list(list: &[&Self], clamping_mode: AllowedNumericType) -> Self {
+        let mut new_list = vec![CalcNode::Leaf(CalcLengthPercentageLeaf::Percentage(
+            Percentage::hundred(),
+        ))];
+
+        for lp in list.iter() {
+            let mut node = lp.to_calc_node().into_owned();
+            node.negate();
+            new_list.push(node)
+        }
+
+        Self::new_calc(CalcNode::Sum(new_list.into()), clamping_mode)
     }
 
     /// Constructs a `calc()` value.
@@ -268,7 +306,14 @@ impl LengthPercentage {
                     CalcLengthPercentageLeaf::Percentage(p) => Self::new_percent(Percentage(
                         clamping_mode.clamp(crate::values::normalize(p.0)),
                     )),
-                }
+                    CalcLengthPercentageLeaf::Number(number) => {
+                        debug_assert!(
+                            false,
+                            "The final result of a <length-percentage> should never be a number"
+                        );
+                        Self::new_length(Length::new(number))
+                    },
+                };
             },
             _ => Self::new_calc_unchecked(Box::new(CalcLengthPercentage {
                 clamping_mode,
@@ -416,6 +461,19 @@ impl LengthPercentage {
             Unpacked::Percentage(p) => Some(p),
             Unpacked::Length(..) | Unpacked::Calc(..) => None,
         }
+    }
+
+    /// Converts to a `<percentage>` with given basis. Returns None if the basis is 0.
+    #[inline]
+    pub fn to_percentage_of(&self, basis: Length) -> Option<Percentage> {
+        if basis.px() == 0. {
+            return None;
+        }
+        Some(match self.unpack() {
+            Unpacked::Length(l) => Percentage(l.px() / basis.px()),
+            Unpacked::Percentage(p) => p,
+            Unpacked::Calc(ref c) => Percentage(c.resolve(basis).px() / basis.px()),
+        })
     }
 
     /// Returns the used value.
@@ -600,6 +658,7 @@ impl<'de> Deserialize<'de> for LengthPercentage {
 pub enum CalcLengthPercentageLeaf {
     Length(Length),
     Percentage(Percentage),
+    Number(f32),
 }
 
 impl CalcLengthPercentageLeaf {
@@ -607,27 +666,73 @@ impl CalcLengthPercentageLeaf {
         match *self {
             Self::Length(ref l) => l.is_zero(),
             Self::Percentage(..) => false,
-        }
-    }
-}
-
-impl PartialOrd for CalcLengthPercentageLeaf {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        use self::CalcLengthPercentageLeaf::*;
-        // NOTE: Percentages can't be compared reasonably here because the
-        // percentage basis might be negative, see bug 1709018.
-        match (self, other) {
-            (&Length(ref one), &Length(ref other)) => one.partial_cmp(other),
-            _ => None,
+            Self::Number(..) => false,
         }
     }
 }
 
 impl calc::CalcNodeLeaf for CalcLengthPercentageLeaf {
-    fn unitless_value(&self) -> f32 {
-        match *self {
+    fn unit(&self) -> CalcUnits {
+        match self {
+            Self::Length(_) => CalcUnits::LENGTH,
+            Self::Percentage(_) => CalcUnits::PERCENTAGE,
+            Self::Number(_) => CalcUnits::empty(),
+        }
+    }
+
+    fn unitless_value(&self) -> Option<f32> {
+        Some(match *self {
             Self::Length(ref l) => l.px(),
             Self::Percentage(ref p) => p.0,
+            Self::Number(n) => n,
+        })
+    }
+
+    fn new_number(value: f32) -> Self {
+        Self::Number(value)
+    }
+
+    fn as_number(&self) -> Option<f32> {
+        match *self {
+            Self::Length(_) | Self::Percentage(_) => None,
+            Self::Number(value) => Some(value),
+        }
+    }
+
+    fn compare(&self, other: &Self, basis: PositivePercentageBasis) -> Option<std::cmp::Ordering> {
+        use self::CalcLengthPercentageLeaf::*;
+        if std::mem::discriminant(self) != std::mem::discriminant(other) {
+            return None;
+        }
+
+        if matches!(self, Percentage(..)) && matches!(basis, PositivePercentageBasis::Unknown) {
+            return None;
+        }
+
+        let Ok(self_negative) = self.is_negative() else {
+            return None;
+        };
+        let Ok(other_negative) = other.is_negative() else {
+            return None;
+        };
+        if self_negative != other_negative {
+            return Some(if self_negative {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            });
+        }
+
+        match (self, other) {
+            (&Length(ref one), &Length(ref other)) => one.partial_cmp(other),
+            (&Percentage(ref one), &Percentage(ref other)) => one.partial_cmp(other),
+            (&Number(ref one), &Number(ref other)) => one.partial_cmp(other),
+            _ => unsafe {
+                match *self {
+                    Length(..) | Percentage(..) | Number(..) => {},
+                }
+                debug_unreachable!("Forgot to handle unit in compare()")
+            },
         }
     }
 
@@ -644,6 +749,10 @@ impl calc::CalcNodeLeaf for CalcLengthPercentageLeaf {
             return Ok(());
         }
 
+        if std::mem::discriminant(self) != std::mem::discriminant(other) {
+            return Err(());
+        }
+
         match (self, other) {
             (&mut Length(ref mut one), &Length(ref other)) => {
                 *one += *other;
@@ -651,43 +760,83 @@ impl calc::CalcNodeLeaf for CalcLengthPercentageLeaf {
             (&mut Percentage(ref mut one), &Percentage(ref other)) => {
                 one.0 += other.0;
             },
-            _ => return Err(()),
+            (&mut Number(ref mut one), &Number(ref other)) => {
+                *one += *other;
+            },
+            _ => unsafe {
+                match *other {
+                    Length(..) | Percentage(..) | Number(..) => {},
+                }
+                debug_unreachable!("Forgot to handle unit in try_sum_in_place()")
+            },
         }
 
         Ok(())
+    }
+
+    fn try_product_in_place(&mut self, other: &mut Self) -> bool {
+        if let Self::Number(ref mut left) = *self {
+            if let Self::Number(ref right) = *other {
+                // Both sides are numbers, so we can just modify the left side.
+                *left *= *right;
+                true
+            } else {
+                // The right side is not a number, so the result should be in the units of the right
+                // side.
+                if other.map(|v| v * *left).is_ok() {
+                    std::mem::swap(self, other);
+                    true
+                } else {
+                    false
+                }
+            }
+        } else if let Self::Number(ref right) = *other {
+            // The left side is not a number, but the right side is, so the result is the left
+            // side unit.
+            self.map(|v| v * *right).is_ok()
+        } else {
+            // Neither side is a number, so a product is not possible.
+            false
+        }
     }
 
     fn try_op<O>(&self, other: &Self, op: O) -> Result<Self, ()>
     where
         O: Fn(f32, f32) -> f32,
     {
-        match (self, other) {
-            (
-                &CalcLengthPercentageLeaf::Length(ref one),
-                &CalcLengthPercentageLeaf::Length(ref other),
-            ) => Ok(CalcLengthPercentageLeaf::Length(Length::new(op(
-                one.px(),
-                other.px(),
-            )))),
-            (
-                &CalcLengthPercentageLeaf::Percentage(one),
-                &CalcLengthPercentageLeaf::Percentage(other),
-            ) => Ok(CalcLengthPercentageLeaf::Percentage(Percentage(op(
-                one.0, other.0,
-            )))),
-            _ => Err(()),
+        use self::CalcLengthPercentageLeaf::*;
+        if std::mem::discriminant(self) != std::mem::discriminant(other) {
+            return Err(());
         }
+        Ok(match (self, other) {
+            (&Length(ref one), &Length(ref other)) => {
+                Length(super::Length::new(op(one.px(), other.px())))
+            },
+            (&Percentage(one), &Percentage(other)) => {
+                Self::Percentage(super::Percentage(op(one.0, other.0)))
+            },
+            (&Number(one), &Number(other)) => Self::Number(op(one, other)),
+            _ => unsafe {
+                match *self {
+                    Length(..) | Percentage(..) | Number(..) => {},
+                }
+                debug_unreachable!("Forgot to handle unit in try_op()")
+            },
+        })
     }
 
-    fn map(&mut self, mut op: impl FnMut(f32) -> f32) {
-        match self {
-            CalcLengthPercentageLeaf::Length(value) => {
+    fn map(&mut self, mut op: impl FnMut(f32) -> f32) -> Result<(), ()> {
+        Ok(match self {
+            Self::Length(value) => {
                 *value = Length::new(op(value.px()));
             },
-            CalcLengthPercentageLeaf::Percentage(value) => {
+            Self::Percentage(value) => {
                 *value = Percentage(op(value.0));
             },
-        }
+            Self::Number(value) => {
+                *value = op(*value);
+            },
+        })
     }
 
     fn simplify(&mut self) {}
@@ -696,6 +845,7 @@ impl calc::CalcNodeLeaf for CalcLengthPercentageLeaf {
         match *self {
             Self::Length(..) => calc::SortKey::Px,
             Self::Percentage(..) => calc::SortKey::Percentage,
+            Self::Number(..) => calc::SortKey::Number,
         }
     }
 }
@@ -718,18 +868,23 @@ pub struct CalcLengthPercentage {
 impl CalcLengthPercentage {
     /// Resolves the percentage.
     #[inline]
-    fn resolve(&self, basis: Length) -> Length {
+    pub fn resolve(&self, basis: Length) -> Length {
         // unwrap() is fine because the conversion below is infallible.
-        let px = self
+        if let CalcLengthPercentageLeaf::Length(px) = self
             .node
-            .resolve(|l| {
-                Ok(match *l {
-                    CalcLengthPercentageLeaf::Length(l) => l.px(),
-                    CalcLengthPercentageLeaf::Percentage(ref p) => basis.px() * p.0,
+            .resolve_map(|leaf| {
+                Ok(if let CalcLengthPercentageLeaf::Percentage(p) = leaf {
+                    CalcLengthPercentageLeaf::Length(Length::new(basis.px() * p.0))
+                } else {
+                    leaf.clone()
                 })
             })
-            .unwrap();
-        Length::new(self.clamping_mode.clamp(px)).normalized()
+            .unwrap()
+        {
+            Length::new(self.clamping_mode.clamp(px.px())).normalized()
+        } else {
+            unreachable!("resolve_map should turn percentages to lengths, and parsing should ensure that we don't end up with a number");
+        }
     }
 }
 
@@ -758,6 +913,7 @@ impl specified::CalcLengthPercentage {
         context: &Context,
         zoom_fn: F,
         base_size: FontBaseSize,
+        line_height_base: LineHeightBase,
     ) -> LengthPercentage
     where
         F: Fn(Length) -> Length,
@@ -767,14 +923,16 @@ impl specified::CalcLengthPercentage {
         let node = self.node.map_leaves(|leaf| match *leaf {
             Leaf::Percentage(p) => CalcLengthPercentageLeaf::Percentage(Percentage(p)),
             Leaf::Length(l) => CalcLengthPercentageLeaf::Length({
-                let result = l.to_computed_value_with_base_size(context, base_size);
+                let result =
+                    l.to_computed_value_with_base_size(context, base_size, line_height_base);
                 if l.should_zoom_text() {
                     zoom_fn(result)
                 } else {
                     result
                 }
             }),
-            Leaf::Number(..) | Leaf::Angle(..) | Leaf::Time(..) | Leaf::Resolution(..) => {
+            Leaf::Number(n) => CalcLengthPercentageLeaf::Number(n),
+            Leaf::Angle(..) | Leaf::Time(..) | Leaf::Resolution(..) | Leaf::ColorComponent(..) => {
                 unreachable!("Shouldn't have parsed")
             },
         });
@@ -787,8 +945,14 @@ impl specified::CalcLengthPercentage {
         &self,
         context: &Context,
         base_size: FontBaseSize,
+        line_height_base: LineHeightBase,
     ) -> LengthPercentage {
-        self.to_computed_value_with_zoom(context, |abs| context.maybe_zoom_text(abs), base_size)
+        self.to_computed_value_with_zoom(
+            context,
+            |abs| context.maybe_zoom_text(abs),
+            base_size,
+            line_height_base,
+        )
     }
 
     /// Compute the value into pixel length as CSSFloat without context,
@@ -805,9 +969,36 @@ impl specified::CalcLengthPercentage {
         }
     }
 
-    /// Compute the calc using the current font-size (and without text-zoom).
+    /// Compute the value into pixel length as CSSFloat, using the get_font_metrics function
+    /// if provided to resolve font-relative dimensions.
+    pub fn to_computed_pixel_length_with_font_metrics(
+        &self,
+        get_font_metrics: Option<impl Fn() -> GeckoFontMetrics>,
+    ) -> Result<CSSFloat, ()> {
+        use crate::values::specified::calc::Leaf;
+        use crate::values::specified::length::NoCalcLength;
+
+        match self.node {
+            calc::CalcNode::Leaf(Leaf::Length(NoCalcLength::Absolute(ref l))) => Ok(l.to_px()),
+            calc::CalcNode::Leaf(Leaf::Length(NoCalcLength::FontRelative(ref l))) => {
+                if let Some(getter) = get_font_metrics {
+                    l.to_computed_pixel_length_with_font_metrics(getter)
+                } else {
+                    Err(())
+                }
+            },
+            _ => Err(()),
+        }
+    }
+
+    /// Compute the calc using the current font-size and line-height. (and without text-zoom).
     pub fn to_computed_value(&self, context: &Context) -> LengthPercentage {
-        self.to_computed_value_with_zoom(context, |abs| abs, FontBaseSize::CurrentStyle)
+        self.to_computed_value_with_zoom(
+            context,
+            |abs| abs,
+            FontBaseSize::CurrentStyle,
+            LineHeightBase::CurrentStyle,
+        )
     }
 
     #[inline]
@@ -822,6 +1013,7 @@ impl specified::CalcLengthPercentage {
                     Leaf::Length(NoCalcLength::from_px(l.px()))
                 },
                 CalcLengthPercentageLeaf::Percentage(ref p) => Leaf::Percentage(p.0),
+                CalcLengthPercentageLeaf::Number(n) => Leaf::Number(*n),
             }),
         }
     }
@@ -841,12 +1033,20 @@ impl Animate for LengthPercentage {
                 Self::new_percent(one.animate(&other, procedure)?)
             },
             _ => {
-                let mut one = self.to_calc_node().into_owned();
-                let mut other = other.to_calc_node().into_owned();
-                let (l, r) = procedure.weights();
+                use calc::CalcNodeLeaf;
 
-                one.mul_by(l as f32);
-                other.mul_by(r as f32);
+                fn product_with(mut node: CalcNode, product: f32) -> CalcNode {
+                    let mut number = CalcNode::Leaf(CalcLengthPercentageLeaf::new_number(product));
+                    if !node.try_product_in_place(&mut number) {
+                        CalcNode::Product(vec![node, number].into())
+                    } else {
+                        node
+                    }
+                }
+
+                let (l, r) = procedure.weights();
+                let one = product_with(self.to_calc_node().into_owned(), l as f32);
+                let other = product_with(other.to_calc_node().into_owned(), r as f32);
 
                 Self::new_calc(
                     CalcNode::Sum(vec![one, other].into()),

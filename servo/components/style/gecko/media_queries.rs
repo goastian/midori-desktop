@@ -11,13 +11,14 @@ use crate::font_metrics::FontMetrics;
 use crate::gecko::values::{convert_absolute_color_to_nscolor, convert_nscolor_to_absolute_color};
 use crate::gecko_bindings::bindings;
 use crate::gecko_bindings::structs;
+use crate::logical_geometry::WritingMode;
 use crate::media_queries::MediaType;
 use crate::properties::ComputedValues;
 use crate::string_cache::Atom;
 use crate::values::computed::font::GenericFontFamily;
 use crate::values::computed::{ColorScheme, Length, NonNegativeLength};
 use crate::values::specified::color::SystemColor;
-use crate::values::specified::font::FONT_MEDIUM_PX;
+use crate::values::specified::font::{FONT_MEDIUM_LINE_HEIGHT_PX, FONT_MEDIUM_PX};
 use crate::values::specified::ViewportVariant;
 use crate::values::{CustomIdent, KeyframesName};
 use app_units::{Au, AU_PER_PX};
@@ -26,8 +27,9 @@ use euclid::{Scale, SideOffsets2D};
 use servo_arc::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::{cmp, fmt};
-use style_traits::viewport::ViewportConstraints;
 use style_traits::{CSSPixel, DevicePixel};
+
+use super::media_features::ForcedColors;
 
 /// The `Device` in Gecko wraps a pres context, has a default values computed,
 /// and contains all the viewport rule state.
@@ -46,6 +48,8 @@ pub struct Device {
     /// parent to compute everything else. So it is correct to just use a
     /// relaxed atomic here.
     root_font_size: AtomicU32,
+    /// Line height of the root element, used for rlh units in other elements.
+    root_line_height: AtomicU32,
     /// The body text color, stored as an `nscolor`, used for the "tables
     /// inherit from body" quirk.
     ///
@@ -54,6 +58,9 @@ pub struct Device {
     /// Whether any styles computed in the document relied on the root font-size
     /// by using rem units.
     used_root_font_size: AtomicBool,
+    /// Whether any styles computed in the document relied on the root line-height
+    /// by using rlh units.
+    used_root_line_height: AtomicBool,
     /// Whether any styles computed in the document relied on font metrics.
     used_font_metrics: AtomicBool,
     /// Whether any styles computed in the document relied on the viewport size
@@ -95,10 +102,12 @@ impl Device {
             document,
             default_values: ComputedValues::default_values(doc),
             root_font_size: AtomicU32::new(FONT_MEDIUM_PX.to_bits()),
+            root_line_height: AtomicU32::new(FONT_MEDIUM_LINE_HEIGHT_PX.to_bits()),
             // This gets updated when we see the <body>, so it doesn't really
             // matter which color-scheme we look at here.
             body_text_color: AtomicUsize::new(prefs.mLightColors.mDefault as usize),
             used_root_font_size: AtomicBool::new(false),
+            used_root_line_height: AtomicBool::new(false),
             used_font_metrics: AtomicBool::new(false),
             used_viewport_size: AtomicBool::new(false),
             used_dynamic_viewport_size: AtomicBool::new(false),
@@ -117,28 +126,22 @@ impl Device {
     /// If you pass down an element, then the used line-height is returned.
     pub fn calc_line_height(
         &self,
-        line_height: &crate::values::computed::LineHeight,
-        vertical: bool,
         font: &crate::properties::style_structs::Font,
+        writing_mode: WritingMode,
         element: Option<super::wrapper::GeckoElement>,
     ) -> NonNegativeLength {
         let pres_context = self.pres_context();
+        let line_height = font.clone_line_height();
         let au = Au(unsafe {
             bindings::Gecko_CalcLineHeight(
-                line_height,
+                &line_height,
                 pres_context.map_or(std::ptr::null(), |pc| pc),
-                vertical,
+                writing_mode.is_text_vertical(),
                 &**font,
                 element.map_or(std::ptr::null(), |e| e.0),
             )
         });
         NonNegativeLength::new(au.to_f32_px())
-    }
-
-    /// Tells the device that a new viewport rule has been found, and stores the
-    /// relevant viewport constraints.
-    pub fn account_for_viewport_rule(&mut self, _constraints: &ViewportConstraints) {
-        unreachable!("Gecko doesn't support @viewport");
     }
 
     /// Whether any animation name may be referenced from the style of any
@@ -171,10 +174,23 @@ impl Device {
         Length::new(f32::from_bits(self.root_font_size.load(Ordering::Relaxed)))
     }
 
-    /// Set the font size of the root element (for rem)
-    pub fn set_root_font_size(&self, size: Length) {
-        self.root_font_size
-            .store(size.px().to_bits(), Ordering::Relaxed)
+    /// Set the font size of the root element (for rem), in zoom-independent CSS pixels.
+    pub fn set_root_font_size(&self, size: f32) {
+        self.root_font_size.store(size.to_bits(), Ordering::Relaxed)
+    }
+
+    /// Get the line height of the root element (for rlh)
+    pub fn root_line_height(&self) -> Length {
+        self.used_root_line_height.store(true, Ordering::Relaxed);
+        Length::new(f32::from_bits(
+            self.root_line_height.load(Ordering::Relaxed),
+        ))
+    }
+
+    /// Set the line height of the root element (for rlh), in zoom-independent CSS pixels.
+    pub fn set_root_line_height(&self, size: f32) {
+        self.root_line_height
+            .store(size.to_bits(), Ordering::Relaxed);
     }
 
     /// The quirks mode of the document.
@@ -302,15 +318,21 @@ impl Device {
     pub fn rebuild_cached_data(&mut self) {
         self.reset_computed_values();
         self.used_root_font_size.store(false, Ordering::Relaxed);
+        self.used_root_line_height.store(false, Ordering::Relaxed);
         self.used_font_metrics.store(false, Ordering::Relaxed);
         self.used_viewport_size.store(false, Ordering::Relaxed);
         self.used_dynamic_viewport_size
             .store(false, Ordering::Relaxed);
     }
 
-    /// Returns whether we ever looked up the root font size of the Device.
+    /// Returns whether we ever looked up the root font size of the device.
     pub fn used_root_font_size(&self) -> bool {
         self.used_root_font_size.load(Ordering::Relaxed)
+    }
+
+    /// Returns whether we ever looked up the root line-height of the device.
+    pub fn used_root_line_height(&self) -> bool {
+        self.used_root_line_height.load(Ordering::Relaxed)
     }
 
     /// Recreates all the temporary state that the `Device` stores.
@@ -477,12 +499,27 @@ impl Device {
 
     /// Returns whether document colors are enabled.
     #[inline]
-    pub fn use_document_colors(&self) -> bool {
-        let doc = self.document();
-        if doc.mIsBeingUsedAsImage() {
-            return true;
+    pub fn forced_colors(&self) -> ForcedColors {
+        if self.document().mIsBeingUsedAsImage() {
+            // SVG images never force colors.
+            return ForcedColors::None;
         }
-        self.pref_sheet_prefs().mUseDocumentColors
+        let prefs = self.pref_sheet_prefs();
+        if !prefs.mUseDocumentColors {
+            return ForcedColors::Active;
+        }
+        // On Windows, having a high contrast theme also means that the OS is requesting the
+        // colors to be forced. This is mostly convenience for the front-end, which wants to
+        // reuse the forced-colors styles for chrome in this case as well, and it's a lot
+        // more convenient to use `(forced-colors)` than
+        // `(forced-colors) or ((-moz-platform: windows) and (prefers-contrast))`.
+        //
+        // TODO(emilio): We might want to factor in here the lwtheme attribute in the root element
+        // and so on.
+        if cfg!(target_os = "windows") && prefs.mUseAccessibilityTheme && prefs.mIsChrome {
+            return ForcedColors::Requested;
+        }
+        ForcedColors::None
     }
 
     /// Computes a system color and returns it as an nscolor.
@@ -492,6 +529,11 @@ impl Device {
         color_scheme: &ColorScheme,
     ) -> u32 {
         unsafe { bindings::Gecko_ComputeSystemColor(system_color, self.document(), color_scheme) }
+    }
+
+    /// Returns whether the used color-scheme for `color-scheme` should be dark.
+    pub(crate) fn is_dark_color_scheme(&self, color_scheme: &ColorScheme) -> bool {
+        unsafe { bindings::Gecko_IsDarkColorScheme(self.document(), color_scheme) }
     }
 
     /// Returns the default background color.

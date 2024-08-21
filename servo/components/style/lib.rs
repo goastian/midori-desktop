@@ -69,6 +69,8 @@ extern crate static_assertions;
 #[macro_use]
 extern crate style_derive;
 #[macro_use]
+extern crate thin_vec;
+#[macro_use]
 extern crate to_shmem_derive;
 
 #[macro_use]
@@ -88,6 +90,7 @@ pub mod computed_value_flags;
 pub mod context;
 pub mod counter_style;
 pub mod custom_properties;
+pub mod custom_properties_map;
 pub mod data;
 pub mod dom;
 pub mod dom_apis;
@@ -204,6 +207,7 @@ pub trait CaseSensitivityExt {
 }
 
 impl CaseSensitivityExt for selectors::attr::CaseSensitivity {
+    #[inline]
     fn eq_atom(self, a: &WeakAtom, b: &WeakAtom) -> bool {
         match self {
             selectors::attr::CaseSensitivity::CaseSensitive => a == b,

@@ -16,8 +16,8 @@ use super::generics::{self, GreaterThanOrEqualToOne, NonNegative};
 use super::{CSSFloat, CSSInteger};
 use crate::context::QuirksMode;
 use crate::parser::{Parse, ParserContext};
-use crate::values::serialize_atom_identifier;
 use crate::values::specified::calc::CalcNode;
+use crate::values::{serialize_atom_identifier, serialize_number, AtomString};
 use crate::{Atom, Namespace, One, Prefix, Zero};
 use cssparser::{Parser, Token};
 use std::fmt::{self, Write};
@@ -26,12 +26,15 @@ use style_traits::values::specified::AllowedNumericType;
 use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 
 #[cfg(feature = "gecko")]
-pub use self::align::{AlignContent, AlignItems, AlignSelf, AlignTracks, ContentDistribution};
+pub use self::align::{AlignContent, AlignItems, AlignSelf, ContentDistribution};
 #[cfg(feature = "gecko")]
-pub use self::align::{JustifyContent, JustifyItems, JustifySelf, JustifyTracks, SelfAlignment};
+pub use self::align::{JustifyContent, JustifyItems, JustifySelf, SelfAlignment};
 pub use self::angle::{AllowUnitlessZeroAngle, Angle};
-pub use self::animation::{AnimationIterationCount, AnimationName, AnimationTimeline};
-pub use self::animation::{ScrollAxis, ScrollTimelineName, TransitionProperty, ViewTimelineInset};
+pub use self::animation::{
+    AnimationComposition, AnimationDirection, AnimationFillMode, AnimationIterationCount,
+    AnimationName, AnimationPlayState, AnimationTimeline, ScrollAxis, ScrollTimelineName,
+    TransitionBehavior, TransitionProperty, ViewTimelineInset,
+};
 pub use self::background::{BackgroundRepeat, BackgroundSize};
 pub use self::basic_shape::FillRule;
 pub use self::border::{
@@ -39,11 +42,11 @@ pub use self::border::{
     BorderImageWidth, BorderRadius, BorderSideWidth, BorderSpacing, BorderStyle, LineWidth,
 };
 pub use self::box_::{
-    Appearance, BreakBetween, BaselineSource, BreakWithin, Contain, ContainerName, ContainerType,
-    Clear, ContainIntrinsicSize, ContentVisibility, Display, Float, LineClamp, Overflow,
-    OverflowAnchor, OverflowClipBox, OverscrollBehavior, Perspective, Resize, ScrollbarGutter,
-    ScrollSnapAlign, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    TouchAction, VerticalAlign, WillChange,
+    Appearance, BaselineSource, BreakBetween, BreakWithin, Clear, Contain, ContainIntrinsicSize,
+    ContainerName, ContainerType, ContentVisibility, Display, Float, LineClamp, Overflow,
+    OverflowAnchor, OverflowClipBox, OverscrollBehavior, Perspective, Resize, ScrollSnapAlign,
+    ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter,
+    TouchAction, VerticalAlign, WillChange, Zoom,
 };
 pub use self::color::{
     Color, ColorOrAuto, ColorPropertyValue, ColorScheme, ForcedColorAdjust, PrintColorAdjust,
@@ -55,12 +58,13 @@ pub use self::effects::{BoxShadow, Filter, SimpleShadow};
 pub use self::flex::FlexBasis;
 pub use self::font::{FontFamily, FontLanguageOverride, FontPalette, FontStyle};
 pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
-pub use self::font::{FontSize, FontSizeAdjust, FontSizeKeyword, FontStretch, FontSynthesis};
+pub use self::font::{
+    FontSize, FontSizeAdjust, FontSizeAdjustFactor, FontSizeKeyword, FontStretch, FontSynthesis,
+};
 pub use self::font::{FontVariantAlternates, FontWeight};
-pub use self::font::{FontVariantEastAsian, FontVariationSettings};
+pub use self::font::{FontVariantEastAsian, FontVariationSettings, LineHeight};
 pub use self::font::{MathDepth, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextScale};
-pub use self::image::{EndingShape as GradientEndingShape, Gradient};
-pub use self::image::{Image, ImageRendering, MozImageRect};
+pub use self::image::{EndingShape as GradientEndingShape, Gradient, Image, ImageRendering};
 pub use self::length::{AbsoluteLength, CalcLengthPercentage, CharacterWidth};
 pub use self::length::{FontRelativeLength, Length, LengthOrNumber, NonNegativeLengthOrNumber};
 pub use self::length::{LengthOrAuto, LengthPercentage, LengthPercentageOrAuto};
@@ -76,8 +80,15 @@ pub use self::motion::{OffsetPath, OffsetPosition, OffsetRotate};
 pub use self::outline::OutlineStyle;
 pub use self::page::{PageName, PageOrientation, PageSize, PageSizeOrientation, PaperSize};
 pub use self::percentage::{NonNegativePercentage, Percentage};
+pub use self::position::AnchorName;
+pub use self::position::AnchorScope;
 pub use self::position::AspectRatio;
+pub use self::position::PositionAnchor;
+pub use self::position::PositionTryOptions;
+pub use self::position::PositionTryOrder;
+pub use self::position::PositionVisibility;
 pub use self::position::{GridAutoFlow, GridTemplateAreas, Position, PositionOrAuto};
+pub use self::position::{InsetArea, InsetAreaKeyword};
 pub use self::position::{MasonryAutoFlow, MasonryItemOrder, MasonryPlacement};
 pub use self::position::{PositionComponent, ZIndex};
 pub use self::ratio::Ratio;
@@ -91,13 +102,13 @@ pub use self::text::HyphenateCharacter;
 pub use self::text::RubyPosition;
 pub use self::text::TextAlignLast;
 pub use self::text::TextUnderlinePosition;
-pub use self::text::{InitialLetter, LetterSpacing, LineBreak, LineHeight, TextAlign};
+pub use self::text::{InitialLetter, LetterSpacing, LineBreak, TextAlign, TextIndent};
 pub use self::text::{OverflowWrap, TextEmphasisPosition, TextEmphasisStyle, WordBreak};
 pub use self::text::{TextAlignKeyword, TextDecorationLine, TextOverflow, WordSpacing};
 pub use self::text::{TextDecorationLength, TextDecorationSkipInk, TextJustify, TextTransform};
 pub use self::time::Time;
 pub use self::transform::{Rotate, Scale, Transform};
-pub use self::transform::{TransformOrigin, TransformStyle, Translate};
+pub use self::transform::{TransformBox, TransformOrigin, TransformStyle, Translate};
 #[cfg(feature = "gecko")]
 pub use self::ui::CursorImage;
 pub use self::ui::{BoolInteger, Cursor, UserSelect};
@@ -195,15 +206,15 @@ fn parse_number_with_clamping_mode<'i, 't>(
     match *input.next()? {
         Token::Number { value, .. } if clamping_mode.is_ok(context.parsing_mode, value) => {
             Ok(Number {
-                value: value.min(f32::MAX).max(f32::MIN),
+                value,
                 calc_clamping_mode: None,
             })
         },
         Token::Function(ref name) => {
             let function = CalcNode::math_function(context, name, location)?;
-            let result = CalcNode::parse_number(context, input, function)?;
+            let value = CalcNode::parse_number(context, input, function)?;
             Ok(Number {
-                value: result.min(f32::MAX).max(f32::MIN),
+                value,
                 calc_clamping_mode: Some(clamping_mode),
             })
         },
@@ -214,7 +225,7 @@ fn parse_number_with_clamping_mode<'i, 't>(
 /// A CSS `<number>` specified value.
 ///
 /// https://drafts.csswg.org/css-values-3/#number-value
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd, ToShmem)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialOrd, ToShmem)]
 pub struct Number {
     /// The numeric value itself.
     value: CSSFloat,
@@ -232,8 +243,19 @@ impl Parse for Number {
     }
 }
 
+impl PartialEq<Number> for Number {
+    fn eq(&self, other: &Number) -> bool {
+        if self.calc_clamping_mode != other.calc_clamping_mode {
+            return false;
+        }
+
+        self.value == other.value || (self.value.is_nan() && other.value.is_nan())
+    }
+}
+
 impl Number {
     /// Returns a new number with the value `val`.
+    #[inline]
     fn new_with_clamping_mode(
         value: CSSFloat,
         calc_clamping_mode: Option<AllowedNumericType>,
@@ -250,6 +272,7 @@ impl Number {
     }
 
     /// Returns a new number with the value `val`.
+    #[inline]
     pub fn new(val: CSSFloat) -> Self {
         Self::new_with_clamping_mode(val, None)
     }
@@ -263,8 +286,12 @@ impl Number {
     /// Returns the numeric value, clamped if needed.
     #[inline]
     pub fn get(&self) -> f32 {
-        self.calc_clamping_mode
-            .map_or(self.value, |mode| mode.clamp(self.value))
+        crate::values::normalize(
+            self.calc_clamping_mode
+                .map_or(self.value, |mode| mode.clamp(self.value)),
+        )
+        .min(f32::MAX)
+        .max(f32::MIN)
     }
 
     #[allow(missing_docs)]
@@ -315,14 +342,7 @@ impl ToCss for Number {
     where
         W: Write,
     {
-        if self.calc_clamping_mode.is_some() {
-            dest.write_str("calc(")?;
-        }
-        self.value.to_css(dest)?;
-        if self.calc_clamping_mode.is_some() {
-            dest.write_char(')')?;
-        }
-        Ok(())
+        serialize_number(self.value, self.calc_clamping_mode.is_some(), dest)
     }
 }
 
@@ -505,6 +525,12 @@ impl NonNegativeNumberOrPercentage {
     #[inline]
     pub fn hundred_percent() -> Self {
         NonNegative(NumberOrPercentage::Percentage(Percentage::hundred()))
+    }
+
+    /// Return a particular number.
+    #[inline]
+    pub fn new_number(n: f32) -> Self {
+        NonNegative(NumberOrPercentage::Number(Number::new(n)))
     }
 }
 
@@ -863,6 +889,8 @@ pub struct Attr {
     pub namespace_url: Namespace,
     /// Attribute name
     pub attribute: Atom,
+    /// Fallback value
+    pub fallback: AtomString,
 }
 
 impl Parse for Attr {
@@ -880,6 +908,32 @@ fn get_namespace_for_prefix(prefix: &Prefix, context: &ParserContext) -> Option<
     context.namespaces.prefixes.get(prefix).cloned()
 }
 
+/// Try to parse a namespace and return it if parsed, or none if there was not one present
+fn parse_namespace<'i, 't>(
+    context: &ParserContext,
+    input: &mut Parser<'i, 't>,
+) -> Result<(Prefix, Namespace), ParseError<'i>> {
+    let ns_prefix = match input.next()? {
+        Token::Ident(ref prefix) => Some(Prefix::from(prefix.as_ref())),
+        Token::Delim('|') => None,
+        _ => return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
+    };
+
+    if ns_prefix.is_some() && !matches!(*input.next_including_whitespace()?, Token::Delim('|')) {
+        return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+    }
+
+    if let Some(prefix) = ns_prefix {
+        let ns = match get_namespace_for_prefix(&prefix, context) {
+            Some(ns) => ns,
+            None => return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
+        };
+        Ok((prefix, ns))
+    } else {
+        Ok((Prefix::default(), Namespace::default()))
+    }
+}
+
 impl Attr {
     /// Parse contents of attr() assuming we have already parsed `attr` and are
     /// within a parse_nested_block()
@@ -887,54 +941,39 @@ impl Attr {
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Attr, ParseError<'i>> {
-        // Syntax is `[namespace? `|`]? ident`
-        // no spaces allowed
-        let first = input.try_parse(|i| i.expect_ident_cloned()).ok();
-        if let Ok(token) = input.try_parse(|i| i.next_including_whitespace().map(|t| t.clone())) {
-            match token {
-                Token::Delim('|') => {
-                    let location = input.current_source_location();
-                    // must be followed by an ident
-                    let second_token = match *input.next_including_whitespace()? {
-                        Token::Ident(ref second) => second,
-                        ref t => return Err(location.new_unexpected_token_error(t.clone())),
-                    };
+        // Syntax is `[namespace? '|']? ident [',' fallback]?`
+        let namespace = input
+            .try_parse(|input| parse_namespace(context, input))
+            .ok();
+        let namespace_is_some = namespace.is_some();
+        let (namespace_prefix, namespace_url) = namespace.unwrap_or_default();
 
-                    let (namespace_prefix, namespace_url) = if let Some(ns) = first {
-                        let prefix = Prefix::from(ns.as_ref());
-                        let ns = match get_namespace_for_prefix(&prefix, context) {
-                            Some(ns) => ns,
-                            None => {
-                                return Err(location
-                                    .new_custom_error(StyleParseErrorKind::UnspecifiedError));
-                            },
-                        };
-                        (prefix, ns)
-                    } else {
-                        (Prefix::default(), Namespace::default())
-                    };
-                    return Ok(Attr {
-                        namespace_prefix,
-                        namespace_url,
-                        attribute: Atom::from(second_token.as_ref()),
-                    });
-                },
-                // In the case of attr(foobar    ) we don't want to error out
-                // because of the trailing whitespace.
-                Token::WhiteSpace(..) => {},
-                ref t => return Err(input.new_unexpected_token_error(t.clone())),
+        // If there is a namespace, ensure no whitespace following '|'
+        let attribute = Atom::from(if namespace_is_some {
+            let location = input.current_source_location();
+            match *input.next_including_whitespace()? {
+                Token::Ident(ref ident) => ident.as_ref(),
+                ref t => return Err(location.new_unexpected_token_error(t.clone())),
             }
-        }
-
-        if let Some(first) = first {
-            Ok(Attr {
-                namespace_prefix: Prefix::default(),
-                namespace_url: Namespace::default(),
-                attribute: Atom::from(first.as_ref()),
-            })
         } else {
-            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
-        }
+            input.expect_ident()?.as_ref()
+        });
+
+        // Fallback will always be a string value for now as we do not support
+        // attr() types yet.
+        let fallback = input
+            .try_parse(|input| -> Result<AtomString, ParseError<'i>> {
+                input.expect_comma()?;
+                Ok(input.expect_string()?.as_ref().into())
+            })
+            .unwrap_or_default();
+
+        Ok(Attr {
+            namespace_prefix,
+            namespace_url,
+            attribute,
+            fallback,
+        })
     }
 }
 
@@ -949,6 +988,12 @@ impl ToCss for Attr {
             dest.write_char('|')?;
         }
         serialize_atom_identifier(&self.attribute, dest)?;
+
+        if !self.fallback.is_empty() {
+            dest.write_str(", ")?;
+            self.fallback.to_css(dest)?;
+        }
+
         dest.write_char(')')
     }
 }

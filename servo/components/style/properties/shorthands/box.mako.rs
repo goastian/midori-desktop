@@ -8,8 +8,7 @@ ${helpers.two_properties_shorthand(
     "overflow",
     "overflow-x",
     "overflow-y",
-    engines="gecko servo-2013 servo-2020",
-    flags="SHORTHAND_IN_GETCS",
+    engines="gecko servo",
     spec="https://drafts.csswg.org/css-overflow/#propdef-overflow",
 )}
 
@@ -37,8 +36,6 @@ ${helpers.two_properties_shorthand(
     engines="gecko"
     name="container"
     sub_properties="container-name container-type"
-    gecko_pref="layout.css.container-queries.enabled"
-    enabled_in="ua"
     spec="https://drafts.csswg.org/css-contain-3/#container-shorthand"
 >
     use crate::values::specified::box_::{ContainerName, ContainerType};
@@ -76,7 +73,7 @@ ${helpers.two_properties_shorthand(
 <%helpers:shorthand
     engines="gecko"
     name="page-break-before"
-    flags="SHORTHAND_IN_GETCS IS_LEGACY_SHORTHAND"
+    flags="IS_LEGACY_SHORTHAND"
     sub_properties="break-before"
     spec="https://drafts.csswg.org/css-break-3/#page-break-properties"
 >
@@ -100,7 +97,7 @@ ${helpers.two_properties_shorthand(
 <%helpers:shorthand
     engines="gecko"
     name="page-break-after"
-    flags="SHORTHAND_IN_GETCS IS_LEGACY_SHORTHAND"
+    flags="IS_LEGACY_SHORTHAND"
     sub_properties="break-after"
     spec="https://drafts.csswg.org/css-break-3/#page-break-properties"
 >
@@ -124,7 +121,7 @@ ${helpers.two_properties_shorthand(
 <%helpers:shorthand
     engines="gecko"
     name="page-break-inside"
-    flags="SHORTHAND_IN_GETCS IS_LEGACY_SHORTHAND"
+    flags="IS_LEGACY_SHORTHAND"
     sub_properties="break-inside"
     spec="https://drafts.csswg.org/css-break-3/#page-break-properties"
 >
@@ -149,7 +146,6 @@ ${helpers.two_properties_shorthand(
                     engines="gecko"
                     sub_properties="offset-path offset-distance offset-rotate offset-anchor
                                     offset-position"
-                    gecko_pref="layout.css.motion-path.enabled",
                     spec="https://drafts.fxtf.org/motion-1/#offset-shorthand">
     use crate::parser::Parse;
     use crate::values::specified::motion::{OffsetPath, OffsetPosition, OffsetRotate};
@@ -160,13 +156,7 @@ ${helpers.two_properties_shorthand(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Longhands, ParseError<'i>> {
-        let offset_position =
-            if static_prefs::pref!("layout.css.motion-path-offset-position.enabled") {
-                input.try_parse(|i| OffsetPosition::parse(context, i)).ok()
-            } else {
-                None
-            };
-
+        let offset_position = input.try_parse(|i| OffsetPosition::parse(context, i)).ok();
         let offset_path = input.try_parse(|i| OffsetPath::parse(context, i)).ok();
 
         // Must have one of [offset-position, offset-path].
@@ -203,7 +193,7 @@ ${helpers.two_properties_shorthand(
         }).ok();
 
         Ok(expanded! {
-            offset_position: offset_position.unwrap_or(OffsetPosition::auto()),
+            offset_position: offset_position.unwrap_or(OffsetPosition::normal()),
             offset_path: offset_path.unwrap_or(OffsetPath::none()),
             offset_distance: offset_distance.unwrap_or(LengthPercentage::zero()),
             offset_rotate: offset_rotate.unwrap_or(OffsetRotate::auto()),
@@ -213,24 +203,19 @@ ${helpers.two_properties_shorthand(
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            if let Some(offset_position) = self.offset_position {
-                // The basic concept is: we must serialize offset-position or offset-path group.
-                // offset-path group means "offset-path offset-distance offset-rotate".
-                let must_serialize_path = *self.offset_path != OffsetPath::None
-                    || (!self.offset_distance.is_zero() || !self.offset_rotate.is_auto());
-                let position_is_default = matches!(offset_position, OffsetPosition::Auto);
-                if !position_is_default || !must_serialize_path {
-                    offset_position.to_css(dest)?;
-                }
+            // The basic concept is: we must serialize offset-position or offset-path group.
+            // offset-path group means "offset-path offset-distance offset-rotate".
+            let must_serialize_path = *self.offset_path != OffsetPath::None
+                || (!self.offset_distance.is_zero() || !self.offset_rotate.is_auto());
+            let position_is_default = matches!(self.offset_position, OffsetPosition::Normal);
+            if !position_is_default || !must_serialize_path {
+                self.offset_position.to_css(dest)?;
+            }
 
-                if must_serialize_path {
-                    if !position_is_default {
-                        dest.write_char(' ')?;
-                    }
-                    self.offset_path.to_css(dest)?;
+            if must_serialize_path {
+                if !position_is_default {
+                    dest.write_char(' ')?;
                 }
-            } else {
-                // If the pref is off, we always show offset-path.
                 self.offset_path.to_css(dest)?;
             }
 
@@ -249,63 +234,6 @@ ${helpers.two_properties_shorthand(
                 self.offset_anchor.to_css(dest)?;
             }
             Ok(())
-        }
-    }
-</%helpers:shorthand>
-
-<%helpers:shorthand name="zoom" engines="gecko"
-                    sub_properties="transform transform-origin"
-                    gecko_pref="layout.css.zoom-transform-hack.enabled"
-                    flags="SHORTHAND_IN_GETCS IS_LEGACY_SHORTHAND"
-                    spec="Not a standard, only a compat hack">
-    use crate::parser::Parse;
-    use crate::values::specified::{Number, NumberOrPercentage, TransformOrigin};
-    use crate::values::generics::transform::{Transform, TransformOperation};
-
-    pub fn parse_value<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Longhands, ParseError<'i>> {
-        let zoom = match input.try_parse(|input| NumberOrPercentage::parse(context, input)) {
-            Ok(number_or_percent) => number_or_percent.to_number(),
-            Err(..) => {
-                input.expect_ident_matching("normal")?;
-                Number::new(1.0)
-            },
-        };
-
-        // Make sure that the initial value matches the values for the
-        // longhands, just for general sanity.  `zoom: 1` and `zoom: 0` are
-        // ignored, see [1][2]. They are just hack for the "has layout" mode on
-        // IE.
-        //
-        // [1]: https://bugs.webkit.org/show_bug.cgi?id=18467
-        // [2]: https://bugzilla.mozilla.org/show_bug.cgi?id=1593009
-        Ok(if zoom.get() == 1.0 || zoom.get() == 0.0 {
-            expanded! {
-                transform: Transform::none(),
-                transform_origin: TransformOrigin::initial_value(),
-            }
-        } else {
-            expanded! {
-                transform: Transform(vec![TransformOperation::Scale(zoom, zoom)].into()),
-                transform_origin: TransformOrigin::zero_zero(),
-            }
-        })
-    }
-
-    impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            if self.transform.0.is_empty() && *self.transform_origin == TransformOrigin::initial_value() {
-                return 1.0f32.to_css(dest);
-            }
-            if *self.transform_origin != TransformOrigin::zero_zero() {
-                return Ok(())
-            }
-            match &*self.transform.0 {
-                [TransformOperation::Scale(x, y)] if x == y => x.to_css(dest),
-                _ => Ok(()),
-            }
         }
     }
 </%helpers:shorthand>

@@ -4,17 +4,16 @@
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
-<% data.new_style_struct("InheritedBox", inherited=True, gecko_name="Visibility") %>
-
 // TODO: collapse. Well, do tables first.
 ${helpers.single_keyword(
     "visibility",
     "visible hidden collapse",
-    engines="gecko servo-2013 servo-2020",
+    engines="gecko servo",
     gecko_ffi_name="mVisible",
     animation_value_type="ComputedValue",
     spec="https://drafts.csswg.org/css-box/#propdef-visibility",
     gecko_enum_prefix="StyleVisibility",
+    affects="paint",
 )}
 
 // CSS Writing Modes Level 3
@@ -22,28 +21,29 @@ ${helpers.single_keyword(
 ${helpers.single_keyword(
     "writing-mode",
     "horizontal-tb vertical-rl vertical-lr",
-    engines="gecko servo-2013 servo-2020",
+    engines="gecko servo",
     extra_gecko_values="sideways-rl sideways-lr",
     gecko_aliases="lr=horizontal-tb lr-tb=horizontal-tb \
                          rl=horizontal-tb rl-tb=horizontal-tb \
                          tb=vertical-rl   tb-rl=vertical-rl",
-    servo_2013_pref="layout.writing-mode.enabled",
-    servo_2020_pref="layout.writing-mode.enabled",
+    servo_pref="layout.writing-mode.enabled",
     animation_value_type="none",
     spec="https://drafts.csswg.org/css-writing-modes/#propdef-writing-mode",
     gecko_enum_prefix="StyleWritingModeProperty",
     servo_restyle_damage="rebuild_and_reflow",
+    affects="layout",
 )}
 
 ${helpers.single_keyword(
     "direction",
     "ltr rtl",
-    engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
+    engines="gecko servo",
+    servo_pref="layout.legacy_layout",
     animation_value_type="none",
     spec="https://drafts.csswg.org/css-writing-modes/#propdef-direction",
     gecko_enum_prefix="StyleDirection",
     servo_restyle_damage="rebuild_and_reflow",
+    affects="layout",
 )}
 
 ${helpers.single_keyword(
@@ -54,6 +54,7 @@ ${helpers.single_keyword(
     animation_value_type="none",
     enabled_in="chrome",
     spec="None (internal)",
+    affects="layout",
 )}
 
 ${helpers.single_keyword(
@@ -64,6 +65,7 @@ ${helpers.single_keyword(
     gecko_enum_prefix="StyleTextOrientation",
     animation_value_type="none",
     spec="https://drafts.csswg.org/css-writing-modes/#propdef-text-orientation",
+    affects="layout",
 )}
 
 ${helpers.predefined_type(
@@ -74,6 +76,7 @@ ${helpers.predefined_type(
     aliases="color-adjust",
     spec="https://drafts.csswg.org/css-color-adjust/#print-color-adjust",
     animation_value_type="discrete",
+    affects="paint",
 )}
 
 // According to to CSS-IMAGES-3, `optimizespeed` and `optimizequality` are synonyms for `auto`
@@ -82,9 +85,10 @@ ${helpers.predefined_type(
     "image-rendering",
     "ImageRendering",
     "computed::ImageRendering::Auto",
-    engines="gecko servo-2013 servo-2020",
+    engines="gecko servo",
     spec="https://drafts.csswg.org/css-images/#propdef-image-rendering",
     animation_value_type="discrete",
+    affects="paint",
 )}
 
 ${helpers.single_keyword(
@@ -94,4 +98,5 @@ ${helpers.single_keyword(
     gecko_enum_prefix="StyleImageOrientation",
     animation_value_type="discrete",
     spec="https://drafts.csswg.org/css-images/#propdef-image-orientation",
+    affects="layout",
 )}

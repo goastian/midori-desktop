@@ -31,9 +31,11 @@ pub mod context;
 pub mod matching;
 mod nth_index_cache;
 pub mod parser;
+pub mod relative_selector;
 pub mod sink;
 mod tree;
 pub mod visitor;
+pub mod kleene_value;
 
 pub use crate::nth_index_cache::NthIndexCache;
 pub use crate::parser::{Parser, SelectorImpl, SelectorList};

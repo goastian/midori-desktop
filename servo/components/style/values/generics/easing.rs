@@ -84,7 +84,7 @@ pub enum BeforeFlag {
 
 #[cfg(feature = "gecko")]
 fn step_position_jump_enabled(_context: &ParserContext) -> bool {
-    static_prefs::pref!("layout.css.step-position-jump.enabled")
+    true
 }
 
 #[cfg(feature = "servo")]
@@ -133,5 +133,11 @@ impl<Integer, Number, LinearStops> TimingFunction<Integer, Number, LinearStops> 
     #[inline]
     pub fn ease() -> Self {
         TimingFunction::Keyword(TimingKeyword::Ease)
+    }
+
+    /// Returns true if it is `ease`.
+    #[inline]
+    pub fn is_ease(&self) -> bool {
+        matches!(*self, TimingFunction::Keyword(TimingKeyword::Ease))
     }
 }

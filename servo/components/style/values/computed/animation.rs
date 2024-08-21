@@ -11,7 +11,8 @@ use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
 
 pub use crate::values::specified::animation::{
-    AnimationName, ScrollAxis, ScrollTimelineName, TransitionProperty,
+    AnimationComposition, AnimationDirection, AnimationFillMode, AnimationName, AnimationPlayState,
+    ScrollAxis, ScrollTimelineName, TransitionBehavior, TransitionProperty,
 };
 
 /// A computed value for the `animation-iteration-count` property.

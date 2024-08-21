@@ -10,10 +10,20 @@ use crate::gecko_bindings::bindings;
 use crate::parallel::STYLE_THREAD_STACK_SIZE_KB;
 use crate::shared_lock::SharedRwLock;
 use crate::thread_state;
-use gecko_profiler;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};
-use rayon;
+#[cfg(unix)]
+use std::os::unix::thread::{JoinHandleExt, RawPthread};
+#[cfg(windows)]
+use std::os::windows::{io::AsRawHandle, prelude::RawHandle};
 use std::{io, thread};
+use thin_vec::ThinVec;
+
+/// Platform-specific handle to a thread.
+#[cfg(unix)]
+pub type PlatformThreadHandle = RawPthread;
+/// Platform-specific handle to a thread.
+#[cfg(windows)]
+pub type PlatformThreadHandle = RawHandle;
 
 /// Global style data
 pub struct GlobalStyleData {
@@ -109,6 +119,22 @@ impl StyleThreadPool {
     pub fn pool(&self) -> RwLockReadGuard<Option<rayon::ThreadPool>> {
         self.style_thread_pool.read()
     }
+
+    /// Returns a list of the pool's platform-specific thread handles.
+    pub fn get_thread_handles(handles: &mut ThinVec<PlatformThreadHandle>) {
+        // Force the lazy initialization of STYLE_THREAD_POOL so that the threads get spawned and
+        // their join handles are added to STYLE_THREAD_JOIN_HANDLES.
+        lazy_static::initialize(&STYLE_THREAD_POOL);
+
+        for join_handle in STYLE_THREAD_JOIN_HANDLES.lock().iter() {
+            #[cfg(unix)]
+            let handle = join_handle.as_pthread_t();
+            #[cfg(windows)]
+            let handle = join_handle.as_raw_handle();
+
+            handles.push(handle);
+        }
+    }
 }
 
 #[cfg(feature = "servo")]
@@ -121,33 +147,46 @@ fn stylo_threads_pref() -> i32 {
     static_prefs::pref!("layout.css.stylo-threads")
 }
 
+/// The performance benefit of additional threads seems to level off at around six, so we cap it
+/// there on many-core machines (see bug 1431285 comment 14).
+pub(crate) const STYLO_MAX_THREADS: usize = 6;
+
 lazy_static! {
     /// Global thread pool
     pub static ref STYLE_THREAD_POOL: StyleThreadPool = {
+        use std::cmp;
         // We always set this pref on startup, before layout or script have had a chance of
         // accessing (and thus creating) the thread-pool.
         let threads_pref: i32 = stylo_threads_pref();
-
         let num_threads = if threads_pref >= 0 {
             threads_pref as usize
         } else {
-            use num_cpus;
-            use std::cmp;
-            // The default heuristic is num_virtual_cores * .75. This gives us three threads on a
-            // hyper-threaded dual core, and six threads on a hyper-threaded quad core.
-            //
-            // The performance benefit of additional threads seems to level off at around six, so
-            // we cap it there on many-core machines (see bug 1431285 comment 14).
-            let threads = cmp::min(cmp::max(num_cpus::get() * 3 / 4, 1), 6);
-            // There's no point in creating a thread pool if there's one thread.
-            if threads == 1 { 0 } else { threads }
+            // Gecko may wish to override the default number of threads, for example on
+            // systems with heterogeneous CPUs.
+            #[cfg(feature = "gecko")]
+            let num_threads = unsafe { bindings::Gecko_GetNumStyleThreads() };
+            #[cfg(not(feature = "gecko"))]
+            let num_threads = -1;
+
+            if num_threads >= 0 {
+                num_threads as usize
+            } else {
+                use num_cpus;
+                // The default heuristic is num_virtual_cores * .75. This gives us three threads on a
+                // hyper-threaded dual core, and six threads on a hyper-threaded quad core.
+                cmp::max(num_cpus::get() * 3 / 4, 1)
+            }
         };
 
-        let (pool, num_threads) = if num_threads < 1 {
+        let num_threads = cmp::min(num_threads, STYLO_MAX_THREADS);
+        // Since the main-thread is also part of the pool, having one thread or less doesn't make
+        // sense.
+        let (pool, num_threads) = if num_threads <= 1 {
             (None, None)
         } else {
             let workers = rayon::ThreadPoolBuilder::new()
                 .spawn_handler(thread_spawn)
+                .use_current_thread()
                 .num_threads(num_threads)
                 .thread_name(thread_name)
                 .start_handler(thread_startup)

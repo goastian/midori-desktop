@@ -18,7 +18,7 @@ use std::fmt::{self, Write};
 use std::mem::ManuallyDrop;
 use std::sync::RwLock;
 use style_traits::{CssWriter, ParseError, ToCss};
-use to_shmem::{self, SharedMemoryBuilder, ToShmem};
+use to_shmem::{SharedMemoryBuilder, ToShmem};
 
 /// A CSS url() value for gecko.
 #[derive(Clone, Debug, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
@@ -154,6 +154,7 @@ unsafe impl Send for LoadDataKey {}
 
 bitflags! {
     /// Various bits of mutable state that are kept for image loads.
+    #[derive(Debug)]
     #[repr(C)]
     pub struct LoadDataFlags: u8 {
         /// Whether we tried to resolve the uri at least once.

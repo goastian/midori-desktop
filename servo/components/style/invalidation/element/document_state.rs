@@ -6,15 +6,17 @@
 
 use crate::dom::TElement;
 use crate::invalidation::element::invalidation_map::Dependency;
-use crate::invalidation::element::invalidator::{DescendantInvalidationLists, InvalidationVector};
+use crate::invalidation::element::invalidator::{
+    DescendantInvalidationLists, InvalidationVector, SiblingTraversalMap,
+};
 use crate::invalidation::element::invalidator::{Invalidation, InvalidationProcessor};
 use crate::invalidation::element::state_and_attributes;
 use crate::stylist::CascadeData;
 use dom::DocumentState;
 use selectors::matching::{
-    MatchingContext, MatchingMode, NeedsSelectorFlags, QuirksMode, VisitedHandlingMode,
+    IncludeStartingStyle, MatchingContext, MatchingForInvalidation, MatchingMode,
+    NeedsSelectorFlags, QuirksMode, SelectorCaches, VisitedHandlingMode,
 };
-use selectors::NthIndexCache;
 
 /// A struct holding the members necessary to invalidate document state
 /// selectors.
@@ -35,28 +37,32 @@ impl Default for InvalidationMatchingData {
 
 /// An invalidation processor for style changes due to state and attribute
 /// changes.
-pub struct DocumentStateInvalidationProcessor<'a, E: TElement, I> {
+pub struct DocumentStateInvalidationProcessor<'a, 'b, E: TElement, I> {
     rules: I,
     matching_context: MatchingContext<'a, E::Impl>,
+    traversal_map: SiblingTraversalMap<E>,
     document_states_changed: DocumentState,
+    _marker: std::marker::PhantomData<&'b ()>,
 }
 
-impl<'a, E: TElement, I> DocumentStateInvalidationProcessor<'a, E, I> {
+impl<'a, 'b, E: TElement, I> DocumentStateInvalidationProcessor<'a, 'b, E, I> {
     /// Creates a new DocumentStateInvalidationProcessor.
     #[inline]
     pub fn new(
         rules: I,
         document_states_changed: DocumentState,
-        nth_index_cache: &'a mut NthIndexCache,
+        selector_caches: &'a mut SelectorCaches,
         quirks_mode: QuirksMode,
     ) -> Self {
         let mut matching_context = MatchingContext::<'a, E::Impl>::new_for_visited(
             MatchingMode::Normal,
             None,
-            nth_index_cache,
+            selector_caches,
             VisitedHandlingMode::AllLinksVisitedAndUnvisited,
+            IncludeStartingStyle::No,
             quirks_mode,
             NeedsSelectorFlags::No,
+            MatchingForInvalidation::No,
         );
 
         matching_context.extra_data.invalidation_data.document_state = document_states_changed;
@@ -65,14 +71,17 @@ impl<'a, E: TElement, I> DocumentStateInvalidationProcessor<'a, E, I> {
             rules,
             document_states_changed,
             matching_context,
+            traversal_map: SiblingTraversalMap::default(),
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<'a, E, I> InvalidationProcessor<'a, E> for DocumentStateInvalidationProcessor<'a, E, I>
+impl<'a, 'b, E, I> InvalidationProcessor<'b, 'a, E>
+    for DocumentStateInvalidationProcessor<'a, 'b, E, I>
 where
     E: TElement,
-    I: Iterator<Item = &'a CascadeData>,
+    I: Iterator<Item = &'b CascadeData>,
 {
     fn check_outer_dependency(&mut self, _: &Dependency, _: E) -> bool {
         debug_assert!(
@@ -85,9 +94,9 @@ where
     fn collect_invalidations(
         &mut self,
         _element: E,
-        self_invalidations: &mut InvalidationVector<'a>,
-        _descendant_invalidations: &mut DescendantInvalidationLists<'a>,
-        _sibling_invalidations: &mut InvalidationVector<'a>,
+        self_invalidations: &mut InvalidationVector<'b>,
+        _descendant_invalidations: &mut DescendantInvalidationLists<'b>,
+        _sibling_invalidations: &mut InvalidationVector<'b>,
     ) -> bool {
         for cascade_data in &mut self.rules {
             let map = cascade_data.invalidation_map();
@@ -115,6 +124,10 @@ where
 
     fn matching_context(&mut self) -> &mut MatchingContext<'a, E::Impl> {
         &mut self.matching_context
+    }
+
+    fn sibling_traversal_map(&self) -> &SiblingTraversalMap<E> {
+        &self.traversal_map
     }
 
     fn recursion_limit_exceeded(&mut self, _: E) {

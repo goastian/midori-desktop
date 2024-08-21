@@ -7,7 +7,7 @@
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
-use rayon;
+use crate::global_style_data::STYLO_MAX_THREADS;
 use std::cell::{Ref, RefCell, RefMut};
 use std::ops::DerefMut;
 
@@ -19,8 +19,8 @@ use std::ops::DerefMut;
 /// Note that the cleanup is done on the thread that owns the scoped TLS, thus
 /// the Send bound.
 pub struct ScopedTLS<'scope, T: Send> {
-    pool: &'scope rayon::ThreadPool,
-    slots: Box<[RefCell<Option<T>>]>,
+    pool: Option<&'scope rayon::ThreadPool>,
+    slots: [RefCell<Option<T>>; STYLO_MAX_THREADS],
 }
 
 /// The scoped TLS is `Sync` because no more than one worker thread can access a
@@ -30,28 +30,29 @@ unsafe impl<'scope, T: Send> Sync for ScopedTLS<'scope, T> {}
 impl<'scope, T: Send> ScopedTLS<'scope, T> {
     /// Create a new scoped TLS that will last as long as this rayon threadpool
     /// reference.
-    pub fn new(p: &'scope rayon::ThreadPool) -> Self {
-        let count = p.current_num_threads();
-        let mut v = Vec::with_capacity(count);
-        for _ in 0..count {
-            v.push(RefCell::new(None));
-        }
-
+    pub fn new(pool: Option<&'scope rayon::ThreadPool>) -> Self {
+        debug_assert!(pool.map_or(true, |p| p.current_num_threads() <= STYLO_MAX_THREADS));
         ScopedTLS {
-            pool: p,
-            slots: v.into_boxed_slice(),
+            pool,
+            slots: Default::default(),
         }
+    }
+
+    /// Returns the index corresponding to the calling thread in the thread pool.
+    #[inline]
+    pub fn current_thread_index(&self) -> usize {
+        self.pool.map_or(0, |p| p.current_thread_index().unwrap())
     }
 
     /// Return an immutable reference to the `Option<T>` that this thread owns.
     pub fn borrow(&self) -> Ref<Option<T>> {
-        let idx = self.pool.current_thread_index().unwrap();
+        let idx = self.current_thread_index();
         self.slots[idx].borrow()
     }
 
     /// Return a mutable reference to the `Option<T>` that this thread owns.
     pub fn borrow_mut(&self) -> RefMut<Option<T>> {
-        let idx = self.pool.current_thread_index().unwrap();
+        let idx = self.current_thread_index();
         self.slots[idx].borrow_mut()
     }
 
@@ -71,8 +72,9 @@ impl<'scope, T: Send> ScopedTLS<'scope, T> {
         RefMut::map(opt, |x| x.as_mut().unwrap())
     }
 
-    /// Returns the slots, consuming the scope.
-    pub fn into_slots(self) -> Box<[RefCell<Option<T>>]> {
-        self.slots
+    /// Returns the slots. Safe because if we have a mut reference the tls can't be referenced by
+    /// any other thread.
+    pub fn slots(&mut self) -> &mut [RefCell<Option<T>>] {
+        &mut self.slots
     }
 }

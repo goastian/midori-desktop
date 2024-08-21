@@ -4,7 +4,6 @@
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import ALL_SIDES, DEFAULT_RULES_AND_PAGE, maybe_moz_logical_alias %>
-<% data.new_style_struct("Margin", inherited=False) %>
 
 % for side in ALL_SIDES:
     <%
@@ -16,7 +15,7 @@
         "margin-%s" % side[0],
         "LengthPercentageOrAuto",
         "computed::LengthPercentageOrAuto::zero()",
-        engines="gecko servo-2013 servo-2020",
+        engines="gecko servo",
         aliases=maybe_moz_logical_alias(engine, side, "-moz-margin-%s"),
         allow_quirks="No" if side[1] else "Yes",
         animation_value_type="ComputedValue",
@@ -24,7 +23,8 @@
         logical_group="margin",
         spec=spec,
         rule_types_allowed=DEFAULT_RULES_AND_PAGE,
-        servo_restyle_damage="reflow"
+        servo_restyle_damage="reflow",
+        affects="layout",
     )}
 % endfor
 
@@ -36,6 +36,7 @@ ${helpers.predefined_type(
     engines="gecko",
     spec="https://drafts.csswg.org/css-overflow/#propdef-overflow-clip-margin",
     animation_value_type="ComputedValue",
+    affects="overflow",
 )}
 
 % for side in ALL_SIDES:
@@ -48,5 +49,6 @@ ${helpers.predefined_type(
         logical_group="scroll-margin",
         spec="https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-%s" % side[0],
         animation_value_type="ComputedValue",
+        affects="",
     )}
 % endfor

@@ -5,11 +5,10 @@
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
 <%helpers:shorthand name="flex-flow"
-                    engines="gecko servo-2013 servo-2020",
-                    servo_2020_pref="layout.flexbox.enabled",
+                    engines="gecko servo",
+                    servo_pref="layout.flexbox.enabled",
                     sub_properties="flex-direction flex-wrap"
                     extra_prefixes="webkit"
-                    derive_serialize="True"
                     spec="https://drafts.csswg.org/css-flexbox/#flex-flow-property">
     use crate::properties::longhands::{flex_direction, flex_wrap};
 
@@ -43,11 +42,26 @@
             flex_wrap: unwrap_or_initial!(flex_wrap, wrap),
         })
     }
+
+    impl<'a> ToCss for LonghandsToSerialize<'a> {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            if *self.flex_direction == flex_direction::get_initial_specified_value() &&
+               *self.flex_wrap != flex_wrap::get_initial_specified_value() {
+                return self.flex_wrap.to_css(dest)
+            }
+            self.flex_direction.to_css(dest)?;
+            if *self.flex_wrap != flex_wrap::get_initial_specified_value() {
+                dest.write_char(' ')?;
+                self.flex_wrap.to_css(dest)?;
+            }
+            Ok(())
+        }
+    }
 </%helpers:shorthand>
 
 <%helpers:shorthand name="flex"
-                    engines="gecko servo-2013 servo-2020",
-                    servo_2020_pref="layout.flexbox.enabled",
+                    engines="gecko servo",
+                    servo_pref="layout.flexbox.enabled",
                     sub_properties="flex-grow flex-shrink flex-basis"
                     extra_prefixes="webkit"
                     derive_serialize="True"
@@ -309,7 +323,7 @@
     use crate::values::generics::grid::{TrackListValue, concat_serialize_idents};
     use crate::values::specified::{GridTemplateComponent, GenericGridTemplateComponent};
     use crate::values::specified::grid::parse_line_names;
-    use crate::values::specified::position::{GridTemplateAreas, TemplateAreas, TemplateAreasArc};
+    use crate::values::specified::position::{GridTemplateAreas, TemplateAreasParser, TemplateAreasArc};
 
     /// Parsing for `<grid-template>` shorthand (also used by `grid` shorthand).
     pub fn parse_grid_template<'i, 't>(
@@ -338,21 +352,19 @@
         % endfor
 
         let first_line_names = input.try_parse(parse_line_names).unwrap_or_default();
-        if let Ok(string) = input.try_parse(|i| i.expect_string().map(|s| s.as_ref().to_owned().into())) {
-            let mut strings = vec![];
+        let mut areas_parser = TemplateAreasParser::default();
+        if areas_parser.try_parse_string(input).is_ok() {
             let mut values = vec![];
             let mut line_names = vec![];
             line_names.push(first_line_names);
-            strings.push(string);
             loop {
                 let size = input.try_parse(|i| TrackSize::parse(context, i)).unwrap_or_default();
                 values.push(TrackListValue::TrackSize(size));
                 let mut names = input.try_parse(parse_line_names).unwrap_or_default();
                 let more_names = input.try_parse(parse_line_names);
 
-                match input.try_parse(|i| i.expect_string().map(|s| s.as_ref().to_owned().into())) {
-                    Ok(string) => {
-                        strings.push(string);
+                match areas_parser.try_parse_string(input) {
+                    Ok(()) => {
                         if let Ok(v) = more_names {
                             // We got `[names] [more_names] "string"` - merge the two name lists.
                             let mut names_vec = names.into_vec();
@@ -365,7 +377,7 @@
                         if more_names.is_ok() {
                             // We've parsed `"string" [names] [more_names]` but then failed to parse another `"string"`.
                             // The grammar doesn't allow two trailing `<line-names>` so this is an invalid value.
-                            return Err(e.into());
+                            return Err(e);
                         }
                         // only the named area determines whether we should bail out
                         line_names.push(names);
@@ -379,7 +391,7 @@
                 line_names.push(Default::default());
             }
 
-            let template_areas = TemplateAreas::from_vec(strings)
+            let template_areas = areas_parser.finish()
                 .map_err(|()| input.new_custom_error(StyleParseErrorKind::UnspecifiedError))?;
             let template_rows = TrackList {
                 values: values.into(),
@@ -846,7 +858,7 @@ ${helpers.four_sides_shorthand(
     "inset",
     "%s",
     "specified::LengthPercentageOrAuto::parse",
-    engines="gecko servo-2013",
+    engines="gecko servo",
     spec="https://drafts.csswg.org/css-logical/#propdef-inset",
     allow_quirks="No",
 )}
@@ -856,7 +868,7 @@ ${helpers.two_properties_shorthand(
     "inset-block-start",
     "inset-block-end",
     "specified::LengthPercentageOrAuto::parse",
-    engines="gecko servo-2013",
+    engines="gecko servo",
     spec="https://drafts.csswg.org/css-logical/#propdef-inset-block"
 )}
 
@@ -865,7 +877,7 @@ ${helpers.two_properties_shorthand(
     "inset-inline-start",
     "inset-inline-end",
     "specified::LengthPercentageOrAuto::parse",
-    engines="gecko servo-2013",
+    engines="gecko servo",
     spec="https://drafts.csswg.org/css-logical/#propdef-inset-inline"
 )}
 

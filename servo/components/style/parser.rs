@@ -9,32 +9,61 @@ use crate::error_reporting::{ContextualParseError, ParseErrorReporter};
 use crate::stylesheets::{CssRuleType, CssRuleTypes, Namespaces, Origin, UrlExtraData};
 use crate::use_counters::UseCounters;
 use cssparser::{Parser, SourceLocation, UnicodeRange};
+use selectors::parser::ParseRelative;
 use std::borrow::Cow;
 use style_traits::{OneOrMoreSeparated, ParseError, ParsingMode, Separator};
 
-/// Asserts that all ParsingMode flags have a matching ParsingMode value in gecko.
-#[cfg(feature = "gecko")]
-#[inline]
-pub fn assert_parsing_mode_match() {
-    use crate::gecko_bindings::structs;
+/// Nesting context for parsing rules.
+#[derive(Clone, Copy)]
+pub struct NestingContext {
+    /// All rule types we've nested into, if any.
+    pub rule_types: CssRuleTypes,
+    /// Whether or not parsing relative selector syntax should be allowed.
+    pub parse_relative: ParseRelative,
+}
 
-    macro_rules! check_parsing_modes {
-        ( $( $a:ident => $b:path ),*, ) => {
-            if cfg!(debug_assertions) {
-                let mut modes = ParsingMode::all();
-                $(
-                    assert_eq!(structs::$a as usize, $b.bits() as usize, stringify!($b));
-                    modes.remove($b);
-                )*
-                assert_eq!(modes, ParsingMode::empty(), "all ParsingMode bits should have an assertion");
-            }
+impl NestingContext {
+    fn parse_relative_for(rule_type: CssRuleType) -> ParseRelative {
+        match rule_type {
+            CssRuleType::Scope => ParseRelative::ForScope,
+            CssRuleType::Style => ParseRelative::ForNesting,
+            _ => ParseRelative::No,
         }
     }
 
-    check_parsing_modes! {
-        ParsingMode_Default => ParsingMode::DEFAULT,
-        ParsingMode_AllowUnitlessLength => ParsingMode::ALLOW_UNITLESS_LENGTH,
-        ParsingMode_AllowAllNumericValues => ParsingMode::ALLOW_ALL_NUMERIC_VALUES,
+    /// Create a new nesting context.
+    pub fn new(rule_types: CssRuleTypes, parse_nested_rule_type: Option<CssRuleType>) -> Self {
+        Self {
+            rule_types,
+            parse_relative: parse_nested_rule_type
+                .map_or(ParseRelative::No, Self::parse_relative_for),
+        }
+    }
+
+    /// Create a new nesting context based on the given rule.
+    pub fn new_from_rule(rule_type: Option<CssRuleType>) -> Self {
+        Self {
+            rule_types: rule_type.map(CssRuleTypes::from).unwrap_or_default(),
+            parse_relative: rule_type
+                .map(Self::parse_relative_for)
+                .unwrap_or(ParseRelative::No),
+        }
+    }
+
+    /// Save the current nesting context.
+    pub fn save(&mut self, rule_type: CssRuleType) -> Self {
+        let old = *self;
+        self.rule_types.insert(rule_type);
+        let new_parse_relative = Self::parse_relative_for(rule_type);
+        if new_parse_relative != ParseRelative::No {
+            self.parse_relative = new_parse_relative;
+        }
+        old
+    }
+
+    /// Load the saved nesting context.
+    pub fn restore(&mut self, saved: Self) {
+        *self = saved;
     }
 }
 
@@ -45,8 +74,6 @@ pub struct ParserContext<'a> {
     pub stylesheet_origin: Origin,
     /// The extra data we need for resolving url values.
     pub url_data: &'a UrlExtraData,
-    /// The current rule types, if any.
-    pub rule_types: CssRuleTypes,
     /// The mode to use when parsing.
     pub parsing_mode: ParsingMode,
     /// The quirks mode of this stylesheet.
@@ -57,6 +84,8 @@ pub struct ParserContext<'a> {
     pub namespaces: Cow<'a, Namespaces>,
     /// The use counters we want to record while parsing style rules, if any.
     pub use_counters: Option<&'a UseCounters>,
+    /// Current nesting context.
+    pub nesting_context: NestingContext,
 }
 
 impl<'a> ParserContext<'a> {
@@ -75,12 +104,12 @@ impl<'a> ParserContext<'a> {
         Self {
             stylesheet_origin,
             url_data,
-            rule_types: rule_type.map(CssRuleTypes::from).unwrap_or_default(),
             parsing_mode,
             quirks_mode,
             error_reporter,
             namespaces,
             use_counters,
+            nesting_context: NestingContext::new_from_rule(rule_type),
         }
     }
 
@@ -90,22 +119,21 @@ impl<'a> ParserContext<'a> {
         rule_type: CssRuleType,
         cb: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let old_rule_types = self.rule_types;
-        self.rule_types.insert(rule_type);
+        let old = self.nesting_context.save(rule_type);
         let r = cb(self);
-        self.rule_types = old_rule_types;
+        self.nesting_context.restore(old);
         r
     }
 
     /// Whether we're in a @page rule.
     #[inline]
     pub fn in_page_rule(&self) -> bool {
-        self.rule_types.contains(CssRuleType::Page)
+        self.nesting_context.rule_types.contains(CssRuleType::Page)
     }
 
     /// Get the rule type, which assumes that one is available.
     pub fn rule_types(&self) -> CssRuleTypes {
-        self.rule_types
+        self.nesting_context.rule_types
     }
 
     /// Returns whether CSS error reporting is enabled.
@@ -133,13 +161,7 @@ impl<'a> ParserContext<'a> {
     /// Returns whether chrome-only rules should be parsed.
     #[inline]
     pub fn chrome_rules_enabled(&self) -> bool {
-        self.url_data.chrome_rules_enabled() || self.stylesheet_origin == Origin::User
-    }
-
-    /// Whether we're in a user-agent stylesheet or chrome rules are enabled.
-    #[inline]
-    pub fn in_ua_or_chrome_sheet(&self) -> bool {
-        self.in_ua_sheet() || self.chrome_rules_enabled()
+        self.url_data.chrome_rules_enabled() || self.stylesheet_origin != Origin::Author
     }
 }
 
@@ -156,6 +178,9 @@ impl<'a> ParserContext<'a> {
 ///  * `#[parse(condition = "function")]` can be used to make the parsing of the
 ///    value conditional on `function`, which needs to fulfill
 ///    `fn(&ParserContext) -> bool`.
+///
+///  * `#[parse(parse_fn = "function")]` can be used to specify a function other than Parser::parse
+///    for a particular variant.
 pub trait Parse: Sized {
     /// Parse a value of this type.
     ///

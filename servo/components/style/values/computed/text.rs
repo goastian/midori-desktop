@@ -7,12 +7,11 @@
 #[cfg(feature = "servo")]
 use crate::properties::StyleBuilder;
 use crate::values::computed::length::{Length, LengthPercentage};
-use crate::values::computed::{Context, NonNegativeLength, NonNegativeNumber, ToComputedValue};
-use crate::values::generics::text::InitialLetter as GenericInitialLetter;
-use crate::values::generics::text::LineHeight as GenericLineHeight;
-use crate::values::generics::text::{GenericTextDecorationLength, Spacing};
-use crate::values::resolved::{Context as ResolvedContext, ToResolvedValue};
-use crate::values::specified::text::{self as specified, TextOverflowSide};
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::generics::text::{
+    GenericInitialLetter, GenericTextDecorationLength, GenericTextIndent, Spacing,
+};
+use crate::values::specified::text as specified;
 use crate::values::specified::text::{TextEmphasisFillMode, TextEmphasisShapeKeyword};
 use crate::values::{CSSFloat, CSSInteger};
 use crate::Zero;
@@ -20,12 +19,10 @@ use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
 
 pub use crate::values::specified::text::{
-    MozControlCharacterVisibility, TextAlignLast, TextUnderlinePosition,
+    HyphenateCharacter, LineBreak, MozControlCharacterVisibility, OverflowWrap, RubyPosition,
+    TextAlignLast, TextDecorationLine, TextDecorationSkipInk, TextEmphasisPosition, TextJustify,
+    TextOverflow, TextTransform, TextUnderlinePosition, WordBreak,
 };
-pub use crate::values::specified::HyphenateCharacter;
-pub use crate::values::specified::{LineBreak, OverflowWrap, RubyPosition, WordBreak};
-pub use crate::values::specified::{TextDecorationLine, TextEmphasisPosition};
-pub use crate::values::specified::{TextDecorationSkipInk, TextJustify, TextTransform};
 
 /// A computed value for the `initial-letter` property.
 pub type InitialLetter = GenericInitialLetter<CSSFloat, CSSInteger>;
@@ -35,6 +32,9 @@ pub type TextDecorationLength = GenericTextDecorationLength<LengthPercentage>;
 
 /// The computed value of `text-align`.
 pub type TextAlign = specified::TextAlignKeyword;
+
+/// The computed value of `text-indent`.
+pub type TextIndent = GenericTextIndent<LengthPercentage>;
 
 /// A computed value for the `letter-spacing` property.
 #[repr(transparent)]
@@ -111,85 +111,11 @@ impl ToComputedValue for specified::WordSpacing {
     }
 }
 
-/// A computed value for the `line-height` property.
-pub type LineHeight = GenericLineHeight<NonNegativeNumber, NonNegativeLength>;
-
-impl ToResolvedValue for LineHeight {
-    type ResolvedValue = Self;
-
-    fn to_resolved_value(self, context: &ResolvedContext) -> Self::ResolvedValue {
-        // Resolve <number> to an absolute <length> based on font size.
-        if matches!(self, Self::Normal | Self::MozBlockHeight) {
-            return self;
-        }
-        let wm = context.style.writing_mode;
-        let vertical = wm.is_vertical() && !wm.is_sideways();
-        Self::Length(context.device.calc_line_height(
-            &self,
-            vertical,
-            context.style.get_font(),
-            Some(context.element_info.element),
-        ))
-    }
-
-    #[inline]
-    fn from_resolved_value(value: Self::ResolvedValue) -> Self {
-        value
-    }
-}
-
 impl WordSpacing {
     /// Return the `normal` computed value, which is just zero.
     #[inline]
     pub fn normal() -> Self {
         LengthPercentage::zero()
-    }
-}
-
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToResolvedValue)]
-#[repr(C)]
-/// text-overflow.
-/// When the specified value only has one side, that's the "second"
-/// side, and the sides are logical, so "second" means "end".  The
-/// start side is Clip in that case.
-///
-/// When the specified value has two sides, those are our "first"
-/// and "second" sides, and they are physical sides ("left" and
-/// "right").
-pub struct TextOverflow {
-    /// First side
-    pub first: TextOverflowSide,
-    /// Second side
-    pub second: TextOverflowSide,
-    /// True if the specified value only has one side.
-    pub sides_are_logical: bool,
-}
-
-impl TextOverflow {
-    /// Returns the initial `text-overflow` value
-    pub fn get_initial_value() -> TextOverflow {
-        TextOverflow {
-            first: TextOverflowSide::Clip,
-            second: TextOverflowSide::Clip,
-            sides_are_logical: true,
-        }
-    }
-}
-
-impl ToCss for TextOverflow {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-    where
-        W: Write,
-    {
-        if self.sides_are_logical {
-            debug_assert_eq!(self.first, TextOverflowSide::Clip);
-            self.second.to_css(dest)?;
-        } else {
-            self.first.to_css(dest)?;
-            dest.write_char(' ')?;
-            self.second.to_css(dest)?;
-        }
-        Ok(())
     }
 }
 

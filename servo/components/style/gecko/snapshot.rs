@@ -7,7 +7,7 @@
 
 use crate::dom::TElement;
 use crate::gecko::snapshot_helpers;
-use crate::gecko::wrapper::{GeckoElement, NamespaceConstraintHelpers};
+use crate::gecko::wrapper::GeckoElement;
 use crate::gecko_bindings::bindings;
 use crate::gecko_bindings::structs::ServoElementSnapshot;
 use crate::gecko_bindings::structs::ServoElementSnapshotFlags as Flags;
@@ -19,8 +19,7 @@ use crate::values::{AtomIdent, AtomString};
 use crate::LocalName;
 use crate::WeakAtom;
 use dom::ElementState;
-use selectors::attr::{AttrSelectorOperation, AttrSelectorOperator};
-use selectors::attr::{CaseSensitivity, NamespaceConstraint};
+use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 
 /// A snapshot of a Gecko element.
 pub type GeckoElementSnapshot = ServoElementSnapshot;
@@ -91,70 +90,7 @@ impl GeckoElementSnapshot {
         local_name: &LocalName,
         operation: &AttrSelectorOperation<&AttrValue>,
     ) -> bool {
-        unsafe {
-            match *operation {
-                AttrSelectorOperation::Exists => {
-                    bindings::Gecko_SnapshotHasAttr(self, ns.atom_or_null(), local_name.as_ptr())
-                },
-                AttrSelectorOperation::WithValue {
-                    operator,
-                    case_sensitivity,
-                    expected_value,
-                } => {
-                    let ignore_case = match case_sensitivity {
-                        CaseSensitivity::CaseSensitive => false,
-                        CaseSensitivity::AsciiCaseInsensitive => true,
-                    };
-                    // FIXME: case sensitivity for operators other than Equal
-                    match operator {
-                        AttrSelectorOperator::Equal => bindings::Gecko_SnapshotAttrEquals(
-                            self,
-                            ns.atom_or_null(),
-                            local_name.as_ptr(),
-                            expected_value.as_ptr(),
-                            ignore_case,
-                        ),
-                        AttrSelectorOperator::Includes => bindings::Gecko_SnapshotAttrIncludes(
-                            self,
-                            ns.atom_or_null(),
-                            local_name.as_ptr(),
-                            expected_value.as_ptr(),
-                            ignore_case,
-                        ),
-                        AttrSelectorOperator::DashMatch => bindings::Gecko_SnapshotAttrDashEquals(
-                            self,
-                            ns.atom_or_null(),
-                            local_name.as_ptr(),
-                            expected_value.as_ptr(),
-                            ignore_case,
-                        ),
-                        AttrSelectorOperator::Prefix => bindings::Gecko_SnapshotAttrHasPrefix(
-                            self,
-                            ns.atom_or_null(),
-                            local_name.as_ptr(),
-                            expected_value.as_ptr(),
-                            ignore_case,
-                        ),
-                        AttrSelectorOperator::Suffix => bindings::Gecko_SnapshotAttrHasSuffix(
-                            self,
-                            ns.atom_or_null(),
-                            local_name.as_ptr(),
-                            expected_value.as_ptr(),
-                            ignore_case,
-                        ),
-                        AttrSelectorOperator::Substring => {
-                            bindings::Gecko_SnapshotAttrHasSubstring(
-                                self,
-                                ns.atom_or_null(),
-                                local_name.as_ptr(),
-                                expected_value.as_ptr(),
-                                ignore_case,
-                            )
-                        },
-                    }
-                },
-            }
-        }
+        snapshot_helpers::attr_matches(&self.mAttrs, ns, local_name, operation)
     }
 }
 
@@ -233,6 +169,34 @@ impl ElementSnapshot for GeckoElementSnapshot {
             None
         } else {
             Some(AtomString(unsafe { Atom::from_addrefed(ptr) }))
+        }
+    }
+
+    /// Returns true if the snapshot has stored state for custom states
+    #[inline]
+    fn has_custom_states(&self) -> bool {
+        self.has_any(Flags::CustomState)
+    }
+
+    /// Returns true if the snapshot has a given CustomState
+    #[inline]
+    fn has_custom_state(&self, state: &AtomIdent) -> bool {
+        unsafe {
+            self.mCustomStates
+                .iter()
+                .any(|setstate| AtomIdent::with(setstate.mRawPtr, |setstate| state == setstate))
+        }
+    }
+
+    #[inline]
+    fn each_custom_state<F>(&self, mut callback: F)
+    where
+        F: FnMut(&AtomIdent),
+    {
+        unsafe {
+            for atom in self.mCustomStates.iter() {
+                AtomIdent::with(atom.mRawPtr, &mut callback)
+            }
         }
     }
 }

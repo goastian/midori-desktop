@@ -4,11 +4,12 @@
 
 //! Query features.
 
-use super::condition::KleeneValue;
 use crate::parser::ParserContext;
 use crate::values::computed::{self, CSSPixelLength, Ratio, Resolution};
+use crate::values::AtomString;
 use crate::Atom;
 use cssparser::Parser;
+use selectors::kleene_value::KleeneValue;
 use std::fmt;
 use style_traits::ParseError;
 
@@ -44,6 +45,7 @@ pub enum Evaluator {
     OptionalNumberRatio(QueryFeatureGetter<Option<Ratio>>),
     /// A resolution.
     Resolution(QueryFeatureGetter<Resolution>),
+    String(fn(&computed::Context, Option<&AtomString>) -> KleeneValue),
     /// A keyword value.
     Enumerated {
         /// The parser to get a discriminant given a string.
@@ -85,12 +87,12 @@ macro_rules! keyword_evaluator {
         fn __evaluate(
             context: &$crate::values::computed::Context,
             value: Option<$crate::queries::feature::KeywordDiscriminant>,
-        ) -> $crate::queries::condition::KleeneValue {
+        ) -> selectors::kleene_value::KleeneValue {
             // This unwrap is ok because the only discriminants that get
             // back to us is the ones that `parse` produces.
             let value: Option<$keyword_type> =
                 value.map(|kw| ::num_traits::cast::FromPrimitive::from_u8(kw).unwrap());
-            $crate::queries::condition::KleeneValue::from($actual_evaluator(context, value))
+            selectors::kleene_value::KleeneValue::from($actual_evaluator(context, value))
         }
 
         $crate::queries::feature::Evaluator::Enumerated {
@@ -101,11 +103,12 @@ macro_rules! keyword_evaluator {
     }};
 }
 
+/// Different flags or toggles that change how a expression is parsed or
+/// evaluated.
+#[derive(Clone, Copy, Debug, ToShmem)]
+pub struct FeatureFlags(u8);
 bitflags! {
-    /// Different flags or toggles that change how a expression is parsed or
-    /// evaluated.
-    #[derive(Clone, Copy, ToShmem)]
-    pub struct FeatureFlags : u8 {
+    impl FeatureFlags : u8 {
         /// The feature should only be parsed in chrome and ua sheets.
         const CHROME_AND_UA_ONLY = 1 << 0;
         /// The feature requires a -webkit- prefix.

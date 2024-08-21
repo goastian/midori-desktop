@@ -16,13 +16,14 @@ use crate::media_queries::Device;
 use crate::properties::{AnimationDeclarations, ComputedValues, PropertyDeclarationBlock};
 use crate::selector_parser::{AttrValue, Lang, PseudoElement, SelectorImpl};
 use crate::shared_lock::{Locked, SharedRwLock};
+use crate::stylesheets::scope_rule::ImplicitScopeRoot;
 use crate::stylist::CascadeData;
 use crate::values::computed::Display;
 use crate::values::AtomIdent;
-use crate::{LocalName, Namespace, WeakAtom};
+use crate::{LocalName, WeakAtom};
 use atomic_refcell::{AtomicRef, AtomicRefMut};
 use dom::ElementState;
-use selectors::matching::{QuirksMode, VisitedHandlingMode};
+use selectors::matching::{ElementSelectorFlags, QuirksMode, VisitedHandlingMode};
 use selectors::sink::Push;
 use selectors::Element as SelectorsElement;
 use servo_arc::{Arc, ArcBorrow};
@@ -207,6 +208,17 @@ pub trait TNode: Sized + Copy + Clone + Debug + NodeInfo + PartialEq {
         }
     }
 
+    /// Returns the depth of this node in the DOM.
+    fn depth(&self) -> usize {
+        let mut depth = 0;
+        let mut curr = *self;
+        while let Some(parent) = curr.traversal_parent() {
+            depth += 1;
+            curr = parent.as_node();
+        }
+        depth
+    }
+
     /// Get this node's parent element from the perspective of a restyle
     /// traversal.
     fn traversal_parent(&self) -> Option<Self::ConcreteElement>;
@@ -364,6 +376,11 @@ pub trait TShadowRoot: Sized + Copy + Clone + Debug + PartialEq {
     {
         Err(())
     }
+
+    /// Get the implicit scope for a stylesheet in given index.
+    fn implicit_scope_for_sheet(&self, _sheet_index: usize) -> Option<ImplicitScopeRoot> {
+        None
+    }
 }
 
 /// The element trait, the main abstraction the style crate acts over.
@@ -396,18 +413,6 @@ pub trait TElement:
     /// We use this for Native Anonymous Content in Gecko.
     fn matches_user_and_content_rules(&self) -> bool {
         true
-    }
-
-    /// Returns the depth of this element in the DOM.
-    fn depth(&self) -> usize {
-        let mut depth = 0;
-        let mut curr = *self;
-        while let Some(parent) = curr.traversal_parent() {
-            depth += 1;
-            curr = parent;
-        }
-
-        depth
     }
 
     /// Get this node's parent element from the perspective of a restyle
@@ -512,9 +517,6 @@ pub trait TElement:
     /// Get this element's state, for non-tree-structural pseudos.
     fn state(&self) -> ElementState;
 
-    /// Whether this element has an attribute with a given namespace.
-    fn has_attr(&self, namespace: &Namespace, attr: &LocalName) -> bool;
-
     /// Returns whether this element has a `part` attribute.
     fn has_part_attr(&self) -> bool;
 
@@ -529,6 +531,11 @@ pub trait TElement:
     where
         F: FnMut(&AtomIdent);
 
+    /// Internal iterator for the classes of this element.
+    fn each_custom_state<F>(&self, callback: F)
+    where
+        F: FnMut(&AtomIdent);
+
     /// Internal iterator for the part names of this element.
     fn each_part<F>(&self, _callback: F)
     where
@@ -539,7 +546,7 @@ pub trait TElement:
     /// Internal iterator for the attribute names of this element.
     fn each_attr_name<F>(&self, callback: F)
     where
-        F: FnMut(&AtomIdent);
+        F: FnMut(&LocalName);
 
     /// Internal iterator for the part names that this element exports for a
     /// given part name.
@@ -901,9 +908,11 @@ pub trait TElement:
         display: &Display,
     ) -> euclid::default::Size2D<Option<app_units::Au>>;
 
-    /// Returns true if this element anchors a relative selector, now or after
-    /// a DOM mutation.
-    fn anchors_relative_selector(&self) -> bool;
+    /// Returns true if the element has all of specified selector flags.
+    fn has_selector_flags(&self, flags: ElementSelectorFlags) -> bool;
+
+    /// Returns the search direction for relative selector invalidation, if it is on the search path.
+    fn relative_selector_search_direction(&self) -> ElementSelectorFlags;
 }
 
 /// TNode and TElement aren't Send because we want to be careful and explicit

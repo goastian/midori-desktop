@@ -12,7 +12,7 @@ use crate::parser::{Parse, ParserContext};
 use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
 use crate::Atom;
 pub use cssparser::{serialize_identifier, serialize_name, CowRcStr, Parser};
-pub use cssparser::{SourceLocation, Token, RGBA};
+pub use cssparser::{SourceLocation, Token};
 use precomputed_hash::PrecomputedHash;
 use selectors::parser::SelectorParseErrorKind;
 use std::fmt::{self, Debug, Write};
@@ -92,8 +92,12 @@ where
     serialize_name(&ident, dest)
 }
 
-fn nan_inf_enabled() -> bool {
-    static_prefs::pref!("layout.css.nan-inf.enabled")
+/// Serialize a number with calc, and NaN/infinity handling (if enabled)
+pub fn serialize_number<W>(v: f32, was_calc: bool, dest: &mut CssWriter<W>) -> fmt::Result
+where
+    W: Write,
+{
+    serialize_specified_dimension(v, "", was_calc, dest)
 }
 
 /// Serialize a specified dimension with unit, calc, and NaN/infinity handling (if enabled)
@@ -110,18 +114,22 @@ where
         dest.write_str("calc(")?;
     }
 
-    if !v.is_finite() && nan_inf_enabled() {
+    if !v.is_finite() {
         // https://drafts.csswg.org/css-values/#calc-error-constants:
         // "While not technically numbers, these keywords act as numeric values,
         // similar to e and pi. Thus to get an infinite length, for example,
         // requires an expression like calc(infinity * 1px)."
 
         if v.is_nan() {
-            dest.write_str("NaN * 1")?;
+            dest.write_str("NaN")?;
         } else if v == f32::INFINITY {
-            dest.write_str("infinity * 1")?;
+            dest.write_str("infinity")?;
         } else if v == f32::NEG_INFINITY {
-            dest.write_str("-infinity * 1")?;
+            dest.write_str("-infinity")?;
+        }
+
+        if !unit.is_empty() {
+            dest.write_str(" * 1")?;
         }
     } else {
         v.to_css(dest)?;
@@ -160,20 +168,38 @@ impl AsRef<str> for AtomString {
     }
 }
 
+impl Parse for AtomString {
+    fn parse<'i>(_: &ParserContext, input: &mut Parser<'i, '_>) -> Result<Self, ParseError<'i>> {
+        Ok(Self(Atom::from(input.expect_string()?.as_ref())))
+    }
+}
+
 impl cssparser::ToCss for AtomString {
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result
     where
         W: Write,
     {
+        // Wrap in quotes to form a string literal
+        dest.write_char('"')?;
         #[cfg(feature = "servo")]
         {
-            cssparser::CssStringWriter::new(dest).write_str(self.as_ref())
+            cssparser::CssStringWriter::new(dest).write_str(self.as_ref())?;
         }
         #[cfg(feature = "gecko")]
         {
             self.0
-                .with_str(|s| cssparser::CssStringWriter::new(dest).write_str(s))
+                .with_str(|s| cssparser::CssStringWriter::new(dest).write_str(s))?;
         }
+        dest.write_char('"')
+    }
+}
+
+impl style_traits::ToCss for AtomString {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        cssparser::ToCss::to_css(self, dest)
     }
 }
 
@@ -484,6 +510,7 @@ impl<A: Debug, B: Debug> Debug for Either<A, B> {
 #[derive(
     Clone,
     Debug,
+    Default,
     Eq,
     Hash,
     MallocSizeOf,
@@ -497,6 +524,19 @@ impl<A: Debug, B: Debug> Debug for Either<A, B> {
 pub struct CustomIdent(pub Atom);
 
 impl CustomIdent {
+    /// Parse a <custom-ident>
+    ///
+    /// TODO(zrhoffman, bug 1844501): Use CustomIdent::parse in more places instead of
+    /// CustomIdent::from_ident.
+    pub fn parse<'i, 't>(
+        input: &mut Parser<'i, 't>,
+        invalid: &[&str],
+    ) -> Result<Self, ParseError<'i>> {
+        let location = input.current_source_location();
+        let ident = input.expect_ident()?;
+        CustomIdent::from_ident(location, ident, invalid)
+    }
+
     /// Parse an already-tokenizer identifier
     pub fn from_ident<'i>(
         location: SourceLocation,
@@ -558,6 +598,31 @@ impl ToCss for CustomIdent {
 )]
 pub struct DashedIdent(pub Atom);
 
+impl DashedIdent {
+    /// Parse an already-tokenizer identifier
+    pub fn from_ident<'i>(
+        location: SourceLocation,
+        ident: &CowRcStr<'i>,
+    ) -> Result<Self, ParseError<'i>> {
+        if !ident.starts_with("--") {
+            return Err(
+                location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone()))
+            );
+        }
+        Ok(Self(Atom::from(ident.as_ref())))
+    }
+
+    /// Special value for internal use. Useful where we can't use Option<>.
+    pub fn empty() -> Self {
+        Self(atom!(""))
+    }
+
+    /// Check for special internal value.
+    pub fn is_empty(&self) -> bool {
+        self.0 == atom!("")
+    }
+}
+
 impl Parse for DashedIdent {
     fn parse<'i, 't>(
         _: &ParserContext,
@@ -565,11 +630,7 @@ impl Parse for DashedIdent {
     ) -> Result<Self, ParseError<'i>> {
         let location = input.current_source_location();
         let ident = input.expect_ident()?;
-        if ident.starts_with("--") {
-            Ok(Self(Atom::from(ident.as_ref())))
-        } else {
-            Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone())))
-        }
+        Self::from_ident(location, ident)
     }
 }
 

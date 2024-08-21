@@ -6,5 +6,7 @@
 //!
 //! https://drafts.css-houdini.org/css-properties-values-api-1/
 
+pub mod registry;
 pub mod rule;
 pub mod syntax;
+pub mod value;

@@ -14,7 +14,7 @@ use crate::sharing::StyleSharingTarget;
 use crate::style_resolver::{PseudoElementResolution, StyleResolverForElement};
 use crate::stylist::RuleInclusion;
 use crate::traversal_flags::TraversalFlags;
-use selectors::NthIndexCache;
+use selectors::matching::SelectorCaches;
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
@@ -26,7 +26,7 @@ pub type UndisplayedStyleCache =
 /// currently only holds the dom depth for the bloom filter.
 ///
 /// NB: Keep this as small as possible, please!
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct PerLevelTraversalData {
     /// The current dom depth.
     ///
@@ -172,7 +172,7 @@ pub trait DomTraversal<E: TElement>: Sync {
                     root,
                     shared_context,
                     None,
-                    &mut NthIndexCache::default(),
+                    &mut SelectorCaches::default(),
                 );
 
                 if invalidation_result.has_invalidated_siblings() {
@@ -350,7 +350,11 @@ where
             rule_inclusion,
             PseudoElementResolution::IfApplicable,
         )
-        .resolve_primary_style(style.as_deref(), layout_parent_style.as_deref());
+        .resolve_primary_style(
+            style.as_deref(),
+            layout_parent_style.as_deref(),
+            selectors::matching::IncludeStartingStyle::No,
+        );
 
         let is_display_contents = primary_style.style().is_display_contents();
 
@@ -405,6 +409,7 @@ pub fn recalc_style_at<E, D, F>(
     context.thread_local.statistics.elements_traversed += 1;
     debug_assert!(
         flags.intersects(TraversalFlags::AnimationOnly) ||
+            is_initial_style ||
             !element.has_snapshot() ||
             element.handled_snapshot(),
         "Should've handled snapshots here already"
@@ -638,7 +643,8 @@ where
                 PseudoElementResolution::IfApplicable,
             );
 
-            resolver.cascade_styles_with_default_parents(cascade_inputs)
+            resolver
+                .cascade_styles_with_default_parents(cascade_inputs, data.may_have_starting_style())
         },
         CascadeOnly => {
             // Skipping full matching, load cascade inputs from previous values.
@@ -652,7 +658,10 @@ where
                     PseudoElementResolution::IfApplicable,
                 );
 
-                resolver.cascade_styles_with_default_parents(cascade_inputs)
+                resolver.cascade_styles_with_default_parents(
+                    cascade_inputs,
+                    data.may_have_starting_style(),
+                )
             };
 
             // Insert into the cache, but only if this style isn't reused from a
@@ -687,7 +696,7 @@ where
     element.finish_restyle(context, data, new_styles, important_rules_changed)
 }
 
-#[cfg(feature = "servo-layout-2013")]
+#[cfg(feature = "servo")]
 fn notify_paint_worklet<E>(context: &StyleContext<E>, data: &ElementData)
 where
     E: TElement,
@@ -725,7 +734,7 @@ where
     }
 }
 
-#[cfg(not(feature = "servo-layout-2013"))]
+#[cfg(not(feature = "servo"))]
 fn notify_paint_worklet<E>(_context: &StyleContext<E>, _data: &ElementData)
 where
     E: TElement,
@@ -783,7 +792,7 @@ fn note_children<E, D, F>(
                 child,
                 &context.shared,
                 Some(&context.thread_local.stack_limit_checker),
-                &mut context.thread_local.nth_index_cache,
+                &mut context.thread_local.selector_caches,
             );
         }
 

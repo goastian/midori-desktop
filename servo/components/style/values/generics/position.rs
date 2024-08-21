@@ -80,6 +80,7 @@ pub trait PositionComponent {
     Serialize,
     SpecifiedValueInfo,
     ToAnimatedZero,
+    ToAnimatedValue,
     ToComputedValue,
     ToCss,
     ToResolvedValue,
@@ -100,6 +101,12 @@ impl<Pos> PositionOrAuto<Pos> {
     #[inline]
     pub fn auto() -> Self {
         PositionOrAuto::Auto
+    }
+
+    /// Return true if it is 'auto'.
+    #[inline]
+    pub fn is_auto(&self) -> bool {
+        matches!(self, PositionOrAuto::Auto)
     }
 }
 

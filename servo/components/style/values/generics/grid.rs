@@ -7,9 +7,8 @@
 
 use crate::parser::{Parse, ParserContext};
 use crate::values::specified;
-use crate::values::specified::grid::parse_line_names;
 use crate::values::{CSSFloat, CustomIdent};
-use crate::{Atom, Zero};
+use crate::{One, Zero};
 use cssparser::Parser;
 use std::fmt::{self, Write};
 use std::{cmp, usize};
@@ -41,7 +40,7 @@ pub struct GenericGridLine<Integer> {
     /// A custom identifier for named lines, or the empty atom otherwise.
     ///
     /// <https://drafts.csswg.org/css-grid/#grid-placement-slot>
-    pub ident: Atom,
+    pub ident: CustomIdent,
     /// Denotes the nth grid line from grid item's placement.
     ///
     /// This is clamped by MIN_GRID_LINE and MAX_GRID_LINE.
@@ -65,18 +64,18 @@ where
         Self {
             is_span: false,
             line_num: Zero::zero(),
-            ident: atom!(""),
+            ident: CustomIdent(atom!("")),
         }
     }
 
     /// Check whether this `<grid-line>` represents an `auto` value.
     pub fn is_auto(&self) -> bool {
-        self.ident == atom!("") && self.line_num.is_zero() && !self.is_span
+        self.ident.0 == atom!("") && self.line_num.is_zero() && !self.is_span
     }
 
     /// Check whether this `<grid-line>` represents a `<custom-ident>` value.
     pub fn is_ident_only(&self) -> bool {
-        self.ident != atom!("") && self.line_num.is_zero() && !self.is_span
+        self.ident.0 != atom!("") && self.line_num.is_zero() && !self.is_span
     }
 
     /// Check if `self` makes `other` omittable according to the rules at:
@@ -93,34 +92,51 @@ where
 
 impl<Integer> ToCss for GridLine<Integer>
 where
-    Integer: ToCss + PartialEq + Zero,
+    Integer: ToCss + PartialEq + Zero + One,
 {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
     {
+        // 1. `auto`
         if self.is_auto() {
             return dest.write_str("auto");
         }
 
+        // 2. `<custom-ident>`
+        if self.is_ident_only() {
+            return self.ident.to_css(dest);
+        }
+
+        // 3. `[ span && [ <integer [1,∞]> || <custom-ident> ] ]`
+        let has_ident = self.ident.0 != atom!("");
         if self.is_span {
             dest.write_str("span")?;
-        }
+            debug_assert!(!self.line_num.is_zero() || has_ident);
 
-        if !self.line_num.is_zero() {
-            if self.is_span {
+            // We omit `line_num` if
+            // 1. we don't specify it, or
+            // 2. it is the default value, i.e. 1.0, and the ident is specified.
+            // https://drafts.csswg.org/css-grid/#grid-placement-span-int
+            if !self.line_num.is_zero() && !(self.line_num.is_one() && has_ident) {
                 dest.write_char(' ')?;
+                self.line_num.to_css(dest)?;
             }
-            self.line_num.to_css(dest)?;
-        }
 
-        if self.ident != atom!("") {
-            if self.is_span || !self.line_num.is_zero() {
+            if has_ident {
                 dest.write_char(' ')?;
+                self.ident.to_css(dest)?;
             }
-            CustomIdent(self.ident.clone()).to_css(dest)?;
+            return Ok(());
         }
 
+        // 4. `[ <integer [-∞,-1]> | <integer [1,∞]> ] && <custom-ident>? ]`
+        debug_assert!(!self.line_num.is_zero());
+        self.line_num.to_css(dest)?;
+        if has_ident {
+            dest.write_char(' ')?;
+            self.ident.to_css(dest)?;
+        }
         Ok(())
     }
 }
@@ -149,7 +165,7 @@ impl Parse for GridLine<specified::Integer> {
                     return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
 
-                if !grid_line.line_num.is_zero() || grid_line.ident != atom!("") {
+                if !grid_line.line_num.is_zero() || grid_line.ident.0 != atom!("") {
                     val_before_span = true;
                 }
 
@@ -165,13 +181,13 @@ impl Parse for GridLine<specified::Integer> {
                     MIN_GRID_LINE,
                     cmp::min(value, MAX_GRID_LINE),
                 ));
-            } else if let Ok(name) = input.try_parse(|i| i.expect_ident_cloned()) {
-                if val_before_span || grid_line.ident != atom!("") {
+            } else if let Ok(name) = input.try_parse(|i| CustomIdent::parse(i, &["auto"])) {
+                if val_before_span || grid_line.ident.0 != atom!("") {
                     return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
                 // NOTE(emilio): `span` is consumed above, so we only need to
                 // reject `auto`.
-                grid_line.ident = CustomIdent::from_ident(location, &name, &["auto"])?.0;
+                grid_line.ident = name;
             } else {
                 break;
             }
@@ -187,7 +203,7 @@ impl Parse for GridLine<specified::Integer> {
                     // disallow negative integers for grid spans
                     return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
-            } else if grid_line.ident == atom!("") {
+            } else if grid_line.ident.0 == atom!("") {
                 // integer could be omitted
                 return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
             }
@@ -415,7 +431,16 @@ where
 ///
 /// <https://drafts.csswg.org/css-grid/#typedef-track-repeat>
 #[derive(
-    Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss, ToResolvedValue, ToShmem,
+    Clone,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
 )]
 #[repr(C, u8)]
 pub enum RepeatCount<Integer> {
@@ -446,9 +471,6 @@ impl Parse for RepeatCount<specified::Integer> {
 }
 
 /// The structure containing `<line-names>` and `<track-size>` values.
-///
-/// It can also hold `repeat()` function parameters, which expands into the respective
-/// values in its computed form.
 #[derive(
     Clone,
     Debug,
@@ -635,11 +657,114 @@ impl<L: ToCss, I: ToCss> ToCss for TrackList<L, I> {
     }
 }
 
+/// The `<name-repeat>` for subgrids.
+///
+/// <name-repeat> = repeat( [ <integer [1,∞]> | auto-fill ], <line-names>+)
+///
+/// https://drafts.csswg.org/css-grid/#typedef-name-repeat
+#[derive(
+    Clone,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C)]
+pub struct GenericNameRepeat<I> {
+    /// The number of times for the value to be repeated (could also be `auto-fill`).
+    /// Note: `RepeatCount` accepts `auto-fit`, so we should reject it after parsing it.
+    pub count: RepeatCount<I>,
+    /// This represents `<line-names>+`. The length of the outer vector is at least one.
+    pub line_names: crate::OwnedSlice<crate::OwnedSlice<CustomIdent>>,
+}
+
+pub use self::GenericNameRepeat as NameRepeat;
+
+impl<I: ToCss> ToCss for NameRepeat<I> {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        dest.write_str("repeat(")?;
+        self.count.to_css(dest)?;
+        dest.write_char(',')?;
+
+        for ref names in self.line_names.iter() {
+            if names.is_empty() {
+                // Note: concat_serialize_idents() skip the empty list so we have to handle it
+                // manually for NameRepeat.
+                dest.write_str(" []")?;
+            } else {
+                concat_serialize_idents(" [", "]", names, " ", dest)?;
+            }
+        }
+
+        dest.write_char(')')
+    }
+}
+
+impl<I> NameRepeat<I> {
+    /// Returns true if it is auto-fill.
+    #[inline]
+    pub fn is_auto_fill(&self) -> bool {
+        matches!(self.count, RepeatCount::AutoFill)
+    }
+}
+
+/// A single value for `<line-names>` or `<name-repeat>`.
+#[derive(
+    Clone,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C, u8)]
+pub enum GenericLineNameListValue<I> {
+    /// `<line-names>`.
+    LineNames(crate::OwnedSlice<CustomIdent>),
+    /// `<name-repeat>`.
+    Repeat(GenericNameRepeat<I>),
+}
+
+pub use self::GenericLineNameListValue as LineNameListValue;
+
+impl<I: ToCss> ToCss for LineNameListValue<I> {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        match *self {
+            Self::Repeat(ref r) => r.to_css(dest),
+            Self::LineNames(ref names) => {
+                dest.write_char('[')?;
+
+                if let Some((ref first, rest)) = names.split_first() {
+                    first.to_css(dest)?;
+                    for name in rest {
+                        dest.write_char(' ')?;
+                        name.to_css(dest)?;
+                    }
+                }
+
+                dest.write_char(']')
+            },
+        }
+    }
+}
+
 /// The `<line-name-list>` for subgrids.
 ///
-/// `subgrid [ <line-names> | repeat(<positive-integer> | auto-fill, <line-names>+) ]+`
+/// <line-name-list> = [ <line-names> | <name-repeat> ]+
+/// <name-repeat> = repeat( [ <integer [1,∞]> | auto-fill ], <line-names>+)
 ///
-/// https://drafts.csswg.org/css-grid-2/#typedef-line-name-list
+/// https://drafts.csswg.org/css-grid/#typedef-line-name-list
 #[derive(
     Clone,
     Debug,
@@ -652,114 +777,27 @@ impl<L: ToCss, I: ToCss> ToCss for TrackList<L, I> {
     ToShmem,
 )]
 #[repr(C)]
-pub struct LineNameList {
-    /// The optional `<line-name-list>`
-    pub names: crate::OwnedSlice<crate::OwnedSlice<CustomIdent>>,
-    /// Indicates the starting line names that requires `auto-fill`, if in bounds.
-    pub fill_start: usize,
-    /// Indicates the number of line names in the auto-fill
-    pub fill_len: usize,
+pub struct GenericLineNameList<I> {
+    /// The pre-computed length of line_names, without the length of repeat(auto-fill, ...).
+    // We precomputed this at parsing time, so we can avoid an extra loop when expanding
+    // repeat(auto-fill).
+    pub expanded_line_names_length: usize,
+    /// The line name list.
+    pub line_names: crate::OwnedSlice<GenericLineNameListValue<I>>,
 }
 
-impl Parse for LineNameList {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
-        input.expect_ident_matching("subgrid")?;
-        let mut line_names = vec![];
-        let mut fill_data = None;
-        // Rather than truncating the result after inserting values, just
-        // have a maximum number of values. This gives us an early out on very
-        // large name lists, but more importantly prevents OOM on huge repeat
-        // expansions. (bug 1583429)
-        let mut max_remaining = MAX_GRID_LINE as usize;
+pub use self::GenericLineNameList as LineNameList;
 
-        loop {
-            let repeat_parse_result = input.try_parse(|input| {
-                input.expect_function_matching("repeat")?;
-                input.parse_nested_block(|input| {
-                    let count = RepeatCount::parse(context, input)?;
-                    input.expect_comma()?;
-                    let mut names_list = vec![];
-                    names_list.push(parse_line_names(input)?); // there should be at least one
-                    while let Ok(names) = input.try_parse(parse_line_names) {
-                        names_list.push(names);
-                    }
-                    Ok((names_list, count))
-                })
-            });
-            if let Ok((names_list, count)) = repeat_parse_result {
-                let mut handle_size = |n| {
-                    let n = cmp::min(n, max_remaining);
-                    max_remaining -= n;
-                    n
-                };
-                match count {
-                    // FIXME(emilio): we shouldn't expand repeat() at
-                    // parse time for subgrid. (bug 1583429)
-                    RepeatCount::Number(num) => {
-                        let n = handle_size(num.value() as usize * names_list.len());
-                        line_names.extend(names_list.iter().cloned().cycle().take(n));
-                    },
-                    RepeatCount::AutoFill if fill_data.is_none() => {
-                        let fill_idx = line_names.len();
-                        let fill_len = names_list.len();
-                        fill_data = Some((fill_idx, fill_len));
-                        let n = handle_size(fill_len);
-                        line_names.extend(names_list.into_iter().take(n));
-                    },
-                    _ => return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
-                }
-            } else if let Ok(names) = input.try_parse(parse_line_names) {
-                if max_remaining > 0 {
-                    line_names.push(names);
-                    max_remaining -= 1;
-                }
-            } else {
-                break;
-            }
-        }
-
-        debug_assert!(line_names.len() <= MAX_GRID_LINE as usize);
-
-        let (fill_start, fill_len) = fill_data.unwrap_or((0, 0));
-
-        Ok(LineNameList {
-            names: line_names.into(),
-            fill_start: fill_start,
-            fill_len: fill_len,
-        })
-    }
-}
-
-impl ToCss for LineNameList {
+impl<I: ToCss> ToCss for LineNameList<I> {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
     {
         dest.write_str("subgrid")?;
-        let fill_start = self.fill_start;
-        let fill_len = self.fill_len;
-        for (i, names) in self.names.iter().enumerate() {
-            if fill_len > 0 && i == fill_start {
-                dest.write_str(" repeat(auto-fill,")?;
-            }
 
-            dest.write_str(" [")?;
-
-            if let Some((ref first, rest)) = names.split_first() {
-                first.to_css(dest)?;
-                for name in rest {
-                    dest.write_char(' ')?;
-                    name.to_css(dest)?;
-                }
-            }
-
-            dest.write_char(']')?;
-            if fill_len > 0 && i == fill_start + fill_len - 1 {
-                dest.write_char(')')?;
-            }
+        for value in self.line_names.iter() {
+            dest.write_char(' ')?;
+            value.to_css(dest)?;
         }
 
         Ok(())
@@ -795,7 +833,7 @@ pub enum GenericGridTemplateComponent<L, I> {
     /// A `subgrid <line-name-list>?`
     /// TODO: Support animations for this after subgrid is addressed in [grid-2] spec.
     #[animation(error)]
-    Subgrid(Box<LineNameList>),
+    Subgrid(Box<GenericLineNameList<I>>),
     /// `masonry` value.
     /// https://github.com/w3c/csswg-drafts/issues/4650
     Masonry,

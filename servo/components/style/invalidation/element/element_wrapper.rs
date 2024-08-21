@@ -12,6 +12,7 @@ use crate::values::AtomIdent;
 use crate::{CaseSensitivityExt, LocalName, Namespace, WeakAtom};
 use dom::ElementState;
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
+use selectors::bloom::BloomFilter;
 use selectors::matching::{ElementSelectorFlags, MatchingContext};
 use selectors::{Element, OpaqueElement};
 use std::cell::Cell;
@@ -69,6 +70,17 @@ pub trait ElementSnapshot: Sized {
     /// A callback that should be called for each class of the snapshot. Should
     /// only be called if `has_attrs()` returns true.
     fn each_class<F>(&self, _: F)
+    where
+        F: FnMut(&AtomIdent);
+
+    /// If this snapshot contains CustomStateSet information.
+    fn has_custom_states(&self) -> bool;
+
+    /// A callback that should be called for each CustomState of the snapshot.
+    fn has_custom_state(&self, state: &AtomIdent) -> bool;
+
+    /// A callback that should be called for each CustomState of the snapshot.
+    fn each_custom_state<F>(&self, callback: F)
     where
         F: FnMut(&AtomIdent);
 
@@ -196,15 +208,6 @@ where
             },
 
             #[cfg(feature = "gecko")]
-            NonTSPseudoClass::MozBrowserFrame => {
-                if let Some(snapshot) = self.snapshot() {
-                    if snapshot.has_other_pseudo_class_state() {
-                        return snapshot.mIsMozBrowserFrame();
-                    }
-                }
-            },
-
-            #[cfg(feature = "gecko")]
             NonTSPseudoClass::MozSelectListBox => {
                 if let Some(snapshot) = self.snapshot() {
                     if snapshot.has_other_pseudo_class_state() {
@@ -220,6 +223,9 @@ where
                     .element
                     .match_element_lang(Some(self.get_lang()), lang_arg);
             },
+
+            // CustomStateSet should match against the snapshot before element
+            NonTSPseudoClass::CustomState(ref state) => return self.has_custom_state(&state.0),
 
             _ => {},
         }
@@ -365,6 +371,13 @@ where
         }
     }
 
+    fn has_custom_state(&self, state: &AtomIdent) -> bool {
+        match self.snapshot() {
+            Some(snapshot) if snapshot.has_custom_states() => snapshot.has_custom_state(state),
+            _ => self.element.has_custom_state(state),
+        }
+    }
+
     fn is_empty(&self) -> bool {
         self.element.is_empty()
     }
@@ -387,5 +400,10 @@ where
         self.element
             .assigned_slot()
             .map(|e| ElementWrapper::new(e, self.snapshot_map))
+    }
+
+    fn add_element_unique_hashes(&self, _filter: &mut BloomFilter) -> bool {
+        // Should not be relevant in the context of checking past elements in invalidation.
+        false
     }
 }

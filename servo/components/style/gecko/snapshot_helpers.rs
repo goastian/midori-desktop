@@ -5,15 +5,17 @@
 //! Element an snapshot common logic.
 
 use crate::dom::TElement;
+use crate::gecko::wrapper::namespace_id_to_atom;
 use crate::gecko_bindings::bindings;
 use crate::gecko_bindings::structs::{self, nsAtom};
 use crate::invalidation::element::element_wrapper::ElementSnapshot;
-use crate::selector_parser::SnapshotMap;
+use crate::selector_parser::{AttrValue, SnapshotMap};
 use crate::string_cache::WeakAtom;
 use crate::values::AtomIdent;
-use crate::Atom;
-use crate::CaseSensitivityExt;
-use selectors::attr::CaseSensitivity;
+use crate::{Atom, CaseSensitivityExt, LocalName, Namespace};
+use selectors::attr::{
+    AttrSelectorOperation, AttrSelectorOperator, CaseSensitivity, NamespaceConstraint,
+};
 use smallvec::SmallVec;
 
 /// A function that, given an element of type `T`, allows you to get a single
@@ -48,7 +50,7 @@ unsafe fn get_class_or_part_from_attr(attr: &structs::nsAttrValue) -> Class {
             structs::nsAttrValue_ValueType_eAtomArray
         );
         // NOTE: Bindgen doesn't deal with AutoTArray, so cast it below.
-        let attr_array: *mut _ = *(*container)
+        let attr_array: *const _ = *(*container)
             .__bindgen_anon_1
             .mValue
             .as_ref()
@@ -70,6 +72,37 @@ unsafe fn get_id_from_attr(attr: &structs::nsAttrValue) -> &WeakAtom {
         structs::nsAttrValue_ValueBaseType_eAtomBase
     );
     WeakAtom::new(ptr::<nsAtom>(attr))
+}
+
+impl structs::nsAttrName {
+    #[inline]
+    fn is_nodeinfo(&self) -> bool {
+        self.mBits & 1 != 0
+    }
+
+    #[inline]
+    unsafe fn as_nodeinfo(&self) -> &structs::NodeInfo {
+        debug_assert!(self.is_nodeinfo());
+        &*((self.mBits & !1) as *const structs::NodeInfo)
+    }
+
+    #[inline]
+    fn namespace_id(&self) -> i32 {
+        if !self.is_nodeinfo() {
+            return structs::kNameSpaceID_None;
+        }
+        unsafe { self.as_nodeinfo() }.mInner.mNamespaceID
+    }
+
+    /// Returns the attribute name as an atom pointer.
+    #[inline]
+    pub fn name(&self) -> *const nsAtom {
+        if self.is_nodeinfo() {
+            unsafe { self.as_nodeinfo() }.mInner.mName
+        } else {
+            self.mBits as *const nsAtom
+        }
+    }
 }
 
 /// Find an attribute value with a given name and no namespace.
@@ -193,4 +226,91 @@ pub fn classes_changed<E: TElement>(element: &E, snapshots: &SnapshotMap) -> Sma
     });
 
     classes_changed
+}
+
+/// Returns whether a given attribute selector matches given the internal attrs.
+#[inline(always)]
+pub(crate) fn attr_matches(
+    attrs: &[structs::AttrArray_InternalAttr],
+    ns: &NamespaceConstraint<&Namespace>,
+    local_name: &LocalName,
+    operation: &AttrSelectorOperation<&AttrValue>,
+) -> bool {
+    let name_ptr = local_name.as_ptr();
+    for attr in attrs {
+        if attr.mName.name() != name_ptr {
+            continue;
+        }
+
+        if attr_matches_checked_name(attr, ns, operation) {
+            return true;
+        }
+
+        // The name matched but the value or namespace didn't. The only reason to check the other
+        // attributes now would be to find one with the same name but a different namespace.
+        if *ns != NamespaceConstraint::Any {
+            // We don't want to look for other namespaces, so we're done.
+            return false;
+        }
+    }
+    false
+}
+
+/// Returns whether a given attribute selector matches given a single attribute,
+/// for the case where the caller has already found an attribute with the right name.
+fn attr_matches_checked_name(
+    attr: &structs::AttrArray_InternalAttr,
+    ns: &NamespaceConstraint<&Namespace>,
+    operation: &AttrSelectorOperation<&AttrValue>,
+) -> bool {
+    let ns_matches = match *ns {
+        NamespaceConstraint::Any => true,
+        NamespaceConstraint::Specific(ns) => {
+            if *ns == ns!() {
+                !attr.mName.is_nodeinfo()
+            } else {
+                ns.as_ptr() == unsafe { namespace_id_to_atom(attr.mName.namespace_id()) }
+            }
+        },
+    };
+
+    if !ns_matches {
+        return false;
+    }
+
+    let (operator, case_sensitivity, value) = match *operation {
+        AttrSelectorOperation::Exists => return true,
+        AttrSelectorOperation::WithValue {
+            operator,
+            case_sensitivity,
+            value,
+        } => (operator, case_sensitivity, value),
+    };
+    let ignore_case = match case_sensitivity {
+        CaseSensitivity::CaseSensitive => false,
+        CaseSensitivity::AsciiCaseInsensitive => true,
+    };
+    let value = value.as_ptr();
+    unsafe {
+        match operator {
+            AttrSelectorOperator::Equal => {
+                bindings::Gecko_AttrEquals(&attr.mValue, value, ignore_case)
+            },
+            AttrSelectorOperator::Includes => {
+                bindings::Gecko_AttrIncludes(&attr.mValue, value, ignore_case)
+            },
+            AttrSelectorOperator::DashMatch => {
+                bindings::Gecko_AttrDashEquals(&attr.mValue, value, ignore_case)
+            },
+            AttrSelectorOperator::Prefix => {
+                bindings::Gecko_AttrHasPrefix(&attr.mValue, value, ignore_case)
+            },
+            AttrSelectorOperator::Suffix => {
+                bindings::Gecko_AttrHasSuffix(&attr.mValue, value, ignore_case)
+            },
+            AttrSelectorOperator::Substring => {
+                bindings::Gecko_AttrHasSubstring(&attr.mValue, value, ignore_case)
+            },
+        }
+    }
 }

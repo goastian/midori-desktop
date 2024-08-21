@@ -8,11 +8,14 @@ use crate::gecko_bindings::bindings;
 use crate::gecko_bindings::structs;
 use crate::gecko_bindings::structs::ScreenColorGamut;
 use crate::media_queries::{Device, MediaType};
+use crate::parser::ParserContext;
 use crate::queries::feature::{AllowsRanges, Evaluator, FeatureFlags, QueryFeatureDescription};
 use crate::queries::values::Orientation;
 use crate::values::computed::{CSSPixelLength, Context, Ratio, Resolution};
+use crate::values::AtomString;
 use app_units::Au;
 use euclid::default::Size2D;
+use selectors::kleene_value::KleeneValue;
 
 fn device_size(device: &Device) -> Size2D<Au> {
     let mut width = 0;
@@ -167,8 +170,7 @@ fn eval_color_gamut(context: &Context, query_value: Option<ColorGamut>) -> bool 
     // Match if our color gamut is at least as wide as the query value
     query_value <=
         match color_gamut {
-            // EndGuard_ is not a valid color gamut, so the default color-gamut is used.
-            ScreenColorGamut::Srgb | ScreenColorGamut::EndGuard_ => ColorGamut::Srgb,
+            ScreenColorGamut::Srgb => ColorGamut::Srgb,
             ScreenColorGamut::P3 => ColorGamut::P3,
             ScreenColorGamut::Rec2020 => ColorGamut::Rec2020,
         }
@@ -285,16 +287,26 @@ fn eval_prefers_contrast(context: &Context, query_value: Option<PrefersContrast>
 pub enum ForcedColors {
     /// Page colors are not being forced.
     None,
+    /// Page colors would be forced in content.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Requested,
     /// Page colors are being forced.
     Active,
 }
 
+impl ForcedColors {
+    /// Returns whether forced-colors is active for this page.
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Active)
+    }
+}
+
 /// https://drafts.csswg.org/mediaqueries-5/#forced-colors
 fn eval_forced_colors(context: &Context, query_value: Option<ForcedColors>) -> bool {
-    let forced = !context.device().use_document_colors();
+    let forced = context.device().forced_colors();
     match query_value {
-        Some(query_value) => forced == (query_value == ForcedColors::Active),
-        None => forced,
+        Some(query_value) => query_value == forced,
+        None => forced != ForcedColors::None,
     }
 }
 
@@ -549,10 +561,6 @@ fn eval_moz_print_preview(context: &Context) -> bool {
     is_print_preview
 }
 
-fn eval_moz_non_native_content_theme(context: &Context) -> bool {
-    unsafe { bindings::Gecko_MediaFeatures_ShouldAvoidNativeTheme(context.device().document()) }
-}
-
 fn eval_moz_is_resource_document(context: &Context) -> bool {
     unsafe { bindings::Gecko_MediaFeatures_IsResourceDocument(context.device().document()) }
 }
@@ -568,16 +576,12 @@ pub enum Platform {
     /// platforms and they already use the "linux" string elsewhere (e.g.,
     /// toolkit/themes/linux).
     Linux,
+    /// Matches any iOS version.
+    Ios,
     /// Matches any macOS version.
     Macos,
     /// Matches any Windows version.
     Windows,
-    /// Matches only Windows 7.
-    WindowsWin7,
-    /// Matches only Windows 8.
-    WindowsWin8,
-    /// Matches windows 10 and actually matches windows 11 too, as of right now.
-    WindowsWin10,
 }
 
 fn eval_moz_platform(_: &Context, query_value: Option<Platform>) -> bool {
@@ -587,6 +591,28 @@ fn eval_moz_platform(_: &Context, query_value: Option<Platform>) -> bool {
     };
 
     unsafe { bindings::Gecko_MediaFeatures_MatchesPlatform(query_value) }
+}
+
+/// Allows front-end CSS to discern gtk theme via media queries.
+#[derive(Clone, Copy, Debug, FromPrimitive, Parse, PartialEq, ToCss)]
+#[repr(u8)]
+pub enum GtkThemeFamily {
+    /// Unknown theme family.
+    Unknown = 0,
+    /// Adwaita, the default GTK theme.
+    Adwaita,
+    /// Breeze, the default KDE theme.
+    Breeze,
+    /// Yaru, the default Ubuntu theme.
+    Yaru,
+}
+
+fn eval_gtk_theme_family(_: &Context, query_value: Option<GtkThemeFamily>) -> bool {
+    let family = unsafe { bindings::Gecko_MediaFeatures_GtkThemeFamily() };
+    match query_value {
+        Some(v) => v == family,
+        None => return family != GtkThemeFamily::Unknown,
+    }
 }
 
 /// Values for the scripting media feature.
@@ -614,12 +640,15 @@ fn eval_scripting(context: &Context, query_value: Option<Scripting>) -> bool {
     }
 }
 
-fn eval_moz_windows_non_native_menus(context: &Context) -> bool {
-    unsafe { bindings::Gecko_MediaFeatures_WindowsNonNativeMenus(context.device().document()) }
-}
-
 fn eval_moz_overlay_scrollbars(context: &Context) -> bool {
     unsafe { bindings::Gecko_MediaFeatures_UseOverlayScrollbars(context.device().document()) }
+}
+
+fn eval_moz_bool_pref(_: &Context, pref: Option<&AtomString>) -> KleeneValue {
+    let Some(pref) = pref else {
+        return KleeneValue::False;
+    };
+    KleeneValue::from(unsafe { bindings::Gecko_ComputeBoolPrefMediaQuery(pref.as_ptr()) })
 }
 
 fn get_lnf_int(int_id: i32) -> i32 {
@@ -664,37 +693,12 @@ macro_rules! lnf_int_feature {
     }};
 }
 
-/// bool pref-based features are an slightly less convenient to start using
-/// version of @supports -moz-bool-pref, but with some benefits, mainly that
-/// they can support dynamic changes, and don't require a pref lookup every time
-/// they're used.
-///
-/// In order to use them you need to make sure that the pref defined as a static
-/// pref, with `rust: true`. The feature name needs to be defined in
-/// `StaticAtoms.py` just like the others. In order to support dynamic changes,
-/// you also need to add them to kMediaQueryPrefs in nsXPLookAndFeel.cpp
-#[allow(unused)]
-macro_rules! bool_pref_feature {
-    ($feature_name:expr, $pref:tt) => {{
-        fn __eval(_: &Context) -> bool {
-            static_prefs::pref!($pref)
-        }
-
-        feature!(
-            $feature_name,
-            AllowsRanges::No,
-            Evaluator::BoolInteger(__eval),
-            FeatureFlags::CHROME_AND_UA_ONLY,
-        )
-    }};
-}
-
 /// Adding new media features requires (1) adding the new feature to this
 /// array, with appropriate entries (and potentially any new code needed
 /// to support new types in these entries and (2) ensuring that either
 /// nsPresContext::MediaFeatureValuesChanged is called when the value that
 /// would be returned by the evaluator function could change.
-pub static MEDIA_FEATURES: [QueryFeatureDescription; 67] = [
+pub static MEDIA_FEATURES: [QueryFeatureDescription; 59] = [
     feature!(
         atom!("width"),
         AllowsRanges::Yes,
@@ -947,27 +951,27 @@ pub static MEDIA_FEATURES: [QueryFeatureDescription; 67] = [
         FeatureFlags::CHROME_AND_UA_ONLY,
     ),
     feature!(
+        atom!("-moz-gtk-theme-family"),
+        AllowsRanges::No,
+        keyword_evaluator!(eval_gtk_theme_family, GtkThemeFamily),
+        FeatureFlags::CHROME_AND_UA_ONLY,
+    ),
+    feature!(
         atom!("-moz-print-preview"),
         AllowsRanges::No,
         Evaluator::BoolInteger(eval_moz_print_preview),
         FeatureFlags::CHROME_AND_UA_ONLY,
     ),
     feature!(
-        atom!("-moz-non-native-content-theme"),
-        AllowsRanges::No,
-        Evaluator::BoolInteger(eval_moz_non_native_content_theme),
-        FeatureFlags::CHROME_AND_UA_ONLY,
-    ),
-    feature!(
-        atom!("-moz-windows-non-native-menus"),
-        AllowsRanges::No,
-        Evaluator::BoolInteger(eval_moz_windows_non_native_menus),
-        FeatureFlags::CHROME_AND_UA_ONLY,
-    ),
-    feature!(
         atom!("-moz-overlay-scrollbars"),
         AllowsRanges::No,
         Evaluator::BoolInteger(eval_moz_overlay_scrollbars),
+        FeatureFlags::CHROME_AND_UA_ONLY,
+    ),
+    feature!(
+        atom!("-moz-bool-pref"),
+        AllowsRanges::No,
+        Evaluator::String(eval_moz_bool_pref),
         FeatureFlags::CHROME_AND_UA_ONLY,
     ),
     lnf_int_feature!(
@@ -991,17 +995,12 @@ pub static MEDIA_FEATURES: [QueryFeatureDescription; 67] = [
         get_scrollbar_end_forward
     ),
     lnf_int_feature!(atom!("-moz-menubar-drag"), MenuBarDrag),
-    lnf_int_feature!(atom!("-moz-windows-default-theme"), WindowsDefaultTheme),
-    lnf_int_feature!(atom!("-moz-mac-graphite-theme"), MacGraphiteTheme),
     lnf_int_feature!(atom!("-moz-mac-big-sur-theme"), MacBigSurTheme),
     lnf_int_feature!(atom!("-moz-mac-rtl"), MacRTL),
     lnf_int_feature!(
         atom!("-moz-windows-accent-color-in-titlebar"),
         WindowsAccentColorInTitlebar
     ),
-    lnf_int_feature!(atom!("-moz-windows-compositor"), DWMCompositor),
-    lnf_int_feature!(atom!("-moz-windows-classic"), WindowsClassic),
-    lnf_int_feature!(atom!("-moz-windows-glass"), WindowsGlass),
     lnf_int_feature!(atom!("-moz-swipe-animation-enabled"), SwipeAnimationEnabled),
     lnf_int_feature!(atom!("-moz-gtk-csd-available"), GTKCSDAvailable),
     lnf_int_feature!(atom!("-moz-gtk-csd-minimize-button"), GTKCSDMinimizeButton),
@@ -1013,16 +1012,4 @@ pub static MEDIA_FEATURES: [QueryFeatureDescription; 67] = [
     ),
     lnf_int_feature!(atom!("-moz-system-dark-theme"), SystemUsesDarkTheme),
     lnf_int_feature!(atom!("-moz-panel-animations"), PanelAnimations),
-    // media query for MathML Core's implementation of maction/semantics
-    bool_pref_feature!(
-        atom!("-moz-mathml-core-maction-and-semantics"),
-        "mathml.legacy_maction_and_semantics_implementations.disabled"
-    ),
-    // media query for MathML Core's implementation of ms
-    bool_pref_feature!(
-        atom!("-moz-mathml-core-ms"),
-        "mathml.ms_lquote_rquote_attributes.disabled"
-    ),
-    // media query for popover attribute
-    bool_pref_feature!(atom!("-moz-popover-enabled"), "dom.element.popover.enabled"),
 ];

@@ -16,7 +16,6 @@ pub struct AttrSelectorWithOptionalNamespace<Impl: SelectorImpl> {
     pub local_name_lower: Impl::LocalName,
     #[shmem(field_bound)]
     pub operation: ParsedAttrSelectorOperation<Impl::AttrValue>,
-    pub never_matches: bool,
 }
 
 impl<Impl: SelectorImpl> AttrSelectorWithOptionalNamespace<Impl> {
@@ -42,7 +41,7 @@ pub enum ParsedAttrSelectorOperation<AttrValue> {
     WithValue {
         operator: AttrSelectorOperator,
         case_sensitivity: ParsedCaseSensitivity,
-        expected_value: AttrValue,
+        value: AttrValue,
     },
 }
 
@@ -52,7 +51,7 @@ pub enum AttrSelectorOperation<AttrValue> {
     WithValue {
         operator: AttrSelectorOperator,
         case_sensitivity: CaseSensitivity,
-        expected_value: AttrValue,
+        value: AttrValue,
     },
 }
 
@@ -66,12 +65,8 @@ impl<AttrValue> AttrSelectorOperation<AttrValue> {
             AttrSelectorOperation::WithValue {
                 operator,
                 case_sensitivity,
-                ref expected_value,
-            } => operator.eval_str(
-                element_attr_value,
-                expected_value.as_ref(),
-                case_sensitivity,
-            ),
+                ref value,
+            } => operator.eval_str(element_attr_value, value.as_ref(), case_sensitivity),
         }
     }
 }
@@ -116,16 +111,21 @@ impl AttrSelectorOperator {
         let case = case_sensitivity;
         match self {
             AttrSelectorOperator::Equal => case.eq(e, s),
-            AttrSelectorOperator::Prefix => e.len() >= s.len() && case.eq(&e[..s.len()], s),
+            AttrSelectorOperator::Prefix => {
+                !s.is_empty() && e.len() >= s.len() && case.eq(&e[..s.len()], s)
+            },
             AttrSelectorOperator::Suffix => {
-                e.len() >= s.len() && case.eq(&e[(e.len() - s.len())..], s)
+                !s.is_empty() && e.len() >= s.len() && case.eq(&e[(e.len() - s.len())..], s)
             },
             AttrSelectorOperator::Substring => {
-                case.contains(element_attr_value, attr_selector_value)
+                !s.is_empty() && case.contains(element_attr_value, attr_selector_value)
             },
-            AttrSelectorOperator::Includes => element_attr_value
-                .split(SELECTOR_WHITESPACE)
-                .any(|part| case.eq(part.as_bytes(), s)),
+            AttrSelectorOperator::Includes => {
+                !s.is_empty() &&
+                    element_attr_value
+                        .split(SELECTOR_WHITESPACE)
+                        .any(|part| case.eq(part.as_bytes(), s))
+            },
             AttrSelectorOperator::DashMatch => {
                 case.eq(e, s) || (e.get(s.len()) == Some(&b'-') && case.eq(&e[..s.len()], s))
             },

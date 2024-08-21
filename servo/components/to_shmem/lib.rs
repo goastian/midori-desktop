@@ -20,7 +20,7 @@ extern crate smallvec;
 extern crate string_cache;
 extern crate thin_vec;
 
-use servo_arc::{Arc, HeaderSlice};
+use servo_arc::{Arc, ArcUnion, ArcUnionBorrow, HeaderSlice};
 use smallbitvec::{InternalStorage, SmallBitVec};
 use smallvec::{Array, SmallVec};
 use std::alloc::Layout;
@@ -214,11 +214,15 @@ impl_trivial_to_shmem!(
     u32,
     u64,
     isize,
-    usize
+    usize,
+    std::num::NonZeroUsize
 );
 
-impl_trivial_to_shmem!(cssparser::SourceLocation);
-impl_trivial_to_shmem!(cssparser::TokenSerializationType);
+impl_trivial_to_shmem!(
+    cssparser::SourceLocation,
+    cssparser::SourcePosition,
+    cssparser::TokenSerializationType
+);
 
 impl<T> ToShmem for PhantomData<T> {
     fn to_shmem(&self, _builder: &mut SharedMemoryBuilder) -> Result<Self> {
@@ -428,6 +432,23 @@ where
             ));
         }
         Ok(ManuallyDrop::new(Self::default()))
+    }
+}
+
+impl<A: 'static, B: 'static> ToShmem for ArcUnion<A, B>
+where
+    Arc<A>: ToShmem,
+    Arc<B>: ToShmem,
+{
+    fn to_shmem(&self, builder: &mut SharedMemoryBuilder) -> Result<Self> {
+        Ok(ManuallyDrop::new(match self.borrow() {
+            ArcUnionBorrow::First(first) => Self::from_first(ManuallyDrop::into_inner(
+                first.with_arc(|a| a.to_shmem(builder))?,
+            )),
+            ArcUnionBorrow::Second(second) => Self::from_second(ManuallyDrop::into_inner(
+                second.with_arc(|a| a.to_shmem(builder))?,
+            )),
+        }))
     }
 }
 

@@ -11,13 +11,15 @@ use crate::data::{EagerPseudoStyles, ElementStyles};
 use crate::dom::TElement;
 use crate::matching::MatchMethods;
 use crate::properties::longhands::display::computed_value::T as Display;
-use crate::properties::ComputedValues;
+use crate::properties::{ComputedValues, FirstLineReparenting};
 use crate::rule_tree::StrongRuleNode;
 use crate::selector_parser::{PseudoElement, SelectorImpl};
 use crate::stylist::RuleInclusion;
 use log::Level::Trace;
-use selectors::matching::{MatchingContext, NeedsSelectorFlags};
-use selectors::matching::{MatchingMode, VisitedHandlingMode};
+use selectors::matching::{
+    IncludeStartingStyle, MatchingContext, MatchingForInvalidation, MatchingMode,
+    NeedsSelectorFlags, VisitedHandlingMode,
+};
 use servo_arc::Arc;
 
 /// Whether pseudo-elements should be resolved or not.
@@ -46,10 +48,19 @@ where
 struct MatchingResults {
     rule_node: StrongRuleNode,
     flags: ComputedValueFlags,
+    has_starting_style: bool,
 }
 
 /// A style returned from the resolver machinery.
 pub struct ResolvedStyle(pub Arc<ComputedValues>);
+
+impl ResolvedStyle {
+    /// Convenience accessor for the style.
+    #[inline]
+    pub fn style(&self) -> &ComputedValues {
+        &*self.0
+    }
+}
 
 /// The primary style of an element or an element-backed pseudo-element.
 pub struct PrimaryStyle {
@@ -58,6 +69,11 @@ pub struct PrimaryStyle {
     /// Whether the style was reused from another element via the rule node (see
     /// `StyleSharingCache::lookup_by_rules`).
     pub reused_via_rule_node: bool,
+    /// The element may have matched rules inside @starting-style.
+    /// Basically, we don't apply @starting-style rules to |style|. This is a sugar to let us know
+    /// if we should resolve the element again for starting style, which is the after-change style
+    /// with @starting-style rules applied in addition.
+    pub may_have_starting_style: bool,
 }
 
 /// A set of style returned from the resolver machinery.
@@ -77,6 +93,12 @@ impl ResolvedElementStyles {
     /// Convenience mutable accessor for the style.
     pub fn primary_style_mut(&mut self) -> &mut Arc<ComputedValues> {
         &mut self.primary.style.0
+    }
+
+    /// Returns true if this element may have starting style rules.
+    #[inline]
+    pub fn may_have_starting_style(&self) -> bool {
+        self.primary.may_have_starting_style
     }
 }
 
@@ -185,16 +207,22 @@ where
         &mut self,
         parent_style: Option<&ComputedValues>,
         layout_parent_style: Option<&ComputedValues>,
+        include_starting_style: IncludeStartingStyle,
     ) -> PrimaryStyle {
-        let primary_results = self.match_primary(VisitedHandlingMode::AllLinksUnvisited);
+        let primary_results = self.match_primary(
+            VisitedHandlingMode::AllLinksUnvisited,
+            include_starting_style,
+        );
 
         let inside_link = parent_style.map_or(false, |s| s.visited_style().is_some());
 
         let visited_rules = if self.context.shared.visited_styles_enabled &&
             (inside_link || self.element.is_link())
         {
-            let visited_matching_results =
-                self.match_primary(VisitedHandlingMode::RelevantLinkVisited);
+            let visited_matching_results = self.match_primary(
+                VisitedHandlingMode::RelevantLinkVisited,
+                IncludeStartingStyle::No,
+            );
             Some(visited_matching_results.rule_node)
         } else {
             None
@@ -208,6 +236,7 @@ where
             },
             parent_style,
             layout_parent_style,
+            primary_results.has_starting_style,
         )
     }
 
@@ -216,12 +245,17 @@ where
         inputs: CascadeInputs,
         parent_style: Option<&ComputedValues>,
         layout_parent_style: Option<&ComputedValues>,
+        may_have_starting_style: bool,
     ) -> PrimaryStyle {
         // Before doing the cascade, check the sharing cache and see if we can
         // reuse the style via rule node identity.
         let may_reuse = self.element.matches_user_and_content_rules() &&
             parent_style.is_some() &&
-            inputs.rules.is_some();
+            inputs.rules.is_some() &&
+            // If this style was considered in any way for relative selector matching,
+            // we do not want to lose that fact by sharing a style with something that
+            // did not.
+            !inputs.flags.contains(ComputedValueFlags::CONSIDERED_RELATIVE_SELECTOR);
 
         if may_reuse {
             let cached = self.context.thread_local.sharing_cache.lookup_by_rules(
@@ -248,6 +282,7 @@ where
                 /* pseudo = */ None,
             ),
             reused_via_rule_node: false,
+            may_have_starting_style,
         }
     }
 
@@ -257,7 +292,8 @@ where
         parent_style: Option<&ComputedValues>,
         layout_parent_style: Option<&ComputedValues>,
     ) -> ResolvedElementStyles {
-        let primary_style = self.resolve_primary_style(parent_style, layout_parent_style);
+        let primary_style =
+            self.resolve_primary_style(parent_style, layout_parent_style, IncludeStartingStyle::No);
 
         let mut pseudo_styles = EagerPseudoStyles::default();
 
@@ -349,10 +385,9 @@ where
             pseudo,
             inputs,
             &self.context.shared.guards,
-            pseudo.and(parent_style),
-            parent_style,
             parent_style,
             layout_parent_style,
+            FirstLineReparenting::No,
             Some(&self.context.thread_local.rule_cache),
             &mut conditions,
         );
@@ -371,10 +406,15 @@ where
     pub fn cascade_styles_with_default_parents(
         &mut self,
         inputs: ElementCascadeInputs,
+        may_have_starting_style: bool,
     ) -> ResolvedElementStyles {
         with_default_parent_styles(self.element, move |parent_style, layout_parent_style| {
-            let primary_style =
-                self.cascade_primary_style(inputs.primary, parent_style, layout_parent_style);
+            let primary_style = self.cascade_primary_style(
+                inputs.primary,
+                parent_style,
+                layout_parent_style,
+                may_have_starting_style,
+            );
 
             let mut pseudo_styles = EagerPseudoStyles::default();
             if let Some(mut pseudo_array) = inputs.pseudos.into_array() {
@@ -423,6 +463,7 @@ where
         let MatchingResults {
             rule_node,
             mut flags,
+            has_starting_style: _,
         } = self.match_pseudo(
             &originating_element_style.style.0,
             pseudo,
@@ -455,7 +496,11 @@ where
         ))
     }
 
-    fn match_primary(&mut self, visited_handling: VisitedHandlingMode) -> MatchingResults {
+    fn match_primary(
+        &mut self,
+        visited_handling: VisitedHandlingMode,
+        include_starting_style: IncludeStartingStyle,
+    ) -> MatchingResults {
         debug!(
             "Match primary for {:?}, visited: {:?}",
             self.element, visited_handling
@@ -463,14 +508,16 @@ where
         let mut applicable_declarations = ApplicableDeclarationList::new();
 
         let bloom_filter = self.context.thread_local.bloom_filter.filter();
-        let nth_index_cache = &mut self.context.thread_local.nth_index_cache;
+        let selector_caches = &mut self.context.thread_local.selector_caches;
         let mut matching_context = MatchingContext::new_for_visited(
             MatchingMode::Normal,
             Some(bloom_filter),
-            nth_index_cache,
+            selector_caches,
             visited_handling,
+            include_starting_style,
             self.context.shared.quirks_mode(),
             NeedsSelectorFlags::Yes,
+            MatchingForInvalidation::No,
         );
 
         let stylist = &self.context.shared.stylist;
@@ -504,19 +551,10 @@ where
             }
         }
 
-        if matching_context.considered_relative_selector {
-            // This is a bit awkward - ideally, the flag is set directly where `considered_relative_selector`
-            // is; however, in that context, the implementation detail of `extra_data` is not visible, so
-            // it's done here. A trait for manipulating the flags is an option, but not worth it for a single flag.
-            matching_context
-                .extra_data
-                .cascade_input_flags
-                .insert(ComputedValueFlags::CONSIDERED_RELATIVE_SELECTOR);
-        }
-
         MatchingResults {
             rule_node,
             flags: matching_context.extra_data.cascade_input_flags,
+            has_starting_style: matching_context.has_starting_style,
         }
     }
 
@@ -548,15 +586,17 @@ where
         }
 
         let bloom_filter = self.context.thread_local.bloom_filter.filter();
-        let nth_index_cache = &mut self.context.thread_local.nth_index_cache;
+        let selector_caches = &mut self.context.thread_local.selector_caches;
 
         let mut matching_context = MatchingContext::<'_, E::Impl>::new_for_visited(
             MatchingMode::ForStatelessPseudoElement,
             Some(bloom_filter),
-            nth_index_cache,
+            selector_caches,
             visited_handling,
+            IncludeStartingStyle::No,
             self.context.shared.quirks_mode(),
             NeedsSelectorFlags::Yes,
+            MatchingForInvalidation::No,
         );
         matching_context.extra_data.originating_element_style = Some(originating_element_style);
 
@@ -584,6 +624,75 @@ where
         Some(MatchingResults {
             rule_node,
             flags: matching_context.extra_data.cascade_input_flags,
+            has_starting_style: false, // We don't care.
         })
+    }
+
+    /// Resolve the starting style.
+    pub fn resolve_starting_style(&mut self) -> PrimaryStyle {
+        // Compute after-change style for the parent and the layout parent.
+        // Per spec, starting style inherits from the parent’s after-change style just like
+        // after-change style does.
+        let parent_el = self.element.inheritance_parent();
+        let parent_data = parent_el.as_ref().and_then(|e| e.borrow_data());
+        let parent_style = parent_data.as_ref().map(|d| d.styles.primary());
+        let parent_after_change_style =
+            parent_style.and_then(|s| self.after_change_style(s));
+        let parent_values = parent_after_change_style
+            .as_ref()
+            .or(parent_style)
+            .map(|x| &**x);
+
+        let mut layout_parent_el = parent_el.clone();
+        let layout_parent_data;
+        let layout_parent_after_change_style;
+        let layout_parent_values = if parent_style.map_or(false, |s| s.is_display_contents()) {
+            layout_parent_el = Some(layout_parent_el.unwrap().layout_parent());
+            layout_parent_data = layout_parent_el.as_ref().unwrap().borrow_data().unwrap();
+            let layout_parent_style = Some(layout_parent_data.styles.primary());
+            layout_parent_after_change_style =
+                layout_parent_style.and_then(|s| self.after_change_style(s));
+            layout_parent_after_change_style
+                .as_ref()
+                .or(layout_parent_style)
+                .map(|x| &**x)
+        } else {
+            parent_values
+        };
+
+        self.resolve_primary_style(
+            parent_values,
+            layout_parent_values,
+            IncludeStartingStyle::Yes,
+        )
+    }
+
+    /// If there is no transition rule in the ComputedValues, it returns None.
+    pub fn after_change_style(
+        &mut self,
+        primary_style: &Arc<ComputedValues>,
+    ) -> Option<Arc<ComputedValues>> {
+        let rule_node = primary_style.rules();
+        let without_transition_rules = self.context
+            .shared
+            .stylist
+            .rule_tree()
+            .remove_transition_rule_if_applicable(rule_node);
+        if without_transition_rules == *rule_node {
+            // We don't have transition rule in this case, so return None to let
+            // the caller use the original ComputedValues.
+            return None;
+        }
+
+        // FIXME(bug 868975): We probably need to transition visited style as
+        // well.
+        let inputs = CascadeInputs {
+            rules: Some(without_transition_rules),
+            visited_rules: primary_style.visited_rules().cloned(),
+            flags: primary_style.flags.for_cascade_inputs(),
+        };
+
+        let style = self.cascade_style_and_visited_with_default_parents(inputs);
+        Some(style.0)
     }
 }

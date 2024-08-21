@@ -10,17 +10,17 @@ header = """/* This Source Code Form is subject to the terms of the Mozilla Publ
 // Work-around silly windows.h define.
 #pragma push_macro("STRICT")
 #undef STRICT
+#pragma push_macro("TRANSPARENT")
+#undef TRANSPARENT
 """
 trailer = """
 #pragma pop_macro("STRICT")
+#pragma pop_macro("TRANSPARENT")
 #pragma GCC diagnostic pop
 #include "mozilla/ServoStyleConstsInlines.h"
 """
-autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
- * To generate this file:
- *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
- *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --lockfile Cargo.lock --crate style -o layout/style/ServoStyleConsts.h`
+autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen. See RunCbindgen.py
+ * To modify this file, edit servo/ports/geckolib/cbindgen.toml and build Firefox.
  */
 """
 include_guard = "mozilla_ServoStyleConsts_h"
@@ -48,12 +48,15 @@ derive_neq = true
 "feature = servo" = "CBINDGEN_IS_SERVO"
 "feature = servo-layout-2013" = "CBINDGEN_IS_SERVO"
 "feature = servo-layout-2020" = "CBINDGEN_IS_SERVO"
+"feature = track_alloc_size" = "CBINDGEN_IS_SERVO"
 # These will always be defined.
 "feature = gecko" = "CBINDGEN_IS_GECKO"
 "feature = cbindgen" = "CBINDGEN_IS_GECKO"
 # These depend on the build.
 "target_pointer_width = 32" = "SERVO_32_BITS"
 "target_pointer_width = 64" = "HAVE_64BIT_BUILD"
+"unix" = "XP_UNIX"
+"windows" = "XP_WIN"
 
 [macro_expansion]
 bitflags = true
@@ -76,28 +79,47 @@ exclude = [
   "AuthorStyles",
 ]
 include = [
+  "AnchorName",
+  "AnchorScope",
   "AnimationTimeline",
   "AnimationIterationCount",
+  "AnimationDirection",
+  "AnimationFillMode",
+  "AnimationPlayState",
+  "AnimationComposition",
   "Appearance",
   "Au",
   "BreakBetween",
   "BreakWithin",
   "BorderStyle",
+  "BorderSpacing",
   "BoolInteger",
   "OutlineStyle",
   "CaptionSide",
   "FontSizeAdjust",
   "FontPalette",
+  "FontLanguageOverride",
+  "FontVariantEastAsian",
+  "FontVariantLigatures",
+  "FontVariantNumeric",
+  "InsetArea",
+  "InsetAreaKeyword",
   "ComputedFontStretchRange",
   "ComputedFontStyleDescriptor",
   "ComputedFontWeightRange",
   "ComputedTimingFunction",
   "ComputedValueFlags",
   "CursorKind",
+  "Display",
   "DisplayOutside",
   "DisplayInside",
   "DisplayMode",
   "Platform",
+  "PositionAnchor",
+  "PositionTryOptions",
+  "PositionTryOrder",
+  "PositionVisibility",
+  "GtkThemeFamily",
   "PrefersColorScheme",
   "PrefersContrast",
   "DynamicRange",
@@ -111,10 +133,13 @@ include = [
   "GenericFontFamily",
   "FontFamily",
   "FontFamilyNameSyntax",
+  "MozTheme",
   "OverflowWrap",
   "OffsetPath",
+  "OffsetPathFunction",
   "OffsetPosition",
   "OffsetRotate",
+  "RayFunction",
   "UnicodeRange",
   "UserSelect",
   "Float",
@@ -126,6 +151,7 @@ include = [
   "ScrollSnapStrictness",
   "ScrollSnapType",
   "ScrollTimelineName",
+  "TransitionBehavior",
   "ViewTimelineInset",
   "OverflowAnchor",
   "OverflowClipBox",
@@ -144,6 +170,7 @@ include = [
   "TextDecorationLength",
   "Time",
   "Rect",
+  "InitialLetter",
   "IntersectionObserverRootMargin",
   "Size",
   "MaxSize",
@@ -156,9 +183,11 @@ include = [
   "BorderSpacing",
   "BorderRadius",
   "ColorScheme",
+  "ColumnCount",
   "NonNegativeLengthOrNumberRect",
   "Perspective",
   "ZIndex",
+  "TransformBox",
   "TransformOrigin",
   "LineBreak",
   "LineClamp",
@@ -180,6 +209,7 @@ include = [
   "TextTransform",
   "TextJustify",
   "TextOverflow",
+  "TextIndent",
   "MozControlCharacterVisibility",
   "RubyPosition",
   "Owned",
@@ -195,7 +225,9 @@ include = [
   "GradientItem",
   "VerticalAlign",
   "BasicShape",
+  "InsetRect",
   "ShapeRadius",
+  "ShapeCommand",
   "ArcSlice",
   "ForgottenArcSlicePtr",
   "HeaderWithLength",
@@ -239,8 +271,6 @@ include = [
   "ComputedJustifyItems",
   "AlignContent",
   "JustifyContent",
-  "AlignTracks",
-  "JustifyTracks",
   "TransformStyle",
   "Image",
   "ClipPath",
@@ -271,6 +301,8 @@ include = [
   "PiecewiseLinearFunction",
   "BeforeFlag",
   "XTextScale",
+  "Zoom",
+  "TransitionProperty",
 ]
 item_types = ["enums", "structs", "unions", "typedefs", "functions", "constants"]
 renaming_overrides_prefixing = true
@@ -285,6 +317,7 @@ renaming_overrides_prefixing = true
 "nsSimpleContentList" = "nsSimpleContentList"
 "nsACString" = "nsACString"
 "nsAString" = "nsAString"
+"nsCString" = "nsCString"
 "nsString" = "nsString"
 "CopyableTArray" = "CopyableTArray"
 "nsTArray" = "nsTArray"
@@ -294,11 +327,11 @@ renaming_overrides_prefixing = true
 "RefPtr" = "RefPtr"
 "nsCSSPropertyID" = "nsCSSPropertyID"
 "nsCSSPropertyIDSet" = "nsCSSPropertyIDSet"
+"AnimatedPropertyID" = "AnimatedPropertyID"
 "nsCSSValueSharedList" = "nsCSSValueSharedList"
 "AnimationPropertySegment" = "AnimationPropertySegment"
 "RawServoAnimationValueTable" = "RawServoAnimationValueTable"
 "nsCSSUnit" = "nsCSSUnit"
-"ParsingMode" = "ParsingMode"
 "InheritTarget" = "InheritTarget"
 "PseudoStyleType" = "PseudoStyleType"
 "DeclarationBlockMutationClosure" = "DeclarationBlockMutationClosure"
@@ -312,6 +345,7 @@ renaming_overrides_prefixing = true
 "nsresult" = "nsresult"
 "gfxFontFeature" = "gfxFontFeature"
 "gfxFontFeatureValueSet" = "gfxFontFeatureValueSet"
+"GeckoFontMetrics" = "GeckoFontMetrics"
 "SeenPtrs" = "SeenPtrs"
 "gfxFontVariation" = "gfxFontVariation"
 "URLExtraData" = "URLExtraData"
@@ -326,7 +360,9 @@ renaming_overrides_prefixing = true
 "BeforeFlag" = "StyleEasingBeforeFlag"
 "FontPaletteValueSet" = "gfx::FontPaletteValueSet"
 "PaletteValues" = "gfx::FontPaletteValueSet::PaletteValues"
-"ThinVec" = "nsTArray"
+"ThinVec" = "CopyableTArray"
+"RawPthread" = "pthread_t"
+"RawHandle" = "void*"
 
 [export.body]
 "CSSPixelLength" = """
@@ -340,19 +376,13 @@ renaming_overrides_prefixing = true
   inline StyleCSSPixelLength ScaledBy(float) const;
 """
 
+"CalcLengthPercentage" = """
+  inline CSSCoord ResolveToCSSPixels(CSSCoord aBasis) const;
+  template<typename Rounder>
+  inline nscoord Resolve(nscoord aBasis, Rounder) const;
+"""
+
 "GenericCalcNode" = """
- private:
-
-  template <typename ResultT, typename PercentageConverter>
-  ResultT ResolveInternal(ResultT aPercentageBasis,
-                          PercentageConverter aPercentageConverter) const;
-
- public:
-  CSSCoord ResolveToCSSPixels(CSSCoord aPercentageBasis) const;
-
-  using CoordPercentageRounder = nscoord(*)(float);
-  nscoord Resolve(nscoord aBasis, CoordPercentageRounder) const;
-
   void ScaleLengthsBy(float);
 """
 
@@ -410,10 +440,10 @@ renaming_overrides_prefixing = true
   inline bool IsDefinitelyZero() const;
   inline CSSCoord ResolveToCSSPixels(CSSCoord aPercentageBasisInCSSPixels) const;
   template<typename T> inline CSSCoord ResolveToCSSPixelsWith(T aPercentageGetter) const;
-  template<typename T, typename U>
-  inline nscoord Resolve(T aPercentageGetter, U aPercentRoundingFunction) const;
-  template<typename T>
-  inline nscoord Resolve(nscoord aPercentageBasis, T aPercentRoundingFunction) const;
+  template<typename T, typename Rounder>
+  inline nscoord Resolve(T aPercentageGetter, Rounder) const;
+  template<typename Rounder>
+  inline nscoord Resolve(nscoord aPercentageBasis, Rounder) const;
   template<typename T> inline nscoord Resolve(T aPercentageGetter) const;
   inline nscoord Resolve(nscoord aPercentageBasis) const;
 """
@@ -473,7 +503,7 @@ renaming_overrides_prefixing = true
 
   // Defined in WritingModes.h
   inline const T& Get(mozilla::Side) const;
-  inline const T& Get(WritingMode, LogicalSide) const;
+  inline const T& Get(LogicalSide, WritingMode) const;
   inline const T& GetIStart(WritingMode) const;
   inline const T& GetBStart(WritingMode) const;
   inline const T& Start(LogicalAxis, WritingMode) const;
@@ -482,11 +512,15 @@ renaming_overrides_prefixing = true
   inline const T& End(LogicalAxis, WritingMode) const;
 
   inline T& Get(mozilla::Side);
-  inline T& Get(WritingMode, LogicalSide);
+  inline T& Get(LogicalSide, WritingMode);
   inline T& GetIStart(WritingMode);
   inline T& GetBStart(WritingMode);
   inline T& GetIEnd(WritingMode);
   inline T& GetBEnd(WritingMode);
+
+  static StyleRect WithAllSides(const T& aSide) {
+    return {aSide, aSide, aSide, aSide};
+  }
 """
 
 "GenericBorderRadius" = """
@@ -503,8 +537,7 @@ renaming_overrides_prefixing = true
 """
 
 "TextTransform" = """
-  static inline StyleTextTransform None();
-  inline bool IsNone() const;
+  bool IsNone() const { return *this == NONE; }
 """
 
 "TextUnderlinePosition" = """
@@ -543,9 +576,11 @@ renaming_overrides_prefixing = true
 
 "GenericColor" = """
   static inline StyleGenericColor FromColor(nscolor);
+
+  static inline StyleGenericColor Transparent();
   static inline StyleGenericColor Black();
   static inline StyleGenericColor White();
-  static inline StyleGenericColor Transparent();
+
   bool MaybeTransparent() const;
 
   /**
@@ -572,13 +607,9 @@ renaming_overrides_prefixing = true
 
 "AbsoluteColor" = """
   /**
-   * Create a new AbsoluteColor in the sRGB color space.
+   * Create a new AbsoluteColor in the sRGB color space in legacy color syntax.
    */
-  static inline StyleAbsoluteColor Srgb(float red, float green, float blue, float alpha);
-
-  static inline StyleAbsoluteColor Transparent();
-  static inline StyleAbsoluteColor Black();
-  static inline StyleAbsoluteColor White();
+  static inline StyleAbsoluteColor SrgbLegacy(float red, float green, float blue, float alpha);
 
   static inline StyleAbsoluteColor FromColor(nscolor);
 
@@ -705,7 +736,8 @@ renaming_overrides_prefixing = true
   inline void Release();
 
  public:
-  inline explicit StyleAtom(already_AddRefed<nsAtom> aAtom);
+  inline explicit StyleAtom(already_AddRefed<nsAtom>);
+  inline explicit StyleAtom(nsStaticAtom*);
   inline StyleAtom(const StyleAtom& aOther);
   inline StyleAtom& operator=(const StyleAtom&);
   inline ~StyleAtom();
@@ -737,9 +769,11 @@ renaming_overrides_prefixing = true
   }
 """
 
-"CoordPair" = """
-  explicit StyleCoordPair(const gfx::Point& aPoint): x(aPoint.x), y(aPoint.y) {}
-  gfx::Point ConvertsToGfxPoint() const { return gfx::Point(x, y); }
+"CoordinatePair" = """
+  inline gfx::Point ToGfxPoint(const CSSSize* aBasis = nullptr) const;
+  gfx::Point ToGfxPoint(const CSSSize& aBasis) const {
+    return ToGfxPoint(&aBasis);
+  };
 """
 
 "TextOverflow" = """
@@ -747,6 +781,13 @@ renaming_overrides_prefixing = true
     : first(StyleTextOverflowSide::Clip()),
       second(StyleTextOverflowSide::Clip()),
       sides_are_logical(true) {}
+"""
+
+"GenericTextIndent" = """
+  StyleGenericTextIndent()
+    : length(StyleLengthPercentage::Zero()),
+      hanging(false),
+      each_line(false) {}
 """
 
 "UrlExtraData" = """
@@ -803,6 +844,9 @@ renaming_overrides_prefixing = true
 "GenericGradient" = """
   inline bool Repeating() const;
   bool IsOpaque() const;
+
+  // Return the color interpolation method of the gradient.
+  inline const StyleColorInterpolationMethod& ColorInterpolationMethod() const;
 """
 
 "GenericGridLine" = """
@@ -853,11 +897,7 @@ renaming_overrides_prefixing = true
   //
   // The resolution is in dppx, and should be used to impact the intrinsic
   // size of the image.
-  ImageResolution GetResolution() const;
-
-  // Returns the intrinsic size of the image, if there's one, accounting for
-  // resolution as needed.
-  Maybe<CSSIntSize> GetIntrinsicSize() const;
+  ImageResolution GetResolution(const ComputedStyle&) const;
 
   // If this is an image-set(), the final image we've selected, otherwise it
   // returns *this.
@@ -885,13 +925,6 @@ renaming_overrides_prefixing = true
   // Returns true if the item is definitely opaque --- i.e., paints every
   // pixel within its bounds opaquely, and the bounds contains at least a pixel.
   bool IsOpaque() const;
-
-  struct ActualCropRect {
-    nsIntRect mRect; // in image pixels
-    bool mIsEntireImage;
-  };
-
-  Maybe<ActualCropRect> ComputeActualCropRect() const;
 
   // Resolves the underlying image request if any.
   void ResolveImage(dom::Document&, const StyleGenericImage* aOld);
@@ -934,13 +967,14 @@ renaming_overrides_prefixing = true
 
 "FontWeight" = """
  SERVO_FIXED_POINT_HELPERS(StyleFontWeight, uint16_t, StyleFONT_WEIGHT_FRACTION_BITS);
+ bool IsNormal() const { return *this == NORMAL; }
 
  inline bool IsBold() const;
 """
 
 "FontStyle" = """
  SERVO_FIXED_POINT_HELPERS(StyleFontStyle, int16_t, StyleFONT_STYLE_FRACTION_BITS);
-
+ bool IsNormal() const { return *this == NORMAL; }
  inline bool IsItalic() const;
  inline bool IsOblique() const;
  inline float ObliqueAngle() const;  // Only for use when IsOblique() is true
@@ -950,11 +984,26 @@ renaming_overrides_prefixing = true
 
 "FontStretch" = """
  SERVO_FIXED_POINT_HELPERS(StyleFontStretch, uint16_t, StyleFONT_STRETCH_FRACTION_BITS);
+ bool IsNormal() const { return *this == NORMAL; }
+"""
+
+"Zoom" = """
+ SERVO_FIXED_POINT_HELPERS(StyleZoom, uint16_t, StyleZOOM_FRACTION_BITS);
+ inline float Zoom(float) const;
+ inline float Unzoom(float) const;
+ inline nscoord ZoomCoord(nscoord) const;
+ inline nscoord UnzoomCoord(nscoord) const;
+ inline nsSize Zoom(const nsSize&) const;
+ inline nsSize Unzoom(const nsSize&) const;
+ inline nsPoint Zoom(const nsPoint&) const;
+ inline nsPoint Unzoom(const nsPoint&) const;
+ inline nsRect Zoom(const nsRect&) const;
+ inline nsRect Unzoom(const nsRect&) const;
 """
 
 "AnimationName" = """
  public:
-  StyleAnimationName(): _0(RefPtr<nsAtom>(nsGkAtoms::_empty).forget()) {}
+  StyleAnimationName() : _0(nsGkAtoms::_empty) {}
 """
 
 "GenericViewTimelineInset" = """
@@ -976,5 +1025,77 @@ renaming_overrides_prefixing = true
 "FontPalette" = """
   inline static StyleFontPalette Normal() {
     return StyleFontPalette{StyleAtom(nsGkAtoms::normal->ToAddRefed())};
+  }
+"""
+
+"GenericOffsetPath" = """
+  // Return true if the <offset-path> is ray().
+  bool IsRay() const {
+    return IsOffsetPath() && AsOffsetPath().path->IsRay();
+  }
+
+  const StyleRayFunction& AsRay() const {
+    return AsOffsetPath().path->AsRay();
+  }
+
+  // Return true if the <offset-path> is url().
+  bool IsUrl() const {
+    return IsOffsetPath() && AsOffsetPath().path->IsUrl();
+  }
+
+  const StyleComputedUrl& AsUrl() const {
+    return AsOffsetPath().path->AsUrl();
+  }
+
+  // Return true if the <basic-shape> is path().
+  bool IsPath() const {
+    if (!IsOffsetPath()) {
+      return false;
+    }
+    const auto& path = AsOffsetPath().path;
+    if (!path->IsShape()) {
+      return false;
+    }
+    const auto& shape = path->AsShape();
+    return shape.IsPathOrShape() && shape.AsPathOrShape().IsPath();
+  }
+
+  const StyleSVGPathData& AsSVGPathData() const {
+    return AsOffsetPath().path->AsShape().AsPathOrShape().AsPath().path;
+  }
+
+  // Return true if this is "<basic-shape> || <coord-box>".
+  bool IsBasicShapeOrCoordBox() const {
+    return IsCoordBox() || (IsOffsetPath() && AsOffsetPath().path->IsShape());
+  }
+"""
+
+"GenericShapeCommand" = """
+  bool IsCubicType() const { return IsCubicCurve() || IsSmoothCubic(); }
+  bool IsQuadraticType() const { return IsQuadCurve() || IsSmoothQuad(); }
+"""
+
+"GenericContainIntrinsicSize" = """
+  bool HasAuto() const { return IsAutoLength() || IsAutoNone(); }
+"""
+
+"Display" = """
+  inline StyleDisplayOutside Outside() const;
+  inline StyleDisplayInside Inside() const;
+  inline bool IsListItem() const;
+  inline bool IsInlineFlow() const;
+  inline bool IsInlineInside() const;
+  inline bool IsInlineOutside() const;
+  inline bool IsBlockOutside() const;
+  inline bool IsRuby() const;
+  inline bool IsInternalRuby() const;
+  inline bool IsInternalTable() const;
+  inline bool IsInternalTableExceptCell() const;
+"""
+
+"TransitionProperty" = """
+  bool IsAll() const {
+    return IsNonCustom() &&
+           nsCSSPropertyID(AsNonCustom()._0) == eCSSProperty_all;
   }
 """

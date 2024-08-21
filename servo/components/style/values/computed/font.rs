@@ -8,20 +8,23 @@ use crate::parser::{Parse, ParserContext};
 use crate::values::animated::ToAnimatedValue;
 use crate::values::computed::{
     Angle, Context, Integer, Length, NonNegativeLength, NonNegativeNumber, Number, Percentage,
-    ToComputedValue,
+    ToComputedValue, Zoom,
 };
 use crate::values::generics::font::{
     FeatureTagValue, FontSettings, TaggedFontValue, VariationValue,
 };
 use crate::values::generics::{font as generics, NonNegative};
+use crate::values::resolved::{Context as ResolvedContext, ToResolvedValue};
 use crate::values::specified::font::{
     self as specified, KeywordInfo, MAX_FONT_WEIGHT, MIN_FONT_WEIGHT,
 };
-use crate::values::specified::length::{FontBaseSize, NoCalcLength};
+use crate::values::specified::length::{FontBaseSize, LineHeightBase, NoCalcLength};
 use crate::Atom;
 use cssparser::{serialize_identifier, CssStringWriter, Parser};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+use num_traits::abs;
+use num_traits::cast::AsPrimitive;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, ToCss};
 
@@ -66,28 +69,48 @@ pub use crate::values::specified::Number as SpecifiedNumber;
     ToResolvedValue,
 )]
 pub struct FixedPoint<T, const FRACTION_BITS: u16> {
-    value: T,
+    /// The actual representation.
+    pub value: T,
 }
 
 impl<T, const FRACTION_BITS: u16> FixedPoint<T, FRACTION_BITS>
 where
-    T: num_traits::cast::AsPrimitive<f32>,
-    f32: num_traits::cast::AsPrimitive<T>,
+    T: AsPrimitive<f32>,
+    f32: AsPrimitive<T>,
+    u16: AsPrimitive<T>,
 {
     const SCALE: u16 = 1 << FRACTION_BITS;
     const INVERSE_SCALE: f32 = 1.0 / Self::SCALE as f32;
 
     /// Returns a fixed-point bit from a floating-point context.
-    fn from_float(v: f32) -> Self {
-        use num_traits::cast::AsPrimitive;
+    pub fn from_float(v: f32) -> Self {
         Self {
             value: (v * Self::SCALE as f32).round().as_(),
         }
     }
 
     /// Returns the floating-point representation.
-    fn to_float(&self) -> f32 {
+    pub fn to_float(&self) -> f32 {
         self.value.as_() * Self::INVERSE_SCALE
+    }
+}
+
+// We implement this and mul below only for u16 types, because u32 types might need more care about
+// overflow. But it's not hard to implement in either case.
+impl<const FRACTION_BITS: u16> std::ops::Div for FixedPoint<u16, FRACTION_BITS> {
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self {
+        Self {
+            value: (((self.value as u32) << (FRACTION_BITS as u32)) / (rhs.value as u32)) as u16,
+        }
+    }
+}
+impl<const FRACTION_BITS: u16> std::ops::Mul for FixedPoint<u16, FRACTION_BITS> {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self {
+        Self {
+            value: (((self.value as u32) * (rhs.value as u32)) >> (FRACTION_BITS as u32)) as u16,
+        }
     }
 }
 
@@ -255,6 +278,16 @@ impl FontSize {
         self.used_size.0
     }
 
+    /// Apply zoom to the font-size. This is usually done by ToComputedValue.
+    #[inline]
+    pub fn zoom(&self, zoom: Zoom) -> Self {
+        Self {
+            computed_size: NonNegative(Length::new(zoom.zoom(self.computed_size.0.px()))),
+            used_size: NonNegative(Length::new(zoom.zoom(self.used_size.0.px()))),
+            keyword_info: self.keyword_info,
+        }
+    }
+
     #[inline]
     /// Get default value of font size.
     pub fn medium() -> Self {
@@ -380,7 +413,10 @@ impl FontFamily {
             GenericFontFamily::MozEmoji => &*MOZ_EMOJI,
             GenericFontFamily::SystemUi => &*SYSTEM_UI,
         };
-        debug_assert_eq!(*family.families.iter().next().unwrap(), SingleFontFamily::Generic(generic));
+        debug_assert_eq!(
+            *family.families.iter().next().unwrap(),
+            SingleFontFamily::Generic(generic)
+        );
         family
     }
 }
@@ -746,7 +782,7 @@ impl FontFamilyList {
     }
 }
 
-/// Preserve the readability of text when font fallback occurs
+/// Preserve the readability of text when font fallback occurs.
 pub type FontSizeAdjust = generics::GenericFontSizeAdjust<NonNegativeNumber>;
 
 impl FontSizeAdjust {
@@ -754,6 +790,82 @@ impl FontSizeAdjust {
     /// Default value of font-size-adjust
     pub fn none() -> Self {
         FontSizeAdjust::None
+    }
+}
+
+impl ToComputedValue for specified::FontSizeAdjust {
+    type ComputedValue = FontSizeAdjust;
+
+    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
+        use crate::font_metrics::FontMetricsOrientation;
+
+        let font_metrics = |vertical| {
+            let orient = if vertical {
+                FontMetricsOrientation::MatchContextPreferVertical
+            } else {
+                FontMetricsOrientation::Horizontal
+            };
+            let metrics = context.query_font_metrics(FontBaseSize::CurrentStyle, orient, false);
+            let font_size = context.style().get_font().clone_font_size().used_size.0;
+            (metrics, font_size)
+        };
+
+        // Macro to resolve a from-font value using the given metric field. If not present,
+        // returns the fallback value, or if that is negative, resolves using ascent instead
+        // of the missing field (this is the fallback for cap-height).
+        macro_rules! resolve {
+            ($basis:ident, $value:expr, $vertical:expr, $field:ident, $fallback:expr) => {{
+                match $value {
+                    specified::FontSizeAdjustFactor::Number(f) => {
+                        FontSizeAdjust::$basis(f.to_computed_value(context))
+                    },
+                    specified::FontSizeAdjustFactor::FromFont => {
+                        let (metrics, font_size) = font_metrics($vertical);
+                        let ratio = if let Some(metric) = metrics.$field {
+                            metric / font_size
+                        } else if $fallback >= 0.0 {
+                            $fallback
+                        } else {
+                            metrics.ascent / font_size
+                        };
+                        if ratio.is_nan() {
+                            FontSizeAdjust::$basis(NonNegative(abs($fallback)))
+                        } else {
+                            FontSizeAdjust::$basis(NonNegative(ratio))
+                        }
+                    },
+                }
+            }};
+        }
+
+        match *self {
+            Self::None => FontSizeAdjust::None,
+            Self::ExHeight(val) => resolve!(ExHeight, val, false, x_height, 0.5),
+            Self::CapHeight(val) => {
+                resolve!(CapHeight, val, false, cap_height, -1.0 /* fall back to ascent */)
+            },
+            Self::ChWidth(val) => resolve!(ChWidth, val, false, zero_advance_measure, 0.5),
+            Self::IcWidth(val) => resolve!(IcWidth, val, false, ic_width, 1.0),
+            Self::IcHeight(val) => resolve!(IcHeight, val, true, ic_width, 1.0),
+        }
+    }
+
+    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
+        macro_rules! case {
+            ($basis:ident, $val:expr) => {
+                Self::$basis(specified::FontSizeAdjustFactor::Number(
+                    ToComputedValue::from_computed_value($val),
+                ))
+            };
+        }
+        match *computed {
+            FontSizeAdjust::None => Self::None,
+            FontSizeAdjust::ExHeight(ref val) => case!(ExHeight, val),
+            FontSizeAdjust::CapHeight(ref val) => case!(CapHeight, val),
+            FontSizeAdjust::ChWidth(ref val) => case!(ChWidth, val),
+            FontSizeAdjust::IcWidth(ref val) => case!(IcWidth, val),
+            FontSizeAdjust::IcHeight(ref val) => case!(IcHeight, val),
+        }
     }
 }
 
@@ -873,22 +985,6 @@ impl ToCss for FontLanguageOverride {
     }
 }
 
-// FIXME(emilio): Make Gecko use the cbindgen'd fontLanguageOverride, then
-// remove this.
-#[cfg(feature = "gecko")]
-impl From<u32> for FontLanguageOverride {
-    fn from(v: u32) -> Self {
-        unsafe { Self::from_u32(v) }
-    }
-}
-
-#[cfg(feature = "gecko")]
-impl From<FontLanguageOverride> for u32 {
-    fn from(v: FontLanguageOverride) -> u32 {
-        v.0
-    }
-}
-
 impl ToComputedValue for specified::MozScriptMinSize {
     type ComputedValue = MozScriptMinSize;
 
@@ -896,8 +992,11 @@ impl ToComputedValue for specified::MozScriptMinSize {
         // this value is used in the computation of font-size, so
         // we use the parent size
         let base_size = FontBaseSize::InheritedStyle;
+        let line_height_base = LineHeightBase::InheritedStyle;
         match self.0 {
-            NoCalcLength::FontRelative(value) => value.to_computed_value(cx, base_size),
+            NoCalcLength::FontRelative(value) => {
+                value.to_computed_value(cx, base_size, line_height_base)
+            },
             NoCalcLength::ServoCharacterWidth(value) => {
                 value.to_computed_value(base_size.resolve(cx).computed_size())
             },
@@ -1235,5 +1334,35 @@ impl ToAnimatedValue for FontStretch {
     #[inline]
     fn from_animated_value(animated: Self::AnimatedValue) -> Self {
         Self::from_percentage(animated.0)
+    }
+}
+
+/// A computed value for the `line-height` property.
+pub type LineHeight = generics::GenericLineHeight<NonNegativeNumber, NonNegativeLength>;
+
+impl ToResolvedValue for LineHeight {
+    type ResolvedValue = Self;
+
+    fn to_resolved_value(self, context: &ResolvedContext) -> Self::ResolvedValue {
+        // Resolve <number> to an absolute <length> based on font size.
+        if matches!(self, Self::Normal | Self::MozBlockHeight) {
+            return self;
+        }
+        let wm = context.style.writing_mode;
+        Self::Length(
+            context
+                .device
+                .calc_line_height(
+                    context.style.get_font(),
+                    wm,
+                    Some(context.element_info.element),
+                )
+                .to_resolved_value(context),
+        )
+    }
+
+    #[inline]
+    fn from_resolved_value(value: Self::ResolvedValue) -> Self {
+        value
     }
 }

@@ -8,14 +8,14 @@
 use super::feature::{Evaluator, QueryFeatureDescription};
 use super::feature::{FeatureFlags, KeywordDiscriminant};
 use crate::parser::{Parse, ParserContext};
-use crate::queries::condition::KleeneValue;
 use crate::str::{starts_with_ignore_ascii_case, string_as_ascii_lowercase};
 use crate::values::computed::{self, Ratio, ToComputedValue};
 use crate::values::specified::{Integer, Length, Number, Resolution};
-use crate::values::CSSFloat;
+use crate::values::{AtomString, CSSFloat};
 use crate::{Atom, Zero};
 use cssparser::{Parser, Token};
-use std::cmp::{Ordering, PartialOrd};
+use selectors::kleene_value::KleeneValue;
+use std::cmp::Ordering;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 
@@ -313,27 +313,27 @@ fn disabled_by_pref(feature: &Atom, context: &ParserContext) -> bool {
             // forced-colors is always enabled in the ua and chrome. On
             // the web it is hidden behind a preference, which is defaulted
             // to 'true' as of bug 1659511.
-            return !context.in_ua_or_chrome_sheet() &&
+            return !context.chrome_rules_enabled() &&
                 !static_prefs::pref!("layout.css.forced-colors.enabled");
         }
         // prefers-contrast is always enabled in the ua and chrome. On
         // the web it is hidden behind a preference.
         if *feature == atom!("prefers-contrast") {
-            return !context.in_ua_or_chrome_sheet() &&
+            return !context.chrome_rules_enabled() &&
                 !static_prefs::pref!("layout.css.prefers-contrast.enabled");
         }
 
         // prefers-reduced-transparency is always enabled in the ua and chrome. On
         // the web it is hidden behind a preference (see Bug 1822176).
         if *feature == atom!("prefers-reduced-transparency") {
-            return !context.in_ua_or_chrome_sheet() &&
+            return !context.chrome_rules_enabled() &&
                 !static_prefs::pref!("layout.css.prefers-reduced-transparency.enabled");
         }
 
         // inverted-colors is always enabled in the ua and chrome. On
         // the web it is hidden behind a preferenc.
         if *feature == atom!("inverted-colors") {
-            return !context.in_ua_or_chrome_sheet() &&
+            return !context.chrome_rules_enabled() &&
                 !static_prefs::pref!("layout.css.inverted-colors.enabled");
         }
     }
@@ -410,7 +410,7 @@ impl QueryFeatureExpression {
         let location = input.current_source_location();
         let ident = input.expect_ident()?;
 
-        if context.in_ua_or_chrome_sheet() {
+        if context.chrome_rules_enabled() {
             flags.insert(FeatureFlags::CHROME_AND_UA_ONLY);
         }
 
@@ -653,6 +653,10 @@ impl QueryFeatureExpression {
                     .map(|v| *expect!(Enumerated, v));
                 return evaluator(context, computed);
             },
+            Evaluator::String(evaluator) => {
+                let string = self.kind.non_ranged_value().map(|v| expect!(String, v));
+                return evaluator(context, string);
+            },
             Evaluator::BoolInteger(eval) => {
                 let computed = self
                     .kind
@@ -691,6 +695,8 @@ pub enum QueryExpressionValue {
     /// An enumerated value, defined by the variant keyword table in the
     /// feature's `mData` member.
     Enumerated(KeywordDiscriminant),
+    /// An arbitrary ident value.
+    String(AtomString),
 }
 
 impl QueryExpressionValue {
@@ -709,6 +715,7 @@ impl QueryExpressionValue {
                 Evaluator::Enumerated { serializer, .. } => dest.write_str(&*serializer(value)),
                 _ => unreachable!(),
             },
+            QueryExpressionValue::String(ref s) => s.to_css(dest),
         }
     }
 
@@ -745,6 +752,9 @@ impl QueryExpressionValue {
             },
             Evaluator::Resolution(..) => {
                 QueryExpressionValue::Resolution(Resolution::parse(context, input)?)
+            },
+            Evaluator::String(..) => {
+                QueryExpressionValue::String(input.expect_string()?.as_ref().into())
             },
             Evaluator::Enumerated { parser, .. } => {
                 QueryExpressionValue::Enumerated(parser(context, input)?)

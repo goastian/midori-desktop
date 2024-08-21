@@ -94,12 +94,13 @@ pub enum FontFaceSourceFormatKeyword {
     Unknown,
 }
 
+/// Flags for the @font-face tech() function, indicating font technologies
+/// required by the resource.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ToShmem)]
+#[repr(C)]
+pub struct FontFaceSourceTechFlags(u16);
 bitflags! {
-    /// Flags for the @font-face tech() function, indicating font technologies
-    /// required by the resource.
-    #[derive(Clone, Copy, Debug, Eq, PartialEq, ToShmem)]
-    #[repr(C)]
-    pub struct FontFaceSourceTechFlags: u16 {
+    impl FontFaceSourceTechFlags: u16 {
         /// Font requires OpenType feature support.
         const FEATURES_OPENTYPE = 1 << 0;
         /// Font requires Apple Advanced Typography support.
@@ -613,20 +614,8 @@ impl Parse for Source {
 }
 
 macro_rules! is_descriptor_enabled {
-    ("font-display") => {
-        static_prefs::pref!("layout.css.font-display.enabled")
-    };
     ("font-variation-settings") => {
         static_prefs::pref!("layout.css.font-variations.enabled")
-    };
-    ("ascent-override") => {
-        static_prefs::pref!("layout.css.font-metrics-overrides.enabled")
-    };
-    ("descent-override") => {
-        static_prefs::pref!("layout.css.font-metrics-overrides.enabled")
-    };
-    ("line-gap-override") => {
-        static_prefs::pref!("layout.css.font-metrics-overrides.enabled")
     };
     ("size-adjust") => {
         static_prefs::pref!("layout.css.size-adjust.enabled")

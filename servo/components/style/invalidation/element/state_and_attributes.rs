@@ -10,19 +10,23 @@ use crate::data::ElementData;
 use crate::dom::{TElement, TNode};
 use crate::invalidation::element::element_wrapper::{ElementSnapshot, ElementWrapper};
 use crate::invalidation::element::invalidation_map::*;
-use crate::invalidation::element::invalidator::{DescendantInvalidationLists, InvalidationVector};
+use crate::invalidation::element::invalidator::{
+    DescendantInvalidationLists, InvalidationVector, SiblingTraversalMap,
+};
 use crate::invalidation::element::invalidator::{Invalidation, InvalidationProcessor};
 use crate::invalidation::element::restyle_hints::RestyleHint;
 use crate::selector_map::SelectorMap;
 use crate::selector_parser::Snapshot;
 use crate::stylesheets::origin::OriginSet;
+use crate::values::AtomIdent;
 use crate::{Atom, WeakAtom};
 use dom::ElementState;
 use selectors::attr::CaseSensitivity;
+use selectors::kleene_value::KleeneValue;
 use selectors::matching::{
-    matches_selector, MatchingContext, MatchingMode, NeedsSelectorFlags, VisitedHandlingMode,
+    matches_selector_kleene, IncludeStartingStyle, MatchingContext, MatchingForInvalidation,
+    MatchingMode, NeedsSelectorFlags, SelectorCaches, VisitedHandlingMode,
 };
-use selectors::NthIndexCache;
 use smallvec::SmallVec;
 
 /// The collector implementation.
@@ -39,6 +43,8 @@ where
     added_id: Option<&'a WeakAtom>,
     classes_removed: &'a SmallVec<[Atom; 8]>,
     classes_added: &'a SmallVec<[Atom; 8]>,
+    custom_states_removed: &'a SmallVec<[AtomIdent; 8]>,
+    custom_states_added: &'a SmallVec<[AtomIdent; 8]>,
     state_changes: ElementState,
     descendant_invalidations: &'a mut DescendantInvalidationLists<'selectors>,
     sibling_invalidations: &'a mut InvalidationVector<'selectors>,
@@ -52,6 +58,7 @@ pub struct StateAndAttrInvalidationProcessor<'a, 'b: 'a, E: TElement> {
     element: E,
     data: &'a mut ElementData,
     matching_context: MatchingContext<'a, E::Impl>,
+    traversal_map: SiblingTraversalMap<E>,
 }
 
 impl<'a, 'b: 'a, E: TElement + 'b> StateAndAttrInvalidationProcessor<'a, 'b, E> {
@@ -60,15 +67,17 @@ impl<'a, 'b: 'a, E: TElement + 'b> StateAndAttrInvalidationProcessor<'a, 'b, E> 
         shared_context: &'a SharedStyleContext<'b>,
         element: E,
         data: &'a mut ElementData,
-        nth_index_cache: &'a mut NthIndexCache,
+        selector_caches: &'a mut SelectorCaches,
     ) -> Self {
         let matching_context = MatchingContext::new_for_visited(
             MatchingMode::Normal,
             None,
-            nth_index_cache,
+            selector_caches,
             VisitedHandlingMode::AllLinksVisitedAndUnvisited,
+            IncludeStartingStyle::No,
             shared_context.quirks_mode(),
             NeedsSelectorFlags::No,
+            MatchingForInvalidation::Yes,
         );
 
         Self {
@@ -76,6 +85,7 @@ impl<'a, 'b: 'a, E: TElement + 'b> StateAndAttrInvalidationProcessor<'a, 'b, E> 
             element,
             data,
             matching_context,
+            traversal_map: SiblingTraversalMap::default(),
         }
     }
 }
@@ -92,23 +102,25 @@ where
     E: TElement,
     W: selectors::Element<Impl = E::Impl>,
 {
-    let matches_now = matches_selector(
-        &dependency.selector,
-        dependency.selector_offset,
-        None,
-        element,
-        context,
-    );
+    context.for_invalidation_comparison(|context| {
+        let matches_now = matches_selector_kleene(
+            &dependency.selector,
+            dependency.selector_offset,
+            None,
+            element,
+            context,
+        );
 
-    let matched_then = matches_selector(
-        &dependency.selector,
-        dependency.selector_offset,
-        None,
-        wrapper,
-        context,
-    );
+        let matched_then = matches_selector_kleene(
+            &dependency.selector,
+            dependency.selector_offset,
+            None,
+            wrapper,
+            context,
+        );
 
-    matched_then != matches_now
+        matched_then != matches_now || matches_now == KleeneValue::Unknown
+    })
 }
 
 /// Whether we should process the descendants of a given element for style
@@ -193,7 +205,7 @@ where
     }
 }
 
-impl<'a, 'b: 'a, E: 'a> InvalidationProcessor<'a, E>
+impl<'a, 'b: 'a, E: 'a> InvalidationProcessor<'a, 'a, E>
     for StateAndAttrInvalidationProcessor<'a, 'b, E>
 where
     E: TElement,
@@ -217,6 +229,10 @@ where
         &mut self.matching_context
     }
 
+    fn sibling_traversal_map(&self) -> &SiblingTraversalMap<E> {
+        &self.traversal_map
+    }
+
     fn collect_invalidations(
         &mut self,
         element: E,
@@ -230,9 +246,11 @@ where
         let wrapper = ElementWrapper::new(element, &*self.shared_context.snapshot_map);
 
         let state_changes = wrapper.state_changes();
-        let snapshot = wrapper.snapshot().expect("has_snapshot lied");
+        let Some(snapshot) = wrapper.snapshot() else {
+            return false;
+        };
 
-        if !snapshot.has_attrs() && state_changes.is_empty() {
+        if !snapshot.has_attrs() && !snapshot.has_custom_states() && state_changes.is_empty() {
             return false;
         }
 
@@ -249,6 +267,21 @@ where
             element.each_class(|c| {
                 if !snapshot.has_class(c, CaseSensitivity::CaseSensitive) {
                     classes_added.push(c.0.clone())
+                }
+            })
+        }
+
+        let mut custom_states_removed = SmallVec::<[AtomIdent; 8]>::new();
+        let mut custom_states_added = SmallVec::<[AtomIdent; 8]>::new();
+        if snapshot.has_custom_states() {
+            snapshot.each_custom_state(|s| {
+                if !element.has_custom_state(s) {
+                    custom_states_removed.push(s.clone())
+                }
+            });
+            element.each_custom_state(|s| {
+                if !snapshot.has_custom_state(s) {
+                    custom_states_added.push(s.clone())
                 }
             })
         }
@@ -315,6 +348,8 @@ where
                 added_id: id_added,
                 classes_removed: &classes_removed,
                 classes_added: &classes_added,
+                custom_states_removed: &custom_states_removed,
+                custom_states_added: &custom_states_added,
                 descendant_invalidations,
                 sibling_invalidations,
                 invalidates_self: false,
@@ -432,6 +467,18 @@ where
             }
         }
 
+        for state in self
+            .custom_states_added
+            .iter()
+            .chain(self.custom_states_removed.iter())
+        {
+            if let Some(deps) = map.custom_state_affecting_selectors.get(state) {
+                for dep in deps {
+                    self.scan_dependency(dep);
+                }
+            }
+        }
+
         self.snapshot.each_attr_changed(|attribute| {
             if let Some(deps) = map.other_attribute_affecting_selectors.get(attribute) {
                 for dep in deps {
@@ -475,6 +522,13 @@ where
     }
 
     fn scan_dependency(&mut self, dependency: &'selectors Dependency) {
+        debug_assert!(
+            matches!(
+                dependency.invalidation_kind(),
+                DependencyInvalidationKind::Normal(_)
+            ),
+            "Found relative selector dependency"
+        );
         debug!(
             "TreeStyleInvalidator::scan_dependency({:?}, {:?})",
             self.element, dependency
@@ -492,8 +546,8 @@ where
     fn note_dependency(&mut self, dependency: &'selectors Dependency) {
         debug_assert!(self.dependency_may_be_relevant(dependency));
 
-        let invalidation_kind = dependency.invalidation_kind();
-        if matches!(invalidation_kind, DependencyInvalidationKind::Element) {
+        let invalidation_kind = dependency.normal_invalidation_kind();
+        if matches!(invalidation_kind, NormalDependencyInvalidationKind::Element) {
             if let Some(ref parent) = dependency.parent {
                 // We know something changed in the inner selector, go outwards
                 // now.
@@ -510,43 +564,74 @@ where
         let invalidation =
             Invalidation::new(&dependency, self.matching_context.current_host.clone());
 
-        match invalidation_kind {
-            DependencyInvalidationKind::Element => unreachable!(),
-            DependencyInvalidationKind::ElementAndDescendants => {
-                self.invalidates_self = true;
-                self.descendant_invalidations
-                    .dom_descendants
-                    .push(invalidation);
-            },
-            DependencyInvalidationKind::Descendants => {
-                self.descendant_invalidations
-                    .dom_descendants
-                    .push(invalidation);
-            },
-            DependencyInvalidationKind::Siblings => {
-                self.sibling_invalidations.push(invalidation);
-            },
-            DependencyInvalidationKind::Parts => {
-                self.descendant_invalidations.parts.push(invalidation);
-            },
-            DependencyInvalidationKind::SlottedElements => {
-                self.descendant_invalidations
-                    .slotted_descendants
-                    .push(invalidation);
-            },
-        }
+        self.invalidates_self |= push_invalidation(
+            invalidation,
+            invalidation_kind,
+            self.descendant_invalidations,
+            self.sibling_invalidations,
+        );
     }
 
     /// Returns whether `dependency` may cause us to invalidate the style of
     /// more elements than what we've already invalidated.
     fn dependency_may_be_relevant(&self, dependency: &Dependency) -> bool {
-        match dependency.invalidation_kind() {
-            DependencyInvalidationKind::Element => !self.invalidates_self,
-            DependencyInvalidationKind::SlottedElements => self.element.is_html_slot_element(),
-            DependencyInvalidationKind::Parts => self.element.shadow_root().is_some(),
-            DependencyInvalidationKind::ElementAndDescendants |
-            DependencyInvalidationKind::Siblings |
-            DependencyInvalidationKind::Descendants => true,
+        match dependency.normal_invalidation_kind() {
+            NormalDependencyInvalidationKind::Element => !self.invalidates_self,
+            NormalDependencyInvalidationKind::SlottedElements => {
+                self.element.is_html_slot_element()
+            },
+            NormalDependencyInvalidationKind::Parts => self.element.shadow_root().is_some(),
+            NormalDependencyInvalidationKind::ElementAndDescendants |
+            NormalDependencyInvalidationKind::Siblings |
+            NormalDependencyInvalidationKind::Descendants => true,
         }
+    }
+}
+
+pub(crate) fn push_invalidation<'a>(
+    invalidation: Invalidation<'a>,
+    invalidation_kind: NormalDependencyInvalidationKind,
+    descendant_invalidations: &mut DescendantInvalidationLists<'a>,
+    sibling_invalidations: &mut InvalidationVector<'a>,
+) -> bool {
+    match invalidation_kind {
+        NormalDependencyInvalidationKind::Element => unreachable!(),
+        NormalDependencyInvalidationKind::ElementAndDescendants => {
+            descendant_invalidations.dom_descendants.push(invalidation);
+            true
+        },
+        NormalDependencyInvalidationKind::Descendants => {
+            descendant_invalidations.dom_descendants.push(invalidation);
+            false
+        },
+        NormalDependencyInvalidationKind::Siblings => {
+            sibling_invalidations.push(invalidation);
+            false
+        },
+        NormalDependencyInvalidationKind::Parts => {
+            descendant_invalidations.parts.push(invalidation);
+            false
+        },
+        NormalDependencyInvalidationKind::SlottedElements => {
+            descendant_invalidations
+                .slotted_descendants
+                .push(invalidation);
+            false
+        },
+    }
+}
+
+pub(crate) fn dependency_may_be_relevant<E: TElement>(
+    dependency: &Dependency,
+    element: &E,
+    already_invalidated_self: bool,
+) -> bool {
+    match dependency.normal_invalidation_kind() {
+        NormalDependencyInvalidationKind::Element => !already_invalidated_self,
+        NormalDependencyInvalidationKind::SlottedElements => element.is_html_slot_element(),
+        NormalDependencyInvalidationKind::Parts => element.shadow_root().is_some(),
+        NormalDependencyInvalidationKind::ElementAndDescendants |
+        NormalDependencyInvalidationKind::Siblings |
+        NormalDependencyInvalidationKind::Descendants => true,
     }
 }

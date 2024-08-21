@@ -14,7 +14,7 @@ use style_traits::{CssWriter, ToCss};
 
 /// A computed `<resolution>`.
 #[repr(C)]
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToResolvedValue, ToShmem)]
+#[derive(Animate, Clone, Debug, MallocSizeOf, PartialEq, ToResolvedValue, ToShmem)]
 pub struct Resolution(CSSFloat);
 
 impl Resolution {
@@ -36,7 +36,7 @@ impl ToComputedValue for specified::Resolution {
 
     #[inline]
     fn to_computed_value(&self, _: &Context) -> Self::ComputedValue {
-        Resolution(self.dppx())
+        Resolution(crate::values::normalize(self.dppx().max(0.0)))
     }
 
     #[inline]

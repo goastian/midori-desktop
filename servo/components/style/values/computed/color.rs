@@ -10,17 +10,13 @@ use crate::values::computed::percentage::Percentage;
 use crate::values::generics::color::{
     GenericCaretColor, GenericColor, GenericColorMix, GenericColorOrAuto,
 };
-use cssparser::Color as CSSParserColor;
-use std::fmt;
+use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
 
 pub use crate::values::specified::color::{ColorScheme, ForcedColorAdjust, PrintColorAdjust};
 
 /// The computed value of the `color` property.
 pub type ColorPropertyValue = AbsoluteColor;
-
-/// The computed value of `-moz-font-smoothing-background-color`.
-pub type MozFontSmoothingBackgroundColor = AbsoluteColor;
 
 /// A computed value for `<color>`.
 pub type Color = GenericColor<Percentage>;
@@ -35,13 +31,22 @@ impl ToCss for Color {
     {
         match *self {
             Self::Absolute(ref c) => c.to_css(dest),
-            Self::CurrentColor => cssparser::ToCss::to_css(&CSSParserColor::CurrentColor, dest),
+            Self::CurrentColor => dest.write_str("currentcolor"),
             Self::ColorMix(ref m) => m.to_css(dest),
         }
     }
 }
 
 impl Color {
+    /// A fully transparent color.
+    pub const TRANSPARENT_BLACK: Self = Self::Absolute(AbsoluteColor::TRANSPARENT_BLACK);
+
+    /// An opaque black color.
+    pub const BLACK: Self = Self::Absolute(AbsoluteColor::BLACK);
+
+    /// An opaque white color.
+    pub const WHITE: Self = Self::Absolute(AbsoluteColor::WHITE);
+
     /// Create a new computed [`Color`] from a given color-mix, simplifying it to an absolute color
     /// if possible.
     pub fn from_color_mix(color_mix: ColorMix) -> Self {
@@ -50,21 +55,6 @@ impl Color {
         } else {
             Self::ColorMix(Box::new(color_mix))
         }
-    }
-
-    /// Returns a complex color value representing transparent.
-    pub fn transparent() -> Color {
-        Color::Absolute(AbsoluteColor::transparent())
-    }
-
-    /// Returns opaque black.
-    pub fn black() -> Color {
-        Color::Absolute(AbsoluteColor::black())
-    }
-
-    /// Returns opaque white.
-    pub fn white() -> Color {
-        Color::Absolute(AbsoluteColor::white())
     }
 
     /// Combine this complex color with the given foreground color into an
@@ -84,7 +74,7 @@ impl Color {
                     mix.left_percentage.to_percentage(),
                     &right,
                     mix.right_percentage.to_percentage(),
-                    mix.normalize_weights,
+                    mix.flags,
                 )
             },
         }
@@ -93,7 +83,7 @@ impl Color {
 
 impl ToAnimatedZero for AbsoluteColor {
     fn to_animated_zero(&self) -> Result<Self, ()> {
-        Ok(Self::transparent())
+        Ok(Self::TRANSPARENT_BLACK)
     }
 }
 

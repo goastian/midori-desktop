@@ -18,14 +18,14 @@ macro_rules! try_parse_one {
 }
 
 <%helpers:shorthand name="transition"
-                    engines="gecko servo-2013 servo-2020"
+                    engines="gecko servo"
                     extra_prefixes="moz:layout.css.prefixes.transitions webkit"
                     sub_properties="transition-property transition-duration
                                     transition-timing-function
-                                    transition-delay"
+                                    transition-delay transition-behavior"
                     spec="https://drafts.csswg.org/css-transitions/#propdef-transition">
     use crate::parser::Parse;
-    % for prop in "delay duration property timing_function".split():
+    % for prop in "delay duration property timing_function behavior".split():
     use crate::properties::longhands::transition_${prop};
     % endfor
     use crate::values::specified::TransitionProperty;
@@ -35,19 +35,17 @@ macro_rules! try_parse_one {
         input: &mut Parser<'i, 't>,
     ) -> Result<Longhands, ParseError<'i>> {
         struct SingleTransition {
-            % for prop in "duration timing_function delay".split():
+            % for prop in "property duration timing_function delay behavior".split():
             transition_${prop}: transition_${prop}::SingleSpecifiedValue,
             % endfor
-            // Unlike other properties, transition-property uses an Option<> to
-            // represent 'none' as `None`.
-            transition_property: Option<TransitionProperty>,
         }
 
         fn parse_one_transition<'i, 't>(
             context: &ParserContext,
             input: &mut Parser<'i, 't>,
+            first: bool,
         ) -> Result<SingleTransition,ParseError<'i>> {
-            % for prop in "property duration timing_function delay".split():
+            % for prop in "property duration timing_function delay behavior".split():
             let mut ${prop} = None;
             % endfor
 
@@ -58,18 +56,21 @@ macro_rules! try_parse_one {
                 try_parse_one!(context, input, duration, transition_duration);
                 try_parse_one!(context, input, timing_function, transition_timing_function);
                 try_parse_one!(context, input, delay, transition_delay);
+                if static_prefs::pref!("layout.css.transition-behavior.enabled") {
+                    try_parse_one!(context, input, behavior, transition_behavior);
+                }
                 // Must check 'transition-property' after 'transition-timing-function' since
                 // 'transition-property' accepts any keyword.
                 if property.is_none() {
                     if let Ok(value) = input.try_parse(|i| TransitionProperty::parse(context, i)) {
-                        property = Some(Some(value));
+                        property = Some(value);
                         continue;
                     }
 
-                    if input.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
-                        // 'none' is not a valid value for <single-transition-property>,
-                        // so it's not acceptable in the function above.
-                        property = Some(None);
+                    // 'none' is not a valid value for <single-transition-property>,
+                    // so it's only acceptable as the first item.
+                    if first && input.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
+                        property = Some(TransitionProperty::none());
                         continue;
                     }
                 }
@@ -80,41 +81,40 @@ macro_rules! try_parse_one {
 
             if parsed != 0 {
                 Ok(SingleTransition {
-                    % for prop in "duration timing_function delay".split():
+                    % for prop in "property duration timing_function delay behavior".split():
                     transition_${prop}: ${prop}.unwrap_or_else(transition_${prop}::single_value
                                                                                  ::get_initial_specified_value),
                     % endfor
-                    transition_property: property.unwrap_or(
-                        Some(transition_property::single_value::get_initial_specified_value())),
                 })
             } else {
                 Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
         }
 
-        % for prop in "property duration timing_function delay".split():
+        % for prop in "property duration timing_function delay behavior".split():
         let mut ${prop}s = Vec::new();
         % endfor
 
-        let results = input.parse_comma_separated(|i| parse_one_transition(context, i))?;
-        let multiple_items = results.len() >= 2;
-        for result in results {
-            if let Some(value) = result.transition_property {
-                propertys.push(value);
-            } else if multiple_items {
-                // If there is more than one item, and any of transitions has 'none',
-                // then it's invalid. Othersize, leave propertys to be empty (which
-                // means "transition-property: none");
-                return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+        let mut first = true;
+        let mut has_transition_property_none = false;
+        let results = input.parse_comma_separated(|i| {
+            if has_transition_property_none {
+                // If you specify transition-property: none, multiple items are invalid.
+                return Err(i.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
-
-            % for prop in "duration timing_function delay".split():
+            let transition = parse_one_transition(context, i, first)?;
+            first = false;
+            has_transition_property_none = transition.transition_property.is_none();
+            Ok(transition)
+        })?;
+        for result in results {
+            % for prop in "property duration timing_function delay behavior".split():
             ${prop}s.push(result.transition_${prop});
             % endfor
         }
 
         Ok(expanded! {
-            % for prop in "property duration timing_function delay".split():
+            % for prop in "property duration timing_function delay behavior".split():
             transition_${prop}: transition_${prop}::SpecifiedValue(${prop}s.into()),
             % endfor
         })
@@ -122,6 +122,9 @@ macro_rules! try_parse_one {
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            use crate::Zero;
+            use style_traits::values::SequenceWriter;
+
             let property_len = self.transition_property.0.len();
 
             // There are two cases that we can do shorthand serialization:
@@ -133,12 +136,24 @@ macro_rules! try_parse_one {
                         return Ok(());
                     }
                 % endfor
+
+                if let Some(behavior) = self.transition_behavior {
+                    if behavior.0.len() != 1 {
+                        return Ok(());
+                    }
+                }
             } else {
                 % for name in "duration delay timing_function".split():
                     if self.transition_${name}.0.len() != property_len {
                         return Ok(());
                     }
                 % endfor
+
+                if let Some(behavior) = self.transition_behavior {
+                    if behavior.0.len() != property_len {
+                        return Ok(());
+                    }
+                }
             }
 
             // Representative length.
@@ -148,15 +163,40 @@ macro_rules! try_parse_one {
                 if i != 0 {
                     dest.write_str(", ")?;
                 }
+
+                let has_duration = !self.transition_duration.0[i].is_zero();
+                let has_timing = !self.transition_timing_function.0[i].is_ease();
+                let has_delay = !self.transition_delay.0[i].is_zero();
+                let has_behavior = match self.transition_behavior {
+                    Some(behavior) => !behavior.0[i].is_normal(),
+                    _ => false,
+                };
+                let has_any = has_duration || has_timing || has_delay || has_behavior;
+
+                let mut writer = SequenceWriter::new(dest, " ");
+
                 if property_len == 0 {
-                    dest.write_str("none")?;
-                } else {
-                    self.transition_property.0[i].to_css(dest)?;
+                    writer.raw_item("none")?;
+                } else if !self.transition_property.0[i].is_all() || !has_any {
+                    writer.item(&self.transition_property.0[i])?;
                 }
-                % for name in "duration timing_function delay".split():
-                    dest.write_char(' ')?;
-                    self.transition_${name}.0[i].to_css(dest)?;
-                % endfor
+
+                // In order to avoid ambiguity, we have to serialize duration if we have delay.
+                if has_duration || has_delay {
+                    writer.item(&self.transition_duration.0[i])?;
+                }
+
+                if has_timing {
+                    writer.item(&self.transition_timing_function.0[i])?;
+                }
+
+                if has_delay {
+                    writer.item(&self.transition_delay.0[i])?;
+                }
+
+                if has_behavior {
+                    writer.item(&self.transition_behavior.unwrap().0[i])?;
+                }
             }
             Ok(())
         }
@@ -164,7 +204,7 @@ macro_rules! try_parse_one {
 </%helpers:shorthand>
 
 <%helpers:shorthand name="animation"
-                    engines="gecko servo-2013 servo-2020"
+                    engines="gecko servo"
                     extra_prefixes="moz:layout.css.prefixes.animations webkit"
                     sub_properties="animation-name animation-duration
                                     animation-timing-function animation-delay
@@ -255,6 +295,13 @@ macro_rules! try_parse_one {
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            use crate::values::specified::easing::TimingFunction;
+            use crate::values::specified::{
+                AnimationDirection, AnimationFillMode, AnimationPlayState,
+            };
+            use crate::Zero;
+            use style_traits::values::SequenceWriter;
+
             let len = self.animation_name.0.len();
             // There should be at least one declared value
             if len == 0 {
@@ -280,28 +327,83 @@ macro_rules! try_parse_one {
                     dest.write_str(", ")?;
                 }
 
-                % for name in props[2:]:
-                    self.animation_${name}.0[i].to_css(dest)?;
-                    dest.write_char(' ')?;
+                // We follow the order of this syntax:
+                // <single-animation> =
+                //   <animation-duration> ||
+                //   <easing-function> ||
+                //   <animation-delay> ||
+                //   <single-animation-iteration-count> ||
+                //   <single-animation-direction> ||
+                //   <single-animation-fill-mode> ||
+                //   <single-animation-play-state> ||
+                //   [ none | <keyframes-name> ] ||
+                //   <single-animation-timeline>
+                //
+                // https://drafts.csswg.org/css-animations-2/#animation-shorthand
+                //
+                // FIXME: Bug 1804574. The initial value of duration should be auto, per
+                // css-animations-2.
+                let has_duration = !self.animation_duration.0[i].is_zero();
+                let has_timing_function = !self.animation_timing_function.0[i].is_ease();
+                let has_delay = !self.animation_delay.0[i].is_zero();
+                let has_iteration_count = !self.animation_iteration_count.0[i].is_one();
+                let has_direction =
+                    !matches!(self.animation_direction.0[i], AnimationDirection::Normal);
+                let has_fill_mode =
+                    !matches!(self.animation_fill_mode.0[i], AnimationFillMode::None);
+                let has_play_state =
+                    !matches!(self.animation_play_state.0[i], AnimationPlayState::Running);
+                let animation_name = &self.animation_name.0[i];
+                let has_name = !animation_name.is_none();
+                let has_timeline = match self.animation_timeline {
+                    Some(timeline) => !timeline.0[i].is_auto(),
+                    _ => false,
+                };
+
+                let mut writer = SequenceWriter::new(dest, " ");
+
+                // To avoid ambiguity, we have to serialize duration if both duration is initial
+                // but delay is not. (In other words, it's ambiguous if we serialize delay only.)
+                if has_duration || has_delay {
+                    writer.item(&self.animation_duration.0[i])?;
+                }
+
+                if has_timing_function || TimingFunction::match_keywords(animation_name) {
+                    writer.item(&self.animation_timing_function.0[i])?;
+                }
+
+                // For animation-delay and animation-iteration-count.
+                % for name in props[4:6]:
+                if has_${name} {
+                    writer.item(&self.animation_${name}.0[i])?;
+                }
                 % endfor
 
-                self.animation_name.0[i].to_css(dest)?;
+                if has_direction || AnimationDirection::match_keywords(animation_name) {
+                    writer.item(&self.animation_direction.0[i])?;
+                }
 
-                // Based on the spec, the default values of other properties must be output in at
-                // least the cases necessary to distinguish an animation-name. The serialization
-                // order of animation-timeline is always later than animation-name, so it's fine
-                // to not serialize it if it is the default value. It's still possible to
-                // distinguish them (because we always serialize animation-name).
-                // https://drafts.csswg.org/css-animations-1/#animation
-                // https://drafts.csswg.org/css-animations-2/#typedef-single-animation
-                //
-                // Note: it's also fine to always serialize this. However, it seems Blink
-                // doesn't serialize default animation-timeline now, so we follow the same rule.
-                if let Some(ref timeline) = self.animation_timeline {
-                    if !timeline.0[i].is_auto() {
-                        dest.write_char(' ')?;
-                        timeline.0[i].to_css(dest)?;
-                    }
+                if has_fill_mode || AnimationFillMode::match_keywords(animation_name) {
+                    writer.item(&self.animation_fill_mode.0[i])?;
+                }
+
+                if has_play_state || AnimationPlayState::match_keywords(animation_name) {
+                    writer.item(&self.animation_play_state.0[i])?;
+                }
+
+                // If all values are initial, we must serialize animation-name.
+                let has_any = {
+                    has_timeline
+                % for name in props[2:]:
+                        || has_${name}
+                % endfor
+                };
+                if has_name || !has_any {
+                    writer.item(animation_name)?;
+                }
+
+                if has_timeline {
+                    writer.item(&self.animation_timeline.unwrap().0[i])?;
                 }
             }
             Ok(())

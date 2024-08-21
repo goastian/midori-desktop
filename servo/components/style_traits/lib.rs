@@ -13,7 +13,6 @@
 extern crate app_units;
 #[macro_use]
 extern crate bitflags;
-#[macro_use]
 extern crate cssparser;
 extern crate euclid;
 #[macro_use]
@@ -21,6 +20,7 @@ extern crate lazy_static;
 extern crate malloc_size_of;
 #[macro_use]
 extern crate malloc_size_of_derive;
+extern crate nsstring;
 extern crate selectors;
 #[macro_use]
 extern crate serde;
@@ -29,6 +29,7 @@ extern crate servo_arc;
 extern crate servo_atoms;
 #[cfg(feature = "servo")]
 extern crate servo_url;
+extern crate thin_vec;
 extern crate to_shmem;
 #[macro_use]
 extern crate to_shmem_derive;
@@ -90,8 +91,6 @@ pub mod dom;
 pub mod specified_value_info;
 #[macro_use]
 pub mod values;
-#[macro_use]
-pub mod viewport;
 pub mod owned_slice;
 pub mod owned_str;
 
@@ -246,17 +245,22 @@ pub enum PropertySyntaxParseError {
 bitflags! {
     /// The mode to use when parsing values.
     #[derive(Clone, Copy, Eq, PartialEq)]
+    #[repr(C)]
     pub struct ParsingMode: u8 {
         /// In CSS; lengths must have units, except for zero values, where the unit can be omitted.
         /// <https://www.w3.org/TR/css3-values/#lengths>
-        const DEFAULT = 0x00;
+        const DEFAULT = 0;
         /// In SVG; a coordinate or length value without a unit identifier (e.g., "25") is assumed
         /// to be in user units (px).
         /// <https://www.w3.org/TR/SVG/coords.html#Units>
-        const ALLOW_UNITLESS_LENGTH = 0x01;
+        const ALLOW_UNITLESS_LENGTH = 1;
         /// In SVG; out-of-range values are not treated as an error in parsing.
         /// <https://www.w3.org/TR/SVG/implnote.html#RangeClamping>
-        const ALLOW_ALL_NUMERIC_VALUES = 0x02;
+        const ALLOW_ALL_NUMERIC_VALUES = 1 << 1;
+        /// In CSS Properties and Values, the initial value must be computationally
+        /// independent.
+        /// <https://drafts.css-houdini.org/css-properties-values-api-1/#ref-for-computationally-independent%E2%91%A0>
+        const DISALLOW_FONT_RELATIVE = 1 << 2;
     }
 }
 
@@ -271,6 +275,12 @@ impl ParsingMode {
     #[inline]
     pub fn allows_all_numeric_values(&self) -> bool {
         self.intersects(ParsingMode::ALLOW_ALL_NUMERIC_VALUES)
+    }
+
+    /// Whether the parsing mode allows font-relative units.
+    #[inline]
+    pub fn allows_font_relative_lengths(&self) -> bool {
+        !self.intersects(ParsingMode::DISALLOW_FONT_RELATIVE)
     }
 }
 

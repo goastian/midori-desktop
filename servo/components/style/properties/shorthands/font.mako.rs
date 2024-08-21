@@ -7,7 +7,7 @@
 
 <%helpers:shorthand
     name="font"
-    engines="gecko servo-2013 servo-2020"
+    engines="gecko servo"
     sub_properties="
         font-style
         font-variant-caps
@@ -36,7 +36,7 @@
     use crate::parser::Parse;
     use crate::properties::longhands::{font_family, font_style, font_size, font_weight, font_stretch};
     use crate::properties::longhands::font_variant_caps;
-    use crate::values::specified::text::LineHeight;
+    use crate::values::specified::font::LineHeight;
     use crate::values::specified::{FontSize, FontWeight};
     use crate::values::specified::font::{FontStretch, FontStretchKeyword};
     #[cfg(feature = "gecko")]
@@ -321,8 +321,8 @@
 </%helpers:shorthand>
 
 <%helpers:shorthand name="font-variant"
-                    engines="gecko servo-2013"
-                    flags="SHORTHAND_IN_GETCS"
+                    engines="gecko servo"
+                    servo_pref="layout.legacy_layout",
                     sub_properties="font-variant-caps
                                     ${'font-variant-alternates' if engine == 'gecko' else ''}
                                     ${'font-variant-east-asian' if engine == 'gecko' else ''}
@@ -462,11 +462,10 @@
 
 <%helpers:shorthand name="font-synthesis"
                     engines="gecko"
-                    flags="SHORTHAND_IN_GETCS"
-                    sub_properties="font-synthesis-weight font-synthesis-style font-synthesis-small-caps"
+                    sub_properties="font-synthesis-weight font-synthesis-style font-synthesis-small-caps font-synthesis-position"
                     derive_value_info="False"
                     spec="https://drafts.csswg.org/css-fonts-3/#propdef-font-variant">
-    <% sub_properties = ["weight", "style", "small_caps"] %>
+    <% sub_properties = ["weight", "style", "small_caps", "position"] %>
 
     use crate::values::specified::FontSynthesis;
 

@@ -6,13 +6,14 @@
 
 use super::{Context, Number, ToComputedValue};
 use crate::values::animated::ToAnimatedValue;
-use crate::values::computed::NonNegativeNumber;
+use crate::values::computed::{NonNegativeNumber, Zoom};
 use crate::values::generics::length as generics;
 use crate::values::generics::length::{
     GenericLengthOrNumber, GenericLengthPercentageOrNormal, GenericMaxSize, GenericSize,
 };
 use crate::values::generics::NonNegative;
-use crate::values::specified::length::{AbsoluteLength, FontBaseSize};
+use crate::values::resolved::{Context as ResolvedContext, ToResolvedValue};
+use crate::values::specified::length::{AbsoluteLength, FontBaseSize, LineHeightBase};
 use crate::values::{specified, CSSFloat};
 use crate::Zero;
 use app_units::Au;
@@ -30,7 +31,11 @@ impl ToComputedValue for specified::NoCalcLength {
 
     #[inline]
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
-        self.to_computed_value_with_base_size(context, FontBaseSize::CurrentStyle)
+        self.to_computed_value_with_base_size(
+            context,
+            FontBaseSize::CurrentStyle,
+            LineHeightBase::CurrentStyle,
+        )
     }
 
     #[inline]
@@ -45,10 +50,13 @@ impl specified::NoCalcLength {
         &self,
         context: &Context,
         base_size: FontBaseSize,
+        line_height_base: LineHeightBase,
     ) -> Length {
         match *self {
             Self::Absolute(length) => length.to_computed_value(context),
-            Self::FontRelative(length) => length.to_computed_value(context, base_size),
+            Self::FontRelative(length) => {
+                length.to_computed_value(context, base_size, line_height_base)
+            },
             Self::ViewportPercentage(length) => length.to_computed_value(context),
             Self::ContainerRelative(length) => length.to_computed_value(context),
             Self::ServoCharacterWidth(length) => length
@@ -64,7 +72,16 @@ impl ToComputedValue for specified::Length {
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
         match *self {
             Self::NoCalc(l) => l.to_computed_value(context),
-            Self::Calc(ref calc) => calc.to_computed_value(context).to_length().unwrap(),
+            Self::Calc(ref calc) => {
+                let result = calc.to_computed_value(context);
+                debug_assert!(
+                    result.to_length().is_some(),
+                    "{:?} didn't resolve to a length: {:?}",
+                    calc,
+                    result,
+                );
+                result.to_length().unwrap_or_else(Length::zero)
+            },
         }
     }
 
@@ -211,11 +228,23 @@ impl Size {
     ToAnimatedValue,
     ToAnimatedZero,
     ToComputedValue,
-    ToResolvedValue,
     ToShmem,
 )]
 #[repr(C)]
 pub struct CSSPixelLength(CSSFloat);
+
+impl ToResolvedValue for CSSPixelLength {
+    type ResolvedValue = Self;
+
+    fn to_resolved_value(self, context: &ResolvedContext) -> Self::ResolvedValue {
+        Self(context.style.effective_zoom.unzoom(self.0))
+    }
+
+    #[inline]
+    fn from_resolved_value(value: Self::ResolvedValue) -> Self {
+        value
+    }
+}
 
 impl fmt::Debug for CSSPixelLength {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -253,6 +282,12 @@ impl CSSPixelLength {
     #[inline]
     pub fn px(self) -> CSSFloat {
         self.0
+    }
+
+    /// Zooms a particular length.
+    #[inline]
+    pub fn zoom(self, zoom: Zoom) -> Self {
+        Self::new(zoom.zoom(self.px()))
     }
 
     /// Return the length with app_unit i32 type.

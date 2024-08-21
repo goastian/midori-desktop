@@ -56,10 +56,11 @@ impl Origin {
     }
 }
 
+/// A set of origins. This is equivalent to Gecko's OriginFlags.
+#[derive(Clone, Copy, PartialEq, MallocSizeOf)]
+pub struct OriginSet(u8);
 bitflags! {
-    /// A set of origins. This is equivalent to Gecko's OriginFlags.
-    #[derive(Clone, Copy, PartialEq, MallocSizeOf)]
-    pub struct OriginSet: u8 {
+    impl OriginSet: u8 {
         /// <https://drafts.csswg.org/css-cascade/#cascade-origin-user-agent>
         const ORIGIN_USER_AGENT = Origin::UserAgent as u8;
         /// <https://drafts.csswg.org/css-cascade/#cascade-origin-user>
@@ -74,7 +75,7 @@ impl OriginSet {
     ///
     /// See the `OriginSet` documentation for information about the order
     /// origins are iterated.
-    pub fn iter(&self) -> OriginSetIterator {
+    pub fn iter_origins(&self) -> OriginSetIterator {
         OriginSetIterator {
             set: *self,
             cur: 0,

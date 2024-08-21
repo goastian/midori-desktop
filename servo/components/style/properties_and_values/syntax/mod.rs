@@ -17,51 +17,97 @@ use style_traits::{
     StyleParseErrorKind, ToCss,
 };
 
-use self::data_type::DataType;
+use self::data_type::{DataType, DependentDataTypes};
 
 mod ascii;
-mod data_type;
+pub mod data_type;
 
 /// <https://drafts.css-houdini.org/css-properties-values-api-1/#parsing-syntax>
-#[derive(Debug, Clone, MallocSizeOf)]
+#[derive(Debug, Clone, Default, MallocSizeOf, PartialEq)]
 pub struct Descriptor {
-    components: Box<[Component]>,
-    css: String,
+    /// The parsed components, if any.
+    /// TODO: Could be a Box<[]> if that supported const construction.
+    pub components: Vec<Component>,
+    /// The specified css syntax, if any.
+    specified: Option<Box<str>>,
 }
 
 impl Descriptor {
-    /// Returns the universal syntax definition with the given CSS representation.
-    fn universal(css: &str) -> Self {
+    /// Returns the universal descriptor.
+    pub const fn universal() -> Self {
         Self {
-            components: Default::default(),
-            css: String::from(css),
+            components: Vec::new(),
+            specified: None,
         }
     }
 
-    /// Returns the specified syntax string.
-    pub fn as_str(&self) -> &str {
-        &self.css
+    /// Returns whether this is the universal syntax descriptor.
+    #[inline]
+    pub fn is_universal(&self) -> bool {
+        self.components.is_empty()
     }
-}
 
-impl PartialEq for Descriptor {
-    fn eq(&self, other: &Self) -> bool {
-        self.components == other.components
+    /// Returns the specified string, if any.
+    #[inline]
+    pub fn specified_string(&self) -> Option<&str> {
+        self.specified.as_deref()
     }
-}
 
-impl Parse for Descriptor {
     /// Parse a syntax descriptor.
-    fn parse<'i, 't>(
-        _context: &ParserContext,
-        parser: &mut CSSParser<'i, 't>,
-    ) -> Result<Self, StyleParseError<'i>> {
+    /// https://drafts.css-houdini.org/css-properties-values-api-1/#consume-a-syntax-definition
+    pub fn from_str(css: &str, save_specified: bool) -> Result<Self, ParseError> {
         // 1. Strip leading and trailing ASCII whitespace from string.
-        let input = parser.expect_string()?;
-        match parse_descriptor(input) {
-            Ok(syntax) => Ok(syntax),
-            Err(err) => Err(parser.new_custom_error(StyleParseErrorKind::PropertySyntaxField(err))),
+        let input = ascii::trim_ascii_whitespace(css);
+
+        // 2. If string's length is 0, return failure.
+        if input.is_empty() {
+            return Err(ParseError::EmptyInput);
         }
+
+        let specified = if save_specified {
+            Some(Box::from(css))
+        } else {
+            None
+        };
+
+        // 3. If string's length is 1, and the only code point in string is U+002A
+        //    ASTERISK (*), return the universal syntax descriptor.
+        if input.len() == 1 && input.as_bytes()[0] == b'*' {
+            return Ok(Self {
+                components: Default::default(),
+                specified,
+            });
+        }
+
+        // 4. Let stream be an input stream created from the code points of string,
+        //    preprocessed as specified in [css-syntax-3]. Let descriptor be an
+        //    initially empty list of syntax components.
+        //
+        // NOTE(emilio): Instead of preprocessing we cheat and treat new-lines and
+        // nulls in the parser specially.
+        let mut components = vec![];
+        {
+            let mut parser = Parser::new(input, &mut components);
+            // 5. Repeatedly consume the next input code point from stream.
+            parser.parse()?;
+        }
+        Ok(Self {
+            components,
+            specified,
+        })
+    }
+
+    /// Returns the dependent types this syntax might contain.
+    pub fn dependent_types(&self) -> DependentDataTypes {
+        let mut types = DependentDataTypes::empty();
+        for component in self.components.iter() {
+            let t = match &component.name {
+                ComponentName::DataType(ref t) => t,
+                ComponentName::Ident(_) => continue,
+            };
+            types.insert(t.dependent_types());
+        }
+        types
     }
 }
 
@@ -70,17 +116,58 @@ impl ToCss for Descriptor {
     where
         W: Write,
     {
-        self.css.to_css(dest)
+        if let Some(ref specified) = self.specified {
+            return specified.to_css(dest);
+        }
+
+        if self.is_universal() {
+            return dest.write_char('*');
+        }
+
+        let mut first = true;
+        for component in &*self.components {
+            if !first {
+                dest.write_str(" | ")?;
+            }
+            component.to_css(dest)?;
+            first = false;
+        }
+
+        Ok(())
+    }
+}
+
+impl Parse for Descriptor {
+    /// Parse a syntax descriptor.
+    fn parse<'i>(
+        _: &ParserContext,
+        parser: &mut CSSParser<'i, '_>,
+    ) -> Result<Self, StyleParseError<'i>> {
+        let input = parser.expect_string()?;
+        Descriptor::from_str(input.as_ref(), /* save_specified = */ true)
+            .map_err(|err| parser.new_custom_error(StyleParseErrorKind::PropertySyntaxField(err)))
     }
 }
 
 /// <https://drafts.css-houdini.org/css-properties-values-api-1/#multipliers>
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToResolvedValue)]
 pub enum Multiplier {
     /// Indicates a space-separated list.
     Space,
     /// Indicates a comma-separated list.
     Comma,
+}
+
+impl ToCss for Multiplier {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        dest.write_char(match *self {
+            Multiplier::Space => '+',
+            Multiplier::Comma => '#',
+        })
+    }
 }
 
 /// <https://drafts.css-houdini.org/css-properties-values-api-1/#syntax-component>
@@ -119,8 +206,18 @@ impl Component {
     }
 }
 
+impl ToCss for Component {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        self.name().to_css(dest)?;
+        self.multiplier().to_css(dest)
+    }
+}
+
 /// <https://drafts.css-houdini.org/css-properties-values-api-1/#syntax-component-name>
-#[derive(Clone, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
 pub enum ComponentName {
     /// <https://drafts.css-houdini.org/css-properties-values-api-1/#data-type-name>
     DataType(DataType),
@@ -142,53 +239,10 @@ impl ComponentName {
     }
 }
 
-/// Parse a syntax descriptor.
-#[inline]
-fn parse_descriptor(css: &str) -> Result<Descriptor, ParseError> {
-    // 1. Strip leading and trailing ASCII whitespace from string.
-    let input = ascii::trim_ascii_whitespace(css);
-
-    // 2. If string's length is 0, return failure.
-    if input.is_empty() {
-        return Err(ParseError::EmptyInput);
-    }
-
-    // 3. If string's length is 1, and the only code point in string is U+002A
-    //    ASTERISK (*), return the universal syntax descriptor.
-    if input.len() == 1 && input.as_bytes()[0] == b'*' {
-        return Ok(Descriptor::universal(css));
-    }
-
-    // 4. Let stream be an input stream created from the code points of string,
-    //    preprocessed as specified in [css-syntax-3]. Let descriptor be an
-    //    initially empty list of syntax components.
-    //
-    // NOTE(emilio): Instead of preprocessing we cheat and treat new-lines and
-    // nulls in the parser specially.
-    let mut components = vec![];
-    {
-        let mut parser = Parser::new(input, &mut components);
-        // 5. Repeatedly consume the next input code point from stream.
-        parser.parse()?;
-    }
-    Ok(Descriptor {
-        components: components.into_boxed_slice(),
-        css: String::from(css),
-    })
-}
-
 struct Parser<'a> {
     input: &'a str,
     position: usize,
     output: &'a mut Vec<Component>,
-}
-
-/// <https://drafts.csswg.org/css-syntax-3/#whitespace>
-fn is_whitespace(byte: u8) -> bool {
-    match byte {
-        b'\t' | b'\n' | b'\r' | b' ' => true,
-        _ => false,
-    }
 }
 
 /// <https://drafts.csswg.org/css-syntax-3/#letter>
@@ -245,7 +299,7 @@ impl<'a> Parser<'a> {
     fn skip_whitespace(&mut self) {
         loop {
             match self.peek() {
-                Some(c) if is_whitespace(c) => self.position += 1,
+                Some(c) if c.is_ascii_whitespace() => self.position += 1,
                 _ => return,
             }
         }
@@ -290,14 +344,9 @@ impl<'a> Parser<'a> {
         let input = &self.input[self.position..];
         let mut input = CSSParserInput::new(input);
         let mut input = CSSParser::new(&mut input);
-        let location = input.current_source_location();
-        let name = input
-            .expect_ident()
-            .ok()
-            .and_then(|name| CustomIdent::from_ident(location, name, &[]).ok());
-        let name = match name {
-            Some(name) => name,
-            None => return Err(ParseError::InvalidName),
+        let name = match CustomIdent::parse(&mut input, &[]) {
+            Ok(name) => name,
+            Err(_) => return Err(ParseError::InvalidName),
         };
         self.position += input.position().byte_index();
         return Ok(ComponentName::Ident(name));

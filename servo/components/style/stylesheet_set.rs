@@ -224,8 +224,8 @@ where
     ///
     /// Since we don't have a good use-case for partial iteration, this does the
     /// trick for now.
-    pub fn each(self, mut callback: impl FnMut(&S, SheetRebuildKind) -> bool) {
-        for potential_sheet in self.entries.iter_mut() {
+    pub fn each(self, mut callback: impl FnMut(usize, &S, SheetRebuildKind) -> bool) {
+        for (index, potential_sheet) in self.entries.iter_mut().enumerate() {
             let committed = mem::replace(&mut potential_sheet.committed, true);
             let rebuild_kind = if !committed {
                 // If the sheet was uncommitted, we need to do a full rebuild
@@ -239,7 +239,7 @@ where
                 }
             };
 
-            if !callback(&potential_sheet.sheet, rebuild_kind) {
+            if !callback(index, &potential_sheet.sheet, rebuild_kind) {
                 return;
             }
         }
@@ -591,7 +591,7 @@ where
     /// Return an iterator over the flattened view of all the stylesheets.
     pub fn iter(&self) -> StylesheetIterator<S> {
         StylesheetIterator {
-            origins: OriginSet::all().iter(),
+            origins: OriginSet::all().iter_origins(),
             collections: &self.collections,
             current: None,
         }
@@ -601,7 +601,7 @@ where
     /// something external may have invalidated it.
     pub fn force_dirty(&mut self, origins: OriginSet) {
         self.invalidations.invalidate_fully();
-        for origin in origins.iter() {
+        for origin in origins.iter_origins() {
             // We don't know what happened, assume the worse.
             self.collections
                 .borrow_mut_for_origin(&origin)

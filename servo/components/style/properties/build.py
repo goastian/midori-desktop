@@ -8,7 +8,6 @@ import re
 import sys
 
 BASE = os.path.dirname(__file__.replace("\\", "/"))
-sys.path.insert(0, os.path.join(BASE, "Mako-1.1.2-py2.py3-none-any.whl"))
 sys.path.insert(0, BASE)  # For importing `data.py`
 
 from mako import exceptions
@@ -21,36 +20,10 @@ RE_PYTHON_ADDR = re.compile(r"<.+? object at 0x[0-9a-fA-F]+>")
 
 OUT_DIR = os.environ.get("OUT_DIR", "")
 
-STYLE_STRUCT_LIST = [
-    "background",
-    "border",
-    "box",
-    "column",
-    "counters",
-    "effects",
-    "font",
-    "inherited_box",
-    "inherited_svg",
-    "inherited_table",
-    "inherited_text",
-    "inherited_ui",
-    "list",
-    "margin",
-    "outline",
-    "page",
-    "padding",
-    "position",
-    "svg",
-    "table",
-    "text",
-    "ui",
-    "xul",
-]
-
 
 def main():
     usage = (
-        "Usage: %s [ servo-2013 | servo-2020 | gecko ] [ style-crate | geckolib <template> | html ]"
+        "Usage: %s [ servo | gecko ] [ style-crate | geckolib <template> ]"
         % sys.argv[0]
     )
     if len(sys.argv) < 3:
@@ -58,29 +31,15 @@ def main():
     engine = sys.argv[1]
     output = sys.argv[2]
 
-    if engine not in ["servo-2013", "servo-2020", "gecko"] or output not in [
+    if engine not in ["servo", "gecko"] or output not in [
         "style-crate",
         "geckolib",
-        "html",
     ]:
         abort(usage)
 
     properties = data.PropertiesData(engine=engine)
-    files = {}
-    for kind in ["longhands", "shorthands"]:
-        files[kind] = {}
-        for struct in STYLE_STRUCT_LIST:
-            file_name = os.path.join(BASE, kind, "{}.mako.rs".format(struct))
-            if kind == "shorthands" and not os.path.exists(file_name):
-                files[kind][struct] = ""
-                continue
-            files[kind][struct] = render(
-                file_name,
-                engine=engine,
-                data=properties,
-            )
     properties_template = os.path.join(BASE, "properties.mako.rs")
-    files["properties"] = render(
+    properties_file = render(
         properties_template,
         engine=engine,
         data=properties,
@@ -88,31 +47,15 @@ def main():
         OUT_DIR=OUT_DIR,
     )
     if output == "style-crate":
-        write(OUT_DIR, "properties.rs", files["properties"])
-        for kind in ["longhands", "shorthands"]:
-            for struct in files[kind]:
-                write(
-                    os.path.join(OUT_DIR, kind),
-                    "{}.rs".format(struct),
-                    files[kind][struct],
-                )
+        write(OUT_DIR, "properties.rs", properties_file)
 
-        if engine == "gecko":
-            template = os.path.join(BASE, "gecko.mako.rs")
-            rust = render(template, data=properties)
-            write(OUT_DIR, "gecko_properties.rs", rust)
-
-        if engine in ["servo-2013", "servo-2020"]:
-            if engine == "servo-2013":
-                pref_attr = "servo_2013_pref"
-            if engine == "servo-2020":
-                pref_attr = "servo_2020_pref"
+        if engine == "servo":
             properties_dict = {
                 kind: {
-                    p.name: {"pref": getattr(p, pref_attr)}
+                    p.name: {"pref": getattr(p, "servo_pref")}
                     for prop in properties_list
                     if prop.enabled_in_content()
-                    for p in [prop] + prop.alias
+                    for p in [prop] + prop.aliases
                 }
                 for kind, properties_list in [
                     ("longhands", properties.longhands),

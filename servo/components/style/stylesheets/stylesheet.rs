@@ -24,6 +24,8 @@ use servo_arc::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use style_traits::ParsingMode;
 
+use super::scope_rule::ImplicitScopeRoot;
+
 /// This structure holds the user-agent and user stylesheets.
 pub struct UserAgentStylesheets {
     /// The lock used for user-agent stylesheets.
@@ -80,7 +82,6 @@ impl StylesheetContents {
         stylesheet_loader: Option<&dyn StylesheetLoader>,
         error_reporter: Option<&dyn ParseErrorReporter>,
         quirks_mode: QuirksMode,
-        line_number_offset: u32,
         use_counters: Option<&UseCounters>,
         allow_import_rules: AllowImportRules,
         sanitization_data: Option<&mut SanitizationData>,
@@ -93,7 +94,6 @@ impl StylesheetContents {
             stylesheet_loader,
             error_reporter,
             quirks_mode,
-            line_number_offset,
             use_counters,
             allow_import_rules,
             sanitization_data,
@@ -198,25 +198,6 @@ pub struct Stylesheet {
     pub disabled: AtomicBool,
 }
 
-macro_rules! rule_filter {
-    ($( $method: ident($variant:ident => $rule_type: ident), )+) => {
-        $(
-            #[allow(missing_docs)]
-            fn $method<F>(&self, device: &Device, guard: &SharedRwLockReadGuard, mut f: F)
-                where F: FnMut(&crate::stylesheets::$rule_type),
-            {
-                use crate::stylesheets::CssRule;
-
-                for rule in self.effective_rules(device, guard) {
-                    if let CssRule::$variant(ref rule) = *rule {
-                        f(&rule)
-                    }
-                }
-            }
-        )+
-    }
-}
-
 /// A trait to represent a given stylesheet in a document.
 pub trait StylesheetInDocument: ::std::fmt::Debug {
     /// Get whether this stylesheet is enabled.
@@ -271,9 +252,8 @@ pub trait StylesheetInDocument: ::std::fmt::Debug {
         self.iter_rules::<EffectiveRules>(device, guard)
     }
 
-    rule_filter! {
-        effective_viewport_rules(Viewport => ViewportRule),
-    }
+    /// Return the implicit scope root for this stylesheet, if one exists.
+    fn implicit_scope_root(&self) -> Option<ImplicitScopeRoot>;
 }
 
 impl StylesheetInDocument for Stylesheet {
@@ -288,6 +268,10 @@ impl StylesheetInDocument for Stylesheet {
     #[inline]
     fn contents(&self) -> &StylesheetContents {
         &self.contents
+    }
+
+    fn implicit_scope_root(&self) -> Option<ImplicitScopeRoot> {
+        None
     }
 }
 
@@ -317,6 +301,10 @@ impl StylesheetInDocument for DocumentStyleSheet {
     #[inline]
     fn contents(&self) -> &StylesheetContents {
         self.0.contents()
+    }
+
+    fn implicit_scope_root(&self) -> Option<ImplicitScopeRoot> {
+        None
     }
 }
 
@@ -358,16 +346,20 @@ impl SanitizationKind {
             // TODO(emilio): Perhaps Layer should not be always sanitized? But
             // we sanitize @media and co, so this seems safer for now.
             CssRule::LayerStatement(..) |
-            CssRule::LayerBlock(..) => false,
+            CssRule::LayerBlock(..) |
+            // TODO(dshin): Same comment as Layer applies - shouldn't give away
+            // something like display size - erring on the side of "safe" for now.
+            CssRule::Scope(..) |
+            CssRule::StartingStyle(..) => false,
 
             CssRule::FontFace(..) | CssRule::Namespace(..) | CssRule::Style(..) => true,
 
             CssRule::Keyframes(..) |
             CssRule::Page(..) |
+            CssRule::Margin(..) |
             CssRule::Property(..) |
             CssRule::FontFeatureValues(..) |
             CssRule::FontPaletteValues(..) |
-            CssRule::Viewport(..) |
             CssRule::CounterStyle(..) => !is_standard,
         }
     }
@@ -408,7 +400,6 @@ impl Stylesheet {
         url_data: UrlExtraData,
         stylesheet_loader: Option<&dyn StylesheetLoader>,
         error_reporter: Option<&dyn ParseErrorReporter>,
-        line_number_offset: u32,
         allow_import_rules: AllowImportRules,
     ) {
         // FIXME: Consider adding use counters to Servo?
@@ -420,7 +411,6 @@ impl Stylesheet {
             stylesheet_loader,
             error_reporter,
             existing.contents.quirks_mode,
-            line_number_offset,
             /* use_counters = */ None,
             allow_import_rules,
             /* sanitization_data = */ None,
@@ -444,12 +434,11 @@ impl Stylesheet {
         stylesheet_loader: Option<&dyn StylesheetLoader>,
         error_reporter: Option<&dyn ParseErrorReporter>,
         quirks_mode: QuirksMode,
-        line_number_offset: u32,
         use_counters: Option<&UseCounters>,
         allow_import_rules: AllowImportRules,
         mut sanitization_data: Option<&mut SanitizationData>,
     ) -> (Namespaces, Vec<CssRule>, Option<String>, Option<String>) {
-        let mut input = ParserInput::new_with_line_number_offset(css, line_number_offset);
+        let mut input = ParserInput::new(css);
         let mut input = Parser::new(&mut input);
 
         let context = ParserContext::new(
@@ -472,6 +461,7 @@ impl Stylesheet {
             insert_rule_context: None,
             allow_import_rules,
             declaration_parser_state: Default::default(),
+            error_reporting_state: Default::default(),
             rules: Vec::new(),
         };
 
@@ -525,7 +515,6 @@ impl Stylesheet {
         stylesheet_loader: Option<&dyn StylesheetLoader>,
         error_reporter: Option<&dyn ParseErrorReporter>,
         quirks_mode: QuirksMode,
-        line_number_offset: u32,
         allow_import_rules: AllowImportRules,
     ) -> Self {
         // FIXME: Consider adding use counters to Servo?
@@ -537,7 +526,6 @@ impl Stylesheet {
             stylesheet_loader,
             error_reporter,
             quirks_mode,
-            line_number_offset,
             /* use_counters = */ None,
             allow_import_rules,
             /* sanitized_output = */ None,

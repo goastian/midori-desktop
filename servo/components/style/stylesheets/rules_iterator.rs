@@ -65,13 +65,17 @@ where
             CssRule::Namespace(_) |
             CssRule::FontFace(_) |
             CssRule::CounterStyle(_) |
-            CssRule::Viewport(_) |
             CssRule::Keyframes(_) |
-            CssRule::Page(_) |
+            CssRule::Margin(_) |
             CssRule::Property(_) |
             CssRule::LayerStatement(_) |
             CssRule::FontFeatureValues(_) |
             CssRule::FontPaletteValues(_) => None,
+            CssRule::Page(ref page_rule) => {
+                let page_rule = page_rule.read_with(guard);
+                let rules = page_rule.rules.read_with(guard);
+                Some(rules.0.iter())
+            },
             CssRule::Style(ref style_rule) => {
                 let style_rule = style_rule.read_with(guard);
                 style_rule
@@ -112,6 +116,8 @@ where
                 Some(supports_rule.rules.read_with(guard).0.iter())
             },
             CssRule::LayerBlock(ref layer_rule) => Some(layer_rule.rules.read_with(guard).0.iter()),
+            CssRule::Scope(ref rule) => Some(rule.rules.read_with(guard).0.iter()),
+            CssRule::StartingStyle(ref rule) => Some(rule.rules.read_with(guard).0.iter()),
         }
     }
 }

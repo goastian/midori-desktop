@@ -4,32 +4,30 @@
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
-<% data.new_style_struct("Column", inherited=False) %>
-
 ${helpers.predefined_type(
     "column-width",
     "length::NonNegativeLengthOrAuto",
     "computed::length::NonNegativeLengthOrAuto::auto()",
-    engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
+    engines="gecko servo",
     initial_specified_value="specified::length::NonNegativeLengthOrAuto::auto()",
     animation_value_type="NonNegativeLengthOrAuto",
-    servo_2013_pref="layout.columns.enabled",
+    servo_pref="layout.columns.enabled",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-width",
     servo_restyle_damage="rebuild_and_reflow",
+    affects="layout",
 )}
 
 ${helpers.predefined_type(
     "column-count",
     "ColumnCount",
-    "computed::ColumnCount::auto()",
-    engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
-    initial_specified_value="specified::ColumnCount::auto()",
-    servo_2013_pref="layout.columns.enabled",
+    "computed::ColumnCount::Auto",
+    engines="gecko servo",
+    initial_specified_value="specified::ColumnCount::Auto",
+    servo_pref="layout.columns.enabled",
     animation_value_type="AnimatedColumnCount",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-count",
     servo_restyle_damage="rebuild_and_reflow",
+    affects="layout",
 )}
 
 ${helpers.single_keyword(
@@ -39,6 +37,7 @@ ${helpers.single_keyword(
     animation_value_type="discrete",
     gecko_enum_prefix="StyleColumnFill",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-fill",
+    affects="layout",
 )}
 
 ${helpers.predefined_type(
@@ -49,6 +48,7 @@ ${helpers.predefined_type(
     initial_specified_value="specified::BorderSideWidth::medium()",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule-width",
     animation_value_type="NonNegativeLength",
+    affects="layout",
 )}
 
 // https://drafts.csswg.org/css-multicol-1/#crc
@@ -61,15 +61,18 @@ ${helpers.predefined_type(
     animation_value_type="AnimatedColor",
     ignored_when_colors_disabled=True,
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule-color",
+    affects="paint",
 )}
 
 ${helpers.single_keyword(
     "column-span",
     "none all",
-    engines="gecko",
+    engines="gecko servo",
+    servo_pref="layout.columns.enabled",
     animation_value_type="discrete",
     gecko_enum_prefix="StyleColumnSpan",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-span",
+    affects="layout",
 )}
 
 ${helpers.predefined_type(
@@ -80,4 +83,5 @@ ${helpers.predefined_type(
     initial_specified_value="specified::BorderStyle::None",
     animation_value_type="discrete",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule-style",
+    affects="paint",
 )}

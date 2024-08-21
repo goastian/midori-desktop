@@ -10,7 +10,7 @@ use crate::bloom::StyleBloom;
 use crate::context::SharedStyleContext;
 use crate::dom::TElement;
 use crate::sharing::{StyleSharingCandidate, StyleSharingTarget};
-use selectors::NthIndexCache;
+use selectors::matching::SelectorCaches;
 
 /// Determines whether a target and a candidate have compatible parents for
 /// sharing.
@@ -32,17 +32,6 @@ where
     let candidate_parent = candidate.element.inheritance_parent().unwrap();
     if parent == candidate_parent {
         return true;
-    }
-
-    // Cousins are a bit more complicated.
-    //
-    // The fact that the candidate is here means that its element does not anchor
-    // the relative selector. However, it may have considered relative selector(s)
-    // to compute its style, i.e. there's a rule `<..> :has(<..>) <..> candidate`.
-    // In this case, evaluating style sharing requires evaluating the relative
-    // selector for the target anyway.
-    if candidate.considered_relative_selector {
-        return false;
     }
 
     // If a parent element was already styled and we traversed past it without
@@ -128,21 +117,16 @@ pub fn revalidate<E>(
     candidate: &mut StyleSharingCandidate<E>,
     shared_context: &SharedStyleContext,
     bloom: &StyleBloom<E>,
-    nth_index_cache: &mut NthIndexCache,
+    selector_caches: &mut SelectorCaches,
 ) -> bool
 where
     E: TElement,
 {
     let stylist = &shared_context.stylist;
 
-    let for_element = target.revalidation_match_results(stylist, bloom, nth_index_cache);
+    let for_element = target.revalidation_match_results(stylist, bloom, selector_caches);
 
-    let for_candidate = candidate.revalidation_match_results(stylist, bloom, nth_index_cache);
-
-    // This assert "ensures", to some extent, that the two candidates have
-    // matched the same rulehash buckets, and as such, that the bits we're
-    // comparing represent the same set of selectors.
-    debug_assert_eq!(for_element.len(), for_candidate.len());
+    let for_candidate = candidate.revalidation_match_results(stylist, bloom, selector_caches);
 
     for_element == for_candidate
 }

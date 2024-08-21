@@ -4,7 +4,6 @@
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import ALL_SIDES, maybe_moz_logical_alias %>
-<% data.new_style_struct("Padding", inherited=False) %>
 
 % for side in ALL_SIDES:
     <%
@@ -16,14 +15,15 @@
         "padding-%s" % side[0],
         "NonNegativeLengthPercentage",
         "computed::NonNegativeLengthPercentage::zero()",
-        engines="gecko servo-2013 servo-2020",
+        engines="gecko servo",
         aliases=maybe_moz_logical_alias(engine, side, "-moz-padding-%s"),
         animation_value_type="NonNegativeLengthPercentage",
         logical=side[1],
         logical_group="padding",
         spec=spec,
         allow_quirks="No" if side[1] else "Yes",
-        servo_restyle_damage="reflow rebuild_and_reflow_inline"
+        servo_restyle_damage="reflow rebuild_and_reflow_inline",
+        affects="layout",
     )}
 % endfor
 
@@ -37,5 +37,6 @@
         logical_group="scroll-padding",
         spec="https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-%s" % side[0],
         animation_value_type="NonNegativeLengthPercentageOrAuto",
+        affects="",
     )}
 % endfor

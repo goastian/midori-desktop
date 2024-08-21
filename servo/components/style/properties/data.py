@@ -5,14 +5,16 @@
 import re
 from counted_unknown_properties import COUNTED_UNKNOWN_PROPERTIES
 
+# It is important that the order of these physical / logical variants matches
+# the order of the enum variants in logical_geometry.rs
 PHYSICAL_SIDES = ["top", "right", "bottom", "left"]
-LOGICAL_SIDES = ["block-start", "block-end", "inline-start", "inline-end"]
-PHYSICAL_SIZES = ["width", "height"]
-LOGICAL_SIZES = ["block-size", "inline-size"]
 PHYSICAL_CORNERS = ["top-left", "top-right", "bottom-right", "bottom-left"]
+PHYSICAL_AXES = ["y", "x"]
+PHYSICAL_SIZES = ["height", "width"]
+LOGICAL_SIDES = ["block-start", "block-end", "inline-start", "inline-end"]
 LOGICAL_CORNERS = ["start-start", "start-end", "end-start", "end-end"]
-PHYSICAL_AXES = ["x", "y"]
-LOGICAL_AXES = ["inline", "block"]
+LOGICAL_SIZES = ["block-size", "inline-size"]
+LOGICAL_AXES = ["block", "inline"]
 
 # bool is True when logical
 ALL_SIDES = [(side, False) for side in PHYSICAL_SIDES] + [
@@ -30,6 +32,70 @@ ALL_AXES = [(axis, False) for axis in PHYSICAL_AXES] + [
 
 SYSTEM_FONT_LONGHANDS = """font_family font_size font_style
                            font_stretch font_weight""".split()
+
+PRIORITARY_PROPERTIES = set(
+    [
+        # The writing-mode group has the most priority of all property groups, as
+        # sizes like font-size can depend on it.
+        "writing-mode",
+        "direction",
+        "text-orientation",
+        # The fonts and colors group has the second priority, as all other lengths
+        # and colors depend on them.
+        #
+        # There are some interdependencies between these, but we fix them up in
+        # Cascade::fixup_font_stuff.
+        # Needed to properly compute the zoomed font-size.
+        "-x-text-scale",
+        # Needed to do font-size computation in a language-dependent way.
+        "-x-lang",
+        # Needed for ruby to respect language-dependent min-font-size
+        # preferences properly, see bug 1165538.
+        "-moz-min-font-size-ratio",
+        # font-size depends on math-depth's computed value.
+        "math-depth",
+        # Needed to compute the first available font and its used size,
+        # in order to compute font-relative units correctly.
+        "font-size",
+        "font-size-adjust",
+        "font-weight",
+        "font-stretch",
+        "font-style",
+        "font-family",
+        # color-scheme affects how system colors and light-dark() resolve.
+        "color-scheme",
+        # forced-color-adjust affects whether colors are adjusted.
+        "forced-color-adjust",
+        # Zoom affects all absolute lengths.
+        "zoom",
+        # Line height lengths depend on this.
+        "line-height",
+    ]
+)
+
+VISITED_DEPENDENT_PROPERTIES = set(
+    [
+        "column-rule-color",
+        "text-emphasis-color",
+        "-webkit-text-fill-color",
+        "-webkit-text-stroke-color",
+        "text-decoration-color",
+        "fill",
+        "stroke",
+        "caret-color",
+        "background-color",
+        "border-top-color",
+        "border-right-color",
+        "border-bottom-color",
+        "border-left-color",
+        "border-block-start-color",
+        "border-inline-end-color",
+        "border-block-end-color",
+        "border-inline-start-color",
+        "outline-color",
+        "color",
+    ]
+)
 
 # Bitfield values for all rule types which can have property declarations.
 STYLE_RULE = 1 << 0
@@ -110,11 +176,9 @@ class Keyword(object):
         gecko_enum_prefix=None,
         custom_consts=None,
         extra_gecko_values=None,
-        extra_servo_2013_values=None,
-        extra_servo_2020_values=None,
+        extra_servo_values=None,
         gecko_aliases=None,
-        servo_2013_aliases=None,
-        servo_2020_aliases=None,
+        servo_aliases=None,
         gecko_strip_moz_prefix=None,
         gecko_inexhaustive=None,
     ):
@@ -130,11 +194,9 @@ class Keyword(object):
         )
         self.gecko_enum_prefix = gecko_enum_prefix
         self.extra_gecko_values = (extra_gecko_values or "").split()
-        self.extra_servo_2013_values = (extra_servo_2013_values or "").split()
-        self.extra_servo_2020_values = (extra_servo_2020_values or "").split()
+        self.extra_servo_values = (extra_servo_values or "").split()
         self.gecko_aliases = parse_aliases(gecko_aliases or "")
-        self.servo_2013_aliases = parse_aliases(servo_2013_aliases or "")
-        self.servo_2020_aliases = parse_aliases(servo_2020_aliases or "")
+        self.servo_aliases = parse_aliases(servo_aliases or "")
         self.consts_map = {} if custom_consts is None else custom_consts
         self.gecko_strip_moz_prefix = (
             True if gecko_strip_moz_prefix is None else gecko_strip_moz_prefix
@@ -144,20 +206,16 @@ class Keyword(object):
     def values_for(self, engine):
         if engine == "gecko":
             return self.values + self.extra_gecko_values
-        elif engine == "servo-2013":
-            return self.values + self.extra_servo_2013_values
-        elif engine == "servo-2020":
-            return self.values + self.extra_servo_2020_values
+        elif engine == "servo":
+            return self.values + self.extra_servo_values
         else:
             raise Exception("Bad engine: " + engine)
 
     def aliases_for(self, engine):
         if engine == "gecko":
             return self.gecko_aliases
-        elif engine == "servo-2013":
-            return self.servo_2013_aliases
-        elif engine == "servo-2020":
-            return self.servo_2020_aliases
+        elif engine == "servo":
+            return self.servo_aliases
         else:
             raise Exception("Bad engine: " + engine)
 
@@ -223,8 +281,7 @@ class Property(object):
         self,
         name,
         spec,
-        servo_2013_pref,
-        servo_2020_pref,
+        servo_pref,
         gecko_pref,
         enabled_in,
         rule_types_allowed,
@@ -238,8 +295,7 @@ class Property(object):
         self.spec = spec
         self.ident = to_rust_ident(name)
         self.camel_case = to_camel_case(self.ident)
-        self.servo_2013_pref = servo_2013_pref
-        self.servo_2020_pref = servo_2020_pref
+        self.servo_pref = servo_pref
         self.gecko_pref = gecko_pref
         self.rule_types_allowed = rule_values_from_arg(rule_types_allowed)
         # For enabled_in, the setup is as follows:
@@ -263,10 +319,8 @@ class Property(object):
     def experimental(self, engine):
         if engine == "gecko":
             return bool(self.gecko_pref)
-        elif engine == "servo-2013":
-            return bool(self.servo_2013_pref)
-        elif engine == "servo-2020":
-            return bool(self.servo_2020_pref)
+        elif engine == "servo":
+            return bool(self.servo_pref)
         else:
             raise Exception("Bad engine: " + engine)
 
@@ -278,6 +332,12 @@ class Property(object):
 
     def enabled_in_content(self):
         return self.enabled_in == "content"
+
+    def is_visited_dependent(self):
+        return self.name in VISITED_DEPENDENT_PROPERTIES
+
+    def is_prioritary(self):
+        return self.name in PRIORITARY_PROPERTIES
 
     def nscsspropertyid(self):
         return "nsCSSPropertyID::eCSSProperty_" + self.ident
@@ -292,8 +352,7 @@ class Longhand(Property):
         animation_value_type=None,
         keyword=None,
         predefined_type=None,
-        servo_2013_pref=None,
-        servo_2020_pref=None,
+        servo_pref=None,
         gecko_pref=None,
         enabled_in="content",
         need_index=False,
@@ -312,13 +371,13 @@ class Longhand(Property):
         simple_vector_bindings=False,
         vector=False,
         servo_restyle_damage="repaint",
+        affects=None,
     ):
         Property.__init__(
             self,
             name=name,
             spec=spec,
-            servo_2013_pref=servo_2013_pref,
-            servo_2020_pref=servo_2020_pref,
+            servo_pref=servo_pref,
             gecko_pref=gecko_pref,
             enabled_in=enabled_in,
             rule_types_allowed=rule_types_allowed,
@@ -326,6 +385,9 @@ class Longhand(Property):
             extra_prefixes=extra_prefixes,
             flags=flags,
         )
+
+        self.affects = affects
+        self.flags += self.affects_flags()
 
         self.keyword = keyword
         self.predefined_type = predefined_type
@@ -366,9 +428,6 @@ class Longhand(Property):
         self.animation_value_type = animation_value_type
 
         self.animatable = animation_value_type != "none"
-        self.transitionable = (
-            animation_value_type != "none" and animation_value_type != "discrete"
-        )
         self.is_animatable_with_computed_value = (
             animation_value_type == "ComputedValue"
             or animation_value_type == "discrete"
@@ -377,49 +436,76 @@ class Longhand(Property):
         # See compute_damage for the various values this can take
         self.servo_restyle_damage = servo_restyle_damage
 
+    def affects_flags(self):
+        # Layout is the stronger hint. This property animation affects layout
+        # or frame construction. `display` or `width` are examples that should
+        # use this.
+        if self.affects == "layout":
+            return ["AFFECTS_LAYOUT"]
+        # This property doesn't affect layout, but affects overflow.
+        # `transform` and co. are examples of this.
+        if self.affects == "overflow":
+            return ["AFFECTS_OVERFLOW"]
+        # This property affects the rendered output but doesn't affect layout.
+        # `opacity`, `color`, or `z-index` are examples of this.
+        if self.affects == "paint":
+            return ["AFFECTS_PAINT"]
+        # This property doesn't affect rendering in any way.
+        # `user-select` is an example of this.
+        assert self.affects == "", (
+            "Property "
+            + self.name
+            + ': affects must be specified and be one of ["layout", "overflow", "paint", ""], see Longhand.affects_flags for documentation'
+        )
+        return []
+
     @staticmethod
     def type():
         return "longhand"
+
+    # For a given logical property, return the kind of mapping we need to
+    # perform, and which logical value we represent, in a tuple.
+    def logical_mapping_data(self, data):
+        if not self.logical:
+            return []
+        # Sizes and axes are basically the same for mapping, we just need
+        # slightly different replacements (block-size -> height, etc rather
+        # than -x/-y) below.
+        for [ty, logical_items, physical_items] in [
+            ["Side", LOGICAL_SIDES, PHYSICAL_SIDES],
+            ["Corner", LOGICAL_CORNERS, PHYSICAL_CORNERS],
+            ["Axis", LOGICAL_SIZES, PHYSICAL_SIZES],
+            ["Axis", LOGICAL_AXES, PHYSICAL_AXES],
+        ]:
+            candidate = [s for s in logical_items if s in self.name]
+            if candidate:
+                assert len(candidate) == 1
+                return [ty, candidate[0], logical_items, physical_items]
+        assert False, "Don't know how to deal with " + self.name
+
+    def logical_mapping_kind(self, data):
+        assert self.logical
+        [kind, item, _, _] = self.logical_mapping_data(data)
+        return "LogicalMappingKind::{}(Logical{}::{})".format(
+            kind, kind, to_camel_case(item.replace("-size", ""))
+        )
 
     # For a given logical property return all the physical property names
     # corresponding to it.
     def all_physical_mapped_properties(self, data):
         if not self.logical:
             return []
-
-        candidates = [
-            s for s in LOGICAL_SIDES + LOGICAL_SIZES + LOGICAL_CORNERS if s in self.name
-        ] + [s for s in LOGICAL_AXES if self.name.endswith(s)]
-        assert len(candidates) == 1
-        logical_side = candidates[0]
-
-        physical = (
-            PHYSICAL_SIDES
-            if logical_side in LOGICAL_SIDES
-            else PHYSICAL_SIZES
-            if logical_side in LOGICAL_SIZES
-            else PHYSICAL_AXES
-            if logical_side in LOGICAL_AXES
-            else LOGICAL_CORNERS
-        )
+        [_, logical_side, _, physical_items] = self.logical_mapping_data(data)
         return [
             data.longhands_by_name[to_phys(self.name, logical_side, physical_side)]
-            for physical_side in physical
+            for physical_side in physical_items
         ]
 
     def may_be_disabled_in(self, shorthand, engine):
         if engine == "gecko":
             return self.gecko_pref and self.gecko_pref != shorthand.gecko_pref
-        elif engine == "servo-2013":
-            return (
-                self.servo_2013_pref
-                and self.servo_2013_pref != shorthand.servo_2013_pref
-            )
-        elif engine == "servo-2020":
-            return (
-                self.servo_2020_pref
-                and self.servo_2020_pref != shorthand.servo_2020_pref
-            )
+        elif engine == "servo":
+            return self.servo_pref and self.servo_pref != shorthand.servo_pref
         else:
             raise Exception("Bad engine: " + engine)
 
@@ -446,6 +532,10 @@ class Longhand(Property):
                 "AlignItems",
                 "AlignSelf",
                 "Appearance",
+                "AnimationComposition",
+                "AnimationDirection",
+                "AnimationFillMode",
+                "AnimationPlayState",
                 "AspectRatio",
                 "BaselineSource",
                 "BreakBetween",
@@ -476,17 +566,21 @@ class Longhand(Property):
                 "ImageRendering",
                 "InitialLetter",
                 "Integer",
+                "InsetArea",
+                "InsetAreaKeyword",
                 "JustifyContent",
                 "JustifyItems",
                 "JustifySelf",
                 "LineBreak",
                 "LineClamp",
                 "MasonryAutoFlow",
+                "ui::MozTheme",
                 "BoolInteger",
                 "text::MozControlCharacterVisibility",
                 "MathDepth",
                 "MozScriptMinSize",
                 "MozScriptSizeMultiplier",
+                "TransformBox",
                 "TextDecorationSkipInk",
                 "NonNegativeNumber",
                 "OffsetRotate",
@@ -499,6 +593,8 @@ class Longhand(Property):
                 "OverscrollBehavior",
                 "PageOrientation",
                 "Percentage",
+                "PositionTryOrder",
+                "PositionVisibility",
                 "PrintColorAdjust",
                 "ForcedColorAdjust",
                 "Resize",
@@ -525,6 +621,7 @@ class Longhand(Property):
                 "XSpan",
                 "XTextScale",
                 "ZIndex",
+                "Zoom",
             }
         if self.name == "overflow-y":
             return True
@@ -544,8 +641,7 @@ class Shorthand(Property):
         name,
         sub_properties,
         spec=None,
-        servo_2013_pref=None,
-        servo_2020_pref=None,
+        servo_pref=None,
         gecko_pref=None,
         enabled_in="content",
         rule_types_allowed=DEFAULT_RULES,
@@ -557,8 +653,7 @@ class Shorthand(Property):
             self,
             name=name,
             spec=spec,
-            servo_2013_pref=servo_2013_pref,
-            servo_2020_pref=servo_2020_pref,
+            servo_pref=servo_pref,
             gecko_pref=gecko_pref,
             enabled_in=enabled_in,
             rule_types_allowed=rule_types_allowed,
@@ -574,16 +669,7 @@ class Shorthand(Property):
                 return True
         return False
 
-    def get_transitionable(self):
-        transitionable = False
-        for sub in self.sub_properties:
-            if sub.transitionable:
-                transitionable = True
-                break
-        return transitionable
-
     animatable = property(get_animatable)
-    transitionable = property(get_transitionable)
 
     @staticmethod
     def type():
@@ -598,10 +684,8 @@ class Alias(object):
         self.original = original
         self.enabled_in = original.enabled_in
         self.animatable = original.animatable
-        self.servo_2013_pref = original.servo_2013_pref
-        self.servo_2020_pref = original.servo_2020_pref
+        self.servo_pref = original.servo_pref
         self.gecko_pref = gecko_pref
-        self.transitionable = original.transitionable
         self.rule_types_allowed = original.rule_types_allowed
         self.flags = original.flags
 
@@ -617,10 +701,8 @@ class Alias(object):
     def experimental(self, engine):
         if engine == "gecko":
             return bool(self.gecko_pref)
-        elif engine == "servo-2013":
-            return bool(self.servo_2013_pref)
-        elif engine == "servo-2020":
-            return bool(self.servo_2020_pref)
+        elif engine == "servo":
+            return bool(self.servo_pref)
         else:
             raise Exception("Bad engine: " + engine)
 
@@ -663,7 +745,7 @@ class Method(object):
 
 
 class StyleStruct(object):
-    def __init__(self, name, inherited, gecko_name=None, additional_methods=None):
+    def __init__(self, name, inherited, gecko_name=None):
         self.gecko_struct_name = "Gecko" + name
         self.name = name
         self.name_lower = to_snake_case(name)
@@ -672,14 +754,12 @@ class StyleStruct(object):
         self.inherited = inherited
         self.gecko_name = gecko_name or name
         self.gecko_ffi_name = "nsStyle" + self.gecko_name
-        self.additional_methods = additional_methods or []
+        self.document_dependent = self.gecko_name in ["Font", "Visibility", "Text"]
 
 
 class PropertiesData(object):
     def __init__(self, engine):
         self.engine = engine
-        self.style_structs = []
-        self.current_style_struct = None
         self.longhands = []
         self.longhands_by_name = {}
         self.longhands_by_logical_group = {}
@@ -691,19 +771,41 @@ class PropertiesData(object):
             CountedUnknownProperty(p) for p in COUNTED_UNKNOWN_PROPERTIES
         ]
 
-    def new_style_struct(self, *args, **kwargs):
-        style_struct = StyleStruct(*args, **kwargs)
-        self.style_structs.append(style_struct)
-        self.current_style_struct = style_struct
+        self.style_structs = [
+            StyleStruct("Background", inherited=False),
+            StyleStruct("Border", inherited=False),
+            StyleStruct("Box", inherited=False, gecko_name="Display"),
+            StyleStruct("Column", inherited=False),
+            StyleStruct("Counters", inherited=False, gecko_name="Content"),
+            StyleStruct("Effects", inherited=False),
+            StyleStruct("Font", inherited=True),
+            StyleStruct("InheritedBox", inherited=True, gecko_name="Visibility"),
+            StyleStruct("InheritedSVG", inherited=True, gecko_name="SVG"),
+            StyleStruct("InheritedTable", inherited=True, gecko_name="TableBorder"),
+            StyleStruct("InheritedText", inherited=True, gecko_name="Text"),
+            StyleStruct("InheritedUI", inherited=True, gecko_name="UI"),
+            StyleStruct("List", inherited=True),
+            StyleStruct("Margin", inherited=False),
+            StyleStruct("Outline", inherited=False),
+            StyleStruct("Padding", inherited=False),
+            StyleStruct("Page", inherited=False),
+            StyleStruct("Position", inherited=False),
+            StyleStruct("SVG", inherited=False, gecko_name="SVGReset"),
+            StyleStruct("Table", inherited=False),
+            StyleStruct("Text", inherited=False, gecko_name="TextReset"),
+            StyleStruct("UI", inherited=False, gecko_name="UIReset"),
+            StyleStruct("XUL", inherited=False),
+        ]
+        self.current_style_struct = None
 
     def active_style_structs(self):
-        return [s for s in self.style_structs if s.additional_methods or s.longhands]
+        return [s for s in self.style_structs if s.longhands]
 
     def add_prefixed_aliases(self, property):
         # FIXME Servo's DOM architecture doesn't support vendor-prefixed properties.
         #       See servo/servo#14941.
         if self.engine == "gecko":
-            for (prefix, pref) in property.extra_prefixes:
+            for prefix, pref in property.extra_prefixes:
                 property.aliases.append(("-%s-%s" % (prefix, property.name), pref))
 
     def declare_longhand(self, name, engines=None, **kwargs):
@@ -750,7 +852,7 @@ def _add_logical_props(data, props):
     groups = set()
     for prop in props:
         if prop not in data.longhands_by_name:
-            assert data.engine in ["servo-2013", "servo-2020"]
+            assert data.engine == "servo"
             continue
         prop = data.longhands_by_name[prop]
         if prop.logical_group:
@@ -774,7 +876,9 @@ def _remove_common_first_line_and_first_letter_properties(props, engine):
     props.remove("overflow-wrap")
     props.remove("text-align")
     props.remove("text-justify")
-    props.remove("white-space")
+    props.remove("white-space-collapse")
+    props.remove("text-wrap-mode")
+    props.remove("text-wrap-style")
     props.remove("word-break")
     props.remove("text-indent")
 
@@ -794,6 +898,41 @@ class PropertyRestrictions:
     def spec(data, spec_path):
         return [p.name for p in data.longhands if spec_path in p.spec]
 
+    # https://svgwg.org/svg2-draft/propidx.html
+    @staticmethod
+    def svg_text_properties():
+        props = set(
+            [
+                "fill",
+                "fill-opacity",
+                "fill-rule",
+                "paint-order",
+                "stroke",
+                "stroke-dasharray",
+                "stroke-dashoffset",
+                "stroke-linecap",
+                "stroke-linejoin",
+                "stroke-miterlimit",
+                "stroke-opacity",
+                "stroke-width",
+                "text-rendering",
+                "vector-effect",
+            ]
+        )
+        return props
+
+    @staticmethod
+    def webkit_text_properties():
+        props = set(
+            [
+                # Kinda like css-text?
+                "-webkit-text-stroke-width",
+                "-webkit-text-fill-color",
+                "-webkit-text-stroke-color",
+            ]
+        )
+        return props
+
     # https://drafts.csswg.org/css-pseudo/#first-letter-styling
     @staticmethod
     def first_letter(data):
@@ -805,10 +944,6 @@ class PropertyRestrictions:
                 "initial-letter",
                 # Kinda like css-fonts?
                 "-moz-osx-font-smoothing",
-                # Kinda like css-text?
-                "-webkit-text-stroke-width",
-                "-webkit-text-fill-color",
-                "-webkit-text-stroke-color",
                 "vertical-align",
                 # Will become shorthand of vertical-align (Bug 1830771)
                 "baseline-source",
@@ -824,6 +959,8 @@ class PropertyRestrictions:
             + PropertyRestrictions.spec(data, "css-shapes")
             + PropertyRestrictions.spec(data, "css-text-decor")
         )
+        props = props.union(PropertyRestrictions.svg_text_properties())
+        props = props.union(PropertyRestrictions.webkit_text_properties())
 
         _add_logical_props(data, props)
 
@@ -840,10 +977,6 @@ class PropertyRestrictions:
                 "opacity",
                 # Kinda like css-fonts?
                 "-moz-osx-font-smoothing",
-                # Kinda like css-text?
-                "-webkit-text-stroke-width",
-                "-webkit-text-fill-color",
-                "-webkit-text-stroke-color",
                 "vertical-align",
                 # Will become shorthand of vertical-align (Bug 1830771)
                 "baseline-source",
@@ -856,6 +989,8 @@ class PropertyRestrictions:
             + PropertyRestrictions.spec(data, "css-text")
             + PropertyRestrictions.spec(data, "css-text-decor")
         )
+        props = props.union(PropertyRestrictions.svg_text_properties())
+        props = props.union(PropertyRestrictions.webkit_text_properties())
 
         # These are probably Gecko bugs and should be supported per spec.
         for prop in PropertyRestrictions.shorthand(data, "border"):
@@ -876,10 +1011,16 @@ class PropertyRestrictions:
     def placeholder(data):
         props = PropertyRestrictions.first_line(data)
         props.add("opacity")
-        props.add("white-space")
         props.add("text-overflow")
         props.add("text-align")
         props.add("text-justify")
+        for p in PropertyRestrictions.shorthand(data, "text-wrap"):
+            props.add(p)
+        for p in PropertyRestrictions.shorthand(data, "white-space"):
+            props.add(p)
+        # ::placeholder can't be SVG text
+        props -= PropertyRestrictions.svg_text_properties()
+
         return props
 
     # https://drafts.csswg.org/css-pseudo/#marker-pseudo
@@ -887,7 +1028,6 @@ class PropertyRestrictions:
     def marker(data):
         return set(
             [
-                "white-space",
                 "color",
                 "text-combine-upright",
                 "text-transform",
@@ -897,6 +1037,8 @@ class PropertyRestrictions:
                 "line-height",
                 "-moz-osx-font-smoothing",
             ]
+            + PropertyRestrictions.shorthand(data, "text-wrap")
+            + PropertyRestrictions.shorthand(data, "white-space")
             + PropertyRestrictions.spec(data, "css-fonts")
             + PropertyRestrictions.spec(data, "css-animations")
             + PropertyRestrictions.spec(data, "css-transitions")
@@ -911,7 +1053,6 @@ class PropertyRestrictions:
                 "opacity",
                 "visibility",
                 "text-shadow",
-                "white-space",
                 "text-combine-upright",
                 "ruby-position",
                 # XXX Should these really apply to cue?
@@ -922,6 +1063,8 @@ class PropertyRestrictions:
                 "background-blend-mode",
             ]
             + PropertyRestrictions.shorthand(data, "text-decoration")
+            + PropertyRestrictions.shorthand(data, "text-wrap")
+            + PropertyRestrictions.shorthand(data, "white-space")
             + PropertyRestrictions.shorthand(data, "background")
             + PropertyRestrictions.shorthand(data, "outline")
             + PropertyRestrictions.shorthand(data, "font")

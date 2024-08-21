@@ -14,12 +14,16 @@ use crate::media_queries::{Device, MediaList};
 use crate::properties::ComputedValues;
 use crate::selector_parser::SnapshotMap;
 use crate::shared_lock::{SharedRwLockReadGuard, StylesheetGuards};
+use crate::stylesheets::scope_rule::ImplicitScopeRoot;
 use crate::stylesheets::{StylesheetContents, StylesheetInDocument};
 use crate::stylist::Stylist;
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 use malloc_size_of::MallocSizeOfOps;
+use selectors::Element;
 use servo_arc::Arc;
 use std::fmt;
+
+use super::wrapper::GeckoElement;
 
 /// Little wrapper to a Gecko style sheet.
 #[derive(Eq, PartialEq)]
@@ -125,6 +129,31 @@ impl StylesheetInDocument for GeckoStyleSheet {
         debug_assert!(!self.inner().mContents.mRawPtr.is_null());
         unsafe { &*self.inner().mContents.mRawPtr }
     }
+
+    fn implicit_scope_root(&self) -> Option<ImplicitScopeRoot> {
+        unsafe {
+            let result = bindings::Gecko_StyleSheet_ImplicitScopeRoot(self.0);
+            if result.mRoot.is_null() {
+                return if result.mConstructed {
+                    Some(ImplicitScopeRoot::Constructed)
+                } else {
+                    None
+                };
+            }
+
+            let root = GeckoElement(result.mRoot.as_ref().unwrap()).opaque();
+            Some(if !result.mHost.is_null() {
+                let host = GeckoElement(result.mHost.as_ref().unwrap()).opaque();
+                if host == root {
+                    ImplicitScopeRoot::ShadowHost(root)
+                } else {
+                    ImplicitScopeRoot::InShadowTree(root)
+                }
+            } else {
+                ImplicitScopeRoot::InLightTree(root)
+            })
+        }
+    }
 }
 
 /// The container for data that a Servo-backed Gecko document needs to style
@@ -142,6 +171,7 @@ pub struct PerDocumentStyleDataImpl {
 
 /// The data itself is an `AtomicRefCell`, which guarantees the proper semantics
 /// and unexpected races while trying to mutate it.
+#[derive(Deref)]
 pub struct PerDocumentStyleData(AtomicRefCell<PerDocumentStyleDataImpl>);
 
 impl PerDocumentStyleData {

@@ -9,7 +9,7 @@ use crate::color::AbsoluteColor;
 use crate::values::animated::{Animate, Procedure, ToAnimatedZero};
 use crate::values::computed::Percentage;
 use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
-use crate::values::generics::color::{GenericColor, GenericColorMix};
+use crate::values::generics::color::{ColorMixFlags, GenericColor, GenericColorMix};
 
 impl Animate for AbsoluteColor {
     #[inline]
@@ -21,7 +21,7 @@ impl Animate for AbsoluteColor {
             left_weight as f32,
             other,
             right_weight as f32,
-            /* normalize_weights = */ false,
+            ColorMixFlags::empty(),
         ))
     }
 }
@@ -66,7 +66,7 @@ impl Animate for Color {
             right: other.clone(),
             right_percentage: Percentage(right_weight as f32),
             // See https://github.com/w3c/csswg-drafts/issues/7324
-            normalize_weights: false,
+            flags: ColorMixFlags::empty(),
         }))
     }
 }
@@ -74,7 +74,7 @@ impl Animate for Color {
 impl ComputeSquaredDistance for Color {
     #[inline]
     fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        let current_color = AbsoluteColor::transparent();
+        let current_color = AbsoluteColor::TRANSPARENT_BLACK;
         self.resolve_to_absolute(&current_color)
             .compute_squared_distance(&other.resolve_to_absolute(&current_color))
     }
@@ -83,6 +83,6 @@ impl ComputeSquaredDistance for Color {
 impl ToAnimatedZero for Color {
     #[inline]
     fn to_animated_zero(&self) -> Result<Self, ()> {
-        Ok(Color::Absolute(AbsoluteColor::transparent()))
+        Ok(Color::Absolute(AbsoluteColor::TRANSPARENT_BLACK))
     }
 }

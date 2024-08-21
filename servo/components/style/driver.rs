@@ -11,13 +11,9 @@ use crate::context::{PerThreadTraversalStatistics, StyleContext};
 use crate::context::{ThreadLocalStyleContext, TraversalStatistics};
 use crate::dom::{SendNode, TElement, TNode};
 use crate::parallel;
-use crate::parallel::{work_unit_max, DispatchMode};
 use crate::scoped_tls::ScopedTLS;
 use crate::traversal::{DomTraversal, PerLevelTraversalData, PreTraverseToken};
-use rayon;
 use std::collections::VecDeque;
-use std::mem;
-use time;
 
 #[cfg(feature = "servo")]
 fn should_report_statistics() -> bool {
@@ -38,18 +34,47 @@ fn report_statistics(_stats: &PerThreadTraversalStatistics) {
 fn report_statistics(stats: &PerThreadTraversalStatistics) {
     // This should only be called in the main thread, or it may be racy
     // to update the statistics in a global variable.
-    debug_assert!(unsafe { crate::gecko_bindings::bindings::Gecko_IsMainThread() });
-    let gecko_stats =
-        unsafe { &mut crate::gecko_bindings::structs::ServoTraversalStatistics_sSingleton };
-    gecko_stats.mElementsTraversed += stats.elements_traversed;
-    gecko_stats.mElementsStyled += stats.elements_styled;
-    gecko_stats.mElementsMatched += stats.elements_matched;
-    gecko_stats.mStylesShared += stats.styles_shared;
-    gecko_stats.mStylesReused += stats.styles_reused;
+    unsafe {
+        debug_assert!(crate::gecko_bindings::bindings::Gecko_IsMainThread());
+        let gecko_stats = std::ptr::addr_of_mut!(
+            crate::gecko_bindings::structs::ServoTraversalStatistics_sSingleton
+        );
+        (*gecko_stats).mElementsTraversed += stats.elements_traversed;
+        (*gecko_stats).mElementsStyled += stats.elements_styled;
+        (*gecko_stats).mElementsMatched += stats.elements_matched;
+        (*gecko_stats).mStylesShared += stats.styles_shared;
+        (*gecko_stats).mStylesReused += stats.styles_reused;
+    }
 }
 
-fn parallelism_threshold() -> usize {
-    static_prefs::pref!("layout.css.stylo-parallelism-threshold") as usize
+fn with_pool_in_place_scope<'scope>(
+    work_unit_max: usize,
+    pool: Option<&rayon::ThreadPool>,
+    closure: impl FnOnce(Option<&rayon::ScopeFifo<'scope>>) + Send + 'scope,
+) {
+    if work_unit_max == 0 || pool.is_none() {
+        closure(None);
+    } else {
+        let pool = pool.unwrap();
+        pool.in_place_scope_fifo(|scope| {
+            #[cfg(feature = "gecko")]
+            debug_assert_eq!(
+                pool.current_thread_index(),
+                Some(0),
+                "Main thread should be the first thread"
+            );
+            if cfg!(feature = "gecko") || pool.current_thread_index().is_some() {
+                closure(Some(scope));
+            } else {
+                scope.spawn_fifo(|scope| closure(Some(scope)));
+            }
+        });
+    }
+}
+
+/// See documentation of the pref for performance characteristics.
+fn work_unit_max() -> usize {
+    static_prefs::pref!("layout.css.stylo-work-unit-size") as usize
 }
 
 /// Do a DOM traversal for top-down and (optionally) bottom-up processing, generic over `D`.
@@ -92,89 +117,41 @@ where
     //     ThreadLocalStyleContext on the main thread. If the main thread
     //     ThreadLocalStyleContext has not released its TLS borrow by that point,
     //     we'll panic on double-borrow.
-    let mut tls_slots = None;
-    let mut tlc = ThreadLocalStyleContext::new();
-    let mut context = StyleContext {
-        shared: traversal.shared_context(),
-        thread_local: &mut tlc,
-    };
-
-    // Process the nodes breadth-first, just like the parallel traversal does.
-    // This helps keep similar traversal characteristics for the style sharing
-    // cache.
+    let mut scoped_tls = ScopedTLS::<ThreadLocalStyleContext<E>>::new(pool);
+    // Process the nodes breadth-first. This helps keep similar traversal characteristics for the
+    // style sharing cache.
     let work_unit_max = work_unit_max();
-    let parallelism_threshold = parallelism_threshold();
-    let mut discovered = VecDeque::<SendNode<E::ConcreteNode>>::with_capacity(work_unit_max * 2);
-    let mut depth = root.depth();
-    let mut nodes_remaining_at_current_depth = 1;
-    discovered.push_back(unsafe { SendNode::new(root.as_node()) });
-    while let Some(node) = discovered.pop_front() {
-        let mut children_to_process = 0isize;
-        let traversal_data = PerLevelTraversalData {
-            current_dom_depth: depth,
+
+    let send_root = unsafe { SendNode::new(root.as_node()) };
+    with_pool_in_place_scope(work_unit_max, pool, |maybe_scope| {
+        let mut tlc = scoped_tls.ensure(parallel::create_thread_local_context);
+        let mut context = StyleContext {
+            shared: traversal.shared_context(),
+            thread_local: &mut tlc,
         };
-        traversal.process_preorder(&traversal_data, &mut context, *node, |n| {
-            children_to_process += 1;
-            discovered.push_back(unsafe { SendNode::new(n) });
-        });
 
-        traversal.handle_postorder_traversal(
+        let mut discovered = VecDeque::with_capacity(work_unit_max * 2);
+        let current_dom_depth = send_root.depth();
+        let opaque_root = send_root.opaque();
+        discovered.push_back(send_root);
+        parallel::style_trees(
             &mut context,
-            root.as_node().opaque(),
-            *node,
-            children_to_process,
+            discovered,
+            opaque_root,
+            work_unit_max,
+            PerLevelTraversalData { current_dom_depth },
+            maybe_scope,
+            traversal,
+            &scoped_tls,
         );
-
-        nodes_remaining_at_current_depth -= 1;
-
-        // If there is enough work to parallelize over, and the caller allows parallelism, switch
-        // to the parallel driver. We do this only when moving to the next level in the dom so that
-        // we can pass the same depth for all the children.
-        if nodes_remaining_at_current_depth != 0 {
-            continue;
-        }
-        depth += 1;
-        if pool.is_some() && discovered.len() > parallelism_threshold && parallelism_threshold > 0 {
-            let pool = pool.unwrap();
-            let tls = ScopedTLS::<ThreadLocalStyleContext<E>>::new(pool);
-            let root_opaque = root.as_node().opaque();
-            pool.scope_fifo(|scope| {
-                // Enable a breadth-first rayon traversal. This causes the work
-                // queue to be always FIFO, rather than FIFO for stealers and
-                // FILO for the owner (which is what rayon does by default). This
-                // ensures that we process all the elements at a given depth before
-                // proceeding to the next depth, which is important for style sharing.
-                gecko_profiler_label!(Layout, StyleComputation);
-                parallel::traverse_nodes(
-                    discovered.make_contiguous(),
-                    DispatchMode::TailCall,
-                    /* recursion_ok = */ true,
-                    root_opaque,
-                    PerLevelTraversalData {
-                        current_dom_depth: depth,
-                    },
-                    scope,
-                    pool,
-                    traversal,
-                    &tls,
-                );
-            });
-
-            tls_slots = Some(tls.into_slots());
-            break;
-        }
-        nodes_remaining_at_current_depth = discovered.len();
-    }
+    });
 
     // Collect statistics from thread-locals if requested.
     if dump_stats || report_stats {
-        let mut aggregate = mem::replace(&mut context.thread_local.statistics, Default::default());
-        let parallel = tls_slots.is_some();
-        if let Some(ref mut tls) = tls_slots {
-            for slot in tls.iter_mut() {
-                if let Some(cx) = slot.get_mut() {
-                    aggregate += cx.statistics.clone();
-                }
+        let mut aggregate = PerThreadTraversalStatistics::default();
+        for slot in scoped_tls.slots() {
+            if let Some(cx) = slot.get_mut() {
+                aggregate += cx.statistics.clone();
             }
         }
 
@@ -183,6 +160,7 @@ where
         }
         // dump statistics to stdout if requested
         if dump_stats {
+            let parallel = pool.is_some();
             let stats =
                 TraversalStatistics::new(aggregate, traversal, parallel, start_time.unwrap());
             if stats.is_large {
