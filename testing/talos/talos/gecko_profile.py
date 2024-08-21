@@ -35,14 +35,24 @@ class GeckoProfile(object):
         gecko_profile_dir = tempfile.mkdtemp()
 
         gecko_profile_interval = test_config.get("gecko_profile_interval", 1)
-        gecko_profile_entries = test_config.get("gecko_profile_entries", 1000000)
+        # Default number of entries is 128MiB.
+        # This value is calculated by dividing the 128MiB of memory by 8 because
+        # the profiler uses 8 bytes per entry.
+        gecko_profile_entries = test_config.get(
+            "gecko_profile_entries", int(128 * 1024 * 1024 / 8)
+        )
         gecko_profile_features = test_config.get(
-            "gecko_profile_features", "js,stackwalk,cpu,screenshots"
+            "gecko_profile_features", "js,stackwalk,cpu,screenshots,memory"
         )
         gecko_profile_threads = test_config.get(
-            "gecko_profile_threads", "GeckoMain,Compositor"
+            "gecko_profile_threads", "GeckoMain,Compositor,Renderer"
         )
-        gecko_profile_threads += ",WR,Renderer"
+
+        gecko_profile_extra_threads = test_config.get(
+            "gecko_profile_extra_threads", None
+        )
+        if gecko_profile_extra_threads:
+            gecko_profile_threads += "," + gecko_profile_extra_threads
 
         # Make sure no archive already exists in the location where
         # we plan to output our profiler archive
@@ -140,7 +150,7 @@ class GeckoProfile(object):
                 # Trace-level logging (verbose)
                 "enableTracing": 0,
                 # Fallback server if symbol is not found locally
-                "remoteSymbolServer": "https://symbols.mozilla.org/symbolicate/v4",
+                "remoteSymbolServer": "https://symbolication.services.mozilla.com/symbolicate/v4",
                 # Maximum number of symbol files to keep in memory
                 "maxCacheEntries": 2000000,
                 # Frequency of checking for recent symbols to

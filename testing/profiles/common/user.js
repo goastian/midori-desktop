@@ -11,12 +11,9 @@ user_pref("browser.dom.window.dump.enabled", true);
 user_pref("devtools.console.stdout.chrome", true);
 // asrouter expects a plain object or null
 user_pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "null");
-user_pref("browser.newtabpage.activity-stream.asrouter.providers.snippets", "null");
 user_pref("browser.newtabpage.activity-stream.asrouter.providers.message-groups", "null");
-user_pref("browser.newtabpage.activity-stream.asrouter.providers.whats-new-panel", "null");
 user_pref("browser.newtabpage.activity-stream.asrouter.providers.messaging-experiments", "null");
 user_pref("browser.newtabpage.activity-stream.feeds.system.topstories", false);
-user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
 user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");
 user_pref("browser.newtabpage.activity-stream.discoverystream.config", "[]");
 
@@ -64,7 +61,6 @@ user_pref("services.settings.server", "data:,#remote-settings-dummy/v1");
 user_pref("media.autoplay.default", 0); // 0=Allowed, 1=Blocked, 2=Prompt
 user_pref("media.autoplay.blocking_policy", 0);
 user_pref("media.autoplay.ask-permission", false);
-user_pref("media.autoplay.block-webaudio", false);
 user_pref("media.allowed-to-play.enabled", true);
 // Ensure media can always play without delay
 user_pref("media.block-autoplay-until-in-foreground", false);
@@ -77,9 +73,18 @@ user_pref("browser.region.network.url", "");
 user_pref("browser.tabs.unloadOnLowMemory", false);
 // Don't pull Top Sites content from the network
 user_pref("browser.topsites.contile.enabled", false);
-// Default Glean to "record but don't report" mode. Docs:
+// Don't pull weather data from the network
+user_pref("browser.newtabpage.activity-stream.discoverystream.region-weather-config", "");
+// Don't pull wallpaper content from the network
+user_pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", false);
+// Don't pull sponsored Top Sites content from the network
+user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+// Default Glean to "record but don't report" mode, and to never trigger
+// activity-based ping submission. Docs:
 // https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/preferences.html
 user_pref("telemetry.fog.test.localhost_port", -1);
+user_pref("telemetry.fog.test.activity_limit", -1);
+user_pref("telemetry.fog.test.inactivity_limit", -1);
 // Disable overlay scrollbars on GTK for testing. A bunch of tests (specially
 // mochitests) assume scrollbars take space. We disable them on macOS (where
 // overlay is also the default) at the system level as well, so this is

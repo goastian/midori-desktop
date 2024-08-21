@@ -6,9 +6,7 @@
 // Copyright (c) 2009 Thomas Robinson <280north.com>
 // MIT license: http://opensource.org/licenses/MIT
 
-const { ObjectUtils } = ChromeUtils.import(
-  "resource://gre/modules/ObjectUtils.jsm"
-);
+import { ObjectUtils } from "resource://gre/modules/ObjectUtils.sys.mjs";
 
 /**
  * This module is based on the
@@ -57,6 +55,13 @@ function replacer(key, value) {
     return value.toString();
   }
   if (typeof value === "function" || instanceOf(value, "RegExp")) {
+    return value.toString();
+  }
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "QueryInterface" in value
+  ) {
     return value.toString();
   }
   return value;
@@ -114,7 +119,8 @@ function getMessage(error, prefix = "") {
  *   actual: actual,
  *   expected: expected,
  *   operator: operator,
- *   truncate: truncate
+ *   truncate: truncate,
+ *   stack: stack, // Optional, defaults to the current stack.
  * });
  *
  */
@@ -125,7 +131,7 @@ Assert.AssertionError = function (options) {
   this.operator = options.operator;
   this.message = getMessage(this, options.message, options.truncate);
   // The part of the stack that comes from this module is not interesting.
-  let stack = Components.stack;
+  let stack = options.stack || Components.stack;
   do {
     stack = stack.asyncCaller || stack.caller;
   } while (
@@ -207,6 +213,9 @@ Assert.prototype.setReporter = function (reporterFunc) {
  *        Operation qualifier used by the assertion method (ex: '==').
  * @param {boolean} [truncate=true]
  *        Whether or not ``actual`` and ``expected`` should be truncated when printing.
+ * @param {nsIStackFrame} [stack]
+ *        The stack trace including the caller of the assertion method,
+ *        if this cannot be inferred automatically (e.g. due to async callbacks).
  */
 Assert.prototype.report = function (
   failed,
@@ -214,7 +223,8 @@ Assert.prototype.report = function (
   expected,
   message,
   operator,
-  truncate = true
+  truncate = true,
+  stack = null // Defaults to Components.stack in AssertionError.
 ) {
   // Although not ideal, we allow a "null" message due to the way some of the extension tests
   // work.
@@ -230,6 +240,7 @@ Assert.prototype.report = function (
     expected,
     operator,
     truncate,
+    stack,
   });
   if (!this._reporter) {
     // If no custom reporter is set, throw the error.
@@ -515,22 +526,33 @@ Assert.prototype.throws = function (block, expected, message) {
  */
 Assert.prototype.rejects = function (promise, expected, message) {
   checkExpectedArgument(this, "rejects", expected);
+  const operator = undefined; // Should we use "rejects" here?
+  const stack = Components.stack;
   return new Promise((resolve, reject) => {
     return promise
       .then(
-        () =>
+        () => {
           this.report(
             true,
             null,
             expected,
-            "Missing expected exception " + message
-          ),
+            "Missing expected exception " + message,
+            operator,
+            true,
+            stack
+          );
+          // this.report() above should raise an AssertionError. If _reporter
+          // has been overridden and doesn't throw an error, just resolve.
+          // Otherwise we'll have a never-resolving promise that got stuck.
+          resolve();
+        },
         err => {
           if (!expectedException(err, expected)) {
+            // TODO bug 1480075: Should report error instead of rejecting.
             reject(err);
             return;
           }
-          this.report(false, err, expected, message);
+          this.report(false, err, expected, message, operator, truncate, stack);
           resolve();
         }
       )
@@ -546,12 +568,26 @@ function compareNumbers(expression, lhs, rhs, message, operator) {
     this.report(expression, lhs, rhs, message, operator);
     return;
   }
+  let lhsIsDate =
+    typeof lhs == "object" && lhs.constructor.name == "Date" && !isNaN(lhs);
+  let rhsIsDate =
+    typeof rhs == "object" && rhs.constructor.name == "Date" && !isNaN(rhs);
+  if (lhsIsDate && rhsIsDate) {
+    this.report(expression, lhs, rhs, message, operator);
+    return;
+  }
 
   let errorMessage;
-  if (!lhsIsNumber && !rhsIsNumber) {
-    errorMessage = "Neither '" + lhs + "' nor '" + rhs + "' are numbers";
+  if (!lhsIsNumber && !rhsIsNumber && !lhsIsDate && !rhsIsDate) {
+    errorMessage = `Neither '${lhs}' nor '${rhs}' are numbers or dates.`;
+  } else if ((lhsIsNumber && rhsIsDate) || (lhsIsDate && rhsIsNumber)) {
+    errorMessage = `'${lhsIsNumber ? lhs : rhs}' is a number and '${
+      rhsIsDate ? rhs : lhs
+    }' is a date.`;
   } else {
-    errorMessage = "'" + (lhsIsNumber ? rhs : lhs) + "' is not a number";
+    errorMessage = `'${
+      lhsIsNumber || lhsIsDate ? rhs : lhs
+    }' is not a number or date.`;
   }
   this.report(true, lhs, rhs, errorMessage);
 }

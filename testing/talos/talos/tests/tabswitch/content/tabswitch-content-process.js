@@ -27,10 +27,11 @@ const TPSProcessScript = {
         chan.originalURI = aURI;
         return chan;
       }
-      getURIFlags(aURI) {
+      getURIFlags() {
         return (
           Ci.nsIAboutModule.ALLOW_SCRIPT |
-          Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD
+          Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD |
+          Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT
         );
       }
     }

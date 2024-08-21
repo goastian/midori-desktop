@@ -128,7 +128,7 @@ class FirefoxUIFunctionalTests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
         requirements = os.path.join(
             dirs["abs_test_install_dir"], "config", "firefox_ui_requirements.txt"
         )
-        self.register_virtualenv_module(requirements=[requirements], two_pass=True)
+        self.register_virtualenv_module(requirements=[requirements])
 
     def download_and_extract(self):
         """Override method from TestingMixin for more specific behavior."""
@@ -246,7 +246,7 @@ class FirefoxUIFunctionalTests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
 
         # Add the tests to run
         cmd.append(
-            os.path.join(dirs["abs_fxui_manifest_dir"], "functional", "manifest.ini")
+            os.path.join(dirs["abs_fxui_manifest_dir"], "functional", "manifest.toml")
         )
 
         # Set further environment settings

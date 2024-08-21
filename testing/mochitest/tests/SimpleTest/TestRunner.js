@@ -63,7 +63,7 @@ function extend(obj, /* optional */ skip) {
   return ret;
 }
 
-function flattenArguments(lst /* ...*/) {
+function flattenArguments(/* ...*/) {
   var res = [];
   var args = extend(arguments);
   while (args.length) {
@@ -205,7 +205,10 @@ TestRunner._checkForHangs = function () {
 
   if (TestRunner._currentTest < TestRunner._urls.length) {
     var runtime = new Date().valueOf() - TestRunner._currentTestStartTime;
-    if (runtime >= TestRunner.timeout * TestRunner._timeoutFactor) {
+    if (
+      !TestRunner.interactiveDebugger &&
+      runtime >= TestRunner.timeout * TestRunner._timeoutFactor
+    ) {
       let testIframe = $("testframe");
       var frameWindow =
         (!testInXOriginFrame() && testIframe.contentWindow.wrappedJSObject) ||
@@ -215,7 +218,10 @@ TestRunner._checkForHangs = function () {
 
       // If we have too many timeouts, give up. We don't want to wait hours
       // for results if some bug causes lots of tests to time out.
-      if (++TestRunner._numTimeouts >= TestRunner.maxTimeouts) {
+      if (
+        ++TestRunner._numTimeouts >= TestRunner.maxTimeouts ||
+        TestRunner.runUntilFailure
+      ) {
         TestRunner._haltTests = true;
 
         TestRunner.currentTestURL = "(SimpleTest/TestRunner.js)";
@@ -796,14 +802,6 @@ TestRunner.testFinished = function (tests) {
       );
       var runtime = new Date().valueOf() - TestRunner._currentTestStartTime;
 
-      TestRunner.structuredLogger.testEnd(
-        TestRunner.currentTestURL,
-        result,
-        "OK",
-        "Finished in " + runtime + "ms",
-        { runtime }
-      );
-
       if (
         TestRunner.slowestTestTime < runtime &&
         TestRunner._timeoutFactor >= 1
@@ -816,7 +814,7 @@ TestRunner.testFinished = function (tests) {
 
       // Don't show the interstitial if we just run one test with no repeats:
       if (TestRunner._urls.length == 1 && TestRunner.repeat <= 1) {
-        TestRunner.testUnloaded();
+        TestRunner.testUnloaded(result, runtime);
         return;
       }
 
@@ -825,33 +823,65 @@ TestRunner.testFinished = function (tests) {
         !testInXOriginFrame() &&
         $("testframe").contentWindow.location.protocol == "chrome:"
       ) {
-        interstitialURL = "tests/SimpleTest/iframe-between-tests.html";
+        interstitialURL =
+          "tests/SimpleTest/iframe-between-tests.html?result=" +
+          result +
+          "&runtime=" +
+          runtime;
       } else {
-        interstitialURL = "/tests/SimpleTest/iframe-between-tests.html";
+        interstitialURL =
+          "/tests/SimpleTest/iframe-between-tests.html?result=" +
+          result +
+          "&runtime=" +
+          runtime;
       }
       // check if there were test run after SimpleTest.finish, which should never happen
       if (!testInXOriginFrame()) {
         $("testframe").contentWindow.addEventListener("unload", function () {
           var testwin = $("testframe").contentWindow;
-          if (
-            testwin.SimpleTest &&
-            testwin.SimpleTest._tests.length != testwin.SimpleTest.testsLength
-          ) {
-            var wrongtestlength =
-              testwin.SimpleTest._tests.length - testwin.SimpleTest.testsLength;
-            var wrongtestname = "";
-            for (var i = 0; i < wrongtestlength; i++) {
-              wrongtestname =
-                testwin.SimpleTest._tests[testwin.SimpleTest.testsLength + i]
-                  .name;
+          if (testwin.SimpleTest) {
+            if (typeof testwin.SimpleTest.testsLength === "undefined") {
               TestRunner.structuredLogger.error(
                 "TEST-UNEXPECTED-FAIL | " +
                   TestRunner.currentTestURL +
-                  " logged result after SimpleTest.finish(): " +
-                  wrongtestname
+                  " fired an unload callback with missing test data," +
+                  " possibly due to the test navigating or reloading"
               );
+              TestRunner.updateUI([{ result: false }]);
+            } else if (
+              testwin.SimpleTest._tests.length != testwin.SimpleTest.testsLength
+            ) {
+              var didReportError = false;
+              var wrongtestlength =
+                testwin.SimpleTest._tests.length -
+                testwin.SimpleTest.testsLength;
+              var wrongtestname = "";
+              for (var i = 0; i < wrongtestlength; i++) {
+                wrongtestname =
+                  testwin.SimpleTest._tests[testwin.SimpleTest.testsLength + i]
+                    .name;
+                TestRunner.structuredLogger.error(
+                  "TEST-UNEXPECTED-FAIL | " +
+                    TestRunner.currentTestURL +
+                    " logged result after SimpleTest.finish(): " +
+                    wrongtestname
+                );
+                didReportError = true;
+              }
+              if (!didReportError) {
+                // This clause shouldn't be reachable, but if we somehow get
+                // here (e.g. if wrongtestlength is somehow negative), it's
+                // important that we log *something* for the { result: false }
+                // test-failure that we're about to post.
+                TestRunner.structuredLogger.error(
+                  "TEST-UNEXPECTED-FAIL | " +
+                    TestRunner.currentTestURL +
+                    " hit an unexpected condition when checking for" +
+                    " logged results after SimpleTest.finish()"
+                );
+              }
+              TestRunner.updateUI([{ result: false }]);
             }
-            TestRunner.updateUI([{ result: false }]);
           }
         });
       }
@@ -885,7 +915,7 @@ TestRunner.addAssertionCount = function (count) {
   }
 };
 
-TestRunner.testUnloaded = function () {
+TestRunner.testUnloaded = function (result, runtime) {
   // If we're in a debug build, check assertion counts.  This code is
   // similar to the code in Tester_nextTest in browser-test.js used
   // for browser-chrome mochitests.
@@ -908,13 +938,48 @@ TestRunner.testUnloaded = function () {
       min += additionalAsserts;
       max += additionalAsserts;
     }
+
     TestRunner.structuredLogger.assertionCount(
       TestRunner.currentTestURL,
       numAsserts,
       min,
       max
     );
+
+    if (numAsserts < min || numAsserts > max) {
+      result = "ERROR";
+
+      var direction = "more";
+      var target = max;
+      if (numAsserts < min) {
+        direction = "less";
+        target = min;
+      }
+      TestRunner.structuredLogger.testStatus(
+        TestRunner.currentTestURL,
+        "Assertion Count",
+        "ERROR",
+        "PASS",
+        numAsserts +
+          " is " +
+          direction +
+          " than expected " +
+          target +
+          " assertions"
+      );
+
+      // reset result so we don't print a second error on test-end
+      result = "OK";
+    }
   }
+
+  TestRunner.structuredLogger.testEnd(
+    TestRunner.currentTestURL,
+    result,
+    "OK",
+    "Finished in " + runtime + "ms",
+    { runtime }
+  );
 
   // Always do this, so we can "reset" preferences between tests
   SpecialPowers.comparePrefsToBaseline(

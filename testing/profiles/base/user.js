@@ -8,3 +8,9 @@
 user_pref("gfx.webrender.all", true);
 user_pref("dom.input_events.security.minNumTicks", 0);
 user_pref("dom.input_events.security.minTimeElapsedInMS", 0);
+
+// Set address autofill to true for tests
+user_pref("extensions.formautofill.addresses.experiments.enabled", true);
+
+// Turn off update
+user_pref("app.update.disabledForTesting", true);

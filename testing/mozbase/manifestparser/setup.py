@@ -5,11 +5,12 @@
 from setuptools import setup
 
 PACKAGE_NAME = "manifestparser"
-PACKAGE_VERSION = "2.1.0"
+PACKAGE_VERSION = "2.4.0"
 
 DEPS = [
     "mozlog >= 6.0",
-    "six >= 1.13.0",
+    "toml >= 0.10.2",
+    "tomlkit >= 0.12.3",
 ]
 setup(
     name=PACKAGE_NAME,

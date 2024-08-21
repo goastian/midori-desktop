@@ -52,12 +52,11 @@ class TestViewGeckoProfile(unittest.TestCase):
         self.response = [None]
 
     def test_view_gecko_profile(self):
-
         # Create a temporary fake performance profile.
         temp_dir = tempfile.mkdtemp()
         profile_path = os.path.join(temp_dir, "fakeprofile.json")
         with io.open(profile_path, "w") as f:
-            f.write(u"FAKE_PROFILE")
+            f.write("FAKE_PROFILE")
 
         # Mock the open_new_tab function so that we know when the view_gecko_profile
         # function has done all of its work, and we can assert ressult of the
@@ -86,7 +85,7 @@ class TestViewGeckoProfile(unittest.TestCase):
             "https://profiler.firefox.com/from-url/"
             "http%3A%2F%2F127.0.0.1%3A{PORT}%2Ffakeprofile.json"
         )
-        actual_url = re.sub("%3A\d+%2F", "%3A{PORT}%2F", self.firefox_profiler_url)
+        actual_url = re.sub(r"%3A\d+%2F", "%3A{PORT}%2F", self.firefox_profiler_url)
 
         self.assertEqual(
             actual_url,

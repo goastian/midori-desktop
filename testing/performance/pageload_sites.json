@@ -20,6 +20,11 @@
     },
     {
       "login": false,
+      "name": "bild-de",
+      "test_url": "https://www.bild.de/sport/american-football/nfl/super-bowl-rekordquote-fuer-die-nfl-87139668.bild.html"
+    },
+    {
+      "login": false,
       "name": "bing",
       "test_url": "https://www.bing.com/",
       "dismiss_cookie_prompt": [
@@ -148,15 +153,6 @@
     },
     {
       "login": false,
-      "name": "web-de",
-      "test_url": "https://web.de/magazine/politik/politologe-glaubt-grossen-koalition-herbst-knallen-33563566",
-      "dismiss_cookie_prompt": [
-        ["click.byXpathAndWait", "//*[@id='edit-purpose-settings']"],
-        ["click.byXpathAndWait", "//*[@id='save-purpose-settings']"]
-      ]
-    },
-    {
-      "login": false,
       "name": "wikipedia",
       "test_url": "https://en.m.wikipedia.org/wiki/Main_Page"
     },
@@ -222,7 +218,6 @@
         "media.autoplay.default": 5,
         "media.autoplay.ask-permission": true,
         "media.autoplay.blocking_policy": 1,
-        "media.autoplay.block-webaudio": true,
         "media.allowed-to-play.enabled": false,
         "media.block-autoplay-until-in-foreground": true
       },
@@ -253,6 +248,11 @@
           "/html/body/div[10]/div[2]/div/div/div[3]/button"
         ]
       ]
+    },
+    {
+      "login": false,
+      "name": "example",
+      "test_url": "https://www.example.com"
     },
     {
       "login": false,
@@ -323,7 +323,7 @@
       "login": false,
       "name": "google-slides",
       "test_url": "https://docs.google.com/presentation/d/1Ici0ceWwpFvmIb3EmKeWSq_vAQdmmdFcWqaiLqUkJng/edit?usp=sharing",
-      "secondary_url": "https://docs.google.com/document/d/1vUnn0ePU-ynArE1OdxyEHXR2G0sl74ja_st_4OOzlgE/preview"
+      "secondary_url": "https://docs.google.com/presentation/d/e/2PACX-1vRWwPQQFMDkSR4RtYc7HSAGm-hoprespfemIk5SatJxd2o8yrFfrMeAAUkjdfalC5PpjJ9ZKgfsuQ1T/pub?start=false&loop=false&delayms=3000"
     },
     {
       "login": false,
@@ -334,7 +334,7 @@
     {
       "login": false,
       "name": "imgur",
-      "test_url": "https://imgur.com/gallery/m5tYJL6",
+      "test_url": "https://imgur.com/gallery/uTI7fKy",
       "inject_deterministic": false,
       "dismiss_cookie_prompt": [
         [
@@ -342,12 +342,11 @@
           "/html/body/div[1]/div/div/div/div[2]/div/button[2]"
         ]
       ],
-      "secondary_url": "https://imgur.com/gallery/rCXZUil",
+      "secondary_url": "https://imgur.com/gallery/WuOobqV",
       "preferences": {
         "media.autoplay.default": 5,
         "media.autoplay.ask-permission": true,
         "media.autoplay.blocking_policy": 1,
-        "media.autoplay.block-webaudio": true,
         "media.allowed-to-play.enabled": false,
         "media.block-autoplay-until-in-foreground": true
       }
@@ -355,7 +354,8 @@
     {
       "login": true,
       "name": "instagram",
-      "test_url": "https://www.instagram.com/"
+      "test_url": "https://www.instagram.com/",
+      "secondary_url": "https://www.instagram.com/nobelprize_org/"
     },
     {
       "login": true,
@@ -442,7 +442,6 @@
         "media.autoplay.default": 5,
         "media.autoplay.ask-permission": true,
         "media.autoplay.blocking_policy": 1,
-        "media.autoplay.block-webaudio": true,
         "media.allowed-to-play.enabled": false,
         "media.block-autoplay-until-in-foreground": true
       },

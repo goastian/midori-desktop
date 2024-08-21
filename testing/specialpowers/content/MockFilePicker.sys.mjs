@@ -48,11 +48,11 @@ export var MockFilePicker = {
   window: null,
   pendingPromises: [],
 
-  init(window) {
-    this.window = window;
+  init(browsingContext) {
+    this.window = browsingContext.window;
 
     this.reset();
-    this.factory = newFactory(window);
+    this.factory = newFactory(this.window);
     if (!registrar.isCIDRegistered(newClassID)) {
       oldClassID = registrar.contractIDToCID(CONTRACT_ID);
       registrar.registerFactory(newClassID, "", CONTRACT_ID, this.factory);
@@ -93,7 +93,7 @@ export var MockFilePicker = {
   },
 
   useAnyFile() {
-    var file = lazy.FileUtils.getDir("TmpD", [], false);
+    var file = lazy.FileUtils.getDir("TmpD", []);
     file.append("testfile");
     file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, 0o644);
     let promise = this.window.File.createFromNsIFile(file)
@@ -124,7 +124,10 @@ export var MockFilePicker = {
 
   useDirectory(aPath) {
     var directory = new this.window.Directory(aPath);
-    this.returnData = [this.internalFileData({ domDirectory: directory })];
+    var file = new lazy.FileUtils.File(aPath);
+    this.returnData = [
+      this.internalFileData({ domDirectory: directory, nsIFile: file }),
+    ];
     this.pendingPromises = [];
   },
 

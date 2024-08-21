@@ -15,7 +15,16 @@ import mozharness
 
 version = mozharness.version_string
 
-dependencies = ["virtualenv", "mock", "coverage", "nose", "pylint", "pyflakes"]
+dependencies = [
+    "virtualenv",
+    "mock",
+    "coverage",
+    "pynose",
+    "pylint",
+    "pyflakes",
+    "toml",
+    "tomlkit",
+]
 try:
     import json
 except ImportError:

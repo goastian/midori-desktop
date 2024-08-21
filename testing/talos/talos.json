@@ -19,7 +19,6 @@
         "tabpaint",
         "cpstartup",
         "startup_about_home_paint",
-        "pdfpaint",
         "cross_origin_pageload",
         "startup_about_home_paint_cached"
       ]
@@ -88,7 +87,24 @@
       "pagesets_name": "tp5n.zip"
     },
     "webgl": {
-      "tests": ["glterrain", "glvideo", "motionmark_webgl"]
+      "tests": [
+        "canvas2dvideo",
+        "glterrain",
+        "glvideo",
+        "motionmark_webgl",
+        "offscreencanvas_webcodecs_main_webgl_h264",
+        "offscreencanvas_webcodecs_main_webgl_vp9",
+        "offscreencanvas_webcodecs_main_webgl_av1",
+        "offscreencanvas_webcodecs_worker_webgl_h264",
+        "offscreencanvas_webcodecs_worker_webgl_vp9",
+        "offscreencanvas_webcodecs_worker_webgl_av1",
+        "offscreencanvas_webcodecs_main_2d_h264",
+        "offscreencanvas_webcodecs_main_2d_vp9",
+        "offscreencanvas_webcodecs_main_2d_av1",
+        "offscreencanvas_webcodecs_worker_2d_h264",
+        "offscreencanvas_webcodecs_worker_2d_vp9",
+        "offscreencanvas_webcodecs_worker_2d_av1"
+      ]
     },
     "xperf": {
       "tests": ["tp5n"],
@@ -104,6 +120,9 @@
     "realworld-webextensions": {
       "tests": ["startup_about_home_paint_realworld_webextensions"],
       "webextensions_zip": "webextensions.zip"
+    },
+    "pdfpaint": {
+      "tests": ["pdfpaint"]
     }
   }
 }

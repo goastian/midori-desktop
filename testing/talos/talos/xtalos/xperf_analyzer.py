@@ -306,7 +306,7 @@ class XPerfCounter(XPerfAttribute):
     def accumulate(self, evt):
         data = evt.get_whiteboard()
 
-        for (key, comp) in six.iteritems(self.filters):
+        for key, comp in six.iteritems(self.filters):
             try:
                 testdata = data[key]
             except KeyError:
@@ -335,7 +335,7 @@ class XPerfCounter(XPerfAttribute):
         )
         if self.values:
             msg += " with accumulated"
-            for (k, v) in six.iteritems(self.values):
+            for k, v in six.iteritems(self.values):
                 msg += " [[{!s}] == {!s}]".format((k), (v))
         return msg
 
@@ -671,7 +671,7 @@ class SessionStoreWindowRestored(ClassicEvent):
 class ProcessStart(XPerfEvent):
     cmd_line_index = None
     process_index = None
-    extractor = re.compile("^(.+) \(\s*(\d+)\)$")
+    extractor = re.compile(r"^(.+) \(\s*(\d+)\)$")
 
     def __init__(self, leafname):
         super(ProcessStart, self).__init__("P-Start")
@@ -746,7 +746,7 @@ class ThreadStart(XPerfEvent):
 
     process_index = None
     tid_index = None
-    pid_extractor = re.compile("^.+ \(\s*(\d+)\)$")
+    pid_extractor = re.compile(r"^.+ \(\s*(\d+)\)$")
 
     def __init__(self):
         super(ThreadStart, self).__init__("T-Start")

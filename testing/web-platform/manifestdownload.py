@@ -91,8 +91,8 @@ def taskcluster_url(logger, commits):
     repos = {
         "mozilla-central": "mozilla-central",
         "integration/autoland": "autoland",
-        "releases/mozilla-esr102": "mozilla-esr102",
         "releases/mozilla-esr115": "mozilla-esr115",
+        "releases/mozilla-esr128": "mozilla-esr128",
     }
     cset_url = (
         "https://hg.mozilla.org/{repo}/json-pushes?"
@@ -159,7 +159,10 @@ def taskcluster_url(logger, commits):
 
 
 def download_manifest(logger, test_paths, commits_func, url_func, force=False):
-    manifest_paths = [item["manifest_path"] for item in six.itervalues(test_paths)]
+    manifest_paths = [
+        (item["manifest_path"] if isinstance(item, dict) else item.manifest_path)
+        for item in test_paths.values()
+    ]
 
     if not force and not should_download(logger, manifest_paths):
         return True
@@ -187,19 +190,24 @@ def download_manifest(logger, test_paths, commits_func, url_func, force=False):
 
     tar = tarfile.open(mode="r:gz", fileobj=BytesIO(req.content))
     for paths in six.itervalues(test_paths):
+        manifest_rel_path = (
+            paths["manifest_rel_path"]
+            if isinstance(paths, dict)
+            else paths.manifest_rel_path
+        )
+        manifest_path = (
+            paths["manifest_path"] if isinstance(paths, dict) else paths.manifest_path
+        )
+
         try:
-            member = tar.getmember(paths["manifest_rel_path"].replace(os.path.sep, "/"))
+            member = tar.getmember(manifest_rel_path.replace(os.path.sep, "/"))
         except KeyError:
-            logger.warning(
-                "Failed to find downloaded manifest %s" % paths["manifest_rel_path"]
-            )
+            logger.warning("Failed to find downloaded manifest %s" % manifest_rel_path)
         else:
             try:
-                logger.debug(
-                    "Unpacking %s to %s" % (member.name, paths["manifest_path"])
-                )
+                logger.debug("Unpacking %s to %s" % (member.name, manifest_path))
                 src = tar.extractfile(member)
-                with open(paths["manifest_path"], "wb") as dest:
+                with open(manifest_path, "wb") as dest:
                     dest.write(src.read())
                 src.close()
             except IOError:
@@ -207,11 +215,11 @@ def download_manifest(logger, test_paths, commits_func, url_func, force=False):
 
                 logger.warning(
                     "Failed to decompress %s:\n%s"
-                    % (paths["manifest_rel_path"], traceback.format_exc())
+                    % (manifest_rel_path, traceback.format_exc())
                 )
                 return False
 
-        os.utime(paths["manifest_path"], None)
+        os.utime(manifest_path, None)
 
     return True
 

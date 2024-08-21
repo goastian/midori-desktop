@@ -117,6 +117,240 @@ suites:
                     * ;21;1080p.60fps.mp4_scale_1.1_inclip;6.969;7.222;7.018;6.993;7.045;6.970;6.970;6.807;7.118;6.969;6.997;6.972
                     * ;22;1080p.60fps.mp4_scale_2_startup;6.963;6.947;6.914;6.929;6.979;7.010;7.010245327102808;6.914;6.961;7.028;7.012;6.914
                     * ;23;1080p.60fps.mp4_scale_2_inclip;6.757;6.694;6.672;6.669;6.737;6.831;6.716;6.715;6.832;6.670;6.672;6.759
+            canvas2dvideo: >
+                - contact: :aosmond and gfx
+                - source: `canvas2dvideo <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/canvas2d/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: Canvas2D video texture update with 1080p video. Measures mean tick time across 100 ticks.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l522>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean tick time across 100 ticks: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test playbacks a video file and ask Canvas2D to draw video frames as
+                        Canvas2D textures for 100 ticks. It collects the mean tick time across 100
+                        ticks to measure how much time it will spend for a video texture upload
+                        to be a Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore
+                        the first found. Lower results are better.
+            offscreencanvas_webcodecs_main_webgl_h264: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_main_webgl_h264 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas WebGL video texture update with WebCodecs and 1080p H264 video on the main thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a H264 video file using WebCodecs and ask WebGL to draw video
+                        frames as WebGL textures for 100 frames on the main thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        WebGL texture (gl.texImage2D). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_main_webgl_vp9: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_main_webgl_vp9 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas WebGL video texture update with WebCodecs and 1080p VP9 video on the main thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a VP9 video file using WebCodecs and ask WebGL to draw video
+                        frames as WebGL textures for 100 frames on the main thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        WebGL texture (gl.texImage2D). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_main_webgl_av1: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_main_webgl_av1 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas WebGL video texture update with WebCodecs and 1080p AV1 video on the main thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a AV1 video file using WebCodecs and ask WebGL to draw video
+                        frames as WebGL textures for 100 frames on the main thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        WebGL texture (gl.texImage2D). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_worker_webgl_h264: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_worker_webgl_h264 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas WebGL video texture update with WebCodecs and 1080p H264 video on a DOM worker thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a H264 video file using WebCodecs and ask WebGL to draw video
+                        frames as WebGL textures for 100 frames on a DOM worker. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        WebGL texture (gl.texImage2D). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_worker_webgl_vp9: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_worker_webgl_vp9 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas WebGL video texture update with WebCodecs and 1080p VP9 video on a DOM worker thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a VP9 video file using WebCodecs and ask WebGL to draw video
+                        frames as WebGL textures for 100 frames on a DOM worker. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        WebGL texture (gl.texImage2D). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_worker_webgl_av1: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_worker_webgl_av1 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas WebGL video texture update with WebCodecs and 1080p AV1 video on a DOM worker thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a AV1 video file using WebCodecs and ask WebGL to draw video
+                        frames as WebGL textures for 100 frames on a DOM worker. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        WebGL texture (gl.texImage2D). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_main_2d_h264: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_main_2d_h264 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas 2D video texture update with WebCodecs and 1080p H264 video on the main thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a H264 video file using WebCodecs and ask Canvas2D to draw video
+                        frames as Canvas2D textures for 100 frames on the main thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_main_2d_vp9: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_main_2d_vp9 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas 2D video texture update with WebCodecs and 1080p VP9 video on the main thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l819>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a VP9 video file using WebCodecs and ask Canvas2D to draw video
+                        frames as Canvas2D textures for 100 frames on the main thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_main_2d_av1: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_main_2d_av1 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas 2D video texture update with WebCodecs and 1080p AV1 video on the main thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l843>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a AV1 video file using WebCodecs and ask Canvas2D to draw video
+                        frames as Canvas2D textures for 100 frames on the main thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_worker_2d_h264: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_worker_2d_h264 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas 2D video texture update with WebCodecs and 1080p H264 video on a DOM worker thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a H264 video file using WebCodecs and ask Canvas2D to draw video
+                        frames as Canvas2D textures for 100 frames on a DOM worker thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_worker_2d_vp9: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_worker_2d_vp9 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas 2D video texture update with WebCodecs and 1080p VP9 video on a DOM worker thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a VP9 video file using WebCodecs and ask Canvas2D to draw video
+                        frames as Canvas2D textures for 100 frames on a DOM worker thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore the first found. Lower
+                        results are better.
+            offscreencanvas_webcodecs_worker_2d_av1: >
+                - contact: :aosmond and gfx
+                - source: `offscreencanvas_webcodecs_worker_2d_av1 <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/offscreencanvas/benchmarks/video>`__
+                - type: `Page load`_
+                - data: 5 cycles of the entire benchmark, each subtest will have 5 data points (see below)
+                - summarization: OffscreenCanvas 2D video texture update with WebCodecs and 1080p AV1 video on a DOM worker thread. Measures mean frame time across 100 frames.
+                    * subtest: `ignore first`_ data point, then take the `median`_ of the remaining 4; `source:
+                        test.py <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/test.py#l795>`__
+                    * suite: `geometric mean`_ of the 4 subtest results.
+                - **Lower is better**
+                - **Example Data**
+                    * 0;Mean frame time across 100 frames: ;54.6916;49.0534;51.21645;51.239650000000005;52.44295
+                - description:
+                      | This test extracts frames from a AV1 video file using WebCodecs and ask Canvas2D to draw video
+                        frames as Canvas2D textures for 100 frames on a DOM worker thread. It collects the mean frame time
+                        across 100 frames to measure how much time it will spend for a video texture upload to be a
+                        Canvas2D texture (ctx.drawImage). We run it for 5 times and ignore the first found. Lower
+                        results are better.
             cpstartup: >
                 - contact: :mconley, Firefox Desktop Front-end team, Gijs, fqueze, and dthayer
                 - measuring: Time from opening a new tab (which creates a new content process) to having that new content process be ready to load URLs.
@@ -373,7 +607,13 @@ suites:
                 - source:
                 - type: `Page load`_
                 - reporting: time from *performance.timing.navigationStart* to *pagerendered* event in ms (lower is better)
-                - data: load a PDF 20 times
+                - data: loads a PDF 5 times
+                - description:
+                      | Runs through a set of chunks. Each chunk runs 100 PDFs with 5 iterations each.
+                        If --pdfPaintChunk is not used when running the test locally, all PDFs will be tested
+                        by default with only 1 cycle each. The PDFs that are run are found in the Mozilla pdf.js
+                        repository, and this test pulls those in for testing locally through a toolchain artifact
+                        called talos-pdfs.
             perf_reftest: >
                 - contact: :emilio and css/layout team
                 - source: `perf-reftest <https://dxr.mozilla.org/mozilla-central/source/testing/talos/talos/tests/perf-reftest>`__
@@ -939,7 +1179,7 @@ suites:
                         frame-rate mode thus reflecting the maximum scroll throughput per page.
                         To turn on ASAP mode, we set these preferences:
 
-                      ``preferences = {'layout.frame_rate': 0, 'docshell.event_starvation_delay_hint': 1}``
+                      ``preferences = {'layout.frame_rate': 0, 'docshell.event_starvation_delay_hint': 1}``
 
                       See also `tp5o_scroll <#tp5o_scroll>`_ which has relevant information for this test.
                 - **Example Data**
@@ -1010,7 +1250,7 @@ suites:
                         duration the sequence/animation took to complete. To turn on ASAP mode,
                         we set these preferences:
 
-                      ``preferences = {'layout.frame_rate': 0, 'docshell.event_starvation_delay_hint': 1}``
+                      ``preferences = {'layout.frame_rate': 0, 'docshell.event_starvation_delay_hint': 1}``
                 - **Example Data**
                     * 0;hixie-001.xml;562;555;508;521;522;520;499;510;492;514;502;504;500;521;510;506;511;505;495;517;520;512;503;504;502
                     * 1;hixie-002.xml;510;613;536;530;536;522;498;505;500;504;498;529;498;509;493;512;501;506;504;499;496;505;508;511;503

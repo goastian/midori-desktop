@@ -12,7 +12,6 @@ user_pref("app.normandy.api_url", "");
 // Make sure the notification permission migration test doesn't hit the network.
 user_pref("app.support.baseURL", "http://{server}/support-dummy/");
 user_pref("app.update.staging.enabled", false);
-user_pref("app.update.url.android", "");
 // Increase the APZ content response timeout in tests to 1 minute.
 // This is to accommodate the fact that test environments tends to be slower
 // than production environments (with the b2g emulator being the slowest of them
@@ -50,17 +49,8 @@ user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.startup.page", 0); // use about:blank, not browser.startup.homepage
 // Don't show a delay when hiding the audio indicator during tests
 user_pref("browser.tabs.delayHidingAudioPlayingIconMS", 0);
-// Don't allow background tabs to be zombified, otherwise for tests that
-// open additional tabs, the test harness tab itself might get unloaded.
-user_pref("browser.tabs.disableBackgroundZombification", true);
-// Don't use auto-enabled e10s
-user_pref("browser.tabs.remote.autostart", false);
-// Make sure Translation won't hit the network.
-user_pref("browser.translation.bing.authURL", "http://{server}/browser/browser/components/translation/test/bing.sjs");
-user_pref("browser.translation.bing.translateArrayURL", "http://{server}/browser/browser/components/translation/test/bing.sjs");
-user_pref("browser.translation.engine", "Bing");
-user_pref("browser.translation.yandex.translateURLOverride", "http://{server}/browser/browser/components/translation/test/yandex.sjs");
-user_pref("browser.ui.layout.tablet", 0); // force tablet UI off
+// force tablet UI off
+user_pref("browser.ui.layout.tablet", 0);
 // Ensure UITour won't hit the network
 user_pref("browser.uitour.pinnedTabUrl", "http://{server}/uitour-dummy/pinnedTab");
 user_pref("browser.uitour.url", "http://{server}/uitour-dummy/tour");
@@ -71,7 +61,6 @@ user_pref("browser.urlbar.speculativeConnect.enabled", false);
 // Turn off search suggestions in the location bar so as not to trigger network
 // connections.
 user_pref("browser.urlbar.suggest.searches", false);
-user_pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 // URIFixup whitelist
 user_pref("browser.fixup.domainsuffixwhitelist.test", true);
 user_pref("browser.warnOnQuit", false);
@@ -148,8 +137,6 @@ user_pref("identity.fxaccounts.auth.uri", "https://{server}/fxa-dummy/");
 user_pref("identity.fxaccounts.remote.root", "https://{server}/");
 // Make sure CSS error reporting is enabled for tests
 user_pref("layout.css.report_errors", true);
-// Disable spammy layout warnings because they pollute test logs
-user_pref("layout.spammy_warnings.enabled", false);
 user_pref("media.cache_size", 1000);
 user_pref("media.dormant-on-pause-timeout-ms", 0); // Enter dormant immediately without waiting for timeout.
 // Set the number of shmems the PChromiumCDM protocol pre-allocates to 0,
@@ -164,11 +151,10 @@ user_pref("media.hls.server.url", "http://{server}/tests/dom/media/test/hls");
 user_pref("media.libavcodec.allow-obsolete", true);
 user_pref("media.memory_cache_max_size", 32);
 user_pref("media.memory_caches_combined_limit_kb", 256);
-user_pref("media.openUnsupportedTypeWithExternalApp", false);
 user_pref("media.preload.auto", 3); // auto = enough
 user_pref("media.preload.default", 2); // default = metadata
 user_pref("media.preload.default.cellular", 2); // default = metadata
-user_pref("media.suspend-bkgnd-video.enabled", false);
+user_pref("media.suspend-background-video.enabled", false);
 user_pref("media.test.dumpDebugInfo", true);
 user_pref("media.volume_scale", "0.01");
 // Enable speech synth test service, and disable built in platform services.
@@ -216,7 +202,12 @@ user_pref("toolkit.telemetry.firstShutdownPing.enabled", false);
 user_pref("toolkit.telemetry.newProfilePing.enabled", false);
 // We want to collect telemetry, but we don't want to send in the results.
 user_pref("toolkit.telemetry.server", "https://{server}/telemetry-dummy/");
+// Default Glean to "record but don't report" mode, and to never trigger
+// activity-based ping submission. Docs:
+// https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/preferences.html
 user_pref("telemetry.fog.test.localhost_port", -1);
+user_pref("telemetry.fog.test.activity_limit", -1);
+user_pref("telemetry.fog.test.inactivity_limit", -1);
 // Don't send the 'shutdown' ping using the pingsender on the first session using
 // the 'pingsender' process. Valgrind marks the process as leaky (e.g. see bug 1364068
 // for the 'new-profile' ping) but does not provide enough information
@@ -229,6 +220,9 @@ user_pref("toolkit.telemetry.test.pref1", true);
 user_pref("toolkit.telemetry.test.pref2", false);
 // Disable the caret blinking so we get stable snapshot
 user_pref("ui.caretBlinkTime", -1);
+// Disable scrollbar animations. Tests that count paints / refresh driver ticks
+// shouldn't need to account for them.
+user_pref("ui.scrollbarFadeDuration", 0);
 user_pref("webextensions.tests", true);
 // Disable intermittent telemetry collection
 user_pref("toolkit.telemetry.initDelay", 99999999);
@@ -238,4 +232,7 @@ user_pref("security.data_uri.block_toplevel_data_uri_navigations", false);
 
 // We use data: to tell the Quitter extension to quit.
 user_pref("security.data_uri.block_toplevel_data_uri_navigations", false);
+
+// Turn off update
+user_pref("app.update.disabledForTesting", true);
 

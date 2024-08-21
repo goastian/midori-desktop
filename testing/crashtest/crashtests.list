@@ -19,8 +19,10 @@ include ../../dom/fs/test/crashtests/crashtests.list
 include ../../dom/html/crashtests/crashtests.list
 include ../../dom/indexedDB/crashtests/crashtests.list
 include ../../dom/jsurl/crashtests/crashtests.list
+include ../../dom/media/mediasession/test/crashtests/crashtests.list
 include ../../dom/media/mediasource/test/crashtests/crashtests.list
 include ../../dom/media/test/crashtests/crashtests.list
+include ../../dom/media/webcodecs/crashtests/crashtests.list
 include ../../dom/media/webvtt/test/crashtests/crashtests.list
 skip-if(!webrtc) include ../../dom/media/tests/crashtests/crashtests.list
 skip-if(!webrtc) include ../../dom/media/webrtc/tests/crashtests/crashtests.list
@@ -33,6 +35,7 @@ include ../../dom/smil/crashtests/crashtests.list
 include ../../dom/streams/crashtests/crashtests.list
 include ../../dom/svg/crashtests/crashtests.list
 include ../../dom/vr/test/crashtests/crashtests.list
+include ../../dom/webgpu/crashtests/crashtests.list
 include ../../dom/workers/test/crashtests/crashtests.list
 include ../../dom/xhr/tests/crashtests/crashtests.list
 include ../../dom/xml/crashtests/crashtests.list
@@ -58,7 +61,7 @@ include ../../layout/base/crashtests/crashtests.list
 include ../../layout/forms/crashtests/crashtests.list
 include ../../layout/generic/crashtests/crashtests.list
 include ../../layout/painting/crashtests/crashtests.list
-skip-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) include ../../layout/printing/crashtests/crashtests.list
+include ../../layout/printing/crashtests/crashtests.list
 include ../../layout/style/crashtests/crashtests.list
 include ../../layout/svg/crashtests/crashtests.list
 include ../../layout/tables/crashtests/crashtests.list
@@ -80,3 +83,6 @@ include ../../widget/crashtests/crashtests.list
 include ../../widget/gtk/crashtests/crashtests.list
 
 include ../../xpcom/string/crashtests/crashtests.list
+
+# Tests that must be run at the very end of all other crashtests.
+include final/crashtests.list

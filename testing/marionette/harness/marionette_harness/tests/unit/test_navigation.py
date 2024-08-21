@@ -85,8 +85,8 @@ class BaseNavigationTestCase(WindowManagerMixin, MarionetteTestCase):
               if (AppConstants.MOZ_APP_NAME == "fennec") {
                 win = Services.wm.getMostRecentWindow("navigator:browser");
               } else {
-                const { BrowserWindowTracker } = ChromeUtils.import(
-                  "resource:///modules/BrowserWindowTracker.jsm"
+                const { BrowserWindowTracker } = ChromeUtils.importESModule(
+                  "resource:///modules/BrowserWindowTracker.sys.mjs"
                 );
                 win = BrowserWindowTracker.getTopWindow();
               }
@@ -297,7 +297,7 @@ class TestNavigate(BaseNavigationTestCase):
         self.marionette.navigate("about:robots")
         self.assertFalse(self.is_remote_tab)
 
-        with self.assertRaises(errors.NoSuchElementException):
+        with self.assertRaises(errors.StaleElementException):
             elem.click()
 
     def test_about_blank_for_new_docshell(self):
@@ -345,7 +345,7 @@ class TestNavigate(BaseNavigationTestCase):
         self.assertFalse(self.is_remote_tab)
 
         with self.marionette.using_context("chrome"):
-            urlbar = self.marionette.find_element(By.ID, "urlbar-input")
+            urlbar = self.marionette.execute_script("return gURLBar.inputField")
             urlbar.send_keys(self.mod_key + "a")
             urlbar.send_keys(self.mod_key + "x")
             urlbar.send_keys("about:support" + Keys.ENTER)
@@ -360,7 +360,7 @@ class TestNavigate(BaseNavigationTestCase):
         self.assertTrue(self.is_remote_tab)
 
         with self.marionette.using_context("chrome"):
-            urlbar = self.marionette.find_element(By.ID, "urlbar-input")
+            urlbar = self.marionette.execute_script("return gURLBar.inputField")
             urlbar.send_keys(self.mod_key + "a")
             urlbar.send_keys(self.mod_key + "x")
             urlbar.send_keys(self.test_page_remote + Keys.ENTER)
@@ -385,12 +385,7 @@ class TestBackForwardNavigation(BaseNavigationTestCase):
 
         def check_page_status(page, expected_history_length):
             if "alert_text" in page:
-                if page["alert_text"] is None:
-                    # navigation auto-dismisses beforeunload prompt
-                    with self.assertRaises(errors.NoAlertPresentException):
-                        Alert(self.marionette).text
-                else:
-                    self.assertEqual(Alert(self.marionette).text, page["alert_text"])
+                self.assertEqual(Alert(self.marionette).text, page["alert_text"])
 
             self.assertEqual(self.marionette.get_url(), page["url"])
             self.assertEqual(self.history_length, expected_history_length)
@@ -441,29 +436,6 @@ class TestBackForwardNavigation(BaseNavigationTestCase):
         # Both methods should not raise a failure if no navigation is possible
         self.marionette.go_back()
         self.marionette.go_forward()
-
-    def test_dismissed_beforeunload_prompt(self):
-        url_beforeunload = inline(
-            """
-          <input type="text">
-          <script>
-            window.addEventListener("beforeunload", function (event) {
-              event.preventDefault();
-            });
-          </script>
-        """
-        )
-
-        def modify_page():
-            self.marionette.find_element(By.TAG_NAME, "input").send_keys("foo")
-
-        test_pages = [
-            {"url": inline("<p>foobar</p>"), "alert_text": None},
-            {"url": url_beforeunload, "callback": modify_page},
-            {"url": inline("<p>foobar</p>"), "alert_text": None},
-        ]
-
-        self.run_bfcache_test(test_pages)
 
     def test_data_urls(self):
         test_pages = [
@@ -685,26 +657,6 @@ class TestRefresh(BaseNavigationTestCase):
 
         self.marionette.refresh()
         self.assertEqual(self.test_page_file_url, self.marionette.get_url())
-
-    def test_dismissed_beforeunload_prompt(self):
-        self.marionette.navigate(
-            inline(
-                """
-          <input type="text">
-          <script>
-            window.addEventListener("beforeunload", function (event) {
-              event.preventDefault();
-            });
-          </script>
-        """
-            )
-        )
-        self.marionette.find_element(By.TAG_NAME, "input").send_keys("foo")
-        self.marionette.refresh()
-
-        # navigation auto-dismisses beforeunload prompt
-        with self.assertRaises(errors.NoAlertPresentException):
-            Alert(self.marionette).text
 
     def test_image(self):
         image = self.marionette.absolute_url("black.png")

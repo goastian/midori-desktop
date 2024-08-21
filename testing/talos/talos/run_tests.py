@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import copy
 import os
+import pathlib
 import sys
 import time
 import traceback
@@ -15,7 +16,6 @@ import six
 from mozgeckoprofiler import view_gecko_profile
 from mozlog import get_proxy_logger
 from wptserve import server
-from wptserve.handlers import handler
 
 from talos import utils
 from talos.config import ConfigurationError, get_configs
@@ -53,7 +53,9 @@ def set_tp_preferences(test, browser_config):
             "of cycles, please disregard reported numbers"
         )
         for cycle_var in ["tppagecycles", "tpcycles", "cycles"]:
-            if test[cycle_var] > 2:
+            if test["name"] == "tp5o_scroll" and test[cycle_var] > 1:
+                test[cycle_var] = 1
+            elif test[cycle_var] > 2:
                 test[cycle_var] = 2
 
     CLI_bool_options = [
@@ -91,19 +93,9 @@ def setup_webserver(webserver):
     """Set up a new web server with wptserve."""
     LOG.info("starting webserver on %r" % webserver)
 
-    @handler
-    def tracemonkey_pdf_handler(request, response):
-        """Handler for the talos pdfpaint test."""
-        headers = [("Content-Type", "application/pdf")]
-        with open("%s/tests/pdfpaint/tracemonkey.pdf" % here, "rb") as file:
-            content = file.read()
-        return headers, content
-
     host, port = webserver.split(":")
     httpd = server.WebTestHttpd(host=host, port=int(port), doc_root=here)
-    httpd.router.register(
-        "GET", "tests/pdfpaint/tracemonkey.pdf", tracemonkey_pdf_handler
-    )
+
     return httpd
 
 
@@ -316,6 +308,15 @@ function FindProxyForURL(url, host) {
 
             mytest = TTest()
 
+            utility_path = None
+            if config.get("screenshot_on_failure"):
+                obj_dir = os.environ.get("MOZ_DEVELOPER_OBJ_DIR", None)
+                if obj_dir is None:
+                    build_dir = pathlib.Path(os.environ.get("MOZ_UPLOAD_DIR")).parent
+                    utility_path = pathlib.Path(build_dir, "tests", "bin")
+                else:
+                    utility_path = os.path.join(obj_dir, "dist", "bin")
+
             # some tests like ts_paint return multiple results in a single iteration
             if test.get("firstpaint", False) or test.get("userready", None):
                 # we need a 'testeventmap' to tell us which tests each event should map to
@@ -349,12 +350,16 @@ function FindProxyForURL(url, host) {
             # and store the base and reference test replicates in results.json for upload
             elif test.get("base_vs_ref", False):
                 # run the test, results will be reported for each page like two tests in the suite
-                base_and_reference_results = mytest.runTest(browser_config, test)
+                base_and_reference_results = mytest.runTest(
+                    browser_config, test, utility_path=utility_path
+                )
                 # now compare each test, and create a new test object for the comparison
                 talos_results.add(make_comparison_result(base_and_reference_results))
             else:
                 # just expecting regular test - one result value per iteration
-                talos_results.add(mytest.runTest(browser_config, test))
+                talos_results.add(
+                    mytest.runTest(browser_config, test, utility_path=utility_path)
+                )
             LOG.test_end(testname, status="OK")
 
     except TalosRegression as exc:
@@ -456,7 +461,6 @@ def make_comparison_result(base_and_reference_results):
     # each set of two results is actually a base test followed by the
     # reference test; we want to go through each set of base vs reference
     for x in range(0, len(base_and_reference_results.results[0].results), 2):
-
         # separate the 'base' and 'reference' result run values
         results = base_and_reference_results.results[0].results
         base_result_runs = results[x]["runs"]

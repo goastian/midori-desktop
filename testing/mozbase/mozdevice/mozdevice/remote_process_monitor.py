@@ -56,7 +56,6 @@ class RemoteProcessMonitor:
         self.device.launch_activity(
             self.app_name,
             activity_name=activity,
-            e10s=e10s,
             moz_env=env,
             extra_args=args,
             url=test_url,
@@ -135,7 +134,7 @@ class RemoteProcessMonitor:
                         self.last_test_seen = "Last test finished"
                     elif message.get("action") == "log":
                         line = message["message"].strip()
-                        m = re.match(".*:\s*(\d*)", line)
+                        m = re.match(r".*:\s*(\d*)", line)
                         if m:
                             try:
                                 val = int(m.group(1))

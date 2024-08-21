@@ -11,6 +11,7 @@ import time
 from argparse import Namespace
 from contextlib import contextmanager
 from subprocess import PIPE, Popen
+from threading import Thread
 
 
 @contextmanager
@@ -59,6 +60,11 @@ class Http3Server(object):
     def echConfig(self):
         return self._echConfig
 
+    def read_streams(self, name, proc, pipe):
+        output = "stdout" if pipe == proc.stdout else "stderr"
+        for line in iter(pipe.readline, ""):
+            self._log.info("server: %s [%s] %s" % (name, output, line))
+
     def start(self):
         if not os.path.exists(self._http3ServerPath):
             raise Exception("Http3 server not found at %s" % self._http3ServerPath)
@@ -93,6 +99,19 @@ class Http3Server(object):
             # tell us it's started
             msg = process.stdout.readline()
             self._log.info("mozserve | http3 server msg: %s" % msg)
+            name = "http3server"
+            t1 = Thread(
+                target=self.read_streams,
+                args=(name, process, process.stdout),
+                daemon=True,
+            )
+            t1.start()
+            t2 = Thread(
+                target=self.read_streams,
+                args=(name, process, process.stderr),
+                daemon=True,
+            )
+            t2.start()
             if "server listening" in msg:
                 searchObj = re.search(
                     r"HTTP3 server listening on ports ([0-9]+), ([0-9]+), ([0-9]+), ([0-9]+) and ([0-9]+)."
@@ -107,6 +126,8 @@ class Http3Server(object):
                     self._ports["MOZHTTP3_PORT_PROXY"] = searchObj.group(4)
                     self._ports["MOZHTTP3_PORT_NO_RESPONSE"] = searchObj.group(5)
                     self._echConfig = searchObj.group(6)
+            else:
+                self._log.error("http3server failed to start?")
         except OSError as e:
             # This occurs if the subprocess couldn't be started
             self._log.error("Could not run the http3 server: %s" % (str(e)))
@@ -129,28 +150,18 @@ class Http3Server(object):
                         self._log.info("Killing proc")
                         proc.kill()
                         break
-
-            def dumpOutput(fd, label):
-                firstTime = True
-                for msg in fd:
-                    if firstTime:
-                        firstTime = False
-                        self._log.info("Process %s" % label)
-                    self._log.info(msg)
-
-            dumpOutput(proc.stdout, "stdout")
-            dumpOutput(proc.stderr, "stderr")
         self._http3ServerProc = {}
 
 
-class DoHServer(object):
+class NodeHttp2Server(object):
     """
-    Class which encapsulates the DoH server
+    Class which encapsulates a Node Http/2 server
     """
 
-    def __init__(self, options, env, logger):
+    def __init__(self, name, options, env, logger):
         if isinstance(options, Namespace):
             options = vars(options)
+        self._name = name
         self._log = logger
         self._port = options["port"]
         self._env = copy.deepcopy(env)
@@ -159,15 +170,21 @@ class DoHServer(object):
         self._dstServerPort = options["dstServerPort"]
         self._isWin = options["isWin"]
         self._nodeProc = None
+        self._searchStr = options["searchStr"]
+        self._alpn = options["alpn"]
 
     def port(self):
         return self._port
 
     def start(self):
         if not os.path.exists(self._serverPath):
-            raise Exception("DoH server not found at %s" % self._serverPath)
+            raise Exception(
+                "%s server not found at %s" % (self._name, self._serverPath)
+            )
 
-        self._log.info("mozserve | Found DoH server path: %s" % self._serverPath)
+        self._log.info(
+            "mozserve | Found %s server path: %s" % (self._name, self._serverPath)
+        )
 
         if not os.path.exists(self._nodeBin) or not os.path.isfile(self._nodeBin):
             raise Exception("node not found at path %s" % (self._nodeBin))
@@ -184,6 +201,7 @@ class DoHServer(object):
                         self._serverPath,
                         "serverPort={}".format(self._dstServerPort),
                         "listeningPort={}".format(self._port),
+                        "alpn={}".format(self._alpn),
                     ],
                     stdin=PIPE,
                     stdout=PIPE,
@@ -195,15 +213,17 @@ class DoHServer(object):
             self._nodeProc = process
 
             msg = process.stdout.readline()
-            self._log.info("runtests.py | DoH server msg: %s" % msg)
+            self._log.info("runtests.py | %s server msg: %s" % (self._name, msg))
             if "server listening" in msg:
-                searchObj = re.search(r"DoH server listening on ports ([0-9]+)", msg, 0)
+                searchObj = re.search(self._searchStr, msg, 0)
                 if searchObj:
                     self._port = int(searchObj.group(1))
-                    self._log.info("DoH server started at port: %d" % (self._port))
+                    self._log.info(
+                        "%s server started at port: %d" % (self._name, self._port)
+                    )
         except OSError as e:
             # This occurs if the subprocess couldn't be started
-            self._log.error("Could not run DoH server: %s" % (str(e)))
+            self._log.error("Could not run %s server: %s" % (self._name, str(e)))
 
     def stop(self):
         """
@@ -227,3 +247,43 @@ class DoHServer(object):
             dumpOutput(self._nodeProc.stderr, "stderr")
 
             self._nodeProc = None
+
+
+class DoHServer(object):
+    """
+    Class which encapsulates the DoH server
+    """
+
+    def __init__(self, options, env, logger):
+        options["searchStr"] = r"DoH server listening on ports ([0-9]+)"
+        self._server = NodeHttp2Server("DoH", options, env, logger)
+
+    def port(self):
+        return self._server.port()
+
+    def start(self):
+        self._server.start()
+
+    def stop(self):
+        self._server.stop()
+
+
+class Http2Server(object):
+    """
+    Class which encapsulates the Http2 server
+    """
+
+    def __init__(self, options, env, logger):
+        options["searchStr"] = r"Http2 server listening on ports ([0-9]+)"
+        options["dstServerPort"] = -1
+        options["alpn"] = ""
+        self._server = NodeHttp2Server("Http/2", options, env, logger)
+
+    def port(self):
+        return self._server.port()
+
+    def start(self):
+        self._server.start()
+
+    def stop(self):
+        self._server.stop()

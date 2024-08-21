@@ -171,6 +171,12 @@ def create_parser(mach_interface=False):
         help="Comma-separated list of threads to sample",
     )
     add_arg(
+        "--gecko-profile-extra-threads",
+        dest="gecko_profile_extra_threads",
+        type=str,
+        help="Comma-separated list of extra threads to add to the default list of threads to profile.",
+    )
+    add_arg(
         "--extension",
         dest="extensions",
         action="append",
@@ -216,6 +222,26 @@ def create_parser(mach_interface=False):
         action="store_true",
         dest="pdfpaint",
         help="Wait for the first page of a PDF to be rendered",
+    )
+    add_arg(
+        "--pdfPaintChunk",
+        type=int,
+        default=None,
+        dest="pdfpaint_chunk",
+        help=(
+            "Chunk of the pdfpaint test to run (each chunk runs at most 100 pdfs). "
+            "Defaults to None to run all the pdfs at the same time."
+        ),
+    )
+    add_arg(
+        "--pdfPaintName",
+        type=str,
+        default=None,
+        dest="pdfpaint_name",
+        help=(
+            "Name of a pdfpaint test to run (e.g. xfa_imm5257e.pdf). Chunking will be "
+            "ignored/disabled if this option is used."
+        ),
     )
     add_arg("--webServer", dest="webserver", help="DEPRECATED")
     if not mach_interface:
@@ -316,6 +342,13 @@ def create_parser(mach_interface=False):
         default="mozilla-central",
         help="The project branch we're running tests on. Used for "
         "disabling/skipping tests.",
+    )
+    add_arg(
+        "--screenshot-on-failure",
+        action="store_true",
+        dest="screenshot_on_failure",
+        default=False,
+        help="Take a screenshot when the test fails.",
     )
 
     add_logging_group(parser)

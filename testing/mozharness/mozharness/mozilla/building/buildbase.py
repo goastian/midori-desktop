@@ -330,6 +330,7 @@ class BuildOptionParser(object):
         "aarch64-pgo": path_base + "%s_aarch64_pgo.py",
         "aarch64-debug": path_base + "%s_aarch64_debug.py",
         "aarch64-lite-debug": path_base + "%s_aarch64_debug_lite.py",
+        "aarch64-profile-generate": path_base + "%s_aarch64_profile_generate.py",
         "android-geckoview-docs": path_base + "%s_geckoview_docs.py",
         "valgrind": path_base + "%s_valgrind.py",
     }
@@ -811,13 +812,13 @@ items from that key's value."
         self.preflight_build()
         self._run_mach_command_in_build_env(["configure"])
         self._run_mach_command_in_build_env(
-            ["static-analysis", "autotest", "--intree-tool"], use_subprocess=True
+            ["static-analysis", "autotest", "--intree-tool"]
         )
 
     def _query_mach(self):
         return [sys.executable, "mach"]
 
-    def _run_mach_command_in_build_env(self, args, use_subprocess=False):
+    def _run_mach_command_in_build_env(self, args):
         """Run a mach command in a build context."""
         env = self.query_build_env()
         env.update(self.query_mach_build_env())
@@ -826,23 +827,13 @@ items from that key's value."
 
         mach = self._query_mach()
 
-        # XXX See bug 1483883
-        # Work around an interaction between Gradle and mozharness
-        # Not using `subprocess` causes gradle to hang
-        if use_subprocess:
-            import subprocess
-
-            return_code = subprocess.call(
-                mach + ["--log-no-times"] + args, env=env, cwd=dirs["abs_src_dir"]
-            )
-        else:
-            return_code = self.run_command(
-                command=mach + ["--log-no-times"] + args,
-                cwd=dirs["abs_src_dir"],
-                env=env,
-                error_list=MakefileErrorList,
-                output_timeout=self.config.get("max_build_output_timeout", 60 * 40),
-            )
+        return_code = self.run_command(
+            command=mach + ["--log-no-times"] + args,
+            cwd=dirs["abs_src_dir"],
+            env=env,
+            error_list=MakefileErrorList,
+            output_timeout=self.config.get("max_build_output_timeout", 60 * 40),
+        )
 
         if return_code:
             self.return_code = self.worst_level(
@@ -1013,16 +1004,27 @@ items from that key's value."
         return False
 
     def _load_build_resources(self):
-        p = self.config.get("build_resources_path") % self.query_abs_dirs()
+        p = self.config.get("profile_build_resources_path") % self.query_abs_dirs()
         if not os.path.exists(p):
-            self.info("%s does not exist; not loading build resources" % p)
+            self.info("%s does not exist; not loading build profile data" % p)
             return None
 
         with open(p, "r") as fh:
-            resources = json.load(fh)
+            profile = json.load(fh)
 
-        if "duration" not in resources:
-            self.info("resource usage lacks duration; ignoring")
+        try:
+            thread = profile.get("threads", [])[0]
+            times = thread.get("samples", {}).get("time", [])
+            duration = times[-1] / 1000
+            markers = thread["markers"]
+            phases = {}
+            for n, marker in enumerate(markers["data"]):
+                if marker.get("type") == "Phase":
+                    phases[marker["phase"]] = (
+                        markers["endTime"][n] - markers["startTime"][n]
+                    ) / 1000
+        except Exception:
+            self.info("build profile lacks data; ignoring")
             return None
 
         # We want to always collect metrics. But alerts with sccache enabled
@@ -1031,19 +1033,17 @@ items from that key's value."
 
         data = {
             "name": "build times",
-            "value": resources["duration"],
+            "value": duration,
             "extraOptions": self.perfherder_resource_options(),
             "shouldAlert": should_alert,
             "subtests": [],
         }
 
-        for phase in resources["phases"]:
-            if "duration" not in phase:
-                continue
+        for name, duration in phases.items():
             data["subtests"].append(
                 {
-                    "name": phase["name"],
-                    "value": phase["duration"],
+                    "name": name,
+                    "value": duration,
                 }
             )
 
@@ -1051,11 +1051,20 @@ items from that key's value."
 
     def _load_sccache_stats(self):
         stats_file = os.path.join(
-            self.query_abs_dirs()["abs_obj_dir"], "sccache-stats.json"
+            self.query_abs_dirs()["base_work_dir"], "artifacts", "sccache-stats.json"
         )
         if not os.path.exists(stats_file):
-            self.info("%s does not exist; not loading sccache stats" % stats_file)
-            return
+            msg = "%s does not exist; not loading sccache stats" % stats_file
+            if (
+                os.environ.get("USE_SCCACHE") == "1"
+                and not os.environ.get("SCCACHE_DISABLE") == "1"
+            ):
+                # We know we use sccache but we didn't find it.
+                # Fails to make sure the dev knows it
+                self.fatal(msg)
+            else:
+                self.info(msg)
+                return
 
         with open(stats_file, "r") as fh:
             stats = json.load(fh)
@@ -1479,8 +1488,10 @@ items from that key's value."
             if build_platform == "android-geckoview-docs":
                 return
             main_platform = "android"
+        elif build_platform.startswith("ios"):
+            return
         else:
-            err = "Build platform {} didn't start with 'mac', 'linux', 'win', or 'android'".format(
+            err = "Build platform {} didn't start with 'mac', 'linux', 'win', 'android' or 'ios'".format(
                 build_platform
             )
             self.fatal(err)

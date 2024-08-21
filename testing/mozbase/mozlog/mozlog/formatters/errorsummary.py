@@ -4,6 +4,7 @@
 
 
 import json
+import os
 from collections import defaultdict
 
 from .base import BaseFormatter
@@ -15,11 +16,16 @@ class ErrorSummaryFormatter(BaseFormatter):
         self.groups = defaultdict(
             lambda: {
                 "status": None,
+                "test_times": [],
                 "start": None,
                 "end": None,
             }
         )
         self.line_count = 0
+        self.dump_passing_tests = False
+
+        if os.environ.get("MOZLOG_DUMP_ALL_TESTS", False):
+            self.dump_passing_tests = True
 
     def __call__(self, data):
         rv = BaseFormatter.__call__(self, data)
@@ -40,25 +46,42 @@ class ErrorSummaryFormatter(BaseFormatter):
             "expected": item["expected"],
             "message": item.get("message"),
             "stack": item.get("stack"),
+            "modifiers": item.get("extra", {}).get("modifiers", ""),
             "known_intermittent": item.get("known_intermittent", []),
         }
         return self._output("test_result", data)
 
-    def _update_group_result(self, group, item):
-        ginfo = self.groups[group]
+    def _get_group_result(self, group, item):
+        group_info = self.groups[group]
+        result = group_info["status"]
 
-        if item["status"] == "SKIP":
-            if ginfo["status"] is None:
-                ginfo["status"] = "SKIP"
-        elif (
-            ("expected" not in item and item["status"] in ["OK", "PASS"])
-            or ("expected" in item and item["status"] == item["expected"])
-            or item["status"] in item.get("known_intermittent", [])
-        ):
-            if ginfo["status"] in (None, "SKIP"):
-                ginfo["status"] = "OK"
+        if result == "ERROR":
+            return result
+
+        # If status == expected, we delete item[expected]
+        test_status = item["status"]
+        test_expected = item.get("expected", test_status)
+        known_intermittent = item.get("known_intermittent", [])
+
+        if test_status == "SKIP":
+            self.groups[group]["start"] = None
+            if result is None:
+                result = "SKIP"
+        elif test_status == test_expected or test_status in known_intermittent:
+            # If the test status is expected, or it's a known intermittent
+            # the group has at least one passing test
+            result = "OK"
         else:
-            ginfo["status"] = "ERROR"
+            result = "ERROR"
+
+        return result
+
+    def _clean_test_name(self, test):
+        retVal = test
+        # remove extra stuff like "(finished)"
+        if "(finished)" in test:
+            retVal = test.split(" ")[0]
+        return retVal
 
     def suite_start(self, item):
         self.test_to_group = {v: k for k in item["tests"] for v in item["tests"][k]}
@@ -67,10 +90,7 @@ class ErrorSummaryFormatter(BaseFormatter):
     def suite_end(self, data):
         output = []
         for group, info in self.groups.items():
-            if info["start"] is None or info["end"] is None:
-                duration = None
-            else:
-                duration = info["end"] - info["start"]
+            duration = sum(info["test_times"])
 
             output.append(
                 self._output(
@@ -86,36 +106,60 @@ class ErrorSummaryFormatter(BaseFormatter):
         return "".join(output)
 
     def test_start(self, item):
-        group = self.test_to_group.get(item["test"], None)
+        group = item.get(
+            "group", self.test_to_group.get(self._clean_test_name(item["test"]), None)
+        )
         if group and self.groups[group]["start"] is None:
             self.groups[group]["start"] = item["time"]
 
     def test_status(self, item):
-        group = self.test_to_group.get(item["test"], None)
+        group = item.get(
+            "group", self.test_to_group.get(self._clean_test_name(item["test"]), None)
+        )
         if group:
-            self._update_group_result(group, item)
+            self.groups[group]["status"] = self._get_group_result(group, item)
 
-        if "expected" not in item:
+        if not self.dump_passing_tests and "expected" not in item:
             return
 
-        return self._output_test(item["test"], item["subtest"], item)
+        if item.get("expected", "") == "":
+            item["expected"] = item["status"]
+
+        return self._output_test(
+            self._clean_test_name(item["test"]), item["subtest"], item
+        )
 
     def test_end(self, item):
-        group = self.test_to_group.get(item["test"], None)
+        group = item.get(
+            "group", self.test_to_group.get(self._clean_test_name(item["test"]), None)
+        )
         if group:
-            self._update_group_result(group, item)
-            self.groups[group]["end"] = item["time"]
+            self.groups[group]["status"] = self._get_group_result(group, item)
+            if self.groups[group]["start"]:
+                self.groups[group]["test_times"].append(
+                    item["time"] - self.groups[group]["start"]
+                )
+                self.groups[group]["start"] = None
 
-        if "expected" not in item:
+        if not self.dump_passing_tests and "expected" not in item:
             return
 
-        return self._output_test(item["test"], None, item)
+        if item.get("expected", "") == "":
+            item["expected"] = item["status"]
+
+        return self._output_test(self._clean_test_name(item["test"]), None, item)
 
     def log(self, item):
         if item["level"] not in ("ERROR", "CRITICAL"):
             return
 
         data = {"level": item["level"], "message": item["message"]}
+        return self._output("log", data)
+
+    def shutdown_failure(self, item):
+        data = {"status": "FAIL", "test": item["group"], "message": item["message"]}
+        data["group"] = [g for g in self.groups if item["group"].endswith(g)][0]
+        self.groups[data["group"]]["status"] = "FAIL"
         return self._output("log", data)
 
     def crash(self, item):
@@ -127,11 +171,13 @@ class ErrorSummaryFormatter(BaseFormatter):
         }
 
         if item.get("test"):
-            data["group"] = self.test_to_group.get(item["test"], "")
+            data["group"] = self.test_to_group.get(
+                self._clean_test_name(item["test"]), ""
+            )
             if data["group"] == "":
                 # item['test'] could be the group name, not a test name
-                if item["test"] in self.groups:
-                    data["group"] = item["test"]
+                if self._clean_test_name(item["test"]) in self.groups:
+                    data["group"] = self._clean_test_name(item["test"])
 
             # unlike test group summary, if we crash expect error unless expected
             if (

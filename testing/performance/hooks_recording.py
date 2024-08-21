@@ -20,11 +20,15 @@ next_site = None
 
 RECORDING_LIST = Path(Path(__file__).parent, "pageload_sites.json")
 
+# Uncomment this to record tp7 desktop sites in CI or locally.
+# This is still a WIP (Bug 1831310) and meant to be used by the
+# perftest team.
+# RECORDING_LIST = Path(Path(__file__).parent, "tp7_desktop_sites.json")
+
 SCM_1_LOGIN_SITES = ("facebook", "netflix")
 
 
 def before_iterations(kw):
-
     global next_site
     print("Setting up next site to record.")
 
@@ -41,7 +45,7 @@ def before_iterations(kw):
         # tests and exclude all the others
         specified_tests = kw["proxy_perftest_page"]
         if specified_tests is not None:
-            if test.get("name") in specified_tests:
+            if test.get("name") == specified_tests:
                 if test.get("login"):
                     print(f"WARNING: You selected a login test: {test.get('name')}")
                 return True
@@ -144,6 +148,12 @@ def before_runs(env):
         prefs = test_site.get("preferences", {})
         for pref, val in prefs.items():
             add_option(env, "firefox.preference", f"{pref}:{val}")
+
+        # Add prefs that will attempt to remove cookie banners
+        add_option(
+            env, "firefox.preference", "cookiebanners.bannerClicking.enabled:true"
+        )
+        add_option(env, "firefox.preference", "cookiebanners.service.mode:2")
 
         second_url = test_site.get("secondary_url", None)
         if second_url:

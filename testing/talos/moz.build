@@ -17,6 +17,9 @@ with Files("talos/tests/tresize/**"):
 with Files("talos/tests/a11y/**"):
     BUG_COMPONENT = ("Core", "Disability Access APIs")
 
+with Files("talos/tests/canvas2d/**"):
+    BUG_COMPONENT = ("Core", "Graphics: Canvas2D")
+
 with Files("talos/tests/cpstartup/**"):
     BUG_COMPONENT = ("Firefox", "Tabbed Browser")
 
@@ -25,6 +28,9 @@ with Files("talos/tests/dromaeo/**"):
 
 with Files("talos/tests/kraken/**"):
     BUG_COMPONENT = ("Core", "JavaScript Engine")
+
+with Files("talos/tests/offscreencanvas/**"):
+    BUG_COMPONENT = ("Core", "Graphics: Canvas2D")
 
 with Files("talos/tests/scroll/**"):
     BUG_COMPONENT = ("Core", "Graphics")

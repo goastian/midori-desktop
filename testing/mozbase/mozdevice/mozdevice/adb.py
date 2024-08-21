@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import traceback
-from distutils import dir_util
+from shutil import copytree
 from threading import Thread
 
 import six
@@ -1089,9 +1089,7 @@ class ADBDevice(ADBCommand):
                     self._logger.debug("Check for su -c failed: {}".format(e))
 
                 # Check if Android's su 0 command works.
-                # su 0 id will hang on Pixel 2 8.1.0/OPM2.171019.029.B1/4720900
-                # rooted via magisk. If we already have detected su -c support,
-                # we can skip this check.
+                # If we already have detected su -c support, we can skip this check.
                 try:
                     if (
                         not self._have_su
@@ -2983,7 +2981,7 @@ class ADBDevice(ADBCommand):
             temp_parent = tempfile.mkdtemp()
             remote_name = os.path.basename(remote)
             new_local = os.path.join(temp_parent, remote_name)
-            dir_util.copy_tree(local, new_local)
+            copytree(local, new_local)
             local = new_local
             # See do_sync_push in
             # https://android.googlesource.com/platform/system/core/+/master/adb/file_sync_client.cpp
@@ -3136,7 +3134,7 @@ class ADBDevice(ADBCommand):
                     self.rm(intermediate, recursive=True, force=True, timeout=timeout)
         finally:
             if copy_required:
-                dir_util.copy_tree(local, original_local)
+                copytree(local, original_local, dirs_exist_ok=True)
                 shutil.rmtree(temp_parent)
 
     def get_file(self, remote, offset=None, length=None, timeout=None):
@@ -4135,7 +4133,7 @@ class ADBDevice(ADBCommand):
         # against bool prior to testing it against int in order to
         # prevent falsely identifying a bool value as an int.
         if extras:
-            for (key, val) in extras.items():
+            for key, val in extras.items():
                 if isinstance(val, bool):
                     extra_type_param = "--ez"
                 elif isinstance(val, int):
@@ -4196,7 +4194,7 @@ class ADBDevice(ADBCommand):
         if moz_env:
             # moz_env is expected to be a dictionary of environment variables:
             # Fennec itself will set them when launched
-            for (env_count, (env_key, env_val)) in enumerate(moz_env.items()):
+            for env_count, (env_key, env_val) in enumerate(moz_env.items()):
                 extras["env" + str(env_count)] = env_key + "=" + env_val
 
         # Additional command line arguments that fennec will read and use (e.g.
@@ -4241,7 +4239,7 @@ class ADBDevice(ADBCommand):
             application.
         :param str extra_args: Extra arguments to be parsed by the app.
         :param str url: URL to open
-        :param bool e10s: If True, run in multiprocess mode.
+        :param bool e10s: No longer used.
         :param bool wait: If True, wait for application to start before
             returning.
         :param bool grant_runtime_permissions: Grant special runtime
@@ -4261,16 +4259,15 @@ class ADBDevice(ADBCommand):
         if moz_env:
             # moz_env is expected to be a dictionary of environment variables:
             # geckoview_example itself will set them when launched
-            for (env_count, (env_key, env_val)) in enumerate(moz_env.items()):
+            for env_count, (env_key, env_val) in enumerate(moz_env.items()):
                 extras["env" + str(env_count)] = env_key + "=" + env_val
 
         # Additional command line arguments that the app will read and use (e.g.
         # with a custom profile)
         if extra_args:
-            for (arg_count, arg) in enumerate(extra_args):
+            for arg_count, arg in enumerate(extra_args):
                 extras["arg" + str(arg_count)] = arg
 
-        extras["use_multiprocess"] = e10s
         extras["out_file"] = out_file
         self.launch_application(
             app_name,
@@ -4310,7 +4307,7 @@ class ADBDevice(ADBCommand):
             application.
         :param str extra_args: Extra arguments to be parsed by the app.
         :param str url: URL to open
-        :param bool e10s: If True, run in multiprocess mode.
+        :param bool e10s: No longer used.
         :param bool wait: If True, wait for application to start before
             returning.
         :param bool fail_if_running: Raise an exception if instance of
@@ -4329,16 +4326,15 @@ class ADBDevice(ADBCommand):
         if moz_env:
             # moz_env is expected to be a dictionary of environment variables:
             # geckoview_example itself will set them when launched
-            for (env_count, (env_key, env_val)) in enumerate(moz_env.items()):
+            for env_count, (env_key, env_val) in enumerate(moz_env.items()):
                 extras["env" + str(env_count)] = env_key + "=" + env_val
 
         # Additional command line arguments that the app will read and use (e.g.
         # with a custom profile)
         if extra_args:
-            for (arg_count, arg) in enumerate(extra_args):
+            for arg_count, arg in enumerate(extra_args):
                 extras["arg" + str(arg_count)] = arg
 
-        extras["use_multiprocess"] = e10s
         self.launch_application(
             app_name,
             "%s.%s" % (app_name, activity_name),

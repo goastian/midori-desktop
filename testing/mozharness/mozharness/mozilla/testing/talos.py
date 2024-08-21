@@ -20,6 +20,7 @@ import subprocess
 import sys
 
 import six
+from mozsystemmonitor.resourcemonitor import SystemResourceMonitor
 
 import mozharness
 from mozharness.base.config import parse_config_file
@@ -111,6 +112,20 @@ class TalosOutputParser(OutputParser):
             self.critical(" %s" % line)
             self.update_worst_log_and_tbpl_levels(CRITICAL, TBPL_RETRY)
             return  # skip base parse_single_line
+
+        if line.startswith("SUITE-START "):
+            SystemResourceMonitor.begin_marker("suite", "")
+        elif line.startswith("SUITE-END "):
+            SystemResourceMonitor.end_marker("suite", "")
+        elif line.startswith("TEST-"):
+            part = line.split(" | ")
+            if part[0] == "TEST-START":
+                SystemResourceMonitor.begin_marker("test", part[1])
+            elif part[0] in ("TEST-OK", "TEST-UNEXPECTED-ERROR"):
+                SystemResourceMonitor.end_marker("test", part[1])
+        elif line.startswith("Running cycle ") or line.startswith("PROCESS-CRASH "):
+            SystemResourceMonitor.record_event(line)
+
         super(TalosOutputParser, self).parse_single_line(line)
 
 
@@ -173,7 +188,7 @@ class Talos(
                 ["--gecko-profile-interval"],
                 {
                     "dest": "gecko_profile_interval",
-                    "type": "int",
+                    "type": "float",
                     "help": "The interval between samples taken by the profiler (milliseconds)",
                 },
             ],
@@ -200,6 +215,14 @@ class Talos(
                     "dest": "gecko_profile_threads",
                     "type": "str",
                     "help": "Comma-separated list of threads to sample.",
+                },
+            ],
+            [
+                ["--gecko-profile-extra-threads"],
+                {
+                    "dest": "gecko_profile_extra_threads",
+                    "type": "str",
+                    "help": "Comma-separated list of extra threads to add to the default list of threads to profile.",
                 },
             ],
             [
@@ -246,6 +269,27 @@ class Talos(
                     "dest": "skip_preflight",
                     "default": False,
                     "help": "skip preflight commands to prepare machine.",
+                },
+            ],
+            [
+                ["--screenshot-on-failure"],
+                {
+                    "action": "store_true",
+                    "dest": "screenshot_on_failure",
+                    "default": False,
+                    "help": "Take a screenshot when the test fails.",
+                },
+            ],
+            [
+                ["--pdfPaintChunk"],
+                {
+                    "type": "int",
+                    "dest": "pdfpaint_chunk",
+                    "default": None,
+                    "help": (
+                        "Chunk of the pdfpaint test to run (each chunk runs at most 100 pdfs). "
+                        "Defaults to None to run all the pdfs at the same time."
+                    ),
                 },
             ],
         ]
@@ -526,6 +570,8 @@ class Talos(
             kw_options["symbolsPath"] = self.symbols_path
         if self.config.get("project", None):
             kw_options["project"] = self.config["project"]
+        if self.config.get("pdfpaint_chunk", None):
+            kw_options["pdfPaintChunk"] = str(self.config["pdfpaint_chunk"])
 
         kw_options.update(kw)
         # talos expects tests to be in the format (e.g.) 'ts:tp5:tsvg'
@@ -544,6 +590,11 @@ class Talos(
             options += self.config["talos_extra_options"]
         if self.config.get("code_coverage", False):
             options.extend(["--code-coverage"])
+        if (
+            self.config.get("screenshot_on_failure", False)
+            or os.environ.get("MOZ_AUTOMATION", None) is not None
+        ):
+            options.extend(["--screenshot-on-failure"])
 
         # Add extra_prefs defined by individual test suites in talos.json
         extra_prefs = self.query_suite_extra_prefs()
@@ -701,6 +752,7 @@ class Talos(
         # Use in-tree wptserve for Python 3.10 compatibility
         extract_dirs = [
             "tools/wptserve/*",
+            "tools/wpt_third_party/h2/*",
             "tools/wpt_third_party/pywebsocket3/*",
         ]
         return super(Talos, self).download_and_extract(
@@ -756,7 +808,6 @@ class Talos(
             )
         self.register_virtualenv_module(
             requirements=[mozbase_requirements],
-            two_pass=True,
             editable=True,
         )
         super(Talos, self).create_virtualenv()
@@ -813,6 +864,9 @@ class Talos(
         env["MOZ_UPLOAD_DIR"] = self.query_abs_dirs()["abs_blob_upload_dir"]
         if not self.run_local:
             env["MINIDUMP_STACKWALK"] = self.query_minidump_stackwalk()
+            env["MOZ_FETCHES_DIR"] = os.environ.get("MOZ_FETCHES_DIR")
+        else:
+            env["MOZBUILD_PATH"] = self.config.get("mozbuild_path")
         env["MINIDUMP_SAVE_PATH"] = self.query_abs_dirs()["abs_blob_upload_dir"]
         env["RUST_BACKTRACE"] = "full"
         if not os.path.isdir(env["MOZ_UPLOAD_DIR"]):

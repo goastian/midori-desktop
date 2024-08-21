@@ -30,6 +30,7 @@ FINAL_TARGET_FILES.content += [
     "ignorePrefs.json",
     "manifestLibrary.js",
     "mochitest-e10s-utils.js",
+    "mochitestListingsUtils.js",
     "redirect.html",
     "server.js",
     "shutdown-leaks-collector.js",
@@ -72,23 +73,23 @@ FINAL_TARGET_FILES.content.tests.BrowserTestUtils += [
 ]
 
 MOCHITEST_MANIFESTS += [
-    "baselinecoverage/plain/mochitest.ini",
-    "tests/MochiKit-1.4.2/tests/mochitest.ini",
+    "baselinecoverage/plain/mochitest.toml",
+    "tests/MochiKit-1.4.2/tests/mochitest.toml",
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
-    "baselinecoverage/chrome/chrome.ini",
-    "chrome/chrome.ini",
+    "baselinecoverage/chrome/chrome.toml",
+    "chrome/chrome.toml",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["baselinecoverage/browser_chrome/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["baselinecoverage/browser_chrome/browser.toml"]
 
 TEST_HARNESS_FILES.testing.mochitest += [
     "/build/pgo/server-locations.txt",
     "/build/valgrind/cross-architecture.sup",
     "/build/valgrind/i386-pc-linux-gnu.sup",
     "/build/valgrind/x86_64-pc-linux-gnu.sup",
-    "/netwerk/test/httpserver/httpd.js",
+    "/netwerk/test/httpserver/httpd.sys.mjs",
     "bisection.py",
     "browser-harness.xhtml",
     "browser-test.js",
@@ -98,12 +99,14 @@ TEST_HARNESS_FILES.testing.mochitest += [
     "DoHServer/doh_server.js",
     "favicon.ico",
     "harness.xhtml",
+    "Http2Server/http2_server.js",
     "ignorePrefs.json",
     "leaks.py",
     "mach_test_package_commands.py",
     "manifest.webapp",
     "manifestLibrary.js",
     "mochitest_options.py",
+    "mochitestListingsUtils.js",
     "pywebsocket_wrapper.py",
     "redirect.html",
     "runjunit.py",
@@ -117,6 +120,12 @@ TEST_HARNESS_FILES.testing.mochitest.DoHServer += [
     "DoHServer/doh_server.js",
     "DoHServer/http2-cert.key.pem",
     "DoHServer/http2-cert.pem",
+]
+
+TEST_HARNESS_FILES.testing.mochitest.Http2Server += [
+    "Http2Server/http2_server.js",
+    "Http2Server/mochitest-cert.key.pem",
+    "Http2Server/mochitest-cert.pem",
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.embed += [
@@ -144,7 +153,7 @@ TEST_HARNESS_FILES.testing.mochitest.pywebsocket3.mod_pywebsocket += [
 
 TEST_HARNESS_FILES.testing.mochitest.pywebsocket3.mod_pywebsocket.handshake += [
     "pywebsocket3/mod_pywebsocket/handshake/__init__.py",
-    "pywebsocket3/mod_pywebsocket/handshake/_base.py",
+    "pywebsocket3/mod_pywebsocket/handshake/base.py",
     "pywebsocket3/mod_pywebsocket/handshake/hybi.py",
 ]
 
@@ -221,6 +230,29 @@ TEST_HARNESS_FILES.testing.mochitest.DoHServer.dns_packet += [
     "../xpcshell/dns-packet/rcodes.js",
     "../xpcshell/dns-packet/test.js",
     "../xpcshell/dns-packet/types.js",
+]
+
+TEST_HARNESS_FILES.testing.mochitest.Http2Server.node_ws += [
+    "../xpcshell/node-ws/browser.js",
+    "../xpcshell/node-ws/index.js",
+    "../xpcshell/node-ws/package.json",
+    "../xpcshell/node-ws/wrapper.mjs",
+]
+
+TEST_HARNESS_FILES.testing.mochitest.Http2Server.node_ws.lib += [
+    "../xpcshell/node-ws/lib/buffer-util.js",
+    "../xpcshell/node-ws/lib/constants.js",
+    "../xpcshell/node-ws/lib/event-target.js",
+    "../xpcshell/node-ws/lib/extension.js",
+    "../xpcshell/node-ws/lib/limiter.js",
+    "../xpcshell/node-ws/lib/permessage-deflate.js",
+    "../xpcshell/node-ws/lib/receiver.js",
+    "../xpcshell/node-ws/lib/sender.js",
+    "../xpcshell/node-ws/lib/stream.js",
+    "../xpcshell/node-ws/lib/subprotocol.js",
+    "../xpcshell/node-ws/lib/validation.js",
+    "../xpcshell/node-ws/lib/websocket-server.js",
+    "../xpcshell/node-ws/lib/websocket.js",
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.DoHServer.node_ip += [

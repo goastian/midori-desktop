@@ -9,6 +9,18 @@ platform or build of Mozilla. To handle these cases (and more), we
 created a python library to create and use test "manifests", which
 codify this information.
 
+Update for August 2023: Transition to TOML for manifestparser
+`````````````````````````````````````````````````````````````
+
+As of August 2023, manifestparser will be transitioning from INI format
+configuration files to TOML. The new TOML format will better support
+future continuous integration automation and has a much more
+precise syntax (FFI see `Bug 1821199 <https://bugzilla.mozilla.org/show_bug.cgi?id=1821199>`_).
+During the migration period both ``*.ini`` files and
+``*.toml`` files will be supported. If an INI config file is specified
+(e.g. in ``moz.build``) and a TOML file is present, the TOML file will be
+used.
+
 :mod:`manifestparser` --- Create and manage test manifests
 -----------------------------------------------------------
 
@@ -30,7 +42,7 @@ What manifestparser gives you:
       'relpath': 'testToolbar/testBackForwardButtons.js',
       'name': 'testBackForwardButtons.js',
       'here': '/home/mozilla/mozmill/src/manifestparser/manifestparser/tests',
-      'manifest': '/home/mozilla/mozmill/src/manifestparser/manifestparser/tests/manifest.ini',}]
+      'manifest': '/home/mozilla/mozmill/src/manifestparser/manifestparser/tests/manifest.toml',}]
 
 The keys displayed here (path, relpath, name, here, and manifest) are
 reserved keys for manifestparser and any consuming APIs.  You can add
@@ -40,7 +52,7 @@ Why have test manifests?
 ````````````````````````
 
 It is desirable to have a unified format for test manifests for testing
-[mozilla-central](http://hg.mozilla.org/mozilla-central), etc.
+`mozilla-central <http://hg.mozilla.org/mozilla-central>`_, etc.
 
 * It is desirable to be able to selectively enable or disable tests based on platform or other conditions. This should be easy to do. Currently, since many of the harnesses just crawl directories, there is no effective way of disabling a test except for removal from mozilla-central
 * It is desriable to do this in a universal way so that enabling and disabling tests as well as other tasks are easily accessible to a wider audience than just those intimately familiar with the specific test framework.
@@ -63,8 +75,8 @@ advantages:
 
 .. code-block:: text
 
-     [test_broken.js]
-     disabled = https://bugzilla.mozilla.org/show_bug.cgi?id=123456
+     ["test_broken.js"]
+     disabled = "https://bugzilla.mozilla.org/show_bug.cgi?id=123456"
 
 * ability to run different (subsets of) tests on different
   platforms. Traditionally, we've done a bit of magic or had the test
@@ -74,8 +86,8 @@ advantages:
 
 .. code-block:: text
 
-     [test_works_on_windows_only.js]
-     skip-if = os != 'win'
+     ["test_works_on_windows_only.js"]
+     skip-if = ["os != 'win'"]
 
 * ability to markup tests with metadata. We have a large, complicated,
   and always changing infrastructure.  key, value metadata may be used
@@ -84,20 +96,20 @@ advantages:
   number, if it were desirable.
 
 * ability to have sane and well-defined test-runs. You can keep
-  different manifests for different test runs and ``[include:]``
+  different manifests for different test runs and ``["include:FILENAME.toml"]``
   (sub)manifests as appropriate to your needs.
 
 Manifest Format
 ```````````````
 
-Manifests are .ini file with the section names denoting the path
+Manifests are ``*.toml`` (formerly ``*.ini``) files with the section names denoting the path
 relative to the manifest:
 
 .. code-block:: text
 
-    [foo.js]
-    [bar.js]
-    [fleem.js]
+    ["foo.js"]
+    ["bar.js"]
+    ["fleem.js"]
 
 The sections are read in order. In addition, tests may include
 arbitrary key, value metadata to be used by the harness.  You may also
@@ -107,31 +119,31 @@ be inherited by each test unless overridden:
 .. code-block:: text
 
     [DEFAULT]
-    type = restart
+    type = "restart"
 
-    [lilies.js]
-    color = white
+    ["lilies.js"]
+    color = "white"
 
-    [daffodils.js]
-    color = yellow
-    type = other
+    ["daffodils.js"]
+    color = "yellow"
+    type = "other"
     # override type from DEFAULT
 
-    [roses.js]
-    color = red
+    ["roses.js"]
+    color = "red"
 
 You can also include other manifests:
 
 .. code-block:: text
 
-    [include:subdir/anothermanifest.ini]
+    ["include:subdir/anothermanifest.toml"]
 
 And reference parent manifests to inherit keys and values from the DEFAULT
 section, without adding possible included tests.
 
 .. code-block:: text
 
-    [parent:../manifest.ini]
+    ["parent:../manifest.toml"]
 
 Manifests are included relative to the directory of the manifest with
 the `[include:]` directive unless they are absolute paths.
@@ -141,20 +153,18 @@ new line, or be inline.
 
 .. code-block:: text
 
-    [roses.js]
+    ["roses.js"]
     # a valid comment
-    color = red # another valid comment
+    color = "red" # another valid comment
 
-Comment characters must be preceded by a space, or they will not be
-treated as comments.
+Because in TOML all values must be quoted there is no risk of an anchor in
+an URL being interpreted as a comment.
 
 .. code-block:: text
 
-    [test1.js]
-    url = https://foo.com/bar#baz
+    ["test1.js"]
+    url = "https://foo.com/bar#baz" # Bug 1234
 
-The '#baz' anchor will not be stripped off, as it wasn't preceded by
-a space.
 
 Manifest Conditional Expressions
 ````````````````````````````````
@@ -186,7 +196,7 @@ This data corresponds to a one-line manifest:
 
 .. code-block:: text
 
-    [testToolbar/testBackForwardButtons.js]
+    ["testToolbar/testBackForwardButtons.js"]
 
 If additional key, values were specified, they would be in this dict
 as well.
@@ -216,18 +226,20 @@ mondays for a certain class of tests:
            tests.append(test)
 
 To recap:
+
 * the manifests allow you to specify test data
 * the parser gives you this data
 * you can use it however you want or process it further as you need
 
-Tests are denoted by sections in an .ini file (see
-http://hg.mozilla.org/automation/manifestparser/file/tip/manifestparser/tests/mozmill-example.ini).
+Tests are denoted by sections in an ``*.toml`` file (see
+https://searchfox.org/mozilla-central/source/testing/mozbase/manifestparser/tests/manifest.toml
+).
 
 Additional manifest files may be included with an `[include:]` directive:
 
 .. code-block:: text
 
-    [include:path-to-additional-file.manifest]
+    ["include:path-to-additional-file-manifest.toml"]
 
 The path to included files is relative to the current manifest.
 
@@ -242,7 +254,7 @@ manifestparser Architecture
 There is a two- or three-layered approach to the manifestparser
 architecture, depending on your needs:
 
-1. ManifestParser: this is a generic parser for .ini manifests that
+1. ManifestParser: this is a generic parser for ``*.toml`` manifests that
 facilitates the `[include:]` logic and the inheritance of
 metadata. Despite the internal variable being called `self.tests`
 (an oversight), this layer has nothing in particular to do with tests.
@@ -254,10 +266,9 @@ test-specific. TestManifest facilitates `skip-if` logic.
 from TestManifest if more harness-specific customization is desired at
 the manifest level.
 
-See the source code at https://hg.mozilla.org/mozilla-central/file/tip/testing/mozbase/manifestparser
-and
-https://hg.mozilla.org/mozilla-central/file/tip/testing/mozbase/manifestparser/manifestparser/manifestparser.py
-in particular.
+See the source code at
+https://searchfox.org/mozilla-central/source/testing/mozbase/manifestparser
+.
 
 Filtering Manifests
 ```````````````````
@@ -304,8 +315,8 @@ files will look like this:
 
 .. code-block:: text
 
-    [test_foo.py]
-    timeout-if = 300, os == 'win'
+    ["test_foo.py"]
+    timeout-if = ["300, os == 'win'"]
 
 The value is <timeout>, <condition> where condition is the same format as the one in
 `skip-if`. In the above case, if os == 'win', a timeout of 300 seconds will be
@@ -326,6 +337,39 @@ and add it:
             yield test
 
     tests = manifest.active_tests(filters=[timeout_if], **mozinfo.info)
+
+
+CLI
+```
+
+**NOTE:** *The manifestparser CLI is currently being updated to support TOML.*
+
+Run `manifestparser help` for usage information.
+
+To create a manifest from a set of directories:
+
+.. code-block:: text
+
+    manifestparser [options] create directory <directory> <...> [create-options]
+
+To output a manifest of tests:
+
+.. code-block:: text
+
+    manifestparser [options] write manifest <manifest> <...> -tag1 -tag2 --key1=value1 --key2=value2 ...
+
+To copy tests and manifests from a source:
+
+.. code-block:: text
+
+    manifestparser [options] copy from_manifest to_manifest -tag1 -tag2 `key1=value1 key2=value2 ...
+
+To update the tests associated with with a manifest from a source
+directory:
+
+.. code-block:: text
+
+    manifestparser [options] update manifest from_directory -tag1 -tag2 --key1=value1 --key2=value2 ...
 
 Creating Manifests
 ``````````````````
@@ -451,6 +495,108 @@ manifestparser includes a suite of tests.
 `test_manifest.txt` is a doctest that may be helpful in figuring out
 how to use the API.  Tests are run via `mach python-test testing/mozbase/manifestparser`.
 
+Using mach manifest skip-fails
+``````````````````````````````
+
+The first of the ``mach manifest`` subcommands is ``skip-fails``. This command
+can be used to *automatically* edit manifests to skip tests that are failing
+as well as file the corresponding bugs for the failures. This is particularly
+useful when "greening up" a new platform.
+
+You may verify the proposed changes from ``skip-fails`` output and examine
+any local manifest changes with ``hg status``.
+
+Here is the usage:
+
+.. code-block:: text
+
+    $ ./mach manifest skip-fails --help
+    usage: mach [global arguments] manifest skip-fails [command arguments]
+
+    Sub Command Arguments:
+    try_url               Treeherder URL for try (please use quotes)
+    -b BUGZILLA, --bugzilla BUGZILLA
+                            Bugzilla instance
+    -m META_BUG_ID, --meta-bug-id META_BUG_ID
+                            Meta Bug id
+    -s, --turbo           Skip all secondary failures
+    -t SAVE_TASKS, --save-tasks SAVE_TASKS
+                            Save tasks to file
+    -T USE_TASKS, --use-tasks USE_TASKS
+                            Use tasks from file
+    -f SAVE_FAILURES, --save-failures SAVE_FAILURES
+                            Save failures to file
+    -F USE_FAILURES, --use-failures USE_FAILURES
+                            Use failures from file
+    -M MAX_FAILURES, --max-failures MAX_FAILURES
+                            Maximum number of failures to skip (-1 == no limit)
+    -v, --verbose         Verbose mode
+    -d, --dry-run         Determine manifest changes, but do not write them
+    $
+
+``try_url`` --- Treeherder URL
+------------------------------
+This is the url (usually in single quotes) from running tests in try, for example:
+'https://treeherder.mozilla.org/jobs?repo=try&revision=babc28f495ee8af2e4f059e9cbd23e84efab7d0d'
+
+``--bugzilla BUGZILLA`` --- Bugzilla instance
+---------------------------------------------
+
+By default the Bugzilla instance is ``bugzilla.allizom.org``, but you may set it on the command
+line to another value such as ``bugzilla.mozilla.org`` (or by setting the environment variable
+``BUGZILLA``).
+
+``--meta-bug-id META_BUG_ID`` --- Meta Bug id
+---------------------------------------------
+
+Any new bugs that are filed will block (be dependents of) this "meta" bug (optional).
+
+``--turbo`` --- Skip all secondary failures
+-------------------------------------------
+
+The default ``skip-fails`` behavior is to skip only the first failure (for a given label) for each test.
+In `turbo` mode, all failures for this manifest + label will skipped.
+
+``--save-tasks SAVE_TASKS`` --- Save tasks to file
+--------------------------------------------------
+
+This feature is primarily for ``skip-fails`` development and debugging.
+It will save the tasks (downloaded via mozci) to the specified JSON file
+(which may be used in a future ``--use-tasks`` option)
+
+``--use-tasks USE_TASKS`` --- Use tasks from file
+-------------------------------------------------
+This feature is primarily for ``skip-fails`` development and debugging.
+It will uses the tasks from the specified JSON file (instead of downloading them via mozci).
+See also ``--save-tasks``.
+
+``--save-failures SAVE_FAILURES`` --- Save failures to file
+-----------------------------------------------------------
+
+This feature is primarily for ``skip-fails`` development and debugging.
+It will save the failures (calculated from the tasks) to the specified JSON file
+(which may be used in a future ``--use-failures`` option)
+
+``--use-failures USE_FAILURES`` --- Use failures from file
+----------------------------------------------------------
+This feature is primarily for ``skip-fails`` development and debugging.
+It will uses the failures from the specified JSON file (instead of downloading them via mozci).
+See also ``--save-failures``.
+
+``--max-failures MAX_FAILURES`` --- Maximum number of failures to skip
+----------------------------------------------------------------------
+This feature is primarily for ``skip-fails`` development and debugging.
+It will limit the number of failures that are skipped (default is -1 == no limit).
+
+``--verbose`` --- Verbose mode
+------------------------------
+Increase verbosity of output.
+
+``--dry-run`` --- Dry run
+-------------------------
+In dry run mode, the manifest changes (and bugs top be filed) are determined, but not written.
+
+
 Bugs
 ````
 
@@ -460,67 +606,21 @@ https://bugzilla.mozilla.org/enter_bug.cgi?product=Testing&component=ManifestPar
 
 Or contact in #cia on irc.mozilla.org
 
-CLI
-```
-
-Run `manifestparser help` for usage information.
-
-To create a manifest from a set of directories:
-
-.. code-block:: text
-
-    manifestparser [options] create directory <directory> <...> [create-options]
-
-To output a manifest of tests:
-
-.. code-block:: text
-
-    manifestparser [options] write manifest <manifest> <...> -tag1 -tag2 --key1=value1 --key2=value2 ...
-
-To copy tests and manifests from a source:
-
-.. code-block:: text
-
-    manifestparser [options] copy from_manifest to_manifest -tag1 -tag2 `key1=value1 key2=value2 ...
-
-To update the tests associated with with a manifest from a source
-directory:
-
-.. code-block:: text
-
-    manifestparser [options] update manifest from_directory -tag1 -tag2 --key1=value1 --key2=value2 ...
-
 Design Considerations
 `````````````````````
 
-Contrary to some opinion, manifestparser.py and the associated .ini
+Contrary to some opinion, manifestparser.py and the associated ``*.toml``
 format were not magically plucked from the sky but were descended upon
 through several design considerations.
 
-* test manifests should be ordered.  While python 2.6 and greater has
-  a ConfigParser that can use an ordered dictionary, it is a
-  requirement that we support python 2.4 for the build + testing
-  environment.  To that end, a `read_ini` function was implemented
-  in manifestparser.py that should be the equivalent of the .ini
-  dialect used by ConfigParser.
+* test manifests should be ordered.  The current ``*.toml`` format supports
+  this (as did the ``*.ini`` format)
 
-* the manifest format should be easily human readable/writable.  While
-  there was initially some thought of using JSON, there was pushback
-  that JSON was not easily editable.  An ideal manifest format would
-  degenerate to a line-separated list of files.  While .ini format
-  requires an additional `[]` per line, and while there have been
-  complaints about this, hopefully this is good enough.
-
-* python does not have an in-built YAML parser.  Since it was
-  undesirable for manifestparser.py to have any dependencies, YAML was
-  dismissed as a format.
-
-* we could have used a proprietary format but decided against it.
-  Everyone knows .ini and there are good tools to deal with it.
-  However, since read_ini is the only function that transforms a
-  manifest to a list of key, value pairs, while the implications for
-  changing the format impacts downstream code, doing so should be
-  programmatically simple.
+* the manifest format should be easily human readable/writable And
+  programmatically editable. While the ``*.ini`` format worked for a long
+  time the underspecified syntax made it difficult to reliably parse.
+  The new ``*.toml`` format is widely accepted, as a formal syntax as well
+  as libraries to read and edit it (e.g. ``tomlkit``).
 
 * there should be a single file that may easily be
   transported. Traditionally, test harnesses have lived in
@@ -545,3 +645,4 @@ Date-ordered list of links about how manifests came to be where they are today::
 * http://elvis314.wordpress.com/2011/05/20/converting-xpcshell-from-listing-directories-to-a-manifest/
 * https://bugzilla.mozilla.org/show_bug.cgi?id=616999
 * https://developer.mozilla.org/en/Writing_xpcshell-based_unit_tests#Adding_your_tests_to_the_xpcshell_manifest
+* https://bugzilla.mozilla.org/show_bug.cgi?id=1821199

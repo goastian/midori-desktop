@@ -9,22 +9,18 @@
 /* globals Services, XPCOMUtils */
 
 ChromeUtils.defineESModuleGetters(this, {
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.sys.mjs",
   StartupPerformance:
     "resource:///modules/sessionstore/StartupPerformance.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
-});
-
 /* globals ExtensionAPI */
 
 this.sessionrestore = class extends ExtensionAPI {
   onStartup() {
-    this.promiseIdleFinished = PromiseUtils.defer();
+    this.promiseIdleFinished = Promise.withResolvers();
     Services.obs.addObserver(this, "browser-idle-startup-tasks-finished");
     // run() is async but we don't want to await or return it here,
     // since the extension should be considered started even before
@@ -32,7 +28,7 @@ this.sessionrestore = class extends ExtensionAPI {
     this.run();
   }
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic == "browser-idle-startup-tasks-finished") {
       this.promiseIdleFinished.resolve();
     }
@@ -95,7 +91,7 @@ this.sessionrestore = class extends ExtensionAPI {
       this.TalosParentProfiler.initFromURLQueryParams(url.search);
     }
 
-    await this.TalosParentProfiler.pause(msg);
+    await this.TalosParentProfiler.subtestEnd(msg);
     await this.TalosParentProfiler.finishStartupProfiling();
   }
 

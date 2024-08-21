@@ -21,7 +21,7 @@ from requests.packages.urllib3.util.retry import Retry
 
 from condprof import progress
 
-TASK_CLUSTER = "TASK_ID" in os.environ.keys()
+TASK_CLUSTER = "MOZ_AUTOMATION" in os.environ.keys()
 DOWNLOAD_TIMEOUT = 30
 
 
@@ -122,10 +122,14 @@ def fresh_profile(profile, customization_data):
     extensions = []
     for name, url in customization_data["addons"].items():
         logger.info("Downloading addon %s" % name)
-        extension = download_file(url)
+        # When running on the CI, we expect the xpi files to have been
+        # fetched by the firefox-addons fetch task dependency (see
+        # taskcluster/kinds/fetch/browsertime.yml) and the condprof-addons
+        # linter enforces the content of the archive to be unpacked into
+        # a subdirectory named "firefox-addons".
+        extension = download_file(url, mozfetches_subdir="firefox-addons")
         extensions.append(extension)
     logger.info("Installing addons")
-    new_profile.addons.install(extensions, unpack=True)
     new_profile.addons.install(extensions)
     shutil.copytree(new_profile.profile, profile)
     return profile
@@ -185,15 +189,35 @@ def check_exists(archive, server=None, all_types=False):
     return exists, resp.headers
 
 
-def download_file(url, target=None):
+def check_mozfetches_dir(target, mozfetches_subdir):
+    logger.info("Checking for existence of: %s in MOZ_FETCHES_DIR" % target)
+    fetches = os.environ.get("MOZ_FETCHES_DIR")
+    if fetches is None:
+        return None
+    fetches_target = os.path.join(fetches, mozfetches_subdir, target)
+    if not os.path.exists(fetches_target):
+        return None
+    logger.info("Already fetched and available in MOZ_FETCHES_DIR: %s" % fetches_target)
+    return fetches_target
+
+
+def download_file(url, target=None, mozfetches_subdir=None):
+    if target is None:
+        target = url.split("/")[-1]
+
+    # check if the assets has been fetched through a taskgraph fetch task dependency
+    # and already available in the MOZ_FETCHES_DIR passed as an additional parameter.
+    if mozfetches_subdir is not None:
+        filepath = check_mozfetches_dir(target, mozfetches_subdir)
+        if filepath is not None:
+            return filepath
+
     present, headers = check_exists(url)
     if not present:
         logger.info("Cannot find %r" % url)
         raise ArchiveNotFound(url)
 
     etag = headers.get("ETag")
-    if target is None:
-        target = url.split("/")[-1]
 
     logger.info("Checking for existence of: %s" % target)
     if os.path.exists(target):
@@ -274,7 +298,6 @@ def extract_from_dmg(dmg, target):
 
 @contextlib.contextmanager
 def latest_nightly(binary=None):
-
     if binary is None:
         # we want to use the latest nightly
         nightly_archive = get_firefox_download_link()
@@ -333,7 +356,7 @@ def get_current_platform():
 
     e.g. macosx64, win32, linux64, etc..
     """
-    arch = sys.maxsize == 2 ** 63 - 1 and "64" or "32"
+    arch = sys.maxsize == 2**63 - 1 and "64" or "32"
     plat = platform.system().lower()
     if plat == "windows":
         plat = "win"

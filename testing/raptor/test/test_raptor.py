@@ -1,16 +1,13 @@
 import os
 import sys
 import threading
-import time
 import traceback
 from unittest import mock
-from unittest.mock import Mock
+from unittest.mock import patch
 
 import mozunit
 import pytest
 from mozprofile import BaseProfile
-from mozrunner.errors import RunnerNotStartedError
-from six import reraise
 
 # need this so the raptor unit tests can find output & filter classes
 here = os.path.abspath(os.path.dirname(__file__))
@@ -19,11 +16,6 @@ sys.path.insert(0, raptor_dir)
 
 
 from browsertime import BrowsertimeAndroid, BrowsertimeDesktop
-from webextension import (
-    WebExtensionAndroid,
-    WebExtensionDesktopChrome,
-    WebExtensionFirefox,
-)
 
 DEFAULT_TIMEOUT = 125
 
@@ -50,20 +42,18 @@ class TestBrowserThread(threading.Thread):
 
 
 # Perftest tests
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "perftest_class, app_name",
     [
-        [WebExtensionFirefox, "firefox"],
-        [WebExtensionDesktopChrome, "chrome"],
-        [WebExtensionDesktopChrome, "chromium"],
-        [WebExtensionAndroid, "geckoview"],
         [BrowsertimeDesktop, "firefox"],
-        [BrowsertimeDesktop, "chrome"],
-        [BrowsertimeDesktop, "chromium"],
         [BrowsertimeAndroid, "geckoview"],
     ],
 )
-def test_build_profile(options, perftest_class, app_name, get_prefs):
+def test_build_profile(
+    mock_info, mock_critical, options, perftest_class, app_name, get_prefs
+):
     options["app"] = app_name
 
     # We need to do the mock ourselves because of how the perftest_class
@@ -97,7 +87,11 @@ def test_build_profile(options, perftest_class, app_name, get_prefs):
         assert raptor_pref in prefs
 
 
-def test_perftest_host_ip(ConcretePerftest, options, get_prefs):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_perftest_host_ip(
+    mock_info, mock_critical, ConcretePerftest, options, get_prefs
+):
     os.environ["HOST_IP"] = "some_dummy_host_ip"
     options["host"] = "HOST_IP"
 
@@ -106,21 +100,31 @@ def test_perftest_host_ip(ConcretePerftest, options, get_prefs):
     assert perftest.config["host"] == os.environ["HOST_IP"]
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "app_name, expected_e10s_flag",
     [["firefox", True], ["geckoview", True]],
 )
-def test_e10s_enabling(ConcretePerftest, options, app_name, expected_e10s_flag):
+def test_e10s_enabling(
+    mock_info, mock_critical, ConcretePerftest, options, app_name, expected_e10s_flag
+):
     options["app"] = app_name
     perftest = ConcretePerftest(profile_class="firefox", **options)
     assert perftest.config["e10s"] == expected_e10s_flag
 
 
-def test_profile_was_provided_locally(ConcretePerftest, options):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_profile_was_provided_locally(
+    mock_info, mock_critical, ConcretePerftest, options
+):
     perftest = ConcretePerftest(**options)
     assert os.path.isdir(perftest.config["local_profile_dir"])
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "profile_class, app, expected_profile",
     [
@@ -130,59 +134,92 @@ def test_profile_was_provided_locally(ConcretePerftest, options):
     ],
 )
 def test_profile_class_assignation(
-    ConcretePerftest, options, profile_class, app, expected_profile
+    mock_info,
+    mock_critical,
+    ConcretePerftest,
+    options,
+    profile_class,
+    app,
+    expected_profile,
 ):
     options["app"] = app
     perftest = ConcretePerftest(profile_class=profile_class, **options)
     assert perftest.profile_class == expected_profile
 
 
-def test_raptor_venv(ConcretePerftest, options):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_raptor_venv(mock_info, mock_critical, ConcretePerftest, options):
     perftest = ConcretePerftest(**options)
     assert perftest.raptor_venv.endswith("raptor-venv")
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+@mock.patch("perftest.Perftest.build_browser_profile", new=mock.MagicMock())
 @pytest.mark.parametrize(
+    "app,"
     "run_local,"
     "debug_mode,"
+    "conditioned_profile,"
     "post_startup_delay,"
     "expected_post_startup_delay,"
     "expected_debug_mode",
     [
-        [True, True, 1234, 1234, True],
-        [True, True, 12345, 3000, True],
-        [False, False, 1234, 1234, False],
-        [False, False, 12345, 12345, False],
-        [True, False, 1234, 1234, False],
-        [True, False, 12345, 12345, False],
-        [False, True, 1234, 1234, False],
-        [False, True, 12345, 12345, False],
+        ["firefox", True, True, None, 1234, 1234, True],
+        ["firefox", True, True, None, None, 3000, True],
+        ["firefox", True, False, None, None, 30000, False],
+        ["firefox", True, False, "settled", None, 1000, False],
+        ["fenix", True, False, None, None, 20000, False],
+        ["fenix", True, False, "settled", None, 1000, False],
+        ["firefox", False, False, None, 1234, 1234, False],
+        ["firefox", False, False, None, 12345, 12345, False],
+        ["firefox", True, False, None, 1234, 1234, False],
+        ["firefox", True, False, None, 12345, 12345, False],
+        ["firefox", False, True, None, 1234, 1234, False],
+        ["firefox", False, True, None, 12345, 12345, False],
     ],
 )
 def test_post_startup_delay(
+    mock_info,
+    mock_critical,
     ConcretePerftest,
     options,
+    app,
     run_local,
     debug_mode,
+    conditioned_profile,
     post_startup_delay,
     expected_post_startup_delay,
     expected_debug_mode,
 ):
+    options["app"] = app
+
     perftest = ConcretePerftest(
         run_local=run_local,
         debug_mode=debug_mode,
         post_startup_delay=post_startup_delay,
+        conditioned_profile=conditioned_profile,
         **options
     )
+
     assert perftest.post_startup_delay == expected_post_startup_delay
     assert perftest.debug_mode == expected_debug_mode
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "alert, expected_alert", [["test_to_alert_on", "test_to_alert_on"], [None, None]]
 )
 def test_perftest_run_test_setup(
-    ConcretePerftest, options, mock_test, alert, expected_alert
+    mock_info,
+    mock_critical,
+    ConcretePerftest,
+    options,
+    mock_test,
+    alert,
+    expected_alert,
 ):
     perftest = ConcretePerftest(**options)
     mock_test["alert_on"] = alert
@@ -192,49 +229,12 @@ def test_perftest_run_test_setup(
     assert perftest.config["subtest_alert_on"] == expected_alert
 
 
-# WebExtension tests
-@pytest.mark.parametrize(
-    "app", ["firefox", pytest.mark.xfail("chrome"), pytest.mark.xfail("chromium")]
-)
-def test_start_browser(get_binary, app):
-    binary = get_binary(app)
-    assert binary
-
-    raptor = WebExtensionFirefox(app, binary, post_startup_delay=0)
-
-    tests = [{"name": "raptor-{}-tp6".format(app), "page_timeout": 1000}]
-    test_names = [test["name"] for test in tests]
-
-    thread = TestBrowserThread(raptor, tests, test_names)
-    thread.start()
-
-    timeout = time.time() + 5  # seconds
-    while time.time() < timeout:
-        try:
-            is_running = raptor.runner.is_running()
-            assert is_running
-            break
-        except RunnerNotStartedError:
-            time.sleep(0.1)
-    else:
-        # browser didn't start
-        # if the thread had an error, display it here
-        thread.print_error()
-        assert False
-
-    raptor.clean_up()
-    thread.join(5)
-
-    if thread.exc is not None:
-        exc, value, tb = thread.exc
-        reraise(exc, value, tb)
-
-    assert not raptor.runner.is_running()
-    assert raptor.runner.returncode is not None
-
-
 # Browsertime tests
-def test_cmd_arguments(ConcreteBrowsertime, browsertime_options, mock_test):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_cmd_arguments(
+    mock_info, mock_critical, ConcreteBrowsertime, browsertime_options, mock_test
+):
     expected_cmd = {
         browsertime_options["browsertime_node"],
         browsertime_options["browsertime_browsertimejs"],
@@ -296,7 +296,11 @@ def extract_arg_value(cmd, arg):
         ["--browsertime.page_cycles", "123", {"page_cycles": 123}, {}],
     ],
 )
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 def test_browsertime_arguments(
+    mock_info,
+    mock_critical,
     ConcreteBrowsertime,
     browsertime_options,
     mock_test,
@@ -325,7 +329,11 @@ def test_browsertime_arguments(
         [1000, 381, {}, {"gecko_profile": True}],
     ],
 )
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 def test_compute_process_timeout(
+    mock_info,
+    mock_critical,
     ConcreteBrowsertime,
     browsertime_options,
     mock_test,
@@ -341,65 +349,6 @@ def test_compute_process_timeout(
     )
     bt_timeout = browsertime._compute_process_timeout(mock_test, timeout, [])
     assert bt_timeout == expected_timeout
-
-
-@pytest.mark.parametrize(
-    "host, playback, benchmark",
-    [["127.0.0.1", True, False], ["localhost", False, True]],
-)
-def test_android_reverse_ports(host, playback, benchmark):
-    original_get = WebExtensionAndroid.get_browser_meta
-    WebExtensionAndroid.get_browser_meta = mock.MagicMock()
-    WebExtensionAndroid.get_browser_meta.return_value = ("app", "version")
-
-    raptor = WebExtensionAndroid(
-        "geckoview",
-        "org.mozilla.geckoview_example",
-        host=host,
-        extra_prefs={},
-    )
-    WebExtensionAndroid.get_browser_meta = original_get
-
-    if benchmark:
-        benchmark_mock = mock.patch("raptor.raptor.benchmark.Benchmark")
-        raptor.benchmark = benchmark_mock
-        raptor.benchmark.port = 1234
-
-    if playback:
-        playback_mock = mock.patch(
-            "mozbase.mozproxy.mozproxy.backends.mitm.mitm.MitmproxyAndroid"
-        )
-        playback_mock.port = 4321
-        raptor.playback = playback_mock
-
-    raptor.set_reverse_port = Mock()
-    raptor.set_reverse_ports()
-
-    raptor.set_reverse_port.assert_any_call(raptor.control_server.port)
-    if benchmark:
-        raptor.set_reverse_port.assert_any_call(1234)
-
-    if playback:
-        raptor.set_reverse_port.assert_any_call(4321)
-
-
-def test_android_reverse_ports_non_local_host():
-    original_get = WebExtensionAndroid.get_browser_meta
-    WebExtensionAndroid.get_browser_meta = mock.MagicMock()
-    WebExtensionAndroid.get_browser_meta.return_value = ("app", "version")
-
-    raptor = WebExtensionAndroid(
-        "geckoview",
-        "org.mozilla.geckoview_example",
-        host="192.168.100.10",
-        extra_prefs={},
-    )
-    WebExtensionAndroid.get_browser_meta = original_get
-
-    raptor.set_reverse_port = Mock()
-    raptor.set_reverse_ports()
-
-    raptor.set_reverse_port.assert_not_called()
 
 
 if __name__ == "__main__":

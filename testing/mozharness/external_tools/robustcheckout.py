@@ -407,7 +407,7 @@ def _docheckout(
             ui.warn(b"(shared store does not exist; deleting destination)\n")
             with timeit("removed_missing_shared_store", "remove-wdir"):
                 destvfs.rmtree(forcibly=True)
-        elif not re.search(b"[a-f0-9]{40}/\.hg$", storepath.replace(b"\\", b"/")):
+        elif not re.search(rb"[a-f0-9]{40}/\.hg$", storepath.replace(b"\\", b"/")):
             ui.warn(
                 b"(shared store does not belong to pooled storage; "
                 b"deleting destination to improve efficiency)\n"
@@ -496,6 +496,10 @@ def _docheckout(
             # should convert non-transport errors like cert validation failures
             # to error.Abort.
             ui.warn(b"ssl error: %s\n" % pycompat.bytestr(str(e)))
+            handlenetworkfailure()
+            return True
+        elif isinstance(e, urllibcompat.urlerr.httperror) and e.code >= 500:
+            ui.warn(b"http error: %s\n" % pycompat.bytestr(str(e.reason)))
             handlenetworkfailure()
             return True
         elif isinstance(e, urllibcompat.urlerr.urlerror):

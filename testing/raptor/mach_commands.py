@@ -20,7 +20,7 @@ from mozbuild.base import MachCommandConditions as Conditions
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 
-ANDROID_BROWSERS = ["geckoview", "refbrow", "fenix", "chrome-m"]
+ANDROID_BROWSERS = ["geckoview", "refbrow", "fenix", "chrome-m", "cstm-car-m"]
 
 
 class RaptorRunner(MozbuildObject):
@@ -34,12 +34,18 @@ class RaptorRunner(MozbuildObject):
         3. Run mozharness
         """
         # Validate that the user is using a supported python version before doing anything else
-        max_py_major, max_py_minor = 3, 10
+        max_py_major, max_py_minor = 3, 11
         sys_maj, sys_min = sys.version_info.major, sys.version_info.minor
         if sys_min > max_py_minor:
             raise PythonVersionException(
-                f"Please downgrade your Python version as Raptor does not yet support Python versions greater than {max_py_major}.{max_py_minor}. "
-                f"You seem to currently be using Python {sys_maj}.{sys_min}"
+                print(
+                    f"\tPlease downgrade your Python version as Raptor does not yet support Python "
+                    f"versions greater than {max_py_major}.{max_py_minor}."
+                    f"\n\tYou seem to currently be using Python {sys_maj}.{sys_min}."
+                    f"\n\tSee here for a possible solution in debugging your python environment: "
+                    f"https://firefox-source-docs.mozilla.org/testing/perfdocs/"
+                    f"debugging.html#debugging-local-python-environment"
+                )
             )
         self.init_variables(raptor_args, kwargs)
         self.make_config()
@@ -54,9 +60,6 @@ class RaptorRunner(MozbuildObject):
             kwargs["host"] = os.environ["HOST_IP"]
         self.host = kwargs["host"]
         self.is_release_build = kwargs["is_release_build"]
-        self.memory_test = kwargs["memory_test"]
-        self.power_test = kwargs["power_test"]
-        self.cpu_test = kwargs["cpu_test"]
         self.live_sites = kwargs["live_sites"]
         self.disable_perf_tuning = kwargs["disable_perf_tuning"]
         self.conditioned_profile = kwargs["conditioned_profile"]
@@ -65,6 +68,7 @@ class RaptorRunner(MozbuildObject):
         self.browsertime_visualmetrics = kwargs["browsertime_visualmetrics"]
         self.browsertime_node = kwargs["browsertime_node"]
         self.clean = kwargs["clean"]
+        self.screenshot_on_failure = kwargs["screenshot_on_failure"]
 
         if Conditions.is_android(self) or kwargs["app"] in ANDROID_BROWSERS:
             self.binary_path = None
@@ -109,9 +113,6 @@ class RaptorRunner(MozbuildObject):
             "default_actions": default_actions,
             "raptor_cmd_line_args": self.raptor_args,
             "host": self.host,
-            "power_test": self.power_test,
-            "memory_test": self.memory_test,
-            "cpu_test": self.cpu_test,
             "live_sites": self.live_sites,
             "disable_perf_tuning": self.disable_perf_tuning,
             "conditioned_profile": self.conditioned_profile,
@@ -122,6 +123,7 @@ class RaptorRunner(MozbuildObject):
             "browsertime_node": self.browsertime_node,
             "mozbuild_path": get_state_dir(),
             "clean": self.clean,
+            "screenshot_on_failure": self.screenshot_on_failure,
         }
 
         sys.path.insert(0, os.path.join(self.topsrcdir, "tools", "browsertime"))
@@ -267,7 +269,7 @@ class RaptorRunner(MozbuildObject):
 
 
 def setup_node(command_context):
-    """Fetch the latest node-16 binary and install it into the .mozbuild directory."""
+    """Fetch the latest node-18 binary and install it into the .mozbuild directory."""
     import platform
 
     from mozbuild.artifact_commands import artifact_toolchain
@@ -276,11 +278,11 @@ def setup_node(command_context):
 
     print("Setting up node for browsertime...")
     state_dir = get_state_dir()
-    cache_path = os.path.join(state_dir, "browsertime", "node-16")
+    cache_path = os.path.join(state_dir, "browsertime", "node-18")
 
     def __check_for_node():
         # Check standard locations first
-        node_exe = find_node_executable(min_version=Version("16.0.0"))
+        node_exe = find_node_executable(min_version=Version("18.0.0"))
         if node_exe and (node_exe[0] is not None):
             return node_exe[0]
         if not os.path.exists(cache_path):
@@ -293,14 +295,14 @@ def setup_node(command_context):
             node_exe_path = os.path.join(
                 state_dir,
                 "browsertime",
-                "node-16",
+                "node-18",
                 "node",
             )
         else:
             node_exe_path = os.path.join(
                 state_dir,
                 "browsertime",
-                "node-16",
+                "node-18",
                 "node",
                 "bin",
             )
@@ -313,17 +315,20 @@ def setup_node(command_context):
 
     node_exe = __check_for_node()
     if node_exe is None:
-        toolchain_job = "{}-node-16"
+        toolchain_job = "{}-node-18"
         plat = platform.system()
         if plat == "Windows":
             toolchain_job = toolchain_job.format("win64")
         elif plat == "Darwin":
-            toolchain_job = toolchain_job.format("macosx64")
+            if platform.processor() == "arm":
+                toolchain_job = toolchain_job.format("macosx64-aarch64")
+            else:
+                toolchain_job = toolchain_job.format("macosx64")
         else:
             toolchain_job = toolchain_job.format("linux64")
 
         print(
-            "Downloading Node v16 from Taskcluster toolchain {}...".format(
+            "Downloading Node v18 from Taskcluster toolchain {}...".format(
                 toolchain_job
             )
         )
@@ -348,11 +353,11 @@ def setup_node(command_context):
 
         node_exe = __check_for_node()
         if node_exe is None:
-            raise Exception("Could not find Node v16 binary for Raptor-Browsertime")
+            raise Exception("Could not find Node v18 binary for Raptor-Browsertime")
 
-        print("Finished downloading Node v16 from Taskcluster")
+        print("Finished downloading Node v18 from Taskcluster")
 
-    print("Node v16+ found at: %s" % node_exe)
+    print("Node v18+ found at: %s" % node_exe)
     return node_exe
 
 
@@ -370,10 +375,6 @@ def create_parser():
     parser=create_parser,
 )
 def run_raptor(command_context, **kwargs):
-    # Defers this import so that a transitive dependency doesn't
-    # stop |mach bootstrap| from running
-    from raptor.power import disable_charging, enable_charging
-
     build_obj = command_context
 
     # Setup node for browsertime
@@ -382,7 +383,6 @@ def run_raptor(command_context, **kwargs):
     is_android = Conditions.is_android(build_obj) or kwargs["app"] in ANDROID_BROWSERS
 
     if is_android:
-        from mozdevice import ADBDeviceFactory
         from mozrunner.devices.android_device import (
             InstallIntent,
             verify_android_device,
@@ -406,6 +406,15 @@ def run_raptor(command_context, **kwargs):
             verbose=verbose,
             xre=True,
         ):  # Equivalent to 'run_local' = True.
+            print(
+                "****************************************************************************"
+            )
+            print(
+                "Unable to verify device, please check your attached/connected android device"
+            )
+            print(
+                "****************************************************************************"
+            )
             return 1
         # Disable fission until geckoview supports fission by default.
         # Need fission on Android? Use '--setpref fission.autostart=true'
@@ -423,12 +432,8 @@ def run_raptor(command_context, **kwargs):
             in_mach = False
 
     raptor = command_context._spawn(RaptorRunner)
-    device = None
 
     try:
-        if kwargs["power_test"] and is_android:
-            device = ADBDeviceFactory(verbose=True)
-            disable_charging(device)
         return raptor.run_test(argv, kwargs)
     except BinaryNotFoundException as e:
         command_context.log(
@@ -439,9 +444,6 @@ def run_raptor(command_context, **kwargs):
     except Exception as e:
         print(repr(e))
         return 1
-    finally:
-        if kwargs["power_test"] and device:
-            enable_charging(device)
 
 
 @Command(

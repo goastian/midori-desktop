@@ -7,6 +7,7 @@ import math
 import os
 import pprint
 import re
+import subprocess
 import sys
 
 from looseversion import LooseVersion
@@ -40,23 +41,23 @@ class CompareVersion(LooseVersion):
         LooseVersion(versionMap)
 
 
-def is_triangualar(x):
+def is_triangular(x):
     """Check if a number is triangular (0, 1, 3, 6, 10, 15, ...)
     see: https://en.wikipedia.org/wiki/Triangular_number#Triangular_roots_and_tests_for_triangular_numbers # noqa
 
-    >>> is_triangualar(0)
+    >>> is_triangular(0)
     True
-    >>> is_triangualar(1)
+    >>> is_triangular(1)
     True
-    >>> is_triangualar(2)
+    >>> is_triangular(2)
     False
-    >>> is_triangualar(3)
+    >>> is_triangular(3)
     True
-    >>> is_triangualar(4)
+    >>> is_triangular(4)
     False
-    >>> all(is_triangualar(x) for x in [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105])
+    >>> all(is_triangular(x) for x in [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105])
     True
-    >>> all(not is_triangualar(x) for x in [4, 5, 8, 9, 11, 17, 25, 29, 39, 44, 59, 61, 72, 98, 112])
+    >>> all(not is_triangular(x) for x in [4, 5, 8, 9, 11, 17, 25, 29, 39, 44, 59, 61, 72, 98, 112])
     True
     """
     # pylint --py3k W1619
@@ -277,6 +278,13 @@ class UpdateVerifyConfigCreator(BaseScript):
                 "help": "A list of locales to generate full update verify checks for",
             },
         ],
+        [
+            ["--local-repo"],
+            {
+                "dest": "local_repo",
+                "help": "Path to local clone of the repository",
+            },
+        ],
     ]
 
     def __init__(self):
@@ -320,12 +328,7 @@ class UpdateVerifyConfigCreator(BaseScript):
         elif version.version_type == VersionType.ESR:
             branch = "releases/{}-esr{}".format(branch_prefix, version.major_number)
         elif version.version_type == VersionType.RELEASE:
-            if branch_prefix == "comm":
-                # Thunderbird does not have ESR releases, regular releases
-                # go in an ESR branch
-                branch = "releases/{}-esr{}".format(branch_prefix, version.major_number)
-            else:
-                branch = "releases/{}-release".format(branch_prefix)
+            branch = "releases/{}-release".format(branch_prefix)
         if not branch:
             raise Exception("Cannot determine branch, cannot continue!")
 
@@ -353,7 +356,6 @@ class UpdateVerifyConfigCreator(BaseScript):
             # we need to use releases_name instead of release_info since esr
             # string is included in the name. later we rely on this.
             product, version = release_name.split("-", 1)
-            tag = "{}_{}_RELEASE".format(product.upper(), version.replace(".", "_"))
 
             # Exclude any releases that don't match one of our include version
             # regexes. This is generally to avoid including versions from other
@@ -419,32 +421,11 @@ class UpdateVerifyConfigCreator(BaseScript):
             ret = self._retry_download(info_file_url, "WARNING")
             buildID = ret.read().split(b"=")[1].strip().decode("utf-8")
 
-            branch = self._get_branch_url(self.config["branch_prefix"], version)
-
-            shipped_locales_url = urljoin(
-                self.config["hg_server"],
-                "{}/raw-file/{}/{}/locales/shipped-locales".format(
-                    branch,
-                    tag,
-                    self.config["app_name"],
-                ),
+            shipped_locales = self._get_file_from_repo_tag(
+                product, version, f"{self.config['app_name']}/locales/shipped-locales"
             )
-            ret = self._retry_download(shipped_locales_url, "WARNING")
-            shipped_locales = ret.read().strip().decode("utf-8")
-
-            app_version_url = urljoin(
-                self.config["hg_server"],
-                "{}/raw-file/{}/{}/config/version.txt".format(
-                    branch,
-                    tag,
-                    self.config["app_name"],
-                ),
-            )
-            app_version = (
-                self._retry_download(app_version_url, "WARNING")
-                .read()
-                .strip()
-                .decode("utf-8")
+            app_version = self._get_file_from_repo_tag(
+                product, version, f"{self.config['app_name']}/config/version.txt"
             )
 
             self.log("Adding {} to update paths".format(version), level=INFO)
@@ -458,6 +439,44 @@ class UpdateVerifyConfigCreator(BaseScript):
             ].items():
                 if re.match(pattern, version):
                     self.update_paths[version]["marChannelIds"] = mar_channel_ids
+
+    def _get_file_from_repo_tag(self, product, version, path):
+        tag = "{}_{}_RELEASE".format(product.upper(), version.replace(".", "_"))
+        branch = self._get_branch_url(self.config["branch_prefix"], version)
+        return self._get_file_from_repo(tag, branch, path)
+
+    def _get_file_from_repo(self, rev, branch, path):
+        if self.config["local_repo"]:
+            try:
+                return (
+                    subprocess.check_output(
+                        [
+                            "hg",
+                            "--cwd",
+                            self.config["local_repo"],
+                            "cat",
+                            "-r",
+                            rev,
+                            path,
+                        ]
+                    )
+                    .strip()
+                    .decode("utf-8")
+                )
+            except subprocess.CalledProcessError:
+                # the tag may not exist locally
+                pass
+
+        url = urljoin(
+            self.config["hg_server"],
+            "{}/raw-file/{}/{}".format(
+                branch,
+                rev,
+                path,
+            ),
+        )
+        ret = self._retry_download(url, "WARNING")
+        return ret.read().strip().decode("utf-8")
 
     def gather_info(self):
         from mozilla_version.gecko import GeckoVersion
@@ -520,19 +539,10 @@ class UpdateVerifyConfigCreator(BaseScript):
             override_certs=self.config.get("override_certs"),
         )
 
-        to_shipped_locales_url = urljoin(
-            self.config["hg_server"],
-            "{}/raw-file/{}/{}/locales/shipped-locales".format(
-                self.config["repo_path"],
-                self.config["to_revision"],
-                self.config["app_name"],
-            ),
-        )
-        to_shipped_locales = (
-            self._retry_download(to_shipped_locales_url, "WARNING")
-            .read()
-            .strip()
-            .decode("utf-8")
+        to_shipped_locales = self._get_file_from_repo(
+            self.config["to_revision"],
+            self.config["repo_path"],
+            "{}/locales/shipped-locales".format(self.config["app_name"]),
         )
         to_locales = set(
             getPlatformLocales(to_shipped_locales, self.config["platform"])
@@ -602,7 +612,7 @@ class UpdateVerifyConfigCreator(BaseScript):
                     updater_package=updater_package,
                 )
             else:
-                if this_full_check_locales and is_triangualar(completes_only_index):
+                if this_full_check_locales and is_triangular(completes_only_index):
                     self.info("Generating full check configs for %s" % fromVersion)
                     self.update_verify_config.addRelease(
                         release=appVersion,
@@ -618,7 +628,7 @@ class UpdateVerifyConfigCreator(BaseScript):
                 # Quick test for other locales, no download
                 if len(quick_check_locales) > 0:
                     self.info("Generating quick check configs for %s" % fromVersion)
-                    if not is_triangualar(completes_only_index):
+                    if not is_triangular(completes_only_index):
                         # Assuming we skipped full check locales, using all locales
                         _locales = locales
                     else:

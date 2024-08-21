@@ -21,10 +21,10 @@ from .geckoinstance import GeckoInstance
 from .keys import Keys
 from .timeout import Timeouts
 
-FRAME_KEY = "frame-075b-4da1-b6ba-e579c2d3230a"
 WEB_ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
+WEB_FRAME_KEY = "frame-075b-4da1-b6ba-e579c2d3230a"
 WEB_SHADOW_ROOT_KEY = "shadow-6066-11e4-a52e-4f735466cecf"
-WINDOW_KEY = "window-fcc6-11e5-b4f8-330a88ab9d7f"
+WEB_WINDOW_KEY = "window-fcc6-11e5-b4f8-330a88ab9d7f"
 
 
 class MouseButton(object):
@@ -95,7 +95,7 @@ class ActionSequence(object):
         if duration is not None:
             action["duration"] = duration
         if origin is not None:
-            if isinstance(origin, HTMLElement):
+            if isinstance(origin, WebElement):
                 action["origin"] = {origin.kind: origin.id}
             else:
                 action["origin"] = origin
@@ -150,6 +150,36 @@ class ActionSequence(object):
         self._key_action("keyUp", value)
         return self
 
+    def scroll(self, x, y, delta_x, delta_y, duration=None, origin=None):
+        """Queue a scroll action.
+
+        :param x: Destination x-axis coordinate of pointer in CSS pixels.
+        :param y: Destination y-axis coordinate of pointer in CSS pixels.
+        :param delta_x: Scroll delta for x-axis in CSS pixels.
+        :param delta_y: Scroll delta for y-axis in CSS pixels.
+        :param duration: Number of milliseconds over which to distribute the
+                         scroll. If None, remote end defaults to 0.
+        :param origin: Origin of coordinates, either "viewport", "pointer" or
+                       an Element. If None, remote end defaults to "viewport".
+        """
+        action = {
+            "type": "scroll",
+            "x": x,
+            "y": y,
+            "deltaX": delta_x,
+            "deltaY": delta_y,
+        }
+
+        if duration is not None:
+            action["duration"] = duration
+        if origin is not None:
+            if isinstance(origin, WebElement):
+                action["origin"] = {origin.kind: origin.id}
+            else:
+                action["origin"] = origin
+        self._actions.append(action)
+        return self
+
     def send_keys(self, keys):
         """Queue a keyDown and keyUp action for each character in `keys`.
 
@@ -186,10 +216,10 @@ class Actions(object):
         return ActionSequence(self.marionette, *args, **kwargs)
 
 
-class HTMLElement(object):
+class WebElement(object):
     """Represents a DOM Element."""
 
-    identifiers = (FRAME_KEY, WINDOW_KEY, WEB_ELEMENT_KEY)
+    identifiers = (WEB_ELEMENT_KEY,)
 
     def __init__(self, marionette, id, kind=WEB_ELEMENT_KEY):
         self.marionette = marionette
@@ -208,7 +238,7 @@ class HTMLElement(object):
         return hash(self.id)
 
     def find_element(self, method, target):
-        """Returns an ``HTMLElement`` instance that matches the specified
+        """Returns an ``WebElement`` instance that matches the specified
         method and target, relative to the current element.
 
         For more details on this function, see the
@@ -218,7 +248,7 @@ class HTMLElement(object):
         return self.marionette.find_element(method, target, self.id)
 
     def find_elements(self, method, target):
-        """Returns a list of all ``HTMLElement`` instances that match the
+        """Returns a list of all ``WebElement`` instances that match the
         specified method and target in the current context.
 
         For more details on this function, see the
@@ -254,17 +284,6 @@ class HTMLElement(object):
     def click(self):
         """Simulates a click on the element."""
         self.marionette._send_message("WebDriver:ElementClick", {"id": self.id})
-
-    def tap(self, x=None, y=None):
-        """Simulates a set of tap events on the element.
-
-        :param x: X coordinate of tap event.  If not given, default to
-            the centre of the element.
-        :param y: Y coordinate of tap event. If not given, default to
-            the centre of the element.
-        """
-        body = {"id": self.id, "x": x, "y": y}
-        self.marionette._send_message("Marionette:SingleTap", body)
 
     @property
     def text(self):
@@ -302,7 +321,7 @@ class HTMLElement(object):
         are met otherwise return True:
 
         * A form control is disabled.
-        * A ``HTMLElement`` has a disabled boolean attribute.
+        * A ``WebElement`` has a disabled boolean attribute.
         """
         body = {"id": self.id}
         return self.marionette._send_message(
@@ -330,10 +349,10 @@ class HTMLElement(object):
 
         This will return a dictionary with the following:
 
-          * x and y represent the top left coordinates of the ``HTMLElement``
+          * x and y represent the top left coordinates of the ``WebElement``
             relative to top left corner of the document.
           * height and the width will contain the height and the width
-            of the DOMRect of the ``HTMLElement``.
+            of the DOMRect of the ``WebElement``.
         """
         return self.marionette._send_message(
             "WebDriver:GetElementRect", {"id": self.id}
@@ -375,10 +394,6 @@ class HTMLElement(object):
         if isinstance(json, dict):
             if WEB_ELEMENT_KEY in json:
                 return cls(marionette, json[WEB_ELEMENT_KEY], WEB_ELEMENT_KEY)
-            elif FRAME_KEY in json:
-                return cls(marionette, json[FRAME_KEY], FRAME_KEY)
-            elif WINDOW_KEY in json:
-                return cls(marionette, json[WINDOW_KEY], WINDOW_KEY)
         raise ValueError("Unrecognised web element")
 
 
@@ -404,7 +419,7 @@ class ShadowRoot(object):
         return hash(self.id)
 
     def find_element(self, method, target):
-        """Returns an ``HTMLElement`` instance that matches the specified
+        """Returns a ``WebElement`` instance that matches the specified
         method and target, relative to the current shadow root.
 
         For more details on this function, see the
@@ -417,7 +432,7 @@ class ShadowRoot(object):
         )
 
     def find_elements(self, method, target):
-        """Returns a list of all ``HTMLElement`` instances that match the
+        """Returns a list of all ``WebElement`` instances that match the
          specified method and target in the current shadow root.
 
         For more details on this function, see the
@@ -435,6 +450,64 @@ class ShadowRoot(object):
             if WEB_SHADOW_ROOT_KEY in json:
                 return cls(marionette, json[WEB_SHADOW_ROOT_KEY])
         raise ValueError("Unrecognised shadow root")
+
+
+class WebFrame(object):
+    """A Class to handle frame windows"""
+
+    identifiers = (WEB_FRAME_KEY,)
+
+    def __init__(self, marionette, id, kind=WEB_FRAME_KEY):
+        self.marionette = marionette
+        assert id is not None
+        self.id = id
+        self.kind = kind
+
+    def __str__(self):
+        return self.id
+
+    def __eq__(self, other_element):
+        return self.id == other_element.id
+
+    def __hash__(self):
+        # pylint --py3k: W1641
+        return hash(self.id)
+
+    @classmethod
+    def _from_json(cls, json, marionette):
+        if isinstance(json, dict):
+            if WEB_FRAME_KEY in json:
+                return cls(marionette, json[WEB_FRAME_KEY])
+        raise ValueError("Unrecognised web frame")
+
+
+class WebWindow(object):
+    """A Class to handle top-level windows"""
+
+    identifiers = (WEB_WINDOW_KEY,)
+
+    def __init__(self, marionette, id, kind=WEB_WINDOW_KEY):
+        self.marionette = marionette
+        assert id is not None
+        self.id = id
+        self.kind = kind
+
+    def __str__(self):
+        return self.id
+
+    def __eq__(self, other_element):
+        return self.id == other_element.id
+
+    def __hash__(self):
+        # pylint --py3k: W1641
+        return hash(self.id)
+
+    @classmethod
+    def _from_json(cls, json, marionette):
+        if isinstance(json, dict):
+            if WEB_WINDOW_KEY in json:
+                return cls(marionette, json[WEB_WINDOW_KEY])
+        raise ValueError("Unrecognised web window")
 
 
 class Alert(object):
@@ -495,7 +568,7 @@ class Marionette(object):
         baseurl=None,
         socket_timeout=None,
         startup_timeout=None,
-        **instance_args
+        **instance_args,
     ):
         """Construct a holder for the Marionette connection.
 
@@ -1200,6 +1273,8 @@ class Marionette(object):
                 exc_cls, _, tb = sys.exc_info()
 
                 if self.instance.runner.returncode is None:
+                    self.is_shutting_down = False
+
                     # The process is still running, which means the shutdown
                     # request was not correct or the application ignored it.
                     # Allow Marionette to accept connections again.
@@ -1218,33 +1293,28 @@ class Marionette(object):
                         tb,
                     )
 
-            finally:
-                self.is_shutting_down = False
+            self.is_shutting_down = False
 
+            # Create a new session to retrieve the new process id of the application
             self.delete_session(send_request=False)
 
         else:
             self.delete_session()
             self.instance.restart(clean=clean)
+
             self.raise_for_port(timeout=self.DEFAULT_STARTUP_TIMEOUT)
 
             restart_details.update({"in_app": False, "forced": True})
+
+        self.start_session(self.requested_capabilities, process_forked=in_app)
+        # Restore the context as used before the restart
+        self.set_context(context)
 
         if restart_details.get("cause") not in (None, "restart"):
             raise errors.MarionetteException(
                 "Unexpected shutdown reason '{}' for "
                 "restarting the process".format(restart_details["cause"])
             )
-
-        self.start_session(self.requested_capabilities)
-        # Restore the context as used before the restart
-        self.set_context(context)
-
-        if in_app and self.process_id:
-            # In some cases Firefox restarts itself by spawning into a new process group.
-            # As long as mozprocess cannot track that behavior (bug 1284864) we assist by
-            # informing about the new process id.
-            self.instance.runner.process_handler.check_for_detached(self.process_id)
 
         return restart_details
 
@@ -1257,7 +1327,7 @@ class Marionette(object):
         return "{0}{1}".format(self.baseurl, relative_url)
 
     @do_process_check
-    def start_session(self, capabilities=None, timeout=None):
+    def start_session(self, capabilities=None, process_forked=False, timeout=None):
         """Create a new WebDriver session.
         This method must be called before performing any other action.
 
@@ -1267,7 +1337,10 @@ class Marionette(object):
             (including alwaysMatch, firstMatch, desiredCapabilities,
             or requriedCapabilities), and only recognises extension
             capabilities that are specific to Marionette.
+        :param process_forked: If True, the existing process forked itself due
+        to an internal restart.
         :param timeout: Optional timeout in seconds for the server to be ready.
+
         :returns: A dictionary of the capabilities offered.
         """
         if capabilities is None:
@@ -1279,17 +1352,20 @@ class Marionette(object):
 
         self.crashed = 0
 
-        if self.instance:
-            returncode = self.instance.runner.returncode
-            # We're managing a binary which has terminated. Start it again
-            # and implicitely wait for the Marionette server to be ready.
-            if returncode is not None:
-                self.start_binary(timeout)
+        if not process_forked:
+            # Only handle the binary if there was no process before which also
+            # might have forked itself due to a restart
+            if self.instance:
+                returncode = self.instance.runner.returncode
+                # We're managing a binary which has terminated. Start it again
+                # and implicitely wait for the Marionette server to be ready.
+                if returncode is not None:
+                    self.start_binary(timeout)
 
-        else:
-            # In the case when Marionette doesn't manage the binary wait until
-            # its server component has been started.
-            self.raise_for_port(timeout=timeout)
+            else:
+                # In the case when Marionette doesn't manage the binary wait until
+                # its server component has been started.
+                self.raise_for_port(timeout=timeout)
 
         self.client = transport.TcpTransport(self.host, self.port, self.socket_timeout)
         self.protocol, _ = self.client.connect()
@@ -1307,10 +1383,11 @@ class Marionette(object):
         self.session_id = resp["sessionId"]
         self.session = resp["capabilities"]
         self.cleanup_ran = False
-        # fallback to processId can be removed in Firefox 55
-        self.process_id = self.session.get(
-            "moz:processID", self.session.get("processId")
-        )
+
+        self.process_id = self.session.get("moz:processID")
+        if process_forked:
+            self.instance.update_process(self.process_id, self.shutdown_timeout)
+
         self.profile = self.session.get("moz:profile")
 
         timeout = self.session.get("moz:shutdownTimeout")
@@ -1568,12 +1645,12 @@ class Marionette(object):
         if applicable.
 
         :param frame: A reference to the frame to switch to.  This can
-            be an :class:`~marionette_driver.marionette.HTMLElement`,
+            be an :class:`~marionette_driver.marionette.WebElement`,
             or an integer index. If you call ``switch_to_frame`` without an
             argument, it will switch to the top-level frame.
         """
         body = {}
-        if isinstance(frame, HTMLElement):
+        if isinstance(frame, WebElement):
             body["element"] = frame.id
         elif frame is not None:
             body["id"] = frame
@@ -1644,7 +1721,7 @@ class Marionette(object):
         self._send_message("WebDriver:Refresh")
 
     def _to_json(self, args):
-        if isinstance(args, list) or isinstance(args, tuple):
+        if isinstance(args, (list, tuple)):
             wrapped = []
             for arg in args:
                 wrapped.append(self._to_json(arg))
@@ -1652,29 +1729,35 @@ class Marionette(object):
             wrapped = {}
             for arg in args:
                 wrapped[arg] = self._to_json(args[arg])
-        elif type(args) == HTMLElement:
+        elif type(args) == WebElement:
             wrapped = {WEB_ELEMENT_KEY: args.id}
         elif type(args) == ShadowRoot:
             wrapped = {WEB_SHADOW_ROOT_KEY: args.id}
-        elif (
-            isinstance(args, bool)
-            or isinstance(args, six.string_types)
-            or isinstance(args, int)
-            or isinstance(args, float)
-            or args is None
-        ):
+        elif type(args) == WebFrame:
+            wrapped = {WEB_FRAME_KEY: args.id}
+        elif type(args) == WebWindow:
+            wrapped = {WEB_WINDOW_KEY: args.id}
+        elif isinstance(args, (bool, int, float, six.string_types)) or args is None:
             wrapped = args
         return wrapped
 
     def _from_json(self, value):
         if isinstance(value, dict) and any(
-            k in value.keys() for k in HTMLElement.identifiers
+            k in value.keys() for k in WebElement.identifiers
         ):
-            return HTMLElement._from_json(value, self)
+            return WebElement._from_json(value, self)
         elif isinstance(value, dict) and any(
             k in value.keys() for k in ShadowRoot.identifiers
         ):
             return ShadowRoot._from_json(value, self)
+        elif isinstance(value, dict) and any(
+            k in value.keys() for k in WebFrame.identifiers
+        ):
+            return WebFrame._from_json(value, self)
+        elif isinstance(value, dict) and any(
+            k in value.keys() for k in WebWindow.identifiers
+        ):
+            return WebWindow._from_json(value, self)
         elif isinstance(value, dict):
             return {key: self._from_json(val) for key, val in value.items()}
         elif isinstance(value, list):
@@ -1852,13 +1935,13 @@ class Marionette(object):
         return rv
 
     def find_element(self, method, target, id=None):
-        """Returns an :class:`~marionette_driver.marionette.HTMLElement`
+        """Returns an :class:`~marionette_driver.marionette.WebElement`
         instance that matches the specified method and target in the current
         context.
 
-        An :class:`~marionette_driver.marionette.HTMLElement` instance may be
+        An :class:`~marionette_driver.marionette.WebElement` instance may be
         used to call other methods on the element, such as
-        :func:`~marionette_driver.marionette.HTMLElement.click`.  If no element
+        :func:`~marionette_driver.marionette.WebElement.click`.  If no element
         is immediately found, the attempt to locate an element will be repeated
         for up to the amount of time set by
         :attr:`marionette_driver.timeout.Timeouts.implicit`. If multiple
@@ -1884,12 +1967,12 @@ class Marionette(object):
 
     def find_elements(self, method, target, id=None):
         """Returns a list of all
-        :class:`~marionette_driver.marionette.HTMLElement` instances that match
+        :class:`~marionette_driver.marionette.WebElement` instances that match
         the specified method and target in the current context.
 
-        An :class:`~marionette_driver.marionette.HTMLElement` instance may be
+        An :class:`~marionette_driver.marionette.WebElement` instance may be
         used to call other methods on the element, such as
-        :func:`~marionette_driver.marionette.HTMLElement.click`.  If no element
+        :func:`~marionette_driver.marionette.WebElement.click`.  If no element
         is immediately found, the attempt to locate an element will be repeated
         for up to the amount of time set by
         :attr:`marionette_driver.timeout.Timeouts.implicit`.
@@ -2102,3 +2185,11 @@ class Marionette(object):
         :returns: Window rect.
         """
         return self._send_message("WebDriver:FullscreenWindow")
+
+    def set_permission(self, descriptor, state):
+        """Set the permission for the origin of the current page."""
+        body = {
+            "descriptor": descriptor,
+            "state": state,
+        }
+        return self._send_message("WebDriver:SetPermission", body)

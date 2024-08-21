@@ -124,7 +124,7 @@ config = {
         "mochitest-chrome": ["--flavor=chrome", "--chunk-by-dir=4", "--disable-e10s"],
         "mochitest-chrome-gpu": ["--flavor=chrome", "--subsuite=gpu", "--disable-e10s"],
         "mochitest-browser-chrome": ["--flavor=browser", "--chunk-by-runtime"],
-        "mochitest-browser-chrome-screenshots": [
+        "mochitest-browser-screenshots": [
             "--flavor=browser",
             "--subsuite=screenshots",
         ],
@@ -168,7 +168,7 @@ config = {
             "options": [
                 "--xpcshell=%(abs_app_dir)s/" + XPCSHELL_NAME,
                 "--http3server=%(abs_app_dir)s/" + HTTP3SERVER_NAME,
-                "--manifest=tests/xpcshell/tests/xpcshell.ini",
+                "--manifest=tests/xpcshell/tests/xpcshell.toml",
             ],
             "tests": [],
         },

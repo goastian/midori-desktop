@@ -33,7 +33,7 @@ function isErrorOrException(err) {
   if (!err) {
     return false;
   }
-  if (err instanceof Ci.nsIException) {
+  if (err instanceof SpecialPowers.Ci.nsIException) {
     return true;
   }
   try {
@@ -360,6 +360,8 @@ if (typeof computedStyle == "undefined") {
 SimpleTest._tests = [];
 SimpleTest._stopOnLoad = true;
 SimpleTest._cleanupFunctions = [];
+SimpleTest._taskCleanupFunctions = [];
+SimpleTest._currentTask = null;
 SimpleTest._timeoutFunctions = [];
 SimpleTest._inChaosMode = false;
 // When using failure pattern file to filter unexpected issues,
@@ -382,7 +384,7 @@ function usesFailurePatterns() {
  * @return {boolean} Whether a matched failure pattern is found.
  */
 function recordIfMatchesFailurePattern(name, diag) {
-  let index = SimpleTest.expected.findIndex(([pat, count]) => {
+  let index = SimpleTest.expected.findIndex(([pat]) => {
     return (
       pat == null ||
       (typeof name == "string" && name.includes(pat)) ||
@@ -1325,6 +1327,36 @@ SimpleTest.registerCleanupFunction = function (aFunc) {
   SimpleTest._cleanupFunctions.push(aFunc);
 };
 
+/**
+ * Register a cleanup/teardown function (which may be async) to run after the
+ * current task has finished, before running the next task. If async (or the
+ * function returns a promise), the framework will wait for the promise/async
+ * function to resolve.
+ *
+ * @param {Function} aFunc
+ *        The cleanup/teardown function to run.
+ */
+SimpleTest.registerCurrentTaskCleanupFunction = function (aFunc) {
+  if (!SimpleTest._currentTask) {
+    return;
+  }
+  SimpleTest._currentTask._cleanupFunctions ||= [];
+  SimpleTest._currentTask._cleanupFunctions.push(aFunc);
+};
+
+/**
+ * Register a cleanup/teardown function (which may be async) to run after each
+ * task has finished, before running the next task. If async (or the
+ * function returns a promise), the framework will wait for the promise/async
+ * function to resolve.
+ *
+ * @param {Function} aFunc
+ *        The cleanup/teardown function to run.
+ */
+SimpleTest.registerTaskCleanupFunction = function (aFunc) {
+  SimpleTest._taskCleanupFunctions.push(aFunc);
+};
+
 SimpleTest.registerTimeoutFunction = function (aFunc) {
   SimpleTest._timeoutFunctions.push(aFunc);
 };
@@ -1464,9 +1496,14 @@ SimpleTest.finish = function () {
     } else if (workers.length) {
       let FULL_PROFILE_WORKERS_TO_IGNORE = [];
       if (parentRunner.conditionedProfile) {
-        // Full profile has service workers in the profile, without clearing the profile
-        // service workers will be leftover, in all my testing youtube is the only one.
-        FULL_PROFILE_WORKERS_TO_IGNORE = ["https://www.youtube.com/sw.js"];
+        // Full profile has service workers in the profile, without clearing the
+        // profile service workers will be leftover.  We perform a startsWith
+        // check below because some origins (s.0cf.io) use a cache-busting query
+        // parameter.
+        FULL_PROFILE_WORKERS_TO_IGNORE = [
+          "https://www.youtube.com/sw.js",
+          "https://s.0cf.io/sw.js",
+        ];
       } else {
         SimpleTest.ok(
           false,
@@ -1475,7 +1512,11 @@ SimpleTest.finish = function () {
       }
 
       for (let worker of workers) {
-        if (FULL_PROFILE_WORKERS_TO_IGNORE.includes(worker.scriptSpec)) {
+        if (
+          FULL_PROFILE_WORKERS_TO_IGNORE.some(ignoreBase =>
+            worker.scriptSpec.startsWith(ignoreBase)
+          )
+        ) {
           continue;
         }
         SimpleTest.ok(
@@ -2129,6 +2170,7 @@ var add_task = (function () {
           // may mean that the state of subsequent tests may be corrupt.
           try {
             for (var task of task_list) {
+              SimpleTest._currentTask = task;
               var name = task.name || "";
               if (
                 task.__skipMe ||
@@ -2148,7 +2190,16 @@ var add_task = (function () {
               if (isGenerator(result)) {
                 ok(false, "Task returned a generator");
               }
+              if (task._cleanupFunctions) {
+                for (const fn of task._cleanupFunctions) {
+                  await fn();
+                }
+              }
+              for (const fn of SimpleTest._taskCleanupFunctions) {
+                await fn();
+              }
               taskInfo("Leaving");
+              delete SimpleTest._currentTask;
             }
           } catch (ex) {
             try {

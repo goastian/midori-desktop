@@ -8,8 +8,6 @@ module.exports = async function (context, commands) {
   context.log.info("Starting Speedometer 3 test");
   let url = context.options.browsertime.url;
   let page_cycles = context.options.browsertime.page_cycles;
-  let speedometer_iterations =
-    context.options.browsertime.speedometer_iterations;
   let page_cycle_delay = context.options.browsertime.page_cycle_delay;
   let post_startup_delay = context.options.browsertime.post_startup_delay;
   let page_timeout = context.options.timeouts.pageLoad;
@@ -31,29 +29,16 @@ module.exports = async function (context, commands) {
     context.log.info("Cycle %d, starting the measure", count);
     if (expose_profiler === "true") {
       context.log.info("Custom profiler start!");
-      await commands.profiler.start();
+      if (context.options.browser === "firefox") {
+        await commands.profiler.start();
+      } else if (context.options.browser === "chrome") {
+        await commands.trace.start();
+      }
     }
     await commands.measure.start(url);
 
     await commands.js.runAndWait(`
-        window.testDone = false;
-        window.suiteValues = [];
-        const benchmarkClient = {
-          didRunSuites(measuredValues) {
-            window.suiteValues.push(measuredValues);
-          },
-          didFinishLastIteration() {
-            window.testDone = true;
-          }
-        };
-        window.Suites.forEach((el) => {
-          el.disabled = false;
-        });
-        // BenchmarkRunner is overriden as the InteractiveBenchmarkRunner
-        const runner = new BenchmarkRunner(window.Suites, ${speedometer_iterations});
-        runner._client = benchmarkClient;
-
-        runner.runSuites();
+        this.benchmarkClient.start()
     `);
 
     let data_exists = false;
@@ -66,11 +51,17 @@ module.exports = async function (context, commands) {
       let wait_time = 3000;
       context.log.info("Waiting %d ms for data from speedometer...", wait_time);
       await commands.wait.byTime(wait_time);
-      data_exists = await commands.js.run("return window.testDone;");
+      data_exists = await commands.js.run(
+        "return !(this.benchmarkClient._isRunning)"
+      );
     }
     if (expose_profiler === "true") {
       context.log.info("Custom profiler stop!");
-      await commands.profiler.stop();
+      if (context.options.browser === "firefox") {
+        await commands.profiler.stop();
+      } else if (context.options.browser === "chrome") {
+        await commands.trace.stop();
+      }
     }
     if (
       !data_exists &&
@@ -80,10 +71,22 @@ module.exports = async function (context, commands) {
       context.log.error("Benchmark timed out. Aborting...");
       return false;
     }
-    let data = await commands.js.run(`return window.suiteValues;`);
-    context.log.info("Value of benchmark data: ", data);
+    let internal_data = await commands.js.run(
+      `return this.benchmarkClient._measuredValuesList;`
+    );
+    context.log.info("Value of internal benchmark iterations: ", internal_data);
 
-    commands.measure.addObject({ browsertime_benchmark: { s3: data } });
+    let data = await commands.js.run(`
+      const values = this.benchmarkClient._computeResults(this.benchmarkClient._measuredValuesList, "ms");
+      const score = this.benchmarkClient._computeResults(this.benchmarkClient._measuredValuesList, "score");
+      return {
+        score,
+        values: values.formattedMean,
+      };
+    `);
+    context.log.info("Value of summarized benchmark data: ", data);
+
+    commands.measure.addObject({ s3: data, s3_internal: internal_data });
   }
 
   return true;

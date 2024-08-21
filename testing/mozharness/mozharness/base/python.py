@@ -41,6 +41,10 @@ external_tools_path = os.path.join(
 )
 
 
+class MultipleWheelMatchError(Exception):
+    pass
+
+
 def get_tlsv1_post():
     # Monkeypatch to work around SSL errors in non-bleeding-edge Python.
     # Taken from https://lukasa.co.uk/2013/01/Choosing_SSL_Version_In_Requests/
@@ -128,7 +132,6 @@ class VirtualenvMixin(object):
         method=None,
         requirements=None,
         optional=False,
-        two_pass=False,
         editable=False,
     ):
         """Register a module to be installed with the virtualenv.
@@ -140,7 +143,7 @@ class VirtualenvMixin(object):
         applied.
         """
         self._virtualenv_modules.append(
-            (name, url, method, requirements, optional, two_pass, editable)
+            (name, url, method, requirements, optional, editable)
         )
 
     def query_virtualenv_path(self):
@@ -291,6 +294,9 @@ class VirtualenvMixin(object):
                 command = [pip, "install"]
             if no_deps:
                 command += ["--no-deps"]
+
+            command += ["--no-use-pep517"]
+
             # To avoid timeouts with our pypi server, increase default timeout:
             # https://bugzilla.mozilla.org/show_bug.cgi?id=1007230#c802
             command += ["--timeout", str(c.get("pip_timeout", 120))]
@@ -458,33 +464,52 @@ class VirtualenvMixin(object):
         ]
         if "abs_src_dir" not in dirs and "repo_path" in self.config:
             dirs["abs_src_dir"] = os.path.normpath(self.config["repo_path"])
+
+        wheels = {}
+
         for d in vendor_search_dirs:
             try:
                 src_dir = Path(d.format(**dirs))
             except KeyError:
                 continue
 
-            pip_wheel_path = (
-                src_dir
-                / "third_party"
-                / "python"
-                / "_venv"
-                / "wheels"
-                / "pip-23.0.1-py3-none-any.whl"
+            src_dir_wheels_path = (
+                src_dir / "third_party" / "python" / "_venv" / "wheels"
             )
-            setuptools_wheel_path = (
-                src_dir
-                / "third_party"
-                / "python"
-                / "_venv"
-                / "wheels"
-                / "setuptools-51.2.0-py3-none-any.whl"
-            )
+            wheel_patterns = {
+                "wheel": "wheel*.whl",
+                "pip": "pip*.whl",
+                "setuptools": "setuptools*.whl",
+            }
+            wheel_matches = {}
+            multi_match_errors = []
 
-            if all(path.exists() for path in (pip_wheel_path, setuptools_wheel_path)):
+            for key, pattern in wheel_patterns.items():
+                files = list(src_dir_wheels_path.glob(pattern))
+                num_matches = len(files)
+                if num_matches > 1:
+                    multi_match_errors.append(
+                        f"{num_matches} wheels for '{key}' were found."
+                    )
+                elif num_matches == 1:
+                    wheel_matches[key] = files[0]
+
+            if multi_match_errors:
+                error_message = (
+                    "Found multiple matches for wheels of the same package. "
+                    "Please ensure that only a single wheel is vendored for each:\n"
+                    + "\n".join(multi_match_errors)
+                )
+                raise MultipleWheelMatchError(error_message)
+
+            # At this point, we've errored out if there's more than one match for a specific wheel.
+            # So if every wheel has a single match, we're done and can break out. If we didn't match
+            # all the wheels we expect, continue searching in another directory.
+            if set(wheel_patterns.keys()) == set(wheel_matches.keys()):
+                wheels = wheel_matches
                 break
         else:
-            self.fatal("Can't find 'pip' and 'setuptools' wheels")
+            self.fatal("Can't find all of 'pip', 'setuptools', and 'wheel' wheels.")
 
         venv_python_bin = Path(self.query_python_path())
 
@@ -508,7 +533,6 @@ class VirtualenvMixin(object):
                     )
 
                     if debug_exe_dir.exists():
-
                         for executable in {
                             "python.exe",
                             "python_d.exe",
@@ -547,20 +571,6 @@ class VirtualenvMixin(object):
 
             self._ensure_python_exe(venv_python_bin.parent)
 
-            # We can work around a bug on some versions of Python 3.6 on
-            # Windows by copying the 'pyvenv.cfg' of the current venv
-            # to the new venv. This will make the new venv reference
-            # the original Python install instead of the current venv,
-            # which resolves the issue. There shouldn't be any harm in
-            # always doing this, but we'll play it safe and restrict it
-            # to Windows Python 3.6 anyway.
-            if self._is_windows() and sys.version_info[:2] == (3, 6):
-                this_venv = Path(sys.executable).parent.parent
-                this_venv_config = this_venv / "pyvenv.cfg"
-                if this_venv_config.exists():
-                    new_venv_config = Path(venv_path) / "pyvenv.cfg"
-                    shutil.copyfile(str(this_venv_config), str(new_venv_config))
-
             self.run_command(
                 [
                     str(venv_python_bin),
@@ -570,8 +580,9 @@ class VirtualenvMixin(object):
                     "--only-binary",
                     ":all:",
                     "--disable-pip-version-check",
-                    str(pip_wheel_path),
-                    str(setuptools_wheel_path),
+                    wheels["pip"],
+                    wheels["setuptools"],
+                    wheels["wheel"],
                 ],
                 cwd=dirs["abs_work_dir"],
                 error_list=VirtualenvErrorList,
@@ -640,19 +651,8 @@ class VirtualenvMixin(object):
             method,
             requirements,
             optional,
-            two_pass,
             editable,
         ) in self._virtualenv_modules:
-            if two_pass:
-                self.install_module(
-                    module=module,
-                    module_url=url,
-                    install_method=method,
-                    requirements=requirements or (),
-                    optional=optional,
-                    no_deps=True,
-                    editable=editable,
-                )
             self.install_module(
                 module=module,
                 module_url=url,
@@ -786,9 +786,6 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
         super(ResourceMonitoringMixin, self).__init__(*args, **kwargs)
 
         self.register_virtualenv_module("psutil>=5.9.0", method="pip", optional=True)
-        self.register_virtualenv_module(
-            "mozsystemmonitor==1.0.1", method="pip", optional=True
-        )
         self.register_virtualenv_module("jsonschema==2.5.1", method="pip")
         self._resource_monitor = None
 
@@ -813,7 +810,24 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
             from mozsystemmonitor.resourcemonitor import SystemResourceMonitor
 
             self.info("Starting resource monitoring.")
-            self._resource_monitor = SystemResourceMonitor(poll_interval=1.0)
+            metadata = {}
+            if "TASKCLUSTER_WORKER_TYPE" in os.environ:
+                metadata["device"] = os.environ["TASKCLUSTER_WORKER_TYPE"]
+            if "MOZHARNESS_TEST_PATHS" in os.environ:
+                metadata["product"] = " ".join(
+                    json.loads(os.environ["MOZHARNESS_TEST_PATHS"]).keys()
+                )
+            if "MOZ_SOURCE_CHANGESET" in os.environ and "MOZ_SOURCE_REPO" in os.environ:
+                metadata["sourceURL"] = (
+                    os.environ["MOZ_SOURCE_REPO"]
+                    + "/rev/"
+                    + os.environ["MOZ_SOURCE_CHANGESET"]
+                )
+            if "TASK_ID" in os.environ:
+                metadata["appBuildID"] = os.environ["TASK_ID"]
+            self._resource_monitor = SystemResourceMonitor(
+                poll_interval=0.1, metadata=metadata
+            )
             self._resource_monitor.start()
         except Exception:
             self.warning(
@@ -841,28 +855,28 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
         if not self._resource_monitor:
             return
 
-        # This should never raise an exception. This is a workaround until
-        # mozsystemmonitor is fixed. See bug 895388.
+        self._resource_monitor.stop()
+        self._log_resource_usage()
+
+        # Upload a JSON file containing the raw resource data.
         try:
-            self._resource_monitor.stop()
-            self._log_resource_usage()
-
-            # Upload a JSON file containing the raw resource data.
-            try:
-                upload_dir = self.query_abs_dirs()["abs_blob_upload_dir"]
-                if not os.path.exists(upload_dir):
-                    os.makedirs(upload_dir)
-                with open(os.path.join(upload_dir, "resource-usage.json"), "w") as fh:
-                    json.dump(
-                        self._resource_monitor.as_dict(), fh, sort_keys=True, indent=4
-                    )
-            except (AttributeError, KeyError):
-                self.exception("could not upload resource usage JSON", level=WARNING)
-
-        except Exception:
-            self.warning(
-                "Exception when reporting resource usage: %s" % traceback.format_exc()
-            )
+            upload_dir = self.query_abs_dirs()["abs_blob_upload_dir"]
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir)
+            with open(os.path.join(upload_dir, "resource-usage.json"), "w") as fh:
+                json.dump(
+                    self._resource_monitor.as_dict(), fh, sort_keys=True, indent=4
+                )
+            with open(
+                os.path.join(upload_dir, "profile_resource-usage.json"), "w"
+            ) as fh:
+                json.dump(
+                    self._resource_monitor.as_profile(),
+                    fh,
+                    separators=(",", ":"),
+                )
+        except (AttributeError, KeyError):
+            self.exception("could not upload resource usage JSON", level=WARNING)
 
     def _log_resource_usage(self):
         # Delay import because not available until virtualenv is populated.
@@ -1133,6 +1147,8 @@ class Python3Virtualenv(object):
 
         if c.get("find_links") and not c["pip_index"]:
             pip_args += ["--no-index"]
+
+        pip_args += ["--no-use-pep517"]
 
         # Add --find-links pages to look at. Add --trusted-host automatically if
         # the host isn't secure. This allows modern versions of pip to connect

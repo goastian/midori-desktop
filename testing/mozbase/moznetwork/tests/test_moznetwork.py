@@ -4,8 +4,8 @@ Unit-Tests for moznetwork
 """
 
 import re
+import shutil
 import subprocess
-from distutils.spawn import find_executable
 from unittest import mock
 
 import mozinfo
@@ -21,8 +21,8 @@ def ip_addresses():
     # Regex to match IPv4 addresses.
     # 0-255.0-255.0-255.0-255, note order is important here.
     regexip = re.compile(
-        "((25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){3}"
-        "(25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)"
+        r"((25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){3}"
+        r"(25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)"
     )
 
     commands = (
@@ -37,7 +37,7 @@ def ip_addresses():
 
     cmd = None
     for command in commands:
-        if find_executable(command[0]):
+        if shutil.which(command[0]):
             cmd = command
             break
     else:

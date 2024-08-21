@@ -50,7 +50,7 @@ def test_manifest(setup_test_harness, request):
     "flavor,manifest",
     [
         ("plain", "mochitest-args.ini"),
-        ("browser-chrome", "browser-args.ini"),
+        ("browser-chrome", "browser-args.toml"),
     ],
 )
 def test_output_extra_args(flavor, manifest, runtests, test_manifest, test_name):
@@ -137,6 +137,41 @@ def test_output_fail(flavor, runFailures, runtests, test_name):
     lines = filter_action("test_status", lines)
     assert len(lines) == results["lines"]
     assert lines[0]["status"] == results["line_status"]
+
+
+@pytest.mark.parametrize("runFailures", ["selftest", ""])
+@pytest.mark.parametrize("flavor", ["plain", "browser-chrome"])
+def test_output_restart_after_failure(flavor, runFailures, runtests, test_name):
+    extra_opts = {}
+    results = {
+        "status": 0 if runFailures else 1,
+        "tbpl_status": TBPL_SUCCESS if runFailures else TBPL_WARNING,
+        "log_level": (INFO, WARNING),
+        "lines": 2,
+        "line_status": "PASS" if runFailures else "FAIL",
+    }
+    extra_opts["restartAfterFailure"] = True
+    if runFailures:
+        extra_opts["runFailures"] = runFailures
+        extra_opts["crashAsPass"] = True
+        extra_opts["timeoutAsPass"] = True
+
+    tests = [test_name("fail"), test_name("fail2")]
+    status, lines = runtests(tests, **extra_opts)
+    assert status == results["status"]
+
+    tbpl_status, log_level, summary = get_mozharness_status(lines, status)
+    assert tbpl_status == results["tbpl_status"]
+    assert log_level in results["log_level"]
+
+    # Ensure the harness cycled when failing (look for launching browser)
+    start_lines = [
+        line for line in lines if "Application command:" in line.get("message", "")
+    ]
+    if not runFailures:
+        assert len(start_lines) == results["lines"]
+    else:
+        assert len(start_lines) == 1
 
 
 @pytest.mark.skip_mozinfo("!crashreporter")
@@ -229,10 +264,9 @@ def test_output_assertion(flavor, runFailures, runtests, test_name):
     assert tbpl_status == results["tbpl_status"]
     assert log_level == results["log_level"]
 
+    # assertion failure prints error, but still emits test-ok
     test_end = filter_action("test_end", lines)
     assert len(test_end) == results["lines"]
-    # TODO: this should be ASSERT, but moving the assertion check before
-    # the test_end action caused a bunch of failures.
     assert test_end[0]["status"] == "OK"
 
     assertions = filter_action("assertion_count", lines)

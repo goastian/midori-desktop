@@ -103,7 +103,6 @@ class OpenH264Build(TransferMixin, VCSScript, TooltoolMixin):
         all_actions=all_actions,
         default_actions=default_actions,
     ):
-
         # Default configuration
         default_config = {
             "debug_build": False,
@@ -364,7 +363,7 @@ class OpenH264Build(TransferMixin, VCSScript, TooltoolMixin):
         to_package = []
         for f in glob.glob(os.path.join(srcdir, "*gmpopenh264*")):
             if not re.search(
-                "(?:lib)?gmpopenh264(?!\.\d)\.(?:dylib|so|dll|info)(?!\.\d)", f
+                r"(?:lib)?gmpopenh264(?!\.\d)\.(?:dylib|so|dll|info)(?!\.\d)", f
             ):
                 # Don't package unnecessary zip bloat
                 # Blocks things like libgmpopenh264.2.dylib and libgmpopenh264.so.1

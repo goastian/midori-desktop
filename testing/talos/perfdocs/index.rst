@@ -125,7 +125,7 @@ At a glance
 -  Tests are defined in
    `testing/talos/talos/test.py <https://searchfox.org/mozilla-central/source/testing/talos/talos/test.py>`__
 -  Treeherder abbreviations are defined in
-   `taskcluster/ci/test/talos.yml <https://searchfox.org/mozilla-central/source/taskcluster/ci/test/talos.yml>`__
+   `taskcluster/kinds/test/talos.yml <https://searchfox.org/mozilla-central/source/taskcluster/kinds/test/talos.yml>`__
 -  Suites are defined for production in
    `testing/talos/talos.json <https://searchfox.org/mozilla-central/source/testing/talos/talos.json>`__
 
@@ -133,7 +133,7 @@ Test lifecycle
 **************
 
 -  Taskcluster schedules `talos
-   jobs <https://searchfox.org/mozilla-central/source/taskcluster/ci/test/talos.yml>`__
+   jobs <https://searchfox.org/mozilla-central/source/taskcluster/kinds/test/talos.yml>`__
 -  Taskcluster runs a Talos job on a hardware machine when one is
    available - this is bootstrapped by
    `mozharness <https://searchfox.org/mozilla-central/source/testing/mozharness/mozharness/mozilla/testing/talos.py>`__
@@ -168,7 +168,7 @@ There are two different species of Talos tests:
 In addition we have some variations on existing tests:
 
 -  Heavy_: Run tests with the heavy user profile instead of a blank one
--  `Web extension`_: Run tests with a web extension to see the perf impact extension have
+-  WebExtension_: Run tests with a WebExtension to see the perf impact extension have
 -  `Real-world WebExtensions`_: Run tests with a set of 5 popular real-world WebExtensions installed and enabled.
 
 Some tests measure different things:
@@ -251,14 +251,14 @@ Currently we have issues with this on windows (takes too long to unpack
 the files from the profile), so we have turned this off there. Our goal
 is to run this on basic pageload and startup tests.
 
-Web extension
+WebExtension
 =============
 
-Web Extensions are what Firefox has switched to and there are different
+WebExtensions are what Firefox has switched to and there are different
 code paths and APIs used vs addons. Historically we don't test with
 addons (other than our test addons) and are missing out on common
 slowdowns. In 2017 we started running some startup and basic pageload
-tests with a web extension in the profile (`bug
+tests with a WebExtension in the profile (`bug
 1398974 <https://bugzilla.mozilla.org/show_bug.cgi?id=1398974>`__). We
 have updated the Extension to be more real world and will continue to do
 that.
@@ -375,13 +375,6 @@ Extra Talos Tests
 .. contents::
     :depth: 1
     :local:
-
-about_newtab_with_snippets
-==========================
-
-.. note::
-
-   add test details
 
 File IO
 -------
@@ -520,12 +513,12 @@ Treeherder (or in the log file) which have been accessed unexpectedly
 
 .. code-block:: none
 
-    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\secmod.db' was accessed and we were not expecting it. DiskReadCount: 6, DiskWriteCount: 0, DiskReadBytes: 16904, DiskWriteBytes: 0
-    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\cert8.db' was accessed and we were not expecting it. DiskReadCount: 4, DiskWriteCount: 0, DiskReadBytes: 33288, DiskWriteBytes: 0
-    TEST-UNEXPECTED-FAIL : xperf: File 'c:\$logfile' was accessed and we were not expecting it. DiskReadCount: 0, DiskWriteCount: 2, DiskReadBytes: 0, DiskWriteBytes: 32768
-    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\secmod.db' was accessed and we were not expecting it. DiskReadCount: 6, DiskWriteCount: 0, DiskReadBytes: 16904, DiskWriteBytes: 0
-    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\cert8.db' was accessed and we were not expecting it. DiskReadCount: 4, DiskWriteCount: 0, DiskReadBytes: 33288, DiskWriteBytes: 0
-    TEST-UNEXPECTED-FAIL : xperf: File 'c:\$logfile' was accessed and we were not expecting it. DiskReadCount: 0, DiskWriteCount: 2, DiskReadBytes: 0, DiskWriteBytes: 32768
+    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\secmod.db' was accessed and we were not expecting it. DiskReadCount: 6, DiskWriteCount: 0, DiskReadBytes: 16904, DiskWriteBytes: 0
+    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\cert8.db' was accessed and we were not expecting it. DiskReadCount: 4, DiskWriteCount: 0, DiskReadBytes: 33288, DiskWriteBytes: 0
+    TEST-UNEXPECTED-FAIL : xperf: File 'c:\$logfile' was accessed and we were not expecting it. DiskReadCount: 0, DiskWriteCount: 2, DiskReadBytes: 0, DiskWriteBytes: 32768
+    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\secmod.db' was accessed and we were not expecting it. DiskReadCount: 6, DiskWriteCount: 0, DiskReadBytes: 16904, DiskWriteBytes: 0
+    TEST-UNEXPECTED-FAIL : xperf: File '{profile}\cert8.db' was accessed and we were not expecting it. DiskReadCount: 4, DiskWriteCount: 0, DiskReadBytes: 33288, DiskWriteBytes: 0
+    TEST-UNEXPECTED-FAIL : xperf: File 'c:\$logfile' was accessed and we were not expecting it. DiskReadCount: 0, DiskWriteCount: 2, DiskReadBytes: 0, DiskWriteBytes: 32768
 
 In the case that these files are expected to be accessed during startup
 by your changeset, then we can add them to the

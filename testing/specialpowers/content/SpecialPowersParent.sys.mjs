@@ -74,7 +74,7 @@ async function createWindowlessBrowser({ isPrivate = false } = {}) {
   );
 
   const system = Services.scriptSecurityManager.getSystemPrincipal();
-  chromeShell.createAboutBlankContentViewer(system, system);
+  chromeShell.createAboutBlankDocumentViewer(system, system);
   windowlessBrowser.browsingContext.useGlobalHistory = false;
   chromeShell.loadURI(
     Services.io.newURI("chrome://extensions/content/dummy.xhtml"),
@@ -247,7 +247,7 @@ export class SpecialPowersParent extends JSWindowActorParent {
     swm.removeListener(this._serviceWorkerListener);
   }
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     function addDumpIDToMessage(propertyName) {
       try {
         var id = aSubject.getPropertyAsAString(propertyName);
@@ -428,7 +428,7 @@ export class SpecialPowersParent extends JSWindowActorParent {
   _applyPrefs(actions) {
     let requiresRefresh = false;
     for (let pref of actions) {
-      // This logic should match PrefRequiresRefresh in reftest.jsm
+      // This logic should match PrefRequiresRefresh in reftest.sys.mjs
       requiresRefresh =
         requiresRefresh ||
         pref.name == "layout.css.prefers-color-scheme.content-override" ||
@@ -949,8 +949,8 @@ export class SpecialPowersParent extends JSWindowActorParent {
         case "Wakeup":
           return undefined;
 
-        case "EvictAllContentViewers":
-          this.browsingContext.top.sessionHistory.evictAllContentViewers();
+        case "EvictAllDocumentViewers":
+          this.browsingContext.top.sessionHistory.evictAllDocumentViewers();
           return undefined;
 
         case "getBaselinePrefs":
@@ -1178,17 +1178,6 @@ export class SpecialPowersParent extends JSWindowActorParent {
           return result;
         }
 
-        case "SPImportInMainProcess": {
-          var message = { hadError: false, errorMessage: null };
-          try {
-            ChromeUtils.import(aMessage.data);
-          } catch (e) {
-            message.hadError = true;
-            message.errorMessage = e.toString();
-          }
-          return message;
-        }
-
         case "SPCleanUpSTSData": {
           let origin = aMessage.data.origin;
           let uri = Services.io.newURI(origin);
@@ -1352,9 +1341,7 @@ export class SpecialPowersParent extends JSWindowActorParent {
           let id = aMessage.data.id;
           let extension = this._extensions.get(id);
           this._extensions.delete(id);
-          return extension.shutdown().then(() => {
-            return extension._uninstallPromise;
-          });
+          return lazy.ExtensionTestCommon.unloadTestExtension(extension);
         }
 
         case "SPExtensionTerminateBackground": {

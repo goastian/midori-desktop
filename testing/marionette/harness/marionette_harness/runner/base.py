@@ -57,7 +57,6 @@ class MarionetteTest(TestResult):
 
 
 class MarionetteTestResult(StructuredTestResult, TestResultCollection):
-
     resultClass = MarionetteTest
 
     def __init__(self, *args, **kwargs):
@@ -233,7 +232,6 @@ class MarionetteTestResult(StructuredTestResult, TestResultCollection):
 
 
 class MarionetteTextTestRunner(StructuredTestRunner):
-
     resultclass = MarionetteTestResult
 
     def __init__(self, **kwargs):
@@ -275,7 +273,7 @@ class BaseMarionetteArguments(ArgumentParser):
             default=[],
             help="Tests to run. "
             "One or more paths to test files (Python or JS), "
-            "manifest files (.ini) or directories. "
+            "manifest files (.toml) or directories. "
             "When a directory is specified, "
             "all test files in the directory will be run.",
         )
@@ -322,8 +320,8 @@ class BaseMarionetteArguments(ArgumentParser):
             "--preferences",
             action="append",
             dest="prefs_files",
-            help="read preferences from a JSON or INI file. For INI, use "
-            "'file.ini:section' to specify a particular section.",
+            help="read preferences from a JSON or TOML file. For TOML, use "
+            "'file.toml:section' to specify a particular section.",
         )
         self.add_argument(
             "--addon",
@@ -603,7 +601,6 @@ class Fixtures(object):
 
 
 class BaseMarionetteTestRunner(object):
-
     textrunnerclass = MarionetteTextTestRunner
     driverclass = Marionette
 
@@ -733,7 +730,7 @@ class BaseMarionetteTestRunner(object):
     @property
     def filename_pattern(self):
         if self._filename_pattern is None:
-            self._filename_pattern = re.compile("^test(((_.+?)+?\.((py))))$")
+            self._filename_pattern = re.compile(r"^test(((_.+?)+?\.((py))))$")
 
         return self._filename_pattern
 
@@ -1087,7 +1084,7 @@ class BaseMarionetteTestRunner(object):
         if os.path.isdir(filepath):
             for root, dirs, files in os.walk(filepath):
                 for filename in files:
-                    if filename.endswith(".ini"):
+                    if filename.endswith(".toml"):
                         msg_tmpl = (
                             "Ignoring manifest '{0}'; running all tests in '{1}'."
                             " See --help for details."
@@ -1103,7 +1100,7 @@ class BaseMarionetteTestRunner(object):
 
         file_ext = os.path.splitext(os.path.split(filepath)[-1])[1]
 
-        if file_ext == ".ini":
+        if file_ext == ".toml":
             group = filepath
 
             manifest = TestManifest()

@@ -14,9 +14,9 @@ As of now, there is no easy way to do this. Raptor was not built for debugging f
 To debug a functional failure in Raptor you can follow these steps:
 
 #. If bug 1653617 has not landed yet, apply the patch.
-#. Add the --verbose flag to the extra-options list `here <https://searchfox.org/mozilla-central/source/taskcluster/ci/test/raptor.yml#98-101>`__.
+#. Add the --verbose flag to the extra-options list `here <https://searchfox.org/mozilla-central/source/taskcluster/kinds/test/raptor.yml#98-101>`__.
 #. If the --setenv doesn't exist yet (`bug 1494669 <https://bugzilla.mozilla.org/show_bug.cgi?id=1494669>`_), then add your MOZ_LOG environment variables to give you additional logging `here <https://searchfox.org/mozilla-central/source/testing/raptor/raptor/webextension/desktop.py#42>`_.
-#. If the flag does exist, then you can add the MOZ_LOG variables to the `raptor.yml <https://searchfox.org/mozilla-central/source/taskcluster/ci/test/raptor.yml>`_ configuration file.
+#. If the flag does exist, then you can add the MOZ_LOG variables to the `raptor.yml <https://searchfox.org/mozilla-central/source/taskcluster/kinds/test/raptor.yml>`_ configuration file.
 #. Push to try if you can't reproduce the failure locally.
 
 You can follow `bug 1655554 <https://bugzilla.mozilla.org/show_bug.cgi?id=1655554>`_ as we work on improving this workflow.
@@ -112,11 +112,11 @@ Be sure to read the above section first on how to debug the Raptor web extension
 
 When running Raptor tests on Firefox on Android (i.e. geckoview), to see the console.log() output from the Raptor web extension, do the following:
 
-#. With your android device (i.e. Google Pixel 2) all set up and connected to USB, invoke the Raptor test normally via ``./mach raptor``
+#. With your android device all set up and connected to USB, invoke the Raptor test normally via ``./mach raptor``
 #. Start up a local copy of the Firefox Nightly Desktop browser
 #. In Firefox Desktop choose "Tools => Web Developer => WebIDE"
 #. In the Firefox WebIDE dialog that appears, look under "USB Devices" listed on the top right. If your device is not there, there may be a link to install remote device tools - if that link appears click it and let that install.
-#. Under "USB Devices" on the top right your android device should be listed (i.e. "Firefox Custom on Android Pixel 2" - click on your device.
+#. Under "USB Devices" on the top right your android device should be listed (i.e. "Firefox Custom on Android") - click on your device.
 #. The debugger opens. On the left side click on "Main Process", and click the "console" tab below - and the Raptor runner output will be included there.
 #. On the left side under "Tabs" you'll also see an option for the active tab/page; select that and the Raptor content console.log() output should be included there.
 
@@ -130,3 +130,16 @@ Manual Debugging on Google Chrome
 ---------------------------------
 
 Same as on Firefox desktop above, but use the Google Chrome console: View ==> Developer ==> Developer Tools.
+
+Debugging local Python environment
+**********************************
+
+Sometimes your local system python will not behave as expected with some of the performance test suites (like Raptor) due to how the virtual environment gets set up. It is presently unclear what the underlying reason is for this, and this issue seems to pop up most frequently on macOS and sometimes Linux.
+
+To determine if this may be the issue, the failure log will likely have something like ``'/usr/local/lib/Python3' (no such file), '/usr/lib/Python3' (no such file)`` within it.
+
+If clobbering your environment and/or removing your ``obj-*`` directory does not work, it is recommended that you consider trying an alternative method to managing your local python environment like e.g. `pyenv <https://github.com/pyenv/pyenv>`_. There are some other alternatives `listed here <https://firefox-source-docs.mozilla.org/build/buildsystem/python.html#installing-python-manually>`_ as well.
+
+For example if you choose to use pyenv, after following the `installation instructions <https://github.com/pyenv/pyenv#installation>`_ you can use pyenv to install and manage multiple Python versions, and easily switch back and forth between them. Pyenv uses shim executables to intercept your Python commands, and as a result, provide a way to supersede the system python/mozilla-central virtual env issues mentioned above. Further information on how it works can be `found here <https://github.com/pyenv/pyenv#how-it-works>`_. **Note** you `may` have to re-install moz-phab upon installing and using a new Python version through pyenv, but this is fairly simple to do so.
+
+If these suggestions do not work, reach out to #perftest on Element!

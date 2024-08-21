@@ -514,6 +514,15 @@ class MochitestArguments(ArgumentContainer):
             },
         ],
         [
+            ["--use-http2-server"],
+            {
+                "dest": "useHttp2Server",
+                "default": False,
+                "help": "Whether to use the Http2 server",
+                "action": "store_true",
+            },
+        ],
+        [
             ["--setpref"],
             {
                 "action": "append",
@@ -573,7 +582,7 @@ class MochitestArguments(ArgumentContainer):
                 "action": "store_true",
                 "default": False,
                 "dest": "a11y_checks",
-                "help": "Run tests with accessibility checks disabled.",
+                "help": "Run tests with accessibility checks enabled.",
             },
         ],
         [
@@ -926,6 +935,22 @@ class MochitestArguments(ArgumentContainer):
                 "dest": "comparePrefs",
                 "default": False,
                 "help": "Compare preferences at the end of each test and report changed ones as failures.",
+            },
+        ],
+        [
+            ["--restart-after-failure"],
+            {
+                "dest": "restartAfterFailure",
+                "default": False,
+                "help": "Terminate the session on first failure and restart where you left off.",
+            },
+        ],
+        [
+            ["--variant"],
+            {
+                "dest": "variant",
+                "default": "",
+                "help": "use specified variant for any harness level changes.",
             },
         ],
     ]

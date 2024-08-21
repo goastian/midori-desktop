@@ -42,6 +42,9 @@ class PsutilStub(object):
             ],
         )
 
+    def cpu_count(self, logical=True):
+        return 0
+
     def cpu_percent(self, a, b):
         return [0]
 
@@ -118,16 +121,13 @@ def _collect(pipe, poll_interval):
     data = []
 
     try:
-
         # Establish initial values.
 
-        # We should ideally use a monotonic clock. However, Python 2.7 doesn't
-        # make a monotonic clock available on all platforms. Python 3.3 does!
-        last_time = time.time()
         io_last = get_disk_io_counters()
-        cpu_last = psutil.cpu_times(True)
         swap_last = psutil.swap_memory()
         psutil.cpu_percent(None, True)
+        cpu_last = psutil.cpu_times(True)
+        last_time = time.monotonic()
 
         sin_index = swap_last._fields.index("sin")
         sout_index = swap_last._fields.index("sout")
@@ -136,11 +136,15 @@ def _collect(pipe, poll_interval):
 
         while not _poll(pipe, poll_interval=sleep_interval):
             io = get_disk_io_counters()
-            cpu_times = psutil.cpu_times(True)
-            cpu_percent = psutil.cpu_percent(None, True)
             virt_mem = psutil.virtual_memory()
             swap_mem = psutil.swap_memory()
-            measured_end_time = time.time()
+            cpu_percent = psutil.cpu_percent(None, True)
+            cpu_times = psutil.cpu_times(True)
+            # Take the timestamp as soon as possible after getting cpu_times
+            # to reduce the likelihood of our process being interrupted between
+            # the two instructions. Having a delayed timestamp would cause the
+            # next sample to report more than 100% CPU time.
+            measured_end_time = time.monotonic()
 
             # TODO Does this wrap? At 32 bits? At 64 bits?
             # TODO Consider patching "delta" API to upstream.
@@ -170,15 +174,14 @@ def _collect(pipe, poll_interval):
                 )
             )
 
-            collection_overhead = time.time() - last_time - poll_interval
+            collection_overhead = time.monotonic() - last_time - sleep_interval
             last_time = measured_end_time
-            sleep_interval = max(0, poll_interval - collection_overhead)
+            sleep_interval = max(poll_interval / 2, poll_interval - collection_overhead)
 
     except Exception as e:
         warnings.warn("_collect failed: %s" % e)
 
     finally:
-
         for entry in data:
             pipe.send(entry)
 
@@ -260,7 +263,9 @@ class SystemResourceMonitor(object):
     # collection stops, it flushes all that data to a pipe to be read by
     # the parent process.
 
-    def __init__(self, poll_interval=1.0):
+    instance = None
+
+    def __init__(self, poll_interval=1.0, metadata={}):
         """Instantiate a system resource monitor instance.
 
         The instance is configured with a poll interval. This is the interval
@@ -270,9 +275,11 @@ class SystemResourceMonitor(object):
         self.end_time = None
 
         self.events = []
+        self.markers = []
         self.phases = OrderedDict()
 
         self._active_phases = {}
+        self._active_markers = {}
 
         self._running = False
         self._stopped = False
@@ -306,17 +313,24 @@ class SystemResourceMonitor(object):
         self._virt_len = len(virt)
         self._swap_type = type(swap)
         self._swap_len = len(swap)
+        self.start_timestamp = time.time()
+        self.start_time = time.monotonic()
 
         self._pipe, child_pipe = multiprocessing.Pipe(True)
 
         self._process = multiprocessing.Process(
             target=_collect, args=(child_pipe, poll_interval)
         )
+        self.poll_interval = poll_interval
+        self.metadata = metadata
 
     def __del__(self):
         if self._running:
             self._pipe.send(("terminate",))
             self._process.join()
+
+    def convert_to_monotonic_time(self, timestamp):
+        return timestamp - self.start_timestamp + self.start_time
 
     # Methods to control monitoring.
 
@@ -330,6 +344,8 @@ class SystemResourceMonitor(object):
 
         self._process.start()
         self._running = True
+        self.start_time = time.monotonic()
+        SystemResourceMonitor.instance = self
 
     def stop(self):
         """Stop measuring system-wide CPU resource utilization.
@@ -343,6 +359,7 @@ class SystemResourceMonitor(object):
             self._stopped = True
             return
 
+        self.stop_time = time.monotonic()
         assert not self._stopped
 
         try:
@@ -369,8 +386,9 @@ class SystemResourceMonitor(object):
                     virt_mem,
                     swap_mem,
                 ) = self._pipe.recv()
-            except Exception:
-                # Let's assume we're done here
+            except Exception as e:
+                warnings.warn("failed to receive data: %s" % e)
+                # Assume we can't recover
                 break
 
             # There should be nothing after the "done" message so
@@ -378,16 +396,35 @@ class SystemResourceMonitor(object):
             if start_time == "done":
                 break
 
-            io = self._io_type(*io_diff)
-            virt = self._virt_type(*virt_mem)
-            swap = self._swap_type(*swap_mem)
-            cpu_times = [self._cpu_times_type(*v) for v in cpu_diff]
+            try:
+                io = self._io_type(*io_diff)
+                virt = self._virt_type(*virt_mem)
+                swap = self._swap_type(*swap_mem)
+                cpu_times = [self._cpu_times_type(*v) for v in cpu_diff]
 
-            self.measurements.append(
-                SystemResourceUsage(
-                    start_time, end_time, cpu_times, cpu_percent, io, virt, swap
+                self.measurements.append(
+                    SystemResourceUsage(
+                        start_time, end_time, cpu_times, cpu_percent, io, virt, swap
+                    )
                 )
-            )
+            except Exception:
+                # We also can't recover, but output the data that caused the exception
+                warnings.warn(
+                    "failed to read the received data: %s"
+                    % str(
+                        (
+                            start_time,
+                            end_time,
+                            io_diff,
+                            cpu_diff,
+                            cpu_percent,
+                            virt_mem,
+                            swap_mem,
+                        )
+                    )
+                )
+
+                break
 
         # We establish a timeout so we don't hang forever if the child
         # process has crashed.
@@ -398,20 +435,58 @@ class SystemResourceMonitor(object):
                 self._process.join(10)
 
         self._running = False
-
-        if len(self.measurements):
-            self.start_time = self.measurements[0].start
-            self.end_time = self.measurements[-1].end
+        SystemResourceUsage.instance = None
+        self.end_time = time.monotonic()
 
     # Methods to record events alongside the monitored data.
 
-    def record_event(self, name):
+    @staticmethod
+    def record_event(name):
         """Record an event as occuring now.
 
         Events are actions that occur at a specific point in time. If you are
         looking for an action that has a duration, see the phase API below.
         """
-        self.events.append((time.time(), name))
+        if SystemResourceMonitor.instance:
+            SystemResourceMonitor.instance.events.append((time.monotonic(), name))
+
+    @staticmethod
+    def record_marker(name, start, end, text):
+        """Record a marker with a duration and an optional text
+
+        Markers are typically used to record when a single command happened.
+        For actions with a longer duration that justifies tracking resource use
+        see the phase API below.
+        """
+        if SystemResourceMonitor.instance:
+            SystemResourceMonitor.instance.markers.append((name, start, end, text))
+
+    @staticmethod
+    def begin_marker(name, text, disambiguator=None, timestamp=None):
+        if SystemResourceMonitor.instance:
+            id = name + ":" + text
+            if disambiguator:
+                id += ":" + disambiguator
+            SystemResourceMonitor.instance._active_markers[id] = (
+                SystemResourceMonitor.instance.convert_to_monotonic_time(timestamp)
+                if timestamp
+                else time.monotonic()
+            )
+
+    @staticmethod
+    def end_marker(name, text, disambiguator=None, timestamp=None):
+        if not SystemResourceMonitor.instance:
+            return
+        end = time.monotonic()
+        if timestamp:
+            end = SystemResourceMonitor.instance.convert_to_monotonic_time(timestamp)
+        id = name + ":" + text
+        if disambiguator:
+            id += ":" + disambiguator
+        if not id in SystemResourceMonitor.instance._active_markers:
+            return
+        start = SystemResourceMonitor.instance._active_markers.pop(id)
+        SystemResourceMonitor.instance.record_marker(name, start, end, text)
 
     @contextmanager
     def phase(self, name):
@@ -431,14 +506,14 @@ class SystemResourceMonitor(object):
         """
         assert name not in self._active_phases
 
-        self._active_phases[name] = time.time()
+        self._active_phases[name] = time.monotonic()
 
     def finish_phase(self, name):
         """Record the end of a phase."""
 
         assert name in self._active_phases
 
-        phase = (self._active_phases[name], time.time())
+        phase = (self._active_phases[name], time.monotonic())
         self.phases[name] = phase
         del self._active_phases[name]
 
@@ -745,3 +820,411 @@ class SystemResourceMonitor(object):
             )
 
         return o
+
+    def as_profile(self):
+        profile_time = time.monotonic()
+        start_time = self.start_time
+        profile = {
+            "meta": {
+                "processType": 0,
+                "product": "mach",
+                "stackwalk": 0,
+                "version": 27,
+                "preprocessedProfileVersion": 47,
+                "symbolicationNotSupported": True,
+                "interval": self.poll_interval * 1000,
+                "startTime": self.start_timestamp * 1000,
+                "profilingStartTime": 0,
+                "logicalCPUs": psutil.cpu_count(logical=True),
+                "physicalCPUs": psutil.cpu_count(logical=False),
+                "mainMemory": psutil.virtual_memory()[0],
+                "markerSchema": [
+                    {
+                        "name": "Phase",
+                        "tooltipLabel": "{marker.data.phase}",
+                        "tableLabel": "{marker.name} — {marker.data.phase} — CPU time: {marker.data.cpuTime} ({marker.data.cpuPercent})",
+                        "chartLabel": "{marker.data.phase}",
+                        "display": [
+                            "marker-chart",
+                            "marker-table",
+                            "timeline-overview",
+                        ],
+                        "data": [
+                            {
+                                "key": "cpuTime",
+                                "label": "CPU Time",
+                                "format": "duration",
+                            },
+                            {
+                                "key": "cpuPercent",
+                                "label": "CPU Percent",
+                                "format": "string",
+                            },
+                        ],
+                    },
+                    {
+                        "name": "Text",
+                        "tooltipLabel": "{marker.name}",
+                        "tableLabel": "{marker.name} — {marker.data.text}",
+                        "chartLabel": "{marker.data.text}",
+                        "display": ["marker-chart", "marker-table"],
+                        "data": [
+                            {
+                                "key": "text",
+                                "label": "Description",
+                                "format": "string",
+                                "searchable": True,
+                            }
+                        ],
+                    },
+                    {
+                        "name": "Mem",
+                        "tooltipLabel": "{marker.name}",
+                        "display": [],
+                        "data": [
+                            {"key": "used", "label": "Memory Used", "format": "bytes"},
+                            {
+                                "key": "cached",
+                                "label": "Memory cached",
+                                "format": "bytes",
+                            },
+                            {
+                                "key": "buffers",
+                                "label": "Memory buffers",
+                                "format": "bytes",
+                            },
+                        ],
+                        "graphs": [
+                            {"key": "used", "color": "orange", "type": "line-filled"}
+                        ],
+                    },
+                    {
+                        "name": "IO",
+                        "tooltipLabel": "{marker.name}",
+                        "display": [],
+                        "data": [
+                            {
+                                "key": "write_bytes",
+                                "label": "Written",
+                                "format": "bytes",
+                            },
+                            {
+                                "key": "write_count",
+                                "label": "Write count",
+                                "format": "integer",
+                            },
+                            {"key": "read_bytes", "label": "Read", "format": "bytes"},
+                            {
+                                "key": "read_count",
+                                "label": "Read count",
+                                "format": "integer",
+                            },
+                        ],
+                        "graphs": [
+                            {"key": "read_bytes", "color": "green", "type": "bar"},
+                            {"key": "write_bytes", "color": "red", "type": "bar"},
+                        ],
+                    },
+                ],
+                "usesOnlyOneStackType": True,
+            },
+            "libs": [],
+            "threads": [
+                {
+                    "processType": "default",
+                    "processName": "mach",
+                    "processStartupTime": 0,
+                    "processShutdownTime": None,
+                    "registerTime": 0,
+                    "unregisterTime": None,
+                    "pausedRanges": [],
+                    "showMarkersInTimeline": True,
+                    "name": "",
+                    "isMainThread": False,
+                    "pid": "0",
+                    "tid": 0,
+                    "samples": {
+                        "weightType": "samples",
+                        "weight": None,
+                        "stack": [],
+                        "time": [],
+                        "length": 0,
+                    },
+                    "stringArray": ["(root)"],
+                    "markers": {
+                        "data": [],
+                        "name": [],
+                        "startTime": [],
+                        "endTime": [],
+                        "phase": [],
+                        "category": [],
+                        "length": 0,
+                    },
+                    "stackTable": {
+                        "frame": [0],
+                        "prefix": [None],
+                        "category": [0],
+                        "subcategory": [0],
+                        "length": 1,
+                    },
+                    "frameTable": {
+                        "address": [-1],
+                        "inlineDepth": [0],
+                        "category": [None],
+                        "subcategory": [0],
+                        "func": [0],
+                        "nativeSymbol": [None],
+                        "innerWindowID": [0],
+                        "implementation": [None],
+                        "line": [None],
+                        "column": [None],
+                        "length": 1,
+                    },
+                    "funcTable": {
+                        "isJS": [False],
+                        "relevantForJS": [False],
+                        "name": [0],
+                        "resource": [-1],
+                        "fileName": [None],
+                        "lineNumber": [None],
+                        "columnNumber": [None],
+                        "length": 1,
+                    },
+                    "resourceTable": {
+                        "lib": [],
+                        "name": [],
+                        "host": [],
+                        "type": [],
+                        "length": 0,
+                    },
+                    "nativeSymbols": {
+                        "libIndex": [],
+                        "address": [],
+                        "name": [],
+                        "functionSize": [],
+                        "length": 0,
+                    },
+                }
+            ],
+            "counters": [],
+        }
+
+        firstThread = profile["threads"][0]
+        markers = firstThread["markers"]
+        for key in self.metadata:
+            profile["meta"][key] = self.metadata[key]
+
+        def get_string_index(string):
+            stringArray = firstThread["stringArray"]
+            try:
+                return stringArray.index(string)
+            except ValueError:
+                stringArray.append(string)
+                return len(stringArray) - 1
+
+        def add_marker(name_index, start, end, data, precision=None):
+            # The precision argument allows setting how many digits after the
+            # decimal point are desired.
+            # For resource use samples where we sample with a timer, an integer
+            # number of ms is good enough.
+            # For short duration markers, the profiler front-end may show up to
+            # 3 digits after the decimal point (ie. µs precision).
+            markers["startTime"].append(round((start - start_time) * 1000, precision))
+            if end is None:
+                markers["endTime"].append(None)
+                # 0 = Instant marker
+                markers["phase"].append(0)
+            else:
+                markers["endTime"].append(round((end - start_time) * 1000, precision))
+                # 1 = marker with start and end times, 2 = start but no end.
+                markers["phase"].append(1)
+            markers["category"].append(0)
+            markers["name"].append(name_index)
+            markers["data"].append(data)
+            markers["length"] = markers["length"] + 1
+
+        def format_percent(value):
+            return str(round(value, 1)) + "%"
+
+        samples = firstThread["samples"]
+        samples["stack"].append(0)
+        samples["time"].append(0)
+
+        cpu_string_index = get_string_index("CPU Use")
+        memory_string_index = get_string_index("Memory")
+        io_string_index = get_string_index("IO")
+        valid_cpu_fields = set()
+        for m in self.measurements:
+            # Ignore samples that are much too short.
+            if m.end - m.start < self.poll_interval / 10:
+                continue
+
+            # Sample times
+            samples["stack"].append(0)
+            samples["time"].append(round((m.end - start_time) * 1000))
+
+            # CPU
+            markerData = {
+                "type": "CPU",
+                "cpuPercent": format_percent(
+                    sum(list(m.cpu_percent)) / len(m.cpu_percent)
+                ),
+            }
+
+            # due to inconsistencies in the sampling rate, sometimes the
+            # cpu_times add up to more than 100%, causing annoying
+            # spikes in the CPU use charts. Avoid them by dividing the
+            # values by the total if it is above 1.
+            total = 0
+            for field in ["nice", "user", "system", "iowait", "softirq", "idle"]:
+                if hasattr(m.cpu_times[0], field):
+                    total += sum(getattr(core, field) for core in m.cpu_times) / (
+                        m.end - m.start
+                    )
+            divisor = total if total > 1 else 1
+
+            total = 0
+            for field in ["nice", "user", "system", "iowait", "softirq"]:
+                if hasattr(m.cpu_times[0], field):
+                    total += (
+                        sum(getattr(core, field) for core in m.cpu_times)
+                        / (m.end - m.start)
+                        / divisor
+                    )
+                    if total > 0:
+                        valid_cpu_fields.add(field)
+                    markerData[field] = round(total, 3)
+            for field in ["nice", "user", "system", "iowait", "idle"]:
+                if hasattr(m.cpu_times[0], field):
+                    markerData[field + "_pct"] = format_percent(
+                        100
+                        * sum(getattr(core, field) for core in m.cpu_times)
+                        / (m.end - m.start)
+                        / len(m.cpu_times)
+                    )
+            add_marker(cpu_string_index, m.start, m.end, markerData)
+
+            # Memory
+            markerData = {"type": "Mem", "used": m.virt.used}
+            if hasattr(m.virt, "cached"):
+                markerData["cached"] = m.virt.cached
+            if hasattr(m.virt, "buffers"):
+                markerData["buffers"] = m.virt.buffers
+            add_marker(memory_string_index, m.start, m.end, markerData)
+
+            # IO
+            markerData = {
+                "type": "IO",
+                "read_count": m.io.read_count,
+                "read_bytes": m.io.read_bytes,
+                "write_count": m.io.write_count,
+                "write_bytes": m.io.write_bytes,
+            }
+            add_marker(io_string_index, m.start, m.end, markerData)
+        samples["length"] = len(samples["stack"])
+
+        # The marker schema for CPU markers should only contain graph
+        # definitions for fields we actually have, or the profiler front-end
+        # will detect missing data and skip drawing the track entirely.
+        cpuSchema = {
+            "name": "CPU",
+            "tooltipLabel": "{marker.name}",
+            "display": [],
+            "data": [{"key": "cpuPercent", "label": "CPU Percent", "format": "string"}],
+            "graphs": [],
+        }
+        cpuData = cpuSchema["data"]
+        for field, label in {
+            "user": "User %",
+            "iowait": "IO Wait %",
+            "system": "System %",
+            "nice": "Nice %",
+            "idle": "Idle %",
+        }.items():
+            if field in valid_cpu_fields or field == "idle":
+                cpuData.append(
+                    {"key": field + "_pct", "label": label, "format": "string"}
+                )
+        cpuGraphs = cpuSchema["graphs"]
+        for field, color in {
+            "softirq": "orange",
+            "iowait": "red",
+            "system": "grey",
+            "user": "yellow",
+            "nice": "blue",
+        }.items():
+            if field in valid_cpu_fields:
+                cpuGraphs.append({"key": field, "color": color, "type": "bar"})
+        profile["meta"]["markerSchema"].insert(0, cpuSchema)
+
+        # Create markers for phases
+        phase_string_index = get_string_index("Phase")
+        for phase, v in self.phases.items():
+            markerData = {"type": "Phase", "phase": phase}
+
+            cpu_percent_cores = self.aggregate_cpu_percent(phase=phase)
+            if cpu_percent_cores:
+                markerData["cpuPercent"] = format_percent(
+                    sum(cpu_percent_cores) / len(cpu_percent_cores)
+                )
+
+            cpu_times = [list(c) for c in self.aggregate_cpu_times(phase=phase)]
+            cpu_times_sum = [0.0] * self._cpu_times_len
+            for i in range(0, self._cpu_times_len):
+                cpu_times_sum[i] = sum(core[i] for core in cpu_times)
+            total_cpu_time_ms = sum(cpu_times_sum) * 1000
+            if total_cpu_time_ms > 0:
+                markerData["cpuTime"] = total_cpu_time_ms
+
+            add_marker(phase_string_index, v[0], v[1], markerData, 3)
+
+        # Add generic markers
+        for name, start, end, text in self.markers:
+            markerData = {"type": "Text"}
+            if text:
+                markerData["text"] = text
+            add_marker(get_string_index(name), start, end, markerData, 3)
+        if self.events:
+            event_string_index = get_string_index("Event")
+            for event_time, text in self.events:
+                if text:
+                    add_marker(
+                        event_string_index,
+                        event_time,
+                        None,
+                        {"type": "Text", "text": text},
+                        3,
+                    )
+
+        # We may have spent some time generating this profile, and there might
+        # also have been some time elapsed between stopping the resource
+        # monitor, and the profile being created. These are hidden costs that
+        # we should account for as best as possible, and the best we can do
+        # is to make the profile contain information about this cost somehow.
+        # We extend the profile end time up to now rather than self.end_time,
+        # and add a phase covering that period of time.
+        now = time.monotonic()
+        profile["meta"]["profilingEndTime"] = round(
+            (now - self.start_time) * 1000 + 0.0005, 3
+        )
+        markerData = {
+            "type": "Phase",
+            "phase": "teardown",
+        }
+        add_marker(phase_string_index, self.stop_time, now, markerData, 3)
+        teardown_string_index = get_string_index("resourcemonitor")
+        markerData = {
+            "type": "Text",
+            "text": "stop",
+        }
+        add_marker(teardown_string_index, self.stop_time, self.end_time, markerData, 3)
+        markerData = {
+            "type": "Text",
+            "text": "as_profile",
+        }
+        add_marker(teardown_string_index, profile_time, now, markerData, 3)
+
+        # Unfortunately, whatever the caller does with the profile (e.g. json)
+        # or after that (hopefully, exit) is not going to be counted, but we
+        # assume it's fast enough.
+        return profile

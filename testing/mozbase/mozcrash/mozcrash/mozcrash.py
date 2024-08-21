@@ -40,6 +40,8 @@ StackInfo = namedtuple(
         "stackwalk_retcode",
         "stackwalk_errors",
         "extra",
+        "process_type",
+        "pid",
         "reason",
         "java_stack",
     ],
@@ -121,6 +123,8 @@ def check_for_crashes(
             )
         elif not quiet:
             stackwalk_output = ["Crash dump filename: {}".format(info.minidump_path)]
+            stackwalk_output.append("Process type: {}".format(info.process_type))
+            stackwalk_output.append("Process pid: {}".format(info.pid or "unknown"))
             if info.reason:
                 stackwalk_output.append("Mozilla crash reason: %s" % info.reason)
             if info.stackwalk_stderr:
@@ -300,12 +304,22 @@ class CrashInfo(object):
         """List of tuple (path_to_dump_file, path_to_extra_file) for each dump
         file in self.dump_directory. The extra files may not exist."""
         if self._dump_files is None:
-            self._dump_files = [
-                (path, os.path.splitext(path)[0] + ".extra")
-                for path in reversed(
-                    sorted(glob.glob(os.path.join(self.dump_directory, "*.dmp")))
-                )
-            ]
+            paths = [self.dump_directory]
+            if mozinfo.isWin:
+                # Add the hard-coded paths used for minidumps recorded by
+                # Windows Error Reporting in automation
+                paths += [
+                    "C:\\error-dumps\\",
+                    "Z:\\error-dumps\\",
+                ]
+            self._dump_files = []
+            for path in paths:
+                self._dump_files += [
+                    (minidump_path, os.path.splitext(minidump_path)[0] + ".extra")
+                    for minidump_path in reversed(
+                        sorted(glob.glob(os.path.join(path, "*.dmp")))
+                    )
+                ]
             max_dumps = 10
             if len(self._dump_files) > max_dumps:
                 self.logger.warning(
@@ -345,6 +359,10 @@ class CrashInfo(object):
                    stackwalk_retcode: Return code from stackwalk
                    stackwalk_errors: List of errors in human-readable form that prevented
                                      stackwalk being launched.
+                   reason: The reason provided by a MOZ_CRASH() invokation (optional)
+                   java_stack: The stack trace of a Java exception (optional)
+                   process_type: The type of process that crashed
+                   pid: The PID of the crashed process
         """
         self._get_symbols()
 
@@ -355,6 +373,9 @@ class CrashInfo(object):
         retcode = None
         reason = None
         java_stack = None
+        annotations = None
+        pid = None
+        process_type = "unknown"
         if (
             self.stackwalk_binary
             and os.path.exists(self.stackwalk_binary)
@@ -365,7 +386,10 @@ class CrashInfo(object):
 
             # Fallback to the symbols server for unknown symbols on automation
             # (mostly for system libraries).
-            if "MOZ_AUTOMATION" in os.environ:
+            if (
+                "MOZ_AUTOMATION" in os.environ
+                or "MOZ_STACKWALK_SYMBOLS_SERVER" in os.environ
+            ):
                 command.append("--symbols-url=https://symbols.mozilla.org/")
 
             with tempfile.TemporaryDirectory() as json_dir:
@@ -396,12 +420,9 @@ class CrashInfo(object):
                     err = six.ensure_str(err)
 
                 if retcode == 0:
-                    signature = self._generate_signature(json_output)
-
-                    # Strip parameters from signature
-                    pmatch = re.search(r"(.*)\(.*\)", signature)
-                    if pmatch:
-                        signature = pmatch.group(1)
+                    processed_crash = self._process_json_output(json_output)
+                    signature = processed_crash.get("signature")
+                    pid = processed_crash.get("pid")
 
         else:
             if not self.stackwalk_binary:
@@ -420,9 +441,12 @@ class CrashInfo(object):
                 errors.append("This user cannot execute the MINIDUMP_STACKWALK binary.")
 
         if os.path.exists(extra):
-            crash_dict = self._parse_extra_file(extra)
-            reason = crash_dict.get("MozCrashReason")
-            java_stack = crash_dict.get("JavaStackTrace")
+            annotations = self._parse_extra_file(extra)
+
+            if annotations:
+                reason = annotations.get("MozCrashReason")
+                java_stack = annotations.get("JavaStackTrace")
+                process_type = annotations.get("ProcessType") or "main"
 
         if self.dump_save_path:
             self._save_dump_file(path, extra)
@@ -440,17 +464,37 @@ class CrashInfo(object):
             retcode,
             errors,
             extra,
+            process_type,
+            pid,
             reason,
             java_stack,
         )
 
-    def _generate_signature(self, json_path):
+    def _process_json_output(self, json_path):
         signature = None
+        pid = None
 
         try:
             json_file = open(json_path, "r")
             crash_json = json.load(json_file)
             json_file.close()
+
+            signature = self._generate_signature(crash_json)
+            pid = crash_json.get("pid")
+
+        except Exception as e:
+            traceback.print_exc()
+            signature = "an error occurred while processing JSON output: {}".format(e)
+
+        return {
+            "pid": pid,
+            "signature": signature,
+        }
+
+    def _generate_signature(self, crash_json):
+        signature = None
+
+        try:
             crashing_thread = crash_json.get("crashing_thread") or {}
             frames = crashing_thread.get("frames") or []
 
@@ -479,6 +523,12 @@ class CrashInfo(object):
             traceback.print_exc()
             signature = "an error occurred while generating the signature: {}".format(e)
 
+        # Strip parameters from signature
+        if signature:
+            pmatch = re.search(r"(.*)\(.*\)", signature)
+            if pmatch:
+                signature = pmatch.group(1)
+
         return signature
 
     def _parse_extra_file(self, path):
@@ -487,7 +537,7 @@ class CrashInfo(object):
                 return json.load(file)
             except ValueError:
                 self.logger.warning(".extra file does not contain proper json")
-                return {}
+                return None
 
     def _save_dump_file(self, path, extra):
         if os.path.isfile(self.dump_save_path):
@@ -721,7 +771,6 @@ if mozinfo.isWin:
                 "kill_pid(): unable to get handle for pid %d: %d" % (pid, err)
             )
 
-
 else:
 
     def kill_pid(pid):
@@ -777,14 +826,14 @@ def cleanup_pending_crash_reports():
     """
     if mozinfo.isWin:
         location = os.path.expanduser(
-            "~\\AppData\\Roaming\\Astian\\Midori\\Crash Reports"
+            "~\\AppData\\Roaming\\Mozilla\\Firefox\\Crash Reports"
         )
     elif mozinfo.isMac:
         location = os.path.expanduser(
-            "~/Library/Application Support/midori/Crash Reports"
+            "~/Library/Application Support/firefox/Crash Reports"
         )
     else:
-        location = os.path.expanduser("~/.astian/midori/Crash Reports")
+        location = os.path.expanduser("~/.mozilla/firefox/Crash Reports")
     logger = get_logger()
     if os.path.exists(location):
         try:

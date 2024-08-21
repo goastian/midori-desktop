@@ -8,9 +8,11 @@ import json
 import os
 import pathlib
 import shutil
+import tarfile
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterable
 from io import open
+from pathlib import Path
 
 import six
 from logger.logger import RaptorLogger
@@ -28,8 +30,8 @@ KNOWN_TEST_MODIFIERS = [
     "bytecode-cached",
 ]
 NON_FIREFOX_OPTS = ("webrender", "bytecode-cached", "fission")
-NON_FIREFOX_BROWSERS = ("chrome", "chromium", "custom-car", "safari")
-NON_FIREFOX_BROWSERS_MOBILE = ("chrome-m",)
+NON_FIREFOX_BROWSERS = ("chrome", "custom-car", "safari", "safari-tp")
+NON_FIREFOX_BROWSERS_MOBILE = ("chrome-m", "cstm-car-m")
 
 
 @six.add_metaclass(ABCMeta)
@@ -39,9 +41,6 @@ class PerftestResultsHandler(object):
     def __init__(
         self,
         gecko_profile=False,
-        power_test=False,
-        cpu_test=False,
-        memory_test=False,
         live_sites=False,
         app=None,
         conditioned_profile=None,
@@ -51,12 +50,9 @@ class PerftestResultsHandler(object):
         perfstats=False,
         test_bytecode_cache=False,
         extra_summary_methods=[],
-        **kwargs
+        **kwargs,
     ):
         self.gecko_profile = gecko_profile
-        self.power_test = power_test
-        self.cpu_test = cpu_test
-        self.memory_test = memory_test
         self.live_sites = live_sites
         self.app = app
         self.conditioned_profile = conditioned_profile
@@ -188,11 +184,6 @@ class PerftestResultsHandler(object):
         self.existing_results = directory
 
     def _get_expected_perfherder(self, output):
-        def is_resource_test():
-            if self.power_test or self.cpu_test or self.memory_test:
-                return True
-            return False
-
         # if results exists, determine if any test is of type 'scenario'
         is_scenario = False
         if output.summarized_results or output.summarized_supporting_data:
@@ -204,27 +195,10 @@ class PerftestResultsHandler(object):
                 if data_type == "scenario":
                     is_scenario = True
                     break
-
-        if is_scenario and not is_resource_test():
-            # skip perfherder check when a scenario test-type is run without
-            # a resource flag
+        if is_scenario:
+            # skip perfherder check when a scenario test-type is run
             return None
-
-        expected_perfherder = 1
-
-        if is_resource_test():
-            # when resource tests are run, no perfherder data is output
-            # for the regular raptor tests (i.e. speedometer) so we
-            # expect one per resource-type, starting with 0
-            expected_perfherder = 0
-            if self.power_test:
-                expected_perfherder += 1
-            if self.memory_test:
-                expected_perfherder += 1
-            if self.cpu_test:
-                expected_perfherder += 1
-
-        return expected_perfherder
+        return 1
 
     def _validate_treeherder_data(self, output, output_perfdata):
         # late import is required, because install is done in create_virtualenv
@@ -336,6 +310,178 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
         if not os.path.exists(self._root_results_dir):
             os.mkdir(self._root_results_dir)
 
+        self.browsertime_results_folders = {
+            "browsertime_results": "browsertime-results",
+            "profiler": "browsertime-profiler",
+            "videos_annotated": "browsertime-videos-annotated",
+            "videos_original": "browsertime-videos-original",
+            "results_extra": "browsertime-results-extra",
+        }
+        self.browsertime_temp_folder = "temp-browsertime-results"
+
+    def _determine_target_subfolders(
+        self, result_file, is_profiling_job, has_video_files
+    ):
+        """
+        Determine the target subfolders for a given result file.
+        Args:
+            result_file (Path): The path object for the result file.
+            is_profiling_job (bool): Indicator if the job is a profiling job.
+            has_video_files (bool): Indicator if there are any video recordings present in the results folder,
+            so we can determine if we should group json and mp4 files in the same archive
+
+        Returns:
+            list: A list of target subfolders for the result file.
+        """
+        # Move results files if running a profling job
+        if is_profiling_job:
+            return [self.browsertime_results_folders["profiler"]]
+
+        # Move extra-profiler-run data to separate folder
+        if "profiling" in result_file.parts:
+            return [self.browsertime_results_folders["profiler"]]
+
+        # Check for video files
+        if result_file.suffix == ".mp4":
+            return (
+                [self.browsertime_results_folders["videos_original"]]
+                if "original" in result_file.name
+                else [self.browsertime_results_folders["videos_annotated"]]
+            )
+
+        # JSON files get mapped to multiple folders
+        if result_file.suffix == ".json":
+            target_subfolders = [
+                self.browsertime_results_folders["browsertime_results"]
+            ]
+            if has_video_files:
+                target_subfolders.extend(
+                    [
+                        self.browsertime_results_folders["videos_annotated"],
+                        self.browsertime_results_folders["videos_original"],
+                    ]
+                )
+            return target_subfolders
+
+        # Default folder for unexpected files
+        return [self.browsertime_results_folders["results_extra"]]
+
+    def _cleanup_archive_folders(self, folders_list):
+        """
+        Removes the specified results folders after archiving is complete.
+        """
+        for folder in folders_list:
+            LOG.info(f"Removing {folder}")
+            shutil.rmtree(folder)
+
+    def _archive_results_folder(self, folder_to_archive):
+        """
+        Archives the specified folder into a tar.gz file.
+        """
+        full_archive_path = folder_to_archive.with_suffix(".tgz")
+
+        # Delete previous archives when running locally
+        if full_archive_path.is_file():
+            full_archive_path.unlink(missing_ok=True)
+
+        LOG.info(f"Creating archive: {full_archive_path}")
+        with tarfile.open(str(full_archive_path), "w:gz") as tar:
+            tar.add(folder_to_archive, arcname=folder_to_archive.name)
+
+    def _setup_artifact_folders(self, subfolders, root_path):
+        """
+        Sets up and returns artifact folders based on the provided subfolders and root path.
+        Args:
+            subfolders (List[str]): A list of subfolder names to be set up under the root path.
+            root_path (Path): The root directory under which the artifact subfolders will be created.
+        Returns:
+            Dict[str, Path]: A dictionary mapping each subfolder name to its corresponding Path object.
+        """
+        artifact_folders = {}
+        for subfolder in subfolders:
+            destination_folder = root_path / subfolder
+            destination_folder.mkdir(exist_ok=True, parents=True)
+            artifact_folders[subfolder] = destination_folder
+        return artifact_folders
+
+    def _copy_artifact_to_folders(self, artifact_file, dest_folders_list):
+        """
+        Copies the specified artifact file to multiple destination folders.
+        """
+        for dest_folder in dest_folders_list:
+            dest_folder.mkdir(exist_ok=True, parents=True)
+            shutil.copy(artifact_file, dest_folder)
+
+    def _split_artifact_files(self, artifact_path, artifact_folders, is_profiling_job):
+        """
+        Distributes artifact files from the given artifact path into the appropriate target subfolders.
+        Args:
+            artifact_path (Union[str, Path]): The root path where artifact files are located.
+            artifact_folders (Dict[str, Union[str, Path]]): A dictionary mapping target subfolder names
+            is_profiling_job (bool): A flag indicating whether the current job is a profiling job.
+        """
+        # Need to check if every glob result is a file,
+        # since we can end up with empty folders that contain periods
+        # that get mistaken for files
+        # (such as 'InteractiveRunner.html' for speedometer tests)
+        all_artifact_files = [f for f in artifact_path.glob("**/*.*") if f.is_file()]
+
+        # Check for any mp4 files in the list of unique file extensions
+        has_video_files = ".mp4" in set(f.suffix for f in all_artifact_files)
+
+        for artifact in all_artifact_files:
+            artifact_relpath = artifact.relative_to(artifact_path).parent
+            target_subfolders = self._determine_target_subfolders(
+                artifact, is_profiling_job, has_video_files
+            )
+            destination_folders = [
+                artifact_folders[ts] / artifact_relpath for ts in target_subfolders
+            ]
+            self._copy_artifact_to_folders(artifact, destination_folders)
+
+    def _archive_artifact_folders(self, artifact_folders_list):
+        """
+        Archives all non-empty artifact folders from the given list.
+        Args:
+            artifact_folders_list (List[Union[str, Path]]):
+                A list of artifact folder paths to be checked and archived.
+        """
+        for folder in artifact_folders_list:
+            if self._folder_contains_files(folder):
+                self._archive_results_folder(folder)
+
+    def _folder_contains_files(self, artifact_folder):
+        return os.listdir(artifact_folder)
+
+    def archive_raptor_artifacts(self, is_profiling_job):
+        """
+        Description: Archives browsertime artifacts based on specific criteria.
+        Args:
+        - is_profiling_job (bool): Indicator if a job is running with the gecko_profile flag set to True
+        """
+        test_artifact_path = Path(self.result_dir())
+        destination_root_path = test_artifact_path.parent
+        temp_artifact_path = destination_root_path / self.browsertime_temp_folder
+
+        # Cleanup any temp folders remaining from previous runs, when running locally
+        if temp_artifact_path.is_dir():
+            self._cleanup_archive_folders([temp_artifact_path])
+
+        # Rename browsertime-results to a temp folder so we don't have name conflicts
+        test_artifact_path.rename(temp_artifact_path)
+
+        artifact_folders = self._setup_artifact_folders(
+            self.browsertime_results_folders.values(), destination_root_path
+        )
+
+        self._split_artifact_files(
+            temp_artifact_path, artifact_folders, is_profiling_job
+        )
+        artifact_folders_list = list(artifact_folders.values())
+        self._archive_artifact_folders(artifact_folders_list)
+        artifact_folders_list.append(temp_artifact_path)
+        self._cleanup_archive_folders(artifact_folders_list)
+
     def result_dir(self):
         return self._root_results_dir
 
@@ -388,7 +534,9 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
         test_summary,
         subtest_name_filters,
         handle_custom_data,
-        **kwargs
+        support_class,
+        submetric_summary_method,
+        **kwargs,
     ):
         """
         Receive a json blob that contains the results direct from the browsertime tool. Parse
@@ -516,6 +664,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
             ("fcp", ["paintTiming", "first-contentful-paint"]),
             ("dcf", "timeToDomContentFlushed"),
             ("loadtime", "loadEventEnd"),
+            ("largestContentfulPaint", ["largestContentfulPaint", "renderTime"]),
         )
 
         def _get_raptor_val(mdict, mname, retval=False):
@@ -550,28 +699,30 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
         # one results entry with all replicates within. When running warm page-load, there will
         # be one results entry for every warm page-load iteration; with one single replicate
         # inside each.
-        if cold:
+        if cold or handle_custom_data:
             if len(raw_btresults) == 0:
                 raise MissingResultsError(
                     "Missing results for all cold browser cycles."
                 )
         elif load_existing:
             pass  # Use whatever is there.
-        else:
-            if len(raw_btresults) != int(page_cycles):
-                raise MissingResultsError(
-                    "Missing results for at least 1 warm page-cycle."
-                )
+        elif len(raw_btresults) != int(page_cycles):
+            raise MissingResultsError("Missing results for at least 1 warm page-cycle.")
 
         # now parse out the values
         page_counter = 0
-        for raw_result in raw_btresults:
+        last_result = False
+        for i, raw_result in enumerate(raw_btresults):
             if not raw_result["browserScripts"]:
                 raise MissingResultsError("Browsertime cycle produced no measurements.")
 
             if raw_result["browserScripts"][0].get("timings") is None:
                 raise MissingResultsError("Browsertime cycle is missing all timings")
 
+            if i == (len(raw_btresults) - 1):
+                # Used to tell custom support scripts when the last result
+                # is being parsed. This lets them finalize any overall measurements.
+                last_result = True
             # Desktop chrome doesn't have `browser` scripts data available for now
             bt_browser = raw_result["browserScripts"][0].get("browser", None)
             bt_ver = raw_result["info"]["browsertime"]["version"]
@@ -592,6 +743,8 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 "measurements": {},
                 "statistics": {},
             }
+            if submetric_summary_method is not None:
+                bt_result["submetric_summary_method"] = submetric_summary_method
 
             def _extract_cpu_vals():
                 # Bug 1806402 - Handle chrome cpu data properly
@@ -603,58 +756,52 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 ):
                     bt_result["measurements"].setdefault("cpuTime", []).extend(cpu_vals)
 
-            if self.power_test:
-                power_result = {
-                    "bt_ver": bt_ver,
-                    "browser": bt_browser,
-                    "url": bt_url,
-                    "measurements": {},
-                    "statistics": {},
-                    "power_data": True,
-                }
+            if support_class:
+                bt_result["custom_data"] = True
+                support_class.handle_result(
+                    bt_result,
+                    raw_result,
+                    conversion=conversion,
+                    last_result=last_result,
+                )
+            elif any(raw_result["extras"]):
+                # Each entry here is a separate cold pageload iteration
+                for custom_types in raw_result["extras"]:
+                    for custom_type in custom_types:
+                        data = custom_types[custom_type]
+                        if handle_custom_data:
+                            if test_summary in ("flatten",):
+                                data = flatten(data, ())
+                            for k, v in data.items():
 
-                for cycle in raw_result["android"]["power"]:
-                    for metric in cycle:
-                        if "total" in metric:
-                            continue
-                        power_result["measurements"].setdefault(metric, []).append(
-                            cycle[metric]
-                        )
-                power_result["statistics"] = raw_result["statistics"]["android"][
-                    "power"
-                ]
-                results.append(power_result)
+                                def _ignore_metric(*args):
+                                    if any(
+                                        type(arg) not in (int, float) for arg in args
+                                    ):
+                                        return True
+                                    return False
 
-            custom_types = raw_result["extras"][0]
-            if custom_types:
-                for custom_type in custom_types:
-                    data = custom_types[custom_type]
-                    if handle_custom_data:
-                        if test_summary in ("flatten",):
-                            data = flatten(data, ())
-                        for k, v in data.items():
+                                # Ignore any non-numerical results
+                                if _ignore_metric(v) and _ignore_metric(*v):
+                                    continue
 
-                            def _ignore_metric(*args):
-                                if any(type(arg) not in (int, float) for arg in args):
-                                    return True
-                                return False
+                                # Clean up the name if requested
+                                filtered_k = k
+                                for name_filter in subtest_name_filters.split(","):
+                                    filtered_k = filtered_k.replace(name_filter, "")
 
-                            # Ignore any non-numerical results
-                            if _ignore_metric(v) and _ignore_metric(*v):
-                                continue
-
-                            # Clean up the name if requested
-                            for name_filter in subtest_name_filters.split(","):
-                                k = k.replace(name_filter, "")
-
-                            if isinstance(v, Iterable):
-                                bt_result["measurements"].setdefault(k, []).extend(v)
-                            else:
+                                if isinstance(v, Iterable):
+                                    bt_result["measurements"].setdefault(
+                                        filtered_k, []
+                                    ).extend(v)
+                                else:
+                                    bt_result["measurements"].setdefault(
+                                        filtered_k, []
+                                    ).append(v)
+                            bt_result["custom_data"] = True
+                        else:
+                            for k, v in data.items():
                                 bt_result["measurements"].setdefault(k, []).append(v)
-                        bt_result["custom_data"] = True
-                    else:
-                        for k, v in data.items():
-                            bt_result["measurements"].setdefault(k, []).append(v)
                 if self.perfstats:
                     for cycle in raw_result["geckoPerfStats"]:
                         for metric in cycle:
@@ -955,6 +1102,8 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 test.get("test_summary", "pageload"),
                 test.get("subtest_name_filters", ""),
                 test.get("custom_data", False) == "true",
+                test.get("support_class", None),
+                test.get("submetric_summary_method", None),
                 gather_cpuTime=test.get("gather_cpuTime", None),
             ):
 
@@ -974,6 +1123,9 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                     new_result["min_back_window"] = test.get("min_back_window", None)
                     new_result["max_back_window"] = test.get("max_back_window", None)
                     new_result["fore_window"] = test.get("fore_window", None)
+                    new_result["alert_change_type"] = test.get(
+                        "alert_change_type", None
+                    )
 
                     # All Browsertime measurements are elapsed times in milliseconds.
                     new_result["subtest_lower_is_better"] = test.get(
@@ -988,6 +1140,9 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                     if self.chimera and "run=2" in new_result["url"][0]:
                         new_result["extra_options"].remove("cold")
                         new_result["extra_options"].append("warm")
+
+                    # Add the support class to the result
+                    new_result["support_class"] = test.get("support_class", None)
 
                     return new_result
 

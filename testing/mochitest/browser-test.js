@@ -45,7 +45,7 @@ var TabDestroyObserver = {
     Services.obs.removeObserver(this, "message-manager-disconnect");
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic == "message-manager-close") {
       this.outstanding.add(subject);
     } else if (topic == "message-manager-disconnect") {
@@ -69,6 +69,7 @@ var TabDestroyObserver = {
 
 function testInit() {
   gConfig = readConfig();
+
   if (gConfig.testRoot == "browser") {
     // Make sure to launch the test harness for the first opened window only
     var prefs = Services.prefs;
@@ -165,6 +166,8 @@ function Tester(aTests, structuredLogger, aCallback) {
     this.EventUtils
   );
   this.AccessibilityUtils = this.EventUtils.AccessibilityUtils;
+
+  this.AccessibilityUtils.init();
 
   // Make sure our SpecialPowers actor is instantiated, in case it was
   // registered after our DOMWindowCreated event was fired (which it
@@ -377,7 +380,7 @@ Tester.prototype = {
 
   async promiseMainWindowReady() {
     if (window.gBrowserInit) {
-      await window.gBrowserInit.idleTasksFinishedPromise;
+      await window.gBrowserInit.idleTasksFinished.promise;
     }
   },
 
@@ -513,7 +516,7 @@ Tester.prototype = {
     this.SimpleTest.waitForFocus(aCallback);
   },
 
-  finish: function Tester_finish(aSkipSummary) {
+  finish: function Tester_finish() {
     var passCount = this.tests.reduce((a, f) => a + f.passCount, 0);
     var failCount = this.tests.reduce((a, f) => a + f.failCount, 0);
     var todoCount = this.tests.reduce((a, f) => a + f.todoCount, 0);
@@ -523,6 +526,8 @@ Tester.prototype = {
 
     TabDestroyObserver.destroy();
     Services.console.unregisterListener(this);
+
+    this.AccessibilityUtils.uninit();
 
     // It's important to terminate the module to avoid crashes on shutdown.
     this.PromiseTestUtils.uninit();
@@ -549,7 +554,6 @@ Tester.prototype = {
 
     // Tests complete, notify the callback and return
     this.callback(this.tests);
-    this.accService = null;
     this.callback = null;
     this.tests = null;
   },
@@ -560,7 +564,7 @@ Tester.prototype = {
     this.repeat = 0;
   },
 
-  observe: function Tester_observe(aSubject, aTopic, aData) {
+  observe: function Tester_observe(aSubject, aTopic) {
     if (!aTopic) {
       this.onConsoleMessage(aSubject);
     }
@@ -721,6 +725,10 @@ Tester.prototype = {
       }
 
       Services.obs.notifyObservers(null, "test-complete");
+
+      // Ensure to reset the clipboard in case the test has modified it,
+      // so it won't affect the next tests.
+      window.SpecialPowers.clipboardCopyString("");
 
       if (
         this.currentTest.passCount === 0 &&
@@ -1032,7 +1040,7 @@ Tester.prototype = {
             let sidebar = document.getElementById("sidebar");
             if (sidebar) {
               sidebar.setAttribute("src", "data:text/html;charset=utf-8,");
-              sidebar.docShell.createAboutBlankContentViewer(null, null);
+              sidebar.docShell.createAboutBlankDocumentViewer(null, null);
               sidebar.setAttribute("src", "about:blank");
             }
           }
@@ -1210,7 +1218,7 @@ Tester.prototype = {
 
     this.SimpleTest.reset();
     // Reset accessibility environment.
-    this.AccessibilityUtils.reset(this.a11y_checks);
+    this.AccessibilityUtils.reset(this.a11y_checks, this.currentTest.path);
 
     // Load the tests into a testscope
     let currentScope = (this.currentTest.scope = new testScope(
@@ -1434,7 +1442,11 @@ Tester.prototype = {
             );
             self.currentTest.timedOut = true;
             self.currentTest.scope.__waitTimer = null;
-            self.nextTest();
+            if (gConfig.timeoutAsPass) {
+              self.nextTest();
+            } else {
+              self.finish();
+            }
           },
           gTimeoutSeconds * 1000,
         ]);

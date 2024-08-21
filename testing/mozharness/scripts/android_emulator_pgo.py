@@ -25,6 +25,7 @@ from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_opt
 
 PAGES = [
     "js-input/webkit/PerformanceTests/Speedometer/index.html",
+    "js-input/webkit/PerformanceTests/Speedometer3/index.html?startAutomatically=true",
     "blueprint/sample.html",
     "blueprint/forms.html",
     "blueprint/grid.html",
@@ -99,9 +100,9 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
         dirs = {}
 
         dirs["abs_test_install_dir"] = os.path.join(abs_dirs["abs_src_dir"], "testing")
-        dirs["abs_xre_dir"] = os.path.join(abs_dirs["abs_work_dir"], "hostutils")
         dirs["abs_blob_upload_dir"] = "/builds/worker/artifacts/blobber_upload_dir"
         work_dir = os.environ.get("MOZ_FETCHES_DIR") or abs_dirs["abs_work_dir"]
+        dirs["abs_xre_dir"] = os.path.join(work_dir, "hostutils")
         dirs["abs_sdk_dir"] = os.path.join(work_dir, "android-sdk-linux")
         dirs["abs_avds_dir"] = os.path.join(work_dir, "android-device")
         dirs["abs_bundletool_path"] = os.path.join(work_dir, "bundletool.jar")
@@ -133,7 +134,7 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
         Download host utilities
         """
         dirs = self.query_abs_dirs()
-        self.xre_path = self.download_hostutils(dirs["abs_xre_dir"])
+        self.xre_path = dirs["abs_xre_dir"]
 
     def install(self):
         """
@@ -197,7 +198,9 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
                 v = v.format(**interpolation)
             prefs[k] = Preferences.cast(v)
 
-        outputdir = self.config.get("output_directory", "/sdcard/pgo_profile")
+        adbdevice = ADBDeviceFactory(adb=adb, device="emulator-5554")
+
+        outputdir = posixpath.join(adbdevice.test_root, "pgo_profile")
         jarlog = posixpath.join(outputdir, "en-US.log")
         profdata = posixpath.join(outputdir, "default_%p_random_%m.profraw")
 
@@ -213,27 +216,6 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
         if not self.symbols_path:
             self.symbols_path = os.environ.get("MOZ_FETCHES_DIR")
 
-        # Force test_root to be on the sdcard for android pgo
-        # builds which fail for Android 4.3 when profiles are located
-        # in /data/local/tmp/test_root with
-        # E AndroidRuntime: FATAL EXCEPTION: Gecko
-        # E AndroidRuntime: java.lang.IllegalArgumentException: \
-        #    Profile directory must be writable if specified: /data/local/tmp/test_root/profile
-        # This occurs when .can-write-sentinel is written to
-        # the profile in
-        # mobile/android/geckoview/src/main/java/org/mozilla/gecko/GeckoProfile.java.
-        # This is not a problem on later versions of Android. This
-        # over-ride of test_root should be removed when Android 4.3 is no
-        # longer supported.
-        sdcard_test_root = "/sdcard/test_root"
-        adbdevice = ADBDeviceFactory(
-            adb=adb, device="emulator-5554", test_root=sdcard_test_root
-        )
-        if adbdevice.test_root != sdcard_test_root:
-            # If the test_root was previously set and shared
-            # the initializer will not have updated the shared
-            # value. Force it to match the sdcard_test_root.
-            adbdevice.test_root = sdcard_test_root
         adbdevice.mkdir(outputdir, parents=True)
 
         try:
@@ -255,8 +237,8 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
             for page in PAGES:
                 driver.navigate("http://%s:%d/%s" % (IP, PORT, page))
                 timeout = 2
-                if "Speedometer/index.html" in page:
-                    # The Speedometer test actually runs many tests internally in
+                if "Speedometer" in page:
+                    # The Speedometer[23] test actually runs many tests internally in
                     # javascript, so it needs extra time to run through them. The
                     # emulator doesn't get very far through the whole suite, but
                     # this extra time at least lets some of them process.
@@ -298,6 +280,10 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
         profraw_files = glob.glob("/builds/worker/workspace/*.profraw")
         if not profraw_files:
             self.fatal("Could not find any profraw files in /builds/worker/workspace")
+        elif len(profraw_files) == 1:
+            self.fatal(
+                "Only found 1 profraw file. Did child processes terminate early?"
+            )
         merge_cmd = [
             os.path.join(os.environ["MOZ_FETCHES_DIR"], "clang/bin/llvm-profdata"),
             "merge",

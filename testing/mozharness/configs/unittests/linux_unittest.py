@@ -10,6 +10,7 @@ ABS_WORK_DIR = os.path.join(os.getcwd(), "build")
 BINARY_PATH = os.path.join(ABS_WORK_DIR, "application", "firefox", "firefox-bin")
 INSTALLER_PATH = os.path.join(ABS_WORK_DIR, "installer.tar.bz2")
 XPCSHELL_NAME = "xpcshell"
+PLUGIN_CONTAINER_NAME = "plugin-container"
 HTTP3SERVER_NAME = "http3server"
 EXE_SUFFIX = ""
 DISABLE_SCREEN_SAVER = True
@@ -37,6 +38,7 @@ config = {
     "installer_path": INSTALLER_PATH,
     "binary_path": BINARY_PATH,
     "xpcshell_name": XPCSHELL_NAME,
+    "plugin_container_name": PLUGIN_CONTAINER_NAME,
     "http3server_name": HTTP3SERVER_NAME,
     "exe_suffix": EXE_SUFFIX,
     "run_file_names": {
@@ -159,7 +161,7 @@ config = {
             "--chunk-by-runtime",
             "--timeout=1200",
         ],
-        "mochitest-browser-chrome-screenshots": [
+        "mochitest-browser-screenshots": [
             "--flavor=browser",
             "--subsuite=screenshots",
         ],
@@ -200,27 +202,7 @@ config = {
             "tests": ["tests/jsreftest/tests/js/src/tests/jstests.list"],
         },
         "reftest": {
-            "options": [
-                "--suite=reftest",
-                "--setpref=layers.acceleration.force-enabled=true",
-                "--topsrcdir=tests/reftest/tests",
-            ],
-            "tests": ["tests/reftest/tests/layout/reftests/reftest.list"],
-        },
-        "reftest-no-accel": {
-            "options": [
-                "--suite=reftest",
-                "--setpref=layers.acceleration.disabled=true",
-                "--topsrcdir=tests/reftest/tests",
-            ],
-            "tests": ["tests/reftest/tests/layout/reftests/reftest.list"],
-        },
-        "reftest-snapshot": {
-            "options": [
-                "--suite=reftest",
-                "--setpref=reftest.use-draw-snapshot=true",
-                "--topsrcdir=tests/reftest/tests",
-            ],
+            "options": ["--suite=reftest", "--topsrcdir=tests/reftest/tests"],
             "tests": ["tests/reftest/tests/layout/reftests/reftest.list"],
         },
     },
@@ -229,7 +211,7 @@ config = {
             "options": [
                 "--xpcshell=%(abs_app_dir)s/" + XPCSHELL_NAME,
                 "--http3server=%(abs_app_dir)s/" + HTTP3SERVER_NAME,
-                "--manifest=tests/xpcshell/tests/xpcshell.ini",
+                "--manifest=tests/xpcshell/tests/xpcshell.toml",
             ],
             "tests": [],
         },
@@ -237,7 +219,7 @@ config = {
             "options": [
                 "--xpcshell=%(abs_app_dir)s/" + XPCSHELL_NAME,
                 "--http3server=%(abs_app_dir)s/" + HTTP3SERVER_NAME,
-                "--manifest=tests/xpcshell/tests/xpcshell.ini",
+                "--manifest=tests/xpcshell/tests/xpcshell.toml",
                 "--sequential",
             ],
             "tests": [],

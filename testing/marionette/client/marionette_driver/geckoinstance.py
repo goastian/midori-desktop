@@ -29,6 +29,10 @@ from six import reraise
 
 from . import errors
 
+if sys.platform.startswith("darwin"):
+    # Marionette's own processhandler is only used on MacOS for now
+    from .processhandler import UNKNOWN_RETURNCODE, ProcessHandler
+
 
 class GeckoInstance(object):
     required_prefs = {
@@ -41,13 +45,16 @@ class GeckoInstance(object):
         # and causing false-positive test failures. See bug 1176798, bug 1177018,
         # bug 1210465.
         "apz.content_response_timeout": 60000,
+        # Don't pull weather data from the network
+        "browser.newtabpage.activity-stream.discoverystream.region-weather-config": "",
+        # Don't pull wallpaper content from the network
+        "browser.newtabpage.activity-stream.newtabWallpapers.enabled": False,
+        # Don't pull sponsored Top Sites content from the network
+        "browser.newtabpage.activity-stream.showSponsoredTopSites": False,
         # Disable geolocation ping (#1)
         "browser.region.network.url": "",
         # Don't pull Top Sites content from the network
         "browser.topsites.contile.enabled": False,
-        # Disable page translations, causing timeouts for wdspec tests in early
-        # beta. See Bug 1836093.
-        "browser.translations.enable": False,
         # Disable UI tour
         "browser.uitour.enabled": False,
         # Disable captive portal
@@ -61,8 +68,8 @@ class GeckoInstance(object):
         # Do not show datareporting policy notifications which can interfere with tests
         "datareporting.policy.dataSubmissionEnabled": False,
         "datareporting.policy.dataSubmissionPolicyBypassNotification": True,
-        # Automatically unload beforeunload alerts
-        "dom.disable_beforeunload": True,
+        # Disable popup-blocker
+        "dom.disable_open_during_load": False,
         # Enabling the support for File object creation in the content process.
         "dom.file.createInChild": True,
         # Disable delayed user input event handling
@@ -141,6 +148,8 @@ class GeckoInstance(object):
         "network.manage-offline-status": False,
         # Make sure SNTP requests don't hit the network
         "network.sntp.pools": "%(server)s",
+        # Disabled for causing marionette crashes on OSX. See bug 1882856
+        "network.dns.native_https_query": False,
         # Privacy and Tracking Protection
         "privacy.trackingprotection.enabled": False,
         # Disable recommended automation prefs in CI
@@ -262,9 +271,7 @@ class GeckoInstance(object):
             if isinstance(profile_path, six.string_types):
                 profile_args["path_from"] = profile_path
                 profile_args["path_to"] = tempfile.mkdtemp(
-                    suffix=u".{}".format(
-                        profile_name or os.path.basename(profile_path)
-                    ),
+                    suffix=".{}".format(profile_name or os.path.basename(profile_path)),
                     dir=self.workspace,
                 )
                 # The target must not exist yet
@@ -275,7 +282,7 @@ class GeckoInstance(object):
             # Otherwise create a new profile
             else:
                 profile_args["profile"] = tempfile.mkdtemp(
-                    suffix=u".{}".format(profile_name or "mozrunner"),
+                    suffix=".{}".format(profile_name or "mozrunner"),
                     dir=self.workspace,
                 )
                 profile = Profile(**profile_args)
@@ -389,7 +396,7 @@ class GeckoInstance(object):
             }
         )
 
-        return {
+        args = {
             "binary": self.binary,
             "profile": self.profile,
             "cmdargs": ["-no-remote", "-marionette"] + self.app_args,
@@ -397,6 +404,13 @@ class GeckoInstance(object):
             "symbols_path": self.symbols_path,
             "process_args": process_args,
         }
+
+        if sys.platform.startswith("darwin"):
+            # Bug 1887666: The custom process handler class for Marionette is
+            # only supported on MacOS at the moment.
+            args["process_class"] = ProcessHandler
+
+        return args
 
     def close(self, clean=False):
         """
@@ -432,6 +446,19 @@ class GeckoInstance(object):
         self.close(clean=clean)
         self.start()
 
+    def update_process(self, pid, timeout=None):
+        """Update the process to track when the application re-launched itself"""
+        if sys.platform.startswith("darwin"):
+            # The new process handler is only supported on MacOS yet
+            returncode = self.runner.process_handler.update_process(pid, timeout)
+            if returncode not in [0, UNKNOWN_RETURNCODE]:
+                raise IOError(
+                    f"Old process inappropriately quit with exit code: {returncode}"
+                )
+
+        else:
+            returncode = self.runner.process_handler.check_for_detached(pid)
+
 
 class FennecInstance(GeckoInstance):
     fennec_prefs = {
@@ -442,11 +469,6 @@ class FennecInstance(GeckoInstance):
         "browser.safebrowsing.update.enabled": False,
         # Do not restore the last open set of tabs if the browser has crashed
         "browser.sessionstore.resume_from_crash": False,
-        # Disable e10s by default
-        "browser.tabs.remote.autostart": False,
-        # Do not allow background tabs to be zombified, otherwise for tests that
-        # open additional tabs, the test harness tab itself might get unloaded
-        "browser.tabs.disableBackgroundZombification": True,
     }
 
     def __init__(
@@ -460,7 +482,7 @@ class FennecInstance(GeckoInstance):
         package_name=None,
         env=None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         required_prefs = deepcopy(FennecInstance.fennec_prefs)
         required_prefs.update(kwargs.get("prefs", {}))
@@ -606,6 +628,8 @@ class DesktopInstance(GeckoInstance):
         "browser.startup.homepage_override.mstone": "ignore",
         # Start with a blank page by default
         "browser.startup.page": 0,
+        # Unload the previously selected tab immediately
+        "browser.tabs.remote.unloadDelayMs": 0,
         # Don't unload tabs when available memory is running low
         "browser.tabs.unloadOnLowMemory": False,
         # Do not warn when closing all open tabs

@@ -122,7 +122,8 @@ def test_filters_run_in_order():
 def create_tests():
     def inner(*paths, **defaults):
         tests = []
-        for path in paths:
+        for p in paths:
+            path = p
             if isinstance(path, tuple):
                 path, kwargs = path
             else:
@@ -283,7 +284,7 @@ def test_pathprefix(create_tests):
         (
             "other/test4",
             {
-                "manifest": "manifest-common.ini",
+                "manifest": "manifest-common.toml",
                 "ancestor_manifest": "other/manifest.ini",
             },
         ),

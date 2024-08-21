@@ -37,37 +37,6 @@ class unknown(object):
 unknown = unknown()  # singleton
 
 
-def get_windows_version():
-    import ctypes
-
-    class OSVERSIONINFOEXW(ctypes.Structure):
-        _fields_ = [
-            ("dwOSVersionInfoSize", ctypes.c_ulong),
-            ("dwMajorVersion", ctypes.c_ulong),
-            ("dwMinorVersion", ctypes.c_ulong),
-            ("dwBuildNumber", ctypes.c_ulong),
-            ("dwPlatformId", ctypes.c_ulong),
-            ("szCSDVersion", ctypes.c_wchar * 128),
-            ("wServicePackMajor", ctypes.c_ushort),
-            ("wServicePackMinor", ctypes.c_ushort),
-            ("wSuiteMask", ctypes.c_ushort),
-            ("wProductType", ctypes.c_byte),
-            ("wReserved", ctypes.c_byte),
-        ]
-
-    os_version = OSVERSIONINFOEXW()
-    os_version.dwOSVersionInfoSize = ctypes.sizeof(os_version)
-    retcode = ctypes.windll.Ntdll.RtlGetVersion(ctypes.byref(os_version))
-    if retcode != 0:
-        raise OSError
-
-    return (
-        os_version.dwMajorVersion,
-        os_version.dwMinorVersion,
-        os_version.dwBuildNumber,
-    )
-
-
 # get system information
 info = {
     "os": unknown,
@@ -92,17 +61,17 @@ if system in ["Microsoft", "Windows"]:
     else:
         processor = os.environ.get("PROCESSOR_ARCHITECTURE", processor)
     system = os.environ.get("OS", system).replace("_", " ")
-    (major, minor, _, _, service_pack) = os.sys.getwindowsversion()
-    info["service_pack"] = service_pack
-    if major >= 6 and minor >= 2:
-        # On windows >= 8.1 the system call that getwindowsversion uses has
-        # been frozen to always return the same values. In this case we call
-        # the RtlGetVersion API directly, which still provides meaningful
-        # values, at least for now.
-        major, minor, build_number = get_windows_version()
-        version = "%d.%d.%d" % (major, minor, build_number)
+    (major, minor, build_number, _, _) = os.sys.getwindowsversion()
+    version = "%d.%d.%d" % (major, minor, build_number)
+    if major == 10 and minor == 0 and build_number >= 22000:
+        major = 11
 
-    os_version = "%d.%d" % (major, minor)
+    # 2009 == 22H2 software update.  These are the build numbers
+    # we use 2009 as the "build" which maps to what taskcluster tasks see
+    if build_number == 22621 or build_number == 19045:
+        build_number = 2009
+
+    os_version = "%d.%d" % (major, build_number)
 elif system.startswith(("MINGW", "MSYS_NT")):
     # windows/mingw python build (msys)
     info["os"] = "win"
@@ -144,7 +113,7 @@ elif system == "Darwin":
     (release, versioninfo, machine) = platform.mac_ver()
     version = "OS X %s" % release
     versionNums = release.split(".")[:2]
-    os_version = "%s.%s" % (versionNums[0], versionNums[1])
+    os_version = "%s.%s" % (versionNums[0], versionNums[1].ljust(2, "0"))
     info["os"] = "mac"
 elif sys.platform in ("solaris", "sunos5"):
     info["os"] = "unix"
@@ -165,10 +134,6 @@ info["apple_catalina"] = False
 if info["os"] == "mac" and float(os_version) == 10.15:
     info["apple_catalina"] = True
 
-info["win10_2004"] = False
-if info["os"] == "win" and version == "10.0.19041":
-    info["win10_2004"] = True
-
 info["win10_2009"] = False
 if info["os"] == "win" and version == "10.0.19045":
     info["win10_2009"] = True
@@ -179,6 +144,7 @@ if info["os"] == "win" and version == "10.0.22621":
 
 info["version"] = version
 info["os_version"] = StringVersion(os_version)
+info["is_ubuntu"] = "Ubuntu" in version
 
 
 # processor type and bits
@@ -195,13 +161,20 @@ elif processor.upper() == "ARM64":
     processor = "aarch64"
 elif processor == "Power Macintosh":
     processor = "ppc"
-bits = re.search("(\d+)bit", bits).group(1)
+elif processor == "arm" and bits == "64bit":
+    processor = "aarch64"
+
+bits = re.search(r"(\d+)bit", bits).group(1)
 info.update(
     {
         "processor": processor,
         "bits": int(bits),
     }
 )
+
+# we want to transition to this instead of using `!debug`, etc.
+info["arch"] = info["processor"]
+
 
 if info["os"] == "linux":
     import ctypes
@@ -310,8 +283,8 @@ def find_and_update_from_json(*dirs, **kwargs):
     except (BuildEnvironmentNotFoundException, MozconfigFindException):
         pass
 
-    for d in dirs:
-        d = _os.path.abspath(d)
+    for dir in dirs:
+        d = _os.path.abspath(dir)
         json_path = _os.path.join(d, "mozinfo.json")
         if _os.path.isfile(json_path):
             update(json_path)
@@ -349,7 +322,6 @@ __all__ += [
 
 
 def main(args=None):
-
     # parse the command line
     from optparse import OptionParser
 

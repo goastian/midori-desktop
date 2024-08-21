@@ -40,12 +40,19 @@ Allowed actions, and subfields:
       name - Name for the subsuite (must be unique)
       run_info - Updates to the suite run_info (optional)
 
+  group_start
+      name - Name for the test group
+
+  group_end
+      name - Name for the test group
+
   suite_end
 
   test_start
       test - ID for the test
       path - Relative path to test (optional)
       subsuite - Name of the subsuite to which test belongs (optional)
+      group - Name of the test group for the incoming test (optional)
 
   test_end
       test - ID for the test
@@ -57,6 +64,7 @@ Allowed actions, and subfields:
       known_intermittent - List of known intermittent statuses that should
                            not fail a test. eg. ['FAIL', 'TIMEOUT']
       subsuite - Name of the subsuite to which test belongs (optional)
+      group - Name of the test group for the incoming test (optional)
 
   test_status
       test - ID for the test
@@ -68,6 +76,7 @@ Allowed actions, and subfields:
       known_intermittent - List of known intermittent statuses that should
                            not fail a test. eg. ['FAIL', 'TIMEOUT']
       subsuite - Name of the subsuite to which test belongs (optional)
+      group - Name of the test group for the incoming test (optional)
 
   process_output
       process - PID of the process
@@ -244,6 +253,11 @@ class StructuredLogger(object):
         return rv
 
     @property
+    def has_shutdown(self):
+        """Property indicating whether the logger has been shutdown"""
+        return self._state.has_shutdown
+
+    @property
     def handlers(self):
         """A list of handlers that will be called when a
         message is logged from this logger"""
@@ -396,6 +410,26 @@ class StructuredLogger(object):
         self._state.subsuites.add(data["name"])
         self._log_data("add_subsuite", data)
 
+    @log_action(
+        Unicode("name"),
+    )
+    def group_start(self, data):
+        """Log a group_start message
+
+        :param str name: Name to identify the test group.
+        """
+        self._log_data("group_start", data)
+
+    @log_action(
+        Unicode("name"),
+    )
+    def group_end(self, data):
+        """Log a group_end message
+
+        :param str name: Name to identify the test group.
+        """
+        self._log_data("group_end", data)
+
     @log_action(Dict(Any, "extra", default=None, optional=True))
     def suite_end(self, data):
         """Log a suite_end message"""
@@ -410,6 +444,7 @@ class StructuredLogger(object):
         TestId("test"),
         Unicode("path", default=None, optional=True),
         Unicode("subsuite", default=None, optional=True),
+        Unicode("group", default=None, optional=True),
     )
     def test_start(self, data):
         """Log a test_start message
@@ -418,16 +453,19 @@ class StructuredLogger(object):
         :param path: Path to test relative to some base (typically the root of
                      the source tree).
         :param subsuite: Optional name of the subsuite to which the test belongs.
+        :param group: Optional name of the test group or manifest name (useful
+                     when running in paralle)
         """
         if not self._state.suite_started:
             self.error(
                 "Got test_start message before suite_start for test %s" % data["test"]
             )
             return
-        if data["test"] in self._state.running_tests:
+        test_key = (data.get("subsuite"), data["test"])
+        if test_key in self._state.running_tests:
             self.error("test_start for %s logged while in progress." % data["test"])
             return
-        self._state.running_tests.add(data["test"])
+        self._state.running_tests.add(test_key)
         self._log_data("test_start", data)
 
     @log_action(
@@ -440,6 +478,7 @@ class StructuredLogger(object):
         Dict(Any, "extra", default=None, optional=True),
         List(SubStatus, "known_intermittent", default=None, optional=True),
         Unicode("subsuite", default=None, optional=True),
+        Unicode("group", default=None, optional=True),
     )
     def test_status(self, data):
         """
@@ -455,12 +494,15 @@ class StructuredLogger(object):
         :param extra: Optional suite-specific data associated with the test result.
         :param known_intermittent: Optional list of string expected intermittent statuses
         :param subsuite: Optional name of the subsuite to which the test belongs.
+        :param group: Optional name of the test group or manifest name (useful
+                     when running in paralle)
         """
 
         if data["expected"] == data["status"] or data["status"] == "SKIP":
             del data["expected"]
 
-        if data["test"] not in self._state.running_tests:
+        test_key = (data.get("subsuite"), data["test"])
+        if test_key not in self._state.running_tests:
             self.error(
                 "test_status for %s logged while not in progress. "
                 "Logged with data: %s" % (data["test"], json.dumps(data))
@@ -478,6 +520,7 @@ class StructuredLogger(object):
         Dict(Any, "extra", default=None, optional=True),
         List(Status, "known_intermittent", default=None, optional=True),
         Unicode("subsuite", default=None, optional=True),
+        Unicode("group", default=None, optional=True),
     )
     def test_end(self, data):
         """
@@ -493,18 +536,21 @@ class StructuredLogger(object):
         :param stack: Optional stack trace encountered during test execution.
         :param extra: Optional suite-specific data associated with the test result.
         :param subsuite: Optional name of the subsuite to which the test belongs.
+        :param group: Optional name of the test group or manifest name (useful
+                     when running in paralle)
         """
 
         if data["expected"] == data["status"] or data["status"] == "SKIP":
             del data["expected"]
 
-        if data["test"] not in self._state.running_tests:
+        test_key = (data.get("subsuite"), data["test"])
+        if test_key not in self._state.running_tests:
             self.error(
                 "test_end for %s logged while not in progress. "
                 "Logged with data: %s" % (data["test"], json.dumps(data))
             )
         else:
-            self._state.running_tests.remove(data["test"])
+            self._state.running_tests.remove(test_key)
             self._log_data("test_end", data)
 
     @log_action(
@@ -538,6 +584,7 @@ class StructuredLogger(object):
         Unicode("stackwalk_stderr", default=None, optional=True),
         Unicode("reason", default=None, optional=True),
         Unicode("java_stack", default=None, optional=True),
+        Unicode("process_type", default=None, optional=True),
         List(Unicode, "stackwalk_errors", default=None),
         Unicode("subsuite", default=None, optional=True),
     )
@@ -546,6 +593,10 @@ class StructuredLogger(object):
             data["stackwalk_errors"] = []
 
         self._log_data("crash", data)
+
+    @log_action(Unicode("group", default=None), Unicode("message", default=None))
+    def shutdown_failure(self, data):
+        self._log_data("shutdown_failure", data)
 
     @log_action(
         Unicode("primary", default=None), List(Unicode, "secondary", default=None)

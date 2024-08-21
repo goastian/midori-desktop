@@ -138,7 +138,7 @@ class TelemetryTests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
             "config",
             "telemetry_tests_requirements.txt",
         )
-        self.register_virtualenv_module(requirements=[requirements], two_pass=True)
+        self.register_virtualenv_module(requirements=[requirements])
 
     def query_abs_dirs(self):
         if self.abs_dirs:
@@ -267,8 +267,8 @@ class TelemetryTests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
 class TelemetryClientTests(TelemetryTests):
     cli_script = "runtests.py"
     default_tests = [
-        os.path.join("client", "manifest.ini"),
-        os.path.join("unit", "manifest.ini"),
+        os.path.join("client", "manifest.toml"),
+        os.path.join("unit", "manifest.toml"),
     ]
 
 

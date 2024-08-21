@@ -8,8 +8,8 @@
 import re
 from operator import itemgetter
 
-RE_DOCSHELL = re.compile("I\/DocShellAndDOMWindowLeak ([+\-]{2})DOCSHELL")
-RE_DOMWINDOW = re.compile("I\/DocShellAndDOMWindowLeak ([+\-]{2})DOMWINDOW")
+RE_DOCSHELL = re.compile(r"I\/DocShellAndDOMWindowLeak ([+\-]{2})DOCSHELL")
+RE_DOMWINDOW = re.compile(r"I\/DocShellAndDOMWindowLeak ([+\-]{2})DOMWINDOW")
 
 
 class ShutdownLeaks(object):
@@ -116,11 +116,15 @@ class ShutdownLeaks(object):
                 % (self.numDomWindowCreatedLogsSeen, self.numDomWindowDestroyedLogsSeen)
             )
 
+        errors = []
         for test in self._parseLeakingTests():
             for url, count in self._zipLeakedWindows(test["leakedWindows"]):
-                self.logger.error(
-                    "TEST-UNEXPECTED-FAIL | %s | leaked %d window(s) until shutdown "
-                    "[url = %s]" % (test["fileName"], count, url)
+                errors.append(
+                    {
+                        "test": test["fileName"],
+                        "msg": "leaked %d window(s) until shutdown [url = %s]"
+                        % (count, url),
+                    }
                 )
                 failures += 1
 
@@ -131,9 +135,12 @@ class ShutdownLeaks(object):
                 )
 
             if test["leakedDocShells"]:
-                self.logger.error(
-                    "TEST-UNEXPECTED-FAIL | %s | leaked %d docShell(s) until "
-                    "shutdown" % (test["fileName"], len(test["leakedDocShells"]))
+                errors.append(
+                    {
+                        "test": test["fileName"],
+                        "msg": "leaked %d docShell(s) until shutdown"
+                        % (len(test["leakedDocShells"])),
+                    }
                 )
                 failures += 1
                 self.logger.info(
@@ -165,7 +172,7 @@ class ShutdownLeaks(object):
                     % (test["fileName"], test["hiddenDocShellsCount"])
                 )
 
-        return failures
+        return failures, errors
 
     def _logWindow(self, line, created):
         pid = self._parseValue(line, "pid")
@@ -226,7 +233,7 @@ class ShutdownLeaks(object):
                 self.hiddenDocShellsCount += 1
 
     def _parseValue(self, line, name):
-        match = re.search("\[%s = (.+?)\]" % name, line)
+        match = re.search(r"\[%s = (.+?)\]" % name, line)
         if match:
             return match.group(1)
         return None
@@ -322,20 +329,20 @@ class LSANLeaks(object):
         )
 
         self.startRegExp = re.compile(
-            "==\d+==ERROR: LeakSanitizer: detected memory leaks"
+            r"==\d+==ERROR: LeakSanitizer: detected memory leaks"
         )
         self.fatalErrorRegExp = re.compile(
-            "==\d+==LeakSanitizer has encountered a fatal error."
+            r"==\d+==LeakSanitizer has encountered a fatal error."
         )
         self.symbolizerOomRegExp = re.compile(
             "LLVMSymbolizer: error reading file: Cannot allocate memory"
         )
-        self.stackFrameRegExp = re.compile("    #\d+ 0x[0-9a-f]+ in ([^(</]+)")
+        self.stackFrameRegExp = re.compile(r"    #\d+ 0x[0-9a-f]+ in ([^(</]+)")
         self.sysLibStackFrameRegExp = re.compile(
-            "    #\d+ 0x[0-9a-f]+ \(([^+]+)\+0x[0-9a-f]+\)"
+            r"    #\d+ 0x[0-9a-f]+ \(([^+]+)\+0x[0-9a-f]+\)"
         )
 
-    def log(self, line):
+    def log(self, line, path=""):
         if re.match(self.startRegExp, line):
             self.inReport = True
             return
@@ -352,13 +359,13 @@ class LSANLeaks(object):
             return
 
         if line.startswith("Direct leak") or line.startswith("Indirect leak"):
-            self._finishStack()
+            self._finishStack(path)
             self.recordMoreFrames = True
             self.currStack = []
             return
 
         if line.startswith("SUMMARY: AddressSanitizer"):
-            self._finishStack()
+            self._finishStack(path)
             self.inReport = False
             return
 
@@ -413,18 +420,23 @@ class LSANLeaks(object):
                 "in testing/mozbase/mozrunner/mozrunner/utils.py"
             )
 
-        for f in self.foundFrames:
-            self.logger.error("TEST-UNEXPECTED-FAIL | LeakSanitizer | leak at " + f)
+        frames = list(self.foundFrames)
+        frames.sort()
+        for f in frames:
+            if self.scope:
+                f = "%s | %s" % (f, self.scope)
+            self.logger.error("TEST-UNEXPECTED-FAIL | LeakSanitizer leak at " + f)
             failures += 1
 
         return failures
 
-    def _finishStack(self):
+    def _finishStack(self, path=""):
         if self.recordMoreFrames and len(self.currStack) == 0:
             self.currStack = ["unknown stack"]
         if self.currStack:
             self.foundFrames.add(", ".join(self.currStack))
             self.currStack = None
+            self.scope = path
         self.recordMoreFrames = False
         self.numRecordedFrames = 0
 

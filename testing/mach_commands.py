@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 import requests
-from mach.decorators import Command, CommandArgument, SettingsProvider, SubCommand
+from mach.decorators import Command, CommandArgument, SubCommand
 from mozbuild.base import BuildEnvironmentNotFoundException
 from mozbuild.base import MachCommandConditions as conditions
 
@@ -36,23 +36,6 @@ name or suite alias.
 
 The following test suites and aliases are supported: {}
 """.strip()
-
-
-@SettingsProvider
-class TestConfig(object):
-    @classmethod
-    def config_settings(cls):
-        from mozlog.commandline import log_formatters
-        from mozlog.structuredlog import log_levels
-
-        format_desc = "The default format to use when running tests with `mach test`."
-        format_choices = list(log_formatters)
-        level_desc = "The default log level to use when running tests with `mach test`."
-        level_choices = [l.lower() for l in log_levels]
-        return [
-            ("test.format", "string", format_desc, "mach", {"choices": format_choices}),
-            ("test.level", "string", level_desc, "info", {"choices": level_choices}),
-        ]
 
 
 def get_test_parser():
@@ -89,6 +72,7 @@ ADD_TEST_SUPPORTED_SUITES = [
     "mochitest-chrome",
     "mochitest-plain",
     "mochitest-browser-chrome",
+    "web-platform-tests-privatebrowsing",
     "web-platform-tests-testharness",
     "web-platform-tests-reftest",
     "xpcshell",
@@ -97,6 +81,7 @@ ADD_TEST_SUPPORTED_DOCS = ["js", "html", "xhtml", "xul"]
 
 SUITE_SYNONYMS = {
     "wpt": "web-platform-tests-testharness",
+    "wpt-privatebrowsing": "web-platform-tests-privatebrowsing",
     "wpt-testharness": "web-platform-tests-testharness",
     "wpt-reftest": "web-platform-tests-reftest",
 }
@@ -299,9 +284,13 @@ def guess_suite(abs_test):
     filename = os.path.basename(abs_test)
 
     has_browser_ini = os.path.isfile(os.path.join(parent, "browser.ini"))
+    has_browser_toml = os.path.isfile(os.path.join(parent, "browser.toml"))
     has_chrome_ini = os.path.isfile(os.path.join(parent, "chrome.ini"))
+    has_chrome_toml = os.path.isfile(os.path.join(parent, "chrome.toml"))
     has_plain_ini = os.path.isfile(os.path.join(parent, "mochitest.ini"))
+    has_plain_toml = os.path.isfile(os.path.join(parent, "mochitest.toml"))
     has_xpcshell_ini = os.path.isfile(os.path.join(parent, "xpcshell.ini"))
+    has_xpcshell_toml = os.path.isfile(os.path.join(parent, "xpcshell.toml"))
 
     in_wpt_folder = abs_test.startswith(
         os.path.abspath(os.path.join("testing", "web-platform"))
@@ -313,24 +302,33 @@ def guess_suite(abs_test):
             guessed_suite = "web-platform-tests-reftest"
     elif (
         filename.startswith("test_")
-        and has_xpcshell_ini
+        and (has_xpcshell_ini or has_xpcshell_toml)
         and guess_doc(abs_test) == "js"
     ):
         guessed_suite = "xpcshell"
     else:
-        if filename.startswith("browser_") and has_browser_ini:
+        if filename.startswith("browser_") and (has_browser_ini or has_browser_toml):
             guessed_suite = "mochitest-browser-chrome"
         elif filename.startswith("test_"):
-            if has_chrome_ini and has_plain_ini:
+            if (has_chrome_ini or has_chrome_toml) and (
+                has_plain_ini or has_plain_toml
+            ):
                 err = (
-                    "Error: directory contains both a chrome.ini and mochitest.ini. "
+                    "Error: directory contains both a chrome.{ini|toml} and mochitest.{ini|toml}. "
                     "Please set --suite=mochitest-chrome or --suite=mochitest-plain."
                 )
-            elif has_chrome_ini:
+            elif has_chrome_ini or has_chrome_toml:
                 guessed_suite = "mochitest-chrome"
-            elif has_plain_ini:
+            elif has_plain_ini or has_plain_toml:
                 guessed_suite = "mochitest-plain"
     return guessed_suite, err
+
+
+class MachTestRunner:
+    """Adapter for mach test to simplify it's import externally."""
+
+    def test(command_context, what, extra_args, **log_args):
+        return test(command_context, what, extra_args, **log_args)
 
 
 @Command(
@@ -349,6 +347,7 @@ def test(command_context, what, extra_args, **log_args):
     * A directory containing tests
     * A test suite name
     * An alias to a test suite name (codes used on TreeHerder)
+    * path to a test manifest
 
     When paths or directories are given, they are first resolved to test
     files known to the build system.
@@ -415,6 +414,9 @@ def test(command_context, what, extra_args, **log_args):
         if isinstance(handler, StreamHandler):
             handler.formatter.inner.summary_on_shutdown = True
 
+    if log_args.get("custom_handler", None) is not None:
+        log.add_handler(log_args.get("custom_handler"))
+
     status = None
     for suite_name in run_suites:
         suite = TEST_SUITES[suite_name]
@@ -459,7 +461,8 @@ def test(command_context, what, extra_args, **log_args):
         if res:
             status = res
 
-    log.shutdown()
+    if not log.has_shutdown:
+        log.shutdown()
     return status
 
 
@@ -491,7 +494,7 @@ def run_cppunit_test(command_context, **params):
     if not tests:
         tests = [os.path.join(command_context.distdir, "cppunittests")]
         manifest_path = os.path.join(
-            command_context.topsrcdir, "testing", "cppunittest.ini"
+            command_context.topsrcdir, "testing", "cppunittest.toml"
         )
     else:
         manifest_path = None
@@ -883,6 +886,7 @@ def test_info_tests(
     help="Do not categorize by bugzilla component.",
 )
 @CommandArgument("--output-file", help="Path to report file.")
+@CommandArgument("--runcounts-input-file", help="Optional path to report file.")
 @CommandArgument("--verbose", action="store_true", help="Enable debug logging.")
 @CommandArgument(
     "--start",
@@ -910,6 +914,7 @@ def test_report(
     start,
     end,
     show_testruns,
+    runcounts_input_file,
 ):
     import testinfo
     from mozbuild import build_commands
@@ -937,6 +942,7 @@ def test_report(
         start,
         end,
         show_testruns,
+        runcounts_input_file,
     )
 
 
@@ -1074,7 +1080,7 @@ def test_info_failures(
     # query VCS to get current list of variants:
     import yaml
 
-    url = "https://hg.mozilla.org/mozilla-central/raw-file/tip/taskcluster/ci/test/variants.yml"
+    url = "https://hg.mozilla.org/mozilla-central/raw-file/tip/taskcluster/kinds/test/variants.yml"
     r = requests.get(url, headers={"User-agent": "mach-test-info/1.0"})
     variants = yaml.safe_load(r.text)
 
@@ -1216,7 +1222,116 @@ def run_migration_tests(command_context, test_paths=None, **kwargs):
                 "ERROR in {file}: {error}",
             )
             rv |= 1
-    obj_dir = fmt.prepare_object_dir(command_context)
+    obj_dir, repo_dir = fmt.prepare_directories(command_context)
     for context in with_context:
-        rv |= fmt.test_migration(command_context, obj_dir, **context)
+        rv |= fmt.test_migration(command_context, obj_dir, repo_dir, **context)
     return rv
+
+
+@Command(
+    "manifest",
+    category="testing",
+    description="Manifest operations",
+    virtualenv_name="manifest",
+)
+def manifest(_command_context):
+    """
+    All functions implemented as subcommands.
+    """
+
+
+@SubCommand(
+    "manifest",
+    "skip-fails",
+    description="Update manifests to skip failing tests",
+)
+@CommandArgument("try_url", nargs=1, help="Treeherder URL for try (please use quotes)")
+@CommandArgument(
+    "-b",
+    "--bugzilla",
+    default=None,
+    dest="bugzilla",
+    help="Bugzilla instance (or disable)",
+)
+@CommandArgument(
+    "-m", "--meta-bug-id", default=None, dest="meta_bug_id", help="Meta Bug id"
+)
+@CommandArgument(
+    "-s",
+    "--turbo",
+    action="store_true",
+    dest="turbo",
+    help="Skip all secondary failures",
+)
+@CommandArgument(
+    "-t", "--save-tasks", default=None, dest="save_tasks", help="Save tasks to file"
+)
+@CommandArgument(
+    "-T", "--use-tasks", default=None, dest="use_tasks", help="Use tasks from file"
+)
+@CommandArgument(
+    "-f",
+    "--save-failures",
+    default=None,
+    dest="save_failures",
+    help="Save failures to file",
+)
+@CommandArgument(
+    "-F",
+    "--use-failures",
+    default=None,
+    dest="use_failures",
+    help="Use failures from file",
+)
+@CommandArgument(
+    "-M",
+    "--max-failures",
+    default=-1,
+    dest="max_failures",
+    help="Maximum number of failures to skip (-1 == no limit)",
+)
+@CommandArgument("-v", "--verbose", action="store_true", help="Verbose mode")
+@CommandArgument(
+    "-d",
+    "--dry-run",
+    action="store_true",
+    help="Determine manifest changes, but do not write them",
+)
+def skipfails(
+    command_context,
+    try_url,
+    bugzilla=None,
+    meta_bug_id=None,
+    turbo=False,
+    save_tasks=None,
+    use_tasks=None,
+    save_failures=None,
+    use_failures=None,
+    max_failures=-1,
+    verbose=False,
+    dry_run=False,
+):
+    from skipfails import Skipfails
+
+    if meta_bug_id is not None:
+        try:
+            meta_bug_id = int(meta_bug_id)
+        except ValueError:
+            meta_bug_id = None
+
+    if max_failures is not None:
+        try:
+            max_failures = int(max_failures)
+        except ValueError:
+            max_failures = -1
+    else:
+        max_failures = -1
+
+    Skipfails(command_context, try_url, verbose, bugzilla, dry_run, turbo).run(
+        meta_bug_id,
+        save_tasks,
+        use_tasks,
+        save_failures,
+        use_failures,
+        max_failures,
+    )

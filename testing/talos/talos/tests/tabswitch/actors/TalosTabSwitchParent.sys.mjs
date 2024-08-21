@@ -150,15 +150,18 @@ export class TalosTabSwitchParent extends JSWindowActorParent {
    */
   waitForContentPresented(browser) {
     return new Promise(resolve => {
-      browser.addEventListener(
-        "MozLayerTreeReady",
-        function onLayersReady(event) {
-          let now = Cu.now();
-          TalosParentProfiler.mark("MozLayerTreeReady seen by tabswitch");
-          resolve(now);
-        },
-        { once: true }
-      );
+      function onLayersReady() {
+        let now = Cu.now();
+        TalosParentProfiler.mark("Browser layers seen by tabswitch");
+        resolve(now);
+      }
+      if (browser.hasLayers) {
+        onLayersReady();
+        return;
+      }
+      browser.addEventListener("MozLayerTreeReady", onLayersReady, {
+        once: true,
+      });
     });
   }
 
@@ -244,7 +247,10 @@ export class TalosTabSwitchParent extends JSWindowActorParent {
       // Let's do an initial run to warm up any paint related caches
       // (like glyph caches for text). In the next loop we will start with
       // a GC before each switch so we don't need here.
+      dump(`${tab.linkedBrowser.currentURI.spec}: warm up begin\n`);
       await this.switchToTab(tab);
+      dump(`${tab.linkedBrowser.currentURI.spec}: warm up end\n`);
+
       await this.switchToTab(initialTab);
     }
 
@@ -258,9 +264,9 @@ export class TalosTabSwitchParent extends JSWindowActorParent {
       await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
 
       await this.forceGC(win);
-      TalosParentProfiler.resume();
+      TalosParentProfiler.subtestStart();
       let time = await this.switchToTab(tab);
-      TalosParentProfiler.pause(
+      TalosParentProfiler.subtestEnd(
         "TabSwitch Test: " + tab.linkedBrowser.currentURI.spec
       );
       dump(`${tab.linkedBrowser.currentURI.spec}: ${time}ms\n`);

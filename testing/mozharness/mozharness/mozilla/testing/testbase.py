@@ -129,6 +129,15 @@ testing_config_options = (
                 "help": "Download and extract crash reporter symbols.",
             },
         ],
+        [
+            ["--restartAfterFailure"],
+            {
+                "action": "store_true",
+                "default": False,
+                "dest": "restartAfterFailure",
+                "help": "Instruct the test harness to terminate on failure and restart where it left off",
+            },
+        ],
     ]
     + copy.deepcopy(virtualenv_config_options)
     + copy.deepcopy(try_config_options)
@@ -301,6 +310,7 @@ class TestingMixin(
         This function helps dealing with downloading files while outside
         of the releng network.
         """
+
         # Code based on http://code.activestate.com/recipes/305288-http-basic-authentication
         def _urlopen_basic_auth(url, **kwargs):
             self.info("We want to download this file %s" % url)

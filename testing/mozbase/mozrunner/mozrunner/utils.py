@@ -47,7 +47,6 @@ try:
             ret["Dependencies"] = "\n" + dist.get_metadata("requires.txt")
         return ret
 
-
 except ImportError:
     # package resources not avaialable
     def get_metadata_from_egg(module):
@@ -118,6 +117,10 @@ def test_environment(
             else (ldLibraryPath, env.get(envVar))
         )
         env[envVar] = os.path.pathsep.join([path for path in envValue if path])
+
+    # Allow non-packaged builds to access symlinked modules in the source dir
+    env["MOZ_DEVELOPER_REPO_DIR"] = mozinfo.info.get("topsrcdir")
+    env["MOZ_DEVELOPER_OBJ_DIR"] = mozinfo.info.get("topobjdir")
 
     # crashreporter
     env["GNOME_DISABLE_CRASH_DIALOG"] = "1"

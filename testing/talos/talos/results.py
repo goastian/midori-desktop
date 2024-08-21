@@ -40,7 +40,6 @@ class TalosResults(object):
         - output_formats: a dict mapping formats to a list of URLs
         """
         try:
-
             for key, urls in output_formats.items():
                 _output = output.Output(self, Results)
                 results = _output()
@@ -312,7 +311,7 @@ class BrowserLogResults(object):
 
     # regular expression for responsiveness results
     RESULTS_RESPONSIVENESS_REGEX = re.compile(
-        "MOZ_EVENT_TRACE\ssample\s\d*?\s(\d*\.?\d*)$", re.DOTALL | re.MULTILINE
+        r"MOZ_EVENT_TRACE\ssample\s\d*?\s(\d*\.?\d*)$", re.DOTALL | re.MULTILINE
     )
 
     # classes for results types
@@ -377,7 +376,6 @@ class BrowserLogResults(object):
 
         # parse the timestamps
         for attr, tokens in self.time_tokens:
-
             # parse the token contents
             value, _last_token = self.get_single_token(*tokens)
 

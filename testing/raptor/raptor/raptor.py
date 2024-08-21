@@ -5,9 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import os
-import shutil
 import sys
-import tarfile
 import traceback
 
 import mozinfo
@@ -23,18 +21,13 @@ except ImportError:
     build = None
 
 from browsertime import BrowsertimeAndroid, BrowsertimeDesktop
-from cmdline import CHROMIUM_DISTROS, DESKTOP_APPS, parse_args
+from cmdline import DESKTOP_APPS, parse_args
 from logger.logger import RaptorLogger
 from manifest import get_raptor_test_list
 from mozlog import commandline
 from mozprofile.cli import parse_key_value, parse_preferences
 from signal_handler import SignalHandler
 from utils import view_gecko_profile_from_raptor
-from webextension import (
-    WebExtensionAndroid,
-    WebExtensionDesktopChrome,
-    WebExtensionFirefox,
-)
 
 LOG = RaptorLogger(component="raptor-main")
 
@@ -76,28 +69,19 @@ def main(args=sys.argv[1:]):
     for next_test in raptor_test_list:
         LOG.info(next_test["name"])
 
-    if not args.browsertime:
-        if args.app == "firefox":
-            raptor_class = WebExtensionFirefox
-        elif args.app in CHROMIUM_DISTROS:
-            raptor_class = WebExtensionDesktopChrome
+    def raptor_class(*inner_args, **inner_kwargs):
+        outer_kwargs = vars(args)
+        # peel off arguments that are specific to browsertime
+        for key in outer_kwargs.keys():
+            if key.startswith("browsertime_"):
+                inner_kwargs[key] = outer_kwargs.get(key)
+
+        if args.app in DESKTOP_APPS:
+            klass = BrowsertimeDesktop
         else:
-            raptor_class = WebExtensionAndroid
-    else:
+            klass = BrowsertimeAndroid
 
-        def raptor_class(*inner_args, **inner_kwargs):
-            outer_kwargs = vars(args)
-            # peel off arguments that are specific to browsertime
-            for key in outer_kwargs.keys():
-                if key.startswith("browsertime_"):
-                    inner_kwargs[key] = outer_kwargs.get(key)
-
-            if args.app in DESKTOP_APPS:
-                klass = BrowsertimeDesktop
-            else:
-                klass = BrowsertimeAndroid
-
-            return klass(*inner_args, **inner_kwargs)
+        return klass(*inner_args, **inner_kwargs)
 
     try:
         raptor = raptor_class(
@@ -116,9 +100,6 @@ def main(args=sys.argv[1:]):
             extra_profiler_run=args.extra_profiler_run,
             symbols_path=args.symbols_path,
             host=args.host,
-            power_test=args.power_test,
-            cpu_test=args.cpu_test,
-            memory_test=args.memory_test,
             live_sites=args.live_sites,
             cold=args.cold,
             is_release_build=args.is_release_build,
@@ -141,6 +122,9 @@ def main(args=sys.argv[1:]):
             benchmark_repository=args.benchmark_repository,
             benchmark_revision=args.benchmark_revision,
             benchmark_branch=args.benchmark_branch,
+            page_timeout=args.page_timeout,
+            clean=args.clean,
+            screenshot_on_failure=args.screenshot_on_failure,
         )
     except Exception:
         traceback.print_exc()
@@ -186,11 +170,8 @@ def main(args=sys.argv[1:]):
     if args.browsertime and not args.run_local:
         result_dir = raptor.results_handler.result_dir()
         if os.path.exists(result_dir):
-            LOG.info("Creating tarball at %s" % result_dir + ".tgz")
-            with tarfile.open(result_dir + ".tgz", "w:gz") as tar:
-                tar.add(result_dir, arcname=os.path.basename(result_dir))
-            LOG.info("Removing %s" % result_dir)
-            shutil.rmtree(result_dir)
+            is_profiling_job = True if args.gecko_profile else False
+            raptor.results_handler.archive_raptor_artifacts(is_profiling_job)
 
     # when running raptor locally with gecko profiling on, use the view-gecko-profile
     # tool to automatically load the latest gecko profile in profiler.firefox.com

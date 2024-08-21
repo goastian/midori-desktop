@@ -179,6 +179,34 @@ class TestStructuredLog(BaseStructuredTest):
         self.logger.suite_end()
         self.assert_log_equals({"action": "suite_end"})
 
+    def test_add_subsuite(self):
+        self.logger.suite_start([])
+        self.logger.add_subsuite("other")
+        self.assert_log_equals(
+            {
+                "action": "add_subsuite",
+                "name": "other",
+                "run_info": {"subsuite": "other"},
+            }
+        )
+        self.logger.suite_end()
+
+    def test_add_subsuite_duplicate(self):
+        self.logger.suite_start([])
+        self.logger.add_subsuite("other")
+        # This should be a no-op
+        self.logger.add_subsuite("other")
+        self.assert_log_equals(
+            {
+                "action": "add_subsuite",
+                "name": "other",
+                "run_info": {"subsuite": "other"},
+            }
+        )
+        self.assert_log_equals({"action": "suite_start", "tests": {"default": []}})
+
+        self.logger.suite_end()
+
     def test_start(self):
         self.logger.suite_start([])
         self.logger.test_start("test1")
@@ -203,6 +231,20 @@ class TestStructuredLog(BaseStructuredTest):
                 "action": "log",
                 "message": "test_start for test1 logged while in progress.",
                 "level": "ERROR",
+            }
+        )
+        self.logger.suite_end()
+
+    def test_start_inprogress_subsuite(self):
+        self.logger.suite_start([])
+        self.logger.add_subsuite("other")
+        self.logger.test_start("test1")
+        self.logger.test_start("test1", subsuite="other")
+        self.assert_log_equals(
+            {
+                "action": "test_start",
+                "test": "test1",
+                "subsuite": "other",
             }
         )
         self.logger.suite_end()
@@ -396,6 +438,27 @@ class TestStructuredLog(BaseStructuredTest):
             self.pop_last_item()["message"].startswith(
                 "test_end for test1 logged while not in progress. Logged with data: {"
             )
+        )
+        self.logger.suite_end()
+
+    def test_end_no_start_subsuite(self):
+        self.logger.suite_start([])
+        self.logger.add_subsuite("other")
+        self.logger.test_start("test1", subsuite="other")
+        self.logger.test_end("test1", "PASS", expected="PASS")
+        self.assertTrue(
+            self.pop_last_item()["message"].startswith(
+                "test_end for test1 logged while not in progress. Logged with data: {"
+            )
+        )
+        self.logger.test_end("test1", "OK", subsuite="other")
+        self.assert_log_equals(
+            {
+                "action": "test_end",
+                "status": "OK",
+                "test": "test1",
+                "subsuite": "other",
+            }
         )
         self.logger.suite_end()
 
@@ -597,7 +660,7 @@ class TestTypeConversions(BaseStructuredTest):
                     b"\xf0\x90\x8d\x84\xf0\x90\x8c\xb4\xf0\x90"
                     b"\x8d\x83\xf0\x90\x8d\x84".decode(),
                     42,
-                    u"\u16a4",
+                    "\u16a4",
                 )
             )
         else:
@@ -606,13 +669,13 @@ class TestTypeConversions(BaseStructuredTest):
                     "\xf0\x90\x8d\x84\xf0\x90\x8c\xb4\xf0\x90"
                     "\x8d\x83\xf0\x90\x8d\x84",
                     42,
-                    u"\u16a4",
+                    "\u16a4",
                 )
             )
         self.assert_log_equals(
             {
                 "action": "test_start",
-                "test": (u"\U00010344\U00010334\U00010343\U00010344", u"42", u"\u16a4"),
+                "test": ("\U00010344\U00010334\U00010343\U00010344", "42", "\u16a4"),
             }
         )
         self.logger.suite_end()
@@ -697,6 +760,7 @@ class TestTypeConversions(BaseStructuredTest):
             self.logger.test_status,
             "test1",
             "subtest1",
+            "group1",
             "PASS",
             "FAIL",
             "message",
@@ -836,7 +900,7 @@ class TestCommandline(unittest.TestCase):
     def test_setup_logging_optparse_unicode(self):
         parser = optparse.OptionParser()
         commandline.add_logging_group(parser)
-        args, _ = parser.parse_args([u"--log-raw=-"])
+        args, _ = parser.parse_args(["--log-raw=-"])
         logger = commandline.setup_logging("test_optparse_unicode", args, {})
         self.assertEqual(len(logger.handlers), 1)
         self.assertEqual(logger.handlers[0].stream, sys.stdout)

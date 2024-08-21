@@ -26,7 +26,7 @@ const windowTracker = {
     Services.obs.addObserver(this, "chrome-document-global-created");
   },
 
-  async observe(window, topic, data) {
+  async observe(window, topic) {
     if (topic === "chrome-document-global-created") {
       await new Promise(resolve =>
         window.addEventListener("DOMContentLoaded", resolve, { once: true })
@@ -75,9 +75,10 @@ var WindowListener = {
   // needs to happen in all navigator:browser windows should go here.
   setupWindow(win) {
     win.nativeConsole = win.console;
-    ChromeUtils.defineESModuleGetters(win, {
-      console: "resource://gre/modules/Console.sys.mjs",
-    });
+    let { ConsoleAPI } = ChromeUtils.importESModule(
+      "resource://gre/modules/Console.sys.mjs"
+    );
+    win.console = new ConsoleAPI();
   },
 
   tearDownWindow(win) {

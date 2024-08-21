@@ -10,6 +10,7 @@ new ones):
 - **xpcshell** a classical xpcshell test, turned into a performance test
 - **browsertime** a browsertime script, which runs a full browser and controls
   it via a Selenium client.
+- **mochitest** a classical mochitest test, turned into a performance test
 
 In order to qualify as performance tests, both flavors require metadata.
 
@@ -31,9 +32,9 @@ This is the list of fields:
 
 Tests are registered using tests manifests and the **PERFTESTS_MANIFESTS**
 variable in `moz.build` files - it's good practice to name this file
-`perftest.ini`.
+`perftest.toml`.
 
-Example of such a file: https://searchfox.org/mozilla-central/source/testing/performance/perftest.ini
+Example of such a file: https://searchfox.org/mozilla-central/source/testing/performance/perftest.toml
 
 
 xpcshell
@@ -48,8 +49,81 @@ Here's an example of such a metrics call::
 
     # compute some speed metrics
     let speed = 12345;
-    info("perfMetrics", { speed });
+    info("perfMetrics", JSON.stringify({ speed }));
 
+
+Mochitest
+---------
+
+Similar to ``xpcshell`` tests, these are standard ``mochitest`` tests with some extra things:
+
+- the ``perfMetadata`` variable, as described in the previous section
+- calls to ``info("perfMetrics", ...)`` to send metrics to the ``perftest`` framework
+
+Note that the ``perfMetadata`` variable can exist in any ``<script>...</script>`` element in the Mochitest HTML test file. The ``perfMetadata`` variable also needs a couple additional settings in Mochitest tests. These are the ``manifest``, and ``manifest_flavor`` options::
+
+    var perfMetadata = {
+      owner: "Performance Team",
+      name: "Test test",
+      description: "N/A",
+      options: {
+        default: {
+          perfherder: true,
+          perfherder_metrics: [
+            { name: "Registration", unit: "ms" },
+          ],
+          manifest: "perftest.toml",
+          manifest_flavor: "plain",
+          extra_args: [
+            "headless",
+          ]
+        },
+      },
+    };
+
+The ``extra_args`` setting provides an area to provide custom Mochitest command-line arguments for this test.
+
+Here's an example of a call that will produce metrics::
+
+    # compute some speed metrics
+    let speed = 12345;
+    info("perfMetrics", JSON.stringify({ speed }));
+
+Existing Mochitest unit tests can be modified with these to be compatible with mozperftest, but note that some issues exist when doing this:
+
+- unittest issues with mochitest tests running on hardware
+- multiple configurations of a test running in a single manifest
+
+At the top of this document, you can find some information about the recommended approach for adding a new manifest dedicated to running performance tests.
+
+Locally, mozperftest uses ``./mach test`` to run your test. Always ensure that your test works in ``./mach test`` before attempting to run it through ``./mach perftest``. In CI, we use a custom "remote" run that runs Mochitest directly, skipping ``./mach test``.
+
+If everything is setup correctly, running a performance test locally will be as simple as this::
+
+    ./mach perftest <path/to/my/mochitest-test.html>
+
+
+Custom Script
+-------------
+
+Custom Script tests use a custom/adhoc script to execute a test. Currently, only shell scripts are supported through the ScriptShellRunner. In the future, other types of scripts may be supported through the addition of new test layers. These types of scripts support both Mobile, and Desktop testing within the ``custom-script`` flavor.
+
+Custom Shell Scripts
+^^^^^^^^^^^^^^^^^^^^
+
+A shell script test must contain the following fields as comments somewhere in the code::
+
+  # Name: name-of-test
+  # Owner: Name/team that owns the test
+  # Description: Description of the test
+
+Optionally, it can also contain a line that starts with ``Options:`` to denote any default options. These options are similar to other test layers. For these custom script tests, a valid JSON string is expected in this field.
+
+These scripts have a `BROWSER_BINARY` defined for them which will point to the binary (or package name on mobile) that is being tested. By default, this is Firefox. If a different binary is required, ``--binary`` can be used to specify it, or ``--app`` if the application is known and can be found automatically (not guaranteed).
+
+Once everything is setup for your shell script test, you can run it with the following::
+
+  ./mach perftest <path/to/custom-script.sh>
 
 Browsertime
 -----------

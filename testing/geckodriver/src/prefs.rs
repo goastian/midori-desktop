@@ -45,10 +45,6 @@ lazy_static! {
         // Start with a blank page (about:blank)
         ("browser.startup.page", Pref::new(0)),
 
-        // Disable page translations, causing timeouts for wdspec tests in early
-        // beta. See Bug 1836093.
-        ("browser.translations.enable", Pref::new(false)),
-
         // Disable the UI tour
         ("browser.uitour.enabled", Pref::new(false)),
 
@@ -129,12 +125,19 @@ lazy_static! {
         ("browser.newtabpage.activity-stream.asrouter.providers.cfr", Pref::new("null")),
         // TODO: Remove once minimum supported Firefox release is 93.
         ("browser.newtabpage.activity-stream.asrouter.providers.cfr-fxa", Pref::new("null")),
+
+        // TODO: Remove once minimum supported Firefox release is 128.
         ("browser.newtabpage.activity-stream.asrouter.providers.snippets", Pref::new("null")),
+
         ("browser.newtabpage.activity-stream.asrouter.providers.message-groups", Pref::new("null")),
+        // TODO: Remove once minimum supported Firefox release is 126.
         ("browser.newtabpage.activity-stream.asrouter.providers.whats-new-panel", Pref::new("null")),
         ("browser.newtabpage.activity-stream.asrouter.providers.messaging-experiments", Pref::new("null")),
         ("browser.newtabpage.activity-stream.feeds.system.topstories", Pref::new(false)),
+
+        // TODO: Remove once minimum supported Firefox release is 128.
         ("browser.newtabpage.activity-stream.feeds.snippets", Pref::new(false)),
+
         ("browser.newtabpage.activity-stream.tippyTop.service.endpoint", Pref::new("")),
         ("browser.newtabpage.activity-stream.discoverystream.config", Pref::new("[]")),
 

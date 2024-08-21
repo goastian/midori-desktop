@@ -16,7 +16,6 @@ import traceback
 from abc import ABCMeta, abstractmethod
 
 import mozinfo
-import mozprocess
 import mozproxy.utils as mpu
 import mozversion
 import six
@@ -27,15 +26,19 @@ from mozproxy import get_playback
 here = os.path.abspath(os.path.dirname(__file__))
 paths = [here]
 
-webext_dir = os.path.join(here, "..", "webext")
-paths.append(webext_dir)
-
 for path in paths:
     if not os.path.exists(path):
         raise IOError("%s does not exist. " % path)
     sys.path.insert(0, path)
 
-from cmdline import FIREFOX_ANDROID_APPS
+from chrome_trace import ChromeTrace
+from cmdline import (
+    CHROME_ANDROID_APPS,
+    FIREFOX_ANDROID_APPS,
+    FIREFOX_APPS,
+    GECKO_PROFILER_APPS,
+    TRACE_APPS,
+)
 from condprof.client import ProfileNotFoundError, get_profile
 from condprof.util import get_current_platform
 from gecko_profile import GeckoProfile
@@ -55,6 +58,7 @@ except ImportError:
     build = None
 
 POST_DELAY_CONDPROF = 1000
+POST_DELAY_MOBILE = 20000
 POST_DELAY_DEBUG = 3000
 POST_DELAY_DEFAULT = 30000
 
@@ -82,14 +86,11 @@ class Perftest(object):
         extra_profiler_run=False,
         symbols_path=None,
         host=None,
-        power_test=False,
-        cpu_test=False,
         cold=False,
-        memory_test=False,
         live_sites=False,
         is_release_build=False,
         debug_mode=False,
-        post_startup_delay=POST_DELAY_DEFAULT,
+        post_startup_delay=None,
         interrupt_handler=None,
         e10s=True,
         results_handler_class=RaptorResultsHandler,
@@ -108,6 +109,8 @@ class Perftest(object):
         benchmark_repository=None,
         benchmark_revision=None,
         benchmark_branch=None,
+        clean=False,
+        screenshot_on_failure=False,
         **kwargs
     ):
         self._remote_test_root = None
@@ -135,13 +138,9 @@ class Perftest(object):
             "extra_profiler_run": extra_profiler_run,
             "symbols_path": symbols_path,
             "host": host,
-            "power_test": power_test,
-            "memory_test": memory_test,
-            "cpu_test": cpu_test,
             "cold": cold,
             "live_sites": live_sites,
             "is_release_build": is_release_build,
-            "enable_control_server_wait": memory_test or cpu_test,
             "e10s": e10s,
             "device_name": device_name,
             "fission": fission,
@@ -157,6 +156,8 @@ class Perftest(object):
             "benchmark_repository": benchmark_repository,
             "benchmark_revision": benchmark_revision,
             "benchmark_branch": benchmark_branch,
+            "clean": clean,
+            "screenshot_on_failure": screenshot_on_failure,
         }
 
         self.firefox_android_apps = FIREFOX_ANDROID_APPS
@@ -177,7 +178,12 @@ class Perftest(object):
         # To differentiate between chrome/firefox failures, we
         # set an app variable in the logger which prefixes messages
         # with the app name
-        if self.config["app"] in ("chrome", "chrome-m", "chromium", "custom-car"):
+        if self.config["app"] in (
+            "chrome",
+            "chrome-m",
+            "custom-car",
+            "cstm-car-m",
+        ):
             LOG.set_app(self.config["app"])
 
         self.browser_name = None
@@ -188,6 +194,7 @@ class Perftest(object):
         self.playback = None
         self.benchmark = None
         self.gecko_profiler = None
+        self.chrome_trace = None
         self.device = None
         self.runtime_error = None
         self.profile_class = profile_class or app
@@ -207,16 +214,27 @@ class Perftest(object):
         self.run_local = self.config["run_local"]
         self.debug_mode = debug_mode if self.run_local else False
 
-        # For the post startup delay, we want to max it to 1s when using the
-        # conditioned profiles.
-        if self.config.get("conditioned_profile"):
-            self.post_startup_delay = min(post_startup_delay, POST_DELAY_CONDPROF)
-        else:
-            # if running debug-mode reduce the pause after browser startup
-            if self.debug_mode:
-                self.post_startup_delay = min(post_startup_delay, POST_DELAY_DEBUG)
+        if post_startup_delay is None:
+            # For the post startup delay, we want to max it to 1s when using the
+            # conditioned profiles.
+            if self.config.get("conditioned_profile"):
+                self.post_startup_delay = POST_DELAY_CONDPROF
+            elif (
+                self.debug_mode
+            ):  # if running debug-mode reduce the pause after browser startup
+                self.post_startup_delay = POST_DELAY_DEBUG
             else:
-                self.post_startup_delay = post_startup_delay
+                self.post_startup_delay = POST_DELAY_DEFAULT
+
+            if (
+                app in CHROME_ANDROID_APPS + FIREFOX_ANDROID_APPS
+                and not self.config.get("conditioned_profile")
+            ):
+                LOG.info("Mobile non-conditioned profile")
+                self.post_startup_delay = POST_DELAY_MOBILE
+        else:
+            # User supplied a custom post_startup_delay value
+            self.post_startup_delay = post_startup_delay
 
         LOG.info("Post startup delay set to %d ms" % self.post_startup_delay)
         LOG.info("main raptor init, config is: %s" % str(self.config))
@@ -297,6 +315,11 @@ class Perftest(object):
 
             loop = asyncio.get_event_loop()
             loop.run_until_complete(runner.one_run(scenario, "youtube"))
+        elif scenario == "settled-webext":
+            runner.prepare("settled", "webext")
+
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(runner.one_run("settled", "webext"))
         else:
             runner.prepare(scenario, "default")
 
@@ -391,19 +414,17 @@ class Perftest(object):
         return self.conditioned_profile_copy
 
     def build_browser_profile(self):
-        if self.config["app"] in ["safari"]:
+        if self.config["app"] in FIREFOX_APPS:
+            if self.config.get("conditioned_profile") is None:
+                self.profile = create_profile(self.profile_class)
+            else:
+                # use mozprofile to create a profile for us, from our conditioned profile's path
+                self.profile = create_profile(
+                    self.profile_class, profile=self.get_conditioned_profile()
+                )
+        else:
             self.profile = None
             return
-        elif (
-            self.config["app"] in ["chrome", "chromium", "chrome-m", "custom-car"]
-            or self.config.get("conditioned_profile") is None
-        ):
-            self.profile = create_profile(self.profile_class)
-        else:
-            # use mozprofile to create a profile for us, from our conditioned profile's path
-            self.profile = create_profile(
-                self.profile_class, profile=self.get_conditioned_profile()
-            )
         # Merge extra profile data from testing/profiles
         with open(os.path.join(self.profile_data_dir, "profiles.json"), "r") as fh:
             base_profiles = json.load(fh)["raptor"]
@@ -457,7 +478,7 @@ class Perftest(object):
         if test.get("playback") is not None and self.playback is None:
             self.start_playback(test)
 
-        if test.get("preferences") is not None and self.config["app"] not in "safari":
+        if test.get("preferences") is not None and self.config["app"] in FIREFOX_APPS:
             self.set_browser_test_prefs(test["preferences"])
 
     @abstractmethod
@@ -513,10 +534,15 @@ class Perftest(object):
         # gecko_profile flag form the command line or when an extra profiler-enabled
         # run is added with extra_profiler_run flag.
         if self.config["gecko_profile"] or self.config.get("extra_profiler_run"):
-            self.gecko_profiler.symbolicate()
-            # clean up the temp gecko profiling folders
-            LOG.info("cleaning up after gecko profiling")
-            self.gecko_profiler.clean()
+            if self.config["app"] in GECKO_PROFILER_APPS:
+                self.gecko_profiler.symbolicate()
+                # clean up the temp gecko profiling folders
+                LOG.info("cleaning up after gecko profiling")
+                self.gecko_profiler.clean()
+            elif self.config["app"] in TRACE_APPS:
+                self.chrome_trace.output_trace()
+                LOG.info("cleaning up after gathering chrome trace")
+                self.chrome_trace.clean()
 
         return res
 
@@ -527,6 +553,12 @@ class Perftest(object):
     @abstractmethod
     def check_for_crashes(self):
         pass
+
+    def clean_up_mitmproxy(self):
+        if not self.run_local or self.config["clean"]:
+            mitmproxy_dir = pathlib.Path("~/.mitmproxy").expanduser().resolve()
+            if mitmproxy_dir.exists():
+                shutil.rmtree(mitmproxy_dir, ignore_errors=True)
 
     def clean_up(self):
         # Cleanup all of our temporary directories
@@ -553,6 +585,8 @@ class Perftest(object):
                     except FileNotFoundError:
                         pass
 
+        self.clean_up_mitmproxy()
+
     def get_page_timeout_list(self):
         return self.results_handler.page_timeout_list
 
@@ -568,21 +602,24 @@ class Perftest(object):
 
     def start_playback(self, test):
         # creating the playback tool
-
         playback_dir = os.path.join(here, "tooltool-manifests", "playback")
+        playback_manifest = test.get("playback_pageset_manifest")
+        playback_manifests = playback_manifest.split(",")
 
         self.config.update(
             {
                 "playback_tool": test.get("playback"),
                 "playback_version": test.get("playback_version", "8.1.1"),
                 "playback_files": [
-                    os.path.join(playback_dir, test.get("playback_pageset_manifest"))
+                    os.path.join(playback_dir, manifest)
+                    for manifest in playback_manifests
                 ],
             }
         )
 
         LOG.info("test uses playback tool: %s " % self.config["playback_tool"])
 
+        self.clean_up_mitmproxy()
         self.playback = get_playback(self.config)
 
         # let's start it!
@@ -595,6 +632,14 @@ class Perftest(object):
             LOG.critical("Profiling ignored because MOZ_UPLOAD_DIR was not set")
         else:
             self.gecko_profiler = GeckoProfile(upload_dir, self.config, test)
+
+    def _init_chrome_trace(self, test):
+        LOG.info("initializing Chrome Trace handler")
+        upload_dir = os.getenv("MOZ_UPLOAD_DIR")
+        if not upload_dir:
+            LOG.critical("Chrome Trace ignored because MOZ_UPLOAD_DIR was not set")
+        else:
+            self.chrome_trace = ChromeTrace(upload_dir, self.config, test)
 
     def disable_non_local_connections(self):
         # For Firefox we need to set MOZ_DISABLE_NONLOCAL_CONNECTIONS=1 env var before startup
@@ -641,8 +686,7 @@ class PerftestAndroid(Perftest):
                     "Failed to get android browser meta data through mozversion: %s-%s"
                     % (e.__class__.__name__, e)
                 )
-
-        if self.config["app"] == "chrome-m" or browser_version is None:
+        elif self.config["app"] in CHROME_ANDROID_APPS or browser_version is None:
             # We absolutely need to determine the chrome
             # version here so that we can select the correct
             # chromedriver for browsertime
@@ -651,8 +695,12 @@ class PerftestAndroid(Perftest):
             device = ADBDeviceFactory(verbose=True)
 
             # Chrome uses a specific binary that we don't set as a command line option
-            binary = "com.android.chrome"
-            if self.config["app"] not in ("chrome-m",):
+            binary = (
+                "com.android.chrome"
+                if self.config["app"] == "chrome-m"
+                else "org.chromium.chrome"
+            )
+            if self.config["app"] not in CHROME_ANDROID_APPS:
                 binary = self.config["binary"]
 
             pkg_info = device.shell_output("dumpsys package %s" % binary)
@@ -667,9 +715,7 @@ class PerftestAndroid(Perftest):
                     break
 
             if not browser_version:
-                raise Exception(
-                    "Could not determine version for Google Chrome for Android"
-                )
+                raise Exception("Could not determine version for apk %s" % binary)
 
         if not browser_name:
             LOG.warning("Could not find a browser name")
@@ -689,12 +735,6 @@ class PerftestAndroid(Perftest):
 
     def set_reverse_ports(self):
         if self.is_localhost:
-
-            # only raptor-webext uses the control server
-            if self.config.get("browsertime", False) is False:
-                LOG.info("making the raptor control server port available to device")
-                self.set_reverse_port(self.control_server.port)
-
             if self.playback:
                 LOG.info("making the raptor playback server port available to device")
                 self.set_reverse_port(self.playback.port)
@@ -708,13 +748,11 @@ class PerftestAndroid(Perftest):
     def build_browser_profile(self):
         super(PerftestAndroid, self).build_browser_profile()
 
-        # Merge in the Android profile.
-        path = os.path.join(self.profile_data_dir, "raptor-android")
-        LOG.info("Merging profile: {}".format(path))
-        self.profile.merge(path)
-        self.profile.set_preferences(
-            {"browser.tabs.remote.autostart": self.config["e10s"]}
-        )
+        if self.config["app"] in FIREFOX_ANDROID_APPS:
+            # Merge in the Android profile.
+            path = os.path.join(self.profile_data_dir, "raptor-android")
+            LOG.info("Merging profile: {}".format(path))
+            self.profile.merge(path)
 
     def clear_app_data(self):
         LOG.info("clearing %s app data" % self.config["binary"])
@@ -776,8 +814,8 @@ class PerftestDesktop(Perftest):
 
     def desktop_chrome_args(self, test):
         """Returns cmd line options required to run pageload tests on Desktop Chrome
-        and Chromium. Also add the cmd line options to turn on the proxy and
-        ignore security certificate errors if using host localhost, 127.0.0.1.
+        and Chromium as Release (CaR). Also add the cmd line options to turn on the
+        proxy and ignore security certificate errors if using host localhost, 127.0.0.1.
         """
         chrome_args = ["--use-mock-keychain", "--no-default-browser-check"]
 
@@ -828,22 +866,22 @@ class PerftestDesktop(Perftest):
                         try:
                             binary_path = pathlib.Path(self.config["binary"])
                             plist_path = binary_path.parent.parent.joinpath(plist_file)
-                            with plist_path.open("rb") as plist:
-                                plist = plistlib.load(plist)
+                            with plist_path.open("rb") as plist_file_content:
+                                plist = plistlib.load(plist_file_content)
                         except FileNotFoundError:
                             pass
                     browser_name = self.config["app"]
                     browser_version = plist.get("CFBundleShortVersionString")
                 elif "linux" in self.config["platform"]:
                     command = [self.config["binary"], "--version"]
-                    proc = mozprocess.ProcessHandler(command)
-                    proc.run(timeout=10, outputTimeout=10)
-                    proc.wait()
+                    proc = subprocess.run(
+                        command, timeout=10, capture_output=True, text=True
+                    )
 
-                    bmeta = proc.output
+                    bmeta = proc.stdout.split("\n")
                     meta_re = re.compile(r"([A-z\s]+)\s+([\w.]*)")
                     if len(bmeta) != 0:
-                        match = meta_re.match(bmeta[0].decode("utf-8"))
+                        match = meta_re.match(bmeta[0])
                         if match:
                             browser_name = self.config["app"]
                             browser_version = match.group(2)

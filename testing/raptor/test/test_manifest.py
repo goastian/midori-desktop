@@ -1,5 +1,6 @@
 import os
 import sys
+from unittest.mock import patch
 
 import mozinfo
 import mozunit
@@ -16,10 +17,10 @@ from manifest import (
     add_test_url_params,
     get_browser_test_list,
     get_raptor_test_list,
-    validate_test_ini,
+    validate_test_toml,
 )
 
-# some test details (test INIs)
+# some test details (test TOMLs)
 VALID_MANIFESTS = [
     {
         # page load test with local playback
@@ -76,18 +77,6 @@ VALID_MANIFESTS = [
         "type": "benchmark",
         "unit": "score",
     },
-    {
-        # benchmark test for chromium
-        "alert_threshold": 2.0,
-        "apps": "chromium",
-        "lower_is_better": False,
-        "manifest": "valid_details_1",
-        "measure": "fcp",
-        "page_cycles": 5,
-        "test_url": "http://www.test-url/goes/here",
-        "type": "benchmark",
-        "unit": "score",
-    },
 ]
 
 INVALID_MANIFESTS = [
@@ -116,18 +105,6 @@ INVALID_MANIFESTS = [
         "unit": "ms",
     },
     {
-        "alert_threshold": 2.0,
-        "apps": "chromium",
-        "lower_is_better": True,
-        "manifest": "invalid_details_1",
-        "measure": "fnbpaint, fcp",
-        "page_cycles": 25,
-        "playback": "mitmproxy",
-        "test_url": "http://www.test-url/goes/here",
-        "type": "pageload",
-        "unit": "ms",
-    },
-    {
         "alert_on": "nope",
         "alert_threshold": 2.0,
         "apps": "firefox",
@@ -144,37 +121,42 @@ INVALID_MANIFESTS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "app", ["firefox", "chrome", "chromium", "geckoview", "refbrow", "fenix"]
-)
-def test_get_browser_test_list(app):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+@pytest.mark.parametrize("app", ["firefox", "chrome", "geckoview", "refbrow", "fenix"])
+def test_get_browser_test_list(mock_info, mock_critical, app):
     test_list = get_browser_test_list(app, run_local=True)
     assert len(test_list) > 0
 
 
 @pytest.mark.parametrize("test_details", VALID_MANIFESTS)
-def test_validate_test_ini_valid(test_details):
-    assert validate_test_ini(test_details)
+def test_validate_test_toml_valid(test_details):
+    assert validate_test_toml(test_details)
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+@patch("logger.logger.RaptorLogger.error")
 @pytest.mark.parametrize("test_details", INVALID_MANIFESTS)
-def test_validate_test_ini_invalid(test_details):
-    assert not (validate_test_ini(test_details))
+def test_validate_test_toml_invalid(mock_info, mock_critical, mock_error, test_details):
+    assert not (validate_test_toml(test_details))
 
 
-def test_get_raptor_test_list_firefox(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_firefox(mock_info, create_args):
     args = create_args(browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
     assert len(test_list) == 4
 
-    subtests = ["google", "amazon", "facebook", "youtube"]
+    subtests = ["test-page-1", "test-page-2", "test-page-3", "test-page-4"]
 
     for next_subtest in test_list:
         assert next_subtest["name"] in subtests
 
 
-def test_get_raptor_test_list_chrome(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_chrome(mock_info, create_args):
     args = create_args(app="chrome", test="speedometer", browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -182,7 +164,8 @@ def test_get_raptor_test_list_chrome(create_args):
     assert test_list[0]["name"] == "speedometer"
 
 
-def test_get_raptor_test_list_geckoview(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_geckoview(mock_info, create_args):
     args = create_args(app="geckoview", test="unity-webgl", browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -190,20 +173,23 @@ def test_get_raptor_test_list_geckoview(create_args):
     assert test_list[0]["name"] == "unity-webgl"
 
 
-def test_get_raptor_test_list_gecko_profiling_enabled(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_gecko_profiling_enabled(mock_info, create_args):
     args = create_args(test="amazon", gecko_profile=True, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
     assert len(test_list) == 1
     assert test_list[0]["name"] == "amazon"
     assert test_list[0]["gecko_profile"] is True
-    assert test_list[0].get("gecko_profile_entries") == "14000000"
     assert test_list[0].get("gecko_profile_interval") == "1"
     assert test_list[0].get("gecko_profile_threads") is None
     assert test_list[0].get("gecko_profile_features") is None
 
 
-def test_get_raptor_test_list_gecko_profiling_enabled_args_override(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_gecko_profiling_enabled_args_override(
+    mock_info, create_args
+):
     args = create_args(
         test="amazon",
         gecko_profile=True,
@@ -224,7 +210,10 @@ def test_get_raptor_test_list_gecko_profiling_enabled_args_override(create_args)
     assert test_list[0]["gecko_profile_features"] == "Mood,UserNetWorth"
 
 
-def test_get_raptor_test_list_gecko_profiling_enabled_extra_args_override(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_gecko_profiling_enabled_extra_args_override(
+    mock_info, create_args
+):
     args = create_args(
         test="amazon",
         gecko_profile=True,
@@ -244,7 +233,8 @@ def test_get_raptor_test_list_gecko_profiling_enabled_extra_args_override(create
     assert test_list[0]["gecko_profile_threads"] == "String,Rope,Foo,Oof"
 
 
-def test_get_raptor_test_list_gecko_profiling_disabled(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_gecko_profiling_disabled(mock_info, create_args):
     args = create_args(
         test="amazon",
         gecko_profile=False,
@@ -265,7 +255,10 @@ def test_get_raptor_test_list_gecko_profiling_disabled(create_args):
     assert test_list[0].get("gecko_profile_features") is None
 
 
-def test_get_raptor_test_list_gecko_profiling_disabled_args_override(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_gecko_profiling_disabled_args_override(
+    mock_info, create_args
+):
     args = create_args(
         test="amazon",
         gecko_profile=False,
@@ -286,7 +279,8 @@ def test_get_raptor_test_list_gecko_profiling_disabled_args_override(create_args
     assert test_list[0].get("gecko_profile_features") is None
 
 
-def test_get_raptor_test_list_extra_profiler_run_enabled(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_extra_profiler_run_enabled(mock_info, create_args):
     args = create_args(test="amazon", extra_profiler_run=True, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -295,7 +289,8 @@ def test_get_raptor_test_list_extra_profiler_run_enabled(create_args):
     assert test_list[0]["extra_profiler_run"] is True
 
 
-def test_get_raptor_test_list_extra_profiler_run_disabled(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_extra_profiler_run_disabled(mock_info, create_args):
     args = create_args(test="amazon", browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -304,7 +299,32 @@ def test_get_raptor_test_list_extra_profiler_run_disabled(create_args):
     assert test_list[0].get("extra_profiler_run") is None
 
 
-def test_get_raptor_test_list_debug_mode(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_extra_profiler_run_enabled_chrome(mock_info, create_args):
+    args = create_args(
+        app="chrome", test="amazon", extra_profiler_run=True, browser_cycles=1
+    )
+
+    test_list = get_raptor_test_list(args, mozinfo.os)
+    assert len(test_list) == 1
+    assert test_list[0]["name"] == "amazon"
+    assert test_list[0]["extra_profiler_run"] is True
+
+
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_extra_profiler_run_disabled_chrome(
+    mock_info, create_args
+):
+    args = create_args(app="chrome", test="amazon", browser_cycles=1)
+
+    test_list = get_raptor_test_list(args, mozinfo.os)
+    assert len(test_list) == 1
+    assert test_list[0]["name"] == "amazon"
+    assert test_list[0].get("extra_profiler_run") is None
+
+
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_debug_mode(mock_info, create_args):
     args = create_args(test="amazon", debug_mode=True, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -314,7 +334,8 @@ def test_get_raptor_test_list_debug_mode(create_args):
     assert test_list[0]["page_cycles"] == 2
 
 
-def test_get_raptor_test_list_using_live_sites(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_using_live_sites(mock_info, create_args):
     args = create_args(test="amazon", live_sites=True, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -324,7 +345,8 @@ def test_get_raptor_test_list_using_live_sites(create_args):
     assert test_list[0]["playback"] is None
 
 
-def test_get_raptor_test_list_using_collect_perfstats(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_using_collect_perfstats(mock_info, create_args):
     args = create_args(test="amazon", collect_perfstats=True, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -333,7 +355,8 @@ def test_get_raptor_test_list_using_collect_perfstats(create_args):
     assert test_list[0]["perfstats"] == "true"
 
 
-def test_get_raptor_test_list_override_page_cycles(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_override_page_cycles(mock_info, create_args):
     args = create_args(test="amazon", page_cycles=99, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -342,7 +365,8 @@ def test_get_raptor_test_list_override_page_cycles(create_args):
     assert test_list[0]["page_cycles"] == 99
 
 
-def test_get_raptor_test_list_override_page_timeout(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_override_page_timeout(mock_info, create_args):
     args = create_args(test="amazon", page_timeout=9999, browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -351,7 +375,8 @@ def test_get_raptor_test_list_override_page_timeout(create_args):
     assert test_list[0]["page_timeout"] == 9999
 
 
-def test_get_raptor_test_list_add_test_url_params(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_add_test_url_params(mock_info, create_args):
     args = create_args(test="amazon", test_url_params="c=4", browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -361,7 +386,8 @@ def test_get_raptor_test_list_add_test_url_params(create_args):
     assert query_params.get("c") == ["4"]
 
 
-def test_get_raptor_test_list_refbrow(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_refbrow(mock_info, create_args):
     args = create_args(app="refbrow", test="speedometer", browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
@@ -369,7 +395,8 @@ def test_get_raptor_test_list_refbrow(create_args):
     assert test_list[0]["name"] == "speedometer"
 
 
-def test_get_raptor_test_list_fenix(create_args):
+@patch("logger.logger.RaptorLogger.info")
+def test_get_raptor_test_list_fenix(mock_info, create_args):
     args = create_args(app="fenix", test="speedometer", browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)

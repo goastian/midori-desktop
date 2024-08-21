@@ -2,16 +2,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# mozprocess is typically used as an alternative to the python subprocess module.
-# It has been used in many Mozilla test harnesses with some success -- but also
-# with on-going concerns, especially regarding reliability and exception handling.
+# The mozprocess ProcessHandler and ProcessHandlerMixin are typically used as
+# an alternative to the python subprocess module. They have been used in many
+# Mozilla test harnesses with some success -- but also with on-going concerns,
+# especially regarding reliability and exception handling.
 #
 # New code should try to use the standard subprocess module, and only use
-# mozprocess if absolutely necessary.
+# this ProcessHandler if absolutely necessary.
 
 import codecs
 import errno
-import io
 import os
 import signal
 import subprocess
@@ -20,21 +20,9 @@ import threading
 import time
 import traceback
 from datetime import datetime
+from queue import Empty, Queue
 
 import six
-
-if six.PY2:
-    from Queue import Empty, Queue  # Python 2
-else:
-    from queue import Empty, Queue  # Python 3
-
-__all__ = [
-    "ProcessHandlerMixin",
-    "ProcessHandler",
-    "LogOutput",
-    "StoreOutput",
-    "StreamOutput",
-]
 
 # Set the MOZPROCESS_DEBUG environment variable to 1 to see some debugging output
 MOZPROCESS_DEBUG = os.getenv("MOZPROCESS_DEBUG")
@@ -122,7 +110,6 @@ class ProcessHandlerMixin(object):
             ignore_children=False,
             encoding="utf-8",
         ):
-
             # Parameter for whether or not we should attempt to track child processes
             self._ignore_children = ignore_children
             self._job = None
@@ -152,9 +139,7 @@ class ProcessHandlerMixin(object):
                 "startupinfo": startupinfo,
                 "creationflags": creationflags,
             }
-            if six.PY2:
-                kwargs["universal_newlines"] = universal_newlines
-            if six.PY3 and sys.version_info.minor >= 6 and universal_newlines:
+            if sys.version_info.minor >= 6 and universal_newlines:
                 kwargs["universal_newlines"] = universal_newlines
                 kwargs["encoding"] = encoding
             try:
@@ -162,17 +147,6 @@ class ProcessHandlerMixin(object):
             except OSError:
                 print(args, file=sys.stderr)
                 raise
-            # We need to support Python 3.5 for now, which doesn't support the
-            # "encoding" argument to the Popen constructor. For now, emulate it
-            # by patching the streams so that they return consistent values.
-            # This can be removed once we remove support for Python 3.5.
-            if six.PY3 and sys.version_info.minor == 5 and universal_newlines:
-                if self.stdin is not None:
-                    self.stdin = io.TextIOWrapper(self.stdin, encoding=encoding)
-                if self.stdout is not None:
-                    self.stdout = io.TextIOWrapper(self.stdout, encoding=encoding)
-                if self.stderr is not None:
-                    self.stderr = io.TextIOWrapper(self.stderr, encoding=encoding)
 
         def debug(self, msg):
             if not MOZPROCESS_DEBUG:
@@ -182,13 +156,15 @@ class ProcessHandlerMixin(object):
 
         def __del__(self):
             if isWin:
-                if six.PY2:
-                    _maxint = sys.maxint
-                else:
-                    _maxint = sys.maxsize
+                _maxint = sys.maxsize
                 handle = getattr(self, "_handle", None)
                 if handle:
+                    # _internal_poll is a Python3 built-in call and requires _handle to be an int on Windows
+                    # It's only an AutoHANDLE for legacy Python2 reasons that are non-trivial to remove
+                    self._handle = int(self._handle)
                     self._internal_poll(_deadstate=_maxint)
+                    # Revert it back to the saved 'handle' (AutoHANDLE) for self._cleanup()
+                    self._handle = handle
                 if handle or self._job or self._io_port:
                     self._cleanup()
             else:
@@ -748,11 +724,7 @@ falling back to not using job objects for managing child processes""",
                 """
                 # For non-group wait, call base class
                 try:
-                    if six.PY2:
-                        subprocess.Popen.wait(self)
-                    else:
-                        # timeout was introduced in Python 3.3
-                        subprocess.Popen.wait(self, timeout=timeout)
+                    subprocess.Popen.wait(self, timeout=timeout)
                 except subprocess.TimeoutExpired:
                     # We want to return None in this case
                     pass
@@ -975,11 +947,11 @@ falling back to not using job objects for managing child processes""",
         if self.reader.thread and self.reader.thread is not threading.current_thread():
             count = 0
             while self.reader.is_alive():
-                self.reader.join(timeout=1)
-                count += 1
                 if timeout is not None and count > timeout:
                     self.debug("wait timeout for reader thread")
                     return None
+                self.reader.join(timeout=1)
+                count += 1
 
         self.returncode = self.proc.wait(timeout)
         return self.returncode
@@ -1282,14 +1254,10 @@ class ProcessHandler(ProcessHandlerMixin):
         text = kwargs.get("universal_newlines", False) or kwargs.get("text", False)
 
         if stream is True:
-            # Print to standard output only if no outputline provided
-            stdout = sys.stdout
-            if six.PY2 and text:
-                stdout = codecs.getwriter("utf-8")(sys.stdout)
-            elif six.PY3 and text:
+            if text:
                 # The encoding of stdout isn't guaranteed to be utf-8. Fix that.
                 stdout = codecs.getwriter("utf-8")(sys.stdout.buffer)
-            elif six.PY3 and not text:
+            else:
                 stdout = sys.stdout.buffer
 
             if not kwargs["processOutputLine"]:

@@ -241,7 +241,7 @@ async function plInit() {
     // pages should be able to load in the same mode as the initial page - due
     // to this reinitialization on the switch.
     let tab = gBrowser.selectedTab;
-    tab.addEventListener("TabRemotenessChange", function (evt) {
+    tab.addEventListener("TabRemotenessChange", function () {
       loadFrameScripts(tab.linkedBrowser);
     });
     loadFrameScripts(tab.linkedBrowser);
@@ -300,7 +300,7 @@ function plLoadPage() {
   }
 
   let tab = gBrowser.selectedTab;
-  tab.addEventListener("TabRemotenessChange", evt => {
+  tab.addEventListener("TabRemotenessChange", () => {
     addMsgListeners(tab.linkedBrowser);
   });
   addMsgListeners(tab.linkedBrowser);
@@ -382,10 +382,10 @@ function loadFrameScripts(browser) {
 
 function startAndLoadURI(pageURL) {
   if (!(plPageFlags() & TEST_DOES_OWN_TIMING)) {
-    // Resume the profiler because we're really measuring page load time.
+    // Indicate the subtest start if we're really measuring page load time.
     // If the test is doing its own timing, it'll also need to do its own
-    // profiler pausing / resuming.
-    TalosParentProfiler.resume("Starting to load URI " + pageURL.spec);
+    // profiler subtestStart / subtestEnd.
+    TalosParentProfiler.subtestStart("Starting to load URI " + pageURL.spec);
   }
 
   start_time = window.performance.now();
@@ -581,13 +581,10 @@ function waitForPDFPaint() {
 function forceContentGC() {
   return new Promise(resolve => {
     let mm = browserWindow.gBrowser.selectedBrowser.messageManager;
-    mm.addMessageListener(
-      "Talos:ForceGC:OK",
-      function onTalosContentForceGC(msg) {
-        mm.removeMessageListener("Talos:ForceGC:OK", onTalosContentForceGC);
-        resolve();
-      }
-    );
+    mm.addMessageListener("Talos:ForceGC:OK", function onTalosContentForceGC() {
+      mm.removeMessageListener("Talos:ForceGC:OK", onTalosContentForceGC);
+      resolve();
+    });
     mm.sendAsyncMessage("Talos:ForceGC");
   });
 }
@@ -726,8 +723,7 @@ function _loadHandlerCapturing() {
 
   if (gTime !== -1) {
     plRecordTime(gTime);
-    TalosParentProfiler.mark("Talos - capturing load handler fired");
-    TalosParentProfiler.pause();
+    TalosParentProfiler.subtestEnd("Talos - capturing load handler fired");
     gTime = -1;
     recordedName = null;
     setTimeout(plNextPage, delay);
@@ -795,7 +791,7 @@ function _loadHandler(paint_time = 0) {
   } else {
     duration = end_time - start_time;
   }
-  TalosParentProfiler.pause("Bubbling load handler fired.");
+  TalosParentProfiler.subtestEnd("Bubbling load handler fired.");
 
   // does this page want to do its own timing?
   // if so, we shouldn't be here

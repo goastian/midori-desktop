@@ -8,13 +8,14 @@
             "firefox",
             "chrome",
             "chrome-m",
-            "chromium",
             "fennec",
             "geckoview",
             "refbrow",
             "fenix",
             "safari",
-            "custom-car"
+            "safari-tp",
+            "custom-car",
+            "cstm-car-m"
           ],
           "maxLength": 10,
           "type": "string"
