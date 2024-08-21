@@ -63,7 +63,6 @@ pref("floorp.browser.sidebar.enable", true);// サイドバーを表示
 // url:URL width:幅 userAgent:userAgent usercontext:コンテナタブ
 pref("floorp.browser.sidebar2.data", '{"data":{},"index":[]}');
 pref("floorp.extensions.webextensions.sidebar-action", '{"data":{}}');
-pref("floorp.browser.sidebar2.addons.enabled", true);
 pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", false);
 
 pref("floorp.browser.sidebar2.global.webpanel.width", 400);
