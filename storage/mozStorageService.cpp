@@ -4,10 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "BaseVFS.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/SpinEventLoopUntil.h"
-
+#include "nsIFile.h"
+#include "nsIFileURL.h"
 #include "mozStorageService.h"
 #include "mozStorageConnection.h"
 #include "nsComponentManagerUtils.h"
@@ -17,6 +19,8 @@
 #include "mozStoragePrivateHelpers.h"
 #include "nsIObserverService.h"
 #include "nsIPropertyBag2.h"
+#include "ObfuscatingVFS.h"
+#include "QuotaVFS.h"
 #include "mozilla/Services.h"
 #include "mozilla/LateWriteChecks.h"
 #include "mozIStorageCompletionCallback.h"
@@ -35,8 +39,7 @@
 
 using mozilla::intl::Collator;
 
-namespace mozilla {
-namespace storage {
+namespace mozilla::storage {
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Memory Reporting
@@ -147,7 +150,7 @@ Service::CollectReports(nsIHandleReportCallback* aHandleReport,
 #endif
   }
 
-  int64_t other = ::sqlite3_memory_used() - totalConnSize;
+  int64_t other = static_cast<int64_t>(::sqlite3_memory_used() - totalConnSize);
 
   MOZ_COLLECT_REPORT("explicit/storage/sqlite/other", KIND_HEAP, UNITS_BYTES,
                      other, "All unclassified sqlite memory.");
@@ -202,7 +205,7 @@ Service::AutoVFSRegistration::~AutoVFSRegistration() {
 Service::Service()
     : mMutex("Service::mMutex"),
       mRegistrationMutex("Service::mRegistrationMutex"),
-      mConnections() {}
+      mLastSensitivity(mozilla::intl::Collator::Sensitivity::Base) {}
 
 Service::~Service() {
   mozilla::UnregisterWeakMemoryReporter(this);
@@ -305,14 +308,6 @@ void Service::minimizeMemory() {
   }
 }
 
-UniquePtr<sqlite3_vfs> ConstructBaseVFS(bool);
-const char* GetBaseVFSName(bool);
-
-UniquePtr<sqlite3_vfs> ConstructQuotaVFS(const char* aBaseVFSName);
-const char* GetQuotaVFSName();
-
-UniquePtr<sqlite3_vfs> ConstructObfuscatingVFS(const char* aBaseVFSName);
-
 UniquePtr<sqlite3_vfs> ConstructReadOnlyNoLockVFS();
 
 static const char* sObserverTopics[] = {"memory-pressure",
@@ -346,23 +341,24 @@ nsresult Service::initialize() {
    *                 unix-excl     win32  unix       win32
    */
 
-  rc = mBaseSqliteVFS.Init(ConstructBaseVFS(false));
+  rc = mBaseSqliteVFS.Init(basevfs::ConstructVFS(false));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
 
-  rc = mBaseExclSqliteVFS.Init(ConstructBaseVFS(true));
+  rc = mBaseExclSqliteVFS.Init(basevfs::ConstructVFS(true));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
 
-  rc = mQuotaSqliteVFS.Init(ConstructQuotaVFS(
-      GetBaseVFSName(StaticPrefs::storage_sqlite_exclusiveLock_enabled())));
+  rc = mQuotaSqliteVFS.Init(quotavfs::ConstructVFS(basevfs::GetVFSName(
+      StaticPrefs::storage_sqlite_exclusiveLock_enabled())));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
 
-  rc = mObfuscatingSqliteVFS.Init(ConstructObfuscatingVFS(GetQuotaVFSName()));
+  rc =
+      mObfuscatingSqliteVFS.Init(obfsvfs::ConstructVFS(quotavfs::GetVFSName()));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
@@ -375,8 +371,8 @@ nsresult Service::initialize() {
   nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
   NS_ENSURE_TRUE(os, NS_ERROR_FAILURE);
 
-  for (size_t i = 0; i < ArrayLength(sObserverTopics); ++i) {
-    nsresult rv = os->AddObserver(this, sObserverTopics[i], false);
+  for (auto& sObserverTopic : sObserverTopics) {
+    nsresult rv = os->AddObserver(this, sObserverTopic, false);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -468,8 +464,8 @@ Service::OpenSpecialDatabase(const nsACString& aStorageKey,
   }
 
   RefPtr<Connection> msc =
-      new Connection(this, flags, Connection::SYNCHRONOUS, interruptible);
-
+      new Connection(this, flags, Connection::SYNCHRONOUS,
+                     kMozStorageMemoryStorageKey, interruptible);
   const nsresult rv = msc->initialize(aStorageKey, aName);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -588,8 +584,15 @@ Service::OpenAsyncDatabase(nsIVariant* aDatabaseStore, uint32_t aOpenFlags,
   }
 
   // Create connection on this thread, but initialize it on its helper thread.
+  nsAutoCString telemetryFilename;
+  if (!storageFile) {
+    telemetryFilename.Assign(kMozStorageMemoryStorageKey);
+  } else {
+    rv = storageFile->GetNativeLeafName(telemetryFilename);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
   RefPtr<Connection> msc =
-      new Connection(this, flags, Connection::ASYNCHRONOUS,
+      new Connection(this, flags, Connection::ASYNCHRONOUS, telemetryFilename,
                      /* interruptible */ true, ignoreLockingMode);
   nsCOMPtr<nsIEventTarget> target = msc->getAsyncExecutionTarget();
   MOZ_ASSERT(target,
@@ -612,10 +615,12 @@ Service::OpenDatabase(nsIFile* aDatabaseFile, uint32_t aConnectionFlags,
   // reasons.
   const int flags =
       SQLITE_OPEN_READWRITE | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_CREATE;
-  RefPtr<Connection> msc =
-      new Connection(this, flags, Connection::SYNCHRONOUS, interruptible);
-
-  const nsresult rv = msc->initialize(aDatabaseFile);
+  nsAutoCString telemetryFilename;
+  nsresult rv = aDatabaseFile->GetNativeLeafName(telemetryFilename);
+  NS_ENSURE_SUCCESS(rv, rv);
+  RefPtr<Connection> msc = new Connection(this, flags, Connection::SYNCHRONOUS,
+                                          telemetryFilename, interruptible);
+  rv = msc->initialize(aDatabaseFile);
   NS_ENSURE_SUCCESS(rv, rv);
 
   msc.forget(_connection);
@@ -634,10 +639,12 @@ Service::OpenUnsharedDatabase(nsIFile* aDatabaseFile, uint32_t aConnectionFlags,
   // reasons.
   const int flags =
       SQLITE_OPEN_READWRITE | SQLITE_OPEN_PRIVATECACHE | SQLITE_OPEN_CREATE;
-  RefPtr<Connection> msc =
-      new Connection(this, flags, Connection::SYNCHRONOUS, interruptible);
-
-  const nsresult rv = msc->initialize(aDatabaseFile);
+  nsAutoCString telemetryFilename;
+  nsresult rv = aDatabaseFile->GetNativeLeafName(telemetryFilename);
+  NS_ENSURE_SUCCESS(rv, rv);
+  RefPtr<Connection> msc = new Connection(this, flags, Connection::SYNCHRONOUS,
+                                          telemetryFilename, interruptible);
+  rv = msc->initialize(aDatabaseFile);
   NS_ENSURE_SUCCESS(rv, rv);
 
   msc.forget(_connection);
@@ -658,48 +665,24 @@ Service::OpenDatabaseWithFileURL(nsIFileURL* aFileURL,
   // reasons.
   const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_SHAREDCACHE |
                     SQLITE_OPEN_CREATE | SQLITE_OPEN_URI;
-  RefPtr<Connection> msc =
-      new Connection(this, flags, Connection::SYNCHRONOUS, interruptible);
-
-  const nsresult rv = msc->initialize(aFileURL, aTelemetryFilename);
+  nsresult rv;
+  nsAutoCString telemetryFilename;
+  if (!aTelemetryFilename.IsEmpty()) {
+    telemetryFilename = aTelemetryFilename;
+  } else {
+    nsCOMPtr<nsIFile> databaseFile;
+    rv = aFileURL->GetFile(getter_AddRefs(databaseFile));
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = databaseFile->GetNativeLeafName(telemetryFilename);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  RefPtr<Connection> msc = new Connection(this, flags, Connection::SYNCHRONOUS,
+                                          telemetryFilename, interruptible);
+  rv = msc->initialize(aFileURL);
   NS_ENSURE_SUCCESS(rv, rv);
 
   msc.forget(_connection);
   return NS_OK;
-}
-
-NS_IMETHODIMP
-Service::BackupDatabaseFile(nsIFile* aDBFile, const nsAString& aBackupFileName,
-                            nsIFile* aBackupParentDirectory, nsIFile** backup) {
-  nsresult rv;
-  nsCOMPtr<nsIFile> parentDir = aBackupParentDirectory;
-  if (!parentDir) {
-    // This argument is optional, and defaults to the same parent directory
-    // as the current file.
-    rv = aDBFile->GetParent(getter_AddRefs(parentDir));
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  nsCOMPtr<nsIFile> backupDB;
-  rv = parentDir->Clone(getter_AddRefs(backupDB));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = backupDB->Append(aBackupFileName);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = backupDB->CreateUnique(nsIFile::NORMAL_FILE_TYPE, 0600);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsAutoString fileName;
-  rv = backupDB->GetLeafName(fileName);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = backupDB->Remove(false);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  backupDB.forget(backup);
-
-  return aDBFile->CopyTo(parentDir, fileName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -719,8 +702,8 @@ Service::Observe(nsISupports*, const char* aTopic, const char16_t*) {
 
     nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
 
-    for (size_t i = 0; i < ArrayLength(sObserverTopics); ++i) {
-      (void)os->RemoveObserver(this, sObserverTopics[i]);
+    for (auto& sObserverTopic : sObserverTopics) {
+      (void)os->RemoveObserver(this, sObserverTopic);
     }
 
     SpinEventLoopUntil("storage::Service::Observe(xpcom-shutdown-threads)"_ns,
@@ -744,7 +727,7 @@ Service::Observe(nsISupports*, const char* aTopic, const char16_t*) {
       if (!connections[i]->isClosed()) {
         // getFilename is only the leaf name for the database file,
         // so it shouldn't contain privacy-sensitive information.
-        CrashReporter::AnnotateCrashReport(
+        CrashReporter::RecordAnnotationNSCString(
             CrashReporter::Annotation::StorageConnectionNotClosed,
             connections[i]->getFilename());
         printf_stderr("Storage connection not closed: %s",
@@ -758,5 +741,4 @@ Service::Observe(nsISupports*, const char* aTopic, const char16_t*) {
   return NS_OK;
 }
 
-}  // namespace storage
-}  // namespace mozilla
+}  // namespace mozilla::storage

@@ -4,11 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "BaseVFS.h"
+#include "ErrorList.h"
+#include "nsError.h"
 #include "nsThreadUtils.h"
 #include "nsIFile.h"
 #include "nsIFileURL.h"
 #include "nsIXPConnect.h"
 #include "mozilla/AppShutdown.h"
+#include "mozilla/CheckedInt.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/CondVar.h"
@@ -32,15 +36,21 @@
 #include "mozStorageArgValueArray.h"
 #include "mozStoragePrivateHelpers.h"
 #include "mozStorageStatementData.h"
+#include "ObfuscatingVFS.h"
+#include "QuotaVFS.h"
 #include "StorageBaseStatementInternal.h"
 #include "SQLCollations.h"
 #include "FileSystemModule.h"
 #include "mozStorageHelper.h"
 
+#include "mozilla/Assertions.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Printf.h"
 #include "mozilla/ProfilerLabels.h"
+#include "mozilla/RefPtr.h"
+#include "nsComponentManagerUtils.h"
 #include "nsProxyRelease.h"
+#include "nsStringFwd.h"
 #include "nsURLHelper.h"
 
 #define MIN_AVAILABLE_BYTES_PER_CHUNKED_GROWTH 524288000  // 500 MiB
@@ -73,10 +83,6 @@ using mozilla::dom::quota::QuotaObject;
 using mozilla::Telemetry::AccumulateCategoricalKeyed;
 using mozilla::Telemetry::LABELS_SQLITE_STORE_OPEN;
 using mozilla::Telemetry::LABELS_SQLITE_STORE_QUERY;
-
-const char* GetBaseVFSName(bool);
-const char* GetQuotaVFSName();
-const char* GetObfuscatingVFSName();
 
 namespace {
 
@@ -134,15 +140,22 @@ int sqlite3_T_double(sqlite3_context* aCtx, double aValue) {
 }
 
 int sqlite3_T_text(sqlite3_context* aCtx, const nsCString& aValue) {
-  ::sqlite3_result_text(aCtx, aValue.get(), aValue.Length(), SQLITE_TRANSIENT);
+  CheckedInt<int32_t> length(aValue.Length());
+  if (!length.isValid()) {
+    return SQLITE_MISUSE;
+  }
+  ::sqlite3_result_text(aCtx, aValue.get(), length.value(), SQLITE_TRANSIENT);
   return SQLITE_OK;
 }
 
 int sqlite3_T_text16(sqlite3_context* aCtx, const nsString& aValue) {
-  ::sqlite3_result_text16(
-      aCtx, aValue.get(),
-      aValue.Length() * sizeof(char16_t),  // Number of bytes.
-      SQLITE_TRANSIENT);
+  CheckedInt<int32_t> n_bytes =
+      CheckedInt<int32_t>(aValue.Length()) * sizeof(char16_t);
+  if (!n_bytes.isValid()) {
+    return SQLITE_MISUSE;
+  }
+  ::sqlite3_result_text16(aCtx, aValue.get(), n_bytes.value(),
+                          SQLITE_TRANSIENT);
   return SQLITE_OK;
 }
 
@@ -234,6 +247,12 @@ void basicFunctionHelper(sqlite3_context* aCtx, int aArgc,
     ::sqlite3_result_error(aCtx, "User function returned invalid data type",
                            -1);
   }
+}
+
+RefPtr<QuotaObject> GetQuotaObject(sqlite3_file* aFile, bool obfuscatingVFS) {
+  return obfuscatingVFS
+             ? mozilla::storage::obfsvfs::GetQuotaObjectForFile(aFile)
+             : mozilla::storage::quotavfs::GetQuotaObjectForFile(aFile);
 }
 
 /**
@@ -565,6 +584,199 @@ class AsyncVacuumEvent final : public Runnable {
   Atomic<nsresult> mStatus;
 };
 
+/**
+ * A runnable to perform an SQLite database backup when there may be one or more
+ * open connections on that database.
+ */
+class AsyncBackupDatabaseFile final : public Runnable, public nsITimerCallback {
+ public:
+  NS_DECL_ISUPPORTS_INHERITED
+
+  /**
+   * @param aConnection The connection to the database being backed up.
+   * @param aNativeConnection The native connection to the database being backed
+   *                          up.
+   * @param aDestinationFile The destination file for the created backup.
+   * @param aCallback A callback to trigger once the backup process has
+   *                  completed. The callback will be supplied with an nsresult
+   *                  indicating whether or not the backup was successfully
+   *                  created. This callback will be called on the
+   *                  mConnection->eventTargetOpenedOn thread.
+   * @throws
+   */
+  AsyncBackupDatabaseFile(Connection* aConnection, sqlite3* aNativeConnection,
+                          nsIFile* aDestinationFile,
+                          mozIStorageCompletionCallback* aCallback,
+                          int32_t aPagesPerStep, uint32_t aStepDelayMs)
+      : Runnable("storage::AsyncBackupDatabaseFile"),
+        mConnection(aConnection),
+        mNativeConnection(aNativeConnection),
+        mDestinationFile(aDestinationFile),
+        mCallback(aCallback),
+        mPagesPerStep(aPagesPerStep),
+        mStepDelayMs(aStepDelayMs),
+        mBackupFile(nullptr),
+        mBackupHandle(nullptr) {
+    MOZ_ASSERT(NS_IsMainThread());
+  }
+
+  NS_IMETHOD Run() override {
+    MOZ_ASSERT(!NS_IsMainThread());
+
+    nsAutoString path;
+    nsresult rv = mDestinationFile->GetPath(path);
+    if (NS_FAILED(rv)) {
+      return Dispatch(rv, nullptr);
+    }
+    // Put a .tmp on the end of the destination while the backup is underway.
+    // This extension will be stripped off after the backup successfully
+    // completes.
+    path.AppendLiteral(".tmp");
+
+    int srv = ::sqlite3_open(NS_ConvertUTF16toUTF8(path).get(), &mBackupFile);
+    if (srv != SQLITE_OK) {
+      return Dispatch(NS_ERROR_FAILURE, nullptr);
+    }
+
+    static const char* mainDBName = "main";
+
+    mBackupHandle = ::sqlite3_backup_init(mBackupFile, mainDBName,
+                                          mNativeConnection, mainDBName);
+    if (!mBackupHandle) {
+      MOZ_ALWAYS_TRUE(::sqlite3_close(mBackupFile) == SQLITE_OK);
+      return Dispatch(NS_ERROR_FAILURE, nullptr);
+    }
+
+    return DoStep();
+  }
+
+  NS_IMETHOD
+  Notify(nsITimer* aTimer) override { return DoStep(); }
+
+ private:
+  nsresult DoStep() {
+#define DISPATCH_AND_RETURN_IF_FAILED(rv) \
+  if (NS_FAILED(rv)) {                    \
+    return Dispatch(rv, nullptr);         \
+  }
+
+    // This guard is used to close the backup database in the event of
+    // some failure throughout this process. We release the exit guard
+    // only if we complete the backup successfully, or defer to another
+    // later call to DoStep.
+    auto guard = MakeScopeExit([&]() {
+      MOZ_ALWAYS_TRUE(::sqlite3_close(mBackupFile) == SQLITE_OK);
+      mBackupFile = nullptr;
+    });
+
+    MOZ_ASSERT(!NS_IsMainThread());
+    nsAutoString originalPath;
+    nsresult rv = mDestinationFile->GetPath(originalPath);
+    DISPATCH_AND_RETURN_IF_FAILED(rv);
+
+    nsAutoString tempPath = originalPath;
+    tempPath.AppendLiteral(".tmp");
+
+    nsCOMPtr<nsIFile> file =
+        do_CreateInstance("@mozilla.org/file/local;1", &rv);
+    DISPATCH_AND_RETURN_IF_FAILED(rv);
+
+    rv = file->InitWithPath(tempPath);
+    DISPATCH_AND_RETURN_IF_FAILED(rv);
+
+    int srv = ::sqlite3_backup_step(mBackupHandle, mPagesPerStep);
+    if (srv == SQLITE_OK || srv == SQLITE_BUSY || srv == SQLITE_LOCKED) {
+      // We're continuing the backup later. Release the guard to avoid closing
+      // the database.
+      guard.release();
+      // Queue up the next step
+      return NS_NewTimerWithCallback(getter_AddRefs(mTimer), this, mStepDelayMs,
+                                     nsITimer::TYPE_ONE_SHOT,
+                                     GetCurrentSerialEventTarget());
+    }
+#ifdef DEBUG
+    if (srv != SQLITE_DONE) {
+      nsCString warnMsg;
+      warnMsg.AppendLiteral(
+          "The SQLite database copy could not be completed due to an error: ");
+      warnMsg.Append(::sqlite3_errmsg(mBackupFile));
+      NS_WARNING(warnMsg.get());
+    }
+#endif
+
+    (void)::sqlite3_backup_finish(mBackupHandle);
+    MOZ_ALWAYS_TRUE(::sqlite3_close(mBackupFile) == SQLITE_OK);
+    mBackupFile = nullptr;
+
+    // The database is already closed, so we can release this guard now.
+    guard.release();
+
+    if (srv != SQLITE_DONE) {
+      NS_WARNING("Failed to create database copy.");
+
+      // The partially created database file is not useful. Let's remove it.
+      rv = file->Remove(false);
+      if (NS_FAILED(rv)) {
+        NS_WARNING(
+            "Removing a partially backed up SQLite database file failed.");
+      }
+
+      return Dispatch(convertResultCode(srv), nullptr);
+    }
+
+    // Now that we've successfully created the copy, we'll strip off the .tmp
+    // extension.
+
+    nsAutoString leafName;
+    rv = mDestinationFile->GetLeafName(leafName);
+    DISPATCH_AND_RETURN_IF_FAILED(rv);
+
+    rv = file->RenameTo(nullptr, leafName);
+    DISPATCH_AND_RETURN_IF_FAILED(rv);
+
+#undef DISPATCH_AND_RETURN_IF_FAILED
+    return Dispatch(NS_OK, nullptr);
+  }
+
+  nsresult Dispatch(nsresult aResult, nsISupports* aValue) {
+    RefPtr<CallbackComplete> event =
+        new CallbackComplete(aResult, aValue, mCallback.forget());
+    return mConnection->eventTargetOpenedOn->Dispatch(event,
+                                                      NS_DISPATCH_NORMAL);
+  }
+
+  ~AsyncBackupDatabaseFile() override {
+    nsresult rv;
+    nsCOMPtr<nsIThread> thread =
+        do_QueryInterface(mConnection->eventTargetOpenedOn, &rv);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+    // Handle ambiguous nsISupports inheritance.
+    NS_ProxyRelease("AsyncBackupDatabaseFile::mConnection", thread,
+                    mConnection.forget());
+    NS_ProxyRelease("AsyncBackupDatabaseFile::mDestinationFile", thread,
+                    mDestinationFile.forget());
+
+    // Generally, the callback will be released by CallbackComplete.
+    // However, if for some reason Run() is not executed, we still
+    // need to ensure that it is released here.
+    NS_ProxyRelease("AsyncInitializeClone::mCallback", thread,
+                    mCallback.forget());
+  }
+
+  RefPtr<Connection> mConnection;
+  sqlite3* mNativeConnection;
+  nsCOMPtr<nsITimer> mTimer;
+  nsCOMPtr<nsIFile> mDestinationFile;
+  nsCOMPtr<mozIStorageCompletionCallback> mCallback;
+  int32_t mPagesPerStep;
+  uint32_t mStepDelayMs;
+  sqlite3* mBackupFile;
+  sqlite3_backup* mBackupHandle;
+};
+
+NS_IMPL_ISUPPORTS_INHERITED(AsyncBackupDatabaseFile, Runnable, nsITimerCallback)
+
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -572,7 +784,8 @@ class AsyncVacuumEvent final : public Runnable {
 
 Connection::Connection(Service* aService, int aFlags,
                        ConnectionOperation aSupportedOperations,
-                       bool aInterruptible, bool aIgnoreLockingMode)
+                       const nsCString& aTelemetryFilename, bool aInterruptible,
+                       bool aIgnoreLockingMode)
     : sharedAsyncExecutionMutex("Connection::sharedAsyncExecutionMutex"),
       sharedDBMutex("Connection::sharedDBMutex"),
       eventTargetOpenedOn(WrapNotNull(GetCurrentSerialEventTarget())),
@@ -594,6 +807,9 @@ Connection::Connection(Service* aService, int aFlags,
   MOZ_ASSERT(!mIgnoreLockingMode || mFlags & SQLITE_OPEN_READONLY,
              "Can't ignore locking for a non-readonly connection!");
   mStorageService->registerConnection(this);
+  MOZ_ASSERT(!aTelemetryFilename.IsEmpty(),
+             "A telemetry filename should have been passed-in.");
+  mTelemetryFilename.Assign(aTelemetryFilename);
 }
 
 Connection::~Connection() {
@@ -699,8 +915,15 @@ nsIEventTarget* Connection::getAsyncExecutionTarget() {
 
   // Create the async event target if there's none yet.
   if (!mAsyncExecutionThread) {
+    // Names start with "sqldb:" followed by a recognizable name, like the
+    // database file name, or a specially crafted name like "memory".
+    // This name will be surfaced on https://crash-stats.mozilla.org, so any
+    // sensitive part of the file name (e.g. an URL origin) should be replaced
+    // by passing an explicit telemetryName to openDatabaseWithFileURL.
+    nsAutoCString name("sqldb:"_ns);
+    name.Append(mTelemetryFilename);
     static nsThreadPoolNaming naming;
-    nsresult rv = NS_NewNamedThread(naming.GetNextThreadName("mozStorage"),
+    nsresult rv = NS_NewNamedThread(naming.GetNextThreadName(name),
                                     getter_AddRefs(mAsyncExecutionThread));
     if (NS_FAILED(rv)) {
       NS_WARNING("Failed to create async thread.");
@@ -823,10 +1046,8 @@ nsresult Connection::initialize(const nsACString& aStorageKey,
       mName.IsEmpty() ? nsAutoCString(":memory:"_ns)
                       : "file:"_ns + mName + "?mode=memory&cache=shared"_ns;
 
-  mTelemetryFilename.AssignLiteral(":memory:");
-
-  int srv =
-      ::sqlite3_open_v2(path.get(), &mDBConn, mFlags, GetBaseVFSName(true));
+  int srv = ::sqlite3_open_v2(path.get(), &mDBConn, mFlags,
+                              basevfs::GetVFSName(true));
   if (srv != SQLITE_OK) {
     mDBConn = nullptr;
     nsresult rv = convertResultCode(srv);
@@ -860,7 +1081,6 @@ nsresult Connection::initialize(nsIFile* aDatabaseFile) {
   // Do not set mFileURL here since this is database does not have an associated
   // URL.
   mDatabaseFile = aDatabaseFile;
-  aDatabaseFile->GetNativeLeafName(mTelemetryFilename);
 
   nsAutoString path;
   nsresult rv = aDatabaseFile->GetPath(path);
@@ -874,12 +1094,12 @@ nsresult Connection::initialize(nsIFile* aDatabaseFile) {
                             "readonly-immutable-nolock");
   } else {
     srv = ::sqlite3_open_v2(NS_ConvertUTF16toUTF8(path).get(), &mDBConn, mFlags,
-                            GetBaseVFSName(exclusive));
+                            basevfs::GetVFSName(exclusive));
     if (exclusive && (srv == SQLITE_LOCKED || srv == SQLITE_BUSY)) {
       // Retry without trying to get an exclusive lock.
       exclusive = false;
       srv = ::sqlite3_open_v2(NS_ConvertUTF16toUTF8(path).get(), &mDBConn,
-                              mFlags, GetBaseVFSName(false));
+                              mFlags, basevfs::GetVFSName(false));
     }
   }
   if (srv != SQLITE_OK) {
@@ -897,7 +1117,7 @@ nsresult Connection::initialize(nsIFile* aDatabaseFile) {
     // first query execution. When initializeInternal fails it closes the
     // connection, so we can try to restart it in non-exclusive mode.
     srv = ::sqlite3_open_v2(NS_ConvertUTF16toUTF8(path).get(), &mDBConn, mFlags,
-                            GetBaseVFSName(false));
+                            basevfs::GetVFSName(false));
     if (srv == SQLITE_OK) {
       rv = initializeInternal();
     }
@@ -909,8 +1129,7 @@ nsresult Connection::initialize(nsIFile* aDatabaseFile) {
   return NS_OK;
 }
 
-nsresult Connection::initialize(nsIFileURL* aFileURL,
-                                const nsACString& aTelemetryFilename) {
+nsresult Connection::initialize(nsIFileURL* aFileURL) {
   NS_ASSERTION(aFileURL, "Passed null file URL!");
   NS_ASSERTION(!connectionReady(),
                "Initialize called on already opened database!");
@@ -924,12 +1143,6 @@ nsresult Connection::initialize(nsIFileURL* aFileURL,
   mFileURL = aFileURL;
   mDatabaseFile = databaseFile;
 
-  if (!aTelemetryFilename.IsEmpty()) {
-    mTelemetryFilename = aTelemetryFilename;
-  } else {
-    databaseFile->GetNativeLeafName(mTelemetryFilename);
-  }
-
   nsAutoCString spec;
   rv = aFileURL->GetSpec(spec);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -942,25 +1155,26 @@ nsresult Connection::initialize(nsIFileURL* aFileURL,
   bool hasKey = false;
   bool hasDirectoryLockId = false;
 
-  MOZ_ALWAYS_TRUE(URLParams::Parse(
-      query, [&hasKey, &hasDirectoryLockId](const nsAString& aName,
-                                            const nsAString& aValue) {
-        if (aName.EqualsLiteral("key")) {
-          hasKey = true;
-          return true;
-        }
-        if (aName.EqualsLiteral("directoryLockId")) {
-          hasDirectoryLockId = true;
-          return true;
-        }
-        return true;
-      }));
+  MOZ_ALWAYS_TRUE(
+      URLParams::Parse(query, true,
+                       [&hasKey, &hasDirectoryLockId](
+                           const nsACString& aName, const nsACString& aValue) {
+                         if (aName.EqualsLiteral("key")) {
+                           hasKey = true;
+                           return true;
+                         }
+                         if (aName.EqualsLiteral("directoryLockId")) {
+                           hasDirectoryLockId = true;
+                           return true;
+                         }
+                         return true;
+                       }));
 
   bool exclusive = StaticPrefs::storage_sqlite_exclusiveLock_enabled();
 
-  const char* const vfs = hasKey               ? GetObfuscatingVFSName()
-                          : hasDirectoryLockId ? GetQuotaVFSName()
-                                               : GetBaseVFSName(exclusive);
+  const char* const vfs = hasKey               ? obfsvfs::GetVFSName()
+                          : hasDirectoryLockId ? quotavfs::GetVFSName()
+                                               : basevfs::GetVFSName(exclusive);
 
   int srv = ::sqlite3_open_v2(spec.get(), &mDBConn, mFlags, vfs);
   if (srv != SQLITE_OK) {
@@ -989,9 +1203,6 @@ nsresult Connection::initializeInternal() {
   MOZ_ASSERT(srv2 == SQLITE_OK,
              "SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER should be enabled");
 #endif
-
-  MOZ_ASSERT(!mTelemetryFilename.IsEmpty(),
-             "A telemetry filename should have been set by now.");
 
   // Properly wrap the database handle's mutex.
   sharedDBMutex.initWithMutex(sqlite3_db_mutex(mDBConn));
@@ -1393,8 +1604,9 @@ int Connection::stepStatement(sqlite3* aNativeConnection,
                                  : Telemetry::kSlowSQLThresholdForHelperThreads;
   if (duration.ToMilliseconds() >= threshold) {
     nsDependentCString statementString(::sqlite3_sql(aStatement));
-    Telemetry::RecordSlowSQLStatement(statementString, mTelemetryFilename,
-                                      duration.ToMilliseconds());
+    Telemetry::RecordSlowSQLStatement(
+        statementString, mTelemetryFilename,
+        static_cast<uint32_t>(duration.ToMilliseconds()));
   }
 
   (void)::sqlite3_extended_result_codes(aNativeConnection, 0);
@@ -1472,8 +1684,9 @@ int Connection::executeSql(sqlite3* aNativeConnection, const char* aSqlString) {
                                  : Telemetry::kSlowSQLThresholdForHelperThreads;
   if (duration.ToMilliseconds() >= threshold) {
     nsDependentCString statementString(aSqlString);
-    Telemetry::RecordSlowSQLStatement(statementString, mTelemetryFilename,
-                                      duration.ToMilliseconds());
+    Telemetry::RecordSlowSQLStatement(
+        statementString, mTelemetryFilename,
+        static_cast<uint32_t>(duration.ToMilliseconds()));
   }
 
   return srv;
@@ -1714,7 +1927,7 @@ Connection::AsyncClone(bool aReadOnly,
   // The cloned connection will still implement the synchronous API, but throw
   // if any synchronous methods are called on the main thread.
   RefPtr<Connection> clone =
-      new Connection(mStorageService, flags, ASYNCHRONOUS);
+      new Connection(mStorageService, flags, ASYNCHRONOUS, mTelemetryFilename);
 
   RefPtr<AsyncInitializeClone> initEvent =
       new AsyncInitializeClone(this, clone, aReadOnly, aCallback);
@@ -1733,7 +1946,7 @@ nsresult Connection::initializeClone(Connection* aClone, bool aReadOnly) {
   if (!mStorageKey.IsEmpty()) {
     rv = aClone->initialize(mStorageKey, mName);
   } else if (mFileURL) {
-    rv = aClone->initialize(mFileURL, mTelemetryFilename);
+    rv = aClone->initialize(mFileURL);
   } else {
     rv = aClone->initialize(mDatabaseFile);
   }
@@ -1852,6 +2065,17 @@ nsresult Connection::initializeClone(Connection* aClone, bool aReadOnly) {
     }
   }
 
+  // Load SQLite extensions that were on this connection.
+  // Copy into an array rather than holding the mutex while we load extensions.
+  nsTArray<nsCString> loadedExtensions;
+  {
+    MutexAutoLock lockedScope(sharedAsyncExecutionMutex);
+    AppendToArray(loadedExtensions, mLoadedExtensions);
+  }
+  for (const auto& extension : loadedExtensions) {
+    (void)aClone->LoadExtension(extension, nullptr);
+  }
+
   guard.release();
   return NS_OK;
 }
@@ -1878,8 +2102,9 @@ Connection::Clone(bool aReadOnly, mozIStorageConnection** _connection) {
     flags = (~SQLITE_OPEN_CREATE & flags);
   }
 
-  RefPtr<Connection> clone = new Connection(
-      mStorageService, flags, mSupportedOperations, mInterruptible);
+  RefPtr<Connection> clone =
+      new Connection(mStorageService, flags, mSupportedOperations,
+                     mTelemetryFilename, mInterruptible);
 
   rv = initializeClone(clone, aReadOnly);
   if (NS_FAILED(rv)) {
@@ -2057,8 +2282,9 @@ Connection::GetSchemaVersion(int32_t* _version) {
 
   *_version = 0;
   bool hasResult;
-  if (NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult)
+  if (NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
     *_version = stmt->AsInt32(0);
+  }
 
   return NS_OK;
 }
@@ -2240,6 +2466,18 @@ Connection::GetVariableLimit(int32_t* _limit) {
     return NS_ERROR_UNEXPECTED;
   }
   *_limit = limit;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+Connection::SetVariableLimit(int32_t limit) {
+  if (!connectionReady()) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+  int oldLimit = ::sqlite3_limit(mDBConn, SQLITE_LIMIT_VARIABLE_NUMBER, limit);
+  if (oldLimit < 0) {
+    return NS_ERROR_UNEXPECTED;
+  }
   return NS_OK;
 }
 
@@ -2523,6 +2761,103 @@ int32_t Connection::RemovablePagesInFreeList(const nsACString& aSchemaName) {
 }
 
 NS_IMETHODIMP
+Connection::LoadExtension(const nsACString& aExtensionName,
+                          mozIStorageCompletionCallback* aCallback) {
+  AUTO_PROFILER_LABEL("Connection::LoadExtension", OTHER);
+
+  // This is a static list of extensions we can load.
+  // Please use lowercase ASCII names and keep this list alphabetically ordered.
+  static constexpr nsLiteralCString sSupportedExtensions[] = {
+      // clang-format off
+      "fts5"_ns,
+      // clang-format on
+  };
+  if (std::find(std::begin(sSupportedExtensions),
+                std::end(sSupportedExtensions),
+                aExtensionName) == std::end(sSupportedExtensions)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (!connectionReady()) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  int srv = ::sqlite3_db_config(mDBConn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+                                1, nullptr);
+  if (srv != SQLITE_OK) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  // Track the loaded extension for later connection cloning operations.
+  {
+    MutexAutoLock lockedScope(sharedAsyncExecutionMutex);
+    if (!mLoadedExtensions.EnsureInserted(aExtensionName)) {
+      // Already loaded, bail out but issue a warning.
+      NS_WARNING(nsPrintfCString(
+                     "Tried to register '%s' SQLite extension multiple times!",
+                     PromiseFlatCString(aExtensionName).get())
+                     .get());
+      return NS_OK;
+    }
+  }
+
+  nsAutoCString entryPoint("sqlite3_");
+  entryPoint.Append(aExtensionName);
+  entryPoint.AppendLiteral("_init");
+
+  RefPtr<Runnable> loadTask = NS_NewRunnableFunction(
+      "mozStorageConnection::LoadExtension",
+      [this, self = RefPtr(this), entryPoint,
+       callback = RefPtr(aCallback)]() mutable {
+        MOZ_ASSERT(
+            !NS_IsMainThread() ||
+                (operationSupported(Connection::SYNCHRONOUS) &&
+                 eventTargetOpenedOn == GetMainThreadSerialEventTarget()),
+            "Should happen on main-thread only for synchronous connections "
+            "opened on the main thread");
+#ifdef MOZ_FOLD_LIBS
+        int srv = ::sqlite3_load_extension(mDBConn,
+                                           MOZ_DLL_PREFIX "nss3" MOZ_DLL_SUFFIX,
+                                           entryPoint.get(), nullptr);
+#else
+        int srv = ::sqlite3_load_extension(
+            mDBConn, MOZ_DLL_PREFIX "mozsqlite3" MOZ_DLL_SUFFIX,
+            entryPoint.get(), nullptr);
+#endif
+        if (!callback) {
+          return;
+        };
+        RefPtr<Runnable> callbackTask = NS_NewRunnableFunction(
+            "mozStorageConnection::LoadExtension_callback",
+            [callback = std::move(callback), srv]() {
+              (void)callback->Complete(convertResultCode(srv), nullptr);
+            });
+        if (IsOnCurrentSerialEventTarget(eventTargetOpenedOn)) {
+          MOZ_ALWAYS_SUCCEEDS(callbackTask->Run());
+        } else {
+          // Redispatch the callback to the calling thread.
+          MOZ_ALWAYS_SUCCEEDS(eventTargetOpenedOn->Dispatch(
+              callbackTask.forget(), NS_DISPATCH_NORMAL));
+        }
+      });
+
+  if (NS_IsMainThread() && !operationSupported(Connection::SYNCHRONOUS)) {
+    // This is a main-thread call to an async-only connection, thus we should
+    // load the library in the helper thread.
+    nsIEventTarget* helperThread = getAsyncExecutionTarget();
+    if (!helperThread) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+    MOZ_ALWAYS_SUCCEEDS(
+        helperThread->Dispatch(loadTask.forget(), NS_DISPATCH_NORMAL));
+  } else {
+    // In any other case we just load the extension on the current thread.
+    MOZ_ALWAYS_SUCCEEDS(loadTask->Run());
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 Connection::EnableModule(const nsACString& aModuleName) {
   if (!connectionReady()) {
     return NS_ERROR_NOT_INITIALIZED;
@@ -2545,9 +2880,6 @@ Connection::EnableModule(const nsACString& aModuleName) {
   return NS_ERROR_FAILURE;
 }
 
-// Implemented in QuotaVFS.cpp
-already_AddRefed<QuotaObject> GetQuotaObjectForFile(sqlite3_file* pFile);
-
 NS_IMETHODIMP
 Connection::GetQuotaObjects(QuotaObject** aDatabaseQuotaObject,
                             QuotaObject** aJournalQuotaObject) {
@@ -2569,7 +2901,28 @@ Connection::GetQuotaObjects(QuotaObject** aDatabaseQuotaObject,
     return convertResultCode(srv);
   }
 
-  RefPtr<QuotaObject> databaseQuotaObject = GetQuotaObjectForFile(file);
+  sqlite3_vfs* vfs;
+  srv =
+      ::sqlite3_file_control(mDBConn, nullptr, SQLITE_FCNTL_VFS_POINTER, &vfs);
+  if (srv != SQLITE_OK) {
+    return convertResultCode(srv);
+  }
+
+  bool obfusactingVFS = false;
+
+  {
+    const nsDependentCString vfsName{vfs->zName};
+
+    if (vfsName == obfsvfs::GetVFSName()) {
+      obfusactingVFS = true;
+    } else if (vfsName != quotavfs::GetVFSName()) {
+      NS_WARNING("Got unexpected vfs");
+      return NS_ERROR_FAILURE;
+    }
+  }
+
+  RefPtr<QuotaObject> databaseQuotaObject =
+      GetQuotaObject(file, obfusactingVFS);
   if (NS_WARN_IF(!databaseQuotaObject)) {
     return NS_ERROR_FAILURE;
   }
@@ -2580,7 +2933,7 @@ Connection::GetQuotaObjects(QuotaObject** aDatabaseQuotaObject,
     return convertResultCode(srv);
   }
 
-  RefPtr<QuotaObject> journalQuotaObject = GetQuotaObjectForFile(file);
+  RefPtr<QuotaObject> journalQuotaObject = GetQuotaObject(file, obfusactingVFS);
   if (NS_WARN_IF(!journalQuotaObject)) {
     return NS_ERROR_FAILURE;
   }
@@ -2605,6 +2958,57 @@ uint32_t Connection::IncreaseTransactionNestingLevel(
 uint32_t Connection::DecreaseTransactionNestingLevel(
     const mozilla::storage::SQLiteMutexAutoLock& aProofOfLock) {
   return --mTransactionNestingLevel;
+}
+
+NS_IMETHODIMP
+Connection::BackupToFileAsync(nsIFile* aDestinationFile,
+                              mozIStorageCompletionCallback* aCallback,
+                              uint32_t aPagesPerStep, uint32_t aStepDelayMs) {
+  NS_ENSURE_ARG(aDestinationFile);
+  NS_ENSURE_ARG(aCallback);
+  NS_ENSURE_TRUE(NS_IsMainThread(), NS_ERROR_NOT_SAME_THREAD);
+
+  // Abort if we're shutting down.
+  if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
+    return NS_ERROR_ABORT;
+  }
+  // Check if AsyncClose or Close were already invoked.
+  if (!connectionReady()) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+  nsresult rv = ensureOperationSupported(ASYNCHRONOUS);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  nsIEventTarget* asyncThread = getAsyncExecutionTarget();
+  if (!asyncThread) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  // The number of pages of the database to copy per step
+  static constexpr int32_t DEFAULT_PAGES_PER_STEP = 5;
+  // The number of milliseconds to wait between each step.
+  static constexpr uint32_t DEFAULT_STEP_DELAY_MS = 250;
+
+  CheckedInt<int32_t> pagesPerStep(aPagesPerStep);
+  if (!pagesPerStep.isValid()) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (!pagesPerStep.value()) {
+    pagesPerStep = DEFAULT_PAGES_PER_STEP;
+  }
+
+  if (!aStepDelayMs) {
+    aStepDelayMs = DEFAULT_STEP_DELAY_MS;
+  }
+
+  // Create and dispatch our backup event to the execution thread.
+  nsCOMPtr<nsIRunnable> backupEvent =
+      new AsyncBackupDatabaseFile(this, mDBConn, aDestinationFile, aCallback,
+                                  pagesPerStep.value(), aStepDelayMs);
+  rv = asyncThread->Dispatch(backupEvent, NS_DISPATCH_NORMAL);
+  return rv;
 }
 
 }  // namespace mozilla::storage

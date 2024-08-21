@@ -19,6 +19,21 @@ interface nsIVariant;
 interface mozIStorageCompletionCallback;
 
 /**
+ * PRIVACY WARNING
+ * ===============
+ *
+ * Database file names can be exposed through telemetry and in crash reports on
+ * the https://crash-stats.mozilla.org site, to allow recognizing the affected
+ * database.
+ * if your database name may contain privacy sensitive information, e.g. an
+ * URL origin, you should use openDatabaseWithFileURL and pass an explicit
+ * TelemetryFilename to it. That name will be used both for telemetry and for
+ * thread names in crash reports.
+ * If you have different needs (e.g. using the javascript module or an async
+ * connection from the main thread) please coordinate with the mozStorage peers.
+ */
+
+/**
  * The mozIStorageService interface is intended to be implemented by
  * a service that can create storage connections (mozIStorageConnection)
  * to either a well-known profile database or to a specific database file.
@@ -104,13 +119,13 @@ interface mozIStorageService : nsISupports {
    * string may be:
    * - "memory" to open an in-memory database.
    *
-   * @param [optional] aOpenFlags
+   * @param aOpenFlags
    *        A set of flags to open the database with optional features.
    *        Currently supports OPEN_SHARED, OPEN_READONLY and
    *        OPEN_IGNORE_LOCKING_MODE flags.
    *        For full details, please refer to the documentation of the flags.
    *
-   * @param [optional] aConnectionFlags
+   * @param aConnectionFlags
    *        A set of flags to enable optional features for the returned
    *        asynchronous connection object.
    *        Currently supports CONNECTION_INTERRUPTIBLE flag.
@@ -131,8 +146,8 @@ interface mozIStorageService : nsISupports {
    *         main thread.
    */
   void openAsyncDatabase(in nsIVariant aDatabaseStore,
-                         [optional] in unsigned long aOpenFlags,
-                         [optional] in unsigned long aConnectionFlags,
+                         in unsigned long aOpenFlags,
+                         in unsigned long aConnectionFlags,
                          in mozIStorageCompletionCallback aCallback);
 
   /**
@@ -266,27 +281,6 @@ interface mozIStorageService : nsISupports {
   mozIStorageConnection openDatabaseWithFileURL(
       in nsIFileURL aFileURL, [optional] in ACString aTelemetryFilename,
       [optional] in unsigned long aConnectionFlags);
-
-  /*
-   * Utilities
-   */
-
-  /**
-   * Copies the specified database file to the specified parent directory with
-   * the specified file name.  If the parent directory is not specified, it
-   * places the backup in the same directory as the current file.  This
-   * function ensures that the file being created is unique.
-   *
-   * @param aDBFile
-   *        The database file that will be backed up.
-   * @param aBackupFileName
-   *        The name of the new backup file to create.
-   * @param [optional] aBackupParentDirectory
-   *        The directory you'd like the backup file to be placed.
-   * @return The nsIFile representing the backup file.
-   */
-  nsIFile backupDatabaseFile(in nsIFile aDBFile, in AString aBackupFileName,
-                             [optional] in nsIFile aBackupParentDirectory);
 };
 
 %{C++
