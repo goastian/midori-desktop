@@ -14,8 +14,10 @@ async function waitForScrollendEvent(test, target, timeoutMs = 500) {
   return waitForEvent("scrollend", test, target, timeoutMs);
 }
 
-async function waitForOverscrollEvent(test, target, timeoutMs = 500) {
-  return waitForEvent("overscroll", test, target, timeoutMs);
+async function waitForScrollendEventNoTimeout(target) {
+  return new Promise((resolve) => {
+    target.addEventListener("scrollend", resolve);
+  });
 }
 
 async function waitForPointercancelEvent(test, target, timeoutMs = 500) {
@@ -24,17 +26,15 @@ async function waitForPointercancelEvent(test, target, timeoutMs = 500) {
 
 // Resets the scroll position to (0,0).  If a scroll is required, then the
 // promise is not resolved until the scrollend event is received.
-async function waitForScrollReset(test, scroller, timeoutMs = 500) {
+async function waitForScrollReset(test, scroller, x = 0, y = 0) {
   return new Promise(resolve => {
-    if (scroller.scrollTop == 0 &&
-        scroller.scrollLeft == 0) {
+    if (scroller.scrollTop == x && scroller.scrollLeft == y) {
       resolve();
     } else {
       const eventTarget =
         scroller == document.scrollingElement ? document : scroller;
-      scroller.scrollTop = 0;
-      scroller.scrollLeft = 0;
-      waitForScrollendEvent(test, eventTarget, timeoutMs).then(resolve);
+      scroller.scrollTo(x, y);
+      waitForScrollendEventNoTimeout(eventTarget).then(resolve);
     }
   });
 }
@@ -113,13 +113,13 @@ function waitForCompositorCommit() {
   });
 }
 
-// Please don't remove this. This is necessary for chromium-based browsers.
-// This shouldn't be necessary if the test harness deferred running the tests
-// until after paint holding. This can be a no-op on user-agents that do not
-// have a separate compositor thread.
+// Please don't remove this. This is necessary for chromium-based browsers. It
+// can be a no-op on user-agents that do not have a separate compositor thread.
+// TODO(crbug.com/1509054): This shouldn't be necessary if the test harness
+// deferred running the tests until after paint holding.
 async function waitForCompositorReady() {
   const animation =
-      document.body.animate({ opacity: [ 1, 1 ] }, {duration: 1 });
+      document.body.animate({ opacity: [ 0, 1 ] }, {duration: 1 });
   return animation.finished;
 }
 
@@ -220,7 +220,7 @@ function touchScrollInTarget(pixels_to_scroll, target, direction, pause_time_in_
 
 // Trigger fling by doing pointerUp right after pointerMoves.
 function touchFlingInTarget(pixels_to_scroll, target, direction) {
-  touchScrollInTarget(pixels_to_scroll, target, direction, 0 /* pause_time */);
+  return touchScrollInTarget(pixels_to_scroll, target, direction, 0 /* pause_time */);
 }
 
 function mouseActionsInTarget(target, origin, delta, pause_time_in_ms = 100) {
