@@ -24,10 +24,12 @@
 #include "mozilla/mozalloc.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_editor.h"
 #include "mozilla/TextComposition.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TextServicesDocument.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Selection.h"
@@ -38,7 +40,6 @@
 #include "nsCaret.h"
 #include "nsCharTraits.h"
 #include "nsComponentManagerUtils.h"
-#include "nsContentCID.h"
 #include "nsContentList.h"
 #include "nsDebug.h"
 #include "nsDependentSubstring.h"
@@ -74,6 +75,11 @@ using namespace dom;
 
 using LeafNodeType = HTMLEditUtils::LeafNodeType;
 using LeafNodeTypes = HTMLEditUtils::LeafNodeTypes;
+
+template EditorDOMPoint TextEditor::FindBetterInsertionPoint(
+    const EditorDOMPoint& aPoint) const;
+template EditorRawDOMPoint TextEditor::FindBetterInsertionPoint(
+    const EditorRawDOMPoint& aPoint) const;
 
 TextEditor::TextEditor() : EditorBase(EditorBase::EditorType::Text) {
   // printf("Size of TextEditor: %zu\n", sizeof(TextEditor));
@@ -312,18 +318,35 @@ nsresult TextEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
     // we don't PreventDefault() here or keybindings like control-x won't work
     return NS_OK;
   }
-  // Our widget shouldn't set `\r` to `mCharCode`, but it may be synthesized
+  aKeyboardEvent->PreventDefault();
+  // If we dispatch 2 keypress events for a surrogate pair and we set only
+  // first `.key` value to the surrogate pair, the preceding one has it and the
+  // other has empty string.  In this case, we should handle only the first one
+  // with the key value.
+  if (!StaticPrefs::dom_event_keypress_dispatch_once_per_surrogate_pair() &&
+      !StaticPrefs::dom_event_keypress_key_allow_lone_surrogate() &&
+      aKeyboardEvent->mKeyValue.IsEmpty() &&
+      IS_SURROGATE(aKeyboardEvent->mCharCode)) {
+    return NS_OK;
+  }
+  // Our widget shouldn't set `\r` to `mKeyValue`, but it may be synthesized
   // keyboard event and its value may be `\r`.  In such case, we should treat
   // it as `\n` for the backward compatibility because we stopped converting
   // `\r` and `\r\n` to `\n` at getting `HTMLInputElement.value` and
   // `HTMLTextAreaElement.value` for the performance (i.e., we don't need to
   // take care in `HTMLEditor`).
-  char16_t charCode =
-      static_cast<char16_t>(aKeyboardEvent->mCharCode) == nsCRT::CR
-          ? nsCRT::LF
-          : static_cast<char16_t>(aKeyboardEvent->mCharCode);
-  aKeyboardEvent->PreventDefault();
-  nsAutoString str(charCode);
+  nsAutoString str(aKeyboardEvent->mKeyValue);
+  if (str.IsEmpty()) {
+    MOZ_ASSERT(aKeyboardEvent->mCharCode <= 0xFFFF,
+               "Non-BMP character needs special handling");
+    str.Assign(aKeyboardEvent->mCharCode == nsCRT::CR
+                   ? static_cast<char16_t>(nsCRT::LF)
+                   : static_cast<char16_t>(aKeyboardEvent->mCharCode));
+  } else {
+    MOZ_ASSERT(str.Find(u"\r\n"_ns) == kNotFound,
+               "This assumes that typed text does not include CRLF");
+    str.ReplaceChar('\r', '\n');
+  }
   nsresult rv = OnInputText(str);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "EditorBase::OnInputText() failed");
   return rv;
@@ -575,8 +598,13 @@ nsresult TextEditor::HandlePasteAsQuotation(
     return NS_OK;
   }
 
+  auto* windowContext = GetDocument()->GetWindowContext();
+  if (!windowContext) {
+    NS_WARNING("Editor didn't have document window context");
+    return NS_ERROR_FAILURE;
+  }
   // Get the Data from the clipboard
-  clipboard->GetData(trans, aClipboardType);
+  rv = clipboard->GetData(trans, aClipboardType, windowContext);
 
   // Now we ask the transferable for the data
   // it still owns the data, we just have a pointer to it.
@@ -803,6 +831,61 @@ nsresult TextEditor::RemoveAttributeOrEquivalent(Element* aElement,
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                        "EditorBase::RemoveAttributeWithTransaction() failed");
   return EditorBase::ToGenericNSResult(rv);
+}
+
+template <typename EditorDOMPointType>
+EditorDOMPointType TextEditor::FindBetterInsertionPoint(
+    const EditorDOMPointType& aPoint) const {
+  if (MOZ_UNLIKELY(NS_WARN_IF(!aPoint.IsInContentNode()))) {
+    return aPoint;
+  }
+
+  MOZ_ASSERT(aPoint.IsSetAndValid());
+
+  Element* const anonymousDivElement = GetRoot();
+  if (aPoint.GetContainer() == anonymousDivElement) {
+    // In some cases, aPoint points start of the anonymous <div>.  To avoid
+    // injecting unneeded text nodes, we first look to see if we have one
+    // available.  In that case, we'll just adjust node and offset accordingly.
+    if (aPoint.IsStartOfContainer()) {
+      if (aPoint.GetContainer()->HasChildren() &&
+          aPoint.GetContainer()->GetFirstChild()->IsText()) {
+        return EditorDOMPointType(aPoint.GetContainer()->GetFirstChild(), 0u);
+      }
+    }
+    // In some other cases, aPoint points the terminating padding <br> element
+    // for empty last line in the anonymous <div>.  In that case, we'll adjust
+    // aInOutNode and aInOutOffset to the preceding text node, if any.
+    else {
+      nsIContent* child = aPoint.GetContainer()->GetLastChild();
+      while (child) {
+        if (child->IsText()) {
+          return EditorDOMPointType::AtEndOf(*child);
+        }
+        child = child->GetPreviousSibling();
+      }
+    }
+  }
+
+  // Sometimes, aPoint points the padding <br> element.  In that case, we'll
+  // adjust the insertion point to the previous text node, if one exists, or to
+  // the parent anonymous DIV.
+  if (EditorUtils::IsPaddingBRElementForEmptyLastLine(
+          *aPoint.template ContainerAs<nsIContent>()) &&
+      aPoint.IsStartOfContainer()) {
+    nsIContent* previousSibling = aPoint.GetContainer()->GetPreviousSibling();
+    if (previousSibling && previousSibling->IsText()) {
+      return EditorDOMPointType::AtEndOf(*previousSibling);
+    }
+
+    nsINode* parentOfContainer = aPoint.GetContainerParent();
+    if (parentOfContainer && parentOfContainer == anonymousDivElement) {
+      return EditorDOMPointType(parentOfContainer,
+                                aPoint.template ContainerAs<nsIContent>(), 0u);
+    }
+  }
+
+  return aPoint;
 }
 
 // static

@@ -87,13 +87,11 @@ void TextEditor::OnStartToHandleTopLevelEditSubAction(
     // after inserting text.
     const EditorRawDOMPoint point =
         FindBetterInsertionPoint(EditorRawDOMPoint(SelectionRef().AnchorRef()));
-    NS_WARNING_ASSERTION(
-        point.IsSet(),
-        "EditorBase::FindBetterInsertionPoint() failed, but ignored");
     if (point.IsSet()) {
       SetSpellCheckRestartPoint(point);
       return;
     }
+    NS_WARNING("TextEditor::FindBetterInsertionPoint() failed, but ignored");
   }
   if (SelectionRef().AnchorRef().IsSet()) {
     SetSpellCheckRestartPoint(EditorRawDOMPoint(SelectionRef().AnchorRef()));
@@ -221,7 +219,8 @@ TextEditor::InsertLineFeedCharacterAtSelection() {
 
   // Insert a linefeed character.
   Result<InsertTextResult, nsresult> insertTextResult =
-      InsertTextWithTransaction(*document, u"\n"_ns, pointToInsert);
+      InsertTextWithTransaction(*document, u"\n"_ns, pointToInsert,
+                                InsertTextTo::ExistingTextNodeIfAvailable);
   if (MOZ_UNLIKELY(insertTextResult.isErr())) {
     NS_WARNING("TextEditor::InsertTextWithTransaction(\"\\n\") failed");
     return insertTextResult.propagateErr();
@@ -360,18 +359,8 @@ Result<EditActionResult, nsresult> TextEditor::HandleInsertText(
 
   UndefineCaretBidiLevel();
 
-  if (aInsertionString.IsEmpty() &&
-      aEditSubAction != EditSubAction::eInsertTextComingFromIME) {
-    // HACK: this is a fix for bug 19395
-    // I can't outlaw all empty insertions
-    // because IME transaction depend on them
-    // There is more work to do to make the
-    // world safe for IME.
-    return EditActionResult::CanceledResult();
-  }
-
   nsAutoString insertionString(aInsertionString);
-  if (mMaxTextLength >= 0) {
+  if (!aInsertionString.IsEmpty() && mMaxTextLength >= 0) {
     Result<EditActionResult, nsresult> result =
         MaybeTruncateInsertionStringForMaxLength(insertionString);
     if (MOZ_UNLIKELY(result.isErr())) {
@@ -410,6 +399,16 @@ Result<EditActionResult, nsresult> TextEditor::HandleInsertText(
           "EditorBase::DeleteSelectionAsSubAction(eNone, eNoStrip) failed");
       return Err(rv);
     }
+  }
+
+  if (aInsertionString.IsEmpty() &&
+      aEditSubAction != EditSubAction::eInsertTextComingFromIME) {
+    // HACK: this is a fix for bug 19395
+    // I can't outlaw all empty insertions
+    // because IME transaction depend on them
+    // There is more work to do to make the
+    // world safe for IME.
+    return EditActionResult::CanceledResult();
   }
 
   // XXX Why don't we cancel here?  Shouldn't we do this first?
@@ -459,11 +458,12 @@ Result<EditActionResult, nsresult> TextEditor::HandleInsertText(
       compositionStartPoint = FindBetterInsertionPoint(atStartOfSelection);
       NS_WARNING_ASSERTION(
           compositionStartPoint.IsSet(),
-          "EditorBase::FindBetterInsertionPoint() failed, but ignored");
+          "TextEditor::FindBetterInsertionPoint() failed, but ignored");
     }
     Result<InsertTextResult, nsresult> insertTextResult =
         InsertTextWithTransaction(*document, insertionString,
-                                  compositionStartPoint);
+                                  compositionStartPoint,
+                                  InsertTextTo::ExistingTextNodeIfAvailable);
     if (MOZ_UNLIKELY(insertTextResult.isErr())) {
       NS_WARNING("EditorBase::InsertTextWithTransaction() failed");
       return insertTextResult.propagateErr();
@@ -484,7 +484,8 @@ Result<EditActionResult, nsresult> TextEditor::HandleInsertText(
 
     Result<InsertTextResult, nsresult> insertTextResult =
         InsertTextWithTransaction(*document, insertionString,
-                                  atStartOfSelection);
+                                  atStartOfSelection,
+                                  InsertTextTo::ExistingTextNodeIfAvailable);
     if (MOZ_UNLIKELY(insertTextResult.isErr())) {
       NS_WARNING("EditorBase::InsertTextWithTransaction() failed");
       return insertTextResult.propagateErr();

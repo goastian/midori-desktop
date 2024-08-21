@@ -31,17 +31,9 @@ function runTest() {
     var os = Services.obs;
 
     os.addObserver(onPromptLoad, "common-dialog-loaded");
-    os.addObserver(onPromptLoad, "tabmodal-dialog-loaded");
 
-    function onPromptLoad(subject, topic, data) {
-      let ui = subject.Dialog ? subject.Dialog.ui : undefined;
-      if (!ui) {
-        // subject is an tab prompt, find the elements ourselves
-        ui = {
-          loginTextbox: subject.querySelector(".tabmodalprompt-loginTextbox"),
-          button0: subject.querySelector(".tabmodalprompt-button0"),
-        };
-      }
+    function onPromptLoad(subject) {
+      let ui = subject.Dialog.ui;
       sendAsyncMessage("ok", [true, "onPromptLoad is called"]);
       gPromptInput = ui.loginTextbox;
       gPromptInput.addEventListener("focus", onPromptFocus);
@@ -54,19 +46,15 @@ function runTest() {
       sendAsyncMessage("ok", [true, "onPromptFocus is called"]);
       gPromptInput.removeEventListener("focus", onPromptFocus);
 
-      var listenerService = Services.els;
-
       var listener = {
         handleEvent: function _hv(aEvent) {
           var isPrevented = aEvent.defaultPrevented;
           sendAsyncMessage("ok", [!isPrevented,
                            "ESC key event is prevented by editor"]);
-          listenerService.removeSystemEventListener(gPromptInput, "keypress",
-                                                    listener, false);
+          gPromptInput.removeEventListener("keypress", listener, { mozSystemGroup: true });
         },
       };
-      listenerService.addSystemEventListener(gPromptInput, "keypress",
-                                             listener, false);
+      gPromptInput.addEventListener("keypress", listener, { mozSystemGroup: true });
 
       sendAsyncMessage("info", "sending key");
       var EventUtils = {};
@@ -81,7 +69,6 @@ function runTest() {
     }
 
     addMessageListener("destroy", function() {
-      os.removeObserver(onPromptLoad, "tabmodal-dialog-loaded");
       os.removeObserver(onPromptLoad, "common-dialog-loaded");
     });
   });

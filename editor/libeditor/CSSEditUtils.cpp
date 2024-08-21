@@ -534,8 +534,7 @@ nsresult CSSEditUtils::GetComputedCSSInlinePropertyBase(nsIContent& aContent,
   // FIXME: Maybe we can avoid copying aValue too, though it's no worse than
   // what we used to do.
   nsAutoCString value;
-  MOZ_ALWAYS_SUCCEEDS(
-      computedDOMStyle->GetPropertyValue(nsAtomCString(&aCSSProperty), value));
+  computedDOMStyle->GetPropertyValue(nsAtomCString(&aCSSProperty), value);
   CopyUTF8toUTF16(value, aValue);
   return NS_OK;
 }
@@ -1212,8 +1211,8 @@ Result<bool, nsresult> CSSEditUtils::HaveCSSEquivalentStyles(
 // static
 bool CSSEditUtils::DoStyledElementsHaveSameStyle(
     nsStyledElement& aStyledElement, nsStyledElement& aOtherStyledElement) {
-  if (aStyledElement.HasAttr(kNameSpaceID_None, nsGkAtoms::id) ||
-      aOtherStyledElement.HasAttr(kNameSpaceID_None, nsGkAtoms::id)) {
+  if (aStyledElement.HasAttr(nsGkAtoms::id) ||
+      aOtherStyledElement.HasAttr(nsGkAtoms::id)) {
     // at least one of the spans carries an ID ; suspect a CSS rule applies to
     // it and refuse to merge the nodes
     return false;
@@ -1221,7 +1220,7 @@ bool CSSEditUtils::DoStyledElementsHaveSameStyle(
 
   nsAutoString firstClass, otherClass;
   bool isElementClassSet =
-      aStyledElement.GetAttr(kNameSpaceID_None, nsGkAtoms::_class, firstClass);
+      aStyledElement.GetAttr(nsGkAtoms::_class, firstClass);
   bool isOtherElementClassSet = aOtherStyledElement.GetAttr(
       kNameSpaceID_None, nsGkAtoms::_class, otherClass);
   if (isElementClassSet && isOtherElementClassSet) {
@@ -1269,15 +1268,8 @@ bool CSSEditUtils::DoStyledElementsHaveSameStyle(
     nsAutoCString firstValue, otherValue;
     nsAutoCString propertyNameString;
     firstCSSDecl->Item(i, propertyNameString);
-    DebugOnly<nsresult> rvIgnored =
-        firstCSSDecl->GetPropertyValue(propertyNameString, firstValue);
-    NS_WARNING_ASSERTION(
-        NS_SUCCEEDED(rvIgnored),
-        "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
-    rvIgnored = otherCSSDecl->GetPropertyValue(propertyNameString, otherValue);
-    NS_WARNING_ASSERTION(
-        NS_SUCCEEDED(rvIgnored),
-        "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
+    firstCSSDecl->GetPropertyValue(propertyNameString, firstValue);
+    otherCSSDecl->GetPropertyValue(propertyNameString, otherValue);
     // FIXME: We need to handle all properties whose values are color.
     // However, it's too expensive if we keep using string property names.
     if (propertyNameString.EqualsLiteral("color") ||
@@ -1293,15 +1285,8 @@ bool CSSEditUtils::DoStyledElementsHaveSameStyle(
     nsAutoCString firstValue, otherValue;
     nsAutoCString propertyNameString;
     otherCSSDecl->Item(i, propertyNameString);
-    DebugOnly<nsresult> rvIgnored =
-        otherCSSDecl->GetPropertyValue(propertyNameString, otherValue);
-    NS_WARNING_ASSERTION(
-        NS_SUCCEEDED(rvIgnored),
-        "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
-    rvIgnored = firstCSSDecl->GetPropertyValue(propertyNameString, firstValue);
-    NS_WARNING_ASSERTION(
-        NS_SUCCEEDED(rvIgnored),
-        "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
+    otherCSSDecl->GetPropertyValue(propertyNameString, otherValue);
+    firstCSSDecl->GetPropertyValue(propertyNameString, firstValue);
     // FIXME: We need to handle all properties whose values are color.
     // However, it's too expensive if we keep using string property names.
     if (propertyNameString.EqualsLiteral("color") ||

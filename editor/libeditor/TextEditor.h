@@ -156,6 +156,12 @@ class TextEditor final : public EditorBase,
   void SetMaxTextLength(int32_t aLength) { mMaxTextLength = aLength; }
 
   /**
+   * This updates the wrap width used for initializing a document encoder within
+   * a call of EditorBase::GetAndInitDocEncoder().
+   */
+  void SetWrapColumn(int32_t aWrapColumn) { mWrapColumn = aWrapColumn; }
+
+  /**
    * Replace existed string with a string.
    * This is fast path to replace all string when using single line control.
    *
@@ -281,6 +287,18 @@ class TextEditor final : public EditorBase,
       bool aSuppressTransaction) final;
   using EditorBase::RemoveAttributeOrEquivalent;
   using EditorBase::SetAttributeOrEquivalent;
+
+  /**
+   * FindBetterInsertionPoint() tries to look for better insertion point which
+   * is typically the nearest text node and offset in it.
+   *
+   * @param aPoint      Insertion point which the callers found.
+   * @return            Better insertion point if there is.  If not returns
+   *                    same point as aPoint.
+   */
+  template <typename EditorDOMPointType>
+  EditorDOMPointType FindBetterInsertionPoint(
+      const EditorDOMPointType& aPoint) const;
 
   /**
    * InsertLineBreakAsSubAction() inserts a line break.
@@ -586,6 +604,7 @@ class TextEditor final : public EditorBase,
 
   int32_t mMaxTextLength = -1;
 
+  friend class AutoRangeArray;  // FindBetterInsertionPoint
   friend class DeleteNodeTransaction;
   friend class EditorBase;
   friend class InsertNodeTransaction;

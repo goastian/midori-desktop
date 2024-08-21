@@ -10,7 +10,8 @@
 #include "EditorBase.h"      // for EditorBase
 #include "EditorDOMPoint.h"  // for EditorDOMPoint, EditorDOMRange, etc
 #include "EditorForwards.h"
-#include "SelectionState.h"  // for SelectionState
+#include "HTMLEditHelpers.h"  // for BlockInlineCheck
+#include "SelectionState.h"   // for SelectionState
 
 #include "mozilla/ErrorResult.h"        // for ErrorResult
 #include "mozilla/IntegerRange.h"       // for IntegerRange
@@ -42,6 +43,7 @@ class MOZ_STACK_CLASS AutoRangeArray final {
   explicit AutoRangeArray(const EditorDOMRangeBase<PointType>& aRange);
   template <typename PT, typename CT>
   explicit AutoRangeArray(const EditorDOMPointBase<PT, CT>& aPoint);
+  explicit AutoRangeArray(nsRange& aRange);
   // The copy constructor copies everything except saved ranges.
   explicit AutoRangeArray(const AutoRangeArray& aOther);
 
@@ -94,11 +96,12 @@ class MOZ_STACK_CLASS AutoRangeArray final {
   void EnsureRangesInTextNode(const dom::Text& aTextNode);
 
   /**
-   * Extend ranges to wrap lines to handle block level edit actions such as
-   * updating the block parent or indent/outdent around the selection.
+   * Extend ranges to make each range select starting from a line start edge and
+   * ending after a line end edge to handle per line edit sub-actions.
    */
-  void ExtendRangesToWrapLinesToHandleBlockLevelEditAction(
-      EditSubAction aEditSubAction, const dom::Element& aEditingHost);
+  void ExtendRangesToWrapLines(EditSubAction aEditSubAction,
+                               BlockInlineCheck aBlockInlineCheck,
+                               const dom::Element& aEditingHost);
 
   /**
    * Check whether the range is in aEditingHost and both containers of start and
@@ -391,17 +394,19 @@ class MOZ_STACK_CLASS AutoRangeArray final {
   static already_AddRefed<nsRange>
   CreateRangeWrappingStartAndEndLinesContainingBoundaries(
       const EditorDOMRange& aRange, EditSubAction aEditSubAction,
-      const dom::Element& aEditingHost) {
+      BlockInlineCheck aBlockInlineCheck, const dom::Element& aEditingHost) {
     if (!aRange.IsPositioned()) {
       return nullptr;
     }
     return CreateRangeWrappingStartAndEndLinesContainingBoundaries(
-        aRange.StartRef(), aRange.EndRef(), aEditSubAction, aEditingHost);
+        aRange.StartRef(), aRange.EndRef(), aEditSubAction, aBlockInlineCheck,
+        aEditingHost);
   }
   static already_AddRefed<nsRange>
   CreateRangeWrappingStartAndEndLinesContainingBoundaries(
       const EditorDOMPoint& aStartPoint, const EditorDOMPoint& aEndPoint,
-      EditSubAction aEditSubAction, const dom::Element& aEditingHost) {
+      EditSubAction aEditSubAction, BlockInlineCheck aBlockInlineCheck,
+      const dom::Element& aEditingHost) {
     RefPtr<nsRange> range =
         nsRange::Create(aStartPoint.ToRawRangeBoundary(),
                         aEndPoint.ToRawRangeBoundary(), IgnoreErrors());
@@ -409,7 +414,7 @@ class MOZ_STACK_CLASS AutoRangeArray final {
       return nullptr;
     }
     if (NS_FAILED(ExtendRangeToWrapStartAndEndLinesContainingBoundaries(
-            *range, aEditSubAction, aEditingHost)) ||
+            *range, aEditSubAction, aBlockInlineCheck, aEditingHost)) ||
         MOZ_UNLIKELY(!range->IsPositioned())) {
       return nullptr;
     }
@@ -422,6 +427,8 @@ class MOZ_STACK_CLASS AutoRangeArray final {
    * range.  Finally, updates ranges to keep edit target ranges as expected.
    *
    * @param aHTMLEditor         The HTMLEditor which will handle the splittings.
+   * @param aBlockInlineCheck   Considering block vs inline with whether the
+   *                            computed style or the HTML default style.
    * @param aElement            The editing host.
    * @param aAncestorLimiter    A content node which you don't want this to
    *                            split it.
@@ -430,7 +437,8 @@ class MOZ_STACK_CLASS AutoRangeArray final {
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT Result<EditorDOMPoint, nsresult>
   SplitTextAtEndBoundariesAndInlineAncestorsAtBothBoundaries(
-      HTMLEditor& aHTMLEditor, const dom::Element& aEditingHost,
+      HTMLEditor& aHTMLEditor, BlockInlineCheck aBlockInlineCheck,
+      const dom::Element& aEditingHost,
       const nsIContent* aAncestorLimiter = nullptr);
 
   /**
@@ -455,7 +463,7 @@ class MOZ_STACK_CLASS AutoRangeArray final {
  private:
   static nsresult ExtendRangeToWrapStartAndEndLinesContainingBoundaries(
       nsRange& aRange, EditSubAction aEditSubAction,
-      const dom::Element& aEditingHost);
+      BlockInlineCheck aBlockInlineCheck, const dom::Element& aEditingHost);
 
   AutoTArray<mozilla::OwningNonNull<nsRange>, 8> mRanges;
   RefPtr<nsRange> mAnchorFocusRange;

@@ -15,8 +15,6 @@
 #include "EditorDOMPoint.h"
 #include "EditorForwards.h"
 #include "EditorUtils.h"  // for CaretPoint
-#include "HTMLEditHelpers.h"
-#include "JoinSplitNodeDirection.h"
 
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Attributes.h"
@@ -39,6 +37,41 @@
 class nsISimpleEnumerator;
 
 namespace mozilla {
+
+enum class BlockInlineCheck : uint8_t {
+  // BlockInlineCheck is not expected by the root caller.
+  Unused,
+  // Refer only the HTML default style at considering whether block or inline.
+  // All non-HTML elements are treated as inline.
+  UseHTMLDefaultStyle,
+  // Refer the element's computed style of display-outside at considering
+  // whether block or inline.
+  // FYI: If editor.block_inline_check.use_computed_style pref is set to false,
+  // this is same as HTMLDefaultStyle.
+  UseComputedDisplayOutsideStyle,
+  // Refer the element's computed style of display at considering whether block
+  // or inline.  I.e., this is a good value to look for any block boundary.
+  // E.g., this is proper value when:
+  // * Checking visibility of collapsible white-spaces or <br>
+  // * Looking for whether a padding <br> is required
+  // * Looking for a caret position
+  // FYI: If editor.block_inline_check.use_computed_style pref is set to false,
+  // this is same as HTMLDefaultStyle.
+  UseComputedDisplayStyle,
+};
+
+/**
+ * Even if the caller wants block boundary caused by display-inline: flow-root
+ * like inline-block, because it's required only when scanning from in it.
+ * I.e., if scanning needs to go to siblings, we don't want to treat
+ * inline-block siblings as inline.
+ */
+[[nodiscard]] inline BlockInlineCheck IgnoreInsideBlockBoundary(
+    BlockInlineCheck aBlockInlineCheck) {
+  return aBlockInlineCheck == BlockInlineCheck::UseComputedDisplayStyle
+             ? BlockInlineCheck::UseComputedDisplayOutsideStyle
+             : aBlockInlineCheck;
+}
 
 enum class WithTransaction { No, Yes };
 inline std::ostream& operator<<(std::ostream& aStream,
@@ -155,15 +188,13 @@ class MOZ_STACK_CLASS MoveNodeResult final : public CaretPoint {
  private:
   explicit MoveNodeResult(const EditorDOMPoint& aNextInsertionPoint,
                           bool aHandled)
-      : CaretPoint(),
-        mNextInsertionPoint(aNextInsertionPoint),
+      : mNextInsertionPoint(aNextInsertionPoint),
         mHandled(aHandled && aNextInsertionPoint.IsSet()) {
     AutoEditorDOMPointChildInvalidator computeOffsetAndForgetChild(
         mNextInsertionPoint);
   }
   explicit MoveNodeResult(EditorDOMPoint&& aNextInsertionPoint, bool aHandled)
-      : CaretPoint(),
-        mNextInsertionPoint(std::move(aNextInsertionPoint)),
+      : mNextInsertionPoint(std::move(aNextInsertionPoint)),
         mHandled(aHandled && mNextInsertionPoint.IsSet()) {
     AutoEditorDOMPointChildInvalidator computeOffsetAndForgetChild(
         mNextInsertionPoint);
@@ -271,8 +302,7 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
     if (!DidSplit()) {
       return nullptr;
     }
-    return mDirection == SplitNodeDirection::LeftNodeIsNewOne ? mPreviousNode
-                                                              : mNextNode;
+    return mNextNode;
   }
   template <typename NodeType>
   MOZ_KNOWN_LIVE NodeType* GetNewContentAs() const {
@@ -294,9 +324,6 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
       // Different from previous/next content, if the creator didn't split a
       // node, the container of the split point is the original node.
       return mGivenSplitPoint.GetContainerAs<nsIContent>();
-    }
-    if (mDirection == SplitNodeDirection::LeftNodeIsNewOne) {
-      return mNextNode ? mNextNode : mPreviousNode;
     }
     return mPreviousNode ? mPreviousNode : mNextNode;
   }
@@ -327,7 +354,6 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
     return EditorDOMPointType::After(mPreviousNode);
   }
 
-  SplitNodeResult() = delete;
   SplitNodeResult(const SplitNodeResult&) = delete;
   SplitNodeResult& operator=(const SplitNodeResult&) = delete;
   SplitNodeResult(SplitNodeResult&&) = default;
@@ -354,27 +380,22 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
    *
    * @param aNewNode    The node which is newly created.
    * @param aSplitNode  The node which was split.
-   * @param aDirection  The split direction which the HTML editor tried to split
-   *                    a node with.
    * @param aNewCaretPoint
    *                    An optional new caret position.  If this is omitted,
    *                    the point between new node and split node will be
    *                    suggested.
    */
   SplitNodeResult(nsIContent& aNewNode, nsIContent& aSplitNode,
-                  SplitNodeDirection aDirection,
                   const Maybe<EditorDOMPoint>& aNewCaretPoint = Nothing())
       : CaretPoint(aNewCaretPoint.isSome()
                        ? aNewCaretPoint.ref()
-                       : EditorDOMPoint::AtEndOf(*PreviousNode(
-                             aDirection, &aNewNode, &aSplitNode))),
-        mPreviousNode(PreviousNode(aDirection, &aNewNode, &aSplitNode)),
-        mNextNode(NextNode(aDirection, &aNewNode, &aSplitNode)),
-        mDirection(aDirection) {}
+                       : EditorDOMPoint::AtEndOf(aSplitNode)),
+        mPreviousNode(&aSplitNode),
+        mNextNode(&aNewNode) {}
 
   SplitNodeResult ToHandledResult() const {
     CaretPointHandled();
-    SplitNodeResult result(mDirection);
+    SplitNodeResult result;
     result.mPreviousNode = GetPreviousContent();
     result.mNextNode = GetNextContent();
     MOZ_DIAGNOSTIC_ASSERT(result.Handled());
@@ -395,9 +416,9 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
    *                    result should be specified.
    */
   static inline SplitNodeResult HandledButDidNotSplitDueToEndOfContainer(
-      nsIContent& aNotSplitNode, SplitNodeDirection aDirection,
+      nsIContent& aNotSplitNode,
       const SplitNodeResult* aDeeperSplitNodeResult = nullptr) {
-    SplitNodeResult result(aDirection);
+    SplitNodeResult result;
     result.mPreviousNode = &aNotSplitNode;
     // Caret should be put at the last split point instead of current node.
     if (aDeeperSplitNodeResult) {
@@ -408,9 +429,9 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
   }
 
   static inline SplitNodeResult HandledButDidNotSplitDueToStartOfContainer(
-      nsIContent& aNotSplitNode, SplitNodeDirection aDirection,
+      nsIContent& aNotSplitNode,
       const SplitNodeResult* aDeeperSplitNodeResult = nullptr) {
-    SplitNodeResult result(aDirection);
+    SplitNodeResult result;
     result.mNextNode = &aNotSplitNode;
     // Caret should be put at the last split point instead of current node.
     if (aDeeperSplitNodeResult) {
@@ -423,9 +444,8 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
   template <typename PT, typename CT>
   static inline SplitNodeResult NotHandled(
       const EditorDOMPointBase<PT, CT>& aGivenSplitPoint,
-      SplitNodeDirection aDirection,
       const SplitNodeResult* aDeeperSplitNodeResult = nullptr) {
-    SplitNodeResult result(aDirection);
+    SplitNodeResult result;
     result.mGivenSplitPoint = aGivenSplitPoint;
     // Caret should be put at the last split point instead of current node.
     if (aDeeperSplitNodeResult) {
@@ -463,21 +483,7 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
 #endif
 
  private:
-  explicit SplitNodeResult(SplitNodeDirection aDirection)
-      : mDirection(aDirection) {}
-
-  // Helper methods to consider previous/next node from new/old node and split
-  // direction.
-  static nsIContent* PreviousNode(SplitNodeDirection aDirection,
-                                  nsIContent* aNewOne, nsIContent* aOldOne) {
-    return aDirection == SplitNodeDirection::LeftNodeIsNewOne ? aNewOne
-                                                              : aOldOne;
-  }
-  static nsIContent* NextNode(SplitNodeDirection aDirection,
-                              nsIContent* aNewOne, nsIContent* aOldOne) {
-    return aDirection == SplitNodeDirection::LeftNodeIsNewOne ? aOldOne
-                                                              : aNewOne;
-  }
+  SplitNodeResult() = default;
 
   // When methods which return this class split some nodes actually, they
   // need to set a set of left node and right node to this class.  However,
@@ -494,8 +500,6 @@ class MOZ_STACK_CLASS SplitNodeResult final : public CaretPoint {
   // which cannot be represented as a node.  Therefore, we need EditorDOMPoint
   // for representing the point.
   EditorDOMPoint mGivenSplitPoint;
-
-  SplitNodeDirection mDirection;
 };
 
 /*****************************************************************************
@@ -534,11 +538,9 @@ class MOZ_STACK_CLASS JoinNodesResult final {
    *
    * @param aJoinedPoint        First child of right node or first character.
    * @param aRemovedContent     The node which was removed from the parent.
-   * @param aDirection          The join direction which the HTML editor tried
-   *                            to join the nodes with.
    */
   JoinNodesResult(const EditorDOMPoint& aJoinedPoint,
-                  nsIContent& aRemovedContent, JoinNodesDirection aDirection)
+                  nsIContent& aRemovedContent)
       : mJoinedPoint(aJoinedPoint), mRemovedContent(&aRemovedContent) {
     MOZ_DIAGNOSTIC_ASSERT(aJoinedPoint.IsInContentNode());
   }
@@ -639,8 +641,7 @@ class MOZ_STACK_CLASS SplitRangeOffFromNodeResult final : public CaretPoint {
   SplitRangeOffFromNodeResult(nsIContent* aLeftContent,
                               nsIContent* aMiddleContent,
                               nsIContent* aRightContent)
-      : CaretPoint(),
-        mLeftContent(aLeftContent),
+      : mLeftContent(aLeftContent),
         mMiddleContent(aMiddleContent),
         mRightContent(aRightContent) {}
 
@@ -718,8 +719,7 @@ class MOZ_STACK_CLASS SplitRangeOffResult final : public CaretPoint {
   SplitRangeOffResult(EditorDOMRange&& aTrackedRange,
                       SplitNodeResult&& aSplitNodeResultAtStart,
                       SplitNodeResult&& aSplitNodeResultAtEnd)
-      : CaretPoint(),
-        mRange(std::move(aTrackedRange)),
+      : mRange(std::move(aTrackedRange)),
         mHandled(aSplitNodeResultAtStart.Handled() ||
                  aSplitNodeResultAtEnd.Handled()) {
     MOZ_ASSERT(mRange.StartRef().IsSet());
@@ -788,7 +788,7 @@ class MOZ_RAII DOMIterator {
                           void* aClosure = nullptr) const;
 
  protected:
-  ContentIteratorBase* mIter;
+  SafeContentIteratorBase* mIter;
   PostContentIterator mPostOrderIter;
 };
 

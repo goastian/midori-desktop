@@ -10,8 +10,7 @@
 
 #include "EditorDOMPoint.h"
 #include "HTMLEditHelpers.h"
-#include "JoinSplitNodeDirection.h"  // for JoinNodesDirection and SplitNodeDirection
-#include "SelectionState.h"          // for RangeItem
+#include "SelectionState.h"  // for RangeItem
 
 #include "ErrorList.h"  // for nsresult
 
@@ -28,21 +27,11 @@
 #include "nsRange.h"
 #include "nsString.h"
 
+#include <ostream>
+
 namespace mozilla {
 
 using namespace dom;
-
-SplitNodeDirection HTMLEditor::GetSplitNodeDirection() const {
-  return MOZ_LIKELY(mUseGeckoTraditionalJoinSplitBehavior)
-             ? SplitNodeDirection::LeftNodeIsNewOne
-             : SplitNodeDirection::RightNodeIsNewOne;
-}
-
-JoinNodesDirection HTMLEditor::GetJoinNodesDirection() const {
-  return MOZ_LIKELY(mUseGeckoTraditionalJoinSplitBehavior)
-             ? JoinNodesDirection::LeftNodeIntoRightNode
-             : JoinNodesDirection::RightNodeIntoLeftNode;
-}
 
 Result<CreateElementResult, nsresult>
 HTMLEditor::ReplaceContainerAndCloneAttributesWithTransaction(
@@ -137,6 +126,21 @@ HTMLEditor::CharPointType HTMLEditor::GetCharPointType(
   }
   return aPoint.IsCharNBSP() ? CharPointType::NoBreakingSpace
                              : CharPointType::VisibleChar;
+}
+
+/******************************************************************************
+ * Logging utils
+ ******************************************************************************/
+
+inline std::ostream& operator<<(
+    std::ostream& aStream,
+    const HTMLEditor::PreserveWhiteSpaceStyle aPreserveWhiteSpaceStyle) {
+  aStream << "PreserveWhiteSpaceStyle::"
+          << (aPreserveWhiteSpaceStyle ==
+                      HTMLEditor::PreserveWhiteSpaceStyle::No
+                  ? "No"
+                  : "Yes");
+  return aStream;
 }
 
 }  // namespace mozilla

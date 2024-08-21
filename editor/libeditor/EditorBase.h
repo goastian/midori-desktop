@@ -130,8 +130,13 @@ class EditorBase : public nsIEditor,
    */
   explicit EditorBase(EditorType aEditorType);
 
-  bool IsInitialized() const { return !!mDocument; }
-  bool Destroyed() const { return mDidPreDestroy; }
+  [[nodiscard]] bool IsInitialized() const {
+    return mDocument && mDidPostCreate;
+  }
+  [[nodiscard]] bool IsBeingInitialized() const {
+    return mDocument && !mDidPostCreate;
+  }
+  [[nodiscard]] bool Destroyed() const { return mDidPreDestroy; }
 
   Document* GetDocument() const { return mDocument; }
   nsPIDOMWindowOuter* GetWindow() const;
@@ -195,6 +200,12 @@ class EditorBase : public nsIEditor,
     }
     return false;
   }
+
+  /**
+   * This checks whether the call with aPrincipal should or should not be
+   * treated as user input.
+   */
+  [[nodiscard]] static bool TreatAsUserInput(nsIPrincipal* aPrincipal);
 
   PresShell* GetPresShell() const;
   nsPresContext* GetPresContext() const;
@@ -439,14 +450,6 @@ class EditorBase : public nsIEditor,
       WidgetCompositionEvent& aCompositionEndEvent);
 
   /**
-   * Similar to the setter for wrapWidth, but just sets the editor
-   * internal state without actually changing the content being edited
-   * to wrap at that column.  This should only be used by callers who
-   * are sure that their content is already set up correctly.
-   */
-  void SetWrapColumn(int32_t aWrapColumn) { mWrapColumn = aWrapColumn; }
-
-  /**
    * Accessor methods to flags.
    */
   uint32_t Flags() const { return mFlags; }
@@ -479,13 +482,6 @@ class EditorBase : public nsIEditor,
     return SetFlags(kNewFlags);  // virtual call and may be expensive.
   }
 
-  bool IsInPlaintextMode() const {
-    const bool isPlaintextMode =
-        (mFlags & nsIEditor::eEditorPlaintextMask) != 0;
-    MOZ_ASSERT_IF(IsTextEditor(), isPlaintextMode);
-    return isPlaintextMode;
-  }
-
   bool IsSingleLineEditor() const {
     const bool isSingleLineEditor =
         (mFlags & nsIEditor::eEditorSingleLineMask) != 0;
@@ -515,10 +511,6 @@ class EditorBase : public nsIEditor,
 
   bool IsMailEditor() const {
     return (mFlags & nsIEditor::eEditorMailMask) != 0;
-  }
-
-  bool IsWrapHackEnabled() const {
-    return (mFlags & nsIEditor::eEditorEnableWrapHackMask) != 0;
   }
 
   bool IsInteractionAllowed() const {
@@ -868,8 +860,7 @@ class EditorBase : public nsIEditor,
     void WillDeleteContent(EditorBase& aEditorBase,
                            nsIContent& aRemovingContent);
     void DidSplitContent(EditorBase& aEditorBase, nsIContent& aSplitContent,
-                         nsIContent& aNewContent,
-                         SplitNodeDirection aSplitNodeDirection);
+                         nsIContent& aNewContent);
     void DidJoinContents(EditorBase& aEditorBase,
                          const EditorRawDOMPoint& aJoinedPoint);
     void DidInsertText(EditorBase& aEditorBase,
@@ -1026,7 +1017,7 @@ class EditorBase : public nsIEditor,
     }
 
     [[nodiscard]] bool IsDataAvailable() const {
-      return mSelection && mEditorBase.IsInitialized();
+      return mSelection && mEditorBase.mDocument;
     }
 
     /**
@@ -1225,6 +1216,7 @@ class EditorBase : public nsIEditor,
         case EditSubAction::eOutdent:
         case EditSubAction::eSetOrClearAlignment:
         case EditSubAction::eCreateOrRemoveBlock:
+        case EditSubAction::eFormatBlockForHTMLCommand:
         case EditSubAction::eMergeBlockContents:
         case EditSubAction::eRemoveList:
         case EditSubAction::eCreateOrChangeDefinitionListItem:
@@ -1368,6 +1360,8 @@ class EditorBase : public nsIEditor,
           return false;
       }
     }
+
+    void MarkEditActionCanceled();
 
     EditorBase& mEditorBase;
     RefPtr<Selection> mSelection;
@@ -1679,18 +1673,29 @@ class EditorBase : public nsIEditor,
   /**
    * Insert aStringToInsert to aPointToInsert or better insertion point around
    * it.  If aPointToInsert isn't in a text node, this method looks for the
-   * nearest point in a text node with FindBetterInsertionPoint().  If there is
-   * no text node, this creates new text node and put aStringToInsert to it.
+   * nearest point in a text node with TextEditor::FindBetterInsertionPoint()
+   * or EditorDOMPoint::GetPointInTextNodeIfPointingAroundTextNode().
+   * If there is no text node, this creates new text node and put
+   * aStringToInsert to it.
    *
    * @param aDocument       The document of this editor.
    * @param aStringToInsert The string to insert.
    * @param aPointToInsert  The point to insert aStringToInsert.
    *                        Must be valid DOM point.
+   * @param aInsertTextTo   Whether forcibly creates a new `Text` node in
+   *                        specific condition or use existing `Text` if
+   *                        available.
    */
+  enum class InsertTextTo {
+    ExistingTextNodeIfAvailable,
+    ExistingTextNodeIfAvailableAndNotStart,
+    AlwaysCreateNewTextNode
+  };
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT virtual Result<InsertTextResult, nsresult>
   InsertTextWithTransaction(Document& aDocument,
                             const nsAString& aStringToInsert,
-                            const EditorDOMPoint& aPointToInsert);
+                            const EditorDOMPoint& aPointToInsert,
+                            InsertTextTo aInsertTextTo);
 
   /**
    * Insert aStringToInsert to aPointToInsert.
@@ -1748,6 +1753,19 @@ class EditorBase : public nsIEditor,
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT Result<CreateElementResult, nsresult>
   InsertPaddingBRElementForEmptyLastLineWithTransaction(
       const EditorDOMPoint& aPointToInsert);
+
+  enum class BRElementType {
+    Normal,
+    PaddingForEmptyEditor,
+    PaddingForEmptyLastLine
+  };
+  /**
+   * Updates the type of aBRElement.  If it will be hidden or shown from
+   * IMEContentObserver and ContentEventHandler points of view, this temporarily
+   * removes the node and reconnect to the same position.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  UpdateBRElementType(dom::HTMLBRElement& aBRElement, BRElementType aNewType);
 
   /**
    * CloneAttributesWithTransaction() clones all attributes from
@@ -1963,18 +1981,6 @@ class EditorBase : public nsIEditor,
    * editor was focused when the DOM window was active.
    */
   virtual bool IsActiveInDOMWindow() const;
-
-  /**
-   * FindBetterInsertionPoint() tries to look for better insertion point which
-   * is typically the nearest text node and offset in it.
-   *
-   * @param aPoint      Insertion point which the callers found.
-   * @return            Better insertion point if there is.  If not returns
-   *                    same point as aPoint.
-   */
-  template <typename EditorDOMPointType>
-  EditorDOMPointType FindBetterInsertionPoint(
-      const EditorDOMPointType& aPoint) const;
 
   /**
    * HideCaret() hides caret with nsCaret::AddForceHide() or may show carent
@@ -2403,7 +2409,7 @@ class EditorBase : public nsIEditor,
 
   virtual nsresult InstallEventListeners();
   virtual void CreateEventListeners();
-  virtual void RemoveEventListeners();
+  void RemoveEventListeners();
   [[nodiscard]] bool IsListeningToEvents() const;
 
   /**
@@ -2535,6 +2541,25 @@ class EditorBase : public nsIEditor,
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   DeleteSelectionWithTransaction(nsIEditor::EDirection aDirectionAndAmount,
                                  nsIEditor::EStripWrappers aStripWrappers);
+
+  /**
+   * DeleteRangeWithTransaction() removes content in aRangeToDelete or content
+   * around collapsed aRangeToDelete with transactions and remove empty
+   * inclusive ancestor inline elements of the collapsed range after removing
+   * the contents.
+   *
+   * @param aDirectionAndAmount How much range should be removed.
+   * @param aStripWrappers      Whether the parent blocks should be removed
+   *                            when they become empty.
+   *                            Note that this must be `nsIEditor::eNoStrip`
+   *                            if this is a TextEditor because anyway it'll
+   *                            be ignored.
+   * @param aRangeToDelete     The range to delete content.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT Result<CaretPoint, nsresult>
+  DeleteRangeWithTransaction(nsIEditor::EDirection aDirectionAndAmount,
+                             nsIEditor::EStripWrappers aStripWrappers,
+                             nsRange& aRangeToDelete);
 
   /**
    * DeleteRangesWithTransaction() removes content in aRangesToDelete or content
@@ -2876,7 +2901,7 @@ class EditorBase : public nsIEditor,
   // Nesting count for batching.
   int32_t mPlaceholderBatch;
 
-  int32_t mWrapColumn;
+  int32_t mWrapColumn = 0;
   int32_t mNewlineHandling;
   int32_t mCaretStyle;
 

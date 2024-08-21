@@ -12,6 +12,7 @@
 #include "mozilla/HTMLEditor.h"               // for HTMLEditor
 #include "mozilla/mozalloc.h"                 // for operator new
 #include "mozilla/PresShell.h"                // for PresShell
+#include "mozilla/Try.h"                      // for MOZ_TRY
 #include "nsAString.h"
 #include "nsBaseCommandController.h"  // for nsBaseCommandController
 #include "nsCommandManager.h"         // for nsCommandManager
@@ -22,7 +23,7 @@
 #include "nsEditingSession.h"
 #include "nsError.h"                      // for NS_ERROR_FAILURE, NS_OK, etc
 #include "nsIChannel.h"                   // for nsIChannel
-#include "nsIContentViewer.h"             // for nsIContentViewer
+#include "nsIDocumentViewer.h"            // for nsIDocumentViewer
 #include "nsIControllers.h"               // for nsIControllers
 #include "nsID.h"                         // for NS_GET_IID, etc
 #include "nsHTMLDocument.h"               // for nsHTMLDocument
@@ -64,9 +65,8 @@ nsEditingSession::nsEditingSession()
       mCanCreateEditor(false),
       mInteractive(false),
       mMakeWholeDocumentEditable(true),
-      mDisabledJSAndPlugins(false),
+      mDisabledJS(false),
       mScriptsEnabled(true),
-      mPluginsEnabled(true),
       mProgressListenerRegistered(false),
       mImageAnimationMode(0),
       mEditorFlags(0),
@@ -122,7 +122,7 @@ nsEditingSession::MakeWindowEditable(mozIDOMWindowProxy* aWindow,
 
   nsresult rv;
   if (!mInteractive) {
-    rv = DisableJSAndPlugins(window->GetCurrentInnerWindow());
+    rv = DisableJS(window->GetCurrentInnerWindow());
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -174,30 +174,21 @@ nsEditingSession::MakeWindowEditable(mozIDOMWindowProxy* aWindow,
   return rv;
 }
 
-nsresult nsEditingSession::DisableJSAndPlugins(nsPIDOMWindowInner* aWindow) {
+nsresult nsEditingSession::DisableJS(nsPIDOMWindowInner* aWindow) {
   WindowContext* wc = aWindow->GetWindowContext();
-  BrowsingContext* bc = wc->GetBrowsingContext();
 
   mScriptsEnabled = wc->GetAllowJavascript();
-
   MOZ_TRY(wc->SetAllowJavascript(false));
-
-  // Disable plugins in this document:
-  mPluginsEnabled = bc->GetAllowPlugins();
-
-  MOZ_TRY(bc->SetAllowPlugins(false));
-
-  mDisabledJSAndPlugins = true;
-
+  mDisabledJS = true;
   return NS_OK;
 }
 
-nsresult nsEditingSession::RestoreJSAndPlugins(nsPIDOMWindowInner* aWindow) {
-  if (!mDisabledJSAndPlugins) {
+nsresult nsEditingSession::RestoreJS(nsPIDOMWindowInner* aWindow) {
+  if (!mDisabledJS) {
     return NS_OK;
   }
 
-  mDisabledJSAndPlugins = false;
+  mDisabledJS = false;
 
   if (NS_WARN_IF(!aWindow)) {
     // DetachFromWindow may call this method with nullptr.
@@ -205,13 +196,7 @@ nsresult nsEditingSession::RestoreJSAndPlugins(nsPIDOMWindowInner* aWindow) {
   }
 
   WindowContext* wc = aWindow->GetWindowContext();
-  BrowsingContext* bc = wc->GetBrowsingContext();
-
-  MOZ_TRY(wc->SetAllowJavascript(mScriptsEnabled));
-
-  // Disable plugins in this document:
-
-  return bc->SetAllowPlugins(mPluginsEnabled);
+  return wc->SetAllowJavascript(mScriptsEnabled);
 }
 
 /*---------------------------------------------------------------------------
@@ -368,14 +353,14 @@ nsresult nsEditingSession::SetupEditorOnWindow(nsPIDOMWindowOuter& aWindow) {
   NS_ENSURE_TRUE(fs, NS_ERROR_FAILURE);
   AutoHideSelectionChanges hideSelectionChanges(fs);
 
-  nsCOMPtr<nsIContentViewer> contentViewer;
-  nsresult rv = docShell->GetContentViewer(getter_AddRefs(contentViewer));
-  if (NS_FAILED(rv) || NS_WARN_IF(!contentViewer)) {
-    NS_WARNING("nsDocShell::GetContentViewer() failed");
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  nsresult rv = docShell->GetDocViewer(getter_AddRefs(viewer));
+  if (NS_FAILED(rv) || NS_WARN_IF(!viewer)) {
+    NS_WARNING("nsDocShell::GetDocViewer() failed");
     return rv;
   }
 
-  const RefPtr<Document> doc = contentViewer->GetDocument();
+  const RefPtr<Document> doc = viewer->GetDocument();
   if (NS_WARN_IF(!doc)) {
     return NS_ERROR_FAILURE;
   }
@@ -409,8 +394,8 @@ nsresult nsEditingSession::SetupEditorOnWindow(nsPIDOMWindowOuter& aWindow) {
   rv = htmlEditor->SetContentsMIMEType(mimeType);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  MOZ_ASSERT(docShell->HasContentViewer());
-  MOZ_ASSERT(contentViewer->GetDocument());
+  MOZ_ASSERT(docShell->HasDocumentViewer());
+  MOZ_ASSERT(viewer->GetDocument());
 
   MOZ_DIAGNOSTIC_ASSERT(commandsUpdater == mComposerCommandsUpdater);
   if (MOZ_UNLIKELY(commandsUpdater != mComposerCommandsUpdater)) {
@@ -506,7 +491,7 @@ nsEditingSession::TearDownEditorOnWindow(mozIDOMWindowProxy* aWindow) {
 
   if (stopEditing) {
     // Make things the way they were before we started editing.
-    RestoreJSAndPlugins(window->GetCurrentInnerWindow());
+    RestoreJS(window->GetCurrentInnerWindow());
     RestoreAnimationMode(window);
 
     if (mMakeWholeDocumentEditable) {
@@ -1190,7 +1175,7 @@ nsresult nsEditingSession::DetachFromWindow(nsPIDOMWindowOuter* aWindow) {
   // make things the way they were before we started editing.
   RemoveEditorControllers(aWindow);
   RemoveWebProgressListener(aWindow);
-  RestoreJSAndPlugins(aWindow->GetCurrentInnerWindow());
+  RestoreJS(aWindow->GetCurrentInnerWindow());
   RestoreAnimationMode(aWindow);
 
   // Kill our weak reference to our original window, in case
@@ -1215,9 +1200,9 @@ nsresult nsEditingSession::ReattachToWindow(nsPIDOMWindowOuter* aWindow) {
   NS_ENSURE_TRUE(docShell, NS_ERROR_FAILURE);
   mDocShell = do_GetWeakReference(docShell);
 
-  // Disable plugins.
+  // Disable JS.
   if (!mInteractive) {
-    rv = DisableJSAndPlugins(aWindow->GetCurrentInnerWindow());
+    rv = DisableJS(aWindow->GetCurrentInnerWindow());
     NS_ENSURE_SUCCESS(rv, rv);
   }
 

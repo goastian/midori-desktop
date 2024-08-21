@@ -60,14 +60,10 @@ static int32_t GetCSSFloatValue(nsComputedDOMStyle* aComputedStyle,
 
   // get the computed CSSValue of the property
   nsAutoCString value;
-  nsresult rv = aComputedStyle->GetPropertyValue(aProperty, value);
-  if (NS_FAILED(rv)) {
-    NS_WARNING("nsComputedDOMStyle::GetPropertyValue() failed");
-    return 0;
-  }
-
+  aComputedStyle->GetPropertyValue(aProperty, value);
   // We only care about resolved values, not a big deal if the element is
   // undisplayed, for example, and the value is "auto" or what not.
+  nsresult rv = NS_OK;
   int32_t val = value.ToInteger(&rv);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "nsAString::ToInteger() failed");
   return NS_SUCCEEDED(rv) ? val : 0;
@@ -361,7 +357,7 @@ nsresult HTMLEditor::RefreshEditingUI() {
   }
 
   // If we're not in a document, don't try to add resizers
-  if (!selectionContainerElement->IsInUncomposedDoc()) {
+  if (!selectionContainerElement->IsInComposedDoc()) {
     return NS_OK;
   }
 
@@ -519,8 +515,7 @@ nsresult HTMLEditor::GetPositionAndDimensions(Element& aElement, int32_t& aX,
                                               int32_t& aMarginLeft,
                                               int32_t& aMarginTop) {
   // Is the element positioned ? let's check the cheap way first...
-  bool isPositioned =
-      aElement.HasAttr(kNameSpaceID_None, nsGkAtoms::_moz_abspos);
+  bool isPositioned = aElement.HasAttr(nsGkAtoms::_moz_abspos);
   if (!isPositioned) {
     // hmmm... the expensive way now...
     nsAutoString positionValue;

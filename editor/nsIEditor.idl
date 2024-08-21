@@ -89,7 +89,7 @@ interface nsIEditor  : nsISupports
   const short eNoStrip = 1;
 
   // If you want an HTML editor to behave as a plaintext editor, specify this
-  // flag.  Note that this is always set if the instance is a text editor.
+  // flag.  This is currently used only with plaintext email composer.
   const long eEditorPlaintextMask       = 0x0001;
   // We don't support single line editor mode with HTML editors.  Therefore,
   // don't specify this for HTML editor.
@@ -316,24 +316,6 @@ interface nsIEditor  : nsISupports
   [can_run_script]
   void endTransaction();
 
-  /**
-   * While setting the flag with this method to false,  DeleteRangeTransaction,
-   * DeleteTextTransaction, InsertNodeTransaction, InsertTextTransaction and
-   * SplitNodeTransaction won't change Selection after modifying the DOM tree.
-   * Note that calling this with false does not guarantee that Selection won't
-   * be changed because other transaction may ignore this flag, editor itself
-   * may change selection, and current selection may become invalid after
-   * changing the DOM tree, etc.
-   * After calling this method with true, the caller should guarantee that
-   * Selection should be positioned where user expects.
-   *
-   * @param should    false if you don't want above transactions to modify
-   *                  Selection automatically after modifying the DOM tree.
-   *                  Note that calling this with false does not guarantee
-   *                  that Selection is never changed.
-   */
-  void setShouldTxnSetSelection(in boolean should);
-
   /* ------------ Inline Spell Checking methods -------------- */
 
   /** Returns the inline spell checker associated with this object. The spell
@@ -476,27 +458,50 @@ interface nsIEditor  : nsISupports
   void cloneAttributes(in Element aDestElement, in Element aSourceElement);
 
   /**
-   * insertNode inserts aNode into aParent at aPosition.
+   * insertNode inserts aNode into aParent at aPosition and this operation is
+   * undoable.
    * No checking is done to verify the legality of the insertion.
    * That is the responsibility of the caller.
-   * @param aNode     The DOM Node to insert.
-   * @param aParent   The node to insert the new object into
-   * @param aPosition The place in aParent to insert the new node
-   *                  0=first child, 1=second child, etc.
-   *                  any number > number of current children = last child
+   * TODO: Move this method to nsIHTMLEditor, TextEditor does not allow chrome
+   * script to customize its anonymous subtree.
+   *
+   * @param aNode               The DOM Node to insert.
+   * @param aParent             The node to insert the new object into
+   * @param aPosition           The place in aParent to insert the new node
+   *                            0=first child, 1=second child, etc.
+   *                            If larger than number of children of aParent,
+   *                            this will append aNode into aParent.
+   * @param aPreseveSelection   The default value is false.  If set to true,
+   *                            the insert node handler does not update
+   *                            Selection.
+   *                            FYI: If somebody handles `beforeinput` event or
+   *                            `input` event caused by this and it does
+   *                            something undoable, selection may be changed by
+   *                            that.
    */
-  [can_run_script]
+  [optional_argc, can_run_script]
   void insertNode(in Node node,
                   in Node parent,
-                  in unsigned long aPosition);
+                  in unsigned long aPosition,
+                  [optional] in boolean aPreserveSelection);
 
 
   /**
-   * deleteNode removes aChild from aParent.
-   * @param aChild    The node to delete
+   * deleteNode removes aChild from aParent and this operation is undobable.
+   * TODO: Move this method to nsIHTMLEditor, TextEditor does not allow chrome
+   * script to customize its anonymous subtree.
+   *
+   * @param aChild              The node to delete
+   * @param aPreseveSelection   The default value is false.  If set to true,
+   *                            the insert node handler does not update
+   *                            Selection.
+   *                            FYI: If somebody handles `beforeinput` event or
+   *                            `input` event caused by this and it does
+   *                            something undoable, selection may be changed by
+   *                            that.
    */
-  [can_run_script]
-  void deleteNode(in Node child);
+  [optional_argc, can_run_script]
+  void deleteNode(in Node child, [optional] in boolean aPreserveSelection);
 
 /* ------------ Output methods -------------- */
 
@@ -599,14 +604,6 @@ interface nsIEditor  : nsISupports
     * The length of the contents in characters.
     */
   readonly attribute unsigned long textLength;
-
-  /** Get and set the body wrap width.
-    *
-    * Special values:
-    *    0 = wrap to window width
-    *   -1 = no wrap at all
-    */
-  attribute long wrapWidth;
 
   /** Get and set newline handling.
    *

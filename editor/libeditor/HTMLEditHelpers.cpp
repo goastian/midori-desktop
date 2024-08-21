@@ -79,9 +79,7 @@ void DOMIterator::AppendNodesToArray(
   }
 }
 
-DOMSubtreeIterator::DOMSubtreeIterator() : DOMIterator() {
-  mIter = &mSubtreeIter;
-}
+DOMSubtreeIterator::DOMSubtreeIterator() { mIter = &mSubtreeIter; }
 
 nsresult DOMSubtreeIterator::Init(nsRange& aRange) {
   return mIter->Init(&aRange);
@@ -138,7 +136,7 @@ bool EditorInlineStyle::IsRepresentedBy(const nsIContent& aContent) const {
     if (mHTMLProperty == nsGkAtoms::a) {
       return true;
     }
-    return !mAttribute || element.HasAttr(kNameSpaceID_None, mAttribute);
+    return !mAttribute || element.HasAttr(mAttribute);
   }
   // Special case for linking or naming an <a> element.
   if ((mHTMLProperty == nsGkAtoms::href && HTMLEditUtils::IsLink(&element)) ||
