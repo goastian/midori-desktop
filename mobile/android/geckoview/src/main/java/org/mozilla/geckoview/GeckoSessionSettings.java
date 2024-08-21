@@ -203,7 +203,7 @@ public final class GeckoSessionSettings implements Parcelable {
   })
   public @interface DisplayMode {}
 
-  // This needs to match GeckoViewSettings.jsm
+  // This needs to match GeckoViewSettings.sys.mjs
   /** "browser" value of the display member in Web App Manifests */
   public static final int DISPLAY_MODE_BROWSER = 0;
 
@@ -225,7 +225,7 @@ public final class GeckoSessionSettings implements Parcelable {
   })
   public @interface UserAgentMode {}
 
-  // This needs to match GeckoViewSettingsChild.js and GeckoViewSettings.jsm
+  // This needs to match GeckoViewSettingsChild.js and GeckoViewSettings.sys.mjs
   /** The user agent mode is mobile device */
   public static final int USER_AGENT_MODE_MOBILE = 0;
 
@@ -331,11 +331,11 @@ public final class GeckoSessionSettings implements Parcelable {
       new Key<Boolean>("fullAccessibilityTree", /* initOnly */ false, /* values */ null);
 
   /**
-   * Key to specify if this GeckoSession is a Popup or not. Popup sessions can paint over other
-   * sessions and are not exposed to the tabs WebExtension API.
+   * Key to specify if this GeckoSession is a Extension Popup or not. Popup sessions can paint over
+   * other sessions and are not exposed to the tabs WebExtension API.
    */
-  private static final Key<Boolean> IS_POPUP =
-      new Key<Boolean>("isPopup", /* initOnly */ false, /* values */ null);
+  private static final Key<Boolean> IS_EXTENSION_POPUP =
+      new Key<Boolean>("isExtensionPopup", /* initOnly */ false, /* values */ null);
 
   /** Internal Gecko key to specify the session context ID. Derived from `UNSAFE_CONTEXT_ID`. */
   private static final Key<String> CONTEXT_ID =
@@ -375,7 +375,7 @@ public final class GeckoSessionSettings implements Parcelable {
     mBundle.putBoolean(SUSPEND_MEDIA_WHEN_INACTIVE.name, false);
     mBundle.putBoolean(ALLOW_JAVASCRIPT.name, true);
     mBundle.putBoolean(FULL_ACCESSIBILITY_TREE.name, false);
-    mBundle.putBoolean(IS_POPUP.name, false);
+    mBundle.putBoolean(IS_EXTENSION_POPUP.name, false);
     mBundle.putInt(USER_AGENT_MODE.name, USER_AGENT_MODE_MOBILE);
     mBundle.putString(USER_AGENT_OVERRIDE.name, null);
     mBundle.putInt(VIEWPORT_MODE.name, VIEWPORT_MODE_MOBILE);
@@ -430,8 +430,8 @@ public final class GeckoSessionSettings implements Parcelable {
     setBoolean(FULL_ACCESSIBILITY_TREE, value);
   }
 
-  /* package */ void setIsPopup(final boolean value) {
-    setBoolean(IS_POPUP, value);
+  /* package */ void setIsExtensionPopup(final boolean value) {
+    setBoolean(IS_EXTENSION_POPUP, value);
   }
 
   private void setBoolean(final Key<Boolean> key, final boolean value) {
@@ -498,8 +498,8 @@ public final class GeckoSessionSettings implements Parcelable {
     return getBoolean(FULL_ACCESSIBILITY_TREE);
   }
 
-  /* package */ boolean getIsPopup() {
-    return getBoolean(IS_POPUP);
+  /* package */ boolean getIsExtensionPopup() {
+    return getBoolean(IS_EXTENSION_POPUP);
   }
 
   private boolean getBoolean(final Key<Boolean> key) {

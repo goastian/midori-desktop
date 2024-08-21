@@ -20,15 +20,15 @@ this.test = class extends ExtensionAPI {
   onStartup() {
     ChromeUtils.registerWindowActor("TestSupport", {
       child: {
-        moduleURI:
-          "resource://android/assets/web_extensions/test-support/TestSupportChild.jsm",
+        esModuleURI:
+          "resource://android/assets/web_extensions/test-support/TestSupportChild.sys.mjs",
       },
       allFrames: true,
     });
     ChromeUtils.registerProcessActor("TestSupportProcess", {
       child: {
-        moduleURI:
-          "resource://android/assets/web_extensions/test-support/TestSupportProcessChild.jsm",
+        esModuleURI:
+          "resource://android/assets/web_extensions/test-support/TestSupportProcessChild.sys.mjs",
       },
     });
   }
@@ -107,6 +107,12 @@ this.test = class extends ExtensionAPI {
           const tab = context.extension.tabManager.get(tabId);
           const pids = E10SUtils.getBrowserPids(tab.browser);
           return pids[0];
+        },
+
+        async waitForContentTransformsReceived(tabId) {
+          return getActorForTab(tabId).sendQuery(
+            "WaitForContentTransformsReceived"
+          );
         },
 
         async getAllBrowserPids() {
@@ -222,6 +228,27 @@ this.test = class extends ExtensionAPI {
           return actor.receiveMessage({
             name: "CookieBanner::HandledBanner",
           });
+        },
+
+        async triggerTranslationsOffer(tabId) {
+          const browser = context.extension.tabManager.get(tabId).browser;
+          const { CustomEvent } = browser.ownerGlobal;
+          return browser.dispatchEvent(
+            new CustomEvent("TranslationsParent:OfferTranslation", {
+              bubbles: true,
+            })
+          );
+        },
+
+        async triggerLanguageStateChange(tabId, languageState) {
+          const browser = context.extension.tabManager.get(tabId).browser;
+          const { CustomEvent } = browser.ownerGlobal;
+          return browser.dispatchEvent(
+            new CustomEvent("TranslationsParent:LanguageState", {
+              bubbles: true,
+              detail: languageState,
+            })
+          );
         },
       },
     };

@@ -85,7 +85,7 @@ public class GeckoThread extends Thread {
      */
     private final int mRank;
 
-    private State(final int rank) {
+    State(final int rank) {
       mRank = rank;
     }
 
@@ -157,14 +157,12 @@ public class GeckoThread extends Thread {
     public final @Nullable ParcelFileDescriptor prefMap;
     public final @NonNull ParcelFileDescriptor ipc;
     public final @Nullable ParcelFileDescriptor crashReporter;
-    public final @Nullable ParcelFileDescriptor crashAnnotation;
 
     private ParcelFileDescriptors(final Builder builder) {
       prefs = builder.prefs;
       prefMap = builder.prefMap;
       ipc = builder.ipc;
       crashReporter = builder.crashReporter;
-      crashAnnotation = builder.crashAnnotation;
     }
 
     public FileDescriptors detach() {
@@ -173,7 +171,6 @@ public class GeckoThread extends Thread {
           .prefMap(detach(prefMap))
           .ipc(detach(ipc))
           .crashReporter(detach(crashReporter))
-          .crashAnnotation(detach(crashAnnotation))
           .build();
     }
 
@@ -185,7 +182,7 @@ public class GeckoThread extends Thread {
     }
 
     public void close() {
-      close(prefs, prefMap, ipc, crashReporter, crashAnnotation);
+      close(prefs, prefMap, ipc, crashReporter);
     }
 
     private static void close(final ParcelFileDescriptor... pfds) {
@@ -207,7 +204,6 @@ public class GeckoThread extends Thread {
           .prefMap(from(fds.prefMap))
           .ipc(from(fds.ipc))
           .crashReporter(from(fds.crashReporter))
-          .crashAnnotation(from(fds.crashAnnotation))
           .build();
     }
 
@@ -231,7 +227,6 @@ public class GeckoThread extends Thread {
       ParcelFileDescriptor prefMap;
       ParcelFileDescriptor ipc;
       ParcelFileDescriptor crashReporter;
-      ParcelFileDescriptor crashAnnotation;
 
       private Builder() {}
 
@@ -258,11 +253,6 @@ public class GeckoThread extends Thread {
         this.crashReporter = crashReporter;
         return this;
       }
-
-      public Builder crashAnnotation(final ParcelFileDescriptor crashAnnotation) {
-        this.crashAnnotation = crashAnnotation;
-        return this;
-      }
     }
   }
 
@@ -271,14 +261,12 @@ public class GeckoThread extends Thread {
     final int prefMap;
     final int ipc;
     final int crashReporter;
-    final int crashAnnotation;
 
     private FileDescriptors(final Builder builder) {
       prefs = builder.prefs;
       prefMap = builder.prefMap;
       ipc = builder.ipc;
       crashReporter = builder.crashReporter;
-      crashAnnotation = builder.crashAnnotation;
     }
 
     public static Builder builder() {
@@ -290,7 +278,6 @@ public class GeckoThread extends Thread {
       int prefMap = INVALID_FD;
       int ipc = INVALID_FD;
       int crashReporter = INVALID_FD;
-      int crashAnnotation = INVALID_FD;
 
       private Builder() {}
 
@@ -315,11 +302,6 @@ public class GeckoThread extends Thread {
 
       public Builder crashReporter(final int crashReporter) {
         this.crashReporter = crashReporter;
-        return this;
-      }
-
-      public Builder crashAnnotation(final int crashAnnotation) {
-        this.crashAnnotation = crashAnnotation;
         return this;
       }
     }
@@ -680,8 +662,7 @@ public class GeckoThread extends Thread {
         mInitInfo.fds.prefMap,
         mInitInfo.fds.ipc,
         mInitInfo.fds.crashReporter,
-        mInitInfo.fds.crashAnnotation,
-        isChildProcess ? false : mInitInfo.xpcshell,
+        !isChildProcess && mInitInfo.xpcshell,
         isChildProcess ? null : mInitInfo.outFilePath);
 
     // And... we're done.
@@ -714,20 +695,21 @@ public class GeckoThread extends Thread {
     // Putting default values for now, but they can be overwritten.
     // Keep these values in sync with profiler defaults.
     int interval = 1;
-    // 8M entries. Keep this in sync with `PROFILER_DEFAULT_STARTUP_ENTRIES`.
-    int capacity = 8 * 1024 * 1024;
-    // We have a default 8M of entries but user can actually put less entries
-    // with environment variables. But even though user can put anything, we
-    // have a hard cap on the minimum value count, because if it's lower than
-    // this value, profiler could not capture anything meaningful.
+
+    // The default capacity value is the same with the min capacity, but users
+    // can still enter a different capacity. We also keep this variable to make
+    // sure that the entered value is not below the min capacity.
     // This value is kept in `scMinimumBufferEntries` variable in the cpp side:
     // https://searchfox.org/mozilla-central/rev/fa7f47027917a186fb2052dee104cd06c21dd76f/tools/profiler/core/platform.cpp#749
-    // This number is not clear in the cpp code at first, so lets calculate:
-    // scMinimumBufferEntries = scMinimumBufferSize / scBytesPerEntry
-    // expands into
-    // scMinimumNumberOfChunks * 2 * scExpectedMaximumStackSize / scBytesPerEntry
-    // and this is: 4 * 2 * 64 * 1024 / 8 = 65536 (~512 kb)
-    final int minCapacity = 65536;
+    // This number represents 128MiB in entry size.
+    // This is calculated as:
+    // 128 * 1024 * 1024 / 8 = 16777216
+    final int minCapacity = 16777216;
+
+    // ~16M entries which is 128MiB in entry size.
+    // Keep this in sync with `PROFILER_DEFAULT_STARTUP_ENTRIES`.
+    // It's computed as 16 * 1024 * 1024 there, which is the same number.
+    int capacity = minCapacity;
 
     // Set the default value of no filters - an empty array - which is safer than using null.
     // If we find a user provided value, this will be overwritten.

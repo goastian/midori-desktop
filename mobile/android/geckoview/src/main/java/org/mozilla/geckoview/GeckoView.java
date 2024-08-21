@@ -22,6 +22,8 @@ import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Region;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.print.PrintDocumentAdapter;
@@ -32,6 +34,7 @@ import android.util.Log;
 import android.util.SparseArray;
 import android.util.TypedValue;
 import android.view.DisplayCutout;
+import android.view.DragEvent;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -192,7 +195,7 @@ public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfacePro
     }
 
     public boolean shouldPinOnScreen() {
-      return mDisplay != null ? mDisplay.shouldPinOnScreen() : false;
+      return mDisplay != null && mDisplay.shouldPinOnScreen();
     }
 
     public void setVerticalClipping(final int clippingHeight) {
@@ -267,6 +270,14 @@ public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfacePro
     // We are adding descendants to this LayerView, but we don't want the
     // descendants to affect the way LayerView retains its focus.
     setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
+
+    // When GeckoView.requestFocus() is called with hardware keyboard, the focused state color
+    // might be applied on this view. But we don't want to apply it as default.
+    final StateListDrawable drawable = new StateListDrawable();
+    drawable.addState(
+        new int[] {android.R.attr.state_focused, -android.R.attr.state_focused},
+        new ColorDrawable(Color.WHITE));
+    setBackground(drawable);
 
     // This will stop PropertyAnimator from creating a drawing cache (i.e. a
     // bitmap) from a SurfaceView, which is just not possible (the bitmap will be
@@ -538,11 +549,7 @@ public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfacePro
             new Runnable() {
               @Override
               public void run() {
-                if (Build.VERSION.SDK_INT >= 16) {
-                  GeckoView.this.postInvalidateOnAnimation();
-                } else {
-                  GeckoView.this.postInvalidateDelayed(10);
-                }
+                GeckoView.this.postInvalidateOnAnimation();
               }
             });
 
@@ -643,15 +650,7 @@ public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfacePro
     if (mSession != null) {
       final GeckoRuntime runtime = mSession.getRuntime();
       if (runtime != null) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
-          // onConfigurationChanged is not called for 180 degree orientation changes,
-          // we will miss such rotations and the screen orientation will not be
-          // updated.
-          //
-          // If API is 17+, we use DisplayManager API to detect all degree
-          // orientation change.
-          runtime.orientationChanged(newConfig.orientation);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
           // If API is 31+, DisplayManager API may report previous information.
           // So we have to report it again. But since Configuration.orientation may still have
           // previous information even if onConfigurationChanged is called, we have to calculate it
@@ -778,12 +777,18 @@ public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfacePro
     if (super.onKeyUp(keyCode, event)) {
       return true;
     }
+    if (AndroidGamepadManager.handleKeyEvent(event)) {
+      return true;
+    }
     return mSession != null && mSession.getTextInput().onKeyUp(keyCode, event);
   }
 
   @Override
   public boolean onKeyDown(final int keyCode, final KeyEvent event) {
     if (super.onKeyDown(keyCode, event)) {
+      return true;
+    }
+    if (AndroidGamepadManager.handleKeyEvent(event)) {
       return true;
     }
     return mSession != null && mSession.getTextInput().onKeyDown(keyCode, event);
@@ -1244,5 +1249,14 @@ public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfacePro
             mSurfaceWrapper.getView().setVisibility(View.VISIBLE);
           }
         });
+  }
+
+  /** Handle drag and drop event */
+  @Override
+  public boolean onDragEvent(final DragEvent event) {
+    if (mSession == null) {
+      return false;
+    }
+    return mSession.getPanZoomController().onDragEvent(event);
   }
 }

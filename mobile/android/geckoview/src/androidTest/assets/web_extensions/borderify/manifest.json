@@ -16,5 +16,9 @@
       "matches": ["*://*.example.com/*"],
       "js": ["borderify.js"]
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "dummy.html"
+  },
+  "optional_permissions": ["clipboardRead", "*://developer.mozilla.org/*"]
 }

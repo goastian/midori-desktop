@@ -8,6 +8,7 @@ import com.koushikdutta.async.ByteBufferList
 import com.koushikdutta.async.http.server.AsyncHttpServer
 import com.koushikdutta.async.http.server.AsyncHttpServerRequest
 import com.koushikdutta.async.http.server.AsyncHttpServerResponse
+import com.koushikdutta.async.http.server.HttpServerRequestCallback
 import com.koushikdutta.async.util.TaggedList
 import org.json.JSONObject
 import java.io.FileNotFoundException
@@ -15,12 +16,16 @@ import java.math.BigInteger
 import java.security.MessageDigest
 import java.util.* // ktlint-disable no-wildcard-imports
 
-class TestServer {
+class TestServer @JvmOverloads constructor(
+    context: Context,
+    private val customHeaders: Map<String, String>? = null,
+    private val responseModifiers: Map<String, ResponseModifier>? = null,
+) {
     private val server = AsyncHttpServer()
     private val assets: AssetManager
     private val stallingResponses = Vector<AsyncHttpServerResponse>()
 
-    constructor(context: Context) {
+    init {
         assets = context.resources.assets
 
         val anything = { request: AsyncHttpServerRequest, response: AsyncHttpServerResponse ->
@@ -46,12 +51,21 @@ class TestServer {
         server.post("/anything", anything)
         server.get("/anything", anything)
 
-        server.get("/assets/.*") { request, response ->
+        val assetsCallback = HttpServerRequestCallback { request, response ->
             try {
                 val mimeType = MimeTypeMap.getSingleton()
                     .getMimeTypeFromExtension(MimeTypeMap.getFileExtensionFromUrl(request.path))
                 val name = request.path.substring("/assets/".count())
                 val asset = assets.open(name).readBytes()
+
+                customHeaders?.forEach { (header, value) ->
+                    response.headers.set(header, value)
+                }
+
+                responseModifiers?.get(request.path)?.let { modifier ->
+                    response.send(mimeType, modifier.transformResponse(asset.decodeToString()))
+                    return@HttpServerRequestCallback
+                }
 
                 response.send(mimeType, asset)
             } catch (e: FileNotFoundException) {
@@ -59,6 +73,9 @@ class TestServer {
                 response.end()
             }
         }
+
+        server.get("/assets/.*", assetsCallback)
+        server.post("/assets/.*", assetsCallback)
 
         server.get("/status/.*") { request, response ->
             val statusCode = request.path.substring("/status/".count()).toInt()
@@ -163,5 +180,9 @@ class TestServer {
             response.end()
         }
         server.stop()
+    }
+
+    fun interface ResponseModifier {
+        abstract fun transformResponse(response: String): String
     }
 }

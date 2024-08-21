@@ -22,7 +22,7 @@ public final class GeckoHLSDemuxerWrapper {
     TEXT(3);
     private int mType;
 
-    private TrackType(final int type) {
+    TrackType(final int type) {
       mType = type;
     }
 
@@ -92,16 +92,14 @@ public final class GeckoHLSDemuxerWrapper {
   public GeckoAudioInfo getAudioInfo(final int index) {
     assertTrue(mPlayer != null);
     if (DEBUG) Log.d(LOGTAG, "[getAudioInfo] formatIndex : " + index);
-    final GeckoAudioInfo aInfo = mPlayer.getAudioInfo(index);
-    return aInfo;
+    return mPlayer.getAudioInfo(index);
   }
 
   @WrapForJNI
   public GeckoVideoInfo getVideoInfo(final int index) {
     assertTrue(mPlayer != null);
     if (DEBUG) Log.d(LOGTAG, "[getVideoInfo] formatIndex : " + index);
-    final GeckoVideoInfo vInfo = mPlayer.getVideoInfo(index);
-    return vInfo;
+    return mPlayer.getVideoInfo(index);
   }
 
   @WrapForJNI

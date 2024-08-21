@@ -12,10 +12,12 @@ import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.json.JSONObject;
 import org.mozilla.geckoview.ContentBlocking;
+import org.mozilla.geckoview.ExperimentDelegate;
+import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
-import org.mozilla.geckoview.RuntimeTelemetry;
 import org.mozilla.geckoview.WebExtension;
 import org.mozilla.geckoview.test.TestCrashHandler;
 
@@ -31,43 +33,50 @@ public class RuntimeCreator {
   public static AtomicInteger sTestSupport = new AtomicInteger(0);
   public static WebExtension sTestSupportExtension;
 
-  // The RuntimeTelemetry.Delegate can only be set when creating the RuntimeCreator, to
-  // let tests set their own Delegate we need to create a proxy here.
-  public static class RuntimeTelemetryDelegate implements RuntimeTelemetry.Delegate {
-    public RuntimeTelemetry.Delegate delegate = null;
+  /**
+   * The ExperimentDelegate can only be set when starting the RuntimeCreator, so for testing we are
+   * setting up a proxy here
+   */
+  public static class RuntimeExperimentDelegate implements ExperimentDelegate {
+    public ExperimentDelegate delegate = null;
 
     @Override
-    public void onHistogram(@NonNull final RuntimeTelemetry.Histogram metric) {
+    public GeckoResult<JSONObject> onGetExperimentFeature(@NonNull String feature) {
       if (delegate != null) {
-        delegate.onHistogram(metric);
+        return delegate.onGetExperimentFeature(feature);
       }
+      return ExperimentDelegate.super.onGetExperimentFeature(feature);
     }
 
     @Override
-    public void onBooleanScalar(@NonNull final RuntimeTelemetry.Metric<Boolean> metric) {
+    public GeckoResult<Void> onRecordExposureEvent(@NonNull String feature) {
       if (delegate != null) {
-        delegate.onBooleanScalar(metric);
+        return delegate.onRecordExposureEvent(feature);
       }
+      return ExperimentDelegate.super.onRecordExposureEvent(feature);
     }
 
     @Override
-    public void onStringScalar(@NonNull final RuntimeTelemetry.Metric<String> metric) {
+    public GeckoResult<Void> onRecordExperimentExposureEvent(
+        @NonNull String feature, @NonNull String slug) {
       if (delegate != null) {
-        delegate.onStringScalar(metric);
+        return delegate.onRecordExperimentExposureEvent(feature, slug);
       }
+      return ExperimentDelegate.super.onRecordExperimentExposureEvent(feature, slug);
     }
 
     @Override
-    public void onLongScalar(@NonNull final RuntimeTelemetry.Metric<Long> metric) {
+    public GeckoResult<Void> onRecordMalformedConfigurationEvent(
+        @NonNull String feature, @NonNull String part) {
       if (delegate != null) {
-        delegate.onLongScalar(metric);
+        return delegate.onRecordMalformedConfigurationEvent(feature, part);
       }
+      return ExperimentDelegate.super.onRecordMalformedConfigurationEvent(feature, part);
     }
   }
 
-  public static final RuntimeTelemetryDelegate sRuntimeTelemetryProxy =
-      new RuntimeTelemetryDelegate();
-
+  public static RuntimeExperimentDelegate sRuntimeExperimentDelegateProxy =
+      new RuntimeExperimentDelegate();
   private static WebExtension.Port sBackgroundPort;
 
   private static WebExtension.PortDelegate sPortDelegate;
@@ -116,14 +125,13 @@ public class RuntimeCreator {
   }
 
   /**
-   * Set the {@link RuntimeTelemetry.Delegate} instance for this test. Application code can only
-   * register this delegate when the {@link GeckoRuntime} is created, so we need to proxy it for
-   * test code.
+   * Set the {@link ExperimentDelegate} instance for this test. Application code can only register
+   * this delegate when the {@link GeckoRuntime} is created, so we need to proxy it for test code.
    *
-   * @param delegate the {@link RuntimeTelemetry.Delegate} for this test run.
+   * @param delegate the {@link ExperimentDelegate} for this test to use.
    */
-  public static void setTelemetryDelegate(final RuntimeTelemetry.Delegate delegate) {
-    sRuntimeTelemetryProxy.delegate = delegate;
+  public static void setExperimentDelegate(final ExperimentDelegate delegate) {
+    sRuntimeExperimentDelegateProxy.delegate = delegate;
   }
 
   public static void setPortDelegate(final WebExtension.PortDelegate portDelegate) {
@@ -159,7 +167,7 @@ public class RuntimeCreator {
             .remoteDebuggingEnabled(true)
             .consoleOutput(true)
             .crashHandler(TestCrashHandler.class)
-            .telemetryDelegate(sRuntimeTelemetryProxy)
+            .experimentDelegate(sRuntimeExperimentDelegateProxy)
             .build();
 
     sRuntime =

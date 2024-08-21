@@ -42,10 +42,9 @@
 @BINPATH@/@DLL_PREFIX@nspr4@DLL_SUFFIX@
 #endif
 @BINPATH@/@DLL_PREFIX@lgpllibs@DLL_SUFFIX@
-#ifdef MOZ_FFVPX
+@BINPATH@/@DLL_PREFIX@gkcodecs@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
-#endif
 #ifdef MOZ_OMX_PLUGIN
 @BINPATH@/@DLL_PREFIX@omxplugin@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxpluginkk@DLL_SUFFIX@
@@ -87,19 +86,7 @@
 ; [Base Browser Files]
 @BINPATH@/application.ini
 @BINPATH@/platform.ini
-@BINPATH@/defaults/settings/last_modified.json
-#ifdef NIGHTLY_BUILD
-; The addons blocklist data is not packaged and will be downloaded after install.
-; See https://bugzilla.mozilla.org/show_bug.cgi?id=1639050#c5
-; @BINPATH@/defaults/settings/blocklists/addons-bloomfilters.json
-; @BINPATH@/defaults/settings/blocklists/addons-bloomfilters/addons-mlbf.bin
-; @BINPATH@/defaults/settings/blocklists/addons-bloomfilters/addons-mlbf.bin.meta.json
-#else
-@BINPATH@/defaults/settings/blocklists/addons.json
-#endif
-@BINPATH@/defaults/settings/blocklists/gfx.json
-@BINPATH@/defaults/settings/main/password-recipes.json
-@BINPATH@/defaults/settings/security-state/onecrl.json
+@BINPATH@/defaults/settings
 
 ; [Components]
 @BINPATH@/components/components.manifest
@@ -195,14 +182,6 @@
 ; For process sandboxing
 #if defined(MOZ_SANDBOX)
 @BINPATH@/@DLL_PREFIX@mozsandbox@DLL_SUFFIX@
-#endif
-
-; [Crash Reporter]
-; CrashService is not used on Android but the ini files are required for L10N
-; strings, see bug 1191351.
-#ifdef MOZ_CRASHREPORTER
-@BINPATH@/crashreporter.ini
-@BINPATH@/crashreporter-override.ini
 #endif
 
 [mobile]

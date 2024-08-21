@@ -4,7 +4,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Note: This file should only contain locale entries. All
-# override and resource entries should go to mobile/android/chrome/jar.mn to avoid
+# override and resource entries should go to mobile/shared/chrome/jar.mn to avoid
 # having to create the same entry for each locale.
 
 # Fluent files
@@ -18,8 +18,6 @@
 
 @AB_CD@.jar:
 % locale browser @AB_CD@ %locale/@AB_CD@/browser/
-  locale/@AB_CD@/browser/browser.properties       (%chrome/browser.properties)
-  locale/@AB_CD@/browser/passwordmgr.properties   (%chrome/passwordmgr.properties)
 
 # overrides for toolkit l10n, also for en-US
 # keep this file list in sync with l10n.toml and filter.py

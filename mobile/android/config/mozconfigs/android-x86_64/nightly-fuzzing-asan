@@ -9,10 +9,14 @@ ac_add_options --enable-optimize="-O2 -gline-tables-only"
 
 . $topsrcdir/build/unix/mozconfig.asan
 ac_add_options --disable-elf-hack
+ac_add_options --enable-linker=bfd
 
 ac_add_options --enable-fuzzing
 unset MOZ_STDCXX_COMPAT
 unset ENABLE_CLANG_PLUGIN
+
+# We don't have a native LLVM_SYMBOLIZER yet
+unset LLVM_SYMBOLIZER
 
 # Add the path to the clang_rt used, so it can be packaged with the build.
 if [ -d "$MOZ_FETCHES_DIR/clang" ]; then

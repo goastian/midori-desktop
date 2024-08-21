@@ -67,5 +67,16 @@
         app:key="@string/key_javascript_enabled"
         app:title="Javascript Enabled"
         app:defaultValue="@bool/javascript_enabled_default"/>
-
+    <SwitchPreferenceCompat
+        app:key="@string/key_extensions_process_enabled"
+        app:title="Extensions Process Enabled"
+        app:defaultValue="@bool/extensions_process_enabled_default"/>
+    <SwitchPreferenceCompat
+        app:key="@string/key_global_privacy_control_enabled"
+        app:title="Do not sell or share my data"
+        app:defaultValue="@bool/global_privacy_control_enabled_default"/>
+    <SwitchPreferenceCompat
+        app:key="@string/key_etb_private_mode_enabled"
+        app:title="Enable ETB in Private Mode"
+        app:defaultValue="@bool/global_privacy_control_enabled_default"/>
 </PreferenceScreen>

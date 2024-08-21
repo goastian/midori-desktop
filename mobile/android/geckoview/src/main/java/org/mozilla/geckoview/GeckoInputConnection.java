@@ -381,13 +381,8 @@ import org.mozilla.gecko.util.ThreadUtils;
         });
   }
 
-  @TargetApi(21)
   @Override // SessionTextInput.EditableListener
   public void updateCompositionRects(final RectF[] rects, final RectF caretRect) {
-    if (!(Build.VERSION.SDK_INT >= 21)) {
-      return;
-    }
-
     final View view = getView();
     if (view == null) {
       return;
@@ -418,7 +413,6 @@ import org.mozilla.gecko.util.ThreadUtils;
         });
   }
 
-  @TargetApi(21)
   /* package */ void updateCompositionRectsOnUi(
       final View view, final RectF[] rects, final RectF caretRect, final CharSequence composition) {
     if (mCursorAnchorInfoBuilder == null) {
@@ -661,6 +655,53 @@ import org.mozilla.gecko.util.ThreadUtils;
       return replaceComposingSpanWithSelection()
           && mKeyInputConnection.commitText(text, newCursorPosition);
     }
+
+    // Bug 1818268 - Unexpected crash on Galaxy J7
+    if (InputMethods.dontOverrideCommitText()) {
+      return super.commitText(text, newCursorPosition);
+    }
+
+    // Default implementation is
+    // 1. Set selection
+    // 2. Call Editable.replace
+    // 3. Set selection in Editable.replace
+    //
+    // However, this results in additional IPC in Gecko and unexpected selection before replacing
+    // text.
+    // When changing text in Gecko, the selection will be updated, so the default implementation is
+    // not compatible with Gecko's text handling.
+    // Therefore, we set the selection after replacing the text. However, if there is a composition,
+    // the selection may be an IME cursor, not a standard selection. In such cases, this step is not
+    // necessary.
+    final Editable content = getEditable();
+    if (content != null) {
+      final int compositionStart = getComposingSpanStart(content);
+      final int compositionEnd = getComposingSpanEnd(content);
+
+      if (compositionStart < 0 || compositionEnd < 0) {
+        // No composition
+        int selStart = Math.max(Selection.getSelectionStart(content), 0);
+        int selEnd = Math.max(Selection.getSelectionEnd(content), 0);
+        if (selStart > selEnd) {
+          final int tmp = selEnd;
+          selEnd = selStart;
+          selStart = tmp;
+        }
+
+        beginBatchEdit();
+        content.replace(selStart, selEnd, text);
+
+        int cursorPosition =
+            newCursorPosition > 0
+                ? selStart + text.length() + newCursorPosition - 1
+                : selStart + newCursorPosition;
+        cursorPosition = Math.min(Math.max(0, cursorPosition), content.length());
+        Selection.setSelection(content, cursorPosition);
+        endBatchEdit();
+        return true;
+      }
+    }
+
     return super.commitText(text, newCursorPosition);
   }
 
@@ -722,13 +763,9 @@ import org.mozilla.gecko.util.ThreadUtils;
         // Does the same thing as Chromium
         // https://chromium.googlesource.com/chromium/src/+/49.0.2623.67/chrome/android/java/src/org/chromium/chrome/browser/tab/TabWebContentsDelegateAndroid.java#445
         // These are all the keys dispatchMediaKeyEvent supports.
-        if (Build.VERSION.SDK_INT >= 19) {
-          // dispatchMediaKeyEvent is only available on Android 4.4+
-          final Context viewContext = getView().getContext();
-          final AudioManager am =
-              (AudioManager) viewContext.getSystemService(Context.AUDIO_SERVICE);
-          am.dispatchMediaKeyEvent(event);
-        }
+        final Context viewContext = getView().getContext();
+        final AudioManager am = (AudioManager) viewContext.getSystemService(Context.AUDIO_SERVICE);
+        am.dispatchMediaKeyEvent(event);
         break;
     }
   }

@@ -59,8 +59,7 @@ set_config("MOZ_ANDROID_GECKOVIEW_LITE", True, when="--enable-geckoview-lite")
 
 imply_option("MOZ_NORMANDY", False)
 imply_option("MOZ_SERVICES_HEALTHREPORT", True)
-imply_option("MOZ_ANDROID_HISTORY", True)
-imply_option("--enable-small-chunk-size", True)
+imply_option("MOZ_GECKOVIEW_HISTORY", True)
 
 
 @depends(target)

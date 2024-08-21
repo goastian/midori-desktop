@@ -11,6 +11,7 @@ import android.location.LocationManager
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
 import org.json.JSONArray
@@ -214,8 +215,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -232,11 +232,25 @@ class PermissionDelegateTest : BaseSessionTest() {
                 callback: PermissionDelegate.Callback,
             ) {
                 assertThat(
-                    "Permissions list should be correct",
+                    "Permissions list should include ACCESS_FINE_LOCATION",
                     listOf(*permissions!!),
                     hasItems(Manifest.permission.ACCESS_FINE_LOCATION),
                 )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    checkCoarseLocation(permissions)
+                }
                 callback.grant()
+            }
+
+            @SdkSuppress(minSdkVersion = Build.VERSION_CODES.S)
+            fun checkCoarseLocation(
+                permissions: Array<out String>?,
+            ) {
+                assertThat(
+                    "Permissions list should include ACCESS_COARSE_LOCATION on Android S and above",
+                    listOf(*permissions!!),
+                    hasItems(Manifest.permission.ACCESS_COARSE_LOCATION),
+                )
             }
         })
 
@@ -275,7 +289,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_GEOLOCATION &&
@@ -302,8 +316,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 return GeckoResult.fromValue(ContentPermission.VALUE_DENY)
             }
 
@@ -342,7 +355,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_GEOLOCATION &&
@@ -462,6 +475,7 @@ class PermissionDelegateTest : BaseSessionTest() {
                 session: GeckoSession,
                 url: String?,
                 perms: MutableList<ContentPermission>,
+                hasUserGesture: Boolean,
             ) {
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_TRACKING) {
@@ -501,6 +515,7 @@ class PermissionDelegateTest : BaseSessionTest() {
         assertTrackingProtectionPermission(null)
 
         mainSession.loadTestPath(HELLO_HTML_PATH)
+        mainSession.waitForPageStop()
         assertTrackingProtectionPermission(ContentPermission.VALUE_DENY)
     }
 
@@ -515,8 +530,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -551,7 +565,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
@@ -587,8 +601,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 return GeckoResult.fromValue(ContentPermission.VALUE_DENY)
             }
         })
@@ -617,7 +630,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
@@ -649,8 +662,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.waitUntilCalled(object : PermissionDelegate {
             @AssertCalled(count = 2)
-            override fun onContentPermissionRequest(session: GeckoSession, perm: ContentPermission):
-                GeckoResult<Int> {
+            override fun onContentPermissionRequest(session: GeckoSession, perm: ContentPermission): GeckoResult<Int> {
                 val expectedType = if (sessionRule.currentCall.counter == 1) PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE else PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE
                 assertThat("Type should match", perm.permission, equalTo(expectedType))
                 return GeckoResult.fromValue(ContentPermission.VALUE_DENY)
@@ -670,8 +682,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -707,7 +718,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
@@ -736,8 +747,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -777,7 +787,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         session2.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
@@ -805,8 +815,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -841,7 +850,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
@@ -876,8 +885,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -919,7 +927,7 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>) {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<ContentPermission>, hasUserGesture: Boolean) {
                 var permFound2 = false
                 for (perm in perms) {
                     if (perm.permission == PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
@@ -954,8 +962,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",
@@ -1000,8 +1007,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 return GeckoResult.fromValue(ContentPermission.VALUE_PROMPT)
             }
         })
@@ -1026,8 +1032,7 @@ class PermissionDelegateTest : BaseSessionTest() {
             override fun onContentPermissionRequest(
                 session: GeckoSession,
                 perm: ContentPermission,
-            ):
-                GeckoResult<Int> {
+            ): GeckoResult<Int> {
                 assertThat("URI should match", perm.uri, endsWith(url))
                 assertThat(
                     "Type should match",

@@ -2,10 +2,14 @@
  * Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+@file:Suppress("ktlint:standard:no-wildcard-imports")
+
 package org.mozilla.geckoview.test
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
@@ -20,7 +24,6 @@ import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.ContentDelegate
 import org.mozilla.geckoview.GeckoSession.HistoryDelegate
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate
-import org.mozilla.geckoview.GeckoSession.PermissionDelegate
 import org.mozilla.geckoview.GeckoSession.ProgressDelegate
 import org.mozilla.geckoview.GeckoSession.PromptDelegate
 import org.mozilla.geckoview.GeckoSession.ScrollDelegate
@@ -1112,10 +1115,7 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     @Test(expected = AssertionError::class)
     @NullDelegate(NavigationDelegate::class)
     fun delegateDuringNextWait_throwOnNullDelegate() {
-        mainSession.delegateDuringNextWait(object : NavigationDelegate {
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<PermissionDelegate.ContentPermission>) {
-            }
-        })
+        mainSession.delegateDuringNextWait(object : NavigationDelegate {})
     }
 
     @Test fun wrapSession() {
@@ -1464,10 +1464,27 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
 
     @WithDisplay(width = 100, height = 100)
     @Test
+    fun synthesizeMouse() {
+        mainSession.loadTestPath(MOUSE_TO_RELOAD_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        val time = SystemClock.uptimeMillis()
+        mainSession.evaluateJS("document.body.addEventListener('mousedown', () => { window.location.reload() })")
+        mainSession.synthesizeMouse(time, MotionEvent.ACTION_DOWN, 50, 50, MotionEvent.BUTTON_PRIMARY)
+        mainSession.waitForPageStop()
+
+        mainSession.evaluateJS("document.body.addEventListener('mouseup', () => { window.location.reload() })")
+        mainSession.synthesizeMouse(time, MotionEvent.ACTION_UP, 50, 50, 0)
+        mainSession.waitForPageStop()
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
     fun synthesizeMouseMove() {
         mainSession.loadTestPath(MOUSE_TO_RELOAD_HTML_PATH)
         mainSession.waitForPageStop()
 
+        mainSession.evaluateJS("document.body.addEventListener('mousemove', () => { window.location.reload() })")
         mainSession.synthesizeMouseMove(50, 50)
         mainSession.waitForPageStop()
     }
@@ -2009,9 +2026,6 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     @IgnoreCrash
     @Test
     fun contentCrashIgnored() {
-        // TODO: Bug 1673953
-        assumeThat(sessionRule.env.isFission, equalTo(false))
-
         // TODO: bug 1710940
         assumeThat(sessionRule.env.isIsolatedProcess, equalTo(false))
 

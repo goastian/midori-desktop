@@ -23,6 +23,7 @@ public final class MediaDrmProxy {
   private static final String WIDEVINE_KEY_SYSTEM = "com.widevine.alpha";
   @WrapForJNI private static final String AAC = "audio/mp4a-latm";
   @WrapForJNI private static final String AVC = "video/avc";
+  @WrapForJNI private static final String AV1 = "video/av01";
   @WrapForJNI private static final String VORBIS = "audio/vorbis";
   @WrapForJNI private static final String VP8 = "video/x-vnd.on2.vp8";
   @WrapForJNI private static final String VP9 = "video/x-vnd.on2.vp9";
@@ -206,8 +207,7 @@ public final class MediaDrmProxy {
 
   @WrapForJNI(calledFrom = "gecko")
   public static MediaDrmProxy create(final String keySystem, final Callbacks nativeCallbacks) {
-    final MediaDrmProxy proxy = new MediaDrmProxy(keySystem, nativeCallbacks);
-    return proxy;
+    return new MediaDrmProxy(keySystem, nativeCallbacks);
   }
 
   MediaDrmProxy(final String keySystem, final Callbacks nativeCallbacks) {

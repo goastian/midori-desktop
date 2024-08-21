@@ -1169,15 +1169,14 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
     }
 
     // Preserve enter and tab keys for the browser
-    if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_TAB) {
+    if (keyCode == KeyEvent.KEYCODE_ENTER
+        || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+        || keyCode == KeyEvent.KEYCODE_TAB) {
       return true;
     }
     // BaseKeyListener returns false even if it handled these keys for us,
     // so we skip the key listener entirely and handle these ourselves
-    if (keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_FORWARD_DEL) {
-      return true;
-    }
-    return false;
+    return keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_FORWARD_DEL;
   }
 
   private static KeyEvent translateSonyXperiaGamepadKeys(final int keyCode, final KeyEvent event) {
@@ -1894,7 +1893,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       outAttrs.imeOptions = EditorInfo.IME_ACTION_GO;
     } else if (actionHint.equals("done")) {
       outAttrs.imeOptions = EditorInfo.IME_ACTION_DONE;
-    } else if (actionHint.equals("next") || actionHint.equals("maybenext")) {
+    } else if (actionHint.equals("next")) {
       outAttrs.imeOptions = EditorInfo.IME_ACTION_NEXT;
     } else if (actionHint.equals("previous")) {
       outAttrs.imeOptions = EditorInfo.IME_ACTION_PREVIOUS;
@@ -1902,6 +1901,9 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       outAttrs.imeOptions = EditorInfo.IME_ACTION_SEARCH;
     } else if (actionHint.equals("send")) {
       outAttrs.imeOptions = EditorInfo.IME_ACTION_SEND;
+    } else if (actionHint.equals("maybenext")) {
+      // this should be low priority as "maybenext" is internal type
+      outAttrs.imeOptions = EditorInfo.IME_ACTION_NEXT;
     } else if (actionHint.length() > 0) {
       if (DEBUG) Log.w(LOGTAG, "Unexpected actionHint=\"" + actionHint + "\"");
       outAttrs.actionLabel = actionHint;
@@ -2569,6 +2571,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
     switch (keyCode) {
       case KeyEvent.KEYCODE_MENU:
       case KeyEvent.KEYCODE_BACK:
+      case KeyEvent.KEYCODE_FORWARD:
       case KeyEvent.KEYCODE_VOLUME_UP:
       case KeyEvent.KEYCODE_VOLUME_DOWN:
       case KeyEvent.KEYCODE_SEARCH:

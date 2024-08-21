@@ -2407,7 +2407,7 @@ class AutocompleteTest : BaseSessionTest() {
                     "Hint should match",
                     option.hint,
                     equalTo(LoginSaveOption.Hint.GENERATED))
-                */
+                 */
 
                 assertThat(
                     "Password should not be empty",
@@ -2449,6 +2449,16 @@ class AutocompleteTest : BaseSessionTest() {
         assertThat(
             "Filled password should match",
             filledPass,
+            equalTo(genPass),
+        )
+
+        val filledConfirmPass = mainSession.evaluateJS(
+            "document.querySelector('#passConfirm').value",
+        ) as String
+
+        assertThat(
+            "Confirm password should match filled password",
+            filledConfirmPass,
             equalTo(genPass),
         )
 

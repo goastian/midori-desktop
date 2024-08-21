@@ -15,7 +15,9 @@ import androidx.test.filters.LargeTest
 import org.hamcrest.Matchers.equalTo
 import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeThat
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -143,6 +145,7 @@ class PdfCreationTest : BaseSessionTest() {
         }
     }
 
+    @Ignore // TODO: Re-enable it in bug 1846296.
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun saveAPdfDocument() {
@@ -154,6 +157,36 @@ class PdfCreationTest : BaseSessionTest() {
             sessionRule.waitForResult(pdfInputStream).let {
                 assertThat("The PDF File must the same as the original one.", it!!.readBytes(), equalTo(originalBytes))
             }
+        }
+    }
+
+    @NullDelegate(Autofill.Delegate::class)
+    @Test
+    fun saveAContentPdfDocument() {
+        // Bug 1864622.
+        assumeThat(sessionRule.env.isIsolatedProcess, equalTo(false))
+        activityRule.scenario.onActivity {
+            val originalBytes = getTestBytes(HELLO_PDF_WORLD_PDF_PATH)
+            TestContentProvider.setTestData(originalBytes, "application/pdf")
+            mainSession.loadUri("content://org.mozilla.geckoview.test.provider/pdf")
+            mainSession.waitForPageStop()
+
+            val response = mainSession.pdfFileSaver.save()
+            sessionRule.waitForResult(response).let {
+                assertThat("The PDF File must the same as the original one.", it.body?.readBytes(), equalTo(originalBytes))
+            }
+        }
+    }
+
+    @NullDelegate(Autofill.Delegate::class)
+    @Test
+    fun dontTryToOpenNullContent() {
+        // Bug 1881927.
+        assumeThat(sessionRule.env.isIsolatedProcess, equalTo(false))
+        activityRule.scenario.onActivity {
+            TestContentProvider.setNullTestData("application/pdf")
+            mainSession.loadUri("content://org.mozilla.geckoview.test.provider/pdf")
+            mainSession.waitForPageStop()
         }
     }
 }

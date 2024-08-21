@@ -38,8 +38,8 @@ public final class GeckoSurface implements Parcelable {
   public GeckoSurface(final Parcel p) {
     mSurface = Surface.CREATOR.createFromParcel(p);
     mHandle = p.readLong();
-    mIsSingleBuffer = p.readByte() == 1 ? true : false;
-    mIsAvailable = (p.readByte() == 1 ? true : false);
+    mIsSingleBuffer = p.readByte() == 1;
+    mIsAvailable = p.readByte() == 1;
     mMyPid = p.readInt();
   }
 
@@ -138,8 +138,7 @@ public final class GeckoSurface implements Parcelable {
     if (GeckoSurfaceTexture.lookup(mHandle) != null) {
       throw new AssertionError("texture#" + mHandle + " already in use.");
     }
-    final GeckoSurfaceTexture texture =
-        GeckoSurfaceTexture.acquire(GeckoSurfaceTexture.isSingleBufferSupported(), mHandle);
+    final GeckoSurfaceTexture texture = GeckoSurfaceTexture.acquire(true, mHandle);
     if (texture != null) {
       texture.setDefaultBufferSize(width, height);
       texture.track(mHandle);

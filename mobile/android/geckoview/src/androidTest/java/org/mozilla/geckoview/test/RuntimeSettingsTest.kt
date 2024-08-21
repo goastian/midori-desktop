@@ -8,11 +8,13 @@ import android.provider.Settings
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.platform.app.InstrumentationRegistry
+import junit.framework.TestCase.assertTrue
 import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
 import org.junit.Assume.assumeThat
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mozilla.geckoview.BuildConfig
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate
@@ -217,6 +219,50 @@ class RuntimeSettingsTest : BaseSessionTest() {
     }
 
     @Test
+    fun largeKeepaliveFactor() {
+        val defaultLargeKeepaliveFactor = 10
+        val settings = sessionRule.runtime.settings
+
+        val largeKeepaliveFactorPref = "network.http.largeKeepaliveFactor"
+        var prefValue = (sessionRule.getPrefs(largeKeepaliveFactorPref)[0] as Int)
+        assertThat(
+            "default LargeKeepaliveFactor should be 10",
+            prefValue,
+            `is`(defaultLargeKeepaliveFactor),
+        )
+
+        for (factor in 1..10) {
+            settings.setLargeKeepaliveFactor(factor)
+            prefValue = (sessionRule.getPrefs(largeKeepaliveFactorPref)[0] as Int)
+            assertThat(
+                "setting LargeKeepaliveFactor to an integer value between 1..10 should work",
+                prefValue,
+                `is`(factor),
+            )
+        }
+
+        val sanitizedDefaultLargeKeepaliveFactor = 1
+
+        /**
+         * Setting an invalid factor will cause an exception to be throw in debug build.
+         * otherwise, the factor will be reset to default when an invalid factor is given.
+         */
+        try {
+            settings.setLargeKeepaliveFactor(128)
+            prefValue = (sessionRule.getPrefs(largeKeepaliveFactorPref)[0] as Int)
+            assertThat(
+                "set LargeKeepaliveFactor to default when input is invalid",
+                prefValue,
+                `is`(sanitizedDefaultLargeKeepaliveFactor),
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG_BUILD) {
+                assertTrue("Should have an exception in DEBUG_BUILD", true)
+            }
+        }
+    }
+
+    @Test
     fun aboutConfig() {
         // This is broken in automation because document channel is enabled by default
         assumeThat(sessionRule.env.isAutomation, equalTo(false))
@@ -231,8 +277,7 @@ class RuntimeSettingsTest : BaseSessionTest() {
         mainSession.loadUri("about:config")
         mainSession.waitUntilCalled(object : NavigationDelegate {
             @AssertCalled
-            override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError):
-                GeckoResult<String>? {
+            override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
                 assertThat("about:config should not load.", uri, equalTo("about:config"))
                 return null
             }
@@ -249,5 +294,121 @@ class RuntimeSettingsTest : BaseSessionTest() {
 
         mainSession.loadUri("about:config")
         mainSession.waitForPageStop()
+    }
+
+    @Test
+    fun globalPrivacyControlEnabling() {
+        mainSession.loadTestPath(HELLO_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setGlobalPrivacyControl(true)
+
+        val gpcValue = mainSession.evaluateJS(
+            "window.navigator.globalPrivacyControl",
+        )
+
+        assertThat(
+            "Global Privacy Control should now be enabled",
+            gpcValue,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Global Privacy Control runtime settings should now be enabled in normal tabs",
+            geckoRuntimeSettings.globalPrivacyControl,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Global Privacy Control runtime settings should still be enabled in private tabs",
+            geckoRuntimeSettings.globalPrivacyControlPrivateMode,
+            equalTo(true),
+        )
+
+        val globalPrivacyControl =
+            (sessionRule.getPrefs("privacy.globalprivacycontrol.enabled").get(0)) as Boolean
+        val globalPrivacyControlPrivateMode =
+            (sessionRule.getPrefs("privacy.globalprivacycontrol.pbmode.enabled").get(0)) as Boolean
+        val globalPrivacyControlFunctionality = (
+            sessionRule.getPrefs("privacy.globalprivacycontrol.functionality.enabled").get(0)
+            ) as Boolean
+
+        assertThat(
+            "Global Privacy Control should be enabled in normal tabs",
+            globalPrivacyControl,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Global Privacy Control should still be in private tabs",
+            globalPrivacyControlPrivateMode,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Global Privacy Control Functionality flag should be enabled",
+            globalPrivacyControlFunctionality,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun globalPrivacyControlDisabling() {
+        mainSession.loadTestPath(HELLO_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setGlobalPrivacyControl(false)
+
+        val gpcValue = mainSession.evaluateJS(
+            "window.navigator.globalPrivacyControl",
+        )
+
+        assertThat(
+            "Global Privacy Control should now be disabled in normal mode",
+            gpcValue,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Global Privacy Control runtime settings should now be enabled in normal tabs",
+            geckoRuntimeSettings.globalPrivacyControl,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Global Privacy Control runtime settings should still be enabled in private tabs",
+            geckoRuntimeSettings.globalPrivacyControlPrivateMode,
+            equalTo(true),
+        )
+
+        val globalPrivacyControl =
+            (sessionRule.getPrefs("privacy.globalprivacycontrol.enabled").get(0)) as Boolean
+        val globalPrivacyControlPrivateMode =
+            (sessionRule.getPrefs("privacy.globalprivacycontrol.pbmode.enabled").get(0)) as Boolean
+        val globalPrivacyControlFunctionality = (
+            sessionRule.getPrefs("privacy.globalprivacycontrol.functionality.enabled").get(0)
+            ) as Boolean
+
+        assertThat(
+            "Global Privacy Control should be enabled in normal tabs",
+            globalPrivacyControl,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Global Privacy Control should still be enabled in private tabs",
+            globalPrivacyControlPrivateMode,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Global Privacy Control Functionality flag should still be enabled",
+            globalPrivacyControlFunctionality,
+            equalTo(true),
+        )
     }
 }

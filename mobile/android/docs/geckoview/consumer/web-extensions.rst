@@ -123,7 +123,7 @@ Note: extension can only send messages from content scripts if
 explicitly authorized by the app by adding
 ``nativeMessagingFromContent`` in the manifest.json file, e.g.
 
-.. code::
+.. code:: json
 
      "permissions": [
        "nativeMessaging",
@@ -219,7 +219,7 @@ found on the page. Note that our ``nativeApp`` identifier used for
 /assets/messaging/messaging.js
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. code:: javascript
+.. code:: JavaScript
 
    let manifest = document.querySelector("head > link[rel=manifest]");
    if (manifest) {
@@ -264,7 +264,7 @@ the extension.
 
 The type of ``message`` will be ``JSONObject`` when the extension sends
 a javascript object, but could also be a primitive type if the extension
-sends one, e.g. for
+sends one, e.g. for
 
 .. code:: javascript
 
@@ -301,7 +301,7 @@ For this example, the extension side will do the following:
 /assets/messaging/background.js
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: javascript
+.. code:: JavaScript
 
    // Establish connection with app
    let port = browser.runtime.connectNative("browser");
@@ -372,7 +372,7 @@ and then using it when needed.
    }
 
 For example, let’s send a message to the extension every time the user
-long presses on a key on the virtual keyboard, e.g. on the back button.
+long presses on a key on the virtual keyboard, e.g. on the back button.
 
 .. code:: java
 

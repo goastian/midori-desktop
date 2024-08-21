@@ -24,7 +24,6 @@ android {
         targetSdkVersion project.ext.targetSdkVersion
         minSdkVersion project.ext.minSdkVersion
         manifestPlaceholders = project.ext.manifestPlaceholders
-        multiDexEnabled true
 
         versionCode project.ext.versionCode
         versionName project.ext.versionName
@@ -52,8 +51,8 @@ android {
         buildConfigField 'String', "OMNIJAR_NAME", "\"${mozconfig.substs.OMNIJAR_NAME}\"";
 
         // Keep in sync with actual user agent in nsHttpHandler::BuildUserAgent
-        buildConfigField 'String', "USER_AGENT_GECKOVIEW_MOBILE", "\"Mozilla/5.0 (Android \" + android.os.Build.VERSION.RELEASE + \"; Mobile; rv:109.0) Gecko/\" + ${mozconfig.defines.MOZILLA_UAVERSION} + \" Firefox/\" + ${mozconfig.defines.MOZILLA_UAVERSION}";
-        buildConfigField 'String', "USER_AGENT_GECKOVIEW_TABLET", "\"Mozilla/5.0 (Android \" + android.os.Build.VERSION.RELEASE + \"; Tablet; rv:109.0) Gecko/\" + ${mozconfig.defines.MOZILLA_UAVERSION} + \" Firefox/\" + ${mozconfig.defines.MOZILLA_UAVERSION}";
+        buildConfigField 'String', "USER_AGENT_GECKOVIEW_MOBILE", "\"Mozilla/5.0 (Android \" + android.os.Build.VERSION.RELEASE + \"; Mobile; rv:\" + ${mozconfig.defines.MOZILLA_UAVERSION} + \") Gecko/\" + ${mozconfig.defines.MOZILLA_UAVERSION} + \" Firefox/\" + ${mozconfig.defines.MOZILLA_UAVERSION}";
+        buildConfigField 'String', "USER_AGENT_GECKOVIEW_MOBILE_ANDROID_10", "\"Mozilla/5.0 (Android 10; Mobile; rv:\" + ${mozconfig.defines.MOZILLA_UAVERSION} + \") Gecko/\" + ${mozconfig.defines.MOZILLA_UAVERSION} + \" Firefox/\" + ${mozconfig.defines.MOZILLA_UAVERSION}";
 
         buildConfigField 'int', 'MIN_SDK_VERSION', mozconfig.substs.MOZ_ANDROID_MIN_SDK_VERSION;
 
@@ -85,8 +84,8 @@ android {
     project.configureProductFlavors()
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     lintOptions {
@@ -109,7 +108,6 @@ android {
                     srcDir "${topsrcdir}/third_party/libwebrtc/sdk/android/api"
                     srcDir "${topsrcdir}/third_party/libwebrtc/sdk/android/src"
                     srcDir "${topsrcdir}/third_party/libwebrtc/rtc_base/java"
-                    srcDir "${topsrcdir}/third_party/libwebrtc/modules/audio_device/android/java"
                 }
 
                 srcDir "${topobjdir}/mobile/android/geckoview/src/main/java"
@@ -150,6 +148,17 @@ android {
             }
         }
     }
+
+    buildFeatures {
+        buildConfig true
+        aidl = true
+    }
+
+    publishing {
+        singleVariant('withGeckoBinariesDebug')
+    }
+
+    namespace 'org.mozilla.geckoview'
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
@@ -180,7 +189,7 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
 
     kotlinOptions {
         allWarningsAsErrors = true
-        jvmTarget = JavaVersion.VERSION_11
+        jvmTarget = JavaVersion.VERSION_17
     }
 
     doFirst {
@@ -219,34 +228,30 @@ configurations {
 }
 
 dependencies {
-    implementation "androidx.annotation:annotation:1.6.0"
-    implementation "androidx.legacy:legacy-support-v4:1.0.0"
+    implementation ComponentsDependencies.androidx_annotation
+    implementation ComponentsDependencies.androidx_collection
+    implementation ComponentsDependencies.androidx_core
 
-    implementation "com.google.android.gms:play-services-fido:20.0.1"
-    implementation "org.yaml:snakeyaml:2.0"
+    implementation "com.google.android.gms:play-services-fido:21.1.0"
+    implementation "org.yaml:snakeyaml:2.2"
 
-    implementation "androidx.lifecycle:lifecycle-common:2.6.1"
-    implementation "androidx.lifecycle:lifecycle-process:2.6.1"
+    implementation ComponentsDependencies.androidx_lifecycle_common
+    implementation ComponentsDependencies.androidx_lifecycle_process
 
     if (mozconfig.substs.MOZ_ANDROID_HLS_SUPPORT) {
         implementation project(":exoplayer2")
     }
 
-    testImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.robolectric:robolectric:4.10.1'
-    testImplementation 'org.mockito:mockito-core:5.3.1'
+    testImplementation ComponentsDependencies.testing_junit
+    testImplementation ComponentsDependencies.testing_robolectric
 
-    androidTestImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    androidTestImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
-    androidTestImplementation 'androidx.test:runner:1.5.2'
-    androidTestImplementation 'androidx.test:rules:1.5.0'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'
+    androidTestImplementation ComponentsDependencies.testing_coroutines
+    androidTestImplementation ComponentsDependencies.androidx_test_runner
+    androidTestImplementation ComponentsDependencies.androidx_test_rules
+    androidTestImplementation ComponentsDependencies.androidx_test_junit
+    androidTestImplementation ComponentsDependencies.androidx_espresso_core
 
     androidTestImplementation 'com.koushikdutta.async:androidasync:3.1.0'
-
-    androidTestImplementation 'androidx.multidex:multidex:2.0.1'
 }
 
 apply from: "${topsrcdir}/mobile/android/gradle/with_gecko_binaries.gradle"
@@ -316,14 +321,14 @@ android.libraryVariants.all { variant ->
         source = variant.sourceSets.collect({ it.java.srcDirs })
         exclude '**/R.java', '**/BuildConfig.java'
         include 'org/mozilla/geckoview/**.java'
-        options.addPathOption('sourcepath', ':').setValue(
+        options.addPathOption('sourcepath').setValue(
              variant.sourceSets.collect({ it.java.srcDirs }).flatten() +
              variant.generateBuildConfigProvider.get().sourceOutputDir.asFile.get() +
              variant.aidlCompileProvider.get().sourceOutputDir.asFile.get()
         )
         options.addStringOption("Xmaxwarns", "1000")
 
-        classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+        classpath += files(android.getBootClasspath())
         classpath += variant.javaCompileProvider.get().classpath
 
         options.memberLevel = JavadocMemberLevel.PROTECTED
@@ -353,7 +358,7 @@ android.libraryVariants.all { variant ->
     }
 
     def sourcesJar = task("sourcesJar${name.capitalize()}", type: Jar) {
-        classifier 'sources'
+        archiveClassifier = 'sources'
         description = "Generate Javadoc for build variant $name"
         destinationDirectory =
             file("${topobjdir}/mobile/android/geckoview/sources/${variant.baseName}")
@@ -381,23 +386,10 @@ android.libraryVariants.all { variant ->
     }
 }
 
-android.libraryVariants.all { variant ->
-    // At this point, the Android-Gradle plugin has created all the Android
-    // tasks and configurations.  This is the time for us to declare additional
-    // Glean files to package into AAR files.  This packs `metrics.yaml` in the
-    // root of the AAR, sibling to `AndroidManifest.xml` and `classes.jar`.  By
-    // default, consumers of the AAR will ignore this file, but consumers that
-    // look for it can find it (provided GeckoView is a `module()` dependency
-    // and not a `project()` dependency.)  Under the hood this uses that the
-    // task provided by `packageLibraryProvider` task is a Maven `Zip` task,
-    // and we can simply extend its inputs.  See
-    // https://android.googlesource.com/platform/tools/base/+/0cbe8846f7d02c0bb6f07156b9f4fde16d96d329/build-system/gradle-core/src/main/java/com/android/build/gradle/tasks/BundleAar.kt#94.
-    variant.packageLibraryProvider.get().from("${topsrcdir}/toolkit/components/telemetry/geckoview/streaming/metrics.yaml")
-}
-
 apply plugin: 'maven-publish'
 
 version = getVersionNumber()
+println("GeckoView version = " + version)
 group = 'org.mozilla.geckoview'
 
 def getArtifactId() {
@@ -507,7 +499,7 @@ android.libraryVariants.all configureVariantDebugLevel
 // be somewhere where the Android plugin is available so that we can fish the
 // path to "android.jar".
 task("generateSDKBindings", type: JavaExec) {
-    classpath project(':annotations').jar.archivePath
+    classpath project(':annotations').jar.archiveFile
     classpath project(':annotations').compileJava.classpath
     classpath project(':annotations').sourceSets.main.runtimeClasspath
 

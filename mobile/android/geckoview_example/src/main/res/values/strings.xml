@@ -26,6 +26,7 @@
     <string name="tracking_protection">Tracking Protection</string>
     <string name="tracking_protection_ex">TP exception</string>
     <string name="private_browsing">Private Browsing</string>
+    <string name="global_privacy_control">Global Privacy Control</string>
     <string name="remote_debugging">Remote Debugging</string>
     <string name="forward">Forward</string>
     <string name="reload">Reload</string>
@@ -52,6 +53,21 @@
     <string name="addon_uri">WebExtension xpi URL</string>
     <string name="save_pdf">Save as PDF</string>
     <string name="print_page">Print Page</string>
+    <string name="translate">Translate</string>
+    <string name="translate_restore">Restore to Original</string>
+    <string name="translate_language_from_hint">From Language</string>
+    <string name="translate_language_to_hint">To Language</string>
+    <string name="translate_action">Translate</string>
+    <string name="translate_manage">Manage Translate</string>
+    <string name="translate_manage_languages">Languages</string>
+    <string name="translate_manage_operations">Operations</string>
+    <string name="translate_display_hint">See Logcat for State</string>
+    <string name="translate_manage_action">Update</string>
+    <string name="shopping_actions">Shopping Actions</string>
+    <string name="shopping_manage_actions">Actions</string>
+    <string name="shopping_display_log">See Logcat for "Shopping Action" Results</string>
+    <string name="shopping_query">Query</string>
+
 
     # Preferences
     <string name="key_tracking_protection">tracking_protection</string>
@@ -59,6 +75,9 @@
 
     <string name="key_javascript_enabled">javascript_enabled</string>
     <item type="bool" name="javascript_enabled_default">true</item>
+
+    <string name="key_extensions_process_enabled">extensions_process_enabled</string>
+    <item type="bool" name="extensions_process_enabled_default">false</item>
 
     <string name="key_remote_debugging">remote_debugging</string>
     <item type="bool" name="remote_debugging_default">true</item>
@@ -71,6 +90,12 @@
 
     <string name="key_allow_extensions_in_private_browsing">allow_extensions_in_private_browsing</string>
     <item type="bool" name="allow_extensions_in_private_browsing_default">false</item>
+
+    <string name="key_global_privacy_control_enabled">global_privacy_control_enabled</string>
+    <item type="bool" name="global_privacy_control_enabled_default">false</item>
+
+    <string name="key_etb_private_mode_enabled">etb_private_mode_enabled</string>
+    <item type="bool" name="etb_private_mode_enabled_default">false</item>
 
     <string name="key_user_agent_override">user_agent_override</string>
     <string name="user_agent_override_default"></string>

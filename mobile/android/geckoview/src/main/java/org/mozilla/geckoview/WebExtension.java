@@ -1442,7 +1442,7 @@ public class WebExtension {
               return;
             }
 
-            session.getSettings().setIsPopup(true);
+            session.getSettings().setIsExtensionPopup(true);
             session.loadUri(popupUri);
           });
     }
@@ -1556,7 +1556,7 @@ public class WebExtension {
       /** The downloaded extension had a different type than expected. */
       public static final int ERROR_UNEXPECTED_ADDON_TYPE = -6;
 
-      /** The downloaded extension had a different version than expected */
+      /** The downloaded extension had a different version than expected. */
       public static final int ERROR_UNEXPECTED_ADDON_VERSION = -9;
 
       /** The extension did not have the expected ID. */
@@ -1564,6 +1564,15 @@ public class WebExtension {
 
       /** The extension did not have the expected ID. */
       public static final int ERROR_INVALID_DOMAIN = -8;
+
+      /** The extension is blocklisted. */
+      public static final int ERROR_BLOCKLISTED = -10;
+
+      /** The extension is incompatible. */
+      public static final int ERROR_INCOMPATIBLE = -11;
+
+      /** The extension type is not supported by the platform. */
+      public static final int ERROR_UNSUPPORTED_ADDON_TYPE = -12;
 
       /** The extension install was canceled. */
       public static final int ERROR_USER_CANCELED = -100;
@@ -1589,7 +1598,9 @@ public class WebExtension {
         final GeckoBundle bundle = (GeckoBundle) response;
         int errorCode = bundle.getInt("installError");
         final int installState = bundle.getInt("state");
-        if (errorCode == 0 && installState == StateCodes.STATE_CANCELED) {
+        if (errorCode == 0
+            && installState == StateCodes.STATE_CANCELED
+            && bundle.getBoolean("cancelledByUser")) {
           errorCode = ErrorCodes.ERROR_USER_CANCELED;
         } else if (errorCode == 0 && installState == StateCodes.STATE_POSTPONED) {
           errorCode = ErrorCodes.ERROR_POSTPONED;
@@ -1612,17 +1623,24 @@ public class WebExtension {
           ErrorCodes.ERROR_UNEXPECTED_ADDON_VERSION,
           ErrorCodes.ERROR_INCORRECT_ID,
           ErrorCodes.ERROR_INVALID_DOMAIN,
+          ErrorCodes.ERROR_BLOCKLISTED,
+          ErrorCodes.ERROR_INCOMPATIBLE,
           ErrorCodes.ERROR_USER_CANCELED,
           ErrorCodes.ERROR_POSTPONED,
+          ErrorCodes.ERROR_UNSUPPORTED_ADDON_TYPE,
         })
     public @interface Codes {}
 
     /** One of {@link ErrorCodes} that provides more information about this exception. */
     public final @Codes int code;
 
+    /** An optional name of the extension that caused the exception. */
+    public final @Nullable String extensionName;
+
     /** For testing */
     protected InstallException() {
       this.code = ErrorCodes.ERROR_NETWORK_FAILURE;
+      this.extensionName = null;
     }
 
     @Override
@@ -1630,8 +1648,14 @@ public class WebExtension {
       return "InstallException: " + code;
     }
 
+    /* package */ InstallException(final @Codes int code, final @Nullable String extensionName) {
+      this.code = code;
+      this.extensionName = extensionName;
+    }
+
     /* package */ InstallException(final @Codes int code) {
       this.code = code;
+      this.extensionName = null;
     }
   }
 
@@ -1664,7 +1688,7 @@ public class WebExtension {
    * in Firefox. </a>
    */
   public static class SignedStateFlags {
-    // Keep in sync with AddonManager.jsm
+    // Keep in sync with AddonManager.sys.mjs
     /**
      * This extension may be signed but by a certificate that doesn't chain to our our trusted
      * certificate.
@@ -1756,12 +1780,26 @@ public class WebExtension {
      * WebExtensionController.EnableSource#APP} as <code>source</code>.
      */
     public static final int APP = 1 << 3;
+
+    /** The extension has been disabled because it is not correctly signed. */
+    public static final int SIGNATURE = 1 << 4;
+
+    /**
+     * The extension has been disabled because it is not compatible with the application version.
+     */
+    public static final int APP_VERSION = 1 << 5;
   }
 
   @Retention(RetentionPolicy.SOURCE)
   @IntDef(
       flag = true,
-      value = {DisabledFlags.USER, DisabledFlags.BLOCKLIST, DisabledFlags.APP})
+      value = {
+        DisabledFlags.USER,
+        DisabledFlags.BLOCKLIST,
+        DisabledFlags.APP,
+        DisabledFlags.SIGNATURE,
+        DisabledFlags.APP_VERSION,
+      })
   public @interface EnabledFlags {}
 
   /** Provides information about a {@link WebExtension}. */
@@ -1773,22 +1811,79 @@ public class WebExtension {
     public final @NonNull Image icon;
 
     /**
-     * API permissions requested or granted to this extension.
-     *
-     * <p>Permission identifiers match entries in the manifest, see <a
-     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#API_permissions">
-     * API permissions </a>.
+     * @deprecated Use {@link MetaData#requiredPermissions} instead.
      */
+    @Deprecated
+    @DeprecationSchedule(id = "web-extension-required-permissions", version = 133)
+    public final @NonNull String[] promptPermissions;
+
+    /**
+     * @deprecated Use {@link MetaData#requiredPermissions} instead.
+     */
+    @Deprecated
+    @DeprecationSchedule(id = "web-extension-required-permissions", version = 133)
     public final @NonNull String[] permissions;
 
     /**
-     * Host permissions requested or granted to this extension.
+     * Required permissions for this extension.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#API_permissions">
+     * API permissions </a>.
+     */
+    public final @NonNull String[] requiredPermissions;
+
+    /**
+     * @deprecated Use {@link MetaData#requiredOrigins} instead.
+     */
+    @Deprecated
+    @DeprecationSchedule(id = "web-extension-required-origins", version = 133)
+    public final @NonNull String[] origins;
+
+    /**
+     * Required origin permissions for this extension.
      *
      * <p>See <a
      * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#Host_permissions">
      * Host permissions </a>.
      */
-    public final @NonNull String[] origins;
+    public final @NonNull String[] requiredOrigins;
+
+    /**
+     * Optional permissions for this extension.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#API_permissions">
+     * API permissions </a>.
+     */
+    public final @NonNull String[] optionalPermissions;
+
+    /**
+     * Granted optional permissions for this extension.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#API_permissions">
+     * API permissions </a>.
+     */
+    public final @NonNull String[] grantedOptionalPermissions;
+
+    /**
+     * Optional origin permissions for this extension.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#Host_permissions">
+     * Host permissions </a>.
+     */
+    public final @NonNull String[] optionalOrigins;
+
+    /**
+     * Granted optional origin permissions for this extension.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions#Host_permissions">
+     * Host permissions </a>.
+     */
+    public final @NonNull String[] grantedOptionalOrigins;
 
     /**
      * Branding name for this extension.
@@ -1808,6 +1903,27 @@ public class WebExtension {
      * manifest.json/description </a>
      */
     public final @Nullable String description;
+
+    /** The full description of this extension. See: `AddonWrapper.fullDescription`. */
+    public final @Nullable String fullDescription;
+
+    /** The average rating of this extension. See: `AddonWrapper.averageRating`. */
+    public final double averageRating;
+
+    /** The review count for this extension. See: `AddonWrapper.reviewCount`. */
+    public final int reviewCount;
+
+    /** The link to the review page for this extension. See `AddonWrapper.reviewURL`. */
+    public final @Nullable String reviewUrl;
+
+    /**
+     * The string representation of the date that this extension was most recently updated
+     * (simplified ISO 8601 format). See `AddonWrapper.updateDate`.
+     */
+    public final @Nullable String updateDate;
+
+    /** The URL used to install this extension. See: `AddonInternal.sourceURI`. */
+    public final @Nullable String downloadUrl;
 
     /**
      * Version string for this extension.
@@ -1924,11 +2040,30 @@ public class WebExtension {
      */
     public final boolean temporary;
 
+    /** The link to the AMO detail page for this extension. See `AddonWrapper.amoListingURL`. */
+    public final @Nullable String amoListingUrl;
+
+    /**
+     * Indicates how the extension works with private browsing windows.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/incognito">
+     * manifest.json/incognito </a>
+     */
+    public final @Nullable String incognito;
+
     /** Override for testing. */
     protected MetaData() {
       icon = null;
       permissions = null;
+      promptPermissions = null;
       origins = null;
+      requiredPermissions = null;
+      requiredOrigins = null;
+      optionalPermissions = null;
+      optionalOrigins = null;
+      grantedOptionalPermissions = null;
+      grantedOptionalOrigins = null;
       name = null;
       description = null;
       version = null;
@@ -1945,12 +2080,26 @@ public class WebExtension {
       temporary = false;
       baseUrl = null;
       allowedInPrivateBrowsing = false;
+      fullDescription = null;
+      averageRating = 0;
+      reviewCount = 0;
+      reviewUrl = null;
+      updateDate = null;
+      downloadUrl = null;
+      amoListingUrl = null;
+      incognito = null;
     }
 
     /* package */ MetaData(final GeckoBundle bundle) {
-      // We only expose permissions that the embedder should prompt for
-      permissions = bundle.getStringArray("promptPermissions");
-      origins = bundle.getStringArray("origins");
+      permissions = bundle.getStringArray("requiredPermissions");
+      promptPermissions = bundle.getStringArray("requiredPermissions");
+      requiredPermissions = bundle.getStringArray("requiredPermissions");
+      origins = bundle.getStringArray("requiredOrigins");
+      requiredOrigins = bundle.getStringArray("requiredOrigins");
+      optionalPermissions = bundle.getStringArray("optionalPermissions");
+      optionalOrigins = bundle.getStringArray("optionalOrigins");
+      grantedOptionalPermissions = bundle.getStringArray("grantedOptionalPermissions");
+      grantedOptionalOrigins = bundle.getStringArray("grantedOptionalOrigins");
       description = bundle.getString("description");
       version = bundle.getString("version");
       creatorName = bundle.getString("creatorName");
@@ -1965,6 +2114,14 @@ public class WebExtension {
       temporary = bundle.getBoolean("temporary", false);
       baseUrl = bundle.getString("baseURL");
       allowedInPrivateBrowsing = bundle.getBoolean("privateBrowsingAllowed", false);
+      fullDescription = bundle.getString("fullDescription");
+      averageRating = bundle.getDouble("averageRating");
+      reviewCount = bundle.getInt("reviewCount");
+      reviewUrl = bundle.getString("reviewURL");
+      updateDate = bundle.getString("updateDate");
+      downloadUrl = bundle.getString("downloadUrl");
+      amoListingUrl = bundle.getString("amoListingURL");
+      incognito = bundle.getString("incognito");
 
       final int signedState = bundle.getInt("signedState", SignedStateFlags.UNKNOWN);
       if (signedState <= SignedStateFlags.LAST) {
@@ -1984,6 +2141,10 @@ public class WebExtension {
           disabledFlags |= DisabledFlags.BLOCKLIST;
         } else if (flag.equals("appDisabled")) {
           disabledFlags |= DisabledFlags.APP;
+        } else if (flag.equals("signatureDisabled")) {
+          disabledFlags |= DisabledFlags.SIGNATURE;
+        } else if (flag.equals("appVersionDisabled")) {
+          disabledFlags |= DisabledFlags.APP_VERSION;
         } else {
           Log.e(LOGTAG, "Unrecognized disabledFlag state: " + flag);
         }
@@ -2738,16 +2899,13 @@ public class WebExtension {
 
       final boolean saveAs = optionsBundle.getBoolean("saveAs");
 
-      final WebExtension.DownloadRequest request =
-          new WebExtension.DownloadRequest.Builder(mainRequest)
-              .filename(optionsBundle.getString("filename"))
-              .downloadFlags(downloadFlags)
-              .conflictAction(conflictActionFlags)
-              .saveAs(saveAs)
-              .allowHttpErrors(allowHttpErrors)
-              .build();
-
-      return request;
+      return new Builder(mainRequest)
+          .filename(optionsBundle.getString("filename"))
+          .downloadFlags(downloadFlags)
+          .conflictAction(conflictActionFlags)
+          .saveAs(saveAs)
+          .allowHttpErrors(allowHttpErrors)
+          .build();
     }
 
     /* package */ static class Builder {

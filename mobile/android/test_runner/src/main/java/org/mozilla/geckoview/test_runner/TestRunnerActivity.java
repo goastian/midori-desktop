@@ -3,6 +3,10 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
 
 package org.mozilla.geckoview.test_runner;
 
+import static org.mozilla.geckoview.ExperimentDelegate.ExperimentException.ERROR_EXPERIMENT_SLUG_NOT_FOUND;
+import static org.mozilla.geckoview.ExperimentDelegate.ExperimentException.ERROR_FEATURE_NOT_FOUND;
+import static org.mozilla.geckoview.ExperimentDelegate.ExperimentException.ERROR_UNKNOWN;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -16,8 +20,11 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.mozilla.geckoview.AllowOrDeny;
 import org.mozilla.geckoview.ContentBlocking;
+import org.mozilla.geckoview.ExperimentDelegate;
 import org.mozilla.geckoview.GeckoDisplay;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
@@ -156,7 +163,10 @@ public class TestRunnerActivity extends Activity {
       new GeckoSession.NavigationDelegate() {
         @Override
         public void onLocationChange(
-            final GeckoSession session, final String url, final List<ContentPermission> perms) {
+            final GeckoSession session,
+            final String url,
+            final List<ContentPermission> perms,
+            final Boolean hasUserGesture) {
           getActionBar().setSubtitle(url);
         }
 
@@ -164,7 +174,7 @@ public class TestRunnerActivity extends Activity {
         public GeckoResult<AllowOrDeny> onLoadRequest(
             final GeckoSession session, final LoadRequest request) {
           // Allow Gecko to load all URIs
-          return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+          return GeckoResult.allow();
         }
 
         @Override
@@ -286,7 +296,7 @@ public class TestRunnerActivity extends Activity {
         public GeckoResult<AllowOrDeny> onCloseTab(
             @Nullable final WebExtension source, @NonNull final GeckoSession session) {
           closeSession(session);
-          return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+          return GeckoResult.allow();
         }
 
         @Override
@@ -300,7 +310,7 @@ public class TestRunnerActivity extends Activity {
             mOwnedSessions.addFirst(session);
           }
 
-          return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+          return GeckoResult.allow();
         }
       };
 
@@ -415,7 +425,8 @@ public class TestRunnerActivity extends Activity {
           .arguments(new String[] {"-purgecaches"})
           .displayDpiOverride(160)
           .displayDensityOverride(1.0f)
-          .remoteDebuggingEnabled(true);
+          .remoteDebuggingEnabled(true)
+          .experimentDelegate(new TestRunnerExperimentDelegate());
 
       final Bundle extras = intent.getExtras();
       if (extras != null) {
@@ -649,5 +660,59 @@ public class TestRunnerActivity extends Activity {
 
   public GeckoSession getGeckoSession() {
     return mSession;
+  }
+
+  class TestRunnerExperimentDelegate implements ExperimentDelegate {
+    @Override
+    public GeckoResult<JSONObject> onGetExperimentFeature(@NonNull String feature) {
+      GeckoResult<JSONObject> result = new GeckoResult<>();
+      if (feature.equals("test")) {
+        try {
+          result.complete(new JSONObject().put("item-one", true).put("item-two", 5));
+        } catch (JSONException e) {
+          result.completeExceptionally(new ExperimentException(ERROR_UNKNOWN));
+        }
+      } else {
+        result.completeExceptionally(new ExperimentException(ERROR_FEATURE_NOT_FOUND));
+      }
+      return result;
+    }
+
+    @Override
+    public GeckoResult<Void> onRecordExposureEvent(@NonNull String feature) {
+      GeckoResult<Void> result = new GeckoResult<>();
+      if (feature.equals("test")) {
+        result.complete(null);
+      } else {
+        result.completeExceptionally(new ExperimentException(ERROR_FEATURE_NOT_FOUND));
+      }
+      return result;
+    }
+
+    @Override
+    public GeckoResult<Void> onRecordExperimentExposureEvent(
+        @NonNull String feature, @NonNull String slug) {
+      GeckoResult<Void> result = new GeckoResult<>();
+      if (feature.equals("test") && slug.equals("test")) {
+        result.complete(null);
+      } else if (!slug.equals("test") && feature.equals("test")) {
+        result.completeExceptionally(new ExperimentException(ERROR_EXPERIMENT_SLUG_NOT_FOUND));
+      } else {
+        result.completeExceptionally(new ExperimentException(ERROR_FEATURE_NOT_FOUND));
+      }
+      return result;
+    }
+
+    @Override
+    public GeckoResult<Void> onRecordMalformedConfigurationEvent(
+        @NonNull String feature, @NonNull String part) {
+      GeckoResult<Void> result = new GeckoResult<>();
+      if (feature.equals("test")) {
+        result.complete(null);
+      } else {
+        result.completeExceptionally(new ExperimentException(ERROR_FEATURE_NOT_FOUND));
+      }
+      return result;
+    }
   }
 }

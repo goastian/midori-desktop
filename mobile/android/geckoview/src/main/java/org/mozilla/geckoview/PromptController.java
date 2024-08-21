@@ -29,6 +29,9 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.ChoicePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.ColorPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.DateTimePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.FilePrompt;
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.AccountSelectorPrompt;
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.PrivacyPolicyPrompt;
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.ProviderSelectorPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.PopupPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.PromptInstanceDelegate;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.PromptResponse;
@@ -536,7 +539,6 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
       for (int i = 0; i < options.length; ++i) {
         options[i] = Autocomplete.LoginSelectOption.fromBundle(optionBundles[i]);
       }
-
       return new AutocompleteRequest<>(info.getString("id"), options, observer);
     }
 
@@ -546,6 +548,98 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
         final GeckoSession session,
         final PromptDelegate delegate) {
       return delegate.onLoginSelect(session, prompt);
+    }
+  }
+
+  private static final class IdentityCredentialSelectProviderHandler
+      implements PromptHandler<ProviderSelectorPrompt> {
+    @Override
+    public ProviderSelectorPrompt newPrompt(final GeckoBundle info, final Observer observer) {
+      final GeckoBundle[] providerBundles = info.getBundleArray("providers");
+      if (providerBundles == null) {
+        return null;
+      }
+
+      final ProviderSelectorPrompt.Provider[] providers =
+          new ProviderSelectorPrompt.Provider[providerBundles.length];
+
+      for (int i = 0; i < providerBundles.length; ++i) {
+        providers[i] = ProviderSelectorPrompt.Provider.fromBundle(providerBundles[i]);
+      }
+
+      return new ProviderSelectorPrompt(info.getString("id"), providers, observer);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> callDelegate(
+        final ProviderSelectorPrompt prompt,
+        final GeckoSession session,
+        final PromptDelegate delegate) {
+      return delegate.onSelectIdentityCredentialProvider(session, prompt);
+    }
+  }
+
+  private static final class IdentityCredentialSelectAccountHandler
+      implements PromptHandler<AccountSelectorPrompt> {
+    @Override
+    public AccountSelectorPrompt newPrompt(final GeckoBundle info, final Observer observer) {
+      final GeckoBundle providerBundle = info.getBundle("accounts");
+      if (providerBundle == null) {
+        return null;
+      }
+      final GeckoBundle[] accountBundles = providerBundle.getBundleArray("accounts");
+      if (accountBundles == null) {
+        return null;
+      }
+
+      final AccountSelectorPrompt.Account[] accounts =
+          new AccountSelectorPrompt.Account[accountBundles.length];
+
+      for (int i = 0; i < accountBundles.length; ++i) {
+        accounts[i] = AccountSelectorPrompt.Account.fromBundle(accountBundles[i]);
+      }
+
+      final AccountSelectorPrompt.Provider provider =
+          AccountSelectorPrompt.Provider.fromBundle(providerBundle.getBundle("provider"));
+
+      return new AccountSelectorPrompt(info.getString("id"), accounts, provider, observer);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> callDelegate(
+        final AccountSelectorPrompt prompt,
+        final GeckoSession session,
+        final PromptDelegate delegate) {
+      return delegate.onSelectIdentityCredentialAccount(session, prompt);
+    }
+  }
+
+  private static final class IdentityCredentialShowPrivacyPolicyHandler
+      implements PromptHandler<PrivacyPolicyPrompt> {
+    @Override
+    public PrivacyPolicyPrompt newPrompt(final GeckoBundle info, final Observer observer) {
+      final String privacyPolicyUrl = info.getString("privacyPolicyUrl");
+      final String termsOfServiceUrl = info.getString("termsOfServiceUrl");
+      final String providerDomain = info.getString("providerDomain");
+      final String host = info.getString("host");
+      final String icon = info.getString("icon");
+
+      return new PrivacyPolicyPrompt(
+          info.getString("id"),
+          privacyPolicyUrl,
+          termsOfServiceUrl,
+          providerDomain,
+          host,
+          icon,
+          observer);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> callDelegate(
+        final PrivacyPolicyPrompt prompt,
+        final GeckoSession session,
+        final PromptDelegate delegate) {
+      return delegate.onShowPrivacyPolicyIdentityCredential(session, prompt);
     }
   }
 
@@ -640,6 +734,12 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
     sPromptHandlers.register(new CreditCardSaveHandler(), "Autocomplete:Save:CreditCard");
     sPromptHandlers.register(new AddressSaveHandler(), "Autocomplete:Save:Address");
     sPromptHandlers.register(new LoginSelectHandler(), "Autocomplete:Select:Login");
+    sPromptHandlers.register(
+        new IdentityCredentialSelectProviderHandler(), "IdentityCredential:Select:Provider");
+    sPromptHandlers.register(
+        new IdentityCredentialShowPrivacyPolicyHandler(), "IdentityCredential:Show:Policy");
+    sPromptHandlers.register(
+        new IdentityCredentialSelectAccountHandler(), "IdentityCredential:Select:Account");
     sPromptHandlers.register(new CreditCardSelectHandler(), "Autocomplete:Select:CreditCard");
     sPromptHandlers.register(new AddressSelectHandler(), "Autocomplete:Select:Address");
   }

@@ -5,7 +5,11 @@
 let backgroundPort = null;
 let nativePort = null;
 
-window.addEventListener("pageshow", () => {
+function connectNativePort() {
+  if (nativePort) {
+    return;
+  }
+
   backgroundPort = browser.runtime.connect();
   nativePort = browser.runtime.connectNative("browser");
 
@@ -26,7 +30,7 @@ window.addEventListener("pageshow", () => {
     }
   });
 
-  function sendResponse(id, response, exception) {
+  function sendResponse(id, response) {
     Promise.resolve(response).then(
       value => sendSyncResponse(id, value),
       reason => sendSyncResponse(id, null, reason)
@@ -40,9 +44,17 @@ window.addEventListener("pageshow", () => {
       exception: exception && exception.toString(),
     });
   }
-});
+}
 
-window.addEventListener("pagehide", () => {
-  backgroundPort.disconnect();
-  nativePort.disconnect();
-});
+function disconnectNativePort() {
+  backgroundPort?.disconnect();
+  nativePort?.disconnect();
+  backgroundPort = null;
+  nativePort = null;
+}
+
+window.addEventListener("pageshow", connectNativePort);
+window.addEventListener("pagehide", disconnectNativePort);
+
+// If loading error page, pageshow mightn't fired.
+connectNativePort();

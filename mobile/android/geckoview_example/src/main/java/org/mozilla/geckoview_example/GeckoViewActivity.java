@@ -38,9 +38,13 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
+import android.widget.Spinner;
+import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
@@ -60,6 +64,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -85,8 +91,8 @@ import org.mozilla.geckoview.GeckoWebExecutor;
 import org.mozilla.geckoview.Image;
 import org.mozilla.geckoview.MediaSession;
 import org.mozilla.geckoview.OrientationController;
-import org.mozilla.geckoview.RuntimeTelemetry;
 import org.mozilla.geckoview.SlowScriptResponse;
+import org.mozilla.geckoview.TranslationsController;
 import org.mozilla.geckoview.WebExtension;
 import org.mozilla.geckoview.WebExtensionController;
 import org.mozilla.geckoview.WebNotification;
@@ -137,7 +143,10 @@ class WebExtensionManager
 
   @Nullable
   @Override
-  public GeckoResult<AllowOrDeny> onInstallPrompt(final @NonNull WebExtension extension) {
+  public GeckoResult<AllowOrDeny> onInstallPrompt(
+      final @NonNull WebExtension extension,
+      @NonNull String[] permissions,
+      @NonNull String[] origins) {
     return GeckoResult.allow();
   }
 
@@ -440,6 +449,10 @@ public class GeckoViewActivity extends AppCompatActivity
   private boolean mCanGoBack;
   private boolean mCanGoForward;
   private boolean mFullScreen;
+  private boolean mExpectedTranslate = false;
+  private boolean mTranslateRestore = false;
+
+  private String mDetectedLanguage = null;
 
   private HashMap<String, Integer> mNotificationIDMap = new HashMap<>();
   private int mLastID = 100;
@@ -650,6 +663,39 @@ public class GeckoViewActivity extends AppCompatActivity
         }
       };
 
+  private final BooleanSetting mGlobalPrivacyControlEnabled =
+      new BooleanSetting(
+          R.string.key_global_privacy_control_enabled,
+          R.bool.global_privacy_control_enabled_default,
+          /* reloadCurrentSession */ true) {
+        @Override
+        public void setValue(final GeckoRuntimeSettings settings, final Boolean value) {
+          settings.setGlobalPrivacyControl(value);
+        }
+      };
+
+  private final BooleanSetting mEtbPrivateModeEnabled =
+      new BooleanSetting(
+          R.string.key_etb_private_mode_enabled,
+          R.bool.etb_private_mode_enabled_default,
+          /* reloadCurrentSession */ true) {
+        @Override
+        public void setValue(final GeckoRuntimeSettings settings, final Boolean value) {
+          settings.getContentBlocking().setEmailTrackerBlockingPrivateBrowsing(value);
+        }
+      };
+
+  private final BooleanSetting mExtensionsProcessEnabled =
+      new BooleanSetting(
+          R.string.key_extensions_process_enabled,
+          R.bool.extensions_process_enabled_default,
+          /* reloadCurrentSession */ true) {
+        @Override
+        public void setValue(final GeckoRuntimeSettings settings, final Boolean value) {
+          settings.setExtensionsProcessEnabled(value);
+        }
+      };
+
   private final BooleanSetting mTrackingProtection =
       new BooleanSetting(R.string.key_tracking_protection, R.bool.tracking_protection_default) {
         @Override
@@ -826,11 +872,13 @@ public class GeckoViewActivity extends AppCompatActivity
                   .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS)
                   .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS)
                   .enhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.DEFAULT)
+                  .emailTrackerBlockingPrivateMode(mEtbPrivateModeEnabled.value())
                   .build())
           .crashHandler(ExampleCrashHandler.class)
           .preferredColorScheme(mPreferredColorScheme.value())
-          .telemetryDelegate(new ExampleTelemetryDelegate())
           .javaScriptEnabled(mJavascriptEnabled.value())
+          .extensionsProcessEnabled(mExtensionsProcessEnabled.value())
+          .globalPrivacyControlEnabled(mGlobalPrivacyControlEnabled.value())
           .aboutConfigEnabled(true);
 
       sGeckoRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
@@ -1122,6 +1170,8 @@ public class GeckoViewActivity extends AppCompatActivity
 
     session.setMediaSessionDelegate(new ExampleMediaSessionDelegate(this));
 
+    session.setTranslationsSessionDelegate(new ExampleTranslationsSessionDelegate());
+
     session.setSelectionActionDelegate(new BasicSelectionActionDelegate(this));
     if (sExtensionManager.extension != null) {
       final WebExtension.SessionController sessionController = session.getWebExtensionController();
@@ -1218,7 +1268,8 @@ public class GeckoViewActivity extends AppCompatActivity
     menu.findItem(R.id.action_tpe).setEnabled(hasSession && mTrackingProtectionPermission != null);
     menu.findItem(R.id.action_pb).setEnabled(hasSession);
     menu.findItem(R.id.desktop_mode).setEnabled(hasSession);
-
+    menu.findItem(R.id.translate).setVisible(mExpectedTranslate);
+    menu.findItem(R.id.translate_restore).setVisible(mTranslateRestore);
     return true;
   }
 
@@ -1276,6 +1327,18 @@ public class GeckoViewActivity extends AppCompatActivity
       case R.id.print_page:
         printPage(session);
         break;
+      case R.id.shopping_actions:
+        shoppingActions(session, mCurrentUri);
+        break;
+      case R.id.translate:
+        translate(session);
+        break;
+      case R.id.translate_restore:
+        translateRestore(session);
+        break;
+      case R.id.translate_manage:
+        translateManage();
+        break;
       default:
         return super.onOptionsItemSelected(item);
     }
@@ -1309,7 +1372,7 @@ public class GeckoViewActivity extends AppCompatActivity
                     final WebExtensionController controller =
                         sGeckoRuntime.getWebExtensionController();
                     controller.setPromptDelegate(sExtensionManager);
-                    return controller.install(uri);
+                    return controller.install(uri, null);
                   })
               .then(
                   extension ->
@@ -1381,7 +1444,243 @@ public class GeckoViewActivity extends AppCompatActivity
   }
 
   private void printPage(GeckoSession session) {
-    session.printPageContent();
+    session.didPrintPageContent();
+  }
+
+  private void translate(GeckoSession session) {
+    final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    builder.setTitle(R.string.translate);
+    Spinner fromSelect = new Spinner(this);
+    Spinner toSelect = new Spinner(this);
+
+    // Set spinners with data
+    TranslationsController.RuntimeTranslation.listSupportedLanguages()
+        .then(
+            supportedLanguages -> {
+              // Just a check if sorting is working on the Language object by reversing, Languages
+              // should generally come from the API in the display order.
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                Collections.reverse(supportedLanguages.fromLanguages);
+              }
+              ArrayAdapter<TranslationsController.Language> fromData =
+                  new ArrayAdapter<TranslationsController.Language>(
+                      this.getBaseContext(),
+                      android.R.layout.simple_spinner_item,
+                      supportedLanguages.fromLanguages);
+              fromSelect.setAdapter(fromData);
+              // Set detected language
+              final int index =
+                  fromData.getPosition(
+                      new TranslationsController.Language(mDetectedLanguage, null));
+              fromSelect.setSelection(index);
+
+              ArrayAdapter<TranslationsController.Language> toData =
+                  new ArrayAdapter<TranslationsController.Language>(
+                      this.getBaseContext(),
+                      android.R.layout.simple_spinner_item,
+                      supportedLanguages.toLanguages);
+              toSelect.setAdapter(toData);
+              // Set preferred language
+              TranslationsController.RuntimeTranslation.preferredLanguages()
+                  .then(
+                      preferredList -> {
+                        Log.d(LOGTAG, "Preferred Translation Languages: " + preferredList);
+                        // Reorder dropdown listing based on preferences
+                        for (int i = preferredList.size() - 1; i >= 0; i--) {
+                          final int langIndex =
+                              toData.getPosition(
+                                  new TranslationsController.Language(preferredList.get(i), null));
+                          TranslationsController.Language displayLanguage =
+                              toData.getItem(langIndex);
+                          toData.remove(displayLanguage);
+                          toData.insert(displayLanguage, 0);
+                          if (i == 0) {
+                            toSelect.setSelection(0);
+                          }
+                        }
+                        return null;
+                      });
+              return null;
+            });
+    builder.setView(
+        translateLayout(
+            fromSelect,
+            R.string.translate_language_from_hint,
+            toSelect,
+            R.string.translate_language_to_hint,
+            -1));
+    builder.setPositiveButton(
+        R.string.translate_action,
+        (dialog, which) -> {
+          final TranslationsController.Language fromLang =
+              (TranslationsController.Language) fromSelect.getSelectedItem();
+          final TranslationsController.Language toLang =
+              (TranslationsController.Language) toSelect.getSelectedItem();
+          session.getSessionTranslation().translate(fromLang.code, toLang.code, null);
+          mTranslateRestore = true;
+        });
+    builder.setNegativeButton(
+        R.string.cancel,
+        (dialog, which) -> {
+          // Nothing to do
+        });
+
+    builder.show();
+  }
+
+  private void translateRestore(GeckoSession session) {
+    session
+        .getSessionTranslation()
+        .restoreOriginalPage()
+        .then(
+            new GeckoResult.OnValueListener<Void, Object>() {
+              @Nullable
+              @Override
+              public GeckoResult<Object> onValue(@Nullable Void value) throws Throwable {
+                mTranslateRestore = false;
+                return null;
+              }
+            });
+  }
+
+  private void translateManage() {
+    Spinner languageSelect = new Spinner(this);
+    Spinner operationSelect = new Spinner(this);
+    // Should match ModelOperation choices
+    List<String> operationChoices =
+        new ArrayList<>(
+            Arrays.asList(
+                new String[] {
+                  TranslationsController.RuntimeTranslation.DELETE.toString(),
+                  TranslationsController.RuntimeTranslation.DOWNLOAD.toString()
+                }));
+    ArrayAdapter<String> operationData =
+        new ArrayAdapter<String>(
+            this.getBaseContext(), android.R.layout.simple_spinner_item, operationChoices);
+    operationSelect.setAdapter(operationData);
+
+    // Get current model states
+    GeckoResult<List<TranslationsController.RuntimeTranslation.LanguageModel>> currentStates =
+        TranslationsController.RuntimeTranslation.listModelDownloadStates();
+    currentStates.then(
+        models -> {
+          List<TranslationsController.Language> languages =
+              new ArrayList<TranslationsController.Language>();
+          // Pseudo container of "all" just to simplify spinner for GVE
+          languages.add(new TranslationsController.Language("all", "All Models"));
+          for (var model : models) {
+            Log.i(LOGTAG, "Translate Model State: " + model);
+            languages.add(model.language);
+          }
+          ArrayAdapter<TranslationsController.Language> languageData =
+              new ArrayAdapter<TranslationsController.Language>(
+                  this.getBaseContext(), android.R.layout.simple_spinner_item, languages);
+          languageSelect.setAdapter(languageData);
+          return null;
+        });
+
+    final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    builder.setTitle(R.string.translate_manage);
+    builder.setView(
+        translateLayout(
+            languageSelect,
+            R.string.translate_manage_languages,
+            operationSelect,
+            R.string.translate_manage_operations,
+            R.string.translate_display_hint));
+    builder.setPositiveButton(
+        R.string.translate_manage_action,
+        (dialog, which) -> {
+          final TranslationsController.Language selectedLanguage =
+              (TranslationsController.Language) languageSelect.getSelectedItem();
+
+          final String operation = (String) operationSelect.getSelectedItem();
+
+          String operationLevel = TranslationsController.RuntimeTranslation.LANGUAGE;
+          // Pseudo option for ease of GVE
+          if (selectedLanguage.code.equals("all")) {
+            operationLevel = TranslationsController.RuntimeTranslation.ALL;
+          }
+          TranslationsController.RuntimeTranslation.ModelManagementOptions options =
+              new TranslationsController.RuntimeTranslation.ModelManagementOptions.Builder()
+                  .languageToManage(selectedLanguage.code)
+                  .operation(operation)
+                  .operationLevel(operationLevel)
+                  .build();
+
+          // Complete Operation
+          GeckoResult<Void> requestOperation =
+              TranslationsController.RuntimeTranslation.manageLanguageModel(options);
+          requestOperation.then(
+              opt -> {
+                // Log Changes
+                GeckoResult<List<TranslationsController.RuntimeTranslation.LanguageModel>>
+                    reportChanges =
+                        TranslationsController.RuntimeTranslation.listModelDownloadStates();
+                reportChanges.then(
+                    models -> {
+                      for (var model : models) {
+                        Log.i(LOGTAG, "Translate Model State: " + model);
+                      }
+                      return null;
+                    });
+                return null;
+              });
+        });
+    builder.setNegativeButton(
+        R.string.cancel,
+        (dialog, which) -> {
+          // Nothing to do
+        });
+
+    builder.show();
+  }
+
+  private RelativeLayout translateLayout(
+      Spinner spinnerA, int labelA, Spinner spinnerB, int labelB, int labelInfo) {
+    // From fields
+    TextView fromLangLabel = new TextView(this);
+    fromLangLabel.setText(labelA);
+    LinearLayout from = new LinearLayout(this);
+    from.setId(View.generateViewId());
+    from.addView(fromLangLabel);
+    from.addView(spinnerA);
+    RelativeLayout.LayoutParams fromParams =
+        new RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+    fromParams.setMarginStart(30);
+
+    // To fields
+    TextView toLangLabel = new TextView(this);
+    toLangLabel.setText(labelB);
+    LinearLayout to = new LinearLayout(this);
+    to.setId(View.generateViewId());
+    to.addView(toLangLabel);
+    to.addView(spinnerB);
+    RelativeLayout.LayoutParams toParams =
+        new RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+    toParams.setMarginStart(30);
+    toParams.addRule(RelativeLayout.BELOW, from.getId());
+
+    // Layout
+    RelativeLayout layout = new RelativeLayout(this);
+    layout.addView(from, fromParams);
+    layout.addView(to, toParams);
+
+    // Hint
+    TextView info = new TextView(this);
+    if (labelInfo != -1) {
+      RelativeLayout.LayoutParams infoParams =
+          new RelativeLayout.LayoutParams(
+              RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+      infoParams.setMarginStart(30);
+      infoParams.addRule(RelativeLayout.BELOW, to.getId());
+      info.setText(labelInfo);
+      layout.addView(info, infoParams);
+    }
+
+    return layout;
   }
 
   @Override
@@ -1861,6 +2160,11 @@ public class GeckoViewActivity extends AppCompatActivity
     }
 
     @Override
+    public void onProductUrl(@NonNull final GeckoSession session) {
+      Log.d("Gecko", "onProductUrl");
+    }
+
+    @Override
     public void onShowDynamicToolbar(final GeckoSession session) {
       final View toolbar = findViewById(R.id.toolbar);
       if (toolbar != null) {
@@ -1892,6 +2196,8 @@ public class GeckoViewActivity extends AppCompatActivity
       Log.i(LOGTAG, "Starting to load page at " + url);
       Log.i(LOGTAG, "zerdatime " + SystemClock.elapsedRealtime() + " - page load start");
       mCb.clearCounters();
+      mExpectedTranslate = false;
+      mTranslateRestore = false;
     }
 
     @Override
@@ -2118,10 +2424,211 @@ public class GeckoViewActivity extends AppCompatActivity
     return null;
   }
 
+  public void shoppingActions(@NonNull final GeckoSession session, @NonNull final String url) {
+    Spinner actionSelect = new Spinner(this);
+    List<String> actions =
+        new ArrayList<>(
+            Arrays.asList(
+                new String[] {
+                  "Get Analysis",
+                  "Get Recommendations",
+                  "Create Analysis",
+                  "Get Analysis Status",
+                  "Poll Until Analysis Completed",
+                  "Report Back in Stock",
+                }));
+    ArrayAdapter<String> actionData =
+        new ArrayAdapter<String>(
+            this.getBaseContext(), android.R.layout.simple_spinner_item, actions);
+    actionSelect.setAdapter(actionData);
+
+    final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    builder.setTitle(R.string.shopping_actions);
+    builder.setView(
+        shoppingLayout(
+            actionSelect, R.string.shopping_manage_actions, R.string.shopping_display_log));
+    builder.setPositiveButton(
+        R.string.shopping_query,
+        (dialog, which) -> {
+          final String action = (String) actionSelect.getSelectedItem();
+          switch (action) {
+            case "Get Analysis":
+              requestAnalysis(session, url);
+              break;
+            case "Get Recommendations":
+              requestRecommendations(session, url);
+              break;
+            case "Create Analysis":
+              requestCreateAnalysis(session, url);
+              break;
+            case "Get Analysis Status":
+              requestAnalysisCreationStatus(session, url);
+              break;
+            case "Poll Until Analysis Completed":
+              pollForAnalysisCompleted(session, url);
+              break;
+            case "Report Back in Stock":
+              reportBackInStock(session, url);
+              break;
+            default:
+              throw new RuntimeException("Unknown action: " + action);
+          }
+        });
+    builder.setNegativeButton(
+        R.string.cancel,
+        (dialog, which) -> {
+          // Nothing to do
+        });
+
+    builder.show();
+  }
+
+  private RelativeLayout shoppingLayout(Spinner spinnerA, int labelA, int labelInfo) {
+    TextView fromLangLabel = new TextView(this);
+    fromLangLabel.setText(labelA);
+    LinearLayout action = new LinearLayout(this);
+    action.setId(View.generateViewId());
+    action.addView(fromLangLabel);
+    action.addView(spinnerA);
+    RelativeLayout.LayoutParams actionParams =
+        new RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+    actionParams.setMarginStart(30);
+
+    // Layout
+    RelativeLayout layout = new RelativeLayout(this);
+    layout.addView(action, actionParams);
+
+    // Hint
+    TextView info = new TextView(this);
+    if (labelInfo != -1) {
+      RelativeLayout.LayoutParams infoParams =
+          new RelativeLayout.LayoutParams(
+              RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+      infoParams.setMarginStart(30);
+      infoParams.addRule(RelativeLayout.BELOW, action.getId());
+      info.setText(labelInfo);
+      layout.addView(info, infoParams);
+    }
+
+    return layout;
+  }
+
+  public void requestAnalysis(@NonNull final GeckoSession session, @NonNull final String url) {
+    GeckoResult<GeckoSession.ReviewAnalysis> result = session.requestAnalysis(url);
+    result.map(
+        analysis -> {
+          Log.d(LOGTAG, "Shopping Action: Get analysis: " + analysis);
+          return analysis;
+        });
+  }
+
+  public void requestCreateAnalysis(
+      @NonNull final GeckoSession session, @NonNull final String url) {
+    GeckoResult<String> result = session.requestCreateAnalysis(url);
+    result.map(
+        status -> {
+          Log.d(LOGTAG, "Shopping Action: Create analysis, status: " + status);
+          return status;
+        });
+  }
+
+  public void requestAnalysisCreationStatus(
+      @NonNull final GeckoSession session, @NonNull final String url) {
+    GeckoResult<GeckoSession.AnalysisStatusResponse> result = session.requestAnalysisStatus(url);
+    result.map(
+        status -> {
+          Log.d(LOGTAG, "Shopping Action: Get analysis status: " + status.status);
+          Log.d(LOGTAG, "Shopping Action: Get analysis status Progress: " + status.progress);
+          return status;
+        });
+  }
+
+  public void pollForAnalysisCompleted(
+      @NonNull final GeckoSession session, @NonNull final String url) {
+    Log.d(LOGTAG, "Shopping Action: Poll until analysis completed");
+    GeckoResult<String> result = session.pollForAnalysisCompleted(url);
+    result.map(
+        status -> {
+          Log.d(LOGTAG, "Shopping Action: Get analysis status: " + status);
+          return status;
+        });
+  }
+
+  public void reportBackInStock(@NonNull final GeckoSession session, @NonNull final String url) {
+    Log.d(LOGTAG, "Shopping Action: Report back in stock");
+    GeckoResult<String> result = session.reportBackInStock(url);
+    result.map(
+        message -> {
+          Log.d(LOGTAG, "Shopping Action: Back in stock status: " + message);
+          return message;
+        });
+  }
+
+  public void requestRecommendations(
+      @NonNull final GeckoSession session, @NonNull final String url) {
+    GeckoResult<List<GeckoSession.Recommendation>> result = session.requestRecommendations(url);
+    result.map(
+        recs -> {
+          List<String> aids = new ArrayList<>();
+          for (int i = 0; i < recs.size(); ++i) {
+            aids.add(recs.get(i).aid);
+          }
+          if (aids.size() >= 1) {
+            Log.d(
+                LOGTAG, "Shopping Action: Sending attribution events to first AID: " + aids.get(0));
+            session
+                .sendClickAttributionEvent(aids.get(0))
+                .then(
+                    new GeckoResult.OnValueListener<Boolean, Void>() {
+                      @Override
+                      public GeckoResult<Void> onValue(final Boolean isSuccessful) {
+                        Log.d(
+                            LOGTAG,
+                            "Shopping Action: Success of click attribution event: " + isSuccessful);
+                        return null;
+                      }
+                    });
+            session
+                .sendImpressionAttributionEvent(aids.get(0))
+                .then(
+                    new GeckoResult.OnValueListener<Boolean, Void>() {
+                      @Override
+                      public GeckoResult<Void> onValue(final Boolean isSuccessful) {
+                        Log.d(
+                            LOGTAG,
+                            "Shopping Action: Success of impression attribution event: "
+                                + isSuccessful);
+                        return null;
+                      }
+                    });
+            session
+                .sendPlacementAttributionEvent(aids.get(0))
+                .then(
+                    new GeckoResult.OnValueListener<Boolean, Void>() {
+                      @Override
+                      public GeckoResult<Void> onValue(final Boolean isSuccessful) {
+                        Log.d(
+                            LOGTAG,
+                            "Shopping Action: Success of placement attribution event: "
+                                + isSuccessful);
+                        return null;
+                      }
+                    });
+          } else {
+            Log.d(LOGTAG, "Shopping Action: No recommendations. No attribution events were sent.");
+          }
+          return recs;
+        });
+  }
+
   private class ExampleNavigationDelegate implements GeckoSession.NavigationDelegate {
     @Override
     public void onLocationChange(
-        GeckoSession session, final String url, final List<ContentPermission> perms) {
+        GeckoSession session,
+        final String url,
+        final List<ContentPermission> perms,
+        Boolean hasUserGesture) {
       mToolbarView.getLocationView().setText(url);
       TabSession tabSession = mTabSessionManager.getSession(session);
       if (tabSession != null) {
@@ -2477,6 +2984,30 @@ public class GeckoViewActivity extends AppCompatActivity
     }
   }
 
+  private class ExampleTranslationsSessionDelegate
+      implements TranslationsController.SessionTranslation.Delegate {
+    @Override
+    public void onOfferTranslate(@NonNull GeckoSession session) {
+      Log.i(LOGTAG, "onOfferTranslate");
+    }
+
+    @Override
+    public void onExpectedTranslate(@NonNull GeckoSession session) {
+      Log.i(LOGTAG, "onExpectedTranslate");
+      mExpectedTranslate = true;
+    }
+
+    @Override
+    public void onTranslationStateChange(
+        @NonNull GeckoSession session,
+        @Nullable TranslationsController.SessionTranslation.TranslationState translationState) {
+      Log.i(LOGTAG, "onTranslationStateChange");
+      if (translationState.detectedLanguages != null) {
+        mDetectedLanguage = translationState.detectedLanguages.docLangTag;
+      }
+    }
+  }
+
   private class ExampleMediaSessionDelegate implements MediaSession.Delegate {
     private final Activity mActivity;
 
@@ -2506,28 +3037,6 @@ public class GeckoViewActivity extends AppCompatActivity
       } else {
         mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
       }
-    }
-  }
-
-  private final class ExampleTelemetryDelegate implements RuntimeTelemetry.Delegate {
-    @Override
-    public void onHistogram(final @NonNull RuntimeTelemetry.Histogram histogram) {
-      Log.d(LOGTAG, "onHistogram " + histogram);
-    }
-
-    @Override
-    public void onBooleanScalar(final @NonNull RuntimeTelemetry.Metric<Boolean> scalar) {
-      Log.d(LOGTAG, "onBooleanScalar " + scalar);
-    }
-
-    @Override
-    public void onLongScalar(final @NonNull RuntimeTelemetry.Metric<Long> scalar) {
-      Log.d(LOGTAG, "onLongScalar " + scalar);
-    }
-
-    @Override
-    public void onStringScalar(final @NonNull RuntimeTelemetry.Metric<String> scalar) {
-      Log.d(LOGTAG, "onStringScalar " + scalar);
     }
   }
 

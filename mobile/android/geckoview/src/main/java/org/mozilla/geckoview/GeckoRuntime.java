@@ -106,6 +106,14 @@ public final class GeckoRuntime implements Parcelable {
   public static final String EXTRA_CRASH_PROCESS_TYPE = "processType";
 
   /**
+   * This is a key for extra data sent with {@link #ACTION_CRASHED}. The value is a String
+   * containing the content process type, which might not be available even for child processes.
+   *
+   * @see GeckoSession.ContentDelegate#onCrash(GeckoSession)
+   */
+  public static final String EXTRA_CRASH_REMOTE_TYPE = "remoteType";
+
+  /**
    * Value for {@link #EXTRA_CRASH_PROCESS_TYPE} indicating the main application process was
    * affected by the crash, which is therefore fatal.
    */
@@ -158,6 +166,12 @@ public final class GeckoRuntime implements Parcelable {
         // Do not trigger the first onResume event because it breaks nsAppShell::sPauseCount counter
         // thresholds.
         GeckoThread.onResume();
+      } else {
+        // Notify Gecko when the application has been moved in the foreground for the first time
+        // after being created and started (used by the ExtensionProcessCrashObserver on the Gecko
+        // side to adjust the appIsForeground property when the application-foreground or
+        // application-background topics are not notified).
+        EventDispatcher.getInstance().dispatch("GeckoView:InitialForeground", null);
       }
       mPaused = false;
       // Can resume location services, checks if was in use before going to background
@@ -229,11 +243,7 @@ public final class GeckoRuntime implements Parcelable {
     mContentBlockingController = new ContentBlockingController();
     mAutocompleteStorageProxy = new Autocomplete.StorageProxy();
     mProfilerController = new ProfilerController();
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-      mScreenChangeListener = new GeckoScreenChangeListener();
-    } else {
-      mScreenChangeListener = null;
-    }
+    mScreenChangeListener = new GeckoScreenChangeListener();
 
     if (sRuntime != null) {
       throw new IllegalStateException("Only one GeckoRuntime instance is allowed");
@@ -334,6 +344,7 @@ public final class GeckoRuntime implements Parcelable {
             i.putExtra(EXTRA_MINIDUMP_PATH, message.getString(EXTRA_MINIDUMP_PATH));
             i.putExtra(EXTRA_EXTRAS_PATH, message.getString(EXTRA_EXTRAS_PATH));
             i.putExtra(EXTRA_CRASH_PROCESS_TYPE, message.getString(EXTRA_CRASH_PROCESS_TYPE));
+            i.putExtra(EXTRA_CRASH_REMOTE_TYPE, message.getString(EXTRA_CRASH_REMOTE_TYPE));
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
               context.startForegroundService(i);
@@ -402,29 +413,27 @@ public final class GeckoRuntime implements Parcelable {
     Map<String, Object> prefs = settings.getPrefsMap();
 
     // Older versions have problems with SnakeYaml
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-      String configFilePath = settings.getConfigFilePath();
-      if (configFilePath == null) {
-        // Default to /data/local/tmp/$PACKAGE-geckoview-config.yaml if android:debuggable="true"
-        // or if this application is the current Android "debug_app", and to not read configuration
-        // from a file otherwise.
-        if (isApplicationDebuggable(context) || isApplicationCurrentDebugApp(context)) {
-          configFilePath =
-              String.format(CONFIG_FILE_PATH_TEMPLATE, context.getApplicationInfo().packageName);
-        }
+    String configFilePath = settings.getConfigFilePath();
+    if (configFilePath == null) {
+      // Default to /data/local/tmp/$PACKAGE-geckoview-config.yaml if android:debuggable="true"
+      // or if this application is the current Android "debug_app", and to not read configuration
+      // from a file otherwise.
+      if (isApplicationDebuggable(context) || isApplicationCurrentDebugApp(context)) {
+        configFilePath =
+            String.format(CONFIG_FILE_PATH_TEMPLATE, context.getApplicationInfo().packageName);
       }
+    }
 
-      if (configFilePath != null && !configFilePath.isEmpty()) {
-        try {
-          final DebugConfig debugConfig = DebugConfig.fromFile(new File(configFilePath));
-          Log.i(LOGTAG, "Adding debug configuration from: " + configFilePath);
-          prefs = debugConfig.mergeIntoPrefs(prefs);
-          args = debugConfig.mergeIntoArgs(args);
-          extras = debugConfig.mergeIntoExtras(extras);
-        } catch (final DebugConfig.ConfigException e) {
-          Log.w(LOGTAG, "Failed to add debug configuration from: " + configFilePath, e);
-        } catch (final FileNotFoundException e) {
-        }
+    if (configFilePath != null && !configFilePath.isEmpty()) {
+      try {
+        final DebugConfig debugConfig = DebugConfig.fromFile(new File(configFilePath));
+        Log.i(LOGTAG, "Adding debug configuration from: " + configFilePath);
+        prefs = debugConfig.mergeIntoPrefs(prefs);
+        args = debugConfig.mergeIntoArgs(args);
+        extras = debugConfig.mergeIntoExtras(extras);
+      } catch (final DebugConfig.ConfigException e) {
+        Log.w(LOGTAG, "Failed to add debug configuration from: " + configFilePath, e);
+      } catch (final FileNotFoundException e) {
       }
     }
 
@@ -491,14 +500,8 @@ public final class GeckoRuntime implements Parcelable {
   private boolean isApplicationCurrentDebugApp(final @NonNull Context context) {
     final ApplicationInfo applicationInfo = context.getApplicationInfo();
 
-    final String currentDebugApp;
-    if (Build.VERSION.SDK_INT >= 17) {
-      currentDebugApp =
-          Settings.Global.getString(context.getContentResolver(), Settings.Global.DEBUG_APP);
-    } else {
-      currentDebugApp =
-          Settings.System.getString(context.getContentResolver(), Settings.System.DEBUG_APP);
-    }
+    final String currentDebugApp =
+        Settings.Global.getString(context.getContentResolver(), Settings.Global.DEBUG_APP);
     return applicationInfo.packageName.equals(currentDebugApp);
   }
 
