@@ -1,0 +1,8 @@
+floorp.jar:
+% content nora %nora/ contentaccessible=yes
+ nora/csk.js (csk.js)
+ nora/content.js (content.js)
+ nora/assets/utils.js (assets/utils.js)
+ nora/csk.js.map (csk.js.map)
+ nora/content.js.map (content.js.map)
+ nora/assets/utils.js.map (assets/utils.js.map)

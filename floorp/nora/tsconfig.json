@@ -1,0 +1,28 @@
+{
+  "typeAcquisition": {
+    "enable": true,
+    "include": ["./@types/content.d.ts", "vite/client.d.ts"]
+  },
+  "compilerOptions": {
+    "useDefineForClassFields": true,
+    "lib": ["es2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "jsx": "preserve",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "resolvePackageJsonExports": false,
+    "isolatedModules": true,
+    "jsxImportSource": "solid-js",
+    "paths": {
+      "@types/*": ["./@types/*"],
+      "@private/*": ["../Floorp-private-components/nora/*"],
+      "@solid-xul/*": ["./src/solid-xul/*"]
+    }
+  },
+  "exclude": ["dist/**"]
+}
