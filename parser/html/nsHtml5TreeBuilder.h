@@ -174,7 +174,7 @@ class nsHtml5TreeBuilder : public nsAHtml5TreeBuilderState {
   static const int32_t DIV_OR_BLOCKQUOTE_OR_CENTER_OR_MENU = 50;
 
   static const int32_t
-      ADDRESS_OR_ARTICLE_OR_ASIDE_OR_DETAILS_OR_DIALOG_OR_DIR_OR_FIGCAPTION_OR_FIGURE_OR_FOOTER_OR_HEADER_OR_HGROUP_OR_MAIN_OR_NAV_OR_SECTION_OR_SUMMARY =
+      ADDRESS_OR_ARTICLE_OR_ASIDE_OR_DETAILS_OR_DIALOG_OR_DIR_OR_FIGCAPTION_OR_FIGURE_OR_FOOTER_OR_HEADER_OR_HGROUP_OR_MAIN_OR_NAV_OR_SEARCH_OR_SECTION_OR_SUMMARY =
           51;
 
   static const int32_t RUBY_OR_SPAN_OR_SUB_OR_SUP_OR_VAR = 52;
@@ -314,6 +314,8 @@ class nsHtml5TreeBuilder : public nsAHtml5TreeBuilderState {
  private:
   bool quirks;
   bool forceNoQuirks;
+  bool allowDeclarativeShadowRoots;
+  bool keepBuffer;
   inline nsHtml5ContentCreatorFunction htmlCreator(
       mozilla::dom::HTMLContentCreatorFunction htmlCreator) {
     nsHtml5ContentCreatorFunction creator;
@@ -329,6 +331,8 @@ class nsHtml5TreeBuilder : public nsAHtml5TreeBuilderState {
   }
 
  public:
+  void setKeepBuffer(bool keepBuffer);
+  bool dropBufferIfLongerThan(int32_t length);
   void startTokenization(nsHtml5Tokenizer* self);
   void doctype(nsAtom* name, nsHtml5String publicIdentifier,
                nsHtml5String systemIdentifier, bool forceQuirks);
@@ -353,6 +357,9 @@ class nsHtml5TreeBuilder : public nsAHtml5TreeBuilderState {
   bool isTemplateContents();
   bool isTemplateModeStackEmpty();
   bool isSpecialParentInForeign(nsHtml5StackNode* stackNode);
+  nsIContentHandle* getDeclarativeShadowRoot(nsIContentHandle* currentNode,
+                                             nsIContentHandle* templateNode,
+                                             nsHtml5HtmlAttributes* attributes);
 
  public:
   static nsHtml5String extractCharsetFromContent(nsHtml5String attributeValue,
@@ -477,6 +484,8 @@ class nsHtml5TreeBuilder : public nsAHtml5TreeBuilderState {
   void appendToCurrentNodeAndPushElementMayFoster(
       nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes,
       nsIContentHandle* form);
+  void appendVoidElementToCurrent(nsHtml5ElementName* elementName,
+                                  nsHtml5HtmlAttributes* attributes);
   void appendVoidElementToCurrentMayFoster(nsHtml5ElementName* elementName,
                                            nsHtml5HtmlAttributes* attributes,
                                            nsIContentHandle* form);
@@ -554,6 +563,8 @@ class nsHtml5TreeBuilder : public nsAHtml5TreeBuilderState {
   void setScriptingEnabled(bool scriptingEnabled);
   void setForceNoQuirks(bool forceNoQuirks);
   void setIsSrcdocDocument(bool isSrcdocDocument);
+  bool isAllowDeclarativeShadowRoots();
+  void setAllowDeclarativeShadowRoots(bool allow);
   void flushCharacters();
 
  private:

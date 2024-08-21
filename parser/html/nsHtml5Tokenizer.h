@@ -43,7 +43,6 @@
 #include "nsHtml5NamedCharacters.h"
 #include "nsHtml5NamedCharactersAccel.h"
 #include "nsHtml5String.h"
-#include "nsHtml5TokenizerLoopPolicies.h"
 #include "nsIContent.h"
 #include "nsTraceRefcnt.h"
 
@@ -309,6 +308,7 @@ class nsHtml5Tokenizer {
   nsHtml5HtmlAttributes* attributes;
   bool newAttributesEachTime;
   bool shouldSuspend;
+  bool keepBuffer;
 
  protected:
   bool confident;
@@ -324,6 +324,8 @@ class nsHtml5Tokenizer {
   void setInterner(nsHtml5AtomTable* interner);
   void initLocation(nsHtml5String newPublicId, nsHtml5String newSystemId);
   bool isViewingXmlSource();
+  void setKeepBuffer(bool keepBuffer);
+  bool dropBufferIfLongerThan(int32_t length);
   void setState(int32_t specialTokenizerState);
   void setStateAndEndTagExpectation(int32_t specialTokenizerState,
                                     nsHtml5ElementName* endTagExpectation);
@@ -409,26 +411,15 @@ class nsHtml5Tokenizer {
   int32_t stateLoop(int32_t state, char16_t c, int32_t pos, char16_t* buf,
                     bool reconsume, int32_t returnState, int32_t endPos);
   void initDoctypeFields();
-  inline void adjustDoubleHyphenAndAppendToStrBufCarriageReturn() {
-    silentCarriageReturn();
-    adjustDoubleHyphenAndAppendToStrBufAndErr('\n', false);
-  }
-
-  inline void adjustDoubleHyphenAndAppendToStrBufLineFeed() {
-    silentLineFeed();
-    adjustDoubleHyphenAndAppendToStrBufAndErr('\n', false);
-  }
-
-  inline void appendStrBufLineFeed() {
-    silentLineFeed();
-    appendStrBuf('\n');
-  }
-
-  inline void appendStrBufCarriageReturn() {
-    silentCarriageReturn();
-    appendStrBuf('\n');
-  }
-
+  template <class P>
+  void adjustDoubleHyphenAndAppendToStrBufCarriageReturn();
+  template <class P>
+  void adjustDoubleHyphenAndAppendToStrBufLineFeed();
+  template <class P>
+  void appendStrBufLineFeed();
+  template <class P>
+  void appendStrBufCarriageReturn();
+  template <class P>
   void emitCarriageReturn(char16_t* buf, int32_t pos);
   void emitReplacementCharacter(char16_t* buf, int32_t pos);
   void maybeEmitReplacementCharacter(char16_t* buf, int32_t pos);

@@ -5,12 +5,14 @@
 #include "nsHtml5String.h"
 #include "nsCharTraits.h"
 #include "nsHtml5TreeBuilder.h"
-#include "nsUTF8Utils.h"
+#include "mozilla/StringBuffer.h"
+
+using mozilla::StringBuffer;
 
 void nsHtml5String::ToString(nsAString& aString) {
   switch (GetKind()) {
     case eStringBuffer:
-      return AsStringBuffer()->ToString(Length(), aString);
+      return aString.Assign(AsStringBuffer(), Length());
     case eAtom:
       return AsAtom()->ToString(aString);
     case eEmpty:
@@ -105,18 +107,17 @@ nsHtml5String nsHtml5String::FromBuffer(char16_t* aBuffer, int32_t aLength,
   if (!aLength) {
     return nsHtml5String(eEmpty);
   }
-  // Work with nsStringBuffer directly to make sure that storage is actually
-  // nsStringBuffer and to make sure the allocation strategy matches
+  // Work with StringBuffer directly to make sure that storage is actually
+  // StringBuffer and to make sure the allocation strategy matches
   // nsAttrValue::GetStringBuffer, so that it doesn't need to reallocate and
   // copy.
-  RefPtr<nsStringBuffer> buffer(
-      nsStringBuffer::Alloc((aLength + 1) * sizeof(char16_t)));
-  if (!buffer) {
+  RefPtr<StringBuffer> buffer = StringBuffer::Create(aBuffer, aLength);
+  if (MOZ_UNLIKELY(!buffer)) {
     if (!aTreeBuilder) {
       MOZ_CRASH("Out of memory.");
     }
     aTreeBuilder->MarkAsBroken(NS_ERROR_OUT_OF_MEMORY);
-    buffer = nsStringBuffer::Alloc(2 * sizeof(char16_t));
+    buffer = StringBuffer::Alloc(2 * sizeof(char16_t));
     if (!buffer) {
       MOZ_CRASH(
           "Out of memory so badly that couldn't even allocate placeholder.");
@@ -124,12 +125,7 @@ nsHtml5String nsHtml5String::FromBuffer(char16_t* aBuffer, int32_t aLength,
     char16_t* data = reinterpret_cast<char16_t*>(buffer->Data());
     data[0] = 0xFFFD;
     data[1] = 0;
-    return nsHtml5String(reinterpret_cast<uintptr_t>(buffer.forget().take()) |
-                         eStringBuffer);
   }
-  char16_t* data = reinterpret_cast<char16_t*>(buffer->Data());
-  memcpy(data, aBuffer, aLength * sizeof(char16_t));
-  data[aLength] = 0;
   return nsHtml5String(reinterpret_cast<uintptr_t>(buffer.forget().take()) |
                        eStringBuffer);
 }
@@ -140,12 +136,12 @@ nsHtml5String nsHtml5String::FromLiteral(const char* aLiteral) {
   if (!length) {
     return nsHtml5String(eEmpty);
   }
-  // Work with nsStringBuffer directly to make sure that storage is actually
-  // nsStringBuffer and to make sure the allocation strategy matches
+  // Work with StringBuffer directly to make sure that storage is actually
+  // StringBuffer and to make sure the allocation strategy matches
   // nsAttrValue::GetStringBuffer, so that it doesn't need to reallocate and
   // copy.
-  RefPtr<nsStringBuffer> buffer(
-      nsStringBuffer::Alloc((length + 1) * sizeof(char16_t)));
+  RefPtr<StringBuffer> buffer(
+      StringBuffer::Alloc((length + 1) * sizeof(char16_t)));
   if (!buffer) {
     MOZ_CRASH("Out of memory.");
   }
@@ -163,12 +159,14 @@ nsHtml5String nsHtml5String::FromString(const nsAString& aString) {
   if (!length) {
     return nsHtml5String(eEmpty);
   }
-  RefPtr<nsStringBuffer> buffer = nsStringBuffer::FromString(aString);
-  if (buffer && (length == buffer->StorageSize() / sizeof(char16_t) - 1)) {
-    return nsHtml5String(reinterpret_cast<uintptr_t>(buffer.forget().take()) |
-                         eStringBuffer);
+  if (StringBuffer* buffer = aString.GetStringBuffer()) {
+    if (length == buffer->StorageSize() / sizeof(char16_t) - 1) {
+      buffer->AddRef();
+      return nsHtml5String(reinterpret_cast<uintptr_t>(buffer) | eStringBuffer);
+    }
   }
-  buffer = nsStringBuffer::Alloc((length + 1) * sizeof(char16_t));
+  RefPtr<StringBuffer> buffer =
+      StringBuffer::Alloc((length + 1) * sizeof(char16_t));
   if (!buffer) {
     MOZ_CRASH("Out of memory.");
   }

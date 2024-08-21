@@ -69,12 +69,8 @@ class nsHtml5AttributeName {
   static nsStaticAtom** XMLNS_PREFIX;
   static nsStaticAtom** XLINK_PREFIX;
   static nsStaticAtom** XML_PREFIX;
-  static RefPtr<nsAtom>* SVG_DIFFERENT(nsAtom* name, nsAtom* camel);
-  static RefPtr<nsAtom>* MATH_DIFFERENT(nsAtom* name, nsAtom* camel);
-  static RefPtr<nsAtom>* COLONIFIED_LOCAL(nsAtom* name, nsAtom* suffix);
 
  public:
-  static RefPtr<nsAtom>* SAME_LOCAL(nsAtom* name);
   inline static int32_t levelOrderBinarySearch(jArray<int32_t, int32_t> data,
                                                int32_t key) {
     int32_t n = data.length;
@@ -152,12 +148,12 @@ class nsHtml5AttributeName {
   static const int32_t SVG = 2;
 
  private:
-  int32_t* uri;
-  RefPtr<nsAtom>* local;
-  nsStaticAtom** prefix;
+  jInlineArray<int32_t, 3> uri;
+  jInlineArray<nsAtom*, 3> local;
+  jInlineArray<nsStaticAtom*, 3> prefix;
   bool custom;
-  nsHtml5AttributeName(int32_t* uri, RefPtr<nsAtom>* local,
-                       nsStaticAtom** prefix);
+  nsHtml5AttributeName(int32_t* uri, nsStaticAtom* html, nsStaticAtom* mathml,
+                       nsStaticAtom* svg, nsStaticAtom** prefix);
 
  public:
   nsHtml5AttributeName();
@@ -165,12 +161,13 @@ class nsHtml5AttributeName {
 
   inline void setNameForNonInterned(nsAtom* name) {
     MOZ_ASSERT(custom);
+    NS_IF_ADDREF(name);
+    NS_IF_RELEASE(local[0]);
     local[0] = name;
     local[1] = name;
     local[2] = name;
   }
 
-  static nsHtml5AttributeName* createAttributeName(nsAtom* name);
   ~nsHtml5AttributeName();
   int32_t getUri(int32_t mode);
   nsAtom* getLocal(int32_t mode);
@@ -267,6 +264,8 @@ class nsHtml5AttributeName {
   static nsHtml5AttributeName* ATTR_CALCMODE;
   static nsHtml5AttributeName* ATTR_CHECKED;
   static nsHtml5AttributeName* ATTR_FENCE;
+  static nsHtml5AttributeName* ATTR_FETCHPRIORITY;
+  static nsHtml5AttributeName* ATTR_NONCE;
   static nsHtml5AttributeName* ATTR_ONSCROLL;
   static nsHtml5AttributeName* ATTR_ONACTIVATE;
   static nsHtml5AttributeName* ATTR_OPACITY;
@@ -282,10 +281,14 @@ class nsHtml5AttributeName {
   static nsHtml5AttributeName* ATTR_LOADING;
   static nsHtml5AttributeName* ATTR_READONLY;
   static nsHtml5AttributeName* ATTR_RENDERING_INTENT;
+  static nsHtml5AttributeName* ATTR_SHADOWROOTMODE;
   static nsHtml5AttributeName* ATTR_SEED;
+  static nsHtml5AttributeName* ATTR_SHADOWROOTCLONABLE;
+  static nsHtml5AttributeName* ATTR_SHADOWROOTSERIALIZABLE;
   static nsHtml5AttributeName* ATTR_SRCDOC;
   static nsHtml5AttributeName* ATTR_STDDEVIATION;
   static nsHtml5AttributeName* ATTR_SANDBOX;
+  static nsHtml5AttributeName* ATTR_SHADOWROOTDELEGATESFOCUS;
   static nsHtml5AttributeName* ATTR_WORD_SPACING;
   static nsHtml5AttributeName* ATTR_ACCENTUNDER;
   static nsHtml5AttributeName* ATTR_ACCEPT_CHARSET;
@@ -458,6 +461,7 @@ class nsHtml5AttributeName {
   static nsHtml5AttributeName* ATTR_ASYNC;
   static nsHtml5AttributeName* ATTR_ALINK;
   static nsHtml5AttributeName* ATTR_IN;
+  static nsHtml5AttributeName* ATTR_EVENT;
   static nsHtml5AttributeName* ATTR_ICON;
   static nsHtml5AttributeName* ATTR_KERNELMATRIX;
   static nsHtml5AttributeName* ATTR_KERNING;

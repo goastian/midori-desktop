@@ -48,7 +48,7 @@ class nsHtml5TreeOpExecutor final
   NS_DECL_ISUPPORTS_INHERITED
 
  private:
-#ifdef DEBUG_NS_HTML5_TREE_OP_EXECUTOR_FLUSH
+#ifdef DEBUG
   static uint32_t sAppendBatchMaxSize;
   static uint32_t sAppendBatchSlotsExamined;
   static uint32_t sAppendBatchExaminations;
@@ -216,7 +216,7 @@ class nsHtml5TreeOpExecutor final
   bool IsInFlushLoop() { return mRunFlushLoopOnStack; }
 #endif
 
-  void RunScript(nsIContent* aScriptElement);
+  void RunScript(nsIContent* aScriptElement, bool aMayDocumentWriteOrBlock);
 
   /**
    * Flush the operations from the tree operations from the argument
@@ -245,21 +245,23 @@ class nsHtml5TreeOpExecutor final
 
   void PreloadScript(const nsAString& aURL, const nsAString& aCharset,
                      const nsAString& aType, const nsAString& aCrossOrigin,
-                     const nsAString& aMedia, const nsAString& aIntegrity,
+                     const nsAString& aMedia, const nsAString& aNonce,
+                     const nsAString& aFetchPriority,
+                     const nsAString& aIntegrity,
                      ReferrerPolicy aReferrerPolicy, bool aScriptFromHead,
-                     bool aAsync, bool aDefer, bool aNoModule,
-                     bool aLinkPreload);
+                     bool aAsync, bool aDefer, bool aLinkPreload);
 
   void PreloadStyle(const nsAString& aURL, const nsAString& aCharset,
                     const nsAString& aCrossOrigin, const nsAString& aMedia,
-                    const nsAString& aReferrerPolicy,
-                    const nsAString& aIntegrity, bool aLinkPreload);
+                    const nsAString& aReferrerPolicy, const nsAString& aNonce,
+                    const nsAString& aIntegrity, bool aLinkPreload,
+                    const nsAString& aFetchPriority);
 
   void PreloadImage(const nsAString& aURL, const nsAString& aCrossOrigin,
                     const nsAString& aMedia, const nsAString& aSrcset,
                     const nsAString& aSizes,
                     const nsAString& aImageReferrerPolicy, bool aLinkPreload,
-                    const mozilla::TimeStamp& aInitTimestamp);
+                    const nsAString& aFetchPriority);
 
   void PreloadOpenPicture();
 
@@ -269,10 +271,12 @@ class nsHtml5TreeOpExecutor final
                             const nsAString& aType, const nsAString& aMedia);
 
   void PreloadFont(const nsAString& aURL, const nsAString& aCrossOrigin,
-                   const nsAString& aMedia, const nsAString& aReferrerPolicy);
+                   const nsAString& aMedia, const nsAString& aReferrerPolicy,
+                   const nsAString& aFetchPriority);
 
   void PreloadFetch(const nsAString& aURL, const nsAString& aCrossOrigin,
-                    const nsAString& aMedia, const nsAString& aReferrerPolicy);
+                    const nsAString& aMedia, const nsAString& aReferrerPolicy,
+                    const nsAString& aFetchPriority);
 
   void SetSpeculationBase(const nsAString& aURL);
 

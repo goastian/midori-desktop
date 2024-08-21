@@ -60,7 +60,7 @@ function writeErrorSummary(input, expected, got, isTodo) {
  * event handler returned by makeTestChecker() or the callback returned by
  * makeFragmentTestChecker() until the 'testcases' iterator is spent.
  */
-function makeTestChecker(input, expected, errors) {
+function makeTestChecker(input, expected) {
   return function (e) {
     var domAsString = docToTestOutput(e.target.contentDocument);
     if (html5Exceptions[input]) {
@@ -97,7 +97,6 @@ function makeFragmentTestChecker(input, expected, errors, fragment, testframe) {
         fragment
       );
     }
-    // eslint-disable-next-line no-unsanitized/property
     context.innerHTML = input;
     var domAsString = fragmentToTestOutput(context);
     is(domAsString, expected, "HTML5 expected success. " + new Date());

@@ -30,7 +30,7 @@ load 269095-1.html
 load 286733-1.html
 load 286733-2.html
 load 299036-1.html
-skip-if(cocoaWidget&&browserIsRemote) load 328751-1.html # Bug 849747
+skip-if(cocoaWidget) load 328751-1.html # Bug 849747
 load 408939-1.html
 load 423373-1.html
 load 445171-1.html
@@ -63,5 +63,6 @@ load 1534346-1.html
 load 1604307-1.html
 load 1606499-1.html
 load 1547895-1.html
-skip-if(Android) skip-if(isDebugBuild) load 1747514.html # Bug 1780219
+skip-if(Android||isDebugBuild||AddressSanitizer||ThreadSanitizer) load 1747514.html # Too slow for some configurations, see bug 1780219 for android for example.
 HTTP load 1810896-1.html
+load 1854907-1.html

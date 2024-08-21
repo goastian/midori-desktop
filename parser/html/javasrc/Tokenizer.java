@@ -35,6 +35,8 @@
 
 package nu.validator.htmlparser.impl;
 
+import java.util.HashMap;
+
 import org.xml.sax.ErrorHandler;
 import org.xml.sax.Locator;
 import org.xml.sax.ext.Locator2;
@@ -509,6 +511,8 @@ public class Tokenizer implements Locator, Locator2 {
 
     private boolean shouldSuspend;
 
+    private boolean keepBuffer;
+
     protected boolean confident;
 
     private int line;
@@ -568,6 +572,7 @@ public class Tokenizer implements Locator, Locator2 {
         this.systemIdentifier = null;
         this.attributes = null;
         this.shouldSuspend = false;
+        this.keepBuffer = false;
         this.confident = false;
         this.line = 0;
         // CPPONLY: this.attributeLine = 0;
@@ -630,6 +635,7 @@ public class Tokenizer implements Locator, Locator2 {
         // CPPONLY: this.attributes = tokenHandler.HasBuilder() ? new HtmlAttributes(mappingLangToXmlLang) : null;
         // CPPONLY: this.newAttributesEachTime = !tokenHandler.HasBuilder();
         this.shouldSuspend = false;
+        this.keepBuffer = false;
         this.confident = false;
         this.line = 0;
         // CPPONLY: this.attributeLine = 0;
@@ -650,6 +656,18 @@ public class Tokenizer implements Locator, Locator2 {
     // CPPONLY: boolean isViewingXmlSource() {
     // CPPONLY: return viewingXmlSource;
     // CPPONLY: }
+
+    public void setKeepBuffer(boolean keepBuffer) {
+        this.keepBuffer = keepBuffer;
+    }
+
+    public boolean dropBufferIfLongerThan(int length) {
+        if (strBuf.length > length) {
+            strBuf = null;
+            return true;
+        }
+        return false;
+    }
 
     // [NOCPP[
 
@@ -684,6 +702,15 @@ public class Tokenizer implements Locator, Locator2 {
 
     public ErrorHandler getErrorHandler() {
         return this.errorHandler;
+    }
+
+    /**
+     * Gets the errorProfile.
+     *
+     * @param errorProfile
+     */
+    public HashMap getErrorProfile() {
+        return null;
     }
 
     /**
@@ -775,7 +802,7 @@ public class Tokenizer implements Locator, Locator2 {
         }
         @Auto char[] asArray = Portability.newCharArrayFromLocal(endTagExpectation);
         this.endTagExpectation = ElementName.elementNameByBuffer(asArray,
-                asArray.length, interner);
+                asArray.length);
         assert this.endTagExpectation != null;
         endTagExpectationToArray();
     }
@@ -1216,7 +1243,7 @@ public class Tokenizer implements Locator, Locator2 {
                 tagName = nonInternedTagName;
             }
         } else {
-            tagName = ElementName.elementNameByBuffer(strBuf, strBufLen, interner);
+            tagName = ElementName.elementNameByBuffer(strBuf, strBufLen);
             if (tagName == null) {
                 nonInternedTagName.setNameForNonInterned(Portability.newLocalNameFromBuffer(strBuf, strBufLen,
                     interner)
@@ -1390,9 +1417,19 @@ public class Tokenizer implements Locator, Locator2 {
     public void start() throws SAXException {
         initializeWithoutStarting();
         tokenHandler.startTokenization(this);
-        // CPPONLY: line = 0;
-        // CPPONLY: col = 1;
-        // CPPONLY: nextCharOnNewLine = true;
+        // CPPONLY: if (mViewSource) {
+        // CPPONLY:   line = 1;
+        // CPPONLY:   col = -1;
+        // CPPONLY:   nextCharOnNewLine = false;
+        // CPPONLY: } else if (tokenHandler.WantsLineAndColumn()) {
+        // CPPONLY:   line = 0;
+        // CPPONLY:   col = 1;
+        // CPPONLY:   nextCharOnNewLine = true;
+        // CPPONLY: } else {
+        // CPPONLY:   line = -1;
+        // CPPONLY:   col = -1;
+        // CPPONLY:   nextCharOnNewLine = false;
+        // CPPONLY: }
         // [NOCPP[
         startErrorReporting();
         // ]NOCPP]
@@ -1458,6 +1495,8 @@ public class Tokenizer implements Locator, Locator2 {
         // CPPONLY:   mViewSource.SetBuffer(buffer);
         // CPPONLY:   pos = stateLoop(state, c, pos, buffer.getBuffer(), false, returnState, buffer.getEnd());
         // CPPONLY:   mViewSource.DropBuffer((pos == buffer.getEnd()) ? pos : pos + 1);
+        // CPPONLY: } else if (tokenHandler.WantsLineAndColumn()) {
+        // CPPONLY:   pos = stateLoop(state, c, pos, buffer.getBuffer(), false, returnState, buffer.getEnd());
         // CPPONLY: } else {
         // CPPONLY:   pos = stateLoop(state, c, pos, buffer.getBuffer(), false, returnState, buffer.getEnd());
         // CPPONLY: }
@@ -6309,24 +6348,24 @@ public class Tokenizer implements Locator, Locator2 {
         forceQuirks = false;
     }
 
-    @Inline private void adjustDoubleHyphenAndAppendToStrBufCarriageReturn()
+    private void adjustDoubleHyphenAndAppendToStrBufCarriageReturn()
             throws SAXException {
         silentCarriageReturn();
         adjustDoubleHyphenAndAppendToStrBufAndErr('\n', false);
     }
 
-    @Inline private void adjustDoubleHyphenAndAppendToStrBufLineFeed()
+    private void adjustDoubleHyphenAndAppendToStrBufLineFeed()
             throws SAXException {
         silentLineFeed();
         adjustDoubleHyphenAndAppendToStrBufAndErr('\n', false);
     }
 
-    @Inline private void appendStrBufLineFeed() {
+    private void appendStrBufLineFeed() {
         silentLineFeed();
         appendStrBuf('\n');
     }
 
-    @Inline private void appendStrBufCarriageReturn() {
+    private void appendStrBufCarriageReturn() {
         silentCarriageReturn();
         appendStrBuf('\n');
     }
@@ -7202,7 +7241,9 @@ public class Tokenizer implements Locator, Locator2 {
     }
 
     public void end() throws SAXException {
-        strBuf = null;
+        if (!keepBuffer) {
+            strBuf = null;
+        }
         doctypeName = null;
         if (systemIdentifier != null) {
             Portability.releaseString(systemIdentifier);
@@ -7392,7 +7433,9 @@ public class Tokenizer implements Locator, Locator2 {
 
     public void initializeWithoutStarting() throws SAXException {
         confident = false;
-        strBuf = null;
+        if (!keepBuffer) {
+            strBuf = null;
+        }
         line = 1;
         // CPPONLY: attributeLine = 1;
         // [NOCPP[

@@ -44,6 +44,9 @@
 
  ******/
 
+#pragma push_macro("small")
+#undef small
+
 #define HTML_HTMLELEMENT_TAG(_tag) HTML_TAG(_tag, , )
 
 HTML_TAG(a, Anchor, Anchor)
@@ -151,6 +154,7 @@ HTML_HTMLELEMENT_TAG(ruby)
 HTML_HTMLELEMENT_TAG(s)
 HTML_HTMLELEMENT_TAG(samp)
 HTML_TAG(script, Script, Script)
+HTML_HTMLELEMENT_TAG(search)
 HTML_HTMLELEMENT_TAG(section)
 HTML_TAG(select, Select, Select)
 HTML_HTMLELEMENT_TAG(small)
@@ -196,3 +200,5 @@ HTML_OTHER(markupDecl)
 HTML_OTHER(instruction)
 
 #undef HTML_HTMLELEMENT_TAG
+
+#pragma pop_macro("small")

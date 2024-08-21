@@ -8,17 +8,12 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <algorithm>
-#include <new>
-#include <type_traits>
 #include <utility>
 #include "ErrorList.h"
 #include "GeckoProfiler.h"
 #include "js/GCAPI.h"
-#include "mozilla/ArrayIterator.h"
 #include "mozilla/Buffer.h"
 #include "mozilla/CheckedInt.h"
-#include "mozilla/DebugOnly.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/EncodingDetector.h"
 #include "mozilla/Likely.h"
@@ -27,24 +22,20 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_html5.h"
-#include "mozilla/StaticPrefs_intl.h"
-#include "mozilla/TaskCategory.h"
+#include "mozilla/StaticPrefs_network.h"
 #include "mozilla/TextUtils.h"
+#include "mozilla/glean/GleanMetrics.h"
 
-#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/DebuggerUtilsBinding.h"
-#include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/Document.h"
-#include "mozilla/mozalloc.h"
 #include "mozilla/Vector.h"
 #include "nsContentSink.h"
 #include "nsContentUtils.h"
 #include "nsCycleCollectionTraversalCallback.h"
 #include "nsHtml5AtomTable.h"
-#include "nsHtml5ByteReadable.h"
 #include "nsHtml5Highlighter.h"
 #include "nsHtml5Module.h"
 #include "nsHtml5OwningUTF16Buffer.h"
@@ -54,13 +45,11 @@
 #include "nsHtml5Tokenizer.h"
 #include "nsHtml5TreeBuilder.h"
 #include "nsHtml5TreeOpExecutor.h"
-#include "nsHtml5TreeOpStage.h"
 #include "nsIChannel.h"
 #include "nsIContentSink.h"
 #include "nsID.h"
 #include "nsIDTD.h"
 #include "nsIDocShell.h"
-#include "nsIEventTarget.h"
 #include "nsIHttpChannel.h"
 #include "nsIInputStream.h"
 #include "nsINestedURI.h"
@@ -70,7 +59,6 @@
 #include "nsIScriptError.h"
 #include "nsIThread.h"
 #include "nsIThreadRetargetableRequest.h"
-#include "nsIThreadRetargetableStreamListener.h"
 #include "nsITimer.h"
 #include "nsIURI.h"
 #include "nsJSEnvironment.h"
@@ -165,8 +153,7 @@ class nsHtml5ExecutorFlusher : public Runnable {
         // Possible early paint pending, reuse the runnable and try to
         // call RunFlushLoop later.
         nsCOMPtr<nsIRunnable> flusher = this;
-        if (NS_SUCCEEDED(
-                doc->Dispatch(TaskCategory::Network, flusher.forget()))) {
+        if (NS_SUCCEEDED(doc->Dispatch(flusher.forget()))) {
           PROFILER_MARKER_UNTYPED("HighPrio blocking parser flushing(1)", DOM);
           return NS_OK;
         }
@@ -1126,6 +1113,8 @@ nsresult nsHtml5StreamParser::OnStartRequest(nsIRequest* aRequest) {
   mTreeBuilder->setScriptingEnabled(scriptingEnabled);
   mTreeBuilder->SetPreventScriptExecution(
       !((mMode == NORMAL) && scriptingEnabled));
+  mTreeBuilder->setAllowDeclarativeShadowRoots(
+      mExecutor->GetDocument()->AllowsDeclarativeShadowRoots());
   mTokenizer->start();
   mExecutor->Start();
   mExecutor->StartReadingFromStage();
@@ -1192,16 +1181,8 @@ nsresult nsHtml5StreamParser::OnStartRequest(nsIRequest* aRequest) {
 
   rv = NS_OK;
 
-  mNetworkEventTarget =
-      mExecutor->GetDocument()->EventTargetFor(TaskCategory::Network);
-
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(mRequest, &rv));
   if (NS_SUCCEEDED(rv)) {
-    // Non-HTTP channels are bogus enough that we let them work with unlabeled
-    // runnables for now. Asserting for HTTP channels only.
-    MOZ_ASSERT(mNetworkEventTarget || mMode == LOAD_AS_DATA,
-               "How come the network event target is still null?");
-
     nsAutoCString method;
     Unused << httpChannel->GetRequestMethod(method);
     // XXX does Necko have a way to renavigate POST, etc. without hitting
@@ -1226,8 +1207,7 @@ nsresult nsHtml5StreamParser::OnStartRequest(nsIRequest* aRequest) {
       // the request.
       nsCOMPtr<nsIRunnable> runnable =
           new MaybeRunCollector(mExecutor->GetDocument()->GetDocShell());
-      mozilla::SchedulerGroup::Dispatch(
-          mozilla::TaskCategory::GarbageCollection, runnable.forget());
+      mozilla::SchedulerGroup::Dispatch(runnable.forget());
     }
   }
 
@@ -1400,13 +1380,49 @@ class nsHtml5RequestStopper : public Runnable {
   }
 };
 
-nsresult nsHtml5StreamParser::OnStopRequest(nsIRequest* aRequest,
-                                            nsresult status) {
-  MOZ_ASSERT(mRequest == aRequest, "Got Stop on wrong stream.");
-  MOZ_ASSERT(NS_IsMainThread(), "Wrong thread!");
-  nsCOMPtr<nsIRunnable> stopper = new nsHtml5RequestStopper(this);
-  if (NS_FAILED(mEventTarget->Dispatch(stopper, nsIThread::DISPATCH_NORMAL))) {
-    NS_WARNING("Dispatching StopRequest event failed.");
+nsresult nsHtml5StreamParser::OnStopRequest(
+    nsIRequest* aRequest, nsresult status,
+    const mozilla::ReentrantMonitorAutoEnter& aProofOfLock) {
+  MOZ_ASSERT_IF(aRequest, mRequest == aRequest);
+  if (mOnStopCalled) {
+    // OnStopRequest already executed (probably OMT).
+    MOZ_ASSERT(NS_IsMainThread(), "Expected to run on main thread");
+    if (mOnDataFinishedTime) {
+      mOnStopRequestTime = TimeStamp::Now();
+    }
+  } else {
+    mOnStopCalled = true;
+
+    if (MOZ_UNLIKELY(NS_IsMainThread())) {
+      MOZ_ASSERT(mOnDataFinishedTime.IsNull(), "stale mOnDataFinishedTime");
+      nsCOMPtr<nsIRunnable> stopper = new nsHtml5RequestStopper(this);
+      if (NS_FAILED(
+              mEventTarget->Dispatch(stopper, nsIThread::DISPATCH_NORMAL))) {
+        NS_WARNING("Dispatching StopRequest event failed.");
+      }
+    } else {
+      if (StaticPrefs::network_send_OnDataFinished_html5parser()) {
+        MOZ_ASSERT(IsParserThread(), "Wrong thread!");
+        mOnDataFinishedTime = TimeStamp::Now();
+        mozilla::MutexAutoLock autoLock(mTokenizerMutex);
+        DoStopRequest();
+        PostLoadFlusher();
+      } else {
+        // Let the MainThread event handle this, even though it will just
+        // send it back to this thread, so we can accurately judge the impact
+        // of this change.   This should eventually be removed
+        mOnStopCalled = false;
+        // don't record any telemetry for this
+        return NS_OK;
+      }
+    }
+  }
+  if (!mOnStopRequestTime.IsNull() && !mOnDataFinishedTime.IsNull()) {
+    TimeDuration delta = (mOnStopRequestTime - mOnDataFinishedTime);
+    MOZ_ASSERT((delta.ToMilliseconds() >= 0),
+               "OnDataFinished after OnStopRequest");
+    glean::networking::http_content_html5parser_ondatafinished_to_onstop_delay
+        .AccumulateRawDuration(delta);
   }
   return NS_OK;
 }
@@ -2479,9 +2495,9 @@ void nsHtml5StreamParser::ParseAvailableData() {
         MarkAsBroken(rv);
         return;
       }
-      if (mTreeBuilder->HasScript()) {
-        // HasScript() cannot return true if the tree builder is preventing
-        // script execution.
+      if (mTreeBuilder->HasScriptThatMayDocumentWriteOrBlock()) {
+        // `HasScriptThatMayDocumentWriteOrBlock()` cannot return true if the
+        // tree builder is preventing script execution.
         MOZ_ASSERT(mMode == NORMAL);
         mozilla::MutexAutoLock speculationAutoLock(mSpeculationMutex);
         nsHtml5Speculation* speculation = new nsHtml5Speculation(
@@ -2857,9 +2873,5 @@ void nsHtml5StreamParser::MarkAsBroken(nsresult aRv) {
 
 nsresult nsHtml5StreamParser::DispatchToMain(
     already_AddRefed<nsIRunnable>&& aRunnable) {
-  if (mNetworkEventTarget) {
-    return mNetworkEventTarget->Dispatch(std::move(aRunnable));
-  }
-  return SchedulerGroup::UnlabeledDispatch(TaskCategory::Network,
-                                           std::move(aRunnable));
+  return SchedulerGroup::Dispatch(std::move(aRunnable));
 }
