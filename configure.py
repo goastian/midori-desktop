@@ -18,7 +18,6 @@ sys.path.insert(0, os.path.join(base_dir, "python", "mach"))
 sys.path.insert(0, os.path.join(base_dir, "python", "mozboot"))
 sys.path.insert(0, os.path.join(base_dir, "python", "mozbuild"))
 sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "packaging"))
-sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "pyparsing"))
 sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "six"))
 sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "looseversion"))
 import mozpack.path as mozpath
@@ -34,6 +33,16 @@ from mach.site import (
 from mozbuild.backend.configenvironment import PartialConfigEnvironment
 from mozbuild.configure import TRACE, ConfigureSandbox
 from mozbuild.pythonutil import iter_modules_in_path
+
+if "MOZ_CONFIGURE_BUILDSTATUS" in os.environ:
+
+    def buildstatus(message):
+        print("BUILDSTATUS", message)
+
+else:
+
+    def buildstatus(message):
+        return
 
 
 def main(argv):
@@ -112,7 +121,9 @@ def main(argv):
                 file=sys.stderr,
             )
             return 1
+        buildstatus("START_configure activate virtualenv")
         _activate_build_virtualenv()
+        buildstatus("END_configure activate virtualenv")
 
     clobber_file = "CLOBBER"
     if not os.path.exists(clobber_file):
@@ -123,37 +134,48 @@ def main(argv):
     if os.environ.get("MOZ_CONFIGURE_TRACE"):
         sandbox._logger.setLevel(TRACE)
 
-    sandbox.run(os.path.join(os.path.dirname(__file__), "moz.configure"))
+    buildstatus("START_configure read moz.configure")
+    sandbox.include_file(os.path.join(os.path.dirname(__file__), "moz.configure"))
+    buildstatus("END_configure read moz.configure")
+    buildstatus("START_configure run moz.configure")
+    sandbox.run()
+    buildstatus("END_configure run moz.configure")
 
     if sandbox._help:
         return 0
 
+    buildstatus("START_configure config.status")
     logging.getLogger("moz.configure").info("Creating config.status")
 
     old_js_configure_substs = config.pop("OLD_JS_CONFIGURE_SUBSTS", None)
     old_js_configure_defines = config.pop("OLD_JS_CONFIGURE_DEFINES", None)
-    if old_js_configure_substs or old_js_configure_defines:
-        js_config = config.copy()
-        pwd = os.getcwd()
-        try:
+    try:
+        if old_js_configure_substs or old_js_configure_defines:
+            js_config = config.copy()
+            pwd = os.getcwd()
             try:
-                os.makedirs("js/src")
-            except OSError as e:
-                if e.errno != errno.EEXIST:
-                    raise
+                try:
+                    os.makedirs("js/src")
+                except OSError as e:
+                    if e.errno != errno.EEXIST:
+                        raise
 
-            os.chdir("js/src")
-            js_config["OLD_CONFIGURE_SUBSTS"] = old_js_configure_substs
-            js_config["OLD_CONFIGURE_DEFINES"] = old_js_configure_defines
-            # The build system frontend expects $objdir/js/src/config.status
-            # to have $objdir/js/src as topobjdir.
-            # We want forward slashes on all platforms.
-            js_config["TOPOBJDIR"] += "/js/src"
-            config_status(js_config, execute=False)
-        finally:
-            os.chdir(pwd)
+                os.chdir("js/src")
+                js_config["OLD_CONFIGURE_SUBSTS"] = old_js_configure_substs
+                js_config["OLD_CONFIGURE_DEFINES"] = old_js_configure_defines
+                # The build system frontend expects $objdir/js/src/config.status
+                # to have $objdir/js/src as topobjdir.
+                # We want forward slashes on all platforms.
+                js_config["TOPOBJDIR"] += "/js/src"
+                ret = config_status(js_config, execute=False)
+                if ret:
+                    return ret
+            finally:
+                os.chdir(pwd)
 
-    return config_status(config)
+        return config_status(config)
+    finally:
+        buildstatus("END_configure config.status")
 
 
 def check_unicode(obj):
@@ -220,24 +242,7 @@ def config_status(config, execute=True):
     if not check_unicode(sanitized_config):
         print("Configuration should be all unicode.", file=sys.stderr)
         print("Please file a bug for the above.", file=sys.stderr)
-        sys.exit(1)
-
-    # Some values in sanitized_config also have more complex types, such as
-    # EnumString, which using when calling config_status would currently
-    # break the build, as well as making it inconsistent with re-running
-    # config.status, for which they are normalized to plain strings via
-    # indented_repr. Likewise for non-dict non-string iterables being
-    # converted to lists.
-    def normalize(obj):
-        if isinstance(obj, dict):
-            return {k: normalize(v) for k, v in six.iteritems(obj)}
-        if isinstance(obj, six.text_type):
-            return six.text_type(obj)
-        if isinstance(obj, Iterable):
-            return [normalize(o) for o in obj]
-        return obj
-
-    sanitized_config = normalize(sanitized_config)
+        return 1
 
     # Create config.status. Eventually, we'll want to just do the work it does
     # here, when we're able to skip configure tests/use cached results/not rely
@@ -248,6 +253,7 @@ def config_status(config, execute=True):
                 """\
             #!%(python)s
             # coding=utf-8
+            from mozbuild.configure.constants import *
         """
             )
             % {"python": config["PYTHON3"]}
@@ -317,7 +323,6 @@ def _activate_build_virtualenv():
     # virtualenv), so we should activate the build virtualenv as expected by the rest of
     # configure.
 
-    topobjdir = os.path.realpath(".")
     topsrcdir = os.path.realpath(os.path.dirname(__file__))
 
     mach_site = MachSiteManager(
@@ -328,11 +333,14 @@ def _activate_build_virtualenv():
         SitePackagesSource.NONE,
     )
     mach_site.activate()
+
+    from mach.util import get_virtualenv_base_dir
+
     build_site = CommandSiteManager.from_environment(
         topsrcdir,
         None,
         "build",
-        os.path.join(topobjdir, "_virtualenvs"),
+        get_virtualenv_base_dir(topsrcdir),
     )
     if not build_site.ensure():
         print("Created Python 3 virtualenv")

@@ -49,6 +49,25 @@ def imply_disable_compile_environment(value):
 
 
 option(
+    env="MOZ_BUILD_HOOK",
+    nargs=1,
+    help="moz.build file that will be executed as if it were appended to"
+    " every moz.build in the tree.",
+)
+
+
+@depends_if("MOZ_BUILD_HOOK")
+@imports("os")
+def moz_build_hook(value):
+    if not os.path.exists(value[0]):
+        die(f"MOZ_BUILD_HOOK set to {value[0]} but the file doesn't exist")
+    return os.path.abspath(value[0])
+
+
+set_config("MOZ_BUILD_HOOK", moz_build_hook)
+
+
+option(
     env="MOZ_COPY_PDBS",
     help="For builds that do not support symbols in the normal fashion,"
     " generate and copy them into the resulting build archive.",
@@ -194,6 +213,8 @@ include("build/moz.configure/bootstrap.configure")
 # check_prog to use bootstrap_search_path directly because check_prog
 # comes first, so we use a trick to allow it. Uses of check_prog
 # happening before here won't allow bootstrap.
+
+
 @template
 def check_prog(*args, **kwargs):
     kwargs["bootstrap_search_path"] = bootstrap_search_path
@@ -208,10 +229,12 @@ include("build/moz.configure/toolchain.configure", when="--enable-compile-enviro
 include("build/moz.configure/pkg.configure")
 include("build/moz.configure/memory.configure", when="--enable-compile-environment")
 include("build/moz.configure/headers.configure", when="--enable-compile-environment")
+include("build/moz.configure/libraries.configure", when="--enable-compile-environment")
 include("build/moz.configure/warnings.configure", when="--enable-compile-environment")
 include("build/moz.configure/flags.configure", when="--enable-compile-environment")
 include("build/moz.configure/lto-pgo.configure", when="--enable-compile-environment")
 # rust.configure is included by js/moz.configure.
+
 
 option("--enable-valgrind", help="Enable Valgrind integration hooks")
 
@@ -321,6 +344,108 @@ set_define(
 set_config("HOST_LIB_PREFIX", host_library_name_info.lib.prefix)
 set_config("HOST_IMPORT_LIB_SUFFIX", host_library_name_info.import_lib.suffix)
 set_config("WASM_OBJ_SUFFIX", "wasm")
+
+
+@template
+def llvm_tool(name):
+    @depends(host_c_compiler, c_compiler, bindgen_config_paths)
+    def llvm_tool(host_c_compiler, c_compiler, bindgen_config_paths):
+        clang = None
+        for compiler in (host_c_compiler, c_compiler):
+            if compiler and compiler.type == "clang":
+                clang = compiler.compiler
+                break
+            elif compiler and compiler.type == "clang-cl":
+                clang = os.path.join(os.path.dirname(compiler.compiler), "clang")
+                break
+
+        if not clang and bindgen_config_paths:
+            clang = bindgen_config_paths.clang_path
+        tool = name
+        if clang:
+            out = check_cmd_output(
+                clang, "--print-prog-name=%s" % tool, onerror=lambda: None
+            )
+            if out:
+                tool = out.rstrip()
+        return (tool,)
+
+    return llvm_tool
+
+
+@template
+def plain_llvm_or_prefixed(name, llvm_name=None):
+    # look for a tool, using the following alternatives, in that order:
+    # 1. llvm-${llvm_name}, or llvm-${name} if ${llvm_name} is not provided
+    # 2. ${toolchain_prefix}${name}
+    # 3. ${name}
+
+    @depends(llvm_tool("llvm-{}".format(llvm_name or name)), toolchain_prefix)
+    def plain_llvm_or_prefixed(llvm_tool, toolchain_prefix):
+        commands = [llvm_tool[0], name]
+        for prefix in toolchain_prefix or ():
+            commands.insert(1, f"{prefix}{name}")
+        return tuple(commands)
+
+    return plain_llvm_or_prefixed
+
+
+llvm_objdump = check_prog(
+    "LLVM_OBJDUMP",
+    llvm_tool("llvm-objdump"),
+    what="llvm-objdump",
+    when="--enable-compile-environment",
+    paths=clang_search_path,
+)
+
+add_old_configure_assignment("LLVM_OBJDUMP", llvm_objdump)
+
+
+def validate_readelf(path):
+    # llvm-readelf from llvm < 8 doesn't support the GNU binutils-compatible `-d`
+    # flag. We could try running `$path -d $some_binary` but we might be cross
+    # compiling and not have a binary at hand to run that against. `$path -d` alone
+    # would fail whether the flag is supported or not. So we resort to look for the
+    # option in the `--help` output, which fortunately, s compatible between
+    # llvm-readelf and readelf.
+    retcode, stdout, stderr = get_cmd_output(path, "--help")
+    return retcode == 0 and any(l.startswith("  -d ") for l in stdout.splitlines())
+
+
+@depends("--enable-compile-environment", target, host)
+def readelf_when(compile_env, target, host):
+    return compile_env and any(
+        x.kernel not in ("Darwin", "WINNT") for x in (target, host)
+    )
+
+
+readelf = check_prog(
+    "READELF",
+    plain_llvm_or_prefixed("readelf"),
+    when=readelf_when,
+    paths=clang_search_path,
+    validate=validate_readelf,
+)
+
+
+def validate_objcopy(path):
+    if "llvm-objcopy" not in path:
+        return True
+    # llvm-objcopy doesn't support --only-keep-debug before llvm 9.0.
+    retcode, stdout, stderr = get_cmd_output(path, "--help")
+    return retcode == 0 and any(
+        l.startswith("  --only-keep-debug ") for l in stdout.splitlines()
+    )
+
+
+check_prog(
+    "OBJCOPY",
+    plain_llvm_or_prefixed("objcopy"),
+    when=readelf_when,
+    paths=clang_search_path,
+    validate=validate_objcopy,
+)
+
 
 # Make `profiling` available to this file even when js/moz.configure
 # doesn't end up included.
@@ -449,11 +574,12 @@ option(
 set_config("MOZ_UI_LOCALE", depends("--enable-ui-locale")(lambda x: x))
 
 option(
-    "--enable-icu4x",
-    help="An experiment to use ICU4X instead of ICU4C. See intl/ICU4X.md",
+    "--disable-icu4x",
+    help="Disable using ICU4X",
 )
 
 set_config("MOZ_ICU4X", True, when="--enable-icu4x")
+set_define("MOZ_ICU4X", True, when="--enable-icu4x")
 
 # clang-plugin location
 # ==============================================================
@@ -661,51 +787,12 @@ check_prog("7Z", ("7z", "7za"), allow_missing=True, when=target_is_windows)
 check_prog("UPX", ("upx",), allow_missing=True, when=target_is_windows)
 
 
-@template
-def llvm_tool(name):
-    @depends(host_c_compiler, c_compiler, bindgen_config_paths)
-    def llvm_tool(host_c_compiler, c_compiler, bindgen_config_paths):
-        clang = None
-        for compiler in (host_c_compiler, c_compiler):
-            if compiler and compiler.type == "clang":
-                clang = compiler.compiler
-                break
-            elif compiler and compiler.type == "clang-cl":
-                clang = os.path.join(os.path.dirname(compiler.compiler), "clang")
-                break
-
-        if not clang and bindgen_config_paths:
-            clang = bindgen_config_paths.clang_path
-        tool = name
-        if clang:
-            out = check_cmd_output(
-                clang, "--print-prog-name=%s" % tool, onerror=lambda: None
-            )
-            if out:
-                tool = out.rstrip()
-        return (tool,)
-
-    return llvm_tool
-
-
 check_prog(
     "DSYMUTIL",
     llvm_tool("dsymutil"),
     when=compile_environment & target_is_darwin,
     paths=clang_search_path,
 )
-
-
-@template
-def plain_llvm_or_prefixed(name):
-    @depends(llvm_tool(f"llvm-{name}"), toolchain_prefix)
-    def plain_llvm_or_prefixed(llvm_tool, toolchain_prefix):
-        commands = [llvm_tool[0], name]
-        for prefix in toolchain_prefix or ():
-            commands.insert(1, f"{prefix}{name}")
-        return tuple(commands)
-
-    return plain_llvm_or_prefixed
 
 
 check_prog(
@@ -717,80 +804,10 @@ check_prog(
 
 check_prog(
     "INSTALL_NAME_TOOL",
-    plain_llvm_or_prefixed("install-name-tool"),
+    plain_llvm_or_prefixed("install_name_tool", llvm_name="install-name-tool"),
     when=compile_environment & target_is_darwin & js_standalone,
     paths=clang_search_path,
 )
-
-
-llvm_objdump = check_prog(
-    "LLVM_OBJDUMP",
-    llvm_tool("llvm-objdump"),
-    what="llvm-objdump",
-    when="--enable-compile-environment",
-    paths=clang_search_path,
-)
-
-add_old_configure_assignment("LLVM_OBJDUMP", llvm_objdump)
-
-
-def validate_readelf(path):
-    # llvm-readelf from llvm < 8 doesn't support the GNU binutils-compatible `-d`
-    # flag. We could try running `$path -d $some_binary` but we might be cross
-    # compiling and not have a binary at hand to run that against. `$path -d` alone
-    # would fail whether the flag is supported or not. So we resort to look for the
-    # option in the `--help` output, which fortunately, s compatible between
-    # llvm-readelf and readelf.
-    retcode, stdout, stderr = get_cmd_output(path, "--help")
-    return retcode == 0 and any(l.startswith("  -d ") for l in stdout.splitlines())
-
-
-@depends("--enable-compile-environment", target, host)
-def readelf_when(compile_env, target, host):
-    return compile_env and any(
-        x.kernel not in ("Darwin", "WINNT") for x in (target, host)
-    )
-
-
-check_prog(
-    "READELF",
-    plain_llvm_or_prefixed("readelf"),
-    when=readelf_when,
-    paths=clang_search_path,
-    validate=validate_readelf,
-)
-
-
-def validate_objcopy(path):
-    if "llvm-objcopy" not in path:
-        return True
-    # llvm-objcopy doesn't support --only-keep-debug before llvm 9.0.
-    retcode, stdout, stderr = get_cmd_output(path, "--help")
-    return retcode == 0 and any(
-        l.startswith("  --only-keep-debug ") for l in stdout.splitlines()
-    )
-
-
-check_prog(
-    "OBJCOPY",
-    plain_llvm_or_prefixed("objcopy"),
-    when=readelf_when,
-    paths=clang_search_path,
-    validate=validate_objcopy,
-)
-
-option("--enable-dtrace", help="Build with dtrace support")
-
-dtrace = check_header(
-    "sys/sdt.h",
-    when="--enable-dtrace",
-    onerror=lambda: die("dtrace enabled but sys/sdt.h not found"),
-)
-
-set_config("HAVE_DTRACE", True, when=dtrace)
-set_define("INCLUDE_MOZILLA_DTRACE", True, when=dtrace)
-add_old_configure_assignment("enable_dtrace", "yes", when=dtrace)
-
 
 option("--disable-icf", help="Disable Identical Code Folding")
 
@@ -903,12 +920,18 @@ option(
     nargs="?",
     default=system_zlib_default,
     help="{Use|Do not use} system libz",
+    when=use_pkg_config,
 )
 
 
-@depends("--with-system-zlib")
+@depends("--with-system-zlib", when=use_pkg_config)
+def with_system_zlib_option(with_system_zlib):
+    return with_system_zlib
+
+
+@depends(with_system_zlib_option)
 def deprecated_system_zlib_path(value):
-    if len(value) == 1:
+    if value and len(value) == 1:
         die(
             "--with-system-zlib=PATH is not supported anymore. Please use "
             "--with-system-zlib and set any necessary pkg-config environment variable."
@@ -920,7 +943,7 @@ pkg_check_modules("MOZ_ZLIB", "zlib >= 1.2.3", when="--with-system-zlib")
 set_config("MOZ_SYSTEM_ZLIB", True, when="--with-system-zlib")
 
 
-@depends("--with-system-zlib", js_shared, moz_linker, target.os)
+@depends(with_system_zlib_option, js_shared, moz_linker, target.os)
 def zlib_in_mozglue(system_zlib, js_shared, linker, os):
     if not system_zlib and (js_shared or linker or os == "Android"):
         return True
@@ -954,7 +977,6 @@ def save_cache(build_environment, configure_cache):
 @imports("glob")
 @imports(_from="os.path", _import="exists")
 def config_status_deps(build_env, build_project):
-
     topsrcdir = build_env.topsrcdir
     topobjdir = build_env.topobjdir
 

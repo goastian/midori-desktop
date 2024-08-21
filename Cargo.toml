@@ -5,19 +5,21 @@
 # and do not need to be listed here. Their external dependencies are vendored
 # into `third_party/rust` by `mach vendor rust`.
 members = [
+  "browser/app/nmhproxy/",
   "js/src/frontend/smoosh",
   "js/src/rust",
   "netwerk/test/http3server",
   "security/manager/ssl/builtins",
+  "security/manager/ssl/tests/unit/test_builtins",
   "security/manager/ssl/ipcclientcerts",
   "security/manager/ssl/osclientcerts",
   "testing/geckodriver",
   "toolkit/components/uniffi-bindgen-gecko-js",
+  "toolkit/crashreporter/client/app",
   "toolkit/crashreporter/mozwer-rust",
   "toolkit/crashreporter/rust_minidump_writer_linux",
   "toolkit/library/gtest/rust",
   "toolkit/library/rust/",
-  "toolkit/mozapps/defaultagent/rust",
 ]
 
 # Excluded crates may be built as dependencies, but won't be considered members
@@ -41,6 +43,9 @@ exclude = [
   "tools/fuzzing/rust",
   "dom/base/rust",
   "dom/origin-trials/ffi",
+
+  # Excluded because we don't want to vendor their dependencies.
+  "intl/l10n/rust/l10nregistry-tests",
 ]
 
 # Use the new dependency resolver to reduce some of the platform-specific dependencies.
@@ -49,7 +54,10 @@ resolver = "2"
 
 [workspace.dependencies]
 # Shared across multiple UniFFI consumers.
-uniffi = "0.23"
+uniffi = "0.27.1"
+uniffi_bindgen = "0.27.1"
+# Shared across multiple application-services consumers.
+rusqlite = "0.31.0"
 
 # Explicitly specify what our profiles use.  The opt-level setting here is
 # a total fiction; see the setup of MOZ_RUST_DEFAULT_FLAGS for what the
@@ -93,27 +101,38 @@ vcpkg = { path = "build/rust/vcpkg" }
 # Helper crate for integration in the gecko build system.
 mozbuild = { path = "build/rust/mozbuild" }
 
+# Workspace hack
+mozilla-central-workspace-hack = { path = "build/workspace-hack" }
+
+# windows-targets replacement. It avoids the large dependencies of the original
+# crate, which we don't really need as we require MSVC anyways.
+windows-targets = { path = "build/rust/windows-targets" }
+windows-targets_0_48 = { package = "windows-targets", path = "build/rust/windows-targets-0.48" }
+
+# Patch windows-sys from 0.48.0 to 0.52.0
+windows-sys = { path = "build/rust/windows-sys" }
+
+# Patch windows to use a non-vendored local copy of the crate.
+windows = { path = "build/rust/windows" }
+
 # Dummy oslog replacement. It's only used by glean in code that is not actually used.
 oslog = { path = "build/rust/oslog" }
 
-# Patch bitflags 2.0 to 1.0 while not too many crates use 2.0 features
+# Override terminal_size with a dummy crate that returns a fixed 80x25 terminal size.
+terminal_size = { path = "build/rust/terminal_size" }
+
+# Patch bitflags 1.0 to 2.0
 bitflags = { path = "build/rust/bitflags" }
 
-# Patch cfg-if 0.1 to 1.0
-cfg-if = { path = "build/rust/cfg-if" }
-
-# Patch darling 0.13 to 0.14
-darling = { path = "build/rust/darling" }
+# Patch memmap2 0.5.x and 0.8 to 0.9
+memmap2_0_5 = { package = "memmap2", path = "build/rust/memmap2-0.5" }
+memmap2 = { path = "build/rust/memmap2" }
 
 # Patch redox_users to an empty crate
 redox_users = { path = "build/rust/redox_users" }
 
-# Patch env_logger 0.9 to 0.10
-env_logger = { path = "build/rust/env_logger" }
-
-# Patch parking_lot 0.12 down to 0.11, which is compatible for most crates that use it, to avoid
-# dependencies on windows-sys.
-parking_lot = { path = "build/rust/parking_lot" }
+# Patch redox_syscall to an empty crate
+redox_syscall = { path = "build/rust/redox_syscall" }
 
 # Override tinyvec with smallvec
 tinyvec = { path = "build/rust/tinyvec" }
@@ -124,17 +143,39 @@ base64 = { path = "build/rust/base64" }
 # Patch wasi 0.10 to 0.11
 wasi = { path = "build/rust/wasi" }
 
-# Patch bindgen 0.63 to 0.64
-bindgen = { path = "build/rust/bindgen" }
+# tokio 0.29.0 includes an experimental "tracing" feature which requires
+# backtrace ^0.3.58 and the `tokio_unstable` flag. We don't use it, and nothing
+# else we do use requires backtrace, so dummy it out for now.
+backtrace = { path = "build/rust/backtrace" }
 
-# Patch ntapi 0.3 to 0.4
-ntapi = { path = "build/rust/ntapi" }
+# Patch bindgen 0.63 to 0.69
+bindgen_0_63 = { package = "bindgen", path = "build/rust/bindgen-0.63" }
+# Locally patch bindgen for https://github.com/rust-lang/rust-bindgen/pull/2824
+bindgen = { path = "third_party/rust/bindgen" }
 
-# Patch nix 0.24 to 0.26
+# Patch nix 0.26 to 0.28
 nix = { path = "build/rust/nix" }
+
+# Patch indexmap 2.0 to 1.0
+indexmap = { path = "build/rust/indexmap" }
+
+# Patch derive_more 0.99 to 1.0.0-beta
+derive_more = { path = "build/rust/derive_more" }
 
 # Patch autocfg to hide rustc output. Workaround for https://github.com/cuviper/autocfg/issues/30
 autocfg = { path = "third_party/rust/autocfg" }
+
+# Patch goblin 0.7.0 to 0.8
+goblin = { path = "build/rust/goblin" }
+
+# Patch memoffset from 0.8.0 to 0.9.0 since it's compatible and it avoids duplication
+memoffset = { path = "build/rust/memoffset" }
+
+# Patch `hashbrown` 0.12.* to depend on 0.14.*
+hashbrown = { path = "build/rust/hashbrown" }
+
+# Patch `socket2` 0.4 to 0.5
+socket2 = { path = "build/rust/socket2" }
 
 # The following overrides point to dummy projects, as a temporary measure until this is resolved:
 # https://github.com/rust-lang/cargo/issues/6179
@@ -145,6 +186,10 @@ web-sys = { path = "build/rust/dummy-web/web-sys" }
 # Overrides to allow easier use of common internal crates.
 moz_asserts = { path = "mozglue/static/rust/moz_asserts" }
 
+
+# Patched version of zip 0.6.4 to allow for reading omnijars.
+zip = { path = "third_party/rust/zip" }
+
 # Patch `rure` to disable building the cdylib and staticlib targets
 # Cargo has no way to disable building targets your dependencies provide which
 # you don't depend on, and linking the cdylib breaks during instrumentation
@@ -152,39 +197,42 @@ moz_asserts = { path = "mozglue/static/rust/moz_asserts" }
 # Workaround for https://github.com/rust-lang/cargo/issues/11232
 rure = { path = "third_party/rust/rure" }
 
-# 0.31.1 but without rust-cssparser#342.
-# TODO: Remove these, and just use v0.31.1 once bug 1836219 lands
-# (which will get syn 2 into the tree).
-cssparser = { path = "third_party/rust/cssparser" }
-cssparser-macros = { path = "third_party/rust/cssparser-macros" }
+# Patch `plist` to work with `indexmap` 2.*
+plist = { path = "third_party/rust/plist" }
+
+# To-be-published changes.
+unicode-bidi = { git = "https://github.com/servo/unicode-bidi", rev = "ca612daf1c08c53abe07327cb3e6ef6e0a760f0c" }
 
 # Other overrides
-chardetng = { git = "https://github.com/hsivonen/chardetng", rev="3484d3e3ebdc8931493aa5df4d7ee9360a90e76b" }
-chardetng_c = { git = "https://github.com/hsivonen/chardetng_c", rev="ed8a4c6f900a90d4dbc1d64b856e61490a1c3570" }
-coremidi = { git = "https://github.com/chris-zen/coremidi.git", rev="fc68464b5445caf111e41f643a2e69ccce0b4f83" }
+any_all_workaround = { git = "https://github.com/hsivonen/any_all_workaround", rev = "7fb1b7034c9f172aade21ee1c8554e8d8a48af80" }
+chardetng = { git = "https://github.com/hsivonen/chardetng", rev = "3484d3e3ebdc8931493aa5df4d7ee9360a90e76b" }
+chardetng_c = { git = "https://github.com/hsivonen/chardetng_c", rev = "ed8a4c6f900a90d4dbc1d64b856e61490a1c3570" }
+coremidi = { git = "https://github.com/chris-zen/coremidi.git", rev = "fc68464b5445caf111e41f643a2e69ccce0b4f83" }
+cose = { git = "https://github.com/franziskuskiefer/cose-rust", rev = "43c22248d136c8b38fe42ea709d08da6355cf04b" }
 firefox-on-glean = { path = "toolkit/components/glean/api" }
+icu_capi = { path = "intl/icu_capi" }
+icu_segmenter_data = { path = "intl/icu_segmenter_data" }
 libudev-sys = { path = "dom/webauthn/libudev-sys" }
-packed_simd = { git = "https://github.com/hsivonen/packed_simd", rev = "e588ceb568878e1a3156ea9ce551d5b63ef0cdc4" }
-midir = { git = "https://github.com/mozilla/midir.git", rev = "519e651241e867af3391db08f9ae6400bc023e18" }
-# warp 0.3.3 + https://github.com/seanmonstar/warp/pull/1007
-warp = { git = "https://github.com/glandium/warp", rev = "4af45fae95bc98b0eba1ef0db17e1dac471bb23d" }
+midir = { git = "https://github.com/mozilla/midir.git", rev = "85156e360a37d851734118104619f86bd18e94c6" }
+# warp 0.3.6 + https://github.com/seanmonstar/warp/pull/1069
+warp = { git = "https://github.com/seanmonstar/warp", rev = "9d081461ae1167eb321585ce424f4fef6cf0092b" }
+# Allow webrender to have a versioned dependency on the older crate on crates.io
+# in order to build standalone.
+malloc_size_of_derive = { path = "xpcom/rust/malloc_size_of_derive" }
 
 # application-services overrides to make updating them all simpler.
-interrupt-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-sql-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-sync15 = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-tabs = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-viaduct = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-webext-storage = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+interrupt-support = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+relevancy = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+sql-support = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+suggest = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+sync15 = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+tabs = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+viaduct = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
+webext-storage = { git = "https://github.com/mozilla/application-services", rev = "7c275b9088557abcbc8f3c2834f9aaa9064ca5e4" }
 
-# Patch mio 0.6 to use winapi 0.3 and miow 0.3, getting rid of winapi 0.2.
-# There is not going to be new version of mio 0.6, mio now being >= 0.7.11.
-[patch.crates-io.mio]
-path = "third_party/rust/mio-0.6.23"
+# Patch mio 0.8.8 to use windows-sys 0.52 (backport https://github.com/tokio-rs/mio/commit/eea9e3e0c469480e5c59c01e6c3c7e5fd88f0848)
+mio_0_8 = { package = "mio", git = "https://github.com/glandium/mio", rev = "9a2ef335c366044ffe73b1c4acabe50a1daefe05" }
 
-[patch."https://github.com/mozilla/uniffi-rs.git"]
-uniffi = "=0.23.0"
-uniffi_bindgen = "=0.23.0"
-uniffi_build = "=0.23.0"
-uniffi_macros = "=0.23.0"
-weedle2 = "=4.0.0"
+# Patch `gpu-descriptor` 0.3.0 to remove unnecessary `allocator-api2` dep.:
+# Still waiting for the now-merged <https://github.com/zakarumych/gpu-descriptor/pull/40> to be released.
+gpu-descriptor = { git = "https://github.com/zakarumych/gpu-descriptor", rev = "7b71a4e47c81903ad75e2c53deb5ab1310f6ff4d" }
