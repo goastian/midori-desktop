@@ -12,4 +12,3 @@ export const kParamKVSeparator = '=';
 
 /** Final wildcard, if query is not single-case */
 export const kWildcard = '*';
-//# sourceMappingURL=separators.js.map

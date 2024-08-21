@@ -1,6 +1,6 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
-**/ /*! @petamoriken/float16 v3.6.6 | MIT License - https://github.com/petamoriken/float16 */const THIS_IS_NOT_AN_OBJECT = "This is not an object";
+**/ /*! @petamoriken/float16 v3.8.6 | MIT License - https://github.com/petamoriken/float16 */const THIS_IS_NOT_AN_OBJECT = "This is not an object";
 const THIS_IS_NOT_A_FLOAT16ARRAY_OBJECT = "This is not a Float16Array object";
 const THIS_CONSTRUCTOR_IS_NOT_A_SUBCLASS_OF_FLOAT16ARRAY =
 "This constructor is not a subclass of Float16Array";
@@ -19,6 +19,8 @@ const CANNOT_MIX_BIGINT_AND_OTHER_TYPES =
 const ITERATOR_PROPERTY_IS_NOT_CALLABLE = "@@iterator property is not callable";
 const REDUCE_OF_EMPTY_ARRAY_WITH_NO_INITIAL_VALUE =
 "Reduce of empty array with no initial value";
+const THE_COMPARISON_FUNCTION_MUST_BE_EITHER_A_FUNCTION_OR_UNDEFINED =
+"The comparison function must be either a function or undefined";
 const OFFSET_IS_OUT_OF_BOUNDS = "Offset is out of bounds";
 
 function uncurryThis(target) {
@@ -28,11 +30,11 @@ function uncurryThis(target) {
 }
 function uncurryThisGetter(target, key) {
   return uncurryThis(
-  ReflectGetOwnPropertyDescriptor(
-  target,
-  key).
-  get);
-
+    ReflectGetOwnPropertyDescriptor(
+      target,
+      key
+    ).get
+  );
 }
 const {
   apply: ReflectApply,
@@ -48,7 +50,8 @@ const {
 } = Reflect;
 const NativeProxy = Proxy;
 const {
-  MAX_SAFE_INTEGER: MAX_SAFE_INTEGER,
+  EPSILON,
+  MAX_SAFE_INTEGER,
   isFinite: NumberIsFinite,
   isNaN: NumberIsNaN
 } = Number;
@@ -71,8 +74,8 @@ uncurryThis(ObjectPrototype.__lookupGetter__) :
 (object, key) => {
   if (object == null) {
     throw NativeTypeError(
-    CANNOT_CONVERT_UNDEFINED_OR_NULL_TO_OBJECT);
-
+      CANNOT_CONVERT_UNDEFINED_OR_NULL_TO_OBJECT
+    );
   }
   let target = NativeObject(object);
   do {
@@ -93,11 +96,14 @@ const ArrayPrototype = NativeArray.prototype;
 const ArrayPrototypeJoin = uncurryThis(ArrayPrototype.join);
 const ArrayPrototypePush = uncurryThis(ArrayPrototype.push);
 const ArrayPrototypeToLocaleString = uncurryThis(
-ArrayPrototype.toLocaleString);
-
+  ArrayPrototype.toLocaleString
+);
 const NativeArrayPrototypeSymbolIterator = ArrayPrototype[SymbolIterator];
 const ArrayPrototypeSymbolIterator = uncurryThis(NativeArrayPrototypeSymbolIterator);
-const MathTrunc = Math.trunc;
+const {
+  abs: MathAbs,
+  trunc: MathTrunc
+} = Math;
 const NativeArrayBuffer = ArrayBuffer;
 const ArrayBufferIsView = NativeArrayBuffer.isView;
 const ArrayBufferPrototype = NativeArrayBuffer.prototype;
@@ -112,40 +118,41 @@ const TypedArrayPrototype = TypedArray.prototype;
 const NativeTypedArrayPrototypeSymbolIterator = TypedArrayPrototype[SymbolIterator];
 const TypedArrayPrototypeKeys = uncurryThis(TypedArrayPrototype.keys);
 const TypedArrayPrototypeValues = uncurryThis(
-TypedArrayPrototype.values);
-
+  TypedArrayPrototype.values
+);
 const TypedArrayPrototypeEntries = uncurryThis(
-TypedArrayPrototype.entries);
-
+  TypedArrayPrototype.entries
+);
 const TypedArrayPrototypeSet = uncurryThis(TypedArrayPrototype.set);
 const TypedArrayPrototypeReverse = uncurryThis(
-TypedArrayPrototype.reverse);
-
+  TypedArrayPrototype.reverse
+);
 const TypedArrayPrototypeFill = uncurryThis(TypedArrayPrototype.fill);
 const TypedArrayPrototypeCopyWithin = uncurryThis(
-TypedArrayPrototype.copyWithin);
-
+  TypedArrayPrototype.copyWithin
+);
 const TypedArrayPrototypeSort = uncurryThis(TypedArrayPrototype.sort);
 const TypedArrayPrototypeSlice = uncurryThis(TypedArrayPrototype.slice);
 const TypedArrayPrototypeSubarray = uncurryThis(
-TypedArrayPrototype.subarray);
-
+  TypedArrayPrototype.subarray
+);
 const TypedArrayPrototypeGetBuffer = uncurryThisGetter(
-TypedArrayPrototype,
-"buffer");
-
+  TypedArrayPrototype,
+  "buffer"
+);
 const TypedArrayPrototypeGetByteOffset = uncurryThisGetter(
-TypedArrayPrototype,
-"byteOffset");
-
+  TypedArrayPrototype,
+  "byteOffset"
+);
 const TypedArrayPrototypeGetLength = uncurryThisGetter(
-TypedArrayPrototype,
-"length");
-
+  TypedArrayPrototype,
+  "length"
+);
 const TypedArrayPrototypeGetSymbolToStringTag = uncurryThisGetter(
-TypedArrayPrototype,
-SymbolToStringTag);
-
+  TypedArrayPrototype,
+  SymbolToStringTag
+);
+const NativeUint8Array = Uint8Array;
 const NativeUint16Array = Uint16Array;
 const Uint16ArrayFrom = (...args) => {
   return ReflectApply(TypedArrayFrom, NativeUint16Array, args);
@@ -158,11 +165,11 @@ const GeneratorPrototypeNext = uncurryThis(function* () {}().next);
 const IteratorPrototype = ReflectGetPrototypeOf(ArrayIteratorPrototype);
 const DataViewPrototype = DataView.prototype;
 const DataViewPrototypeGetUint16 = uncurryThis(
-DataViewPrototype.getUint16);
-
+  DataViewPrototype.getUint16
+);
 const DataViewPrototypeSetUint16 = uncurryThis(
-DataViewPrototype.setUint16);
-
+  DataViewPrototype.setUint16
+);
 const NativeTypeError = TypeError;
 const NativeRangeError = RangeError;
 const NativeWeakSet = WeakSet;
@@ -190,7 +197,10 @@ const SafeIteratorPrototype = ObjectCreate(null, {
   }
 });
 function safeIfNeeded(array) {
-  if (array[SymbolIterator] === NativeArrayPrototypeSymbolIterator) {
+  if (
+  array[SymbolIterator] === NativeArrayPrototypeSymbolIterator &&
+  ArrayIteratorPrototype.next === ArrayIteratorPrototypeNext)
+  {
     return array;
   }
   const safe = ObjectCreate(SafeIteratorPrototype);
@@ -221,8 +231,10 @@ function wrap(generator) {
 }
 
 function isObject(value) {
-  return value !== null && typeof value === "object" ||
-  typeof value === "function";
+  return (
+    value !== null && typeof value === "object" ||
+    typeof value === "function");
+
 }
 function isObjectLike(value) {
   return value !== null && typeof value === "object";
@@ -232,11 +244,16 @@ function isNativeTypedArray(value) {
 }
 function isNativeBigIntTypedArray(value) {
   const typedArrayName = TypedArrayPrototypeGetSymbolToStringTag(value);
-  return typedArrayName === "BigInt64Array" ||
-  typedArrayName === "BigUint64Array";
+  return (
+    typedArrayName === "BigInt64Array" ||
+    typedArrayName === "BigUint64Array");
+
 }
 function isArrayBuffer(value) {
   try {
+    if (ArrayIsArray(value)) {
+      return false;
+    }
     ArrayBufferPrototypeGetByteLength(value);
     return true;
   } catch (e) {
@@ -254,25 +271,26 @@ function isSharedArrayBuffer(value) {
     return false;
   }
 }
+function isAnyArrayBuffer(value) {
+  return isArrayBuffer(value) || isSharedArrayBuffer(value);
+}
 function isOrdinaryArray(value) {
   if (!ArrayIsArray(value)) {
     return false;
   }
-  if (value[SymbolIterator] === NativeArrayPrototypeSymbolIterator) {
-    return true;
-  }
-  const iterator = value[SymbolIterator]();
-  return iterator[SymbolToStringTag] === "Array Iterator";
+  return (
+    value[SymbolIterator] === NativeArrayPrototypeSymbolIterator &&
+    ArrayIteratorPrototype.next === ArrayIteratorPrototypeNext);
+
 }
 function isOrdinaryNativeTypedArray(value) {
   if (!isNativeTypedArray(value)) {
     return false;
   }
-  if (value[SymbolIterator] === NativeTypedArrayPrototypeSymbolIterator) {
-    return true;
-  }
-  const iterator = value[SymbolIterator]();
-  return iterator[SymbolToStringTag] === "Array Iterator";
+  return (
+    value[SymbolIterator] === NativeTypedArrayPrototypeSymbolIterator &&
+    ArrayIteratorPrototype.next === ArrayIteratorPrototypeNext);
+
 }
 function isCanonicalIntegerIndexString(value) {
   if (typeof value !== "string") {
@@ -307,11 +325,37 @@ function hasFloat16ArrayBrand(target) {
   return ReflectHas(constructor, brand);
 }
 
+const INVERSE_OF_EPSILON = 1 / EPSILON;
+function roundTiesToEven(num) {
+  return num + INVERSE_OF_EPSILON - INVERSE_OF_EPSILON;
+}
+const FLOAT16_MIN_VALUE = 6.103515625e-05;
+const FLOAT16_MAX_VALUE = 65504;
+const FLOAT16_EPSILON = 0.0009765625;
+const FLOAT16_EPSILON_MULTIPLIED_BY_FLOAT16_MIN_VALUE = FLOAT16_EPSILON * FLOAT16_MIN_VALUE;
+const FLOAT16_EPSILON_DEVIDED_BY_EPSILON = FLOAT16_EPSILON * INVERSE_OF_EPSILON;
+function roundToFloat16(num) {
+  const number = +num;
+  if (!NumberIsFinite(number) || number === 0) {
+    return number;
+  }
+  const sign = number > 0 ? 1 : -1;
+  const absolute = MathAbs(number);
+  if (absolute < FLOAT16_MIN_VALUE) {
+    return sign * roundTiesToEven(absolute / FLOAT16_EPSILON_MULTIPLIED_BY_FLOAT16_MIN_VALUE) * FLOAT16_EPSILON_MULTIPLIED_BY_FLOAT16_MIN_VALUE;
+  }
+  const temp = (1 + FLOAT16_EPSILON_DEVIDED_BY_EPSILON) * absolute;
+  const result = temp - (temp - absolute);
+  if (result > FLOAT16_MAX_VALUE || NumberIsNaN(result)) {
+    return sign * Infinity;
+  }
+  return sign * result;
+}
 const buffer = new NativeArrayBuffer(4);
 const floatView = new NativeFloat32Array(buffer);
 const uint32View = new NativeUint32Array(buffer);
-const baseTable = new NativeUint32Array(512);
-const shiftTable = new NativeUint32Array(512);
+const baseTable = new NativeUint16Array(512);
+const shiftTable = new NativeUint8Array(512);
 for (let i = 0; i < 256; ++i) {
   const e = i - 127;
   if (e < -27) {
@@ -342,14 +386,12 @@ for (let i = 0; i < 256; ++i) {
   }
 }
 function roundToFloat16Bits(num) {
-  floatView[0] = num;
+  floatView[0] = roundToFloat16(num);
   const f = uint32View[0];
   const e = f >> 23 & 0x1ff;
   return baseTable[e] + ((f & 0x007fffff) >> shiftTable[e]);
 }
 const mantissaTable = new NativeUint32Array(2048);
-const exponentTable = new NativeUint32Array(64);
-const offsetTable = new NativeUint32Array(64);
 for (let i = 1; i < 1024; ++i) {
   let m = i << 13;
   let e = 0;
@@ -364,6 +406,7 @@ for (let i = 1; i < 1024; ++i) {
 for (let i = 1024; i < 2048; ++i) {
   mantissaTable[i] = 0x38000000 + (i - 1024 << 13);
 }
+const exponentTable = new NativeUint32Array(64);
 for (let i = 1; i < 31; ++i) {
   exponentTable[i] = i << 23;
 }
@@ -373,14 +416,15 @@ for (let i = 33; i < 63; ++i) {
   exponentTable[i] = 0x80000000 + (i - 32 << 23);
 }
 exponentTable[63] = 0xc7800000;
+const offsetTable = new NativeUint16Array(64);
 for (let i = 1; i < 64; ++i) {
   if (i !== 32) {
     offsetTable[i] = 1024;
   }
 }
 function convertToNumber(float16bits) {
-  const m = float16bits >> 10;
-  uint32View[0] = mantissaTable[offsetTable[m] + (float16bits & 0x3ff)] + exponentTable[m];
+  const i = float16bits >> 10;
+  uint32View[0] = mantissaTable[offsetTable[i] + (float16bits & 0x3ff)] + exponentTable[i];
   return floatView[0];
 }
 
@@ -485,8 +529,8 @@ function assertSpeciesTypedArray(target, count) {
     }
     if (length < count) {
       throw NativeTypeError(
-      DERIVED_CONSTRUCTOR_CREATED_TYPEDARRAY_OBJECT_WHICH_WAS_TOO_SMALL_LENGTH);
-
+        DERIVED_CONSTRUCTOR_CREATED_TYPEDARRAY_OBJECT_WHICH_WAS_TOO_SMALL_LENGTH
+      );
     }
   }
   if (isNativeBigIntTypedArray(target)) {
@@ -572,28 +616,22 @@ class Float16Array {
     let float16bitsArray;
     if (isFloat16Array(input)) {
       float16bitsArray = ReflectConstruct(NativeUint16Array, [getFloat16BitsArray(input)], new.target);
-    } else if (isObject(input) && !isArrayBuffer(input)) {
+    } else if (isObject(input) && !isAnyArrayBuffer(input)) {
       let list;
       let length;
       if (isNativeTypedArray(input)) {
         list = input;
         length = TypedArrayPrototypeGetLength(input);
         const buffer = TypedArrayPrototypeGetBuffer(input);
-        const BufferConstructor = !isSharedArrayBuffer(buffer) ?
-        SpeciesConstructor(
-        buffer,
-        NativeArrayBuffer) :
-
-        NativeArrayBuffer;
         if (IsDetachedBuffer(buffer)) {
           throw NativeTypeError(ATTEMPTING_TO_ACCESS_DETACHED_ARRAYBUFFER);
         }
         if (isNativeBigIntTypedArray(input)) {
           throw NativeTypeError(CANNOT_MIX_BIGINT_AND_OTHER_TYPES);
         }
-        const data = new BufferConstructor(
-        length * BYTES_PER_ELEMENT);
-
+        const data = new NativeArrayBuffer(
+          length * BYTES_PER_ELEMENT
+        );
         float16bitsArray = ReflectConstruct(NativeUint16Array, [data], new.target);
       } else {
         const iterator = input[SymbolIterator];
@@ -628,39 +666,39 @@ class Float16Array {
     const Constructor = this;
     if (!ReflectHas(Constructor, brand)) {
       throw NativeTypeError(
-      THIS_CONSTRUCTOR_IS_NOT_A_SUBCLASS_OF_FLOAT16ARRAY);
-
+        THIS_CONSTRUCTOR_IS_NOT_A_SUBCLASS_OF_FLOAT16ARRAY
+      );
     }
     if (Constructor === Float16Array) {
       if (isFloat16Array(src) && opts.length === 0) {
         const float16bitsArray = getFloat16BitsArray(src);
         const uint16 = new NativeUint16Array(
-        TypedArrayPrototypeGetBuffer(float16bitsArray),
-        TypedArrayPrototypeGetByteOffset(float16bitsArray),
-        TypedArrayPrototypeGetLength(float16bitsArray));
-
+          TypedArrayPrototypeGetBuffer(float16bitsArray),
+          TypedArrayPrototypeGetByteOffset(float16bitsArray),
+          TypedArrayPrototypeGetLength(float16bitsArray)
+        );
         return new Float16Array(
-        TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(uint16)));
-
+          TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(uint16))
+        );
       }
       if (opts.length === 0) {
         return new Float16Array(
-        TypedArrayPrototypeGetBuffer(
-        Uint16ArrayFrom(src, roundToFloat16Bits)));
-
-
+          TypedArrayPrototypeGetBuffer(
+            Uint16ArrayFrom(src, roundToFloat16Bits)
+          )
+        );
       }
       const mapFunc = opts[0];
       const thisArg = opts[1];
       return new Float16Array(
-      TypedArrayPrototypeGetBuffer(
-      Uint16ArrayFrom(src, function (val, ...args) {
-        return roundToFloat16Bits(
-        ReflectApply(mapFunc, this, [val, ...safeIfNeeded(args)]));
-
-      }, thisArg)));
-
-
+        TypedArrayPrototypeGetBuffer(
+          Uint16ArrayFrom(src, function (val, ...args) {
+            return roundToFloat16Bits(
+              ReflectApply(mapFunc, this, [val, ...safeIfNeeded(args)])
+            );
+          }, thisArg)
+        )
+      );
     }
     let list;
     let length;
@@ -682,8 +720,8 @@ class Float16Array {
     } else {
       if (src == null) {
         throw NativeTypeError(
-        CANNOT_CONVERT_UNDEFINED_OR_NULL_TO_OBJECT);
-
+          CANNOT_CONVERT_UNDEFINED_OR_NULL_TO_OBJECT
+        );
       }
       list = NativeObject(src);
       length = ToLength(list.length);
@@ -706,8 +744,8 @@ class Float16Array {
     const Constructor = this;
     if (!ReflectHas(Constructor, brand)) {
       throw NativeTypeError(
-      THIS_CONSTRUCTOR_IS_NOT_A_SUBCLASS_OF_FLOAT16ARRAY);
-
+        THIS_CONSTRUCTOR_IS_NOT_A_SUBCLASS_OF_FLOAT16ARRAY
+      );
     }
     const length = items.length;
     if (Constructor === Float16Array) {
@@ -758,6 +796,30 @@ class Float16Array {
     }
     return convertToNumber(float16bitsArray[k]);
   }
+  with(index, value) {
+    assertFloat16Array(this);
+    const float16bitsArray = getFloat16BitsArray(this);
+    const length = TypedArrayPrototypeGetLength(float16bitsArray);
+    const relativeIndex = ToIntegerOrInfinity(index);
+    const k = relativeIndex >= 0 ? relativeIndex : length + relativeIndex;
+    const number = +value;
+    if (k < 0 || k >= length) {
+      throw NativeRangeError(OFFSET_IS_OUT_OF_BOUNDS);
+    }
+    const uint16 = new NativeUint16Array(
+      TypedArrayPrototypeGetBuffer(float16bitsArray),
+      TypedArrayPrototypeGetByteOffset(float16bitsArray),
+      TypedArrayPrototypeGetLength(float16bitsArray)
+    );
+    const cloned = new Float16Array(
+      TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(uint16)
+      )
+    );
+    const array = getFloat16BitsArray(cloned);
+    array[k] = roundToFloat16Bits(number);
+    return cloned;
+  }
   map(callback, ...opts) {
     assertFloat16Array(this);
     const float16bitsArray = getFloat16BitsArray(this);
@@ -770,8 +832,8 @@ class Float16Array {
       for (let i = 0; i < length; ++i) {
         const val = convertToNumber(float16bitsArray[i]);
         array[i] = roundToFloat16Bits(
-        ReflectApply(callback, thisArg, [val, i, this]));
-
+          ReflectApply(callback, thisArg, [val, i, this])
+        );
       }
       return proxy;
     }
@@ -817,11 +879,11 @@ class Float16Array {
     }
     for (let i = start; i < length; ++i) {
       accumulator = callback(
-      accumulator,
-      convertToNumber(float16bitsArray[i]),
-      i,
-      this);
-
+        accumulator,
+        convertToNumber(float16bitsArray[i]),
+        i,
+        this
+      );
     }
     return accumulator;
   }
@@ -842,11 +904,11 @@ class Float16Array {
     }
     for (let i = start; i >= 0; --i) {
       accumulator = callback(
-      accumulator,
-      convertToNumber(float16bitsArray[i]),
-      i,
-      this);
-
+        accumulator,
+        convertToNumber(float16bitsArray[i]),
+        i,
+        this
+      );
     }
     return accumulator;
   }
@@ -859,8 +921,8 @@ class Float16Array {
       ReflectApply(callback, thisArg, [
       convertToNumber(float16bitsArray[i]),
       i,
-      this]);
-
+      this]
+      );
     }
   }
   find(callback, ...opts) {
@@ -923,8 +985,8 @@ class Float16Array {
       !ReflectApply(callback, thisArg, [
       convertToNumber(float16bitsArray[i]),
       i,
-      this]))
-
+      this]
+      ))
       {
         return false;
       }
@@ -941,8 +1003,8 @@ class Float16Array {
       ReflectApply(callback, thisArg, [
       convertToNumber(float16bitsArray[i]),
       i,
-      this]))
-
+      this]
+      ))
       {
         return true;
       }
@@ -958,20 +1020,20 @@ class Float16Array {
     }
     if (input == null) {
       throw NativeTypeError(
-      CANNOT_CONVERT_UNDEFINED_OR_NULL_TO_OBJECT);
-
+        CANNOT_CONVERT_UNDEFINED_OR_NULL_TO_OBJECT
+      );
     }
     if (isNativeBigIntTypedArray(input)) {
       throw NativeTypeError(
-      CANNOT_MIX_BIGINT_AND_OTHER_TYPES);
-
+        CANNOT_MIX_BIGINT_AND_OTHER_TYPES
+      );
     }
     if (isFloat16Array(input)) {
       return TypedArrayPrototypeSet(
-      getFloat16BitsArray(this),
-      getFloat16BitsArray(input),
-      targetOffset);
-
+        getFloat16BitsArray(this),
+        getFloat16BitsArray(input),
+        targetOffset
+      );
     }
     if (isNativeTypedArray(input)) {
       const buffer = TypedArrayPrototypeGetBuffer(input);
@@ -995,14 +1057,31 @@ class Float16Array {
     TypedArrayPrototypeReverse(float16bitsArray);
     return this;
   }
+  toReversed() {
+    assertFloat16Array(this);
+    const float16bitsArray = getFloat16BitsArray(this);
+    const uint16 = new NativeUint16Array(
+      TypedArrayPrototypeGetBuffer(float16bitsArray),
+      TypedArrayPrototypeGetByteOffset(float16bitsArray),
+      TypedArrayPrototypeGetLength(float16bitsArray)
+    );
+    const cloned = new Float16Array(
+      TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(uint16)
+      )
+    );
+    const clonedFloat16bitsArray = getFloat16BitsArray(cloned);
+    TypedArrayPrototypeReverse(clonedFloat16bitsArray);
+    return cloned;
+  }
   fill(value, ...opts) {
     assertFloat16Array(this);
     const float16bitsArray = getFloat16BitsArray(this);
     TypedArrayPrototypeFill(
-    float16bitsArray,
-    roundToFloat16Bits(value),
-    ...safeIfNeeded(opts));
-
+      float16bitsArray,
+      roundToFloat16Bits(value),
+      ...safeIfNeeded(opts)
+    );
     return this;
   }
   copyWithin(target, start, ...opts) {
@@ -1020,21 +1099,44 @@ class Float16Array {
     });
     return this;
   }
+  toSorted(compareFn) {
+    assertFloat16Array(this);
+    const float16bitsArray = getFloat16BitsArray(this);
+    if (compareFn !== undefined && typeof compareFn !== "function") {
+      throw new NativeTypeError(THE_COMPARISON_FUNCTION_MUST_BE_EITHER_A_FUNCTION_OR_UNDEFINED);
+    }
+    const sortCompare = compareFn !== undefined ? compareFn : defaultCompare;
+    const uint16 = new NativeUint16Array(
+      TypedArrayPrototypeGetBuffer(float16bitsArray),
+      TypedArrayPrototypeGetByteOffset(float16bitsArray),
+      TypedArrayPrototypeGetLength(float16bitsArray)
+    );
+    const cloned = new Float16Array(
+      TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(uint16)
+      )
+    );
+    const clonedFloat16bitsArray = getFloat16BitsArray(cloned);
+    TypedArrayPrototypeSort(clonedFloat16bitsArray, (x, y) => {
+      return sortCompare(convertToNumber(x), convertToNumber(y));
+    });
+    return cloned;
+  }
   slice(start, end) {
     assertFloat16Array(this);
     const float16bitsArray = getFloat16BitsArray(this);
     const Constructor = SpeciesConstructor(float16bitsArray, Float16Array);
     if (Constructor === Float16Array) {
       const uint16 = new NativeUint16Array(
-      TypedArrayPrototypeGetBuffer(float16bitsArray),
-      TypedArrayPrototypeGetByteOffset(float16bitsArray),
-      TypedArrayPrototypeGetLength(float16bitsArray));
-
+        TypedArrayPrototypeGetBuffer(float16bitsArray),
+        TypedArrayPrototypeGetByteOffset(float16bitsArray),
+        TypedArrayPrototypeGetLength(float16bitsArray)
+      );
       return new Float16Array(
-      TypedArrayPrototypeGetBuffer(
-      TypedArrayPrototypeSlice(uint16, start, end)));
-
-
+        TypedArrayPrototypeGetBuffer(
+          TypedArrayPrototypeSlice(uint16, start, end)
+        )
+      );
     }
     const length = TypedArrayPrototypeGetLength(float16bitsArray);
     const relativeStart = ToIntegerOrInfinity(start);
@@ -1078,16 +1180,16 @@ class Float16Array {
     const float16bitsArray = getFloat16BitsArray(this);
     const Constructor = SpeciesConstructor(float16bitsArray, Float16Array);
     const uint16 = new NativeUint16Array(
-    TypedArrayPrototypeGetBuffer(float16bitsArray),
-    TypedArrayPrototypeGetByteOffset(float16bitsArray),
-    TypedArrayPrototypeGetLength(float16bitsArray));
-
+      TypedArrayPrototypeGetBuffer(float16bitsArray),
+      TypedArrayPrototypeGetByteOffset(float16bitsArray),
+      TypedArrayPrototypeGetLength(float16bitsArray)
+    );
     const uint16Subarray = TypedArrayPrototypeSubarray(uint16, begin, end);
     const array = new Constructor(
-    TypedArrayPrototypeGetBuffer(uint16Subarray),
-    TypedArrayPrototypeGetByteOffset(uint16Subarray),
-    TypedArrayPrototypeGetLength(uint16Subarray));
-
+      TypedArrayPrototypeGetBuffer(uint16Subarray),
+      TypedArrayPrototypeGetByteOffset(uint16Subarray),
+      TypedArrayPrototypeGetLength(uint16Subarray)
+    );
     assertSpeciesTypedArray(array);
     return array;
   }
@@ -1204,26 +1306,20 @@ function isTypedArray(target) {
 
 function getFloat16(dataView, byteOffset, ...opts) {
   return convertToNumber(
-  DataViewPrototypeGetUint16(dataView, byteOffset, ...safeIfNeeded(opts)));
-
+    DataViewPrototypeGetUint16(dataView, byteOffset, ...safeIfNeeded(opts))
+  );
 }
 function setFloat16(dataView, byteOffset, value, ...opts) {
   return DataViewPrototypeSetUint16(
-  dataView,
-  byteOffset,
-  roundToFloat16Bits(value),
-  ...safeIfNeeded(opts));
-
+    dataView,
+    byteOffset,
+    roundToFloat16Bits(value),
+    ...safeIfNeeded(opts)
+  );
 }
 
-function hfround(x) {
-  const number = +x;
-  if (!NumberIsFinite(number) || number === 0) {
-    return number;
-  }
-  const x16 = roundToFloat16Bits(number);
-  return convertToNumber(x16);
+function f16round(x) {
+  return roundToFloat16(x);
 }
 
-export { Float16Array, getFloat16, hfround, isFloat16Array, isTypedArray, setFloat16 };
-//# sourceMappingURL=float16.js.map
+export { Float16Array, f16round, getFloat16, f16round as hfround, isFloat16Array, isTypedArray, setFloat16 };

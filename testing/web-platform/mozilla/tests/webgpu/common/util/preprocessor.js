@@ -2,7 +2,7 @@
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/import { assert } from './util.js'; // The state of the preprocessor is a stack of States.
 var
-State;
+State = /*#__PURE__*/function (State) {State[State["Seeking"] = 0] = "Seeking";State[State["Passing"] = 1] = "Passing";State[State["Skipping"] = 2] = "Skipping";return State;}(State || {});
 
 
 // Have already seen a passing condition; now skipping the rest
@@ -13,7 +13,7 @@ State;
 // - Sibling else
 // - Sibling endif
 // - Child if
-(function (State) {State[State["Seeking"] = 0] = "Seeking";State[State["Passing"] = 1] = "Passing";State[State["Skipping"] = 2] = "Skipping";})(State || (State = {}));class Directive {
+class Directive {
 
 
   constructor(depth) {
@@ -22,9 +22,9 @@ State;
 
   checkDepth(stack) {
     assert(
-    stack.length === this.depth,
-    `Number of "$"s must match nesting depth, currently ${stack.length} (e.g. $if $$if $$endif $endif)`);
-
+      stack.length === this.depth,
+      `Number of "$"s must match nesting depth, currently ${stack.length} (e.g. $if $$if $$endif $endif)`
+    );
   }
 
 
@@ -147,4 +147,3 @@ pp.___elif = (predicate) => new ElseIf(3, predicate);
 pp.___else = new Else(3);
 pp.___endif = new EndIf(3);
 // Add more if needed.
-//# sourceMappingURL=preprocessor.js.map

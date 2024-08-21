@@ -1,6 +1,6 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
-**/import { optionEnabled } from '../../runtime/helper/options.js';import { assert, unreachable } from '../../util/util.js';
+**/import { optionWorkerMode } from '../../runtime/helper/options.js';import { assert, unreachable } from '../../util/util.js';
 
 
 import { compareQueries, Ordering } from './compare.js';
@@ -20,12 +20,12 @@ import { stringifyPublicParams } from './stringify_params.js';
 
 
 
-
-
-
-
-
-
+/**
+ * - 1 = MultiFile.
+ * - 2 = MultiTest.
+ * - 3 = MultiCase.
+ * - 4 = SingleCase.
+ */
 
 
 
@@ -186,14 +186,14 @@ wptURL)
         continue;
       }
       assert(
-      expectationURL.pathname === wptURL.pathname,
-      `Invalid expectation path ${expectationURL.pathname}
-Expectation should be of the form path/to/cts.https.html?worker=0&q=suite:test_path:test_name:foo=1;bar=2;...
-        `);
-
+        expectationURL.pathname === wptURL.pathname,
+        `Invalid expectation path ${expectationURL.pathname}
+Expectation should be of the form path/to/cts.https.html?debug=0&q=suite:test_path:test_name:foo=1;bar=2;...
+        `
+      );
 
       const params = expectationURL.searchParams;
-      if (optionEnabled('worker', params) !== optionEnabled('worker', wptURL.searchParams)) {
+      if (optionWorkerMode('worker', params) !== optionWorkerMode('worker', wptURL.searchParams)) {
         continue;
       }
 
@@ -209,11 +209,11 @@ Expectation should be of the form path/to/cts.https.html?worker=0&q=suite:test_p
     const queryForFilter =
     expectationQuery instanceof TestQueryMultiCase ?
     new TestQueryMultiCase(
-    expectationQuery.suite,
-    expectationQuery.filePathParts,
-    expectationQuery.testPathParts,
-    {}) :
-
+      expectationQuery.suite,
+      expectationQuery.filePathParts,
+      expectationQuery.testPathParts,
+      {}
+    ) :
     expectationQuery;
 
     if (compareQueries(query, queryForFilter) === Ordering.Unordered) {
@@ -226,8 +226,8 @@ Expectation should be of the form path/to/cts.https.html?worker=0&q=suite:test_p
       case 'fail':
         break;
       default:
-        unreachable(`Invalid expectation ${entry.expectation}`);}
-
+        unreachable(`Invalid expectation ${entry.expectation}`);
+    }
 
     expectations.push({
       query: expectationQuery,
@@ -250,14 +250,13 @@ export function relativeQueryString(parent, child) {
     assert(parentString.endsWith(kWildcard));
     const childString = child.toString();
     assert(
-    childString.startsWith(parentString.substring(0, parentString.length - 2)),
-    'impossible?: childString does not start with parentString[:-2]');
-
+      childString.startsWith(parentString.substring(0, parentString.length - 2)),
+      'impossible?: childString does not start with parentString[:-2]'
+    );
     return childString.substring(parentString.length - 2);
   } else {
     unreachable(
-    `relativeQueryString arguments have invalid ordering ${ordering}:\n${parent}\n${child}`);
-
+      `relativeQueryString arguments have invalid ordering ${ordering}:\n${parent}\n${child}`
+    );
   }
 }
-//# sourceMappingURL=query.js.map

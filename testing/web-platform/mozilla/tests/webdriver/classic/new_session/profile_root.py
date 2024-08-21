@@ -3,12 +3,19 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.asyncio
 
-def test_profile_root(tmp_path, configuration, geckodriver):
+
+async def test_profile_root(tmp_path, configuration, geckodriver, default_preferences):
     profile_path = os.path.join(tmp_path, "geckodriver-test")
     os.makedirs(profile_path)
 
     config = copy.deepcopy(configuration)
+
+    # Pass all the wpt preferences from the default profile's user.js via
+    # capabilities to allow geckodriver to create a new valid profile itself.
+    config["capabilities"]["moz:firefoxOptions"]["prefs"] = default_preferences
+
     # Ensure we don't set a profile in command line arguments
     del config["capabilities"]["moz:firefoxOptions"]["args"]
 
@@ -19,7 +26,7 @@ def test_profile_root(tmp_path, configuration, geckodriver):
     driver = geckodriver(config=config, extra_args=extra_args)
     driver.new_session()
     assert len(os.listdir(profile_path)) == 1
-    driver.delete_session()
+    await driver.delete_session()
     assert os.listdir(profile_path) == []
 
 

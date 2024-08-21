@@ -33,9 +33,12 @@ export function extractPublicParams(params) {
   return publicParams;
 }
 
-export const badParamValueChars = new RegExp(
-'[' + kParamKVSeparator + kParamSeparator + kWildcard + ']');
+/** Used to escape reserved characters in URIs */
+const kPercent = '%';
 
+export const badParamValueChars = new RegExp(
+  '[' + kParamKVSeparator + kParamSeparator + kWildcard + kPercent + ']'
+);
 
 export function publicParamsEquals(x, y) {
   return comparePublicParamsPaths(x, y) === Ordering.Equal;
@@ -45,16 +48,16 @@ export function publicParamsEquals(x, y) {
 
 
 
-
-
-
-
-
-
-
-
-
-
+/**
+ * Flatten a union of interfaces into a single interface encoding the same type.
+ *
+ * Flattens a union in such a way that:
+ * `{ a: number, b?: undefined } | { b: string, a?: undefined }`
+ * (which is the value type of `[{ a: 1 }, { b: 1 }]`)
+ * becomes `{ a: number | undefined, b: string | undefined }`.
+ *
+ * And also works for `{ a: number } | { b: string }` which maps to the same.
+ */
 
 
 
@@ -116,10 +119,20 @@ function typeAssert() {}
 
 
 
+/** Merges two objects into one `{ ...a, ...b }` and return it with a flattened type. */
 export function mergeParams(a, b) {
-  for (const key of Object.keys(a)) {
-    assert(!(key in b), 'Duplicate key: ' + key);
-  }
   return { ...a, ...b };
 }
-//# sourceMappingURL=params_utils.js.map
+
+/**
+ * Merges two objects into one `{ ...a, ...b }` and asserts they had no overlapping keys.
+ * This is slower than {@link mergeParams}.
+ */
+export function mergeParamsChecked(a, b) {
+  const merged = mergeParams(a, b);
+  assert(
+    Object.keys(merged).length === Object.keys(a).length + Object.keys(b).length,
+    () => `Duplicate key between ${JSON.stringify(a)} and ${JSON.stringify(b)}`
+  );
+  return merged;
+}

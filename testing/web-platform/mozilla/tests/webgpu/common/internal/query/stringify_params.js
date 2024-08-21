@@ -37,9 +37,8 @@ function stringifySingleParamUniquely(k, v) {
 function stringifySingleParamValue(v) {
   const s = stringifyParamValue(v);
   assert(
-  !badParamValueChars.test(s),
-  `JSON.stringified param value must not match ${badParamValueChars} - was ${s}`);
-
+    !badParamValueChars.test(s),
+    `JSON.stringified param value must not match ${badParamValueChars} - was ${s}`
+  );
   return s;
 }
-//# sourceMappingURL=stringify_params.js.map

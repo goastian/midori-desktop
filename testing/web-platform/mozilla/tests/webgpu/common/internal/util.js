@@ -8,4 +8,3 @@
     this.stack = undefined;
   }
 }
-//# sourceMappingURL=util.js.map

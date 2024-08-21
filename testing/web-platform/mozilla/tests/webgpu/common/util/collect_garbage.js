@@ -56,4 +56,3 @@ export async function attemptGarbageCollection() {
 
   return resolveOnTimeout(35); // Let the event loop run a few frames in case it helps.
 }
-//# sourceMappingURL=collect_garbage.js.map

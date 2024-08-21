@@ -1,21 +1,19 @@
-import json
-import os
-import socket
-import subprocess
-import time
-from contextlib import suppress
-from urllib.parse import urlparse
-
 import pytest
-import webdriver
-from mozprofile import Profile
-from mozrunner import FirefoxRunner
+import pytest_asyncio
 
-from support.network import get_free_port
+from .helpers import (
+    Browser,
+    Geckodriver,
+    create_custom_profile,
+    get_pref,
+    get_profile_folder,
+    read_user_preferences,
+    set_pref,
+)
 
 
 @pytest.fixture(scope="module")
-def browser(full_configuration):
+def browser(configuration, firefox_options):
     """Start a Firefox instance without using geckodriver.
 
     geckodriver will automatically use the --remote-allow-hosts and
@@ -27,7 +25,13 @@ def browser(full_configuration):
     """
     current_browser = None
 
-    def _browser(use_bidi=False, use_cdp=False, extra_args=None, extra_prefs=None):
+    def _browser(
+        use_bidi=False,
+        use_cdp=False,
+        extra_args=None,
+        extra_prefs=None,
+        clone_profile=True,
+    ):
         nonlocal current_browser
 
         # If the requested preferences and arguments match the ones for the
@@ -47,15 +51,23 @@ def browser(full_configuration):
             # to create a new instance for the provided preferences.
             current_browser.quit()
 
-        binary = full_configuration["browser"]["binary"]
-        firefox_options = full_configuration["capabilities"]["moz:firefoxOptions"]
+        binary = configuration["browser"]["binary"]
+        env = configuration["browser"]["env"]
+
+        profile_path = get_profile_folder(firefox_options)
+        default_prefs = read_user_preferences(profile_path)
+        profile = create_custom_profile(
+            profile_path, default_prefs, clone=clone_profile
+        )
+
         current_browser = Browser(
             binary,
-            firefox_options,
+            profile,
             use_bidi=use_bidi,
             use_cdp=use_cdp,
             extra_args=extra_args,
             extra_prefs=extra_prefs,
+            env=env,
         )
         current_browser.start()
         return current_browser
@@ -68,20 +80,36 @@ def browser(full_configuration):
         current_browser = None
 
 
+@pytest.fixture(name="create_custom_profile")
+def fixture_create_custom_profile(default_preferences, profile_folder):
+    profile = None
+
+    def _create_custom_profile(clone=True):
+        profile = create_custom_profile(
+            profile_folder, default_preferences, clone=clone
+        )
+
+        return profile
+
+    yield _create_custom_profile
+
+    # if profile is not None:
+    if profile:
+        profile.cleanup()
+
+
 @pytest.fixture
-def custom_profile(configuration):
-    # Clone the known profile for automation preferences
-    firefox_options = configuration["capabilities"]["moz:firefoxOptions"]
-    _, profile_folder = firefox_options["args"]
-    profile = Profile.clone(profile_folder)
-
-    yield profile
-
-    profile.cleanup()
+def default_preferences(profile_folder):
+    return read_user_preferences(profile_folder)
 
 
-@pytest.fixture
-def geckodriver(configuration):
+@pytest.fixture(scope="session")
+def firefox_options(configuration):
+    return configuration["capabilities"]["moz:firefoxOptions"]
+
+
+@pytest_asyncio.fixture
+async def geckodriver(configuration):
     """Start a geckodriver instance directly."""
     driver = None
 
@@ -99,158 +127,26 @@ def geckodriver(configuration):
     yield _geckodriver
 
     if driver is not None:
-        driver.stop()
+        await driver.stop()
 
 
-class Browser:
-    def __init__(
-        self,
-        binary,
-        firefox_options,
-        use_bidi=False,
-        use_cdp=False,
-        extra_args=None,
-        extra_prefs=None,
-    ):
-        self.use_bidi = use_bidi
-        self.bidi_port_file = None
-        self.use_cdp = use_cdp
-        self.cdp_port_file = None
-        self.extra_args = extra_args
-        self.extra_prefs = extra_prefs
-
-        self.debugger_address = None
-        self.remote_agent_host = None
-        self.remote_agent_port = None
-
-        # Prepare temporary profile
-        _profile_arg, profile_folder = firefox_options["args"]
-        self.profile = Profile.clone(profile_folder)
-        if self.extra_prefs is not None:
-            self.profile.set_preferences(self.extra_prefs)
-
-        if use_cdp:
-            self.cdp_port_file = os.path.join(
-                self.profile.profile, "DevToolsActivePort"
-            )
-            with suppress(FileNotFoundError):
-                os.remove(self.cdp_port_file)
-        if use_bidi:
-            self.webdriver_bidi_file = os.path.join(
-                self.profile.profile, "WebDriverBiDiServer.json"
-            )
-            with suppress(FileNotFoundError):
-                os.remove(self.webdriver_bidi_file)
-
-        cmdargs = ["-no-remote"]
-        if self.use_bidi or self.use_cdp:
-            cmdargs.extend(["--remote-debugging-port", "0"])
-        if self.extra_args is not None:
-            cmdargs.extend(self.extra_args)
-        self.runner = FirefoxRunner(
-            binary=binary, profile=self.profile, cmdargs=cmdargs
-        )
-
-    @property
-    def is_running(self):
-        return self.runner.is_running()
-
-    def start(self):
-        # Start Firefox.
-        self.runner.start()
-
-        if self.use_bidi:
-            # Wait until the WebDriverBiDiServer.json file is ready
-            while not os.path.exists(self.webdriver_bidi_file):
-                time.sleep(0.1)
-
-            # Read the connection details from file
-            data = json.loads(open(self.webdriver_bidi_file).read())
-            self.remote_agent_host = data["ws_host"]
-            self.remote_agent_port = int(data["ws_port"])
-
-        if self.use_cdp:
-            # Wait until the DevToolsActivePort file is ready
-            while not os.path.exists(self.cdp_port_file):
-                time.sleep(0.1)
-
-            # Read the port if needed and the debugger address from the
-            # DevToolsActivePort file
-            lines = open(self.cdp_port_file).readlines()
-            assert len(lines) == 2
-
-            if self.remote_agent_port is None:
-                self.remote_agent_port = int(lines[0].strip())
-            self.debugger_address = lines[1].strip()
-
-    def quit(self, clean_profile=True):
-        if self.is_running:
-            self.runner.stop()
-            self.runner.cleanup()
-
-        if clean_profile:
-            self.profile.cleanup()
+@pytest.fixture
+def profile_folder(firefox_options):
+    return get_profile_folder(firefox_options)
 
 
-class Geckodriver:
-    def __init__(self, configuration, hostname=None, extra_args=None):
-        self.config = configuration["webdriver"]
-        self.requested_capabilities = configuration["capabilities"]
-        self.hostname = hostname or configuration["host"]
-        self.extra_args = extra_args or []
+@pytest.fixture
+def use_pref(session):
+    """Set a specific pref value."""
+    reset_values = {}
 
-        self.command = None
-        self.proc = None
-        self.port = get_free_port()
+    def _use_pref(pref, value):
+        if pref not in reset_values:
+            reset_values[pref] = get_pref(session, pref)
 
-        capabilities = {"alwaysMatch": self.requested_capabilities}
-        self.session = webdriver.Session(
-            self.hostname, self.port, capabilities=capabilities
-        )
+        set_pref(session, pref, value)
 
-    @property
-    def remote_agent_port(self):
-        webSocketUrl = self.session.capabilities.get("webSocketUrl")
-        assert webSocketUrl is not None
+    yield _use_pref
 
-        return urlparse(webSocketUrl).port
-
-    def start(self):
-        self.command = (
-            [self.config["binary"], "--port", str(self.port)]
-            + self.config["args"]
-            + self.extra_args
-        )
-
-        print(f"Running command: {' '.join(self.command)}")
-        self.proc = subprocess.Popen(self.command)
-
-        # Wait for the port to become ready
-        end_time = time.time() + 10
-        while time.time() < end_time:
-            returncode = self.proc.poll()
-            if returncode is not None:
-                raise ChildProcessError(
-                    f"geckodriver terminated with code {returncode}"
-                )
-            with socket.socket() as sock:
-                if sock.connect_ex((self.hostname, self.port)) == 0:
-                    break
-        else:
-            raise ConnectionRefusedError(
-                f"Failed to connect to geckodriver on {self.hostname}:{self.port}"
-            )
-
-        return self
-
-    def stop(self):
-        self.delete_session()
-
-        if self.proc:
-            self.proc.kill()
-
-    def new_session(self):
-        self.session.start()
-
-    def delete_session(self):
-        self.session.end()
+    for pref, reset_value in reset_values.items():
+        set_pref(session, pref, reset_value)

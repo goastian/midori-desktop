@@ -1,12 +1,12 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
-**/
-
-
-
-
-
-
+**/ /**
+ * The interface used for formatting strings to contain color metadata.
+ *
+ * Use the interface properties to construct a style, then use the
+ * `(s: string): string` function to format the provided string with the given
+ * style.
+ */
 
 
 
@@ -125,4 +125,3 @@ try {
   passthrough.bgWhiteBright = passthrough;
   Colors = passthrough;
 }
-//# sourceMappingURL=colors.js.map

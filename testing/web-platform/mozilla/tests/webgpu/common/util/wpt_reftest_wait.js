@@ -22,4 +22,3 @@ export function takeScreenshotDelayed(ms) {
     takeScreenshot();
   }, ms);
 }
-//# sourceMappingURL=wpt_reftest_wait.js.map

@@ -1,6 +1,6 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
-**/import { Float16Array } from '../../external/petamoriken/float16/float16.js';import { globalTestConfig } from '../framework/test_config.js';import { Logger } from '../internal/logging/logger.js';
+**/import { Float16Array } from '../../external/petamoriken/float16/float16.js';import { SkipTestCase } from '../framework/fixture.js';import { globalTestConfig } from '../framework/test_config.js';
 
 import { keysOf } from './data_tables.js';
 import { timeout } from './timeout.js';
@@ -23,7 +23,7 @@ export class ErrorWithExtra extends Error {
     super(message);
 
     const oldExtras = baseOrMessage instanceof ErrorWithExtra ? baseOrMessage.extra : {};
-    this.extra = Logger.globalDebugMode ?
+    this.extra = globalTestConfig.enableDebugLogs ?
     { ...oldExtras, ...newExtra() } :
     { omitted: 'pass ?debug=1' };
   }
@@ -46,23 +46,44 @@ export function assertOK(value) {
   return value;
 }
 
+/** Options for assertReject, shouldReject, and friends. */
+
+
 /**
  * Resolves if the provided promise rejects; rejects if it does not.
  */
-export async function assertReject(p, msg) {
+export async function assertReject(
+expectedName,
+p,
+{ allowMissingStack = false, message } = {})
+{
   try {
     await p;
-    unreachable(msg);
+    unreachable(message);
   } catch (ex) {
-
-    // Assertion OK
-  }}
+    // Asserted as expected
+    if (!allowMissingStack) {
+      const m = message ? ` (${message})` : '';
+      assert(
+        ex instanceof Error && typeof ex.stack === 'string',
+        'threw as expected, but missing stack' + m
+      );
+    }
+  }
+}
 
 /**
  * Assert this code is unreachable. Unconditionally throws an `Error`.
  */
 export function unreachable(msg) {
   throw new Error(msg);
+}
+
+/**
+ * Throw a `SkipTestCase` exception, which skips the test case.
+ */
+export function skipTestCase(msg) {
+  throw new SkipTestCase(msg);
 }
 
 /**
@@ -138,7 +159,7 @@ msg)
     const handle = timeout(() => {
       resolve(undefined);
     }, ms);
-    p.finally(() => clearTimeout(handle));
+    void p.finally(() => clearTimeout(handle));
   });
   return Promise.race([rejectWhenSettled, timeoutPromise]);
 }
@@ -155,6 +176,13 @@ export function rejectWithoutUncaught(err) {
 }
 
 /**
+ * Returns true if v is a plain JavaScript object.
+ */
+export function isPlainObject(v) {
+  return !!v && Object.getPrototypeOf(v).constructor === Object.prototype.constructor;
+}
+
+/**
  * Makes a copy of a JS `object`, with the keys reordered into sorted order.
  */
 export function sortObjectByKey(v) {
@@ -167,14 +195,24 @@ export function sortObjectByKey(v) {
 
 /**
  * Determines whether two JS values are equal, recursing into objects and arrays.
- * NaN is treated specially, such that `objectEquals(NaN, NaN)`.
+ * NaN is treated specially, such that `objectEquals(NaN, NaN)`. +/-0.0 are treated as equal
+ * by default, but can be opted to be distinguished.
+ * @param x the first JS values that get compared
+ * @param y the second JS values that get compared
+ * @param distinguishSignedZero if set to true, treat 0.0 and -0.0 as unequal. Default to false.
  */
-export function objectEquals(x, y) {
+export function objectEquals(
+x,
+y,
+distinguishSignedZero = false)
+{
   if (typeof x !== 'object' || typeof y !== 'object') {
     if (typeof x === 'number' && typeof y === 'number' && Number.isNaN(x) && Number.isNaN(y)) {
       return true;
     }
-    return x === y;
+    // Object.is(0.0, -0.0) is false while (0.0 === -0.0) is true. Other than +/-0.0 and NaN cases,
+    // Object.is works in the same way as ===.
+    return distinguishSignedZero ? Object.is(x, y) : x === y;
   }
   if (x === null || y === null) return x === y;
   if (x.constructor !== y.constructor) return false;
@@ -219,6 +257,41 @@ export function mapLazy(xs, f) {
   };
 }
 
+const ReorderOrders = {
+  forward: true,
+  backward: true,
+  shiftByHalf: true
+};
+
+export const kReorderOrderKeys = keysOf(ReorderOrders);
+
+/**
+ * Creates a new array from the given array with the first half
+ * swapped with the last half.
+ */
+export function shiftByHalf(arr) {
+  const len = arr.length;
+  const half = len / 2 | 0;
+  const firstHalf = arr.splice(0, half);
+  return [...arr, ...firstHalf];
+}
+
+/**
+ * Creates a reordered array from the input array based on the Order
+ */
+export function reorder(order, arr) {
+  switch (order) {
+    case 'forward':
+      return arr.slice();
+    case 'backward':
+      return arr.slice().reverse();
+    case 'shiftByHalf':{
+        // should this be pseudo random?
+        return shiftByHalf(arr);
+      }
+  }
+}
+
 const TypedArrayBufferViewInstances = [
 new Uint8Array(),
 new Uint8ClampedArray(),
@@ -229,8 +302,9 @@ new Int16Array(),
 new Int32Array(),
 new Float16Array(),
 new Float32Array(),
-new Float64Array()];
-
+new Float64Array(),
+new BigInt64Array(),
+new BigUint64Array()];
 
 
 
@@ -270,6 +344,78 @@ export const kTypedArrayBufferViews =
 export const kTypedArrayBufferViewKeys = keysOf(kTypedArrayBufferViews);
 export const kTypedArrayBufferViewConstructors = Object.values(kTypedArrayBufferViews);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Creates a case parameter for a typedarray.
+ *
+ * You can't put typedarrays in case parameters directly so instead of
+ *
+ * ```
+ * u.combine('data', [
+ *   new Uint8Array([1, 2, 3]),
+ *   new Float32Array([4, 5, 6]),
+ * ])
+ * ```
+ *
+ * You can use
+ *
+ * ```
+ * u.combine('data', [
+ *   typedArrayParam('Uint8Array' [1, 2, 3]),
+ *   typedArrayParam('Float32Array' [4, 5, 6]),
+ * ])
+ * ```
+ *
+ * and then convert the params to typedarrays eg.
+ *
+ * ```
+ *  .fn(t => {
+ *    const data = t.params.data.map(v => typedArrayFromParam(v));
+ *  })
+ * ```
+ */
+export function typedArrayParam(
+type,
+data)
+{
+  return { type, data };
+}
+
+export function createTypedArray(
+type,
+data)
+{
+  return new kTypedArrayBufferViews[type](data);
+}
+
+/**
+ * Converts a TypedArrayParam to a typedarray. See typedArrayParam
+ */
+export function typedArrayFromParam(
+param)
+{
+  const { type, data } = param;
+  return createTypedArray(type, data);
+}
+
 function subarrayAsU8(
 buf,
 { start = 0, length })
@@ -301,4 +447,31 @@ dst)
 {
   subarrayAsU8(dst.dst, dst).set(subarrayAsU8(src.src, src));
 }
-//# sourceMappingURL=util.js.map
+
+/**
+ * Used to create a value that is specified by multiplying some runtime value
+ * by a constant and then adding a constant to it.
+ */
+
+
+
+
+
+/**
+ * Filters out SpecValues that are the same.
+ */
+export function filterUniqueValueTestVariants(valueTestVariants) {
+  return new Map(
+    valueTestVariants.map((v) => [`m:${v.mult},a:${v.add}`, v])
+  ).values();
+}
+
+/**
+ * Used to create a value that is specified by multiplied some runtime value
+ * by a constant and then adding a constant to it. This happens often in test
+ * with limits that can only be known at runtime and yet we need a way to
+ * add parameters to a test and those parameters must be constants.
+ */
+export function makeValueTestVariant(base, variant) {
+  return base * variant.mult + variant.add;
+}
