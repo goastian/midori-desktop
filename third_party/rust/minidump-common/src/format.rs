@@ -36,7 +36,7 @@
 use std::fmt;
 
 use bitflags::bitflags;
-use enum_primitive_derive::Primitive;
+use num_derive::FromPrimitive;
 use scroll::{Endian, Pread, Pwrite, SizeWith};
 use smart_default::SmartDefault;
 
@@ -152,7 +152,7 @@ pub struct MINIDUMP_DIRECTORY {
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ne-minidumpapiset-minidump_stream_type
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
 pub enum MINIDUMP_STREAM_TYPE {
     /// An unused stream directory entry
     UnusedStream = 0,
@@ -209,6 +209,9 @@ pub enum MINIDUMP_STREAM_TYPE {
     Memory64ListStream = 9,
     CommentStreamA = 10,
     CommentStreamW = 11,
+    /// The list of handles used by the process
+    ///
+    /// See [`MINIDUMP_HANDLE_DATA_STREAM`]
     HandleDataStream = 12,
     FunctionTable = 13,
     /// The list of executable modules from the process that were unloaded by the time of the crash
@@ -311,6 +314,15 @@ pub enum MINIDUMP_STREAM_TYPE {
     ///
     /// See ['MINIDUMP_MAC_CRASH_INFO'].
     MozMacosCrashInfoStream = 0x4d7a0001,
+
+    /// The kernel boot args on the machine where the crashed process is
+    /// running. Only available on macOS. 0x4D7A = "Mz".
+    ///
+    /// See ['MINIDUMP_MAC_BOOTARGS']
+    MozMacosBootargsStream = 0x4d7a0002,
+
+    /// The contents of /proc/self/limits from a Linux system
+    MozLinuxLimits = 0x4d7a0003,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
@@ -372,7 +384,7 @@ pub struct MINIDUMP_MODULE {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_unloaded_module
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_UNLOADED_MODULE {
     /// The base address of the executable image in memory (when it was loaded).
     pub base_of_image: u64,
@@ -430,7 +442,7 @@ pub const VS_FFI_STRUCVERSION: u32 = 0x00010000;
 /// [sym]: http://web.archive.org/web/20070915060650/http://www.x86.org/ftp/manuals/tools/sym.pdf
 /// [win2k]: https://dl.acm.org/citation.cfm?id=375734
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
 pub enum CvSignature {
     /// PDB 2.0 CodeView data: 'NB10': [`CV_INFO_PDB20`]
     Pdb20 = 0x3031424e,
@@ -659,7 +671,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_ELF {
 }
 
 /// Obsolete debug record type defined in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct IMAGE_DEBUG_MISC {
     pub data_type: u32,
     pub length: u32,
@@ -769,6 +781,7 @@ bitflags! {
     /// This applies to the [`CONTEXT_ARM`], [`CONTEXT_PPC`], [`CONTEXT_MIPS`],
     /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`] and
     /// [`CONTEXT_ARM64_OLD`] structs.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsCpu: u32 {
         const CONTEXT_IA64 = 0x80000;
         /// Super-H, includes SH3, from winnt.h in the Windows CE 5.0 SDK
@@ -802,92 +815,97 @@ impl ContextFlagsCpu {
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_AMD64.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsAmd64: u32 {
         /// SegSs, Rsp, SegCs, Rip, and EFlags
-        const CONTEXT_AMD64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// Rax, Rcx, Rdx, Rbx, Rbp, Rsi, Rdi, and R8-R15
-        const CONTEXT_AMD64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// SegDs, SegEs, SegFs, and SegGs
-        const CONTEXT_AMD64_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// Xmm0-Xmm15
-        const CONTEXT_AMD64_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// Dr0-Dr3 and Dr6-Dr7
-        const CONTEXT_AMD64_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_AMD64.bits;
-        const CONTEXT_AMD64_XSTATE = 0x00000020 | ContextFlagsCpu::CONTEXT_AMD64.bits;
-        const CONTEXT_AMD64_FULL = Self::CONTEXT_AMD64_CONTROL.bits | Self::CONTEXT_AMD64_INTEGER.bits | Self::CONTEXT_AMD64_FLOATING_POINT.bits;
-        const CONTEXT_AMD64_ALL = Self::CONTEXT_AMD64_FULL.bits | Self::CONTEXT_AMD64_SEGMENTS.bits | Self::CONTEXT_AMD64_DEBUG_REGISTERS.bits;
+        const CONTEXT_AMD64_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_AMD64.bits();
+        const CONTEXT_AMD64_XSTATE = 0x00000020 | ContextFlagsCpu::CONTEXT_AMD64.bits();
+        const CONTEXT_AMD64_FULL = Self::CONTEXT_AMD64_CONTROL.bits() | Self::CONTEXT_AMD64_INTEGER.bits() | Self::CONTEXT_AMD64_FLOATING_POINT.bits();
+        const CONTEXT_AMD64_ALL = Self::CONTEXT_AMD64_FULL.bits() | Self::CONTEXT_AMD64_SEGMENTS.bits() | Self::CONTEXT_AMD64_DEBUG_REGISTERS.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_X86.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsX86: u32 {
         /// Ebp, Eip, SegCs, EFlags, Esp, SegSs
-        const CONTEXT_X86_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// Edi, Esi, Ebx, Edx, Ecx, Eax
-        const CONTEXT_X86_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// SegDs, SegEs, SegFs, and SegGs
-        const CONTEXT_X86_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// Fpcr, Fpsr, Fptag, Fpioff, Fpisel, Fpdoff, Fpdsel, Mxcsr, Mxcsr_mask, Xmm0-Xmm7
-        const CONTEXT_X86_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// Dr0-Dr3 and Dr6-Dr7
-        const CONTEXT_X86_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_X86.bits;
-        const CONTEXT_X86_EXTENDED_REGISTERS = 0x00000020 | ContextFlagsCpu::CONTEXT_X86.bits;
-        const CONTEXT_X86_XSTATE = 0x00000040 | ContextFlagsCpu::CONTEXT_X86.bits;
-        const CONTEXT_X86_FULL = Self::CONTEXT_X86_CONTROL.bits | Self::CONTEXT_X86_INTEGER.bits | Self::CONTEXT_X86_SEGMENTS.bits;
-        const CONTEXT_X86_ALL = Self::CONTEXT_X86_FULL.bits | Self::CONTEXT_X86_FLOATING_POINT.bits | Self::CONTEXT_X86_DEBUG_REGISTERS.bits | Self::CONTEXT_X86_EXTENDED_REGISTERS.bits;
+        const CONTEXT_X86_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_X86.bits();
+        const CONTEXT_X86_EXTENDED_REGISTERS = 0x00000020 | ContextFlagsCpu::CONTEXT_X86.bits();
+        const CONTEXT_X86_XSTATE = 0x00000040 | ContextFlagsCpu::CONTEXT_X86.bits();
+        const CONTEXT_X86_FULL = Self::CONTEXT_X86_CONTROL.bits() | Self::CONTEXT_X86_INTEGER.bits() | Self::CONTEXT_X86_SEGMENTS.bits();
+        const CONTEXT_X86_ALL = Self::CONTEXT_X86_FULL.bits() | Self::CONTEXT_X86_FLOATING_POINT.bits() | Self::CONTEXT_X86_DEBUG_REGISTERS.bits() | Self::CONTEXT_X86_EXTENDED_REGISTERS.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_ARM64.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsArm64: u32 {
         /// FP, LR, SP, PC, and CPSR
-        const CONTEXT_ARM64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// X0-X28 (but maybe not X18)
-        const CONTEXT_ARM64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// Fpcr, Fpsr, D0-D31 (AKA Q0-Q31, AKA S0-S31)
-        const CONTEXT_ARM64_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// DBGBVR, DBGBCR, DBGWVR, DBGWCR
-        const CONTEXT_ARM64_DEBUG_REGISTERS = 0x0000008 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_DEBUG_REGISTERS = 0x0000008 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// Whether x18 has a valid value, because on Windows it contains the TEB.
         ///
         /// NOTE: at this precise moment breakpad doesn't define this, but Microsoft does!
-        const CONTEXT_ARM64_X18 = 0x0000010 | ContextFlagsCpu::CONTEXT_ARM64.bits;
-        const CONTEXT_ARM64_FULL = Self::CONTEXT_ARM64_CONTROL.bits | Self::CONTEXT_ARM64_INTEGER.bits | Self::CONTEXT_ARM64_FLOATING_POINT.bits;
-        const CONTEXT_ARM64_ALL = Self::CONTEXT_ARM64_FULL.bits | Self::CONTEXT_ARM64_DEBUG_REGISTERS.bits | Self::CONTEXT_ARM64_X18.bits;
+        const CONTEXT_ARM64_X18 = 0x0000010 | ContextFlagsCpu::CONTEXT_ARM64.bits();
+        const CONTEXT_ARM64_FULL = Self::CONTEXT_ARM64_CONTROL.bits() | Self::CONTEXT_ARM64_INTEGER.bits() | Self::CONTEXT_ARM64_FLOATING_POINT.bits();
+        const CONTEXT_ARM64_ALL = Self::CONTEXT_ARM64_FULL.bits() | Self::CONTEXT_ARM64_DEBUG_REGISTERS.bits() | Self::CONTEXT_ARM64_X18.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_ARM64_OLD.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsArm64Old: u32 {
         // Yes, breakpad never defined CONTROL for this context
 
         /// FP, LR, SP, PC, CPSR, and X0-X28
-        const CONTEXT_ARM64_OLD_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
+        const CONTEXT_ARM64_OLD_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits();
         /// Fpcr, Fpsr, D0-D31 (AKA Q0-Q31, AKA S0-S31)
-        const CONTEXT_ARM64_OLD_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
-        const CONTEXT_ARM64_OLD_FULL = Self::CONTEXT_ARM64_OLD_INTEGER.bits | Self::CONTEXT_ARM64_OLD_FLOATING_POINT.bits;
-        const CONTEXT_ARM64_OLD_ALL = Self::CONTEXT_ARM64_OLD_FULL.bits;
+        const CONTEXT_ARM64_OLD_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits();
+        const CONTEXT_ARM64_OLD_FULL = Self::CONTEXT_ARM64_OLD_INTEGER.bits() | Self::CONTEXT_ARM64_OLD_FLOATING_POINT.bits();
+        const CONTEXT_ARM64_OLD_ALL = Self::CONTEXT_ARM64_OLD_FULL.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_ARM.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsArm: u32 {
         // Yes, breakpad never defined CONTROL for this context
 
         /// SP, LR, PC, and CPSR
-        const CONTEXT_ARM_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM.bits();
         /// R0-R12
-        const CONTEXT_ARM_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM.bits();
         /// Q0-Q15 / D0-D31 / S0-S31
-        const CONTEXT_ARM_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM.bits();
         /// DBGBVR, DBGBCR, DBGWVR, DBGWCR
-        const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits;
-        const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits | Self::CONTEXT_ARM_INTEGER.bits | Self::CONTEXT_ARM_FLOATING_POINT.bits;
-        const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits;
+        const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits();
+        const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits() | Self::CONTEXT_ARM_INTEGER.bits() | Self::CONTEXT_ARM_FLOATING_POINT.bits();
+        const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits() | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits();
     }
 }
 
@@ -921,7 +939,7 @@ pub struct XMM_SAVE_AREA32 {
 ///
 /// This is defined as an anonymous struct inside an anonymous union in
 /// the x86-64 CONTEXT struct in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct SSE_REGISTERS {
     pub header: [u128; 2],
     pub legacy: [u128; 8],
@@ -1120,7 +1138,7 @@ pub struct CONTEXT_ARM64_OLD {
 /// NOTE: if you ever decide to try to make this repr(C) and get really clever,
 /// note that microsoft aligns this to 16 (and as of this writing, rust does
 /// not consistently aling u128 as such).
-#[derive(Debug, Default, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u32,
@@ -1159,7 +1177,7 @@ impl Arm64RegisterNumbers {
 }
 
 /// MIPS floating point state
-#[derive(Debug, Default, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_MIPS {
     pub regs: [u64; 32],
@@ -1170,7 +1188,7 @@ pub struct FLOATING_SAVE_AREA_MIPS {
 /// A MIPS CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for MIPS in WinNT.h.
-#[derive(Debug, Default, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_MIPS {
     pub context_flags: u32,
@@ -1227,7 +1245,7 @@ impl MipsRegisterNumbers {
 }
 
 /// PPC floating point state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_PPC {
     pub fpregs: [u64; 32],
@@ -1236,7 +1254,7 @@ pub struct FLOATING_SAVE_AREA_PPC {
 }
 
 /// PPC vector state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct VECTOR_SAVE_AREA_PPC {
     pub save_vr: [u128; 32],
@@ -1249,7 +1267,7 @@ pub struct VECTOR_SAVE_AREA_PPC {
 /// A PPC CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_PPC {
     pub context_flags: u32,
@@ -1276,7 +1294,7 @@ pub enum PpcRegisterNumbers {
 /// A PPC64 CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC64 in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_PPC64 {
     pub context_flags: u64,
@@ -1300,7 +1318,7 @@ pub enum Ppc64RegisterNumbers {
 }
 
 /// SPARC floating point state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_SPARC {
     pub regs: [u64; 32],
@@ -1311,7 +1329,7 @@ pub struct FLOATING_SAVE_AREA_SPARC {
 /// A SPARC CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for SPARC in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_SPARC {
     pub context_flags: u32,
@@ -1403,7 +1421,7 @@ pub struct CPU_INFORMATION {
 ///
 /// This struct matches the definition of the struct of the same name from minidumpapiset.h,
 /// which is contained within the [`CPU_INFORMATION`] union.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct X86CpuInfo {
     pub vendor_id: [u32; 3],
     pub version_information: u32,
@@ -1412,7 +1430,7 @@ pub struct X86CpuInfo {
 }
 
 /// Arm-specific CPU information (Breakpad extension)
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct ARMCpuInfo {
     pub cpuid: u32,
     /// Hardware capabilities
@@ -1425,7 +1443,7 @@ pub struct ARMCpuInfo {
 ///
 /// This struct matches the definition of the struct of the same name from minidumpapiset.h,
 /// which is contained within the [`CPU_INFORMATION`] union.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct OtherCpuInfo {
     pub processor_features: [u64; 2],
 }
@@ -1465,7 +1483,7 @@ pub struct MINIDUMP_SYSTEM_INFO {
 /// Many of these are taken from definitions in WinNT.h, but several of them are
 /// Breakpad extensions.
 #[repr(u16)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
 pub enum ProcessorArchitecture {
     PROCESSOR_ARCHITECTURE_INTEL = 0,
     PROCESSOR_ARCHITECTURE_MIPS = 1,
@@ -1497,7 +1515,7 @@ pub enum ProcessorArchitecture {
 /// The Windows values here are taken from defines in WinNT.h, but the rest are Breakpad
 /// extensions.
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
 pub enum PlatformId {
     /// Windows 3.1
     VER_PLATFORM_WIN32s = 1,
@@ -1795,6 +1813,7 @@ impl From<u8> for XSTATE_FEATURE {
 
 bitflags! {
     /// Known flags for `MINIDUMP_MISC_INFO*.flags1`
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MiscInfoFlags: u32 {
         const MINIDUMP_MISC1_PROCESS_ID            = 0x00000001;
         const MINIDUMP_MISC1_PROCESS_TIMES         = 0x00000002;
@@ -1816,7 +1835,7 @@ bitflags! {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_info_list
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO_LIST {
     /// The size of this header
     pub size_of_header: u32,
@@ -1831,7 +1850,7 @@ pub struct MINIDUMP_MEMORY_INFO_LIST {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_info
-#[derive(Debug, Clone, PartialEq, Eq, Pread, SizeWith)]
+#[derive(Debug, Clone, PartialEq, Eq, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO {
     /// The base address of the region of pages
     pub base_address: u64,
@@ -1861,6 +1880,7 @@ pub struct MINIDUMP_MEMORY_INFO {
 
 bitflags! {
     /// Potential values for [`MINIDUMP_MEMORY_INFO::state`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MemoryState: u32 {
         const MEM_COMMIT  = 0x01000;
         const MEM_FREE    = 0x10000;
@@ -1874,6 +1894,7 @@ bitflags! {
     /// See [Microsoft's documentation][msdn] for details.
     ///
     /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/Memory/memory-protection-constants
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MemoryProtection: u32 {
         const PAGE_NOACCESS           = 0x01;
         const PAGE_READONLY           = 0x02;
@@ -1892,6 +1913,7 @@ bitflags! {
 
 bitflags! {
     /// Potential values for [`MINIDUMP_MEMORY_INFO::_type`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MemoryType: u32 {
         const MEM_PRIVATE = 0x00020000;
         const MEM_MAPPED  = 0x00040000;
@@ -1930,7 +1952,7 @@ bitflags! {
 /// Taken from the definition in Breakpad's [minidump_format.h][fmt].
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#998
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_ASSERTION_INFO {
     /// The assertion that failed, as a 0-terminated UTF16-LE string
     pub expression: [u16; 128],
@@ -1949,7 +1971,7 @@ pub struct MINIDUMP_ASSERTION_INFO {
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#1011
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
 pub enum AssertionType {
     Unknown = 0,
     InvalidParameter = 1,
@@ -2055,7 +2077,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_UTF8_STRING {
 /// A key-value pair.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpSimpleStringDictionaryEntry.html>
-#[derive(Clone, Debug, Pread, SizeWith)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY_ENTRY {
     /// RVA of a MinidumpUTF8String containing the key of a key-value pair.
     pub key: RVA,
@@ -2066,7 +2088,7 @@ pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY_ENTRY {
 /// A list of key-value pairs.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpSimpleStringDictionary.html>
-#[derive(Clone, Debug, Pread)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY {
     /// The number of key-value pairs present.
     pub count: u32,
@@ -2075,7 +2097,7 @@ pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY {
 /// A list of RVA pointers.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpRVAList.html>
-#[derive(Clone, Debug, Pread)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_RVA_LIST {
     /// The number of pointers present.
     pub count: u32,
@@ -2084,7 +2106,7 @@ pub struct MINIDUMP_RVA_LIST {
 /// A typed annotation object.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpAnnotation.html>
-#[derive(Clone, Debug, Pread)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_ANNOTATION {
     /// RVA of a MinidumpUTF8String containing the name of the annotation.
     pub name: RVA,
@@ -2125,7 +2147,7 @@ impl MINIDUMP_ANNOTATION {
 /// or not.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfo.html>
-#[derive(Clone, Debug, Pread)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO {
     /// The structure’s version number.
     ///
@@ -2172,7 +2194,7 @@ impl MINIDUMP_MODULE_CRASHPAD_INFO {
 /// module carried within a minidump file.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfoLink.html>
-#[derive(Clone, Debug, Pread, SizeWith)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LINK {
     /// A link to a MINIDUMP_MODULE structure in the module list stream.
     ///
@@ -2200,7 +2222,7 @@ pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LINK {
 /// `MinidumpModuleCrashpadInfo` structure.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfoList.html>
-#[derive(Clone, Debug, Pread)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LIST {
     /// The number of key-value pairs present.
     pub count: u32,
@@ -2215,7 +2237,7 @@ pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LIST {
 /// or not.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpCrashpadInfo.html>
-#[derive(Clone, Debug, Pread, SizeWith)]
+#[derive(Clone, Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_CRASHPAD_INFO {
     /// The structure’s version number.
     ///
@@ -2258,7 +2280,7 @@ impl MINIDUMP_CRASHPAD_INFO {
 ///
 /// This is the format of the [`MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream`]. The individual
 /// [`MINIDUMP_MAC_CRASH_INFO_RECORD`] entries follow this header in the stream.
-#[derive(Debug, Pread, SizeWith)]
+#[derive(Debug, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MAC_CRASH_INFO {
     pub stream_type: u32,
     /// The number of [`MINIDUMP_MAC_CRASH_INFO_RECORD`]s.
@@ -2403,12 +2425,20 @@ pub const MAC_CRASH_INFO_STRING_MAX_SIZE: usize = 8192;
 /// undocumented, so just in case we set a large maximum.
 pub const MAC_CRASH_INFOS_MAX: usize = 20;
 
+/// MacOS kernel boot args
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_MAC_BOOTARGS {
+    pub stream_type: u32,
+    pub bootargs: RVA64,
+}
+
 bitflags! {
     /// Possible values of [`ARMCpuInfo::elf_hwcaps`]
     ///
     /// This matches the Linux kernel definitions from [<asm/hwcaps.h>][hwcap].
     ///
     /// [hwcap]: https://elixir.bootlin.com/linux/latest/source/arch/arm/include/uapi/asm/hwcap.h
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ArmElfHwCaps: u32 {
         const HWCAP_SWP       = (1 << 0);
         const HWCAP_HALF      = (1 << 1);
@@ -2430,8 +2460,119 @@ bitflags! {
         const HWCAP_IDIVA     = (1 << 17);
         const HWCAP_IDIVT     = (1 << 18);
         const HWCAP_VFPD32    = (1 << 19);
-        const HWCAP_IDIV      = ArmElfHwCaps::HWCAP_IDIVA.bits | Self::HWCAP_IDIVT.bits;
+        const HWCAP_IDIV      = ArmElfHwCaps::HWCAP_IDIVA.bits() | Self::HWCAP_IDIVT.bits();
         const HWCAP_LPAE      = (1 << 20);
         const HWCAP_EVTSTRM   = (1 << 21);
     }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
+pub enum MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE {
+    MiniHandleObjectInformationNone,
+    MiniThreadInformation1,
+    MiniMutantInformation1,
+    MiniMutantInformation2,
+    MiniProcessInformation1,
+    MiniProcessInformation2,
+    MiniEventInformation1,
+    MiniSectionInformation1,
+    MiniSemaphoreInformation1,
+    MiniHandleObjectInformationTypeMax,
+}
+
+/// OS-specific handle object information. Microsoft headers state that it can
+/// change based on the target platform. The object is larger than this structure
+/// (as specified by `size_of_info`) and the remaining data is stored after the
+/// `size_of_info` field. The format of this information is not specified.
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_OBJECT_INFORMATION {
+    /// RVA pointing to the next handle object information. Elements of this type
+    /// are chained and the last one has this field set to 0.
+    pub next_info_rva: RVA,
+    /// Type of this handle object information element, see [`MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE`]
+    pub info_type: u32,
+    /// Size of this element, this must be larger than `size_of::<MINIDUMP_HANDLE_OBJECT_INFORMATION>()`
+    pub size_of_info: u32,
+}
+
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_DESCRIPTOR {
+    /// The operating system handle value. A HANDLE on Windows and file descriptor number on Linux.
+    pub handle: u64,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object type of the handle.
+    /// This member can be zero.
+    pub type_name_rva: RVA,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object name of the handle.
+    /// This member can be zero.
+    pub object_name_rva: RVA,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub attributes: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub granted_access: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub handle_count: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub pointer_count: u32,
+}
+
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_DESCRIPTOR_2 {
+    /// The operating system handle value. A HANDLE on Windows and file descriptor number on Linux.
+    pub handle: u64,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object type of the handle.
+    /// This member can be zero.
+    pub type_name_rva: RVA,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object name of the handle.
+    /// This member can be zero.
+    pub object_name_rva: RVA,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub attributes: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub granted_access: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub handle_count: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub pointer_count: u32,
+    /// An RVA to a [`MINIDUMP_HANDLE_OBJECT_INFORMATION`] structure that specifies object-specific information.
+    /// This member can be 0 if there is no extra information.
+    pub object_info_rva: RVA,
+    /// Reserved for future use; must be zero.
+    reserved0: u32,
+}
+
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_DATA_STREAM {
+    /// The size of this header, in bytes.
+    pub size_of_header: u32,
+    /// The size of each descriptor in the stream, in bytes.
+    pub size_of_descriptor: u32,
+    /// The number of descriptors in the stream.
+    pub number_of_descriptors: u32,
+    /// Reserved for future use; must be zero.
+    pub reserved: u32,
+}
+
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_THREAD_INFO {
+    /// Thread identifier
+    pub thread_id: u32,
+    /// Thread state flags
+    pub dump_flags: u32,
+    /// HRESULT value of dump status
+    pub dump_error: u32,
+    /// The thread's exit code
+    pub exit_status: u32,
+    /// UTC time the thread was created
+    pub create_time: u64,
+    /// UTC time the thread exited
+    pub exit_time: u64,
+    /// Time executed in kernel mode
+    pub kernel_time: u64,
+    /// Time executed in user mode
+    pub user_time: u64,
+    /// Start address of the thread
+    pub start_address: u64,
+    /// Processor affinity mask
+    pub affinity: u64,
 }

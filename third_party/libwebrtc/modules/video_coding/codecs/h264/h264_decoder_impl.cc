@@ -16,15 +16,15 @@
 
 #include "modules/video_coding/codecs/h264/h264_decoder_impl.h"
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/imgutils.h>
+}  // extern "C"
+
 #include <algorithm>
 #include <limits>
 #include <memory>
-
-extern "C" {
-#include "third_party/ffmpeg/libavcodec/avcodec.h"
-#include "third_party/ffmpeg/libavformat/avformat.h"
-#include "third_party/ffmpeg/libavutil/imgutils.h"
-}  // extern "C"
 
 #include "api/video/color_space.h"
 #include "api/video/i010_buffer.h"
@@ -80,7 +80,11 @@ int H264DecoderImpl::AVGetBuffer2(AVCodecContext* context,
       kPixelFormatsSupported.begin(), kPixelFormatsSupported.end(),
       [context](AVPixelFormat format) { return context->pix_fmt == format; });
 
-  RTC_CHECK(pixelFormatSupported != kPixelFormatsSupported.end());
+  if (pixelFormatSupported == kPixelFormatsSupported.end()) {
+    RTC_LOG(LS_ERROR) << "Unsupported pixel format: " << context->pix_fmt;
+    decoder->ReportError();
+    return -1;
+  }
 
   // `av_frame->width` and `av_frame->height` are set by FFmpeg. These are the
   // actual image's dimensions and may be different from `context->width` and
@@ -612,7 +616,7 @@ int32_t H264DecoderImpl::Decode(const EncodedImage& input_image,
 
   VideoFrame decoded_frame = VideoFrame::Builder()
                                  .set_video_frame_buffer(cropped_buffer)
-                                 .set_timestamp_rtp(input_image.Timestamp())
+                                 .set_rtp_timestamp(input_image.RtpTimestamp())
                                  .set_color_space(color_space)
                                  .build();
 

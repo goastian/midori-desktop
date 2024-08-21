@@ -76,6 +76,37 @@ additionalProperties:
           items:
             type: string
             maxLength: 80
+        precise_timestamps:
+          title: Precise Timestamps
+          description: |
+            When `true` Glean uses millisecond-precise timestamps for
+            the ping's start/end time (the default).
+            When `false` Glean uses minute-precise timestamps for
+            the ping's start/end time.
+          type: boolean
+        include_info_sections:
+          title: Include Info Sections
+          description: |
+            When `true`, assemble and include the `client_info` and `ping_info`
+            sections in the ping on submission.
+            When `false`, omit the `client_info` and `ping_info` sections when
+            assembling the ping on submission.
+            Defaults to `true`.
+
+            Interaction with `include_client_id`: `include_client_id` only takes
+            effect when `metadata.include_info_sections` is `true`.
+          type: boolean
+        ping_schedule:
+          title: Ping Schedule
+          description: |
+            An optional array of ping names. When one of the listed pings is
+            sent, then this ping will also be sent. A ping cannot list its own
+            name in `ping_schedule`.
+          type: array
+          items:
+            type: string
+            maxLength: 30
+
       default: {}
 
     include_client_id:
@@ -84,6 +115,9 @@ additionalProperties:
         **Required.**
 
         When `true`, include the `client_id` value in the ping.
+
+        Interaction with `metadata.include_info_sections`: `include_client_id`
+        only takes effect when `metadata.include_info_sections` is `true`.
       type: boolean
 
     send_if_empty:
@@ -150,6 +184,18 @@ additionalProperties:
         maxLength: 30
       additionalProperties:
         type: string
+
+    enabled:
+      title: Whether or not this ping is enabled
+      description: |
+        **Optional.**
+
+        When `true`, the ping will be sent as usual.
+        When `false`, the ping will not be sent, but the data will continue to
+        be collected but will not be cleared when the ping is submitted.
+
+        Defaults to `true` if omitted.
+      type: boolean
 
     no_lint:
       title: Lint checks to skip

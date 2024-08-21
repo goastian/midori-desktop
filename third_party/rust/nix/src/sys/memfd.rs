@@ -1,7 +1,7 @@
 //! Interfaces for managing memory-backed files.
 
 use cfg_if::cfg_if;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{FromRawFd, OwnedFd, RawFd};
 
 use crate::errno::Errno;
 use crate::Result;
@@ -29,6 +29,49 @@ libc_bitflags!(
         ///
         /// [`memfd_create(2)`]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
         MFD_ALLOW_SEALING;
+        /// Anonymous file will be created using huge pages. It should be safe now to
+        /// combine with [`MFD_ALLOW_SEALING`] too.
+        /// However, despite its presence, on FreeBSD it is unimplemented for now (ENOSYS).
+        ///
+        /// See also the hugetlb filesystem in [`memfd_create(2)`].
+        ///
+        /// [`memfd_create(2)`]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
+        #[cfg(linux_android)]
+        MFD_HUGETLB;
+        /// Following are to be used with [`MFD_HUGETLB`], indicating the desired hugetlb size.
+        ///
+        /// See also the hugetlb filesystem in [`memfd_create(2)`].
+        ///
+        /// [`memfd_create(2)`]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
+        #[cfg(linux_android)]
+        MFD_HUGE_1MB;
+        /// hugetlb size of 2MB.
+        #[cfg(linux_android)]
+        MFD_HUGE_2MB;
+        /// hugetlb size of 8MB.
+        #[cfg(linux_android)]
+        MFD_HUGE_8MB;
+        /// hugetlb size of 16MB.
+        #[cfg(linux_android)]
+        MFD_HUGE_16MB;
+        /// hugetlb size of 32MB.
+        #[cfg(linux_android)]
+        MFD_HUGE_32MB;
+        /// hugetlb size of 256MB.
+        #[cfg(linux_android)]
+        MFD_HUGE_256MB;
+        /// hugetlb size of 512MB.
+        #[cfg(linux_android)]
+        MFD_HUGE_512MB;
+        /// hugetlb size of 1GB.
+        #[cfg(linux_android)]
+        MFD_HUGE_1GB;
+        /// hugetlb size of 2GB.
+        #[cfg(linux_android)]
+        MFD_HUGE_2GB;
+        /// hugetlb size of 16GB.
+        #[cfg(linux_android)]
+        MFD_HUGE_16GB;
     }
 );
 
@@ -40,7 +83,8 @@ libc_bitflags!(
 /// For more information, see [`memfd_create(2)`].
 ///
 /// [`memfd_create(2)`]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
-pub fn memfd_create(name: &CStr, flags: MemFdCreateFlag) -> Result<RawFd> {
+#[inline] // Delays codegen, preventing linker errors with dylibs and --no-allow-shlib-undefined
+pub fn memfd_create(name: &CStr, flags: MemFdCreateFlag) -> Result<OwnedFd> {
     let res = unsafe {
         cfg_if! {
             if #[cfg(all(
@@ -60,5 +104,5 @@ pub fn memfd_create(name: &CStr, flags: MemFdCreateFlag) -> Result<RawFd> {
         }
     };
 
-    Errno::result(res).map(|r| r as RawFd)
+    Errno::result(res).map(|r| unsafe { OwnedFd::from_raw_fd(r as RawFd) })
 }

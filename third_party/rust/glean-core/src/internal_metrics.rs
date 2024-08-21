@@ -27,6 +27,10 @@ pub struct AdditionalMetrics {
 
     /// Time waited for the dispatcher to unblock during shutdown.
     pub shutdown_dispatcher_wait: TimingDistributionMetric,
+
+    /// An experimentation identifier derived and provided by the application
+    /// for the purpose of experimentation enrollment.
+    pub experimentation_id: StringMetric,
 }
 
 impl CoreMetrics {
@@ -112,6 +116,23 @@ impl AdditionalMetrics {
                 },
                 TimeUnit::Millisecond,
             ),
+
+            // This uses a `send_in_pings` that contains "all-ping".
+            // This works because all of our other current "all-pings" metrics
+            // have special handling internally and are not actually processed
+            // into a store quite like this identifier is.
+            //
+            // This could become an issue if we ever decide to start generating
+            // code from the internal Glean metrics.yaml (there aren't currently
+            // any plans for this).
+            experimentation_id: StringMetric::new(CommonMetricData {
+                name: "experimentation_id".into(),
+                category: "glean.client.annotation".into(),
+                send_in_pings: vec!["all-pings".into()],
+                lifetime: Lifetime::Application,
+                disabled: false,
+                dynamic_label: None,
+            }),
         }
     }
 }
@@ -240,6 +261,9 @@ impl UploadMetrics {
 #[derive(Debug)]
 pub struct DatabaseMetrics {
     pub size: MemoryDistributionMetric,
+
+    /// RKV's load result, indicating success or relaying the detected error.
+    pub rkv_load_error: StringMetric,
 }
 
 impl DatabaseMetrics {
@@ -256,6 +280,15 @@ impl DatabaseMetrics {
                 },
                 MemoryUnit::Byte,
             ),
+
+            rkv_load_error: StringMetric::new(CommonMetricData {
+                name: "rkv_load_error".into(),
+                category: "glean.error".into(),
+                send_in_pings: vec!["metrics".into()],
+                lifetime: Lifetime::Ping,
+                disabled: false,
+                dynamic_label: None,
+            }),
         }
     }
 }

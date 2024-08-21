@@ -38,6 +38,16 @@ pub struct Configuration {
     pub trim_data_to_registered_pings: bool,
     /// The internal logging level.
     pub log_level: Option<LevelFilter>,
+    /// The rate pings may be uploaded before they are throttled.
+    pub rate_limit: Option<crate::PingRateLimit>,
+    /// (Experimental) Whether to add a wallclock timestamp to all events.
+    pub enable_event_timestamps: bool,
+    /// An experimentation identifier derived by the application to be sent with all pings, it should
+    /// be noted that this has an underlying StringMetric and so should conform to the limitations that
+    /// StringMetric places on length, etc.
+    pub experimentation_id: Option<String>,
+    /// Whether to enable internal pings. Default: true
+    pub enable_internal_pings: bool,
 }
 
 /// Configuration builder.
@@ -75,6 +85,17 @@ pub struct Builder {
     /// Optional: The internal logging level.
     /// Default: `None`
     pub log_level: Option<LevelFilter>,
+    /// Optional: The internal ping upload rate limit.
+    /// Default: `None`
+    pub rate_limit: Option<crate::PingRateLimit>,
+    /// (Experimental) Whether to add a wallclock timestamp to all events.
+    pub enable_event_timestamps: bool,
+    /// An experimentation identifier derived by the application to be sent with all pings, it should
+    /// be noted that this has an underlying StringMetric and so should conform to the limitations that
+    /// StringMetric places on length, etc.
+    pub experimentation_id: Option<String>,
+    /// Whether to enable internal pings. Default: true
+    pub enable_internal_pings: bool,
 }
 
 impl Builder {
@@ -95,6 +116,10 @@ impl Builder {
             use_core_mps: false,
             trim_data_to_registered_pings: false,
             log_level: None,
+            rate_limit: None,
+            enable_event_timestamps: true,
+            experimentation_id: None,
+            enable_internal_pings: true,
         }
     }
 
@@ -111,6 +136,10 @@ impl Builder {
             use_core_mps: self.use_core_mps,
             trim_data_to_registered_pings: self.trim_data_to_registered_pings,
             log_level: self.log_level,
+            rate_limit: self.rate_limit,
+            enable_event_timestamps: self.enable_event_timestamps,
+            experimentation_id: self.experimentation_id,
+            enable_internal_pings: self.enable_internal_pings,
         }
     }
 
@@ -147,6 +176,24 @@ impl Builder {
     /// Set whether Glean should limit its storage to only that of registered pings.
     pub fn with_trim_data_to_registered_pings(mut self, value: bool) -> Self {
         self.trim_data_to_registered_pings = value;
+        self
+    }
+
+    /// Set whether to add a wallclock timestamp to all events (experimental).
+    pub fn with_event_timestamps(mut self, value: bool) -> Self {
+        self.enable_event_timestamps = value;
+        self
+    }
+
+    /// Set whether to add a wallclock timestamp to all events (experimental).
+    pub fn with_experimentation_id(mut self, value: String) -> Self {
+        self.experimentation_id = Some(value);
+        self
+    }
+
+    /// Set whether to enable internal pings.
+    pub fn with_internal_pings(mut self, value: bool) -> Self {
+        self.enable_internal_pings = value;
         self
     }
 }

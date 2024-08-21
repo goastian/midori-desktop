@@ -3,8 +3,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#include <stdio.h>
-
 #include <cmath>
 #include <string>
 
@@ -12,11 +10,12 @@
 #define HWY_TARGET_INCLUDE "lib/jxl/rational_polynomial_test.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
-#include <hwy/tests/test_util-inl.h>
+#include <hwy/tests/hwy_gtest.h>
 
+#include "lib/jxl/base/common.h"
+#include "lib/jxl/base/rational_polynomial-inl.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
-#include "lib/jxl/rational_polynomial-inl.h"
+#include "lib/jxl/testing.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -159,8 +158,8 @@ void TestExp() {
   const T q[4 * (2 + 1)] = {HWY_REP4(9.6259895571622622E-01),
                             HWY_REP4(-4.7272457588933831E-01),
                             HWY_REP4(7.4802088567547664E-02)};
-  const T err =
-      RunApproximation(-1, 1, p, q, EvalPoly(), [](T x) { return T(exp(x)); });
+  const T err = RunApproximation(-1, 1, p, q, EvalPoly(),
+                                 [](T x) { return static_cast<T>(exp(x)); });
   EXPECT_LT(err, 1E-4);
 }
 
@@ -175,8 +174,8 @@ void TestNegExp() {
       HWY_REP4(5.9579108238812878E-02), HWY_REP4(3.4542074345478582E-02),
       HWY_REP4(8.7263562483501714E-03), HWY_REP4(1.4095109143061216E-03)};
 
-  const T err =
-      RunApproximation(0, 10, p, q, EvalPoly(), [](T x) { return T(exp(-x)); });
+  const T err = RunApproximation(0, 10, p, q, EvalPoly(),
+                                 [](T x) { return static_cast<T>(exp(-x)); });
   EXPECT_LT(err, sizeof(T) == 8 ? 2E-5 : 3E-5);
 }
 
@@ -192,7 +191,7 @@ void TestSin() {
       HWY_REP4(3.1546157932479282E-03), HWY_REP4(-1.6692542019380155E-04)};
 
   const T err = RunApproximation(0, Pi<T>(1) * 2, p, q, EvalPoly(),
-                                 [](T x) { return T(sin(x)); });
+                                 [](T x) { return static_cast<T>(sin(x)); });
   EXPECT_LT(err, sizeof(T) == 8 ? 5E-4 : 7E-4);
 }
 

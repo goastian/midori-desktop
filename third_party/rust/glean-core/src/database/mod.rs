@@ -9,6 +9,8 @@ use std::io;
 use std::num::NonZeroU64;
 use std::path::Path;
 use std::str;
+#[cfg(target_os = "android")]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
 
 use crate::ErrorKind;
@@ -38,7 +40,13 @@ pub type SingleStore = rkv::SingleStore<rkv::backend::SafeModeDatabase>;
 /// cbindgen:ignore
 pub type Writer<'t> = rkv::Writer<rkv::backend::SafeModeRwTransaction<'t>>;
 
-pub fn rkv_new(path: &Path) -> std::result::Result<Rkv, rkv::StoreError> {
+#[derive(Debug)]
+pub enum RkvLoadState {
+    Ok,
+    Err(rkv::StoreError),
+}
+
+pub fn rkv_new(path: &Path) -> std::result::Result<(Rkv, RkvLoadState), rkv::StoreError> {
     match Rkv::new::<rkv::backend::SafeMode>(path) {
         // An invalid file can mean:
         // 1. An empty file.
@@ -50,15 +58,20 @@ pub fn rkv_new(path: &Path) -> std::result::Result<Rkv, rkv::StoreError> {
             let safebin = path.join("data.safe.bin");
             fs::remove_file(safebin).map_err(|_| rkv::StoreError::FileInvalid)?;
             // Now try again, we only handle that error once.
-            Rkv::new::<rkv::backend::SafeMode>(path)
+            let rkv = Rkv::new::<rkv::backend::SafeMode>(path)?;
+            Ok((rkv, RkvLoadState::Err(rkv::StoreError::FileInvalid)))
         }
         Err(rkv::StoreError::DatabaseCorrupted) => {
             let safebin = path.join("data.safe.bin");
             fs::remove_file(safebin).map_err(|_| rkv::StoreError::DatabaseCorrupted)?;
             // Try again, only allowing the error once.
-            Rkv::new::<rkv::backend::SafeMode>(path)
+            let rkv = Rkv::new::<rkv::backend::SafeMode>(path)?;
+            Ok((rkv, RkvLoadState::Err(rkv::StoreError::DatabaseCorrupted)))
         }
-        other => other,
+        other => {
+            let rkv = other?;
+            Ok((rkv, RkvLoadState::Ok))
+        }
     }
 }
 
@@ -156,6 +169,13 @@ use crate::Glean;
 use crate::Lifetime;
 use crate::Result;
 
+/// The number of writes we accept writes to the ping-lifetime in-memory map
+/// before data is flushed to disk.
+///
+/// Only considered if `delay_ping_lifetime_io` is set to `true`.
+#[cfg(target_os = "android")]
+const PING_LIFETIME_THRESHOLD: usize = 1000;
+
 pub struct Database {
     /// Handle to the database environment.
     rkv: Rkv,
@@ -173,8 +193,19 @@ pub struct Database {
     /// so as to persist them to disk using rkv in bulk on demand.
     ping_lifetime_data: Option<RwLock<BTreeMap<String, Metric>>>,
 
-    // Initial file size when opening the database.
+    /// A count of how many database writes have been done since the last ping-lifetime flush.
+    ///
+    /// A ping-lifetime flush is automatically done after `PING_LIFETIME_THRESHOLD` writes.
+    ///
+    /// Only relevant if `delay_ping_lifetime_io` is set to `true`,
+    #[cfg(target_os = "android")]
+    ping_lifetime_count: AtomicUsize,
+
+    /// Initial file size when opening the database.
     file_size: Option<NonZeroU64>,
+
+    /// RKV load state
+    rkv_load_state: RkvLoadState,
 }
 
 impl std::fmt::Debug for Database {
@@ -232,7 +263,7 @@ impl Database {
         log::debug!("Database path: {:?}", path.display());
         let file_size = database_size(&path);
 
-        let rkv = Self::open_rkv(&path)?;
+        let (rkv, rkv_load_state) = Self::open_rkv(&path)?;
         let user_store = rkv.open_single(Lifetime::User.as_str(), StoreOptions::create())?;
         let ping_store = rkv.open_single(Lifetime::Ping.as_str(), StoreOptions::create())?;
         let application_store =
@@ -249,7 +280,10 @@ impl Database {
             ping_store,
             application_store,
             ping_lifetime_data,
+            #[cfg(target_os = "android")]
+            ping_lifetime_count: AtomicUsize::new(0),
             file_size,
+            rkv_load_state,
         };
 
         db.load_ping_lifetime_data();
@@ -262,6 +296,15 @@ impl Database {
         self.file_size
     }
 
+    /// Get the rkv load state.
+    pub fn rkv_load_state(&self) -> Option<String> {
+        if let RkvLoadState::Err(e) = &self.rkv_load_state {
+            Some(e.to_string())
+        } else {
+            None
+        }
+    }
+
     fn get_store(&self, lifetime: Lifetime) -> &SingleStore {
         match lifetime {
             Lifetime::User => &self.user_store,
@@ -271,14 +314,14 @@ impl Database {
     }
 
     /// Creates the storage directories and inits rkv.
-    fn open_rkv(path: &Path) -> Result<Rkv> {
+    fn open_rkv(path: &Path) -> Result<(Rkv, RkvLoadState)> {
         fs::create_dir_all(path)?;
 
-        let rkv = rkv_new(path)?;
+        let (rkv, load_state) = rkv_new(path)?;
         migrate(path, &rkv);
 
         log::info!("Database initialized");
-        Ok(rkv)
+        Ok((rkv, load_state))
     }
 
     /// Build the key of the final location of the data in the database.
@@ -504,6 +547,9 @@ impl Database {
                     .write()
                     .expect("Can't read ping lifetime data");
                 data.insert(final_key, metric.clone());
+
+                // flush ping lifetime
+                self.persist_ping_lifetime_data_if_full(&data)?;
                 return Ok(());
             }
         }
@@ -585,6 +631,9 @@ impl Database {
                         entry.insert(transform(Some(old_value)));
                     }
                 }
+
+                // flush ping lifetime
+                self.persist_ping_lifetime_data_if_full(&data)?;
                 return Ok(());
             }
         }
@@ -778,6 +827,10 @@ impl Database {
                 .read()
                 .expect("Can't read ping lifetime data");
 
+            // We can reset the write-counter. Current data has been persisted.
+            #[cfg(target_os = "android")]
+            self.ping_lifetime_count.store(0, Ordering::Release);
+
             self.write_with_store(Lifetime::Ping, |mut writer, store| {
                 for (key, value) in data.iter() {
                     let encoded =
@@ -793,6 +846,42 @@ impl Database {
         }
         Ok(())
     }
+
+    pub fn persist_ping_lifetime_data_if_full(
+        &self,
+        data: &BTreeMap<String, Metric>,
+    ) -> Result<()> {
+        #[cfg(target_os = "android")]
+        {
+            self.ping_lifetime_count.fetch_add(1, Ordering::Release);
+
+            let write_count = self.ping_lifetime_count.load(Ordering::Relaxed);
+            if write_count < PING_LIFETIME_THRESHOLD {
+                return Ok(());
+            }
+
+            self.ping_lifetime_count.store(0, Ordering::Release);
+            let write_result = self.write_with_store(Lifetime::Ping, |mut writer, store| {
+                for (key, value) in data.iter() {
+                    let encoded =
+                        bincode::serialize(&value).expect("IMPOSSIBLE: Serializing metric failed");
+                    // There is no need for `get_storage_key` here because
+                    // the key is already formatted from when it was saved
+                    // to ping_lifetime_data.
+                    store.put(&mut writer, key, &rkv::Value::Blob(&encoded))?;
+                }
+                writer.commit()?;
+                Ok(())
+            });
+
+            return write_result;
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            _ = data; // suppress unused_variables warning.
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -800,7 +889,6 @@ mod test {
     use super::*;
     use crate::tests::new_glean;
     use std::collections::HashMap;
-    use std::path::Path;
     use tempfile::tempdir;
 
     #[test]
@@ -1080,7 +1168,7 @@ mod test {
         let metric_id_pattern = "telemetry_test.single_metric";
 
         // Write sample metrics to the database.
-        let lifetimes = vec![Lifetime::User, Lifetime::Ping, Lifetime::Application];
+        let lifetimes = [Lifetime::User, Lifetime::Ping, Lifetime::Application];
 
         for lifetime in lifetimes.iter() {
             for value in &["retain", "delete"] {
@@ -1484,9 +1572,13 @@ mod test {
             let f = File::create(safebin).expect("create database file");
             drop(f);
 
-            Database::new(dir.path(), false).unwrap();
+            let db = Database::new(dir.path(), false).unwrap();
 
             assert!(dir.path().exists());
+            assert!(
+                matches!(db.rkv_load_state, RkvLoadState::Err(_)),
+                "Load error recorded"
+            );
         }
 
         #[test]
@@ -1501,9 +1593,13 @@ mod test {
             let safebin = database_dir.join("data.safe.bin");
             fs::write(safebin, "<broken>").expect("write to database file");
 
-            Database::new(dir.path(), false).unwrap();
+            let db = Database::new(dir.path(), false).unwrap();
 
             assert!(dir.path().exists());
+            assert!(
+                matches!(db.rkv_load_state, RkvLoadState::Err(_)),
+                "Load error recorded"
+            );
         }
 
         #[test]

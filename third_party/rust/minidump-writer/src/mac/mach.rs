@@ -234,6 +234,7 @@ cfg_if::cfg_if! {
     }
 }
 
+#[repr(C, align(8))]
 pub struct ThreadState {
     pub state: [u32; THREAD_STATE_MAX],
     pub state_size: u32,
@@ -589,7 +590,8 @@ pub fn sysctl_by_name<T: Sized + Default>(name: &[u8]) -> T {
             0,
         ) != 0
         {
-            // log?
+            // TODO convert to ascii characters when logging?
+            log::warn!("failed to get sysctl for {name:?}");
             T::default()
         } else {
             out

@@ -1,15 +1,11 @@
 //! The `ResourceMetadata` type.
 
-use crate::{
-    hub,
-    id::{self, TypedId},
-    Epoch, LifeGuard, RefCount,
-};
+use crate::resource::Resource;
 use bit_vec::BitVec;
-use std::{borrow::Cow, marker::PhantomData, mem};
+use std::{borrow::Cow, mem, sync::Arc};
 use wgt::strict_assert;
 
-/// A set of resources, holding a [`RefCount`] and epoch for each member.
+/// A set of resources, holding a `Arc<T>` and epoch for each member.
 ///
 /// Testing for membership is fast, and iterating over members is
 /// reasonably fast in practice. Storage consumption is proportional
@@ -17,28 +13,19 @@ use wgt::strict_assert;
 /// members, but a bit vector tracks occupancy, so iteration touches
 /// only occupied elements.
 #[derive(Debug)]
-pub(super) struct ResourceMetadata<A: hub::HalApi> {
+pub(super) struct ResourceMetadata<T: Resource> {
     /// If the resource with index `i` is a member, `owned[i]` is `true`.
     owned: BitVec<usize>,
 
-    /// A vector parallel to `owned`, holding clones of members' `RefCount`s.
-    ref_counts: Vec<Option<RefCount>>,
-
-    /// A vector parallel to `owned`, holding the epoch of each members' id.
-    epochs: Vec<Epoch>,
-
-    /// This tells Rust that this type should be covariant with `A`.
-    _phantom: PhantomData<A>,
+    /// A vector holding clones of members' `T`s.
+    resources: Vec<Option<Arc<T>>>,
 }
 
-impl<A: hub::HalApi> ResourceMetadata<A> {
+impl<T: Resource> ResourceMetadata<T> {
     pub(super) fn new() -> Self {
         Self {
             owned: BitVec::default(),
-            ref_counts: Vec::new(),
-            epochs: Vec::new(),
-
-            _phantom: PhantomData,
+            resources: Vec::new(),
         }
     }
 
@@ -48,10 +35,13 @@ impl<A: hub::HalApi> ResourceMetadata<A> {
     }
 
     pub(super) fn set_size(&mut self, size: usize) {
-        self.ref_counts.resize(size, None);
-        self.epochs.resize(size, u32::MAX);
-
+        self.resources.resize(size, None);
         resize_bitvec(&mut self.owned, size);
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.resources.clear();
+        self.owned.clear();
     }
 
     /// Ensures a given index is in bounds for all arrays and does
@@ -61,11 +51,9 @@ impl<A: hub::HalApi> ResourceMetadata<A> {
     #[cfg_attr(not(feature = "strict_asserts"), allow(unused_variables))]
     pub(super) fn tracker_assert_in_bounds(&self, index: usize) {
         strict_assert!(index < self.owned.len());
-        strict_assert!(index < self.ref_counts.len());
-        strict_assert!(index < self.epochs.len());
-
+        strict_assert!(index < self.resources.len());
         strict_assert!(if self.contains(index) {
-            self.ref_counts[index].is_some()
+            self.resources[index].is_some()
         } else {
             true
         });
@@ -99,55 +87,71 @@ impl<A: hub::HalApi> ResourceMetadata<A> {
     /// Add the resource with the given index, epoch, and reference count to the
     /// set.
     ///
+    /// Returns a reference to the newly inserted resource.
+    /// (This allows avoiding a clone/reference count increase in many cases.)
+    ///
     /// # Safety
     ///
     /// The given `index` must be in bounds for this `ResourceMetadata`'s
     /// existing tables. See `tracker_assert_in_bounds`.
     #[inline(always)]
-    pub(super) unsafe fn insert(&mut self, index: usize, epoch: Epoch, ref_count: RefCount) {
+    pub(super) unsafe fn insert(&mut self, index: usize, resource: Arc<T>) -> &Arc<T> {
         self.owned.set(index, true);
-        unsafe {
-            *self.epochs.get_unchecked_mut(index) = epoch;
-            *self.ref_counts.get_unchecked_mut(index) = Some(ref_count);
-        }
+        let resource_dst = unsafe { self.resources.get_unchecked_mut(index) };
+        resource_dst.insert(resource)
     }
 
-    /// Get the [`RefCount`] of the resource with the given index.
+    /// Get the resource with the given index.
     ///
     /// # Safety
     ///
     /// The given `index` must be in bounds for this `ResourceMetadata`'s
     /// existing tables. See `tracker_assert_in_bounds`.
     #[inline(always)]
-    pub(super) unsafe fn get_ref_count_unchecked(&self, index: usize) -> &RefCount {
+    pub(super) unsafe fn get_resource_unchecked(&self, index: usize) -> &Arc<T> {
         unsafe {
-            self.ref_counts
+            self.resources
                 .get_unchecked(index)
                 .as_ref()
                 .unwrap_unchecked()
         }
     }
 
-    /// Get the [`Epoch`] of the id of the resource with the given index.
+    /// Get the reference count of the resource with the given index.
     ///
     /// # Safety
     ///
     /// The given `index` must be in bounds for this `ResourceMetadata`'s
     /// existing tables. See `tracker_assert_in_bounds`.
     #[inline(always)]
-    pub(super) unsafe fn get_epoch_unchecked(&self, index: usize) -> Epoch {
-        unsafe { *self.epochs.get_unchecked(index) }
+    pub(super) unsafe fn get_ref_count_unchecked(&self, index: usize) -> usize {
+        unsafe { Arc::strong_count(self.get_resource_unchecked(index)) }
     }
 
-    /// Returns an iterator over the ids for all resources owned by `self`.
-    pub(super) fn owned_ids<Id: TypedId>(&self) -> impl Iterator<Item = id::Valid<Id>> + '_ {
+    /// Returns an iterator over the resources owned by `self`.
+    pub(super) fn owned_resources(&self) -> impl Iterator<Item = Arc<T>> + '_ {
         if !self.owned.is_empty() {
             self.tracker_assert_in_bounds(self.owned.len() - 1)
         };
         iterate_bitvec_indices(&self.owned).map(move |index| {
-            let epoch = unsafe { *self.epochs.get_unchecked(index) };
-            id::Valid(Id::zip(index as u32, epoch, A::VARIANT))
+            let resource = unsafe { self.resources.get_unchecked(index) };
+            resource.as_ref().unwrap().clone()
         })
+    }
+
+    /// Returns an iterator over the resources owned by `self`.
+    pub(super) fn drain_resources(&mut self) -> Vec<Arc<T>> {
+        if !self.owned.is_empty() {
+            self.tracker_assert_in_bounds(self.owned.len() - 1)
+        };
+        let mut resources = Vec::new();
+        iterate_bitvec_indices(&self.owned).for_each(|index| {
+            let resource = unsafe { self.resources.get_unchecked(index) };
+            resources.push(resource.as_ref().unwrap().clone());
+        });
+        self.owned.clear();
+        self.resources.clear();
+        resources
     }
 
     /// Returns an iterator over the indices of all resources owned by `self`.
@@ -161,8 +165,7 @@ impl<A: hub::HalApi> ResourceMetadata<A> {
     /// Remove the resource with the given index from the set.
     pub(super) unsafe fn remove(&mut self, index: usize) {
         unsafe {
-            *self.ref_counts.get_unchecked_mut(index) = None;
-            *self.epochs.get_unchecked_mut(index) = u32::MAX;
+            *self.resources.get_unchecked_mut(index) = None;
         }
         self.owned.set(index, false);
     }
@@ -172,60 +175,29 @@ impl<A: hub::HalApi> ResourceMetadata<A> {
 ///
 /// This is used to abstract over the various places
 /// trackers can get new resource metadata from.
-pub(super) enum ResourceMetadataProvider<'a, A: hub::HalApi> {
+pub(super) enum ResourceMetadataProvider<'a, T: Resource> {
     /// Comes directly from explicit values.
-    Direct {
-        epoch: Epoch,
-        ref_count: Cow<'a, RefCount>,
-    },
+    Direct { resource: Cow<'a, Arc<T>> },
     /// Comes from another metadata tracker.
-    Indirect { metadata: &'a ResourceMetadata<A> },
-    /// The epoch is given directly, but the life count comes from the resource itself.
-    Resource { epoch: Epoch },
+    Indirect { metadata: &'a ResourceMetadata<T> },
 }
-impl<A: hub::HalApi> ResourceMetadataProvider<'_, A> {
+impl<T: Resource> ResourceMetadataProvider<'_, T> {
     /// Get the epoch and an owned refcount from this.
     ///
     /// # Safety
     ///
     /// - The index must be in bounds of the metadata tracker if this uses an indirect source.
-    /// - life_guard must be Some if this uses a Resource source.
+    /// - info must be Some if this uses a Resource source.
     #[inline(always)]
-    pub(super) unsafe fn get_own(
-        self,
-        life_guard: Option<&LifeGuard>,
-        index: usize,
-    ) -> (Epoch, RefCount) {
+    pub(super) unsafe fn get_own(self, index: usize) -> Arc<T> {
         match self {
-            ResourceMetadataProvider::Direct { epoch, ref_count } => {
-                (epoch, ref_count.into_owned())
-            }
+            ResourceMetadataProvider::Direct { resource } => resource.into_owned(),
             ResourceMetadataProvider::Indirect { metadata } => {
                 metadata.tracker_assert_in_bounds(index);
-                (unsafe { *metadata.epochs.get_unchecked(index) }, {
-                    let ref_count = unsafe { metadata.ref_counts.get_unchecked(index) };
-                    unsafe { ref_count.clone().unwrap_unchecked() }
-                })
-            }
-            ResourceMetadataProvider::Resource { epoch } => {
-                strict_assert!(life_guard.is_some());
-                (epoch, unsafe { life_guard.unwrap_unchecked() }.add_ref())
-            }
-        }
-    }
-    /// Get the epoch from this.
-    ///
-    /// # Safety
-    ///
-    /// - The index must be in bounds of the metadata tracker if this uses an indirect source.
-    #[inline(always)]
-    pub(super) unsafe fn get_epoch(self, index: usize) -> Epoch {
-        match self {
-            ResourceMetadataProvider::Direct { epoch, .. }
-            | ResourceMetadataProvider::Resource { epoch, .. } => epoch,
-            ResourceMetadataProvider::Indirect { metadata } => {
-                metadata.tracker_assert_in_bounds(index);
-                unsafe { *metadata.epochs.get_unchecked(index) }
+                {
+                    let resource = unsafe { metadata.resources.get_unchecked(index) };
+                    unsafe { resource.clone().unwrap_unchecked() }
+                }
             }
         }
     }

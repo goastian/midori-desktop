@@ -12,7 +12,6 @@
 
 #include <memory>
 
-#include "api/field_trials_view.h"
 #include "api/video/encoded_image.h"
 #include "api/video/i420_buffer.h"
 #include "api/video/video_adaptation_reason.h"
@@ -36,7 +35,6 @@ const int kHeight = 480;
 // Corresponds to load of 15%
 const int kFrameIntervalUs = 33 * rtc::kNumMicrosecsPerMillisec;
 const int kProcessTimeUs = 5 * rtc::kNumMicrosecsPerMillisec;
-const test::ScopedKeyValueConfig kFieldTrials;
 }  // namespace
 
 class MockCpuOveruseObserver : public OveruseFrameDetectorObserverInterface {
@@ -64,7 +62,7 @@ class OveruseFrameDetectorUnderTest : public OveruseFrameDetector {
  public:
   explicit OveruseFrameDetectorUnderTest(
       CpuOveruseMetricsObserver* metrics_observer)
-      : OveruseFrameDetector(metrics_observer, kFieldTrials) {}
+      : OveruseFrameDetector(metrics_observer) {}
   ~OveruseFrameDetectorUnderTest() {}
 
   using OveruseFrameDetector::CheckForOveruse;
@@ -74,8 +72,6 @@ class OveruseFrameDetectorUnderTest : public OveruseFrameDetector {
 class OveruseFrameDetectorTest : public ::testing::Test,
                                  public CpuOveruseMetricsObserver {
  protected:
-  OveruseFrameDetectorTest() : options_(kFieldTrials) {}
-
   void SetUp() override {
     observer_ = &mock_observer_;
     options_.min_process_count = 0;
@@ -109,7 +105,7 @@ class OveruseFrameDetectorTest : public ::testing::Test,
             .build();
     uint32_t timestamp = 0;
     while (num_frames-- > 0) {
-      frame.set_timestamp(timestamp);
+      frame.set_rtp_timestamp(timestamp);
       int64_t capture_time_us = rtc::TimeMicros();
       overuse_detector_->FrameCaptured(frame, capture_time_us);
       clock_.AdvanceTime(TimeDelta::Micros(delay_us));
@@ -135,7 +131,7 @@ class OveruseFrameDetectorTest : public ::testing::Test,
             .build();
     uint32_t timestamp = 0;
     while (num_frames-- > 0) {
-      frame.set_timestamp(timestamp);
+      frame.set_rtp_timestamp(timestamp);
       int64_t capture_time_us = rtc::TimeMicros();
       overuse_detector_->FrameCaptured(frame, capture_time_us);
       int max_delay_us = 0;
@@ -170,7 +166,7 @@ class OveruseFrameDetectorTest : public ::testing::Test,
             .build();
     uint32_t timestamp = 0;
     while (num_frames-- > 0) {
-      frame.set_timestamp(timestamp);
+      frame.set_rtp_timestamp(timestamp);
       int interval_us = random.Rand(min_interval_us, max_interval_us);
       int64_t capture_time_us = rtc::TimeMicros();
       overuse_detector_->FrameCaptured(frame, capture_time_us);
@@ -385,7 +381,7 @@ TEST_F(OveruseFrameDetectorTest, MeasuresMultipleConcurrentSamples) {
           .build();
   for (size_t i = 0; i < 1000; ++i) {
     // Unique timestamps.
-    frame.set_timestamp(static_cast<uint32_t>(i));
+    frame.set_rtp_timestamp(static_cast<uint32_t>(i));
     int64_t capture_time_us = rtc::TimeMicros();
     overuse_detector_->FrameCaptured(frame, capture_time_us);
     clock_.AdvanceTime(TimeDelta::Micros(kIntervalUs));
@@ -412,7 +408,7 @@ TEST_F(OveruseFrameDetectorTest, UpdatesExistingSamples) {
           .build();
   uint32_t timestamp = 0;
   for (size_t i = 0; i < 1000; ++i) {
-    frame.set_timestamp(timestamp);
+    frame.set_rtp_timestamp(timestamp);
     int64_t capture_time_us = rtc::TimeMicros();
     overuse_detector_->FrameCaptured(frame, capture_time_us);
     // Encode and send first parts almost instantly.
@@ -867,7 +863,7 @@ TEST_F(OveruseFrameDetectorTest2, MeasuresMultipleConcurrentSamples) {
           .build();
   for (size_t i = 0; i < 1000; ++i) {
     // Unique timestamps.
-    frame.set_timestamp(static_cast<uint32_t>(i));
+    frame.set_rtp_timestamp(static_cast<uint32_t>(i));
     int64_t capture_time_us = rtc::TimeMicros();
     overuse_detector_->FrameCaptured(frame, capture_time_us);
     clock_.AdvanceTime(TimeDelta::Micros(kIntervalUs));
@@ -894,7 +890,7 @@ TEST_F(OveruseFrameDetectorTest2, UpdatesExistingSamples) {
           .build();
   uint32_t timestamp = 0;
   for (size_t i = 0; i < 1000; ++i) {
-    frame.set_timestamp(timestamp);
+    frame.set_rtp_timestamp(timestamp);
     int64_t capture_time_us = rtc::TimeMicros();
     overuse_detector_->FrameCaptured(frame, capture_time_us);
     // Encode and send first parts almost instantly.

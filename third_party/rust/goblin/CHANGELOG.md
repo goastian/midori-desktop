@@ -3,7 +3,65 @@ All notable changes to this project will be documented in this file.
 
 Before 1.0, this project does not adhere to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-Goblin is now 0.5, which means we will try our best to ease breaking changes. Tracking issue is here: https://github.com/m4b/goblin/issues/97
+Goblin is now 0.8, which means we will try our best to ease breaking changes. Tracking issue is here: https://github.com/m4b/goblin/issues/97
+
+## [0.8.1]  - 2024-04-27
+### Docs
+pe: document pe header, thanks @JohnScience: https://github.com/m4b/goblin/pull/399
+pe, elf: fix doc warnings, thanks @5225225: https://github.com/m4b/goblin/pull/395
+pe: document dos header, thanks @JohnScience: https://github.com/m4b/goblin/pull/393
+### Added
+pe: add TE (terse executable) support, big thanks @Javagedes: https://github.com/m4b/goblin/pull/397
+elf: allow parsing section headers from raw bytes, thanks @lissyx: https://github.com/m4b/goblin/pull/391
+mach: add support for lossy parsing, thanks @h33p: https://github.com/m4b/goblin/pull/386
+elf: add convenience functions, thanks @tiann : https://github.com/m4b/goblin/pull/387
+### Fixed
+pe: read reserved dos headers, thanks @kkent030315: https://github.com/m4b/goblin/pull/405
+
+
+## [0.8.0]  - 2023-12-31 - Happy New Years!
+### Breaking
+msrv: bumped to 1.63.0 since scroll bumped as well
+pe: new field added to parse options: https://github.com/m4b/goblin/pull/377
+pe: attribute certs now non-exhaustive: https://github.com/m4b/goblin/pull/378
+goblin: hint and object enum is now non-exhaustive
+pe: write support introduced some breaking changes, e.g., data directories array adds a tuple of usize and data directory,
+    DosHeader has all the fields filled out, Header struct has a dos_stub field added,
+	symbols and strings fields is made optional in Coff struct, see: https://github.com/m4b/goblin/pull/361
+### Fixed
+elf: fix documentation, thanks @crzysdrs: https://github.com/m4b/goblin/pull/374
+pe: attribute certificates non-exhaustive, thanks @RaitoBezarius: https://github.com/m4b/goblin/pull/378
+pe: fix authenticode parsing, thanks @baloo: https://github.com/m4b/goblin/pull/383
+### Added
+strtab: len method added to return number of bytes of the strtab
+pe: absolutely epic pe write support PR, thanks @RaitoBezarius and @Baloo: https://github.com/m4b/goblin/pull/361
+pe: add coff object file support, thanks @vadimcn, https://github.com/m4b/goblin/pull/379
+pe: allow toggling parsing of attribute certs, thanks @suttonbradley: https://github.com/m4b/goblin/pull/377
+mach: add new mach-o constants, thanks @keith: https://github.com/m4b/goblin/pull/372
+
+## [0.7.1] - 2023-6-11
+### MSRV bump from log
+
+## [0.7.0] - 2023-6-11
+### Breaking
+mach: Implement `LC_NOTE`, (breakage=load commands are marked non-exhaustive), thanks @messense: https://github.com/m4b/goblin/pull/342
+### Fixed
+elf: fix is_lib detection, thanks @m-hilgendorf: https://github.com/m4b/goblin/pull/366
+pe: fix out of bounds access while parsing AttributeCertificate, thanks @anfedotoff: https://github.com/m4b/goblin/pull/368
+### Added
+pe: support basic certificates enumeration, thanks @RaitoBezarius: https://github.com/m4b/goblin/pull/354
+pe: fix certificate tables parsing, thanks @baloo: https://github.com/m4b/goblin/pull/359
+pe: add pe authenticode support, thanks @baloo: https://github.com/m4b/goblin/pull/362
+mach: implement `LC_FILESET_ENTRY`, thanks @mmaekr: https://github.com/m4b/goblin/pull/369
+build: add afl fuzzing support, thanks @anfedotoff: https://github.com/m4b/goblin/pull/351
+
+## [0.6.1] - 2023-2-26
+### Fixed
+elf.section_header: additional workaround for 0-length sections, thanks @Jhynjhiruu: https://github.com/m4b/goblin/pull/347
+pe.utils: file alignment check, thanks @anfedotoff: https://github.com/m4b/goblin/pull/340
+### Added
+elf: Add basic GNU PROPERTY note support, thanks @x64k: https://github.com/m4b/goblin/pull/352
+mach: Implement `LC_BUILD_VERSION`, thanks @messense: https://github.com/m4b/goblin/pull/341
 
 ## [0.6.0] - 2022-10-23
 ### Breaking

@@ -5,10 +5,12 @@
 
 #include "lib/extras/enc/exr.h"
 
+#if JPEGXL_ENABLE_EXR
 #include <ImfChromaticitiesAttribute.h>
 #include <ImfIO.h>
 #include <ImfRgbaFile.h>
 #include <ImfStandardAttributes.h>
+#endif
 #include <jxl/codestream_header.h>
 
 #include <vector>
@@ -19,6 +21,7 @@
 namespace jxl {
 namespace extras {
 
+#if JPEGXL_ENABLE_EXR
 namespace {
 
 namespace OpenEXR = OPENEXR_IMF_NAMESPACE;
@@ -81,7 +84,7 @@ Status EncodeImageEXR(const PackedImage& image, const JxlBasicInfo& info,
   const size_t xsize = info.xsize;
   const size_t ysize = info.ysize;
   const bool has_alpha = info.alpha_bits > 0;
-  const bool alpha_is_premultiplied = info.alpha_premultiplied;
+  const bool alpha_is_premultiplied = FROM_JXL_BOOL(info.alpha_premultiplied);
 
   if (info.num_color_channels != 3 ||
       c_enc.color_space != JXL_COLOR_SPACE_RGB ||
@@ -162,7 +165,7 @@ class EXREncoder : public Encoder {
   std::vector<JxlPixelFormat> AcceptedFormats() const override {
     std::vector<JxlPixelFormat> formats;
     for (const uint32_t num_channels : {1, 2, 3, 4}) {
-      for (const JxlDataType data_type : {JXL_TYPE_FLOAT, JXL_TYPE_FLOAT16}) {
+      for (const JxlDataType data_type : {JXL_TYPE_FLOAT}) {
         for (JxlEndianness endianness : {JXL_BIG_ENDIAN, JXL_LITTLE_ENDIAN}) {
           formats.push_back(JxlPixelFormat{/*num_channels=*/num_channels,
                                            /*data_type=*/data_type,
@@ -174,7 +177,7 @@ class EXREncoder : public Encoder {
     return formats;
   }
   Status Encode(const PackedPixelFile& ppf, EncodedImage* encoded_image,
-                ThreadPool* pool = nullptr) const override {
+                ThreadPool* pool) const override {
     JXL_RETURN_IF_ERROR(VerifyBasicInfo(ppf.info));
     encoded_image->icc.clear();
     encoded_image->bitstreams.clear();
@@ -191,9 +194,14 @@ class EXREncoder : public Encoder {
 };
 
 }  // namespace
+#endif
 
 std::unique_ptr<Encoder> GetEXREncoder() {
+#if JPEGXL_ENABLE_EXR
   return jxl::make_unique<EXREncoder>();
+#else
+  return nullptr;
+#endif
 }
 
 }  // namespace extras

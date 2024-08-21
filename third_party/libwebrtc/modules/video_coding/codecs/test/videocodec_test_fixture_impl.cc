@@ -24,6 +24,8 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
 #include "api/test/metrics/global_metrics_logger_and_exporter.h"
 #include "api/test/metrics/metric.h"
 #include "api/transport/field_trial_based_config.h"
@@ -78,7 +80,7 @@ void ConfigureSimulcast(VideoCodec* codec_settings) {
   const std::vector<webrtc::VideoStream> streams = cricket::GetSimulcastConfig(
       /*min_layer=*/1, codec_settings->numberOfSimulcastStreams,
       codec_settings->width, codec_settings->height, kBitratePriority, kMaxQp,
-      /* is_screenshare = */ false, true, trials);
+      /* is_screenshare = */ false, true, trials, webrtc::kVideoCodecVP8);
 
   for (size_t i = 0; i < streams.size(); ++i) {
     SimulcastStream* ss = &codec_settings->simulcastStream[i];
@@ -137,6 +139,9 @@ std::string CodecSpecificToString(const VideoCodec& codec) {
       ss << "\nnum_temporal_layers: "
          << static_cast<int>(codec.H264().numberOfTemporalLayers);
       break;
+    case kVideoCodecH265:
+      // TODO(bugs.webrtc.org/13485)
+      break;
     default:
       break;
   }
@@ -164,7 +169,7 @@ SdpVideoFormat CreateSdpVideoFormat(
                 H264PacketizationMode::NonInterleaved
             ? "1"
             : "0";
-    SdpVideoFormat::Parameters codec_params = {
+    CodecParameterMap codec_params = {
         {cricket::kH264FmtpProfileLevelId,
          *H264ProfileLevelIdToString(H264ProfileLevelId(
              config.h264_codec_settings.profile, H264Level::kLevel3_1))},
@@ -173,7 +178,9 @@ SdpVideoFormat CreateSdpVideoFormat(
 
     return SdpVideoFormat(config.codec_name, codec_params);
   } else if (config.codec_settings.codecType == kVideoCodecVP9) {
-    return SdpVideoFormat(config.codec_name, {{"profile-id", "0"}});
+    return SdpVideoFormat::VP9Profile0();
+  } else if (config.codec_settings.codecType == kVideoCodecAV1) {
+    return SdpVideoFormat::AV1Profile0();
   }
 
   return SdpVideoFormat(config.codec_name);
@@ -245,6 +252,9 @@ void VideoCodecTestFixtureImpl::Config::SetCodecSettings(
       codec_settings.H264()->keyFrameInterval = kBaseKeyFrameInterval;
       codec_settings.H264()->numberOfTemporalLayers =
           static_cast<uint8_t>(num_temporal_layers);
+      break;
+    case kVideoCodecH265:
+      // TODO(bugs.webrtc.org/13485)
       break;
     default:
       break;
@@ -518,7 +528,6 @@ void VideoCodecTestFixtureImpl::AnalyzeAllFrames(
     const std::vector<RateControlThresholds>* rc_thresholds,
     const std::vector<QualityThresholds>* quality_thresholds,
     const BitstreamThresholds* bs_thresholds) {
-
   for (size_t rate_profile_idx = 0; rate_profile_idx < rate_profiles.size();
        ++rate_profile_idx) {
     const size_t first_frame_num = rate_profiles[rate_profile_idx].frame_num;
@@ -680,6 +689,8 @@ void VideoCodecTestFixtureImpl::VerifyVideoStatistic(
 }
 
 bool VideoCodecTestFixtureImpl::CreateEncoderAndDecoder() {
+  const Environment env = CreateEnvironment();
+
   SdpVideoFormat encoder_format(CreateSdpVideoFormat(config_));
   SdpVideoFormat decoder_format = encoder_format;
 
@@ -694,7 +705,7 @@ bool VideoCodecTestFixtureImpl::CreateEncoderAndDecoder() {
     decoder_format = *config_.decoder_format;
   }
 
-  encoder_ = encoder_factory_->CreateVideoEncoder(encoder_format);
+  encoder_ = encoder_factory_->Create(env, encoder_format);
   EXPECT_TRUE(encoder_) << "Encoder not successfully created.";
   if (encoder_ == nullptr) {
     return false;
@@ -704,7 +715,7 @@ bool VideoCodecTestFixtureImpl::CreateEncoderAndDecoder() {
       config_.NumberOfSimulcastStreams(), config_.NumberOfSpatialLayers());
   for (size_t i = 0; i < num_simulcast_or_spatial_layers; ++i) {
     std::unique_ptr<VideoDecoder> decoder =
-        decoder_factory_->CreateVideoDecoder(decoder_format);
+        decoder_factory_->Create(env, decoder_format);
     EXPECT_TRUE(decoder) << "Decoder not successfully created.";
     if (decoder == nullptr) {
       return false;
@@ -799,13 +810,12 @@ bool VideoCodecTestFixtureImpl::SetUpAndInitObjects(
     }
   }
 
-  task_queue->SendTask(
-      [this]() {
-        processor_ = std::make_unique<VideoProcessor>(
-            encoder_.get(), &decoders_, source_frame_reader_.get(), config_,
-            &stats_, &encoded_frame_writers_,
-            decoded_frame_writers_.empty() ? nullptr : &decoded_frame_writers_);
-      });
+  task_queue->SendTask([this]() {
+    processor_ = std::make_unique<VideoProcessor>(
+        encoder_.get(), &decoders_, source_frame_reader_.get(), config_,
+        &stats_, &encoded_frame_writers_,
+        decoded_frame_writers_.empty() ? nullptr : &decoded_frame_writers_);
+  });
   return true;
 }
 

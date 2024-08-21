@@ -13,6 +13,7 @@
 
 #include <memory>
 
+#include "api/environment/environment.h"
 #include "api/transport/sctp_transport_factory_interface.h"
 #include "media/sctp/sctp_transport_internal.h"
 
@@ -32,11 +33,10 @@ class FakeSctpTransport : public cricket::SctpTransportInternal {
   }
   bool OpenStream(int sid) override { return true; }
   bool ResetStream(int sid) override { return true; }
-  bool SendData(int sid,
-                const webrtc::SendDataParams& params,
-                const rtc::CopyOnWriteBuffer& payload,
-                cricket::SendDataResult* result = nullptr) override {
-    return true;
+  webrtc::RTCError SendData(int sid,
+                            const webrtc::SendDataParams& params,
+                            const rtc::CopyOnWriteBuffer& payload) override {
+    return webrtc::RTCError::OK();
   }
   bool ReadyToSendData() override { return true; }
   void set_debug_name_for_testing(const char* debug_name) override {}
@@ -62,6 +62,7 @@ class FakeSctpTransport : public cricket::SctpTransportInternal {
 class FakeSctpTransportFactory : public webrtc::SctpTransportFactoryInterface {
  public:
   std::unique_ptr<cricket::SctpTransportInternal> CreateSctpTransport(
+      const webrtc::Environment& env,
       rtc::PacketTransportInternal*) override {
     last_fake_sctp_transport_ = new FakeSctpTransport();
     return std::unique_ptr<cricket::SctpTransportInternal>(

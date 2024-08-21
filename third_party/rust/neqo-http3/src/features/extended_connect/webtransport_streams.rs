@@ -4,15 +4,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::{cell::RefCell, rc::Rc};
+
+use neqo_common::Encoder;
+use neqo_transport::{Connection, RecvStreamStats, SendStreamStats, StreamId};
+
 use super::WebTransportSession;
 use crate::{
     CloseType, Http3StreamInfo, Http3StreamType, ReceiveOutput, RecvStream, RecvStreamEvents, Res,
     SendStream, SendStreamEvents, Stream,
 };
-use neqo_common::Encoder;
-use neqo_transport::{Connection, StreamId};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub const WEBTRANSPORT_UNI_STREAM: u64 = 0x54;
 pub const WEBTRANSPORT_STREAM: u64 = 0x41;
@@ -74,6 +75,35 @@ impl RecvStream for WebTransportRecvStream {
             self.session.borrow_mut().remove_recv_stream(self.stream_id);
         }
         Ok((amount, fin))
+    }
+
+    fn stats(&mut self, conn: &mut Connection) -> Res<RecvStreamStats> {
+        const TYPE_LEN_UNI: usize = Encoder::varint_len(WEBTRANSPORT_UNI_STREAM);
+        const TYPE_LEN_BIDI: usize = Encoder::varint_len(WEBTRANSPORT_STREAM);
+
+        let stream_header_size = if self.stream_id.is_server_initiated() {
+            let id_len = if self.stream_id.is_uni() {
+                TYPE_LEN_UNI
+            } else {
+                TYPE_LEN_BIDI
+            };
+            (id_len + Encoder::varint_len(self.session_id.as_u64())) as u64
+        } else {
+            0
+        };
+
+        let stats = conn.recv_stream_stats(self.stream_id)?;
+        if stream_header_size == 0 {
+            return Ok(stats);
+        }
+
+        let subtract_non_app_bytes =
+            |count: u64| -> u64 { count.saturating_sub(stream_header_size) };
+
+        let bytes_received = subtract_non_app_bytes(stats.bytes_received());
+        let bytes_read = subtract_non_app_bytes(stats.bytes_read());
+
+        Ok(RecvStreamStats::new(bytes_received, bytes_read))
     }
 }
 
@@ -198,5 +228,34 @@ impl SendStream for WebTransportSendStream {
             self.set_done(CloseType::Done);
         }
         Ok(())
+    }
+
+    fn stats(&mut self, conn: &mut Connection) -> Res<SendStreamStats> {
+        const TYPE_LEN_UNI: usize = Encoder::varint_len(WEBTRANSPORT_UNI_STREAM);
+        const TYPE_LEN_BIDI: usize = Encoder::varint_len(WEBTRANSPORT_STREAM);
+
+        let stream_header_size = if self.stream_id.is_client_initiated() {
+            let id_len = if self.stream_id.is_uni() {
+                TYPE_LEN_UNI
+            } else {
+                TYPE_LEN_BIDI
+            };
+            (id_len + Encoder::varint_len(self.session_id.as_u64())) as u64
+        } else {
+            0
+        };
+
+        let stats = conn.send_stream_stats(self.stream_id)?;
+        if stream_header_size == 0 {
+            return Ok(stats);
+        }
+
+        let subtract_non_app_bytes =
+            |count: u64| -> u64 { count.saturating_sub(stream_header_size) };
+
+        let bytes_written = subtract_non_app_bytes(stats.bytes_written());
+        let bytes_sent = subtract_non_app_bytes(stats.bytes_sent());
+        let bytes_acked = subtract_non_app_bytes(stats.bytes_acked());
+        Ok(SendStreamStats::new(bytes_written, bytes_sent, bytes_acked))
     }
 }

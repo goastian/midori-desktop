@@ -106,7 +106,6 @@ TEST(VideoStreamTest, ReceivesVp8SimulcastFrames) {
       c->encoder.simulcast_streams = {webrtc::ScalabilityMode::kL1T1,
                                       webrtc::ScalabilityMode::kL1T1,
                                       webrtc::ScalabilityMode::kL1T1};
-
     });
     s.RunFor(kRunTime);
   }
@@ -251,7 +250,10 @@ TEST(VideoStreamTest, ResolutionAdaptsToAvailableBandwidth) {
 
   s.RunFor(TimeDelta::Seconds(40));
   EXPECT_GT(num_qvga_frames_, 0u);
+#ifndef __ANDROID__
+  // TODO: crbug.com/webrtc/15873 - This expectation is flaky on Android.
   EXPECT_GT(num_vga_frames_, 0u);
+#endif
 }
 
 TEST(VideoStreamTest, SuspendsBelowMinBitrate) {

@@ -44,11 +44,10 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
   ~AcmReceiverTestOldApi() {}
 
   void SetUp() override {
-    acm_.reset(AudioCodingModule::Create(config_));
+    acm_ = AudioCodingModule::Create();
     receiver_.reset(new AcmReceiver(config_));
     ASSERT_TRUE(receiver_.get() != NULL);
     ASSERT_TRUE(acm_.get() != NULL);
-    acm_->InitializeReceiver();
     acm_->RegisterTransportCallback(this);
 
     rtp_header_.sequenceNumber = 0;
@@ -135,7 +134,7 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
       CreateBuiltinAudioEncoderFactory();
   const rtc::scoped_refptr<AudioDecoderFactory> decoder_factory_ =
       CreateBuiltinAudioDecoderFactory();
-  AudioCodingModule::Config config_;
+  acm2::AcmReceiver::Config config_;
   std::unique_ptr<AcmReceiver> receiver_;
   std::unique_ptr<AudioCodingModule> acm_;
   RTPHeader rtp_header_;
@@ -191,9 +190,6 @@ class AcmReceiverTestFaxModeOldApi : public AcmReceiverTestOldApi {
     const size_t output_channels = info.num_channels;
     const size_t samples_per_ms = rtc::checked_cast<size_t>(
         rtc::CheckedDivExact(output_sample_rate_hz, 1000));
-    const AudioFrame::VADActivity expected_vad_activity =
-        output_sample_rate_hz > 16000 ? AudioFrame::kVadActive
-                                      : AudioFrame::kVadPassive;
 
     // Expect the first output timestamp to be 5*fs/8000 samples before the
     // first inserted timestamp (because of NetEq's look-ahead). (This value is
@@ -218,7 +214,6 @@ class AcmReceiverTestFaxModeOldApi : public AcmReceiverTestOldApi {
         EXPECT_EQ(output_sample_rate_hz, frame.sample_rate_hz_);
         EXPECT_EQ(output_channels, frame.num_channels_);
         EXPECT_EQ(AudioFrame::kNormalSpeech, frame.speech_type_);
-        EXPECT_EQ(expected_vad_activity, frame.vad_activity_);
         EXPECT_FALSE(muted);
       }
     }
@@ -241,61 +236,6 @@ TEST_F(AcmReceiverTestFaxModeOldApi, MAYBE_VerifyAudioFramePCMU) {
 #endif
 TEST_F(AcmReceiverTestFaxModeOldApi, MAYBE_VerifyAudioFrameOpus) {
   RunVerifyAudioFrame({"opus", 48000, 2});
-}
-
-#if defined(WEBRTC_ANDROID)
-#define MAYBE_PostdecodingVad DISABLED_PostdecodingVad
-#else
-#define MAYBE_PostdecodingVad PostdecodingVad
-#endif
-TEST_F(AcmReceiverTestOldApi, MAYBE_PostdecodingVad) {
-  EXPECT_TRUE(config_.neteq_config.enable_post_decode_vad);
-  constexpr int payload_type = 34;
-  const SdpAudioFormat codec = {"L16", 16000, 1};
-  const AudioCodecInfo info = SetEncoder(payload_type, codec);
-  receiver_->SetCodecs({{payload_type, codec}});
-  constexpr int kNumPackets = 5;
-  AudioFrame frame;
-  for (int n = 0; n < kNumPackets; ++n) {
-    const int num_10ms_frames = InsertOnePacketOfSilence(info);
-    for (int k = 0; k < num_10ms_frames; ++k) {
-      bool muted;
-      ASSERT_EQ(0, receiver_->GetAudio(info.sample_rate_hz, &frame, &muted));
-    }
-  }
-  EXPECT_EQ(AudioFrame::kVadPassive, frame.vad_activity_);
-}
-
-class AcmReceiverTestPostDecodeVadPassiveOldApi : public AcmReceiverTestOldApi {
- protected:
-  AcmReceiverTestPostDecodeVadPassiveOldApi() {
-    config_.neteq_config.enable_post_decode_vad = false;
-  }
-};
-
-#if defined(WEBRTC_ANDROID)
-#define MAYBE_PostdecodingVad DISABLED_PostdecodingVad
-#else
-#define MAYBE_PostdecodingVad PostdecodingVad
-#endif
-TEST_F(AcmReceiverTestPostDecodeVadPassiveOldApi, MAYBE_PostdecodingVad) {
-  EXPECT_FALSE(config_.neteq_config.enable_post_decode_vad);
-  constexpr int payload_type = 34;
-  const SdpAudioFormat codec = {"L16", 16000, 1};
-  const AudioCodecInfo info = SetEncoder(payload_type, codec);
-  auto const value = encoder_factory_->QueryAudioEncoder(codec);
-  ASSERT_TRUE(value.has_value());
-  receiver_->SetCodecs({{payload_type, codec}});
-  const int kNumPackets = 5;
-  AudioFrame frame;
-  for (int n = 0; n < kNumPackets; ++n) {
-    const int num_10ms_frames = InsertOnePacketOfSilence(info);
-    for (int k = 0; k < num_10ms_frames; ++k) {
-      bool muted;
-      ASSERT_EQ(0, receiver_->GetAudio(info.sample_rate_hz, &frame, &muted));
-    }
-  }
-  EXPECT_EQ(AudioFrame::kVadUnknown, frame.vad_activity_);
 }
 
 #if defined(WEBRTC_ANDROID)
@@ -383,6 +323,24 @@ TEST_F(AcmReceiverTestOldApi, MAYBE_InitializedToZero) {
   EXPECT_EQ(0, stats.decoded_muted_output);
 }
 
+#if defined(WEBRTC_ANDROID)
+#define MAYBE_VerifyOutputFrame DISABLED_VerifyOutputFrame
+#else
+#define MAYBE_VerifyOutputFrame VerifyOutputFrame
+#endif
+TEST_F(AcmReceiverTestOldApi, MAYBE_VerifyOutputFrame) {
+  AudioFrame audio_frame;
+  const int kSampleRateHz = 32000;
+  bool muted;
+  EXPECT_EQ(0, receiver_->GetAudio(kSampleRateHz, &audio_frame, &muted));
+  ASSERT_FALSE(muted);
+  EXPECT_EQ(0u, audio_frame.timestamp_);
+  EXPECT_GT(audio_frame.num_channels_, 0u);
+  EXPECT_EQ(static_cast<size_t>(kSampleRateHz / 100),
+            audio_frame.samples_per_channel_);
+  EXPECT_EQ(kSampleRateHz, audio_frame.sample_rate_hz_);
+}
+
 // Insert some packets and pull audio. Check statistics are valid. Then,
 // simulate packet loss and check if PLC and PLC-to-CNG statistics are
 // correctly updated.
@@ -412,7 +370,6 @@ TEST_F(AcmReceiverTestOldApi, MAYBE_NetEqCalls) {
   rtp_header.markerBit = false;
   rtp_header.ssrc = 0x1234;
   rtp_header.numCSRCs = 0;
-  rtp_header.payload_type_frequency = kSampleRateHz;
 
   for (int num_calls = 0; num_calls < kNumNormalCalls; ++num_calls) {
     const uint8_t kPayload[kPayloadSizeBytes] = {0};

@@ -113,14 +113,16 @@ impl Hash for Lifetime {
 }
 
 #[cfg(feature = "parsing")]
-#[doc(hidden)]
-#[allow(non_snake_case)]
-pub fn Lifetime(marker: lookahead::TokenMarker) -> Lifetime {
-    match marker {}
+pub_if_not_doc! {
+    #[doc(hidden)]
+    #[allow(non_snake_case)]
+    pub fn Lifetime(marker: lookahead::TokenMarker) -> Lifetime {
+        match marker {}
+    }
 }
 
 #[cfg(feature = "parsing")]
-pub mod parsing {
+pub(crate) mod parsing {
     use super::*;
     use crate::parse::{Parse, ParseStream, Result};
 

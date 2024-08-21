@@ -3,10 +3,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-import concurrent.futures as futures
 import json
 import logging
 import sys
+from concurrent import futures
 
 from slugid import nice as slugid
 
@@ -104,7 +104,7 @@ def create_tasks(graph_config, taskgraph, label_to_taskid, params, decision_task
 
 def create_task(session, task_id, label, task_def):
     # create the task using 'http://taskcluster/queue', which is proxied to the queue service
-    # with credentials appropriate to this job.
+    # with credentials appropriate to this task.
 
     # Resolve timestamps
     now = current_json_time(datetime_format=True)

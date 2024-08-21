@@ -16,7 +16,9 @@ import traceback
 from collections import namedtuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from textwrap import dedent
 from typing import Any, List
+from urllib.parse import urlparse
 
 import appdirs
 import yaml
@@ -94,7 +96,7 @@ def get_filtered_taskgraph(taskgraph, tasksregex, exclude_keys):
             for key in exclude_keys:
                 obj = task
                 attrs = key.split(".")
-                while attrs[0] in obj:
+                while obj and attrs[0] in obj:
                     if len(attrs) == 1:
                         del obj[attrs[0]]
                         break
@@ -119,7 +121,7 @@ def get_taskgraph_generator(root, parameters):
     return TaskGraphGenerator(root_dir=root, parameters=parameters)
 
 
-def format_taskgraph(options, parameters, logfile=None):
+def format_taskgraph(options, parameters, overrides, logfile=None):
     import taskgraph
     from taskgraph.parameters import parameters_loader
 
@@ -137,7 +139,7 @@ def format_taskgraph(options, parameters, logfile=None):
     if isinstance(parameters, str):
         parameters = parameters_loader(
             parameters,
-            overrides={"target-kind": options.get("target_kind")},
+            overrides=overrides,
             strict=False,
         )
 
@@ -171,7 +173,7 @@ def dump_output(out, path=None, params_spec=None):
     print(out + "\n", file=fh)
 
 
-def generate_taskgraph(options, parameters, logdir):
+def generate_taskgraph(options, parameters, overrides, logdir):
     from taskgraph.parameters import Parameters
 
     def logfile(spec):
@@ -187,21 +189,25 @@ def generate_taskgraph(options, parameters, logdir):
     # tracebacks a little more readable and avoids additional process overhead.
     if len(parameters) == 1:
         spec = parameters[0]
-        out = format_taskgraph(options, spec, logfile(spec))
+        out = format_taskgraph(options, spec, overrides, logfile(spec))
         dump_output(out, options["output_file"])
-        return
+        return 0
 
     futures = {}
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=options["max_workers"]) as executor:
         for spec in parameters:
-            f = executor.submit(format_taskgraph, options, spec, logfile(spec))
+            f = executor.submit(
+                format_taskgraph, options, spec, overrides, logfile(spec)
+            )
             futures[f] = spec
 
+    returncode = 0
     for future in as_completed(futures):
         output_file = options["output_file"]
         spec = futures[future]
         e = future.exception()
         if e:
+            returncode = 1
             out = "".join(traceback.format_exception(type(e), e, e.__traceback__))
             if options["diff"]:
                 # Dump to console so we don't accidentally diff the tracebacks.
@@ -214,6 +220,8 @@ def generate_taskgraph(options, parameters, logdir):
             path=output_file,
             params_spec=spec if len(parameters) > 1 else None,
         )
+
+    return returncode
 
 
 @command(
@@ -288,6 +296,15 @@ def generate_taskgraph(options, parameters, logdir):
     "specified).",
 )
 @argument(
+    "--force-local-files-changed",
+    default=False,
+    action="store_true",
+    help="Compute the 'files-changed' parameter from local version control, "
+    "even when explicitly using a parameter set that already has it defined. "
+    "Note that this is already the default behaviour when no parameters are "
+    "specified.",
+)
+@argument(
     "--no-optimize",
     dest="optimize",
     action="store_false",
@@ -317,8 +334,11 @@ def generate_taskgraph(options, parameters, logdir):
     "used multiple times.",
 )
 @argument(
+    "-k",
     "--target-kind",
-    default=None,
+    dest="target_kinds",
+    action="append",
+    default=[],
     help="only return tasks that are of the given kind, or their dependencies.",
 )
 @argument(
@@ -337,6 +357,15 @@ def generate_taskgraph(options, parameters, logdir):
     "Without args the base revision will be used. A revision specifier such as "
     "the hash or `.~1` (hg) or `HEAD~1` (git) can be used as well.",
 )
+@argument(
+    "-j",
+    "--max-workers",
+    dest="max_workers",
+    default=None,
+    type=int,
+    help="The maximum number of workers to use for parallel operations such as"
+    "when multiple parameters files are passed.",
+)
 def show_taskgraph(options):
     from taskgraph.parameters import Parameters, parameters_loader
     from taskgraph.util.vcs import get_repository
@@ -349,9 +378,11 @@ def show_taskgraph(options):
     diffdir = None
     output_file = options["output_file"]
 
-    if options["diff"]:
+    if options["diff"] or options["force_local_files_changed"]:
         repo = get_repository(os.getcwd())
 
+    if options["diff"]:
+        assert repo is not None
         if not repo.working_directory_clean():
             print(
                 "abort: can't diff taskgraph with dirty working directory",
@@ -364,24 +395,32 @@ def show_taskgraph(options):
         # branch or bookmark (which are both available on the VCS object)
         # as `branch` is preferable to a specific revision.
         cur_rev = repo.branch or repo.head_rev[:12]
+        cur_rev_file = cur_rev.replace("/", "_")
 
         diffdir = tempfile.mkdtemp()
         atexit.register(
             shutil.rmtree, diffdir
         )  # make sure the directory gets cleaned up
         options["output_file"] = os.path.join(
-            diffdir, f"{options['graph_attr']}_{cur_rev}"
+            diffdir, f"{options['graph_attr']}_{cur_rev_file}"
         )
         print(f"Generating {options['graph_attr']} @ {cur_rev}", file=sys.stderr)
 
+    overrides = {
+        "target-kinds": options.get("target_kinds"),
+    }
     parameters: List[Any[str, Parameters]] = options.pop("parameters")
     if not parameters:
-        overrides = {
-            "target-kind": options.get("target_kind"),
-        }
         parameters = [
             parameters_loader(None, strict=False, overrides=overrides)
         ]  # will use default values
+
+        # This is the default behaviour anyway, so no need to re-compute.
+        options["force_local_files_changed"] = False
+
+    elif options["force_local_files_changed"]:
+        assert repo is not None
+        overrides["files-changed"] = sorted(repo.get_changed_files("AM"))
 
     for param in parameters[:]:
         if isinstance(param, str) and os.path.isdir(param):
@@ -408,7 +447,7 @@ def show_taskgraph(options):
         # to setup its `mach` based logging.
         setup_logging()
 
-    generate_taskgraph(options, parameters, logdir)
+    ret = generate_taskgraph(options, parameters, overrides, logdir)
 
     if options["diff"]:
         assert diffdir is not None
@@ -423,15 +462,16 @@ def show_taskgraph(options):
             base_rev = repo.base_rev
         else:
             base_rev = options["diff"]
+        base_rev_file = base_rev.replace("/", "_")
 
         try:
             repo.update(base_rev)
             base_rev = repo.head_rev[:12]
             options["output_file"] = os.path.join(
-                diffdir, f"{options['graph_attr']}_{base_rev}"
+                diffdir, f"{options['graph_attr']}_{base_rev_file}"
             )
             print(f"Generating {options['graph_attr']} @ {base_rev}", file=sys.stderr)
-            generate_taskgraph(options, parameters, logdir)
+            ret |= generate_taskgraph(options, parameters, overrides, logdir)
         finally:
             repo.update(cur_rev)
 
@@ -444,9 +484,13 @@ def show_taskgraph(options):
             f"--label={options['graph_attr']}@{cur_rev}",
         ]
 
+        non_fatal_failures = []
+
         for spec in parameters:
-            base_path = os.path.join(diffdir, f"{options['graph_attr']}_{base_rev}")
-            cur_path = os.path.join(diffdir, f"{options['graph_attr']}_{cur_rev}")
+            base_path = os.path.join(
+                diffdir, f"{options['graph_attr']}_{base_rev_file}"
+            )
+            cur_path = os.path.join(diffdir, f"{options['graph_attr']}_{cur_rev_file}")
 
             params_name = None
             if len(parameters) > 1:
@@ -454,12 +498,24 @@ def show_taskgraph(options):
                 base_path += f"_{params_name}"
                 cur_path += f"_{params_name}"
 
+            # If the base or cur files are missing it means that generation
+            # failed. If one of them failed but not the other, the failure is
+            # likely due to the patch making changes to taskgraph in modules
+            # that don't get reloaded (safe to ignore). If both generations
+            # failed, there's likely a real issue.
+            base_missing = not os.path.isfile(base_path)
+            cur_missing = not os.path.isfile(cur_path)
+            if base_missing != cur_missing:  # != is equivalent to XOR for booleans
+                non_fatal_failures.append(os.path.basename(base_path))
+                continue
+
             try:
+                # If the output file(s) are missing, this command will raise
+                # CalledProcessError with a returncode > 1.
                 proc = subprocess.run(
                     diffcmd + [base_path, cur_path],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True,
+                    capture_output=True,
+                    text=True,
                     check=True,
                 )
                 diff_output = proc.stdout
@@ -480,6 +536,16 @@ def show_taskgraph(options):
                 params_spec=spec if len(parameters) > 1 else None,
             )
 
+        if non_fatal_failures:
+            failstr = "\n  ".join(sorted(non_fatal_failures))
+            print(
+                "WARNING: Diff skipped for the following generation{s} "
+                "due to failures:\n  {failstr}".format(
+                    s="s" if len(non_fatal_failures) > 1 else "", failstr=failstr
+                ),
+                file=sys.stderr,
+            )
+
         if options["format"] != "json":
             print(
                 "If you were expecting differences in task bodies "
@@ -489,6 +555,8 @@ def show_taskgraph(options):
 
     if len(parameters) > 1:
         print(f"See '{logdir}' for logs", file=sys.stderr)
+
+    return ret
 
 
 @command("build-image", help="Build a Docker image")
@@ -505,6 +573,7 @@ def show_taskgraph(options):
 def build_image(args):
     from taskgraph.docker import build_context, build_image
 
+    validate_docker()
     if args["context_only"] is None:
         build_image(args["image_name"], args["tag"], os.environ)
     else:
@@ -541,6 +610,7 @@ def load_image(args):
     if not args.get("image_name") and not args.get("task_id"):
         print("Specify either IMAGE-NAME or TASK-ID")
         sys.exit(1)
+    validate_docker()
     try:
         if args["task_id"]:
             ok = load_image_by_task_id(args["task_id"], args.get("tag"))
@@ -550,6 +620,13 @@ def load_image(args):
             sys.exit(1)
     except Exception:
         traceback.print_exc()
+        sys.exit(1)
+
+
+def validate_docker():
+    p = subprocess.run(["docker", "ps"], capture_output=True)
+    if p.returncode != 0:
+        print("Error connecting to Docker:", p.stderr)
         sys.exit(1)
 
 
@@ -620,6 +697,9 @@ def image_digest(args):
     "--tasks-for", required=True, help="the tasks_for value used to generate this task"
 )
 @argument("--try-task-config-file", help="path to try task configuration file")
+@argument(
+    "--verbose", "-v", action="store_true", help="include debug-level logging output"
+)
 def decision(options):
     from taskgraph.decision import taskgraph_decision
 
@@ -630,7 +710,7 @@ def decision(options):
 @argument(
     "--root",
     "-r",
-    default="taskcluster/ci",
+    default="taskcluster",
     help="root of the taskgraph definition relative to topsrcdir",
 )
 def action_callback(options):
@@ -666,7 +746,7 @@ def action_callback(options):
 @argument(
     "--root",
     "-r",
-    default="taskcluster/ci",
+    default="taskcluster",
     help="root of the taskgraph definition relative to topsrcdir",
 )
 @argument(
@@ -728,6 +808,98 @@ def test_action_callback(options):
         sys.exit(1)
 
 
+@command(
+    "init", description="Initialize a new Taskgraph setup in a new or existing project."
+)
+@argument(
+    "-f",
+    "--force",
+    action="store_true",
+    default=False,
+    help="Bypass safety checks.",
+)
+@argument(
+    "--prompt",
+    dest="no_input",
+    action="store_false",
+    default=True,
+    help="Prompt for input rather than using default values (advanced).",
+)
+@argument(
+    "--template",
+    default="gh:taskcluster/taskgraph",
+    help=argparse.SUPPRESS,  # used for testing
+)
+def init_taskgraph(options):
+    from cookiecutter.main import cookiecutter
+
+    import taskgraph
+    from taskgraph.util.vcs import get_repository
+
+    repo = get_repository(os.getcwd())
+    root = Path(repo.path)
+
+    # Clean up existing installations if necessary.
+    tc_yml = root.joinpath(".taskcluster.yml")
+    if tc_yml.is_file():
+        if not options["force"]:
+            proceed = input(
+                "A Taskcluster setup already exists in this repository, "
+                "would you like to overwrite it? [y/N]: "
+            ).lower()
+            while proceed not in ("y", "yes", "n", "no"):
+                proceed = input(f"Invalid option '{proceed}'! Try again: ")
+
+            if proceed[0] == "n":
+                sys.exit(1)
+
+        tc_yml.unlink()
+        tg_dir = root.joinpath("taskcluster")
+        if tg_dir.is_dir():
+            shutil.rmtree(tg_dir)
+
+    # Populate some defaults from the current repository.
+    context = {"project_name": root.name}
+
+    try:
+        repo_url = repo.get_url(remote=repo.remote_name)
+    except RuntimeError:
+        repo_url = ""
+
+    if repo.tool == "git" and "github.com" in repo_url:
+        context["repo_host"] = "github"
+    elif repo.tool == "hg" and "hg.mozilla.org" in repo_url:
+        context["repo_host"] = "hgmo"
+    else:
+        print(
+            dedent(
+                """\
+            Repository not supported!
+
+            Taskgraph only supports repositories hosted on Github or hg.mozilla.org.
+            Ensure you have a remote that points to one of these locations.
+            """
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
+    context["repo_name"] = urlparse(repo_url).path.rsplit("/", 1)[-1]
+    if context["repo_name"].endswith(".git"):
+        context["repo_name"] = context["repo_name"][: -len(".git")]
+
+    # Generate the project.
+    cookiecutter(
+        options["template"],
+        checkout=taskgraph.__version__,
+        directory="template",
+        extra_context=context,
+        no_input=options["no_input"],
+        output_dir=root.parent,
+        overwrite_if_exists=True,
+    )
+
+
 def create_parser():
     parser = argparse.ArgumentParser(description="Interact with taskgraph")
     subparsers = parser.add_subparsers()
@@ -748,9 +920,14 @@ def setup_logging():
 def main(args=sys.argv[1:]):
     setup_logging()
     parser = create_parser()
+
+    if not args:
+        parser.print_help()
+        sys.exit(1)
+
     args = parser.parse_args(args)
     try:
-        args.command(vars(args))
+        return args.command(vars(args))
     except Exception:
         traceback.print_exc()
         sys.exit(1)

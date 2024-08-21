@@ -11,6 +11,7 @@
 #define MODULES_RTP_RTCP_SOURCE_RTP_PACKET_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -127,7 +128,7 @@ class RtpPacket {
   bool IsRegistered() const;
 
   template <typename Extension, typename FirstValue, typename... Values>
-  bool GetExtension(FirstValue, Values...) const;
+  bool GetExtension(FirstValue&&, Values&&...) const;
 
   template <typename Extension>
   absl::optional<typename Extension::value_type> GetExtension() const;
@@ -153,8 +154,11 @@ class RtpPacket {
   // Returns view of the raw extension or empty view on failure.
   rtc::ArrayView<const uint8_t> FindExtension(ExtensionType type) const;
 
-  // Reserve size_bytes for payload. Returns nullptr on failure.
+  // Returns pointer to the payload of size at least `size_bytes`.
+  // Keeps original payload, if any. If `size_bytes` is larger than current
+  // `payload_size()`, remaining bytes are uninitialized.
   uint8_t* SetPayloadSize(size_t size_bytes);
+
   // Same as SetPayloadSize but doesn't guarantee to keep current payload.
   uint8_t* AllocatePayload(size_t size_bytes);
 
@@ -228,11 +232,12 @@ bool RtpPacket::IsRegistered() const {
 }
 
 template <typename Extension, typename FirstValue, typename... Values>
-bool RtpPacket::GetExtension(FirstValue first, Values... values) const {
+bool RtpPacket::GetExtension(FirstValue&& first, Values&&... values) const {
   auto raw = FindExtension(Extension::kId);
   if (raw.empty())
     return false;
-  return Extension::Parse(raw, first, values...);
+  return Extension::Parse(raw, std::forward<FirstValue>(first),
+                          std::forward<Values>(values)...);
 }
 
 template <typename Extension>

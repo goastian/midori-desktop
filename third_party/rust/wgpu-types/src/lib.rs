@@ -10,7 +10,9 @@
 #![warn(missing_docs, unsafe_op_in_unsafe_fn)]
 
 #[cfg(any(feature = "serde", test))]
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+#[cfg(any(feature = "serde", test))]
+use serde::Serialize;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::{num::NonZeroU32, ops::Range};
@@ -26,7 +28,7 @@ pub mod math;
 // behavior to this macro (unspecified bit do not produce an error).
 macro_rules! impl_bitflags {
     ($name:ident) => {
-        #[cfg(feature = "trace")]
+        #[cfg(feature = "serde")]
         impl serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where
@@ -36,7 +38,7 @@ macro_rules! impl_bitflags {
             }
         }
 
-        #[cfg(feature = "replay")]
+        #[cfg(feature = "serde")]
         impl<'de> serde::Deserialize<'de> for $name {
             fn deserialize<D>(deserializer: D) -> Result<$name, D::Error>
             where
@@ -92,23 +94,40 @@ pub const QUERY_SIZE: u32 = 8;
 /// Backends supported by wgpu.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Backend {
     /// Dummy backend, used for testing.
     Empty = 0,
-    /// Vulkan API
+    /// Vulkan API (Windows, Linux, Android, MacOS via `vulkan-portability`/MoltenVK)
     Vulkan = 1,
     /// Metal API (Apple platforms)
     Metal = 2,
     /// Direct3D-12 (Windows)
     Dx12 = 3,
-    /// Direct3D-11 (Windows)
-    Dx11 = 4,
-    /// OpenGL ES-3 (Linux, Android)
-    Gl = 5,
+    /// OpenGL 3.3+ (Windows), OpenGL ES 3.0+ (Linux, Android, MacOS via Angle), and WebGL2
+    Gl = 4,
     /// WebGPU in the browser
-    BrowserWebGpu = 6,
+    BrowserWebGpu = 5,
+}
+
+impl Backend {
+    /// Returns the string name of the backend.
+    pub const fn to_str(self) -> &'static str {
+        match self {
+            Backend::Empty => "empty",
+            Backend::Vulkan => "vulkan",
+            Backend::Metal => "metal",
+            Backend::Dx12 => "dx12",
+            Backend::Gl => "gl",
+            Backend::BrowserWebGpu => "webgpu",
+        }
+    }
+}
+
+impl std::fmt::Display for Backend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
 }
 
 /// Power Preference when choosing a physical adapter.
@@ -116,16 +135,17 @@ pub enum Backend {
 /// Corresponds to [WebGPU `GPUPowerPreference`](
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpupowerpreference).
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum PowerPreference {
-    /// Adapter that uses the least possible power. This is often an integrated GPU.
     #[default]
-    LowPower = 0,
+    /// Power usage is not considered when choosing an adapter.
+    None = 0,
+    /// Adapter that uses the least possible power. This is often an integrated GPU.
+    LowPower = 1,
     /// Adapter that has the highest performance. This is often a discrete GPU.
-    HighPerformance = 1,
+    HighPerformance = 2,
 }
 
 bitflags::bitflags! {
@@ -140,15 +160,21 @@ bitflags::bitflags! {
         const GL = 1 << Backend::Gl as u32;
         /// Supported on macOS/iOS
         const METAL = 1 << Backend::Metal as u32;
-        /// Supported on Windows 10
+        /// Supported on Windows 10 and later
         const DX12 = 1 << Backend::Dx12 as u32;
-        /// Supported on Windows 7+
-        const DX11 = 1 << Backend::Dx11 as u32;
-        /// Supported when targeting the web through webassembly
+        /// Supported when targeting the web through webassembly with the `webgpu` feature enabled.
+        ///
+        /// The WebGPU backend is special in several ways:
+        /// It is not not implemented by `wgpu_core` and instead by the higher level `wgpu` crate.
+        /// Whether WebGPU is targeted is decided upon the creation of the `wgpu::Instance`,
+        /// *not* upon adapter creation. See `wgpu::Instance::new`.
         const BROWSER_WEBGPU = 1 << Backend::BrowserWebGpu as u32;
         /// All the apis that wgpu offers first tier of support for.
         ///
-        /// Vulkan + Metal + DX12 + Browser WebGPU
+        /// * [`Backends::VULKAN`]
+        /// * [`Backends::METAL`]
+        /// * [`Backends::DX12`]
+        /// * [`Backends::BROWSER_WEBGPU`]
         const PRIMARY = Self::VULKAN.bits()
             | Self::METAL.bits()
             | Self::DX12.bits()
@@ -156,8 +182,14 @@ bitflags::bitflags! {
         /// All the apis that wgpu offers second tier of support for. These may
         /// be unsupported/still experimental.
         ///
-        /// OpenGL + DX11
-        const SECONDARY = Self::GL.bits() | Self::DX11.bits();
+        /// * [`Backends::GL`]
+        const SECONDARY = Self::GL.bits();
+    }
+}
+
+impl Default for Backends {
+    fn default() -> Self {
+        Self::all()
     }
 }
 
@@ -175,8 +207,7 @@ impl From<Backend> for Backends {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions).
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RequestAdapterOptions<S> {
     /// Power preference for the adapter.
     pub power_preference: PowerPreference,
@@ -236,76 +267,6 @@ bitflags::bitflags! {
         ///
         /// This is a web and native feature.
         const DEPTH_CLIP_CONTROL = 1 << 0;
-        /// Enables use of Timestamp Queries. These queries tell the current gpu timestamp when
-        /// all work before the query is finished. Call [`CommandEncoder::write_timestamp`],
-        /// [`RenderPassEncoder::write_timestamp`], or [`ComputePassEncoder::write_timestamp`] to
-        /// write out a timestamp.
-        ///
-        /// They must be resolved using [`CommandEncoder::resolve_query_sets`] into a buffer,
-        /// then the result must be multiplied by the timestamp period [`Queue::get_timestamp_period`]
-        /// to get the timestamp in nanoseconds. Multiple timestamps can then be diffed to get the
-        /// time for operations between them to finish.
-        ///
-        /// Supported Platforms:
-        /// - Vulkan
-        /// - DX12
-        ///
-        /// This is currently unimplemented on Metal.
-        ///
-        /// This is a web and native feature.
-        const TIMESTAMP_QUERY = 1 << 1;
-        /// Allows non-zero value for the "first instance" in indirect draw calls.
-        ///
-        /// Supported Platforms:
-        /// - Vulkan (mostly)
-        /// - DX12
-        /// - Metal
-        ///
-        /// This is a web and native feature.
-        const INDIRECT_FIRST_INSTANCE = 1 << 2;
-
-        // 3..8 available
-
-        // Shader:
-
-        /// Allows shaders to acquire the FP16 ability
-        ///
-        /// Note: this is not supported in `naga` yet，only through `spirv-passthrough` right now.
-        ///
-        /// Supported Platforms:
-        /// - Vulkan
-        /// - Metal
-        ///
-        /// This is a web and native feature.
-        const SHADER_F16 = 1 << 8;
-
-        // 9..14 available
-
-        // Texture Formats:
-
-        // The features starting with a ? are features that might become part of the spec or
-        // at the very least we can implement as native features; since they should cover all
-        // possible formats and capabilities across backends.
-        //
-        // ? const FORMATS_TIER_1 = 1 << 14; (https://github.com/gpuweb/gpuweb/issues/3837)
-        // ? const RW_STORAGE_TEXTURE_TIER_1 = 1 << 15; (https://github.com/gpuweb/gpuweb/issues/3838)
-        // TODO const BGRA8UNORM_STORAGE = 1 << 16;
-        // ? const NORM16_FILTERABLE = 1 << 17; (https://github.com/gpuweb/gpuweb/issues/3839)
-        // ? const NORM16_RESOLVE = 1 << 18; (https://github.com/gpuweb/gpuweb/issues/3839)
-        // TODO const FLOAT32_FILTERABLE = 1 << 19;
-        // ? const FLOAT32_BLENDABLE = 1 << 20; (https://github.com/gpuweb/gpuweb/issues/3556)
-        // ? const 32BIT_FORMAT_MULTISAMPLE = 1 << 21; (https://github.com/gpuweb/gpuweb/issues/3844)
-        // ? const 32BIT_FORMAT_RESOLVE = 1 << 22; (https://github.com/gpuweb/gpuweb/issues/3844)
-
-        /// Allows for usage of textures of format [`TextureFormat::Rg11b10Float`] as a render target
-        ///
-        /// Supported platforms:
-        /// - Vulkan
-        /// - DX12
-        /// - Metal
-        ///
-        /// This is a web and native feature.
-        const RG11B10UFLOAT_RENDERABLE = 1 << 23;
 
         /// Allows for explicit creation of textures of format [`TextureFormat::Depth32FloatStencil8`]
         ///
@@ -313,9 +274,11 @@ bitflags::bitflags! {
         /// - Vulkan (mostly)
         /// - DX12
         /// - Metal
+        /// - OpenGL
         ///
         /// This is a web and native feature.
-        const DEPTH32FLOAT_STENCIL8 = 1 << 24;
+        const DEPTH32FLOAT_STENCIL8 = 1 << 1;
+
         /// Enables BCn family of compressed textures. All BCn textures use 4x4 pixel blocks
         /// with 8 or 16 bytes per block.
         ///
@@ -329,7 +292,8 @@ bitflags::bitflags! {
         /// - desktops
         ///
         /// This is a web and native feature.
-        const TEXTURE_COMPRESSION_BC = 1 << 25;
+        const TEXTURE_COMPRESSION_BC = 1 << 2;
+
         /// Enables ETC family of compressed textures. All ETC textures use 4x4 pixel blocks.
         /// ETC2 RGB and RGBA1 are 8 bytes per block. RTC2 RGBA8 and EAC are 16 bytes per block.
         ///
@@ -344,14 +308,15 @@ bitflags::bitflags! {
         /// - Mobile (some)
         ///
         /// This is a web and native feature.
-        const TEXTURE_COMPRESSION_ETC2 = 1 << 26;
+        const TEXTURE_COMPRESSION_ETC2 = 1 << 3;
+
         /// Enables ASTC family of compressed textures. ASTC textures use pixel blocks varying from 4x4 to 12x12.
         /// Blocks are always 16 bytes.
         ///
         /// Compressed textures sacrifice some quality in exchange for significantly reduced
         /// bandwidth usage.
         ///
-        /// Support for this feature guarantees availability of [`TextureUsages::COPY_SRC | TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING`] for ASTC formats.
+        /// Support for this feature guarantees availability of [`TextureUsages::COPY_SRC | TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING`] for ASTC formats with Unorm/UnormSrgb channel type.
         /// [`Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES`] may enable additional usages.
         ///
         /// Supported Platforms:
@@ -359,19 +324,119 @@ bitflags::bitflags! {
         /// - Mobile (some)
         ///
         /// This is a web and native feature.
-        const TEXTURE_COMPRESSION_ASTC = 1 << 27;
+        const TEXTURE_COMPRESSION_ASTC = 1 << 4;
 
-        // ? const TEXTURE_COMPRESSION_ASTC_HDR = 1 << 28; (https://github.com/gpuweb/gpuweb/issues/3856)
+        /// Enables use of Timestamp Queries. These queries tell the current gpu timestamp when
+        /// all work before the query is finished.
+        ///
+        /// This feature allows the use of
+        /// - [`RenderPassDescriptor::timestamp_writes`]
+        /// - [`ComputePassDescriptor::timestamp_writes`]
+        /// to write out timestamps.
+        ///
+        /// For arbitrary timestamp write commands on encoders refer to [`Features::TIMESTAMP_QUERY_INSIDE_ENCODERS`].
+        /// For arbitrary timestamp write commands on passes refer to [`Features::TIMESTAMP_QUERY_INSIDE_PASSES`].
+        ///
+        /// They must be resolved using [`CommandEncoder::resolve_query_set`] into a buffer,
+        /// then the result must be multiplied by the timestamp period [`Queue::get_timestamp_period`]
+        /// to get the timestamp in nanoseconds. Multiple timestamps can then be diffed to get the
+        /// time for operations between them to finish.
+        ///
+        /// Supported Platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal
+        ///
+        /// This is a web and native feature.
+        const TIMESTAMP_QUERY = 1 << 5;
 
-        // 29..32 should be available but are for now occupied by native only texture related features
-        // TEXTURE_FORMAT_16BIT_NORM & TEXTURE_COMPRESSION_ASTC_HDR will most likely become web features as well
-        // TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES might not be necessary if we have all the texture features implemented
+        /// Allows non-zero value for the `first_instance` member in indirect draw calls.
+        ///
+        /// If this feature is not enabled, and the `first_instance` member is non-zero, the behavior may be:
+        /// - The draw call is ignored.
+        /// - The draw call is executed as if the `first_instance` is zero.
+        /// - The draw call is executed with the correct `first_instance` value.
+        ///
+        /// Supported Platforms:
+        /// - Vulkan (mostly)
+        /// - DX12
+        /// - Metal on Apple3+ or Mac1+
+        /// - OpenGL (Desktop 4.2+ with ARB_shader_draw_parameters only)
+        ///
+        /// Not Supported:
+        /// - OpenGL ES / WebGL
+        ///
+        /// This is a web and native feature.
+        const INDIRECT_FIRST_INSTANCE = 1 << 6;
+
+        /// Allows shaders to acquire the FP16 ability
+        ///
+        /// Note: this is not supported in `naga` yet, only through `spirv-passthrough` right now.
+        ///
+        /// Supported Platforms:
+        /// - Vulkan
+        /// - Metal
+        ///
+        /// This is a web and native feature.
+        const SHADER_F16 = 1 << 7;
+
+
+        /// Allows for usage of textures of format [`TextureFormat::Rg11b10Float`] as a render target
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal
+        ///
+        /// This is a web and native feature.
+        const RG11B10UFLOAT_RENDERABLE = 1 << 8;
+
+        /// Allows the [`wgpu::TextureUsages::STORAGE_BINDING`] usage on textures with format [`TextureFormat::Bgra8unorm`]
+        ///
+        /// Supported Platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal
+        ///
+        /// This is a web and native feature.
+        const BGRA8UNORM_STORAGE = 1 << 9;
+
+
+        /// Allows textures with formats "r32float", "rg32float", and "rgba32float" to be filterable.
+        ///
+        /// Supported Platforms:
+        /// - Vulkan (mainly on Desktop GPUs)
+        /// - DX12
+        /// - Metal on macOS or Apple9+ GPUs, optional on iOS/iPadOS with Apple7/8 GPUs
+        /// - GL with one of `GL_ARB_color_buffer_float`/`GL_EXT_color_buffer_float`/`OES_texture_float_linear`
+        ///
+        /// This is a web and native feature.
+        const FLOAT32_FILTERABLE = 1 << 10;
+
+        // Bits 11-19 available for webgpu features. Should you chose to use some of them for
+        // for native features, don't forget to update `all_webgpu_mask` and `all_native_mask`
+        // accordingly.
 
         //
         // ---- Restart Numbering for Native Features ---
         //
         // Native Features:
         //
+
+        // The features starting with a ? are features that might become part of the spec or
+        // at the very least we can implement as native features; since they should cover all
+        // possible formats and capabilities across backends.
+        //
+        // ? const FORMATS_TIER_1 = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3837)
+        // ? const RW_STORAGE_TEXTURE_TIER_1 = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3838)
+        // ? const NORM16_FILTERABLE = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3839)
+        // ? const NORM16_RESOLVE = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3839)
+        // ? const FLOAT32_BLENDABLE = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3556)
+        // ? const 32BIT_FORMAT_MULTISAMPLE = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3844)
+        // ? const 32BIT_FORMAT_RESOLVE = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3844)
+        // ? const TEXTURE_COMPRESSION_ASTC_HDR = 1 << ??; (https://github.com/gpuweb/gpuweb/issues/3856)
+        // TEXTURE_FORMAT_16BIT_NORM & TEXTURE_COMPRESSION_ASTC_HDR will most likely become web features as well
+        // TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES might not be necessary if we have all the texture features implemented
 
         // Texture Formats:
 
@@ -383,13 +448,13 @@ bitflags::bitflags! {
         /// - Metal
         ///
         /// This is a native only feature.
-        const TEXTURE_FORMAT_16BIT_NORM = 1 << 29;
+        const TEXTURE_FORMAT_16BIT_NORM = 1 << 20;
         /// Enables ASTC HDR family of compressed textures.
         ///
         /// Compressed textures sacrifice some quality in exchange for significantly reduced
         /// bandwidth usage.
         ///
-        /// Support for this feature guarantees availability of [`TextureUsages::COPY_SRC | TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING`] for BCn formats.
+        /// Support for this feature guarantees availability of [`TextureUsages::COPY_SRC | TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING`] for ASTC formats with the HDR channel type.
         /// [`Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES`] may enable additional usages.
         ///
         /// Supported Platforms:
@@ -398,7 +463,7 @@ bitflags::bitflags! {
         /// - OpenGL
         ///
         /// This is a native only feature.
-        const TEXTURE_COMPRESSION_ASTC_HDR = 1 << 30;
+        const TEXTURE_COMPRESSION_ASTC_HDR = 1 << 21;
         /// Enables device specific texture format features.
         ///
         /// See `TextureFormatFeatures` for a listing of the features in question.
@@ -410,15 +475,15 @@ bitflags::bitflags! {
         /// This extension does not enable additional formats.
         ///
         /// This is a native only feature.
-        const TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES = 1 << 31;
+        const TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES = 1 << 22;
 
         // API:
 
         /// Enables use of Pipeline Statistics Queries. These queries tell the count of various operations
-        /// performed between the start and stop call. Call [`RenderPassEncoder::begin_pipeline_statistics_query`] to start
-        /// a query, then call [`RenderPassEncoder::end_pipeline_statistics_query`] to stop one.
+        /// performed between the start and stop call. Call [`RenderPass::begin_pipeline_statistics_query`] to start
+        /// a query, then call [`RenderPass::end_pipeline_statistics_query`] to stop one.
         ///
-        /// They must be resolved using [`CommandEncoder::resolve_query_sets`] into a buffer.
+        /// They must be resolved using [`CommandEncoder::resolve_query_set`] into a buffer.
         /// The rules on how these resolve into buffers are detailed in the documentation for [`PipelineStatisticsTypes`].
         ///
         /// Supported Platforms:
@@ -426,20 +491,38 @@ bitflags::bitflags! {
         /// - DX12
         ///
         /// This is a native only feature with a [proposal](https://github.com/gpuweb/gpuweb/blob/0008bd30da2366af88180b511a5d0d0c1dffbc36/proposals/pipeline-statistics-query.md) for the web.
-        const PIPELINE_STATISTICS_QUERY = 1 << 32;
-        /// Allows for timestamp queries inside render passes.
+        const PIPELINE_STATISTICS_QUERY = 1 << 23;
+        /// Allows for timestamp queries directly on command encoders.
         ///
         /// Implies [`Features::TIMESTAMP_QUERY`] is supported.
+        ///
+        /// Additionally allows for timestamp writes on command encoders
+        /// using  [`CommandEncoder::write_timestamp`].
         ///
         /// Supported platforms:
         /// - Vulkan
         /// - DX12
+        /// - Metal
         ///
-        /// This is currently unimplemented on Metal.
-        /// When implemented, it will be supported on Metal on AMD and Intel GPUs, but not Apple GPUs.
+        /// This is a native only feature.
+        const TIMESTAMP_QUERY_INSIDE_ENCODERS = 1 << 24;
+        /// Allows for timestamp queries directly on command encoders.
+        ///
+        /// Implies [`Features::TIMESTAMP_QUERY`] & [`Features::TIMESTAMP_QUERY_INSIDE_ENCODERS`] is supported.
+        ///
+        /// Additionally allows for timestamp queries to be used inside render & compute passes using:
+        /// - [`RenderPass::write_timestamp`]
+        /// - [`ComputePass::write_timestamp`]
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal (AMD & Intel, not Apple GPUs)
+        ///
+        /// This is generally not available on tile-based rasterization GPUs.
         ///
         /// This is a native only feature with a [proposal](https://github.com/gpuweb/gpuweb/blob/0008bd30da2366af88180b511a5d0d0c1dffbc36/proposals/timestamp-query-inside-passes.md) for the web.
-        const TIMESTAMP_QUERY_INSIDE_PASSES = 1 << 33;
+        const TIMESTAMP_QUERY_INSIDE_PASSES = 1 << 25;
         /// Webgpu only allows the MAP_READ and MAP_WRITE buffer usage to be matched with
         /// COPY_DST and COPY_SRC respectively. This removes this requirement.
         ///
@@ -453,7 +536,7 @@ bitflags::bitflags! {
         /// - Metal
         ///
         /// This is a native only feature.
-        const MAPPABLE_PRIMARY_BUFFERS = 1 << 34;
+        const MAPPABLE_PRIMARY_BUFFERS = 1 << 26;
         /// Allows the user to create uniform arrays of textures in shaders:
         ///
         /// ex.
@@ -476,7 +559,7 @@ bitflags::bitflags! {
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const TEXTURE_BINDING_ARRAY = 1 << 35;
+        const TEXTURE_BINDING_ARRAY = 1 << 27;
         /// Allows the user to create arrays of buffers in shaders:
         ///
         /// ex.
@@ -498,7 +581,7 @@ bitflags::bitflags! {
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const BUFFER_BINDING_ARRAY = 1 << 36;
+        const BUFFER_BINDING_ARRAY = 1 << 28;
         /// Allows the user to create uniform arrays of storage buffers or textures in shaders,
         /// if resp. [`Features::BUFFER_BINDING_ARRAY`] or [`Features::TEXTURE_BINDING_ARRAY`]
         /// is supported.
@@ -511,7 +594,7 @@ bitflags::bitflags! {
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const STORAGE_RESOURCE_BINDING_ARRAY = 1 << 37;
+        const STORAGE_RESOURCE_BINDING_ARRAY = 1 << 29;
         /// Allows shaders to index sampled texture and storage buffer resource arrays with dynamically non-uniform values:
         ///
         /// ex. `texture_array[vertex_data]`
@@ -536,7 +619,7 @@ bitflags::bitflags! {
         /// - Vulkan 1.2+ (or VK_EXT_descriptor_indexing)'s shaderSampledImageArrayNonUniformIndexing & shaderStorageBufferArrayNonUniformIndexing feature)
         ///
         /// This is a native only feature.
-        const SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING = 1 << 38;
+        const SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING = 1 << 30;
         /// Allows shaders to index uniform buffer and storage texture resource arrays with dynamically non-uniform values:
         ///
         /// ex. `texture_array[vertex_data]`
@@ -561,11 +644,11 @@ bitflags::bitflags! {
         /// - Vulkan 1.2+ (or VK_EXT_descriptor_indexing)'s shaderUniformBufferArrayNonUniformIndexing & shaderStorageTextureArrayNonUniformIndexing feature)
         ///
         /// This is a native only feature.
-        const UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING = 1 << 39;
-        /// Allows the user to create bind groups continaing arrays with less bindings than the BindGroupLayout.
+        const UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING = 1 << 31;
+        /// Allows the user to create bind groups containing arrays with less bindings than the BindGroupLayout.
         ///
         /// This is a native only feature.
-        const PARTIALLY_BOUND_BINDING_ARRAY = 1 << 40;
+        const PARTIALLY_BOUND_BINDING_ARRAY = 1 << 32;
         /// Allows the user to call [`RenderPass::multi_draw_indirect`] and [`RenderPass::multi_draw_indexed_indirect`].
         ///
         /// Allows multiple indirect calls to be dispatched from a single buffer.
@@ -573,13 +656,13 @@ bitflags::bitflags! {
         /// Supported platforms:
         /// - DX12
         /// - Vulkan
-        /// - Metal (Emulated on top of `draw_indirect` and `draw_indexed_indirect`)
+        /// - Metal on Apple3+ or Mac1+ (Emulated on top of `draw_indirect` and `draw_indexed_indirect`)
         ///
         /// This is a native only feature.
         ///
         /// [`RenderPass::multi_draw_indirect`]: ../wgpu/struct.RenderPass.html#method.multi_draw_indirect
         /// [`RenderPass::multi_draw_indexed_indirect`]: ../wgpu/struct.RenderPass.html#method.multi_draw_indexed_indirect
-        const MULTI_DRAW_INDIRECT = 1 << 41;
+        const MULTI_DRAW_INDIRECT = 1 << 33;
         /// Allows the user to call [`RenderPass::multi_draw_indirect_count`] and [`RenderPass::multi_draw_indexed_indirect_count`].
         ///
         /// This allows the use of a buffer containing the actual number of draw calls.
@@ -592,20 +675,26 @@ bitflags::bitflags! {
         ///
         /// [`RenderPass::multi_draw_indirect_count`]: ../wgpu/struct.RenderPass.html#method.multi_draw_indirect_count
         /// [`RenderPass::multi_draw_indexed_indirect_count`]: ../wgpu/struct.RenderPass.html#method.multi_draw_indexed_indirect_count
-        const MULTI_DRAW_INDIRECT_COUNT = 1 << 42;
+        const MULTI_DRAW_INDIRECT_COUNT = 1 << 34;
         /// Allows the use of push constants: small, fast bits of memory that can be updated
         /// inside a [`RenderPass`].
         ///
         /// Allows the user to call [`RenderPass::set_push_constants`], provide a non-empty array
         /// to [`PipelineLayoutDescriptor`], and provide a non-zero limit to [`Limits::max_push_constant_size`].
         ///
-        /// A block of push constants can be declared with `layout(push_constant) uniform Name {..}` in shaders.
+        /// A block of push constants can be declared in WGSL with `var<push_constant>`:
+        ///
+        /// ```rust,ignore
+        /// struct PushConstants { example: f32, }
+        /// var<push_constant> c: PushConstants;
+        /// ```
+        ///
+        /// In GLSL, this corresponds to `layout(push_constant) uniform Name {..}`.
         ///
         /// Supported platforms:
         /// - DX12
         /// - Vulkan
         /// - Metal
-        /// - DX11 (emulated with uniforms)
         /// - OpenGL (emulated with uniforms)
         ///
         /// This is a native only feature.
@@ -613,7 +702,7 @@ bitflags::bitflags! {
         /// [`RenderPass`]: ../wgpu/struct.RenderPass.html
         /// [`PipelineLayoutDescriptor`]: ../wgpu/struct.PipelineLayoutDescriptor.html
         /// [`RenderPass::set_push_constants`]: ../wgpu/struct.RenderPass.html#method.set_push_constants
-        const PUSH_CONSTANTS = 1 << 43;
+        const PUSH_CONSTANTS = 1 << 35;
         /// Allows the use of [`AddressMode::ClampToBorder`] with a border color
         /// of [`SamplerBorderColor::Zero`].
         ///
@@ -621,11 +710,10 @@ bitflags::bitflags! {
         /// - DX12
         /// - Vulkan
         /// - Metal
-        /// - DX11
         /// - OpenGL
         ///
         /// This is a native only feature.
-        const ADDRESS_MODE_CLAMP_TO_ZERO = 1 << 44;
+        const ADDRESS_MODE_CLAMP_TO_ZERO = 1 << 36;
         /// Allows the use of [`AddressMode::ClampToBorder`] with a border color
         /// other than [`SamplerBorderColor::Zero`].
         ///
@@ -633,11 +721,10 @@ bitflags::bitflags! {
         /// - DX12
         /// - Vulkan
         /// - Metal (macOS 10.12+ only)
-        /// - DX11
         /// - OpenGL
         ///
         /// This is a native only feature.
-        const ADDRESS_MODE_CLAMP_TO_BORDER = 1 << 45;
+        const ADDRESS_MODE_CLAMP_TO_BORDER = 1 << 37;
         /// Allows the user to set [`PolygonMode::Line`] in [`PrimitiveState::polygon_mode`]
         ///
         /// This allows drawing polygons/triangles as lines (wireframe) instead of filled
@@ -648,17 +735,16 @@ bitflags::bitflags! {
         /// - Metal
         ///
         /// This is a native only feature.
-        const POLYGON_MODE_LINE = 1 << 46;
+        const POLYGON_MODE_LINE = 1 << 38;
         /// Allows the user to set [`PolygonMode::Point`] in [`PrimitiveState::polygon_mode`]
         ///
         /// This allows only drawing the vertices of polygons/triangles instead of filled
         ///
         /// Supported platforms:
-        /// - DX12
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const POLYGON_MODE_POINT = 1 << 47;
+        const POLYGON_MODE_POINT = 1 << 39;
         /// Allows the user to set a overestimation-conservative-rasterization in [`PrimitiveState::conservative`]
         ///
         /// Processing of degenerate triangles/lines is hardware specific.
@@ -668,7 +754,7 @@ bitflags::bitflags! {
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const CONSERVATIVE_RASTERIZATION = 1 << 48;
+        const CONSERVATIVE_RASTERIZATION = 1 << 40;
         /// Enables bindings of writable storage buffers and textures visible to vertex shaders.
         ///
         /// Note: some (tiled-based) platforms do not support vertex shaders with any side-effects.
@@ -677,14 +763,14 @@ bitflags::bitflags! {
         /// - All
         ///
         /// This is a native only feature.
-        const VERTEX_WRITABLE_STORAGE = 1 << 49;
+        const VERTEX_WRITABLE_STORAGE = 1 << 41;
         /// Enables clear to zero for textures.
         ///
         /// Supported platforms:
         /// - All
         ///
         /// This is a native only feature.
-        const CLEAR_TEXTURE = 1 << 50;
+        const CLEAR_TEXTURE = 1 << 42;
         /// Enables creating shader modules from SPIR-V binary data (unsafe).
         ///
         /// SPIR-V data is not parsed or interpreted in any way; you can use
@@ -696,7 +782,7 @@ bitflags::bitflags! {
         /// Vulkan implementation.
         ///
         /// This is a native only feature.
-        const SPIRV_SHADER_PASSTHROUGH = 1 << 51;
+        const SPIRV_SHADER_PASSTHROUGH = 1 << 43;
         /// Enables multiview render passes and `builtin(view_index)` in vertex shaders.
         ///
         /// Supported platforms:
@@ -704,7 +790,7 @@ bitflags::bitflags! {
         /// - OpenGL (web only)
         ///
         /// This is a native only feature.
-        const MULTIVIEW = 1 << 52;
+        const MULTIVIEW = 1 << 44;
         /// Enables using 64-bit types for vertex attributes.
         ///
         /// Requires SHADER_FLOAT64.
@@ -712,12 +798,40 @@ bitflags::bitflags! {
         /// Supported Platforms: N/A
         ///
         /// This is a native only feature.
-        const VERTEX_ATTRIBUTE_64BIT = 1 << 53;
-
-        // 54..59 available
+        const VERTEX_ATTRIBUTE_64BIT = 1 << 45;
+        /// Allows vertex shaders to have outputs which are not consumed
+        /// by the fragment shader.
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        /// - Metal
+        /// - OpenGL
+        const SHADER_UNUSED_VERTEX_OUTPUT = 1 << 46;
+        /// Allows for creation of textures of format [`TextureFormat::NV12`]
+        ///
+        /// Supported platforms:
+        /// - DX12
+        /// - Vulkan
+        ///
+        /// This is a native only feature.
+        const TEXTURE_FORMAT_NV12 = 1 << 47;
+        /// Allows for the creation of ray-tracing acceleration structures.
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        ///
+        /// This is a native-only feature.
+        const RAY_TRACING_ACCELERATION_STRUCTURE = 1 << 48;
 
         // Shader:
 
+        /// Allows for the creation of ray-tracing queries within shaders.
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        ///
+        /// This is a native-only feature.
+        const RAY_QUERY = 1 << 49;
         /// Enables 64-bit floating point types in SPIR-V shaders.
         ///
         /// Note: even when supported by GPU hardware, 64-bit floating point operations are
@@ -727,14 +841,14 @@ bitflags::bitflags! {
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const SHADER_F64 = 1 << 59;
+        const SHADER_F64 = 1 << 50;
         /// Allows shaders to use i16. Not currently supported in `naga`, only available through `spirv-passthrough`.
         ///
         /// Supported platforms:
         /// - Vulkan
         ///
         /// This is a native only feature.
-        const SHADER_I16 = 1 << 60;
+        const SHADER_I16 = 1 << 51;
         /// Enables `builtin(primitive_index)` in fragment shaders.
         ///
         /// Note: enables geometry processing for pipelines using the builtin.
@@ -743,22 +857,72 @@ bitflags::bitflags! {
         ///
         /// Supported platforms:
         /// - Vulkan
-        /// - DX11 (feature level 10+)
         /// - DX12
         /// - Metal (some)
         /// - OpenGL (some)
         ///
         /// This is a native only feature.
-        const SHADER_PRIMITIVE_INDEX = 1 << 61;
+        const SHADER_PRIMITIVE_INDEX = 1 << 52;
         /// Allows shaders to use the `early_depth_test` attribute.
         ///
         /// Supported platforms:
         /// - GLES 3.1+
         ///
         /// This is a native only feature.
-        const SHADER_EARLY_DEPTH_TEST = 1 << 62;
-
-        // 62..64 available
+        const SHADER_EARLY_DEPTH_TEST = 1 << 53;
+        /// Allows two outputs from a shader to be used for blending.
+        /// Note that dual-source blending doesn't support multiple render targets.
+        ///
+        /// For more info see the OpenGL ES extension GL_EXT_blend_func_extended.
+        ///
+        /// Supported platforms:
+        /// - OpenGL ES (with GL_EXT_blend_func_extended)
+        /// - Metal (with MSL 1.2+)
+        /// - Vulkan (with dualSrcBlend)
+        /// - DX12
+        const DUAL_SOURCE_BLENDING = 1 << 54;
+        /// Allows shaders to use i64 and u64.
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        /// - DX12 (DXC only)
+        /// - Metal (with MSL 2.3+)
+        ///
+        /// This is a native only feature.
+        const SHADER_INT64 = 1 << 55;
+        /// Allows compute and fragment shaders to use the subgroup operation built-ins
+        ///
+        /// Supported Platforms:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal
+        ///
+        /// This is a native only feature.
+        const SUBGROUP = 1 << 56;
+        /// Allows vertex shaders to use the subgroup operation built-ins
+        ///
+        /// Supported Platforms:
+        /// - Vulkan
+        ///
+        /// This is a native only feature.
+        const SUBGROUP_VERTEX = 1 << 57;
+        /// Allows shaders to use the subgroup barrier
+        ///
+        /// Supported Platforms:
+        /// - Vulkan
+        /// - Metal
+        ///
+        /// This is a native only feature.
+        const SUBGROUP_BARRIER = 1 << 58;
+        /// Allows the use of pipeline cache objects
+        ///
+        /// Supported platforms:
+        /// - Vulkan
+        ///
+        /// Unimplemented Platforms:
+        /// - DX12
+        /// - Metal
+        const PIPELINE_CACHE = 1 << 59;
     }
 }
 
@@ -767,12 +931,115 @@ impl_bitflags!(Features);
 impl Features {
     /// Mask of all features which are part of the upstream WebGPU standard.
     pub const fn all_webgpu_mask() -> Self {
-        Self::from_bits_truncate(0x0000_0000_0000_FFFF)
+        Self::from_bits_truncate(0xFFFFF)
     }
 
     /// Mask of all features that are only available when targeting native (not web).
     pub const fn all_native_mask() -> Self {
-        Self::from_bits_truncate(0xFFFF_FFFF_FFFF_0000)
+        Self::from_bits_truncate(!Self::all_webgpu_mask().bits())
+    }
+}
+
+bitflags::bitflags! {
+    /// Instance debugging flags.
+    ///
+    /// These are not part of the webgpu standard.
+    ///
+    /// Defaults to enabling debugging-related flags if the build configuration has `debug_assertions`.
+    #[repr(transparent)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+    pub struct InstanceFlags: u32 {
+        /// Generate debug information in shaders and objects.
+        const DEBUG = 1 << 0;
+        /// Enable validation, if possible.
+        const VALIDATION = 1 << 1;
+        /// Don't pass labels to wgpu-hal.
+        const DISCARD_HAL_LABELS = 1 << 2;
+        /// Whether wgpu should expose adapters that run on top of non-compliant adapters.
+        ///
+        /// Turning this on might mean that some of the functionality provided by the wgpu
+        /// adapter/device is not working or is broken. It could be that all the functionality
+        /// wgpu currently exposes works but we can't tell for sure since we have no additional
+        /// transparency into what is working and what is not on the underlying adapter.
+        ///
+        /// This mainly applies to a Vulkan driver's compliance version. If the major compliance version
+        /// is `0`, then the driver is ignored. This flag allows that driver to be enabled for testing.
+        const ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER = 1 << 3;
+        /// Enable GPU-based validation. Implies [`Self::VALIDATION`]. Currently, this only changes
+        /// behavior on the DX12 and Vulkan backends.
+        ///
+        /// Supported platforms:
+        ///
+        /// - D3D12; called ["GPU-based validation", or
+        ///   "GBV"](https://web.archive.org/web/20230206120404/https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-d3d12-debug-layer-gpu-based-validation)
+        /// - Vulkan, via the `VK_LAYER_KHRONOS_validation` layer; called ["GPU-Assisted
+        ///   Validation"](https://github.com/KhronosGroup/Vulkan-ValidationLayers/blob/e45aeb85079e0835694cb8f03e6681fd18ae72c9/docs/gpu_validation.md#gpu-assisted-validation)
+        const GPU_BASED_VALIDATION = 1 << 4;
+    }
+}
+
+impl Default for InstanceFlags {
+    fn default() -> Self {
+        Self::from_build_config()
+    }
+}
+
+impl InstanceFlags {
+    /// Enable recommended debugging and validation flags.
+    pub fn debugging() -> Self {
+        InstanceFlags::DEBUG | InstanceFlags::VALIDATION
+    }
+
+    /// Enable advanced debugging and validation flags (potentially very slow).
+    pub fn advanced_debugging() -> Self {
+        Self::debugging() | InstanceFlags::GPU_BASED_VALIDATION
+    }
+
+    /// Infer good defaults from the build type
+    ///
+    /// Returns the default flags and add debugging flags if the build configuration has `debug_assertions`.
+    pub fn from_build_config() -> Self {
+        if cfg!(debug_assertions) {
+            return InstanceFlags::debugging();
+        }
+
+        InstanceFlags::empty()
+    }
+
+    /// Returns this set of flags, affected by environment variables.
+    ///
+    /// The presence of an environment variable implies that the corresponding flag should be set
+    /// unless the value is "0" in which case the flag is unset. If the environment variable is
+    /// not present, then the flag is unaffected.
+    ///
+    /// For example `let flags = InstanceFlags::debugging().with_env();` with `WGPU_VALIDATION=0`
+    /// does not contain `InstanceFlags::VALIDATION`.
+    ///
+    /// The environment variables are named after the flags prefixed with "WGPU_". For example:
+    /// - WGPU_DEBUG
+    /// - WGPU_VALIDATION
+    pub fn with_env(mut self) -> Self {
+        fn env(key: &str) -> Option<bool> {
+            std::env::var(key).ok().map(|s| match s.as_str() {
+                "0" => false,
+                _ => true,
+            })
+        }
+
+        if let Some(bit) = env("WGPU_VALIDATION") {
+            self.set(Self::VALIDATION, bit);
+        }
+        if let Some(bit) = env("WGPU_DEBUG") {
+            self.set(Self::DEBUG, bit);
+        }
+        if let Some(bit) = env("WGPU_ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER") {
+            self.set(Self::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER, bit);
+        }
+        if let Some(bit) = env("WGPU_GPU_BASED_VALIDATION") {
+            self.set(Self::GPU_BASED_VALIDATION, bit);
+        }
+
+        self
     }
 }
 
@@ -810,8 +1077,7 @@ impl Features {
 /// [`downlevel_defaults()`]: Limits::downlevel_defaults
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase", default))]
 pub struct Limits {
     /// Maximum allowed value for the `size.width` of a texture created with `TextureDimension::D1`.
@@ -832,7 +1098,7 @@ pub struct Limits {
     pub max_texture_array_layers: u32,
     /// Amount of bind groups that can be attached to a pipeline at the same time. Defaults to 4. Higher is "better".
     pub max_bind_groups: u32,
-    /// Maximum binding index allowed in `create_bind_group_layout`. Defaults to 640.
+    /// Maximum binding index allowed in `create_bind_group_layout`. Defaults to 1000. Higher is "better".
     pub max_bindings_per_bind_group: u32,
     /// Amount of uniform buffer bindings that can be dynamic in a single pipeline. Defaults to 8. Higher is "better".
     pub max_dynamic_uniform_buffers_per_pipeline_layout: u32,
@@ -844,18 +1110,19 @@ pub struct Limits {
     pub max_samplers_per_shader_stage: u32,
     /// Amount of storage buffers visible in a single shader stage. Defaults to 8. Higher is "better".
     pub max_storage_buffers_per_shader_stage: u32,
-    /// Amount of storage textures visible in a single shader stage. Defaults to 8. Higher is "better".
+    /// Amount of storage textures visible in a single shader stage. Defaults to 4. Higher is "better".
     pub max_storage_textures_per_shader_stage: u32,
     /// Amount of uniform buffers visible in a single shader stage. Defaults to 12. Higher is "better".
     pub max_uniform_buffers_per_shader_stage: u32,
-    /// Maximum size in bytes of a binding to a uniform buffer. Defaults to 64 KB. Higher is "better".
+    /// Maximum size in bytes of a binding to a uniform buffer. Defaults to 64 KiB. Higher is "better".
     pub max_uniform_buffer_binding_size: u32,
-    /// Maximum size in bytes of a binding to a storage buffer. Defaults to 128 MB. Higher is "better".
+    /// Maximum size in bytes of a binding to a storage buffer. Defaults to 128 MiB. Higher is "better".
     pub max_storage_buffer_binding_size: u32,
     /// Maximum length of `VertexState::buffers` when creating a `RenderPipeline`.
     /// Defaults to 8. Higher is "better".
     pub max_vertex_buffers: u32,
     /// A limit above which buffer allocations are guaranteed to fail.
+    /// Defaults to 256 MiB. Higher is "better".
     ///
     /// Buffer allocations below the maximum buffer size may not succeed depending on available memory,
     /// fragmentation and other factors.
@@ -877,25 +1144,36 @@ pub struct Limits {
     pub min_storage_buffer_offset_alignment: u32,
     /// Maximum allowed number of components (scalars) of input or output locations for
     /// inter-stage communication (vertex outputs to fragment inputs). Defaults to 60.
+    /// Higher is "better".
     pub max_inter_stage_shader_components: u32,
+    /// The maximum allowed number of color attachments.
+    pub max_color_attachments: u32,
+    /// The maximum number of bytes necessary to hold one sample (pixel or subpixel) of render
+    /// pipeline output data, across all color attachments.
+    pub max_color_attachment_bytes_per_sample: u32,
     /// Maximum number of bytes used for workgroup memory in a compute entry point. Defaults to
-    /// 16352.
+    /// 16384. Higher is "better".
     pub max_compute_workgroup_storage_size: u32,
     /// Maximum value of the product of the `workgroup_size` dimensions for a compute entry-point.
-    /// Defaults to 256.
+    /// Defaults to 256. Higher is "better".
     pub max_compute_invocations_per_workgroup: u32,
     /// The maximum value of the workgroup_size X dimension for a compute stage `ShaderModule` entry-point.
-    /// Defaults to 256.
+    /// Defaults to 256. Higher is "better".
     pub max_compute_workgroup_size_x: u32,
     /// The maximum value of the workgroup_size Y dimension for a compute stage `ShaderModule` entry-point.
-    /// Defaults to 256.
+    /// Defaults to 256. Higher is "better".
     pub max_compute_workgroup_size_y: u32,
     /// The maximum value of the workgroup_size Z dimension for a compute stage `ShaderModule` entry-point.
-    /// Defaults to 64.
+    /// Defaults to 64. Higher is "better".
     pub max_compute_workgroup_size_z: u32,
     /// The maximum value for each dimension of a `ComputePass::dispatch(x, y, z)` operation.
-    /// Defaults to 65535.
+    /// Defaults to 65535. Higher is "better".
     pub max_compute_workgroups_per_dimension: u32,
+
+    /// Minimal number of invocations in a subgroup. Higher is "better".
+    pub min_subgroup_size: u32,
+    /// Maximal number of invocations in a subgroup. Lower is "better".
+    pub max_subgroup_size: u32,
     /// Amount of storage available for push constants in bytes. Defaults to 0. Higher is "better".
     /// Requesting more than 0 during device creation requires [`Features::PUSH_CONSTANTS`] to be enabled.
     ///
@@ -903,20 +1181,33 @@ pub struct Limits {
     /// - Vulkan: 128-256 bytes
     /// - DX12: 256 bytes
     /// - Metal: 4096 bytes
-    /// - DX11 & OpenGL don't natively support push constants, and are emulated with uniforms,
+    /// - OpenGL doesn't natively support push constants, and are emulated with uniforms,
     ///   so this number is less useful but likely 256.
     pub max_push_constant_size: u32,
+    /// Maximum number of live non-sampler bindings.
+    ///
+    /// This limit only affects the d3d12 backend. Using a large number will allow the device
+    /// to create many bind groups at the cost of a large up-front allocation at device creation.
+    pub max_non_sampler_bindings: u32,
 }
 
 impl Default for Limits {
     fn default() -> Self {
+        Self::defaults()
+    }
+}
+
+impl Limits {
+    // Rust doesn't allow const in trait implementations, so we break this out
+    // to allow reusing these defaults in const contexts like `downlevel_defaults`
+    const fn defaults() -> Self {
         Self {
             max_texture_dimension_1d: 8192,
             max_texture_dimension_2d: 8192,
             max_texture_dimension_3d: 2048,
             max_texture_array_layers: 256,
             max_bind_groups: 4,
-            max_bindings_per_bind_group: 640,
+            max_bindings_per_bind_group: 1000,
             max_dynamic_uniform_buffers_per_pipeline_layout: 8,
             max_dynamic_storage_buffers_per_pipeline_layout: 4,
             max_sampled_textures_per_shader_stage: 16,
@@ -924,64 +1215,129 @@ impl Default for Limits {
             max_storage_buffers_per_shader_stage: 8,
             max_storage_textures_per_shader_stage: 4,
             max_uniform_buffers_per_shader_stage: 12,
-            max_uniform_buffer_binding_size: 64 << 10,
-            max_storage_buffer_binding_size: 128 << 20,
+            max_uniform_buffer_binding_size: 64 << 10, // (64 KiB)
+            max_storage_buffer_binding_size: 128 << 20, // (128 MiB)
             max_vertex_buffers: 8,
-            max_buffer_size: 1 << 28,
+            max_buffer_size: 256 << 20, // (256 MiB)
             max_vertex_attributes: 16,
             max_vertex_buffer_array_stride: 2048,
             min_uniform_buffer_offset_alignment: 256,
             min_storage_buffer_offset_alignment: 256,
             max_inter_stage_shader_components: 60,
+            max_color_attachments: 8,
+            max_color_attachment_bytes_per_sample: 32,
             max_compute_workgroup_storage_size: 16384,
             max_compute_invocations_per_workgroup: 256,
             max_compute_workgroup_size_x: 256,
             max_compute_workgroup_size_y: 256,
             max_compute_workgroup_size_z: 64,
             max_compute_workgroups_per_dimension: 65535,
+            min_subgroup_size: 0,
+            max_subgroup_size: 0,
             max_push_constant_size: 0,
+            max_non_sampler_bindings: 1_000_000,
         }
     }
-}
 
-impl Limits {
     /// These default limits are guaranteed to be compatible with GLES-3.1, and D3D11
-    pub fn downlevel_defaults() -> Self {
+    ///
+    /// Those limits are as follows (different from default are marked with *):
+    /// ```rust
+    /// # use wgpu_types::Limits;
+    /// assert_eq!(Limits::downlevel_defaults(), Limits {
+    ///     max_texture_dimension_1d: 2048, // *
+    ///     max_texture_dimension_2d: 2048, // *
+    ///     max_texture_dimension_3d: 256, // *
+    ///     max_texture_array_layers: 256,
+    ///     max_bind_groups: 4,
+    ///     max_bindings_per_bind_group: 1000,
+    ///     max_dynamic_uniform_buffers_per_pipeline_layout: 8,
+    ///     max_dynamic_storage_buffers_per_pipeline_layout: 4,
+    ///     max_sampled_textures_per_shader_stage: 16,
+    ///     max_samplers_per_shader_stage: 16,
+    ///     max_storage_buffers_per_shader_stage: 4, // *
+    ///     max_storage_textures_per_shader_stage: 4,
+    ///     max_uniform_buffers_per_shader_stage: 12,
+    ///     max_uniform_buffer_binding_size: 16 << 10, // * (16 KiB)
+    ///     max_storage_buffer_binding_size: 128 << 20, // (128 MiB)
+    ///     max_vertex_buffers: 8,
+    ///     max_vertex_attributes: 16,
+    ///     max_vertex_buffer_array_stride: 2048,
+    ///     min_subgroup_size: 0,
+    ///     max_subgroup_size: 0,
+    ///     max_push_constant_size: 0,
+    ///     min_uniform_buffer_offset_alignment: 256,
+    ///     min_storage_buffer_offset_alignment: 256,
+    ///     max_inter_stage_shader_components: 60,
+    ///     max_color_attachments: 8,
+    ///     max_color_attachment_bytes_per_sample: 32,
+    ///     max_compute_workgroup_storage_size: 16352, // *
+    ///     max_compute_invocations_per_workgroup: 256,
+    ///     max_compute_workgroup_size_x: 256,
+    ///     max_compute_workgroup_size_y: 256,
+    ///     max_compute_workgroup_size_z: 64,
+    ///     max_compute_workgroups_per_dimension: 65535,
+    ///     max_buffer_size: 256 << 20, // (256 MiB)
+    ///     max_non_sampler_bindings: 1_000_000,
+    /// });
+    /// ```
+    pub const fn downlevel_defaults() -> Self {
         Self {
             max_texture_dimension_1d: 2048,
             max_texture_dimension_2d: 2048,
             max_texture_dimension_3d: 256,
-            max_texture_array_layers: 256,
-            max_bind_groups: 4,
-            max_bindings_per_bind_group: 640,
-            max_dynamic_uniform_buffers_per_pipeline_layout: 8,
-            max_dynamic_storage_buffers_per_pipeline_layout: 4,
-            max_sampled_textures_per_shader_stage: 16,
-            max_samplers_per_shader_stage: 16,
             max_storage_buffers_per_shader_stage: 4,
-            max_storage_textures_per_shader_stage: 4,
-            max_uniform_buffers_per_shader_stage: 12,
-            max_uniform_buffer_binding_size: 16 << 10,
-            max_storage_buffer_binding_size: 128 << 20,
-            max_vertex_buffers: 8,
-            max_vertex_attributes: 16,
-            max_vertex_buffer_array_stride: 2048,
-            max_push_constant_size: 0,
-            min_uniform_buffer_offset_alignment: 256,
-            min_storage_buffer_offset_alignment: 256,
-            max_inter_stage_shader_components: 60,
+            max_uniform_buffer_binding_size: 16 << 10, // (16 KiB)
+            // see: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf#page=7
             max_compute_workgroup_storage_size: 16352,
-            max_compute_invocations_per_workgroup: 256,
-            max_compute_workgroup_size_x: 256,
-            max_compute_workgroup_size_y: 256,
-            max_compute_workgroup_size_z: 64,
-            max_compute_workgroups_per_dimension: 65535,
-            max_buffer_size: 1 << 28,
+            ..Self::defaults()
         }
     }
 
     /// These default limits are guaranteed to be compatible with GLES-3.0, and D3D11, and WebGL2
-    pub fn downlevel_webgl2_defaults() -> Self {
+    ///
+    /// Those limits are as follows (different from `downlevel_defaults` are marked with +,
+    /// *'s from `downlevel_defaults` shown as well.):
+    /// ```rust
+    /// # use wgpu_types::Limits;
+    /// assert_eq!(Limits::downlevel_webgl2_defaults(), Limits {
+    ///     max_texture_dimension_1d: 2048, // *
+    ///     max_texture_dimension_2d: 2048, // *
+    ///     max_texture_dimension_3d: 256, // *
+    ///     max_texture_array_layers: 256,
+    ///     max_bind_groups: 4,
+    ///     max_bindings_per_bind_group: 1000,
+    ///     max_dynamic_uniform_buffers_per_pipeline_layout: 8,
+    ///     max_dynamic_storage_buffers_per_pipeline_layout: 0, // +
+    ///     max_sampled_textures_per_shader_stage: 16,
+    ///     max_samplers_per_shader_stage: 16,
+    ///     max_storage_buffers_per_shader_stage: 0, // * +
+    ///     max_storage_textures_per_shader_stage: 0, // +
+    ///     max_uniform_buffers_per_shader_stage: 11, // +
+    ///     max_uniform_buffer_binding_size: 16 << 10, // * (16 KiB)
+    ///     max_storage_buffer_binding_size: 0, // * +
+    ///     max_vertex_buffers: 8,
+    ///     max_vertex_attributes: 16,
+    ///     max_vertex_buffer_array_stride: 255, // +
+    ///     min_subgroup_size: 0,
+    ///     max_subgroup_size: 0,
+    ///     max_push_constant_size: 0,
+    ///     min_uniform_buffer_offset_alignment: 256,
+    ///     min_storage_buffer_offset_alignment: 256,
+    ///     max_inter_stage_shader_components: 31,
+    ///     max_color_attachments: 8,
+    ///     max_color_attachment_bytes_per_sample: 32,
+    ///     max_compute_workgroup_storage_size: 0, // +
+    ///     max_compute_invocations_per_workgroup: 0, // +
+    ///     max_compute_workgroup_size_x: 0, // +
+    ///     max_compute_workgroup_size_y: 0, // +
+    ///     max_compute_workgroup_size_z: 0, // +
+    ///     max_compute_workgroups_per_dimension: 0, // +
+    ///     max_buffer_size: 256 << 20, // (256 MiB),
+    ///     max_non_sampler_bindings: 1_000_000,
+    /// });
+    /// ```
+    pub const fn downlevel_webgl2_defaults() -> Self {
         Self {
             max_uniform_buffers_per_shader_stage: 11,
             max_storage_buffers_per_shader_stage: 0,
@@ -995,6 +1351,11 @@ impl Limits {
             max_compute_workgroup_size_y: 0,
             max_compute_workgroup_size_z: 0,
             max_compute_workgroups_per_dimension: 0,
+            min_subgroup_size: 0,
+            max_subgroup_size: 0,
+
+            // Value supported by Intel Celeron B830 on Windows (OpenGL 3.1)
+            max_inter_stage_shader_components: 31,
 
             // Most of the values should be the same as the downlevel defaults
             ..Self::downlevel_defaults()
@@ -1006,7 +1367,7 @@ impl Limits {
     /// This is useful because the swapchain might need to be larger than any other image in the application.
     ///
     /// If your application only needs 512x512, you might be running on a 4k display and need extremely high resolution limits.
-    pub fn using_resolution(self, other: Self) -> Self {
+    pub const fn using_resolution(self, other: Self) -> Self {
         Self {
             max_texture_dimension_1d: other.max_texture_dimension_1d,
             max_texture_dimension_2d: other.max_texture_dimension_2d,
@@ -1018,7 +1379,7 @@ impl Limits {
     /// Modify the current limits to use the buffer alignment limits of the adapter.
     ///
     /// This is useful for when you'd like to dynamically use the "best" supported buffer alignments.
-    pub fn using_alignment(self, other: Self) -> Self {
+    pub const fn using_alignment(self, other: Self) -> Self {
         Self {
             min_uniform_buffer_offset_alignment: other.min_uniform_buffer_offset_alignment,
             min_storage_buffer_offset_alignment: other.min_storage_buffer_offset_alignment,
@@ -1084,6 +1445,10 @@ impl Limits {
         compare!(max_vertex_buffers, Less);
         compare!(max_vertex_attributes, Less);
         compare!(max_vertex_buffer_array_stride, Less);
+        if self.min_subgroup_size > 0 && self.max_subgroup_size > 0 {
+            compare!(min_subgroup_size, Greater);
+            compare!(max_subgroup_size, Less);
+        }
         compare!(max_push_constant_size, Less);
         compare!(min_uniform_buffer_offset_alignment, Greater);
         compare!(min_storage_buffer_offset_alignment, Greater);
@@ -1095,12 +1460,14 @@ impl Limits {
         compare!(max_compute_workgroup_size_z, Less);
         compare!(max_compute_workgroups_per_dimension, Less);
         compare!(max_buffer_size, Less);
+        compare!(max_non_sampler_bindings, Less);
     }
 }
 
 /// Represents the sets of additional limits on an adapter,
 /// which take place when running on downlevel backends.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DownlevelLimits {}
 
 #[allow(unknown_lints)] // derivable_impls is nightly only currently
@@ -1113,6 +1480,7 @@ impl Default for DownlevelLimits {
 
 /// Lists various ways the underlying platform does not conform to the WebGPU standard.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DownlevelCapabilities {
     /// Combined boolean flags.
     pub flags: DownlevelFlags,
@@ -1159,18 +1527,27 @@ bitflags::bitflags! {
     pub struct DownlevelFlags: u32 {
         /// The device supports compiling and using compute shaders.
         ///
-        /// DX11 on FL10 level hardware, WebGL2, and GLES3.0 devices do not support compute.
+        /// WebGL2, and GLES3.0 devices do not support compute.
         const COMPUTE_SHADERS = 1 << 0;
         /// Supports binding storage buffers and textures to fragment shaders.
         const FRAGMENT_WRITABLE_STORAGE = 1 << 1;
         /// Supports indirect drawing and dispatching.
         ///
-        /// DX11 on FL10 level hardware, WebGL2, and GLES 3.0 devices do not support indirect.
+        /// WebGL2, GLES 3.0, and Metal on Apple1/Apple2 GPUs do not support indirect.
         const INDIRECT_EXECUTION = 1 << 2;
-        /// Supports non-zero `base_vertex` parameter to indexed draw calls.
+        /// Supports non-zero `base_vertex` parameter to direct indexed draw calls.
+        ///
+        /// Indirect calls, if supported, always support non-zero `base_vertex`.
+        ///
+        /// Supported by:
+        /// - Vulkan
+        /// - DX12
+        /// - Metal on Apple3+ or Mac1+
+        /// - OpenGL 3.2+
+        /// - OpenGL ES 3.2
         const BASE_VERTEX = 1 << 3;
-        /// Supports reading from a depth/stencil buffer while using as a read-only depth/stencil
-        /// attachment.
+        /// Supports reading from a depth/stencil texture while using it as a read-only
+        /// depth/stencil attachment.
         ///
         /// The WebGL2 and GLES backends do not support RODS.
         const READ_ONLY_DEPTH_STENCIL = 1 << 4;
@@ -1249,6 +1626,51 @@ bitflags::bitflags! {
         ///
         /// The GLES/WebGL and Vulkan on Android doesn't support this.
         const SURFACE_VIEW_FORMATS = 1 << 21;
+
+        /// If this is true, calls to `CommandEncoder::resolve_query_set` will be performed on the queue timeline.
+        ///
+        /// If this is false, calls to `CommandEncoder::resolve_query_set` will be performed on the device (i.e. cpu) timeline
+        /// and will block that timeline until the query has data. You may work around this limitation by waiting until the submit
+        /// whose queries you are resolving is fully finished (through use of `queue.on_submitted_work_done`) and only
+        /// then submitting the resolve_query_set command. The queries will be guaranteed finished, so will not block.
+        ///
+        /// Supported by:
+        /// - Vulkan,
+        /// - DX12
+        /// - Metal
+        /// - OpenGL 4.4+
+        ///
+        /// Not Supported by:
+        /// - GL ES / WebGL
+        const NONBLOCKING_QUERY_RESOLVE = 1 << 22;
+
+        /// If this is true, use of `@builtin(vertex_index)` and `@builtin(instance_index)` will properly take into consideration
+        /// the `first_vertex` and `first_instance` parameters of indirect draw calls.
+        ///
+        /// If this is false, `@builtin(vertex_index)` and `@builtin(instance_index)` will start by counting from 0, ignoring the
+        /// `first_vertex` and `first_instance` parameters.
+        ///
+        /// For example, if you had a draw call like this:
+        /// - `first_vertex: 4,`
+        /// - `vertex_count: 12,`
+        ///
+        /// When this flag is present, `@builtin(vertex_index)` will start at 4 and go up to 15 (12 invocations).
+        ///
+        /// When this flag is not present, `@builtin(vertex_index)` will start at 0 and go up to 11 (12 invocations).
+        ///
+        /// This only affects the builtins in the shaders,
+        /// vertex buffers and instance rate vertex buffers will behave like expected with this flag disabled.
+        ///
+        /// See also [`Features::`]
+        ///
+        /// Supported By:
+        /// - Vulkan
+        /// - Metal
+        /// - OpenGL
+        ///
+        /// Will be implemented in the future by:
+        /// - DX12 ([#2471](https://github.com/gfx-rs/wgpu/issues/2471))
+        const VERTEX_AND_INSTANCE_INDEX_RESPECTS_RESPECTIVE_FIRST_VALUE_IN_INDIRECT_DRAW = 1 << 23;
     }
 }
 
@@ -1267,6 +1689,7 @@ impl DownlevelFlags {
 /// Collections of shader features a device supports if they support less than WebGPU normally allows.
 // TODO: Fill out the differences between shader models more completely
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ShaderModel {
     /// Extremely limited shaders, including a total instruction limit.
     Sm2,
@@ -1279,8 +1702,7 @@ pub enum ShaderModel {
 /// Supported physical device types.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceType {
     /// Other or Unknown.
     Other,
@@ -1298,8 +1720,7 @@ pub enum DeviceType {
 
 /// Information about an adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AdapterInfo {
     /// Adapter name
     pub name: String,
@@ -1342,17 +1763,22 @@ pub struct AdapterInfo {
 /// https://gpuweb.github.io/gpuweb/#gpudevicedescriptor).
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DeviceDescriptor<L> {
     /// Debug label for the device.
     pub label: L,
-    /// Features that the device should support. If any feature is not supported by
-    /// the adapter, creating a device will panic.
-    pub features: Features,
-    /// Limits that the device should support. If any limit is "better" than the limit exposed by
-    /// the adapter, creating a device will panic.
-    pub limits: Limits,
+    /// Specifies the features that are required by the device request.
+    /// The request will fail if the adapter cannot provide these features.
+    ///
+    /// Exactly the specified set of features, and no more or less,
+    /// will be allowed in validation of API calls on the resulting device.
+    pub required_features: Features,
+    /// Specifies the limits that are required by the device request.
+    /// The request will fail if the adapter cannot provide these limits.
+    ///
+    /// Exactly the specified limits, and no better or worse,
+    /// will be allowed in validation of API calls on the resulting device.
+    pub required_limits: Limits,
 }
 
 impl<L> DeviceDescriptor<L> {
@@ -1360,8 +1786,8 @@ impl<L> DeviceDescriptor<L> {
     pub fn map_label<K>(&self, fun: impl FnOnce(&L) -> K) -> DeviceDescriptor<K> {
         DeviceDescriptor {
             label: fun(&self.label),
-            features: self.features,
-            limits: self.limits.clone(),
+            required_features: self.required_features,
+            required_limits: self.required_limits.clone(),
         }
     }
 }
@@ -1399,8 +1825,7 @@ impl_bitflags!(ShaderStages);
 /// https://gpuweb.github.io/gpuweb/#enumdef-gputextureviewdimension).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TextureViewDimension {
     /// A one dimensional texture. `texture_1d` in WGSL and `texture1D` in GLSL.
     #[cfg_attr(feature = "serde", serde(rename = "1d"))]
@@ -1440,10 +1865,11 @@ impl TextureViewDimension {
 ///
 /// Corresponds to [WebGPU `GPUBlendFactor`](
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpublendfactor).
+/// Values using S1 requires [`Features::DUAL_SOURCE_BLENDING`] and can only be
+/// used with the first render target.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum BlendFactor {
     /// 0.0
@@ -1472,6 +1898,29 @@ pub enum BlendFactor {
     Constant = 11,
     /// 1.0 - Constant
     OneMinusConstant = 12,
+    /// S1.component
+    Src1 = 13,
+    /// 1.0 - S1.component
+    OneMinusSrc1 = 14,
+    /// S1.alpha
+    Src1Alpha = 15,
+    /// 1.0 - S1.alpha
+    OneMinusSrc1Alpha = 16,
+}
+
+impl BlendFactor {
+    /// Returns `true` if the blend factor references the second blend source.
+    ///
+    /// Note that the usage of those blend factors require [`Features::DUAL_SOURCE_BLENDING`].
+    pub fn ref_second_blend_source(&self) -> bool {
+        match self {
+            BlendFactor::Src1
+            | BlendFactor::OneMinusSrc1
+            | BlendFactor::Src1Alpha
+            | BlendFactor::OneMinusSrc1Alpha => true,
+            _ => false,
+        }
+    }
 }
 
 /// Alpha blend operation.
@@ -1482,8 +1931,7 @@ pub enum BlendFactor {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpublendoperation).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum BlendOperation {
     /// Src + Dst
@@ -1505,8 +1953,7 @@ pub enum BlendOperation {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpublendcomponent).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct BlendComponent {
     /// Multiplier for the source, which is produced by the fragment shader.
@@ -1561,8 +2008,7 @@ impl Default for BlendComponent {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpublendstate).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct BlendState {
     /// Color equation.
@@ -1601,11 +2047,10 @@ impl BlendState {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpucolortargetstate).
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct ColorTargetState {
-    /// The [`TextureFormat`] of the image that this pipeline will render to. Must match the the format
+    /// The [`TextureFormat`] of the image that this pipeline will render to. Must match the format
     /// of the corresponding color attachment in [`CommandEncoder::begin_render_pass`][CEbrp]
     ///
     /// [CEbrp]: ../wgpu/struct.CommandEncoder.html#method.begin_render_pass
@@ -1634,8 +2079,7 @@ impl From<TextureFormat> for ColorTargetState {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpuprimitivetopology).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum PrimitiveTopology {
     /// Vertex data is a list of points. Each vertex is a new point.
@@ -1675,8 +2119,7 @@ impl PrimitiveTopology {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpufrontface).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum FrontFace {
     /// Triangles with vertices in counter clockwise order are considered the front face.
@@ -1697,8 +2140,7 @@ pub enum FrontFace {
 /// except that the `"none"` value is represented using `Option<Face>` instead.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum Face {
     /// Front face
@@ -1710,8 +2152,7 @@ pub enum Face {
 /// Type of drawing mode for polygons
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum PolygonMode {
     /// Polygons are filled
@@ -1729,14 +2170,16 @@ pub enum PolygonMode {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuprimitivestate).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct PrimitiveState {
     /// The primitive topology used to interpret vertices.
     pub topology: PrimitiveTopology,
     /// When drawing strip topologies with indices, this is the required format for the index buffer.
     /// This has no effect on non-indexed or non-strip draws.
+    ///
+    /// Specifying this value enables primitive restart, allowing individual strips to be separated
+    /// with the index value `0xFFFF` when using `Uint16`, or `0xFFFFFFFF` when using `Uint32`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub strip_index_format: Option<IndexFormat>,
     /// The face to consider the front for the purpose of culling and stencil operations.
@@ -1770,8 +2213,7 @@ pub struct PrimitiveState {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpumultisamplestate).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct MultisampleState {
     /// The number of samples calculated per pixel (for MSAA). For non-multisampled textures,
@@ -1842,6 +2284,15 @@ impl TextureFormatFeatureFlags {
             _ => false,
         }
     }
+
+    /// A `Vec` of supported sample counts.
+    pub fn supported_sample_counts(&self) -> Vec<u32> {
+        let all_possible_sample_counts: [u32; 5] = [1, 2, 4, 8, 16];
+        all_possible_sample_counts
+            .into_iter()
+            .filter(|&sc| self.sample_count_supported(sc))
+            .collect()
+    }
 }
 
 impl_bitflags!(TextureFormatFeatureFlags);
@@ -1850,6 +2301,7 @@ impl_bitflags!(TextureFormatFeatureFlags);
 ///
 /// Features are defined by WebGPU specification unless `Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` is enabled.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TextureFormatFeatures {
     /// Valid bits for `TextureDescriptor::Usage` provided for format creation.
     pub allowed_usages: TextureUsages,
@@ -1860,7 +2312,7 @@ pub struct TextureFormatFeatures {
 /// ASTC block dimensions
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AstcBlock {
     /// 4x4 block compressed texture. 16 bytes per block (8 bit/px).
     B4x4,
@@ -1895,7 +2347,7 @@ pub enum AstcBlock {
 /// ASTC RGBA channel
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AstcChannel {
     /// 8 bit integer RGBA, [0, 255] converted to/from linear-color float [0, 1] in shader.
     ///
@@ -1994,6 +2446,8 @@ pub enum TextureFormat {
     // Packed 32 bit formats
     /// Packed unsigned float with 9 bits mantisa for each RGB component, then a common 5 bits exponent
     Rgb9e5Ufloat,
+    /// Red, green, blue, and alpha channels. 10 bit integer for RGB channels, 2 bit integer for alpha channel. Unsigned in shader.
+    Rgb10a2Uint,
     /// Red, green, blue, and alpha channels. 10 bit integer for RGB channels, 2 bit integer for alpha channel. [0, 1023] ([0, 3] for alpha) converted to/from float [0, 1] in shader.
     Rgb10a2Unorm,
     /// Red, green, and blue channels. 11 bit float with no sign bit for RG channels. 10 bit float with no sign bit for blue channel. Float in shader.
@@ -2044,6 +2498,21 @@ pub enum TextureFormat {
     ///
     /// [`Features::DEPTH32FLOAT_STENCIL8`] must be enabled to use this texture format.
     Depth32FloatStencil8,
+
+    /// YUV 4:2:0 chroma subsampled format.
+    ///
+    /// Contains two planes:
+    /// - 0: Single 8 bit channel luminance.
+    /// - 1: Dual 8 bit channel chrominance at half width and half height.
+    ///
+    /// Valid view formats for luminance are [`TextureFormat::R8Unorm`].
+    ///
+    /// Valid view formats for chrominance are [`TextureFormat::Rg8Unorm`].
+    ///
+    /// Width and height must be even.
+    ///
+    /// [`Features::TEXTURE_FORMAT_NV12`] must be enabled to use this texture format.
+    NV12,
 
     // Compressed textures usable with `TEXTURE_COMPRESSION_BC` feature.
     /// 4x4 block compressed texture. 8 bytes per block (4 bit/px). 4 color + alpha pallet. 5 bit R + 6 bit G + 5 bit B + 1 bit alpha.
@@ -2254,6 +2723,7 @@ impl<'de> Deserialize<'de> for TextureFormat {
                     "rgba8sint" => TextureFormat::Rgba8Sint,
                     "bgra8unorm" => TextureFormat::Bgra8Unorm,
                     "bgra8unorm-srgb" => TextureFormat::Bgra8UnormSrgb,
+                    "rgb10a2uint" => TextureFormat::Rgb10a2Uint,
                     "rgb10a2unorm" => TextureFormat::Rgb10a2Unorm,
                     "rg11b10ufloat" => TextureFormat::Rg11b10Float,
                     "rg32uint" => TextureFormat::Rg32Uint,
@@ -2273,6 +2743,7 @@ impl<'de> Deserialize<'de> for TextureFormat {
                     "depth16unorm" => TextureFormat::Depth16Unorm,
                     "depth24plus" => TextureFormat::Depth24Plus,
                     "depth24plus-stencil8" => TextureFormat::Depth24PlusStencil8,
+                    "nv12" => TextureFormat::NV12,
                     "rgb9e5ufloat" => TextureFormat::Rgb9e5Ufloat,
                     "bc1-rgba-unorm" => TextureFormat::Bc1RgbaUnorm,
                     "bc1-rgba-unorm-srgb" => TextureFormat::Bc1RgbaUnormSrgb,
@@ -2380,6 +2851,7 @@ impl Serialize for TextureFormat {
             TextureFormat::Rgba8Sint => "rgba8sint",
             TextureFormat::Bgra8Unorm => "bgra8unorm",
             TextureFormat::Bgra8UnormSrgb => "bgra8unorm-srgb",
+            TextureFormat::Rgb10a2Uint => "rgb10a2uint",
             TextureFormat::Rgb10a2Unorm => "rgb10a2unorm",
             TextureFormat::Rg11b10Float => "rg11b10ufloat",
             TextureFormat::Rg32Uint => "rg32uint",
@@ -2399,6 +2871,7 @@ impl Serialize for TextureFormat {
             TextureFormat::Depth32FloatStencil8 => "depth32float-stencil8",
             TextureFormat::Depth24Plus => "depth24plus",
             TextureFormat::Depth24PlusStencil8 => "depth24plus-stencil8",
+            TextureFormat::NV12 => "nv12",
             TextureFormat::Rgb9e5Ufloat => "rgb9e5ufloat",
             TextureFormat::Bc1RgbaUnorm => "bc1-rgba-unorm",
             TextureFormat::Bc1RgbaUnormSrgb => "bc1-rgba-unorm-srgb",
@@ -2456,6 +2929,18 @@ impl Serialize for TextureFormat {
     }
 }
 
+impl TextureAspect {
+    /// Returns the texture aspect for a given plane.
+    pub fn from_plane(plane: u32) -> Option<Self> {
+        Some(match plane {
+            0 => Self::Plane0,
+            1 => Self::Plane1,
+            2 => Self::Plane2,
+            _ => return None,
+        })
+    }
+}
+
 impl TextureFormat {
     /// Returns the aspect-specific format of the original format
     ///
@@ -2473,7 +2958,10 @@ impl TextureFormat {
             ) => Some(Self::Stencil8),
             (Self::Depth24PlusStencil8, TextureAspect::DepthOnly) => Some(Self::Depth24Plus),
             (Self::Depth32FloatStencil8, TextureAspect::DepthOnly) => Some(Self::Depth32Float),
-            (format, TextureAspect::All) => Some(format),
+            (Self::NV12, TextureAspect::Plane0) => Some(Self::R8Unorm),
+            (Self::NV12, TextureAspect::Plane1) => Some(Self::Rg8Unorm),
+            // views to multi-planar formats must specify the plane
+            (format, TextureAspect::All) if !format.is_multi_planar_format() => Some(format),
             _ => None,
         }
     }
@@ -2513,6 +3001,19 @@ impl TextureFormat {
         }
     }
 
+    /// Returns `true` if the format is a multi-planar format
+    pub fn is_multi_planar_format(&self) -> bool {
+        self.planes().is_some()
+    }
+
+    /// Returns the number of planes a multi-planar format has.
+    pub fn planes(&self) -> Option<u32> {
+        match *self {
+            Self::NV12 => Some(2),
+            _ => None,
+        }
+    }
+
     /// Returns `true` if the format has a color aspect
     pub fn has_color_aspect(&self) -> bool {
         !self.is_depth_stencil_format()
@@ -2538,7 +3039,17 @@ impl TextureFormat {
         }
     }
 
-    /// Returns the dimension of a block of texels.
+    /// Returns the size multiple requirement for a texture using this format.
+    pub fn size_multiple_requirement(&self) -> (u32, u32) {
+        match *self {
+            Self::NV12 => (2, 2),
+            _ => self.block_dimensions(),
+        }
+    }
+
+    /// Returns the dimension of a [block](https://gpuweb.github.io/gpuweb/#texel-block) of texels.
+    ///
+    /// Uncompressed formats have a block dimension of `(1, 1)`.
     pub fn block_dimensions(&self) -> (u32, u32) {
         match *self {
             Self::R8Unorm
@@ -2570,6 +3081,7 @@ impl TextureFormat {
             | Self::Bgra8Unorm
             | Self::Bgra8UnormSrgb
             | Self::Rgb9e5Ufloat
+            | Self::Rgb10a2Uint
             | Self::Rgb10a2Unorm
             | Self::Rg11b10Float
             | Self::Rg32Uint
@@ -2588,7 +3100,8 @@ impl TextureFormat {
             | Self::Depth24Plus
             | Self::Depth24PlusStencil8
             | Self::Depth32Float
-            | Self::Depth32FloatStencil8 => (1, 1),
+            | Self::Depth32FloatStencil8
+            | Self::NV12 => (1, 1),
 
             Self::Bc1RgbaUnorm
             | Self::Bc1RgbaUnormSrgb
@@ -2668,6 +3181,7 @@ impl TextureFormat {
             | Self::Bgra8Unorm
             | Self::Bgra8UnormSrgb
             | Self::Rgb9e5Ufloat
+            | Self::Rgb10a2Uint
             | Self::Rgb10a2Unorm
             | Self::Rg11b10Float
             | Self::Rg32Uint
@@ -2686,6 +3200,8 @@ impl TextureFormat {
             | Self::Depth32Float => Features::empty(),
 
             Self::Depth32FloatStencil8 => Features::DEPTH32FLOAT_STENCIL8,
+
+            Self::NV12 => Features::TEXTURE_FORMAT_NV12,
 
             Self::R16Unorm
             | Self::R16Snorm
@@ -2741,11 +3257,17 @@ impl TextureFormat {
             TextureUsages::COPY_SRC | TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING;
         let attachment = basic | TextureUsages::RENDER_ATTACHMENT;
         let storage = basic | TextureUsages::STORAGE_BINDING;
+        let binding = TextureUsages::TEXTURE_BINDING;
         let all_flags = TextureUsages::all();
         let rg11b10f = if device_features.contains(Features::RG11B10UFLOAT_RENDERABLE) {
             attachment
         } else {
             basic
+        };
+        let bgra8unorm = if device_features.contains(Features::BGRA8UNORM_STORAGE) {
+            attachment | TextureUsages::STORAGE_BINDING
+        } else {
+            attachment
         };
 
         #[rustfmt::skip] // lets make a nice table
@@ -2775,8 +3297,9 @@ impl TextureFormat {
             Self::Rgba8Snorm =>           (        noaa,    storage),
             Self::Rgba8Uint =>            (        msaa,  all_flags),
             Self::Rgba8Sint =>            (        msaa,  all_flags),
-            Self::Bgra8Unorm =>           (msaa_resolve, attachment),
+            Self::Bgra8Unorm =>           (msaa_resolve, bgra8unorm),
             Self::Bgra8UnormSrgb =>       (msaa_resolve, attachment),
+            Self::Rgb10a2Uint =>          (        msaa, attachment),
             Self::Rgb10a2Unorm =>         (msaa_resolve, attachment),
             Self::Rg11b10Float =>         (        msaa,   rg11b10f),
             Self::Rg32Uint =>             (        noaa,  all_flags),
@@ -2795,6 +3318,9 @@ impl TextureFormat {
             Self::Depth24PlusStencil8 =>  (        msaa, attachment),
             Self::Depth32Float =>         (        msaa, attachment),
             Self::Depth32FloatStencil8 => (        msaa, attachment),
+
+            // We only support sampling nv12 textures until we implement transfer plane data.
+            Self::NV12 =>                 (        noaa,    binding),
 
             Self::R16Unorm =>             (        msaa,    storage),
             Self::R16Snorm =>             (        msaa,    storage),
@@ -2834,10 +3360,16 @@ impl TextureFormat {
             Self::Astc { .. } =>          (        noaa,      basic),
         };
 
-        let is_filterable =
-            self.sample_type(None) == Some(TextureSampleType::Float { filterable: true });
+        // Get whether the format is filterable, taking features into account
+        let sample_type1 = self.sample_type(None, Some(device_features));
+        let is_filterable = sample_type1 == Some(TextureSampleType::Float { filterable: true });
+
+        // Features that enable filtering don't affect blendability
+        let sample_type2 = self.sample_type(None, None);
+        let is_blendable = sample_type2 == Some(TextureSampleType::Float { filterable: true });
+
         flags.set(TextureFormatFeatureFlags::FILTERABLE, is_filterable);
-        flags.set(TextureFormatFeatureFlags::BLENDABLE, is_filterable);
+        flags.set(TextureFormatFeatureFlags::BLENDABLE, is_blendable);
 
         TextureFormatFeatures {
             allowed_usages,
@@ -2845,13 +3377,22 @@ impl TextureFormat {
         }
     }
 
-    /// Returns the sample type compatible with this format and aspect
+    /// Returns the sample type compatible with this format and aspect.
     ///
-    /// Returns `None` only if the format is combined depth-stencil
-    /// and `TextureAspect::All` or no `aspect` was provided
-    pub fn sample_type(&self, aspect: Option<TextureAspect>) -> Option<TextureSampleType> {
+    /// Returns `None` only if this is a combined depth-stencil format or a multi-planar format
+    /// and `TextureAspect::All` or no `aspect` was provided.
+    pub fn sample_type(
+        &self,
+        aspect: Option<TextureAspect>,
+        device_features: Option<Features>,
+    ) -> Option<TextureSampleType> {
         let float = TextureSampleType::Float { filterable: true };
         let unfilterable_float = TextureSampleType::Float { filterable: false };
+        let float32_sample_type = TextureSampleType::Float {
+            filterable: device_features
+                .unwrap_or(Features::empty())
+                .contains(Features::FLOAT32_FILTERABLE),
+        };
         let depth = TextureSampleType::Depth;
         let uint = TextureSampleType::Uint;
         let sint = TextureSampleType::Sint;
@@ -2872,7 +3413,7 @@ impl TextureFormat {
             | Self::Rgb10a2Unorm
             | Self::Rg11b10Float => Some(float),
 
-            Self::R32Float | Self::Rg32Float | Self::Rgba32Float => Some(unfilterable_float),
+            Self::R32Float | Self::Rg32Float | Self::Rgba32Float => Some(float32_sample_type),
 
             Self::R8Uint
             | Self::Rg8Uint
@@ -2882,7 +3423,8 @@ impl TextureFormat {
             | Self::Rgba16Uint
             | Self::R32Uint
             | Self::Rg32Uint
-            | Self::Rgba32Uint => Some(uint),
+            | Self::Rgba32Uint
+            | Self::Rgb10a2Uint => Some(uint),
 
             Self::R8Sint
             | Self::Rg8Sint
@@ -2897,9 +3439,16 @@ impl TextureFormat {
             Self::Stencil8 => Some(uint),
             Self::Depth16Unorm | Self::Depth24Plus | Self::Depth32Float => Some(depth),
             Self::Depth24PlusStencil8 | Self::Depth32FloatStencil8 => match aspect {
-                None | Some(TextureAspect::All) => None,
                 Some(TextureAspect::DepthOnly) => Some(depth),
                 Some(TextureAspect::StencilOnly) => Some(uint),
+                _ => None,
+            },
+
+            Self::NV12 => match aspect {
+                Some(TextureAspect::Plane0) | Some(TextureAspect::Plane1) => {
+                    Some(unfilterable_float)
+                }
+                _ => None,
             },
 
             Self::R16Unorm
@@ -2941,14 +3490,36 @@ impl TextureFormat {
         }
     }
 
-    /// Returns the [texel block size](https://gpuweb.github.io/gpuweb/#texel-block-size)
-    /// of this format.
+    /// The number of bytes one [texel block](https://gpuweb.github.io/gpuweb/#texel-block) occupies during an image copy, if applicable.
+    ///
+    /// Known as the [texel block copy footprint](https://gpuweb.github.io/gpuweb/#texel-block-copy-footprint).
+    ///
+    /// Note that for uncompressed formats this is the same as the size of a single texel,
+    /// since uncompressed formats have a block size of 1x1.
     ///
     /// Returns `None` if any of the following are true:
-    ///  - the format is combined depth-stencil and no `aspect` was provided
+    ///  - the format is a combined depth-stencil and no `aspect` was provided
+    ///  - the format is a multi-planar format and no `aspect` was provided
     ///  - the format is `Depth24Plus`
     ///  - the format is `Depth24PlusStencil8` and `aspect` is depth.
+    #[deprecated(since = "0.19.0", note = "Use `block_copy_size` instead.")]
     pub fn block_size(&self, aspect: Option<TextureAspect>) -> Option<u32> {
+        self.block_copy_size(aspect)
+    }
+
+    /// The number of bytes one [texel block](https://gpuweb.github.io/gpuweb/#texel-block) occupies during an image copy, if applicable.
+    ///
+    /// Known as the [texel block copy footprint](https://gpuweb.github.io/gpuweb/#texel-block-copy-footprint).
+    ///
+    /// Note that for uncompressed formats this is the same as the size of a single texel,
+    /// since uncompressed formats have a block size of 1x1.
+    ///
+    /// Returns `None` if any of the following are true:
+    ///  - the format is a combined depth-stencil and no `aspect` was provided
+    ///  - the format is a multi-planar format and no `aspect` was provided
+    ///  - the format is `Depth24Plus`
+    ///  - the format is `Depth24PlusStencil8` and `aspect` is depth.
+    pub fn block_copy_size(&self, aspect: Option<TextureAspect>) -> Option<u32> {
         match *self {
             Self::R8Unorm | Self::R8Snorm | Self::R8Uint | Self::R8Sint => Some(1),
 
@@ -2970,7 +3541,9 @@ impl TextureFormat {
             | Self::Rg16Sint
             | Self::Rg16Float => Some(4),
             Self::R32Uint | Self::R32Sint | Self::R32Float => Some(4),
-            Self::Rgb9e5Ufloat | Self::Rgb10a2Unorm | Self::Rg11b10Float => Some(4),
+            Self::Rgb9e5Ufloat | Self::Rgb10a2Uint | Self::Rgb10a2Unorm | Self::Rg11b10Float => {
+                Some(4)
+            }
 
             Self::Rgba16Unorm
             | Self::Rgba16Snorm
@@ -2986,14 +3559,20 @@ impl TextureFormat {
             Self::Depth32Float => Some(4),
             Self::Depth24Plus => None,
             Self::Depth24PlusStencil8 => match aspect {
-                None | Some(TextureAspect::All) => None,
                 Some(TextureAspect::DepthOnly) => None,
                 Some(TextureAspect::StencilOnly) => Some(1),
+                _ => None,
             },
             Self::Depth32FloatStencil8 => match aspect {
-                None | Some(TextureAspect::All) => None,
                 Some(TextureAspect::DepthOnly) => Some(4),
                 Some(TextureAspect::StencilOnly) => Some(1),
+                _ => None,
+            },
+
+            Self::NV12 => match aspect {
+                Some(TextureAspect::Plane0) => Some(1),
+                Some(TextureAspect::Plane1) => Some(2),
+                _ => None,
             },
 
             Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb | Self::Bc4RUnorm | Self::Bc4RSnorm => {
@@ -3022,6 +3601,179 @@ impl TextureFormat {
             | Self::EacRg11Snorm => Some(16),
 
             Self::Astc { .. } => Some(16),
+        }
+    }
+
+    /// The number of bytes occupied per pixel in a color attachment
+    /// <https://gpuweb.github.io/gpuweb/#render-target-pixel-byte-cost>
+    pub fn target_pixel_byte_cost(&self) -> Option<u32> {
+        match *self {
+            Self::R8Unorm | Self::R8Uint | Self::R8Sint => Some(1),
+            Self::Rg8Unorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint
+            | Self::R16Uint
+            | Self::R16Sint
+            | Self::R16Float => Some(2),
+            Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rg16Float
+            | Self::R32Uint
+            | Self::R32Sint
+            | Self::R32Float => Some(4),
+            Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba16Float
+            | Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rg32Float
+            | Self::Rgb10a2Uint
+            | Self::Rgb10a2Unorm
+            | Self::Rg11b10Float => Some(8),
+            Self::Rgba32Uint | Self::Rgba32Sint | Self::Rgba32Float => Some(16),
+            Self::Rgba8Snorm | Self::Rg8Snorm | Self::R8Snorm => None,
+            _ => None,
+        }
+    }
+
+    /// See <https://gpuweb.github.io/gpuweb/#render-target-component-alignment>
+    pub fn target_component_alignment(&self) -> Option<u32> {
+        match self {
+            Self::R8Unorm
+            | Self::R8Snorm
+            | Self::R8Uint
+            | Self::R8Sint
+            | Self::Rg8Unorm
+            | Self::Rg8Snorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint
+            | Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::Rgba8Snorm
+            | Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb => Some(1),
+            Self::R16Uint
+            | Self::R16Sint
+            | Self::R16Float
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rg16Float
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba16Float => Some(2),
+            Self::R32Uint
+            | Self::R32Sint
+            | Self::R32Float
+            | Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rg32Float
+            | Self::Rgba32Uint
+            | Self::Rgba32Sint
+            | Self::Rgba32Float
+            | Self::Rgb10a2Uint
+            | Self::Rgb10a2Unorm
+            | Self::Rg11b10Float => Some(4),
+            _ => None,
+        }
+    }
+
+    /// Returns the number of components this format has.
+    pub fn components(&self) -> u8 {
+        self.components_with_aspect(TextureAspect::All)
+    }
+
+    /// Returns the number of components this format has taking into account the `aspect`.
+    ///
+    /// The `aspect` is only relevant for combined depth-stencil formats and multi-planar formats.
+    pub fn components_with_aspect(&self, aspect: TextureAspect) -> u8 {
+        match *self {
+            Self::R8Unorm
+            | Self::R8Snorm
+            | Self::R8Uint
+            | Self::R8Sint
+            | Self::R16Unorm
+            | Self::R16Snorm
+            | Self::R16Uint
+            | Self::R16Sint
+            | Self::R16Float
+            | Self::R32Uint
+            | Self::R32Sint
+            | Self::R32Float => 1,
+
+            Self::Rg8Unorm
+            | Self::Rg8Snorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint
+            | Self::Rg16Unorm
+            | Self::Rg16Snorm
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rg16Float
+            | Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rg32Float => 2,
+
+            Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::Rgba8Snorm
+            | Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb
+            | Self::Rgba16Unorm
+            | Self::Rgba16Snorm
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba16Float
+            | Self::Rgba32Uint
+            | Self::Rgba32Sint
+            | Self::Rgba32Float => 4,
+
+            Self::Rgb9e5Ufloat | Self::Rg11b10Float => 3,
+            Self::Rgb10a2Uint | Self::Rgb10a2Unorm => 4,
+
+            Self::Stencil8 | Self::Depth16Unorm | Self::Depth24Plus | Self::Depth32Float => 1,
+
+            Self::Depth24PlusStencil8 | Self::Depth32FloatStencil8 => match aspect {
+                TextureAspect::DepthOnly | TextureAspect::StencilOnly => 1,
+                _ => 2,
+            },
+
+            Self::NV12 => match aspect {
+                TextureAspect::Plane0 => 1,
+                TextureAspect::Plane1 => 2,
+                _ => 3,
+            },
+
+            Self::Bc4RUnorm | Self::Bc4RSnorm => 1,
+            Self::Bc5RgUnorm | Self::Bc5RgSnorm => 2,
+            Self::Bc6hRgbUfloat | Self::Bc6hRgbFloat => 3,
+            Self::Bc1RgbaUnorm
+            | Self::Bc1RgbaUnormSrgb
+            | Self::Bc2RgbaUnorm
+            | Self::Bc2RgbaUnormSrgb
+            | Self::Bc3RgbaUnorm
+            | Self::Bc3RgbaUnormSrgb
+            | Self::Bc7RgbaUnorm
+            | Self::Bc7RgbaUnormSrgb => 4,
+
+            Self::EacR11Unorm | Self::EacR11Snorm => 1,
+            Self::EacRg11Unorm | Self::EacRg11Snorm => 2,
+            Self::Etc2Rgb8Unorm | Self::Etc2Rgb8UnormSrgb => 3,
+            Self::Etc2Rgb8A1Unorm
+            | Self::Etc2Rgb8A1UnormSrgb
+            | Self::Etc2Rgba8Unorm
+            | Self::Etc2Rgba8UnormSrgb => 4,
+
+            Self::Astc { .. } => 4,
         }
     }
 
@@ -3190,6 +3942,10 @@ fn texture_format_serialize() {
     assert_eq!(
         serde_json::to_string(&TextureFormat::Bgra8UnormSrgb).unwrap(),
         "\"bgra8unorm-srgb\"".to_string()
+    );
+    assert_eq!(
+        serde_json::to_string(&TextureFormat::Rgb10a2Uint).unwrap(),
+        "\"rgb10a2uint\"".to_string()
     );
     assert_eq!(
         serde_json::to_string(&TextureFormat::Rgb10a2Unorm).unwrap(),
@@ -3484,6 +4240,10 @@ fn texture_format_deserialize() {
         TextureFormat::Bgra8UnormSrgb
     );
     assert_eq!(
+        serde_json::from_str::<TextureFormat>("\"rgb10a2uint\"").unwrap(),
+        TextureFormat::Rgb10a2Uint
+    );
+    assert_eq!(
         serde_json::from_str::<TextureFormat>("\"rgb10a2unorm\"").unwrap(),
         TextureFormat::Rgb10a2Unorm
     );
@@ -3695,10 +4455,10 @@ impl Default for ColorWrites {
 /// Passed to `Device::poll` to control how and if it should block.
 #[derive(Clone)]
 pub enum Maintain<T> {
-    /// On native backends, block until the given submission has
+    /// On wgpu-core based backends, block until the given submission has
     /// completed execution, and any callbacks have been invoked.
     ///
-    /// On the web, this has no effect. Callbacks are invoked from the
+    /// On WebGPU, this has no effect. Callbacks are invoked from the
     /// window event loop.
     WaitForSubmissionIndex(T),
     /// Same as WaitForSubmissionIndex but waits for the most recent submission.
@@ -3708,6 +4468,22 @@ pub enum Maintain<T> {
 }
 
 impl<T> Maintain<T> {
+    /// Construct a wait variant
+    pub fn wait() -> Self {
+        // This function seems a little silly, but it is useful to allow
+        // <https://github.com/gfx-rs/wgpu/pull/5012> to be split up, as
+        // it has meaning in that PR.
+        Self::Wait
+    }
+
+    /// Construct a WaitForSubmissionIndex variant
+    pub fn wait_for(submission_index: T) -> Self {
+        // This function seems a little silly, but it is useful to allow
+        // <https://github.com/gfx-rs/wgpu/pull/5012> to be split up, as
+        // it has meaning in that PR.
+        Self::WaitForSubmissionIndex(submission_index)
+    }
+
     /// This maintain represents a wait of some kind.
     pub fn is_wait(&self) -> bool {
         match *self {
@@ -3729,6 +4505,29 @@ impl<T> Maintain<T> {
     }
 }
 
+/// Result of a maintain operation.
+pub enum MaintainResult {
+    /// There are no active submissions in flight as of the beginning of the poll call.
+    /// Other submissions may have been queued on other threads at the same time.
+    ///
+    /// This implies that the given poll is complete.
+    SubmissionQueueEmpty,
+    /// More information coming soon <https://github.com/gfx-rs/wgpu/pull/5012>
+    Ok,
+}
+
+impl MaintainResult {
+    /// Returns true if the result is [`Self::SubmissionQueueEmpty`]`.
+    pub fn is_queue_empty(&self) -> bool {
+        matches!(self, Self::SubmissionQueueEmpty)
+    }
+
+    /// Panics if the MaintainResult is not Ok.
+    pub fn panic_on_timeout(self) {
+        let _ = self;
+    }
+}
+
 /// State of the stencil operation (fixed-pipeline stage).
 ///
 /// For use in [`DepthStencilState`].
@@ -3737,8 +4536,7 @@ impl<T> Maintain<T> {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpudepthstencilstate).
 #[repr(C)]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StencilState {
     /// Front face mode.
     pub front: StencilFaceState,
@@ -3785,8 +4583,7 @@ impl StencilState {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpudepthstencilstate).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DepthBiasState {
     /// Constant depth biasing factor, in basic units of the depth format.
     pub constant: i32,
@@ -3827,10 +4624,9 @@ impl Eq for DepthBiasState {}
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpudepthstencilstate).
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DepthStencilState {
-    /// Format of the depth/stencil buffer, must be special depth format. Must match the the format
+    /// Format of the depth/stencil buffer, must be special depth format. Must match the format
     /// of the depth/stencil attachment in [`CommandEncoder::begin_render_pass`][CEbrp].
     ///
     /// [CEbrp]: ../wgpu/struct.CommandEncoder.html#method.begin_render_pass
@@ -3840,10 +4636,10 @@ pub struct DepthStencilState {
     /// Comparison function used to compare depth values in the depth test.
     pub depth_compare: CompareFunction,
     /// Stencil state.
-    #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub stencil: StencilState,
     /// Depth bias state.
-    #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub bias: DepthBiasState,
 }
 
@@ -3875,7 +4671,7 @@ impl DepthStencilState {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpuindexformat).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum IndexFormat {
     /// Indices are 16 bit unsigned integers.
@@ -3891,8 +4687,7 @@ pub enum IndexFormat {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpustenciloperation).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum StencilOperation {
     /// Keep stencil value unchanged.
@@ -3925,8 +4720,7 @@ pub enum StencilOperation {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpustencilfacestate).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct StencilFaceState {
     /// Comparison function that determines if the fail_op or pass_op is used on the stencil buffer.
@@ -3976,8 +4770,7 @@ impl Default for StencilFaceState {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpucomparefunction).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum CompareFunction {
     /// Function never passes
@@ -4071,8 +4864,7 @@ impl CompareFunction {
 /// [`Instance`]: VertexStepMode::Instance
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum VertexStepMode {
     /// Vertex data is advanced every vertex.
@@ -4093,8 +4885,7 @@ pub enum VertexStepMode {
 /// [`vertex_attr_array`]: ../wgpu/macro.vertex_attr_array.html
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct VertexAttribute {
     /// Format of the input
@@ -4111,78 +4902,80 @@ pub struct VertexAttribute {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpuvertexformat).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum VertexFormat {
-    /// Two unsigned bytes (u8). `uvec2` in shaders.
+    /// Two unsigned bytes (u8). `vec2<u32>` in shaders.
     Uint8x2 = 0,
-    /// Four unsigned bytes (u8). `uvec4` in shaders.
+    /// Four unsigned bytes (u8). `vec4<u32>` in shaders.
     Uint8x4 = 1,
-    /// Two signed bytes (i8). `ivec2` in shaders.
+    /// Two signed bytes (i8). `vec2<i32>` in shaders.
     Sint8x2 = 2,
-    /// Four signed bytes (i8). `ivec4` in shaders.
+    /// Four signed bytes (i8). `vec4<i32>` in shaders.
     Sint8x4 = 3,
-    /// Two unsigned bytes (u8). [0, 255] converted to float [0, 1] `vec2` in shaders.
+    /// Two unsigned bytes (u8). [0, 255] converted to float [0, 1] `vec2<f32>` in shaders.
     Unorm8x2 = 4,
-    /// Four unsigned bytes (u8). [0, 255] converted to float [0, 1] `vec4` in shaders.
+    /// Four unsigned bytes (u8). [0, 255] converted to float [0, 1] `vec4<f32>` in shaders.
     Unorm8x4 = 5,
-    /// Two signed bytes (i8). [-127, 127] converted to float [-1, 1] `vec2` in shaders.
+    /// Two signed bytes (i8). [-127, 127] converted to float [-1, 1] `vec2<f32>` in shaders.
     Snorm8x2 = 6,
-    /// Four signed bytes (i8). [-127, 127] converted to float [-1, 1] `vec4` in shaders.
+    /// Four signed bytes (i8). [-127, 127] converted to float [-1, 1] `vec4<f32>` in shaders.
     Snorm8x4 = 7,
-    /// Two unsigned shorts (u16). `uvec2` in shaders.
+    /// Two unsigned shorts (u16). `vec2<u32>` in shaders.
     Uint16x2 = 8,
-    /// Four unsigned shorts (u16). `uvec4` in shaders.
+    /// Four unsigned shorts (u16). `vec4<u32>` in shaders.
     Uint16x4 = 9,
-    /// Two signed shorts (i16). `ivec2` in shaders.
+    /// Two signed shorts (i16). `vec2<i32>` in shaders.
     Sint16x2 = 10,
-    /// Four signed shorts (i16). `ivec4` in shaders.
+    /// Four signed shorts (i16). `vec4<i32>` in shaders.
     Sint16x4 = 11,
-    /// Two unsigned shorts (u16). [0, 65535] converted to float [0, 1] `vec2` in shaders.
+    /// Two unsigned shorts (u16). [0, 65535] converted to float [0, 1] `vec2<f32>` in shaders.
     Unorm16x2 = 12,
-    /// Four unsigned shorts (u16). [0, 65535] converted to float [0, 1] `vec4` in shaders.
+    /// Four unsigned shorts (u16). [0, 65535] converted to float [0, 1] `vec4<f32>` in shaders.
     Unorm16x4 = 13,
-    /// Two signed shorts (i16). [-32767, 32767] converted to float [-1, 1] `vec2` in shaders.
+    /// Two signed shorts (i16). [-32767, 32767] converted to float [-1, 1] `vec2<f32>` in shaders.
     Snorm16x2 = 14,
-    /// Four signed shorts (i16). [-32767, 32767] converted to float [-1, 1] `vec4` in shaders.
+    /// Four signed shorts (i16). [-32767, 32767] converted to float [-1, 1] `vec4<f32>` in shaders.
     Snorm16x4 = 15,
-    /// Two half-precision floats (no Rust equiv). `vec2` in shaders.
+    /// Two half-precision floats (no Rust equiv). `vec2<f32>` in shaders.
     Float16x2 = 16,
-    /// Four half-precision floats (no Rust equiv). `vec4` in shaders.
+    /// Four half-precision floats (no Rust equiv). `vec4<f32>` in shaders.
     Float16x4 = 17,
-    /// One single-precision float (f32). `float` in shaders.
+    /// One single-precision float (f32). `f32` in shaders.
     Float32 = 18,
-    /// Two single-precision floats (f32). `vec2` in shaders.
+    /// Two single-precision floats (f32). `vec2<f32>` in shaders.
     Float32x2 = 19,
-    /// Three single-precision floats (f32). `vec3` in shaders.
+    /// Three single-precision floats (f32). `vec3<f32>` in shaders.
     Float32x3 = 20,
-    /// Four single-precision floats (f32). `vec4` in shaders.
+    /// Four single-precision floats (f32). `vec4<f32>` in shaders.
     Float32x4 = 21,
-    /// One unsigned int (u32). `uint` in shaders.
+    /// One unsigned int (u32). `u32` in shaders.
     Uint32 = 22,
-    /// Two unsigned ints (u32). `uvec2` in shaders.
+    /// Two unsigned ints (u32). `vec2<u32>` in shaders.
     Uint32x2 = 23,
-    /// Three unsigned ints (u32). `uvec3` in shaders.
+    /// Three unsigned ints (u32). `vec3<u32>` in shaders.
     Uint32x3 = 24,
-    /// Four unsigned ints (u32). `uvec4` in shaders.
+    /// Four unsigned ints (u32). `vec4<u32>` in shaders.
     Uint32x4 = 25,
-    /// One signed int (i32). `int` in shaders.
+    /// One signed int (i32). `i32` in shaders.
     Sint32 = 26,
-    /// Two signed ints (i32). `ivec2` in shaders.
+    /// Two signed ints (i32). `vec2<i32>` in shaders.
     Sint32x2 = 27,
-    /// Three signed ints (i32). `ivec3` in shaders.
+    /// Three signed ints (i32). `vec3<i32>` in shaders.
     Sint32x3 = 28,
-    /// Four signed ints (i32). `ivec4` in shaders.
+    /// Four signed ints (i32). `vec4<i32>` in shaders.
     Sint32x4 = 29,
-    /// One double-precision float (f64). `double` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
+    /// One double-precision float (f64). `f32` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
     Float64 = 30,
-    /// Two double-precision floats (f64). `dvec2` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
+    /// Two double-precision floats (f64). `vec2<f32>` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
     Float64x2 = 31,
-    /// Three double-precision floats (f64). `dvec3` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
+    /// Three double-precision floats (f64). `vec3<f32>` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
     Float64x3 = 32,
-    /// Four double-precision floats (f64). `dvec4` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
+    /// Four double-precision floats (f64). `vec4<f32>` in shaders. Requires [`Features::VERTEX_ATTRIBUTE_64BIT`].
     Float64x4 = 33,
+    /// Three unsigned 10-bit integers and one 2-bit integer, packed into a 32-bit integer (u32). [0, 1024] converted to float [0, 1] `vec4<f32>` in shaders.
+    #[cfg_attr(feature = "serde", serde(rename = "unorm10-10-10-2"))]
+    Unorm10_10_10_2 = 34,
 }
 
 impl VertexFormat {
@@ -4201,7 +4994,8 @@ impl VertexFormat {
             | Self::Float16x2
             | Self::Float32
             | Self::Uint32
-            | Self::Sint32 => 4,
+            | Self::Sint32
+            | Self::Unorm10_10_10_2 => 4,
             Self::Uint16x4
             | Self::Sint16x4
             | Self::Unorm16x4
@@ -4271,12 +5065,11 @@ impl_bitflags!(BufferUsages);
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpubufferdescriptor).
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BufferDescriptor<L> {
     /// Debug label of a buffer. This will show up in graphics debuggers for easy identification.
     pub label: L,
-    /// Size of a buffer.
+    /// Size of a buffer, in bytes.
     pub size: BufferAddress,
     /// Usages of a buffer. If the buffer is used in any way that isn't specified here, the operation
     /// will panic.
@@ -4306,8 +5099,7 @@ impl<L> BufferDescriptor<L> {
 /// Corresponds to [WebGPU `GPUCommandEncoderDescriptor`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpucommandencoderdescriptor).
 #[repr(C)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CommandEncoderDescriptor<L> {
     /// Debug label for the command encoder. This will show up in graphics debuggers for easy identification.
@@ -4332,8 +5124,7 @@ impl<T> Default for CommandEncoderDescriptor<Option<T>> {
 /// Behavior of the presentation engine based on frame rate.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PresentMode {
     /// Chooses FifoRelaxed -> Fifo based on availability.
     ///
@@ -4395,7 +5186,7 @@ pub enum PresentMode {
     ///
     /// No tearing will be observed.
     ///
-    /// Supported on DX11/12 on Windows 10, NVidia on Vulkan and Wayland on Vulkan.
+    /// Supported on DX12 on Windows 10, NVidia on Vulkan and Wayland on Vulkan.
     ///
     /// This is traditionally called "Fast Vsync"
     Mailbox = 5,
@@ -4405,9 +5196,8 @@ pub enum PresentMode {
 /// compositing.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum CompositeAlphaMode {
     /// Chooses either `Opaque` or `Inherit` automatically，depending on the
     /// `alpha_mode` that the current surface can support.
@@ -4483,6 +5273,10 @@ pub struct SurfaceCapabilities {
     ///
     /// Will return at least one element, CompositeAlphaMode::Opaque or CompositeAlphaMode::Inherit.
     pub alpha_modes: Vec<CompositeAlphaMode>,
+    /// Bitflag of supported texture usages for the surface to use with the given adapter.
+    ///
+    /// The usage TextureUsages::RENDER_ATTACHMENT is guaranteed.
+    pub usages: TextureUsages,
 }
 
 impl Default for SurfaceCapabilities {
@@ -4491,6 +5285,7 @@ impl Default for SurfaceCapabilities {
             formats: Vec::new(),
             present_modes: Vec::new(),
             alpha_modes: vec![CompositeAlphaMode::Opaque],
+            usages: TextureUsages::RENDER_ATTACHMENT,
         }
     }
 }
@@ -4500,23 +5295,42 @@ impl Default for SurfaceCapabilities {
 /// [`Surface`]: ../wgpu/struct.Surface.html
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SurfaceConfiguration<V> {
     /// The usage of the swap chain. The only supported usage is `RENDER_ATTACHMENT`.
     pub usage: TextureUsages,
     /// The texture format of the swap chain. The only formats that are guaranteed are
     /// `Bgra8Unorm` and `Bgra8UnormSrgb`
     pub format: TextureFormat,
-    /// Width of the swap chain. Must be the same size as the surface.
+    /// Width of the swap chain. Must be the same size as the surface, and nonzero.
     pub width: u32,
-    /// Height of the swap chain. Must be the same size as the surface.
+    /// Height of the swap chain. Must be the same size as the surface, and nonzero.
     pub height: u32,
     /// Presentation mode of the swap chain. Fifo is the only mode guaranteed to be supported.
     /// FifoRelaxed, Immediate, and Mailbox will crash if unsupported, while AutoVsync and
     /// AutoNoVsync will gracefully do a designed sets of fallbacks if their primary modes are
     /// unsupported.
     pub present_mode: PresentMode,
+    /// Desired maximum number of frames that the presentation engine should queue in advance.
+    ///
+    /// This is a hint to the backend implementation and will always be clamped to the supported range.
+    /// As a consequence, either the maximum frame latency is set directly on the swap chain,
+    /// or waits on present are scheduled to avoid exceeding the maximum frame latency if supported,
+    /// or the swap chain size is set to (max-latency + 1).
+    ///
+    /// Defaults to 2 when created via `wgpu::Surface::get_default_config`.
+    ///
+    /// Typical values range from 3 to 1, but higher values are possible:
+    /// * Choose 2 or higher for potentially smoother frame display, as it allows to be at least one frame
+    /// to be queued up. This typically avoids starving the GPU's work queue.
+    /// Higher values are useful for achieving a constant flow of frames to the display under varying load.
+    /// * Choose 1 for low latency from frame recording to frame display.
+    /// ⚠️ If the backend does not support waiting on present, this will cause the CPU to wait for the GPU
+    /// to finish all work related to the previous frame when calling `wgpu::Surface::get_current_texture`,
+    /// causing CPU-GPU serialization (i.e. when `wgpu::Surface::get_current_texture` returns, the GPU might be idle).
+    /// It is currently not possible to query this. See <https://github.com/gfx-rs/wgpu/issues/2869>.
+    /// * A value of 0 is generally not supported and always clamped to a higher value.
+    pub desired_maximum_frame_latency: u32,
     /// Specifies how the alpha channel of the textures should be handled during compositing.
     pub alpha_mode: CompositeAlphaMode,
     /// Specifies what view formats will be allowed when calling create_view() on texture returned by get_current_texture().
@@ -4536,13 +5350,14 @@ impl<V: Clone> SurfaceConfiguration<V> {
             width: self.width,
             height: self.height,
             present_mode: self.present_mode,
+            desired_maximum_frame_latency: self.desired_maximum_frame_latency,
             alpha_mode: self.alpha_mode,
             view_formats: fun(self.view_formats.clone()),
         }
     }
 }
 
-/// Status of the recieved surface image.
+/// Status of the received surface image.
 #[repr(C)]
 #[derive(Debug)]
 pub enum SurfaceStatus {
@@ -4606,7 +5421,7 @@ impl PresentationTimestamp {
 /// This is not to be used as a generic color type, only for specific wgpu interfaces.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct Color {
     /// Red component of the color
@@ -4665,8 +5480,7 @@ impl Color {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gputexturedimension).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TextureDimension {
     /// 1D texture
     #[cfg_attr(feature = "serde", serde(rename = "1d"))]
@@ -4684,14 +5498,13 @@ pub enum TextureDimension {
 /// Corresponds to [WebGPU `GPUOrigin2D`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuorigin2ddict).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct Origin2d {
-    ///
+    #[allow(missing_docs)]
     pub x: u32,
-    ///
+    #[allow(missing_docs)]
     pub y: u32,
 }
 
@@ -4709,14 +5522,19 @@ impl Origin2d {
     }
 }
 
+impl std::fmt::Debug for Origin2d {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (self.x, self.y).fmt(f)
+    }
+}
+
 /// Origin of a copy to/from a texture.
 ///
 /// Corresponds to [WebGPU `GPUOrigin3D`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuorigin3ddict).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct Origin3d {
     /// X position of the origin
@@ -4746,14 +5564,19 @@ impl Default for Origin3d {
     }
 }
 
+impl std::fmt::Debug for Origin3d {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (self.x, self.y, self.z).fmt(f)
+    }
+}
+
 /// Extent of a texture related operation.
 ///
 /// Corresponds to [WebGPU `GPUExtent3D`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuextent3ddict).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct Extent3d {
     /// Width of the extent
@@ -4763,6 +5586,12 @@ pub struct Extent3d {
     /// The depth of the extent or the number of array layers
     #[cfg_attr(feature = "serde", serde(default = "default_depth"))]
     pub depth_or_array_layers: u32,
+}
+
+impl std::fmt::Debug for Extent3d {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (self.width, self.height, self.depth_or_array_layers).fmt(f)
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -4946,8 +5775,7 @@ fn test_max_mips() {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gputexturedescriptor).
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TextureDescriptor<L, V> {
     /// Debug label of the texture. This will show up in graphics debuggers for easy identification.
     pub label: L,
@@ -5078,8 +5906,7 @@ impl<L, V> TextureDescriptor<L, V> {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gputextureaspect).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum TextureAspect {
     /// Depth, Stencil, and Color.
@@ -5089,6 +5916,12 @@ pub enum TextureAspect {
     StencilOnly,
     /// Depth.
     DepthOnly,
+    /// Plane 0.
+    Plane0,
+    /// Plane 1.
+    Plane1,
+    /// Plane 2.
+    Plane2,
 }
 
 /// How edges should be handled in texture addressing.
@@ -5097,8 +5930,7 @@ pub enum TextureAspect {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpuaddressmode).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum AddressMode {
     /// Clamp the value to the edge of the texture
@@ -5131,8 +5963,7 @@ pub enum AddressMode {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpufiltermode).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum FilterMode {
     /// Nearest neighbor sampling.
@@ -5148,8 +5979,7 @@ pub enum FilterMode {
 
 /// A range of push constant memory to pass to a shader stage.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PushConstantRange {
     /// Stage push constant range is visible from. Each stage can only be served by at most one range.
     /// One range can serve multiple stages however.
@@ -5165,8 +5995,7 @@ pub struct PushConstantRange {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpucommandbufferdescriptor).
 #[repr(C)]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CommandBufferDescriptor<L> {
     /// Debug label of this command buffer.
     pub label: L,
@@ -5187,8 +6016,7 @@ impl<L> CommandBufferDescriptor<L> {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpurenderbundleencoderdescriptor).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderBundleDepthStencil {
     /// Format of the attachment.
     pub format: TextureFormat,
@@ -5196,11 +6024,16 @@ pub struct RenderBundleDepthStencil {
     ///
     /// This must match the [`RenderPassDepthStencilAttachment::depth_ops`] of the renderpass this render bundle is executed in.
     /// If depth_ops is `Some(..)` this must be false. If it is `None` this must be true.
+    ///
+    /// [`RenderPassDepthStencilAttachment::depth_ops`]: ../wgpu/struct.RenderPassDepthStencilAttachment.html#structfield.depth_ops
     pub depth_read_only: bool,
+
     /// If the stencil aspect of the depth stencil attachment is going to be written to.
     ///
     /// This must match the [`RenderPassDepthStencilAttachment::stencil_ops`] of the renderpass this render bundle is executed in.
     /// If depth_ops is `Some(..)` this must be false. If it is `None` this must be true.
+    ///
+    /// [`RenderPassDepthStencilAttachment::stencil_ops`]: ../wgpu/struct.RenderPassDepthStencilAttachment.html#structfield.stencil_ops
     pub stencil_read_only: bool,
 }
 
@@ -5210,8 +6043,7 @@ pub struct RenderBundleDepthStencil {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpurenderbundledescriptor).
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RenderBundleDescriptor<L> {
     /// Debug label of the render bundle encoder. This will show up in graphics debuggers for easy identification.
     pub label: L,
@@ -5247,8 +6079,7 @@ impl<T> Default for RenderBundleDescriptor<Option<T>> {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuimagedatalayout).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageDataLayout {
     /// Offset into the buffer that is the start of the texture. Must be a multiple of texture block size.
     /// For non-compressed textures, this is 1.
@@ -5288,8 +6119,7 @@ pub struct ImageDataLayout {
 /// Corresponds to [WebGPU `GPUBufferBindingType`](
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpubufferbindingtype).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum BufferBindingType {
     /// A buffer for uniform values.
     ///
@@ -5354,8 +6184,7 @@ pub enum BufferBindingType {
 /// Corresponds to [WebGPU `GPUTextureSampleType`](
 /// https://gpuweb.github.io/gpuweb/#enumdef-gputexturesampletype).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TextureSampleType {
     /// Sampling returns floats.
     ///
@@ -5437,8 +6266,7 @@ impl Default for TextureSampleType {
 /// Corresponds to [WebGPU `GPUStorageTextureAccess`](
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpustoragetextureaccess).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum StorageTextureAccess {
     /// The texture can only be written in the shader and it:
@@ -5500,8 +6328,7 @@ pub enum StorageTextureAccess {
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpusamplerbindingtype).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum SamplerBindingType {
     /// The sampling result is produced based on more than a single color sample from a texture,
@@ -5521,8 +6348,7 @@ pub enum SamplerBindingType {
 /// Corresponds to WebGPU's mutually exclusive fields within [`GPUBindGroupLayoutEntry`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpubindgrouplayoutentry).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum BindingType {
     /// A buffer binding.
     ///
@@ -5531,19 +6357,42 @@ pub enum BindingType {
     Buffer {
         /// Sub-type of the buffer binding.
         ty: BufferBindingType,
+
         /// Indicates that the binding has a dynamic offset.
         ///
-        /// One offset must be passed to [`RenderPass::set_bind_group`][RPsbg] for each dynamic
-        /// binding in increasing order of binding number.
+        /// One offset must be passed to [`RenderPass::set_bind_group`][RPsbg]
+        /// for each dynamic binding in increasing order of binding number.
         ///
         /// [RPsbg]: ../wgpu/struct.RenderPass.html#method.set_bind_group
-        #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+        #[cfg_attr(feature = "serde", serde(default))]
         has_dynamic_offset: bool,
-        /// Minimum size of the corresponding `BufferBinding` required to match this entry.
-        /// When pipeline is created, the size has to cover at least the corresponding structure in the shader
-        /// plus one element of the unbound array, which can only be last in the structure.
-        /// If `None`, the check is performed at draw call time instead of pipeline and bind group creation.
-        #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+
+        /// The minimum size for a [`BufferBinding`] matching this entry, in bytes.
+        ///
+        /// If this is `Some(size)`:
+        ///
+        /// - When calling [`create_bind_group`], the resource at this bind point
+        ///   must be a [`BindingResource::Buffer`] whose effective size is at
+        ///   least `size`.
+        ///
+        /// - When calling [`create_render_pipeline`] or [`create_compute_pipeline`],
+        ///   `size` must be at least the [minimum buffer binding size] for the
+        ///   shader module global at this bind point: large enough to hold the
+        ///   global's value, along with one element of a trailing runtime-sized
+        ///   array, if present.
+        ///
+        /// If this is `None`:
+        ///
+        /// - Each draw or dispatch command checks that the buffer range at this
+        ///   bind point satisfies the [minimum buffer binding size].
+        ///
+        /// [`BufferBinding`]: ../wgpu/struct.BufferBinding.html
+        /// [`create_bind_group`]: ../wgpu/struct.Device.html#method.create_bind_group
+        /// [`BindingResource::Buffer`]: ../wgpu/enum.BindingResource.html#variant.Buffer
+        /// [minimum buffer binding size]: https://www.w3.org/TR/webgpu/#minimum-buffer-binding-size
+        /// [`create_render_pipeline`]: ../wgpu/struct.Device.html#method.create_render_pipeline
+        /// [`create_compute_pipeline`]: ../wgpu/struct.Device.html#method.create_compute_pipeline
+        #[cfg_attr(feature = "serde", serde(default))]
         min_binding_size: Option<BufferSize>,
     },
     /// A sampler that can be used to sample a texture.
@@ -5614,6 +6463,21 @@ pub enum BindingType {
         /// Dimension of the texture view that is going to be sampled.
         view_dimension: TextureViewDimension,
     },
+
+    /// A ray-tracing acceleration structure binding.
+    ///
+    /// Example WGSL syntax:
+    /// ```rust,ignore
+    /// @group(0) @binding(0)
+    /// var as: acceleration_structure;
+    /// ```
+    ///
+    /// Example GLSL syntax:
+    /// ```cpp,ignore
+    /// layout(binding = 0)
+    /// uniform accelerationStructureEXT as;
+    /// ```
+    AccelerationStructure,
 }
 
 impl BindingType {
@@ -5633,8 +6497,7 @@ impl BindingType {
 /// Corresponds to [WebGPU `GPUBindGroupLayoutEntry`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpubindgrouplayoutentry).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BindGroupLayoutEntry {
     /// Binding index. Must match shader index and be unique inside a BindGroupLayout. A binding
     /// of index 1, would be described as `layout(set = 0, binding = 1) uniform` in shaders.
@@ -5648,7 +6511,7 @@ pub struct BindGroupLayoutEntry {
     /// If this value is Some and `ty` is `BindingType::Texture`, [`Features::TEXTURE_BINDING_ARRAY`] must be supported.
     ///
     /// If this value is Some and `ty` is any other variant, bind group creation will fail.
-    #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub count: Option<NonZeroU32>,
 }
 
@@ -5658,8 +6521,7 @@ pub struct BindGroupLayoutEntry {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuimagecopybuffer).
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageCopyBuffer<B> {
     /// The buffer to be copied to/from.
     pub buffer: B,
@@ -5673,8 +6535,7 @@ pub struct ImageCopyBuffer<B> {
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuimagecopytexture).
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageCopyTexture<T> {
     /// The texture to be copied to/from.
     pub texture: T,
@@ -5683,10 +6544,10 @@ pub struct ImageCopyTexture<T> {
     /// The base texel of the texture in the selected `mip_level`. Together
     /// with the `copy_size` argument to copy functions, defines the
     /// sub-region of the texture to copy.
-    #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub origin: Origin3d,
     /// The copy aspect.
-    #[cfg_attr(any(feature = "trace", feature = "replay"), serde(default))]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub aspect: TextureAspect,
 }
 
@@ -5709,7 +6570,7 @@ impl<T> ImageCopyTexture<T> {
     }
 }
 
-/// View of an external texture that cna be used to copy to a texture.
+/// View of an external texture that can be used to copy to a texture.
 ///
 /// Corresponds to [WebGPU `GPUImageCopyExternalImage`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuimagecopyexternalimage).
@@ -5747,7 +6608,7 @@ pub enum ExternalImageSource {
     HTMLCanvasElement(web_sys::HtmlCanvasElement),
     /// Copy from a off-screen canvas.
     ///
-    /// Requies [`DownlevelFlags::EXTERNAL_TEXTURE_OFFSCREEN_CANVAS`]
+    /// Requires [`DownlevelFlags::UNRESTRICTED_EXTERNAL_TEXTURE_COPIES`]
     OffscreenCanvas(web_sys::OffscreenCanvas),
 }
 
@@ -5788,9 +6649,17 @@ impl std::ops::Deref for ExternalImageSource {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(
+    target_arch = "wasm32",
+    feature = "fragile-send-sync-non-atomic-wasm",
+    not(target_feature = "atomics")
+))]
 unsafe impl Send for ExternalImageSource {}
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(
+    target_arch = "wasm32",
+    feature = "fragile-send-sync-non-atomic-wasm",
+    not(target_feature = "atomics")
+))]
 unsafe impl Sync for ExternalImageSource {}
 
 /// Color spaces supported on the web.
@@ -5798,8 +6667,7 @@ unsafe impl Sync for ExternalImageSource {}
 /// Corresponds to [HTML Canvas `PredefinedColorSpace`](
 /// https://html.spec.whatwg.org/multipage/canvas.html#predefinedcolorspace).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum PredefinedColorSpace {
     /// sRGB color space
@@ -5814,8 +6682,7 @@ pub enum PredefinedColorSpace {
 /// Corresponds to [WebGPU `GPUImageCopyTextureTagged`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuimagecopytexturetagged).
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageCopyTextureTagged<T> {
     /// The texture to be copied to/from.
     pub texture: T,
@@ -5846,8 +6713,8 @@ impl<T: Copy> ImageCopyTextureTagged<T> {
 /// Subresource range within an image
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct ImageSubresourceRange {
     /// Aspect of the texture. Color textures must be [`TextureAspect::All`][TAA].
     ///
@@ -5947,8 +6814,7 @@ impl ImageSubresourceRange {
 /// Color variation to use when sampler addressing mode is [`AddressMode::ClampToBorder`]
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SamplerBorderColor {
     /// [0, 0, 0, 0]
     TransparentBlack,
@@ -5970,8 +6836,7 @@ pub enum SamplerBorderColor {
 /// Corresponds to [WebGPU `GPUQuerySetDescriptor`](
 /// https://gpuweb.github.io/gpuweb/#dictdef-gpuquerysetdescriptor).
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct QuerySetDescriptor<L> {
     /// Debug label for the query set.
     pub label: L,
@@ -5998,8 +6863,7 @@ impl<L> QuerySetDescriptor<L> {
 /// Corresponds to [WebGPU `GPUQueryType`](
 /// https://gpuweb.github.io/gpuweb/#enumdef-gpuquerytype).
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QueryType {
     /// Query returns a single 64-bit number, serving as an occlusion boolean.
     Occlusion,
@@ -6063,50 +6927,89 @@ impl_bitflags!(PipelineStatisticsTypes);
 
 /// Argument buffer layout for draw_indirect commands.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct DrawIndirectArgs {
     /// The number of vertices to draw.
     pub vertex_count: u32,
     /// The number of instances to draw.
     pub instance_count: u32,
-    /// Offset into the vertex buffers, in vertices, to begin drawing from.
+    /// The Index of the first vertex to draw.
     pub first_vertex: u32,
-    /// First instance to draw.
+    /// The instance ID of the first instance to draw.
+    ///
+    /// Has to be 0, unless [`Features::INDIRECT_FIRST_INSTANCE`](crate::Features::INDIRECT_FIRST_INSTANCE) is enabled.
     pub first_instance: u32,
+}
+
+impl DrawIndirectArgs {
+    /// Returns the bytes representation of the struct, ready to be written in a buffer.
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::mem::transmute(std::slice::from_raw_parts(
+                self as *const _ as *const u8,
+                std::mem::size_of::<Self>(),
+            ))
+        }
+    }
 }
 
 /// Argument buffer layout for draw_indexed_indirect commands.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct DrawIndexedIndirectArgs {
     /// The number of indices to draw.
     pub index_count: u32,
     /// The number of instances to draw.
     pub instance_count: u32,
-    /// Offset into the index buffer, in indices, begin drawing from.
+    /// The first index within the index buffer.
     pub first_index: u32,
-    /// Added to each index value before indexing into the vertex buffers.
+    /// The value added to the vertex index before indexing into the vertex buffer.
     pub base_vertex: i32,
-    /// First instance to draw.
+    /// The instance ID of the first instance to draw.
+    ///
+    /// Has to be 0, unless [`Features::INDIRECT_FIRST_INSTANCE`](crate::Features::INDIRECT_FIRST_INSTANCE) is enabled.
     pub first_instance: u32,
+}
+
+impl DrawIndexedIndirectArgs {
+    /// Returns the bytes representation of the struct, ready to be written in a buffer.
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::mem::transmute(std::slice::from_raw_parts(
+                self as *const _ as *const u8,
+                std::mem::size_of::<Self>(),
+            ))
+        }
+    }
 }
 
 /// Argument buffer layout for dispatch_indirect commands.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct DispatchIndirectArgs {
-    /// X dimension of the grid of workgroups to dispatch.
-    pub group_size_x: u32,
-    /// Y dimension of the grid of workgroups to dispatch.
-    pub group_size_y: u32,
-    /// Z dimension of the grid of workgroups to dispatch.
-    pub group_size_z: u32,
+    /// The number of work groups in X dimension.
+    pub x: u32,
+    /// The number of work groups in Y dimension.
+    pub y: u32,
+    /// The number of work groups in Z dimension.
+    pub z: u32,
+}
+
+impl DispatchIndirectArgs {
+    /// Returns the bytes representation of the struct, ready to be written into a buffer.
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::mem::transmute(std::slice::from_raw_parts(
+                self as *const _ as *const u8,
+                std::mem::size_of::<Self>(),
+            ))
+        }
+    }
 }
 
 /// Describes how shader bound checks should be performed.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShaderBoundChecks {
     runtime_checks: bool,
 }
@@ -6165,26 +7068,188 @@ pub enum Dx12Compiler {
     /// However, it requires both `dxcompiler.dll` and `dxil.dll` to be shipped with the application.
     /// These files can be downloaded from <https://github.com/microsoft/DirectXShaderCompiler/releases>.
     Dxc {
-        /// Path to the `dxcompiler.dll` file. Passing `None` will use standard platform specific dll loading rules.
+        /// Path to the `dxil.dll` file, or path to the directory containing `dxil.dll` file. Passing `None` will use standard platform specific dll loading rules.
         dxil_path: Option<PathBuf>,
-        /// Path to the `dxil.dll` file. Passing `None` will use standard platform specific dll loading rules.
+        /// Path to the `dxcompiler.dll` file, or path to the directory containing `dxcompiler.dll` file. Passing `None` will use standard platform specific dll loading rules.
         dxc_path: Option<PathBuf>,
     },
 }
 
+/// Selects which OpenGL ES 3 minor version to request.
+///
+/// When using ANGLE as an OpenGL ES/EGL implementation, explicitly requesting `Version1` can provide a non-conformant ES 3.1 on APIs like D3D11.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
+pub enum Gles3MinorVersion {
+    /// No explicit minor version is requested, the driver automatically picks the highest available.
+    #[default]
+    Automatic,
+
+    /// Request an ES 3.0 context.
+    Version0,
+
+    /// Request an ES 3.1 context.
+    Version1,
+
+    /// Request an ES 3.2 context.
+    Version2,
+}
+
 /// Options for creating an instance.
+#[derive(Debug)]
 pub struct InstanceDescriptor {
     /// Which `Backends` to enable.
     pub backends: Backends,
+    /// Flags to tune the behavior of the instance.
+    pub flags: InstanceFlags,
     /// Which DX12 shader compiler to use.
     pub dx12_shader_compiler: Dx12Compiler,
+    /// Which OpenGL ES 3 minor version to request. Will be ignored if OpenGL is available.
+    pub gles_minor_version: Gles3MinorVersion,
 }
 
 impl Default for InstanceDescriptor {
     fn default() -> Self {
         Self {
             backends: Backends::all(),
+            flags: InstanceFlags::default(),
             dx12_shader_compiler: Dx12Compiler::default(),
+            gles_minor_version: Gles3MinorVersion::default(),
         }
     }
+}
+
+bitflags::bitflags!(
+    /// Flags for acceleration structures
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct AccelerationStructureFlags: u8 {
+        /// Allow for incremental updates (no change in size)
+        const ALLOW_UPDATE = 1 << 0;
+        /// Allow the acceleration structure to be compacted in a copy operation
+        const ALLOW_COMPACTION = 1 << 1;
+        /// Optimize for fast ray tracing performance
+        const PREFER_FAST_TRACE = 1 << 2;
+        /// Optimize for fast build time
+        const PREFER_FAST_BUILD = 1 << 3;
+        /// Optimize for low memory footprint (scratch and output)
+        const LOW_MEMORY = 1 << 4;
+    }
+);
+impl_bitflags!(AccelerationStructureFlags);
+
+bitflags::bitflags!(
+    /// Flags for acceleration structure geometries
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct AccelerationStructureGeometryFlags: u8 {
+        /// Is OPAQUE
+        const OPAQUE = 1 << 0;
+        /// NO_DUPLICATE_ANY_HIT_INVOCATION
+        const NO_DUPLICATE_ANY_HIT_INVOCATION = 1 << 1;
+    }
+);
+impl_bitflags!(AccelerationStructureGeometryFlags);
+
+pub use send_sync::*;
+
+#[doc(hidden)]
+mod send_sync {
+    pub trait WasmNotSendSync: WasmNotSend + WasmNotSync {}
+    impl<T: WasmNotSend + WasmNotSync> WasmNotSendSync for T {}
+    #[cfg(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    ))]
+    pub trait WasmNotSend: Send {}
+    #[cfg(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    ))]
+    impl<T: Send> WasmNotSend for T {}
+    #[cfg(not(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    )))]
+    pub trait WasmNotSend {}
+    #[cfg(not(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    )))]
+    impl<T> WasmNotSend for T {}
+
+    #[cfg(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    ))]
+    pub trait WasmNotSync: Sync {}
+    #[cfg(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    ))]
+    impl<T: Sync> WasmNotSync for T {}
+    #[cfg(not(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    )))]
+    pub trait WasmNotSync {}
+    #[cfg(not(any(
+        not(target_arch = "wasm32"),
+        all(
+            feature = "fragile-send-sync-non-atomic-wasm",
+            not(target_feature = "atomics")
+        )
+    )))]
+    impl<T> WasmNotSync for T {}
+}
+
+/// Reason for "lose the device".
+///
+/// Corresponds to [WebGPU `GPUDeviceLostReason`](https://gpuweb.github.io/gpuweb/#enumdef-gpudevicelostreason).
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DeviceLostReason {
+    /// Triggered by driver
+    Unknown = 0,
+    /// After Device::destroy
+    Destroyed = 1,
+    /// After Device::drop
+    ///
+    /// WebGPU does not invoke the device lost callback when the device is
+    /// dropped to prevent garbage collection from being observable. In wgpu,
+    /// we invoke the callback on drop to help with managing memory owned by
+    /// the callback.
+    Dropped = 2,
+    /// After replacing the device_lost_callback
+    ///
+    /// WebGPU does not have a concept of a device lost callback, but wgpu
+    /// does. wgpu guarantees that any supplied callback will be invoked
+    /// exactly once before it is dropped, which helps with managing the
+    /// memory owned by the callback.
+    ReplacedCallback = 3,
+    /// When setting the callback, but the device is already invalid
+    ///
+    /// As above, when the callback is provided, wgpu guarantees that it
+    /// will eventually be called. If the device is already invalid, wgpu
+    /// will call the callback immediately, with this reason.
+    DeviceInvalid = 4,
 }

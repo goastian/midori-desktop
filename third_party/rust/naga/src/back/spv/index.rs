@@ -3,8 +3,9 @@ Bounds-checking for SPIR-V output.
 */
 
 use super::{
-    helpers::global_needs_wrapper, selection::Selection, Block, BlockContext, Error, IdGenerator,
-    Instruction, Word,
+    helpers::{global_needs_wrapper, map_storage_class},
+    selection::Selection,
+    Block, BlockContext, Error, IdGenerator, Instruction, Word,
 };
 use crate::{arena::Handle, proc::BoundsCheckPolicy};
 
@@ -42,32 +43,113 @@ impl<'w> BlockContext<'w> {
         array: Handle<crate::Expression>,
         block: &mut Block,
     ) -> Result<Word, Error> {
-        // Naga IR permits runtime-sized arrays as global variables or as the
-        // final member of a struct that is a global variable. SPIR-V permits
-        // only the latter, so this back end wraps bare runtime-sized arrays
-        // in a made-up struct; see `helpers::global_needs_wrapper` and its uses.
-        // This code must handle both cases.
-        let (structure_id, last_member_index) = match self.ir_function.expressions[array] {
+        // Naga IR permits runtime-sized arrays as global variables, or as the
+        // final member of a struct that is a global variable, or one of these
+        // inside a buffer that is itself an element in a buffer bindings array.
+        // SPIR-V requires that runtime-sized arrays are wrapped in structs.
+        // See `helpers::global_needs_wrapper` and its uses.
+        let (opt_array_index_id, global_handle, opt_last_member_index) = match self
+            .ir_function
+            .expressions[array]
+        {
             crate::Expression::AccessIndex { base, index } => {
                 match self.ir_function.expressions[base] {
-                    crate::Expression::GlobalVariable(handle) => (
-                        self.writer.global_variables[handle.index()].access_id,
-                        index,
-                    ),
-                    _ => return Err(Error::Validation("array length expression")),
+                    // The global variable is an array of buffer bindings of structs,
+                    // we are accessing one of them with a static index,
+                    // and the last member of it.
+                    crate::Expression::AccessIndex {
+                        base: base_outer,
+                        index: index_outer,
+                    } => match self.ir_function.expressions[base_outer] {
+                        crate::Expression::GlobalVariable(handle) => {
+                            let index_id = self.get_index_constant(index_outer);
+                            (Some(index_id), handle, Some(index))
+                        }
+                        _ => return Err(Error::Validation("array length expression case-1a")),
+                    },
+                    // The global variable is an array of buffer bindings of structs,
+                    // we are accessing one of them with a dynamic index,
+                    // and the last member of it.
+                    crate::Expression::Access {
+                        base: base_outer,
+                        index: index_outer,
+                    } => match self.ir_function.expressions[base_outer] {
+                        crate::Expression::GlobalVariable(handle) => {
+                            let index_id = self.cached[index_outer];
+                            (Some(index_id), handle, Some(index))
+                        }
+                        _ => return Err(Error::Validation("array length expression case-1b")),
+                    },
+                    // The global variable is a buffer, and we are accessing the last member.
+                    crate::Expression::GlobalVariable(handle) => {
+                        let global = &self.ir_module.global_variables[handle];
+                        match self.ir_module.types[global.ty].inner {
+                            // The global variable is an array of buffer bindings of run-time arrays.
+                            crate::TypeInner::BindingArray { .. } => (Some(index), handle, None),
+                            // The global variable is a struct, and we are accessing the last member
+                            _ => (None, handle, Some(index)),
+                        }
+                    }
+                    _ => return Err(Error::Validation("array length expression case-1c")),
                 }
             }
+            // The global variable is an array of buffer bindings of arrays.
+            crate::Expression::Access { base, index } => match self.ir_function.expressions[base] {
+                crate::Expression::GlobalVariable(handle) => {
+                    let index_id = self.cached[index];
+                    let global = &self.ir_module.global_variables[handle];
+                    match self.ir_module.types[global.ty].inner {
+                        crate::TypeInner::BindingArray { .. } => (Some(index_id), handle, None),
+                        _ => return Err(Error::Validation("array length expression case-2a")),
+                    }
+                }
+                _ => return Err(Error::Validation("array length expression case-2b")),
+            },
+            // The global variable is a run-time array.
             crate::Expression::GlobalVariable(handle) => {
                 let global = &self.ir_module.global_variables[handle];
                 if !global_needs_wrapper(self.ir_module, global) {
-                    return Err(Error::Validation("array length expression"));
+                    return Err(Error::Validation("array length expression case-3"));
                 }
-
-                (self.writer.global_variables[handle.index()].var_id, 0)
+                (None, handle, None)
             }
-            _ => return Err(Error::Validation("array length expression")),
+            _ => return Err(Error::Validation("array length expression case-4")),
         };
 
+        let gvar = self.writer.global_variables[global_handle.index()].clone();
+        let global = &self.ir_module.global_variables[global_handle];
+        let (last_member_index, gvar_id) = match opt_last_member_index {
+            Some(index) => (index, gvar.access_id),
+            None => {
+                if !global_needs_wrapper(self.ir_module, global) {
+                    return Err(Error::Validation(
+                        "pointer to a global that is not a wrapped array",
+                    ));
+                }
+                (0, gvar.var_id)
+            }
+        };
+        let structure_id = match opt_array_index_id {
+            // We are indexing inside a binding array, generate the access op.
+            Some(index_id) => {
+                let element_type_id = match self.ir_module.types[global.ty].inner {
+                    crate::TypeInner::BindingArray { base, size: _ } => {
+                        let class = map_storage_class(global.space);
+                        self.get_pointer_id(base, class)?
+                    }
+                    _ => return Err(Error::Validation("array length expression case-5")),
+                };
+                let structure_id = self.gen_id();
+                block.body.push(Instruction::access_chain(
+                    element_type_id,
+                    structure_id,
+                    gvar_id,
+                    &[index_id],
+                ));
+                structure_id
+            }
+            None => gvar_id,
+        };
         let length_id = self.gen_id();
         block.body.push(Instruction::array_length(
             self.writer.get_uint_type_id(),
@@ -176,17 +258,19 @@ impl<'w> BlockContext<'w> {
         // done the bounds check.
         let max_index_id = match self.write_sequence_max_index(sequence, block)? {
             MaybeKnown::Known(known_max_index) => {
-                if let crate::Expression::Constant(index_k) = self.ir_function.expressions[index] {
-                    if let Some(known_index) = self.ir_module.constants[index_k].to_array_length() {
-                        // Both the index and length are known at compile time.
-                        //
-                        // In strict WGSL compliance mode, out-of-bounds indices cannot be
-                        // reported at shader translation time, and must be replaced with
-                        // in-bounds indices at run time. So we cannot assume that
-                        // validation ensured the index was in bounds. Restrict now.
-                        let restricted = std::cmp::min(known_index, known_max_index);
-                        return Ok(BoundsCheckResult::KnownInBounds(restricted));
-                    }
+                if let Ok(known_index) = self
+                    .ir_module
+                    .to_ctx()
+                    .eval_expr_to_u32_from(index, &self.ir_function.expressions)
+                {
+                    // Both the index and length are known at compile time.
+                    //
+                    // In strict WGSL compliance mode, out-of-bounds indices cannot be
+                    // reported at shader translation time, and must be replaced with
+                    // in-bounds indices at run time. So we cannot assume that
+                    // validation ensured the index was in bounds. Restrict now.
+                    let restricted = std::cmp::min(known_index, known_max_index);
+                    return Ok(BoundsCheckResult::KnownInBounds(restricted));
                 }
 
                 self.get_index_constant(known_max_index)
@@ -236,31 +320,33 @@ impl<'w> BlockContext<'w> {
         // bounds check.
         let length_id = match self.write_sequence_length(sequence, block)? {
             MaybeKnown::Known(known_length) => {
-                if let crate::Expression::Constant(index_k) = self.ir_function.expressions[index] {
-                    if let Some(known_index) = self.ir_module.constants[index_k].to_array_length() {
-                        // Both the index and length are known at compile time.
-                        //
-                        // It would be nice to assume that, since we are using the
-                        // `ReadZeroSkipWrite` policy, we are not in strict WGSL
-                        // compliance mode, and thus we can count on the validator to have
-                        // rejected any programs with known out-of-bounds indices, and
-                        // thus just return `KnownInBounds` here without actually
-                        // checking.
-                        //
-                        // But it's also reasonable to expect that bounds check policies
-                        // and error reporting policies should be able to vary
-                        // independently without introducing security holes. So, we should
-                        // support the case where bad indices do not cause validation
-                        // errors, and are handled via `ReadZeroSkipWrite`.
-                        //
-                        // In theory, when `known_index` is bad, we could return a new
-                        // `KnownOutOfBounds` variant here. But it's simpler just to fall
-                        // through and let the bounds check take place. The shader is
-                        // broken anyway, so it doesn't make sense to invest in emitting
-                        // the ideal code for it.
-                        if known_index < known_length {
-                            return Ok(BoundsCheckResult::KnownInBounds(known_index));
-                        }
+                if let Ok(known_index) = self
+                    .ir_module
+                    .to_ctx()
+                    .eval_expr_to_u32_from(index, &self.ir_function.expressions)
+                {
+                    // Both the index and length are known at compile time.
+                    //
+                    // It would be nice to assume that, since we are using the
+                    // `ReadZeroSkipWrite` policy, we are not in strict WGSL
+                    // compliance mode, and thus we can count on the validator to have
+                    // rejected any programs with known out-of-bounds indices, and
+                    // thus just return `KnownInBounds` here without actually
+                    // checking.
+                    //
+                    // But it's also reasonable to expect that bounds check policies
+                    // and error reporting policies should be able to vary
+                    // independently without introducing security holes. So, we should
+                    // support the case where bad indices do not cause validation
+                    // errors, and are handled via `ReadZeroSkipWrite`.
+                    //
+                    // In theory, when `known_index` is bad, we could return a new
+                    // `KnownOutOfBounds` variant here. But it's simpler just to fall
+                    // through and let the bounds check take place. The shader is
+                    // broken anyway, so it doesn't make sense to invest in emitting
+                    // the ideal code for it.
+                    if known_index < known_length {
+                        return Ok(BoundsCheckResult::KnownInBounds(known_index));
                     }
                 }
 
@@ -300,7 +386,7 @@ impl<'w> BlockContext<'w> {
         F: FnOnce(&mut IdGenerator, &mut Block) -> Word,
     {
         // For the out-of-bounds case, we produce a zero value.
-        let null_id = self.writer.write_constant_null(result_type);
+        let null_id = self.writer.get_constant_null(result_type);
 
         let mut selection = Selection::start(block, result_type);
 

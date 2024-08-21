@@ -9,26 +9,26 @@
 // The main image or frame consists of a bundle of associated images.
 
 #include <jxl/cms_interface.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "lib/jxl/base/compiler_specific.h"
+#include "lib/jxl/base/common.h"
 #include "lib/jxl/base/data_parallel.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/color_encoding_internal.h"
-#include "lib/jxl/common.h"
-#include "lib/jxl/dec_bit_reader.h"
-#include "lib/jxl/dec_xyb.h"
-#include "lib/jxl/field_encodings.h"
+#include "lib/jxl/common.h"  // JPEGXL_ENABLE_TRANSCODE_JPEG
 #include "lib/jxl/frame_header.h"
-#include "lib/jxl/headers.h"
 #include "lib/jxl/image.h"
 #include "lib/jxl/image_metadata.h"
+#include "lib/jxl/image_ops.h"
 #include "lib/jxl/jpeg/jpeg_data.h"
-#include "lib/jxl/opsin_params.h"
-#include "lib/jxl/quantizer.h"
 
 namespace jxl {
 
@@ -36,21 +36,31 @@ namespace jxl {
 class ImageBundle {
  public:
   // Uninitialized state for use as output parameter.
-  ImageBundle() : metadata_(nullptr) {}
+  explicit ImageBundle(JxlMemoryManager* memory_manager)
+      : memory_manager_(memory_manager), metadata_(nullptr) {}
   // Caller is responsible for setting metadata before calling Set*.
-  explicit ImageBundle(const ImageMetadata* metadata) : metadata_(metadata) {}
+  ImageBundle(JxlMemoryManager* memory_manager, const ImageMetadata* metadata)
+      : memory_manager_(memory_manager), metadata_(metadata) {}
 
   // Move-only (allows storing in std::vector).
   ImageBundle(ImageBundle&&) = default;
   ImageBundle& operator=(ImageBundle&&) = default;
 
-  ImageBundle Copy() const {
-    ImageBundle copy(metadata_);
-    copy.color_ = CopyImage(color_);
+  StatusOr<ImageBundle> Copy() const {
+    JxlMemoryManager* memory_manager = this->memory_manager();
+    ImageBundle copy(memory_manager, metadata_);
+    JXL_ASSIGN_OR_RETURN(
+        copy.color_,
+        Image3F::Create(memory_manager, color_.xsize(), color_.ysize()));
+    CopyImageTo(color_, &copy.color_);
     copy.c_current_ = c_current_;
     copy.extra_channels_.reserve(extra_channels_.size());
     for (const ImageF& plane : extra_channels_) {
-      copy.extra_channels_.emplace_back(CopyImage(plane));
+      JXL_ASSIGN_OR_RETURN(
+          ImageF ec,
+          ImageF::Create(memory_manager, plane.xsize(), plane.ysize()));
+      CopyImageTo(plane, &ec);
+      copy.extra_channels_.emplace_back(std::move(ec));
     }
 
     copy.jpeg_data =
@@ -91,7 +101,11 @@ class ImageBundle {
     }
   }
 
+  JxlMemoryManager* memory_manager_;
+
   // -- COLOR
+
+  JxlMemoryManager* memory_manager() const { return memory_manager_; }
 
   // Whether color() is valid/usable. Returns true in most cases. Even images
   // with spot colors (one example of when !planes().empty()) typically have a
@@ -130,10 +144,7 @@ class ImageBundle {
   bool IsGray() const { return c_current_.IsGray(); }
 
   bool IsSRGB() const { return c_current_.IsSRGB(); }
-  bool IsLinearSRGB() const {
-    return c_current_.white_point == WhitePoint::kD65 &&
-           c_current_.primaries == Primaries::kSRGB && c_current_.tf.IsLinear();
-  }
+  bool IsLinearSRGB() const { return c_current_.IsLinearSRGB(); }
 
   // Set the c_current profile without doing any transformation, e.g. if the
   // transformation was already applied.

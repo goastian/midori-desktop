@@ -44,6 +44,11 @@
 #include "third_party/libyuv/include/libyuv/scale.h"
 #include "vpx/vp8cx.h"
 
+#if (defined(WEBRTC_ARCH_ARM) || defined(WEBRTC_ARCH_ARM64)) && \
+    (defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS))
+#define MOBILE_ARM
+#endif
+
 namespace webrtc {
 namespace {
 #if defined(WEBRTC_IOS)
@@ -65,6 +70,13 @@ constexpr uint32_t kVp832ByteAlign = 32u;
 
 constexpr int kRtpTicksPerSecond = 90000;
 constexpr int kRtpTicksPerMs = kRtpTicksPerSecond / 1000;
+
+// If internal frame dropping is enabled, force the encoder to output a frame
+// on an encode request after this timeout even if this causes some
+// bitrate overshoot compared to the nominal target. Otherwise we risk the
+// receivers incorrectly identifying the gap as a fault and they may needlessly
+// send keyframe requests to recover.
+constexpr TimeDelta kDefaultMaxFrameDropInterval = TimeDelta::Seconds(2);
 
 // VP8 denoiser states.
 enum denoiserState : uint32_t {
@@ -210,7 +222,53 @@ void SetRawImagePlanes(vpx_image_t* raw_image, VideoFrameBuffer* buffer) {
   }
 }
 
+// Helper class used to temporarily change the frame drop threshold for an
+// encoder. Returns the setting to the previous value when upon destruction.
+class FrameDropConfigOverride {
+ public:
+  FrameDropConfigOverride(LibvpxInterface* libvpx,
+                          vpx_codec_ctx_t* encoder,
+                          vpx_codec_enc_cfg_t* config,
+                          uint32_t temporary_frame_drop_threshold)
+      : libvpx_(libvpx),
+        encoder_(encoder),
+        config_(config),
+        original_frame_drop_threshold_(config->rc_dropframe_thresh) {
+    config_->rc_dropframe_thresh = temporary_frame_drop_threshold;
+    libvpx_->codec_enc_config_set(encoder_, config_);
+  }
+  ~FrameDropConfigOverride() {
+    config_->rc_dropframe_thresh = original_frame_drop_threshold_;
+    libvpx_->codec_enc_config_set(encoder_, config_);
+  }
+
+ private:
+  LibvpxInterface* const libvpx_;
+  vpx_codec_ctx_t* const encoder_;
+  vpx_codec_enc_cfg_t* const config_;
+  const uint32_t original_frame_drop_threshold_;
+};
+
+absl::optional<TimeDelta> ParseFrameDropInterval() {
+  FieldTrialFlag disabled = FieldTrialFlag("Disabled");
+  FieldTrialParameter<TimeDelta> interval("interval",
+                                          kDefaultMaxFrameDropInterval);
+  ParseFieldTrial({&disabled, &interval},
+                  field_trial::FindFullName("WebRTC-VP8-MaxFrameInterval"));
+  if (disabled.Get()) {
+    // Kill switch set, don't use any max frame interval.
+    return absl::nullopt;
+  }
+  return interval.Get();
+}
+
 }  // namespace
+
+std::unique_ptr<VideoEncoder> CreateVp8Encoder(const Environment& env,
+                                               Vp8EncoderSettings settings) {
+  return std::make_unique<LibvpxVp8Encoder>(env, std::move(settings),
+                                            LibvpxInterface::Create());
+}
 
 std::unique_ptr<VideoEncoder> VP8Encoder::Create() {
   return std::make_unique<LibvpxVp8Encoder>(LibvpxInterface::Create(),
@@ -260,9 +318,14 @@ LibvpxVp8Encoder::LibvpxVp8Encoder(std::unique_ptr<LibvpxInterface> interface,
           std::move(settings.frame_buffer_controller_factory)),
       resolution_bitrate_limits_(std::move(settings.resolution_bitrate_limits)),
       key_frame_request_(kMaxSimulcastStreams, false),
+      last_encoder_output_time_(kMaxSimulcastStreams,
+                                Timestamp::MinusInfinity()),
       variable_framerate_experiment_(ParseVariableFramerateConfig(
           "WebRTC-VP8VariableFramerateScreenshare")),
-      framerate_controller_(variable_framerate_experiment_.framerate_limit) {
+      framerate_controller_(variable_framerate_experiment_.framerate_limit),
+      max_frame_drop_interval_(ParseFrameDropInterval()),
+      android_specific_threading_settings_(webrtc::field_trial::IsEnabled(
+          "WebRTC-LibvpxVp8Encoder-AndroidSpecificThreadingSettings")) {
   // TODO(eladalon/ilnik): These reservations might be wasting memory.
   // InitEncode() is resizing to the actual size, which might be smaller.
   raw_images_.reserve(kMaxSimulcastStreams);
@@ -505,6 +568,8 @@ int LibvpxVp8Encoder::InitEncode(const VideoCodec* inst,
   send_stream_[0] = true;  // For non-simulcast case.
   cpu_speed_.resize(number_of_streams);
   std::fill(key_frame_request_.begin(), key_frame_request_.end(), false);
+  std::fill(last_encoder_output_time_.begin(), last_encoder_output_time_.end(),
+            Timestamp::MinusInfinity());
 
   int idx = number_of_streams - 1;
   for (int i = 0; i < (number_of_streams - 1); ++i, --idx) {
@@ -609,6 +674,12 @@ int LibvpxVp8Encoder::InitEncode(const VideoCodec* inst,
   // TODO(fbarchard): Consider number of Simulcast layers.
   vpx_configs_[0].g_threads = NumberOfThreads(
       vpx_configs_[0].g_w, vpx_configs_[0].g_h, settings.number_of_cores);
+  if (settings.encoder_thread_limit.has_value()) {
+    RTC_DCHECK_GE(settings.encoder_thread_limit.value(), 1);
+    vpx_configs_[0].g_threads = std::min(
+        vpx_configs_[0].g_threads,
+        static_cast<unsigned int>(settings.encoder_thread_limit.value()));
+  }
 
   // Creating a wrapper to the image - setting image data to NULL.
   // Actual pointer will be set in encode. Setting align to 1, as it
@@ -686,8 +757,7 @@ int LibvpxVp8Encoder::InitEncode(const VideoCodec* inst,
 }
 
 int LibvpxVp8Encoder::GetCpuSpeed(int width, int height) {
-#if defined(WEBRTC_ARCH_ARM) || defined(WEBRTC_ARCH_ARM64) || \
-    defined(WEBRTC_ANDROID) || defined(WEBRTC_ARCH_MIPS)
+#if defined(MOBILE_ARM) || defined(WEBRTC_ARCH_MIPS)
   // On mobile platform, use a lower speed setting for lower resolutions for
   // CPUs with 4 or more cores.
   RTC_DCHECK_GT(number_of_cores_, 0);
@@ -720,21 +790,26 @@ int LibvpxVp8Encoder::GetCpuSpeed(int width, int height) {
 }
 
 int LibvpxVp8Encoder::NumberOfThreads(int width, int height, int cpus) {
+#if defined(WEBRTC_ANDROID)
+  if (android_specific_threading_settings_) {
+#endif
 #if defined(WEBRTC_ANDROID) || defined(WEBRTC_ARCH_MIPS)
-  if (width * height >= 320 * 180) {
-    if (cpus >= 4) {
-      // 3 threads for CPUs with 4 and more cores since most of times only 4
-      // cores will be active.
-      return 3;
-    } else if (cpus == 3 || cpus == 2) {
-      return 2;
-    } else {
-      return 1;
+    if (width * height >= 320 * 180) {
+      if (cpus >= 4) {
+        // 3 threads for CPUs with 4 and more cores since most of times only 4
+        // cores will be active.
+        return 3;
+      } else if (cpus == 3 || cpus == 2) {
+        return 2;
+      } else {
+        return 1;
+      }
     }
+    return 1;
+#if defined(WEBRTC_ANDROID)
   }
-  return 1;
-#else
-#if defined(WEBRTC_IOS)
+#endif
+#elif defined(WEBRTC_IOS)
   std::string trial_string =
       field_trial::FindFullName(kVP8IosMaxNumberOfThreadFieldTrial);
   FieldTrialParameter<int> max_thread_number(
@@ -761,11 +836,10 @@ int LibvpxVp8Encoder::NumberOfThreads(int width, int height, int cpus) {
       return 3;
     }
     return 2;
-  } else {
-    // 1 thread for VGA or less.
-    return 1;
   }
-#endif
+
+  // 1 thread for VGA or less.
+  return 1;
 }
 
 int LibvpxVp8Encoder::InitAndSetControlSettings() {
@@ -792,12 +866,10 @@ int LibvpxVp8Encoder::InitAndSetControlSettings() {
   // for getting the denoised frame from the encoder and using that
   // when encoding lower resolution streams. Would it work with the
   // multi-res encoding feature?
+#if defined(MOBILE_ARM) || defined(WEBRTC_ARCH_MIPS)
   denoiserState denoiser_state = kDenoiserOnYOnly;
-#if defined(WEBRTC_ARCH_ARM) || defined(WEBRTC_ARCH_ARM64) || \
-    defined(WEBRTC_ANDROID) || defined(WEBRTC_ARCH_MIPS)
-  denoiser_state = kDenoiserOnYOnly;
 #else
-  denoiser_state = kDenoiserOnAdaptive;
+  denoiserState denoiser_state = kDenoiserOnAdaptive;
 #endif
   libvpx_->codec_control(
       &encoders_[0], VP8E_SET_NOISE_SENSITIVITY,
@@ -947,13 +1019,32 @@ int LibvpxVp8Encoder::Encode(const VideoFrame& frame,
     }
   }
 
+  // Check if any encoder risks timing out and force a frame in that case.
+  std::vector<FrameDropConfigOverride> frame_drop_overrides_;
+  if (max_frame_drop_interval_.has_value()) {
+    Timestamp now = Timestamp::Micros(frame.timestamp_us());
+    for (size_t i = 0; i < send_stream_.size(); ++i) {
+      if (send_stream_[i] && FrameDropThreshold(i) > 0 &&
+          last_encoder_output_time_[i].IsFinite() &&
+          (now - last_encoder_output_time_[i]) >= *max_frame_drop_interval_) {
+        RTC_LOG(LS_INFO) << "Forcing frame to avoid timeout for stream " << i;
+        size_t encoder_idx = encoders_.size() - 1 - i;
+        frame_drop_overrides_.emplace_back(libvpx_.get(),
+                                           &encoders_[encoder_idx],
+                                           &vpx_configs_[encoder_idx], 0);
+      }
+    }
+  }
+
   if (frame.update_rect().IsEmpty() && num_steady_state_frames_ >= 3 &&
       !key_frame_requested) {
     if (variable_framerate_experiment_.enabled &&
-        framerate_controller_.DropFrame(frame.timestamp() / kRtpTicksPerMs)) {
+        framerate_controller_.DropFrame(frame.rtp_timestamp() /
+                                        kRtpTicksPerMs) &&
+        frame_drop_overrides_.empty()) {
       return WEBRTC_VIDEO_CODEC_OK;
     }
-    framerate_controller_.AddFrame(frame.timestamp() / kRtpTicksPerMs);
+    framerate_controller_.AddFrame(frame.rtp_timestamp() / kRtpTicksPerMs);
   }
 
   bool send_key_frame = key_frame_requested;
@@ -962,7 +1053,7 @@ int LibvpxVp8Encoder::Encode(const VideoFrame& frame,
   Vp8FrameConfig tl_configs[kMaxSimulcastStreams];
   for (size_t i = 0; i < encoders_.size(); ++i) {
     tl_configs[i] =
-        frame_buffer_controller_->NextFrameConfig(i, frame.timestamp());
+        frame_buffer_controller_->NextFrameConfig(i, frame.rtp_timestamp());
     send_key_frame |= tl_configs[i].IntraFrame();
     drop_frame |= tl_configs[i].drop_frame;
     RTC_DCHECK(i == 0 ||
@@ -1163,9 +1254,9 @@ int LibvpxVp8Encoder::GetEncodedPartitions(const VideoFrame& input_image,
         }
         encoded_images_[encoder_idx].SetEncodedData(buffer);
         encoded_images_[encoder_idx].set_size(encoded_pos);
-        encoded_images_[encoder_idx].SetSpatialIndex(stream_idx);
+        encoded_images_[encoder_idx].SetSimulcastIndex(stream_idx);
         PopulateCodecSpecific(&codec_specific, *pkt, stream_idx, encoder_idx,
-                              input_image.timestamp());
+                              input_image.rtp_timestamp());
         if (codec_specific.codecSpecific.VP8.temporalIdx != kNoTemporalIdx) {
           encoded_images_[encoder_idx].SetTemporalIndex(
               codec_specific.codecSpecific.VP8.temporalIdx);
@@ -1173,7 +1264,9 @@ int LibvpxVp8Encoder::GetEncodedPartitions(const VideoFrame& input_image,
         break;
       }
     }
-    encoded_images_[encoder_idx].SetTimestamp(input_image.timestamp());
+    encoded_images_[encoder_idx].SetRtpTimestamp(input_image.rtp_timestamp());
+    encoded_images_[encoder_idx].SetCaptureTimeIdentifier(
+        input_image.capture_time_identifier());
     encoded_images_[encoder_idx].SetColorSpace(input_image.color_space());
     encoded_images_[encoder_idx].SetRetransmissionAllowed(
         retransmission_allowed);
@@ -1190,6 +1283,9 @@ int LibvpxVp8Encoder::GetEncodedPartitions(const VideoFrame& input_image,
         libvpx_->codec_control(&encoders_[encoder_idx], VP8E_GET_LAST_QUANTIZER,
                                &qp_128);
         encoded_images_[encoder_idx].qp_ = qp_128;
+        last_encoder_output_time_[stream_idx] =
+            Timestamp::Micros(input_image.timestamp_us());
+
         encoded_complete_callback_->OnEncodedImage(encoded_images_[encoder_idx],
                                                    &codec_specific);
         const size_t steady_state_size = SteadyStateSize(
@@ -1206,7 +1302,7 @@ int LibvpxVp8Encoder::GetEncodedPartitions(const VideoFrame& input_image,
         if (encoded_images_[encoder_idx].size() == 0) {
           // Dropped frame that will be re-encoded.
           frame_buffer_controller_->OnFrameDropped(stream_idx,
-                                                   input_image.timestamp());
+                                                   input_image.rtp_timestamp());
         }
       }
     }

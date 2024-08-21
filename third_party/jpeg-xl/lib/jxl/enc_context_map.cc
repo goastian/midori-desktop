@@ -7,6 +7,8 @@
 
 #include "lib/jxl/enc_context_map.h"
 
+#include <jxl/memory_manager.h>
+#include <jxl/types.h>
 #include <stdint.h>
 
 #include <algorithm>
@@ -18,6 +20,8 @@
 #include "lib/jxl/enc_ans.h"
 #include "lib/jxl/enc_aux_out.h"
 #include "lib/jxl/entropy_coder.h"
+#include "lib/jxl/fields.h"
+#include "lib/jxl/pack_signed.h"
 
 namespace jxl {
 
@@ -67,22 +71,34 @@ void EncodeContextMap(const std::vector<uint8_t>& context_map,
     return;
   }
 
+  JxlMemoryManager* memory_manager = writer->memory_manager();
   std::vector<uint8_t> transformed_symbols = MoveToFrontTransform(context_map);
-  std::vector<std::vector<Token>> tokens(1), mtf_tokens(1);
-  EntropyEncodingData codes;
-  std::vector<uint8_t> dummy_context_map;
-  for (size_t i = 0; i < context_map.size(); i++) {
-    tokens[0].emplace_back(0, context_map[i]);
+  std::vector<std::vector<Token>> tokens(1);
+  std::vector<std::vector<Token>> mtf_tokens(1);
+  for (const uint8_t& ctx : context_map) {
+    tokens[0].emplace_back(0, ctx);
   }
-  for (size_t i = 0; i < transformed_symbols.size(); i++) {
-    mtf_tokens[0].emplace_back(0, transformed_symbols[i]);
+  for (const uint8_t& sym : transformed_symbols) {
+    mtf_tokens[0].emplace_back(0, sym);
   }
   HistogramParams params;
   params.uint_method = HistogramParams::HybridUintMethod::kContextMap;
-  size_t ans_cost = BuildAndEncodeHistograms(
-      params, 1, tokens, &codes, &dummy_context_map, nullptr, 0, nullptr);
-  size_t mtf_cost = BuildAndEncodeHistograms(
-      params, 1, mtf_tokens, &codes, &dummy_context_map, nullptr, 0, nullptr);
+  size_t ans_cost;
+  size_t mtf_cost;
+  {
+    EntropyEncodingData codes;
+    std::vector<uint8_t> sink_context_map;
+    ans_cost =
+        BuildAndEncodeHistograms(memory_manager, params, 1, tokens, &codes,
+                                 &sink_context_map, nullptr, 0, nullptr);
+  }
+  {
+    EntropyEncodingData codes;
+    std::vector<uint8_t> sink_context_map;
+    mtf_cost =
+        BuildAndEncodeHistograms(memory_manager, params, 1, mtf_tokens, &codes,
+                                 &sink_context_map, nullptr, 0, nullptr);
+  }
   bool use_mtf = mtf_cost < ans_cost;
   // Rebuild token list.
   tokens[0].clear();
@@ -93,25 +109,31 @@ void EncodeContextMap(const std::vector<uint8_t>& context_map,
   size_t entry_bits = CeilLog2Nonzero(num_histograms);
   size_t simple_cost = entry_bits * context_map.size();
   if (entry_bits < 4 && simple_cost < ans_cost && simple_cost < mtf_cost) {
+    BitWriter::Allotment allotment(writer, 3 + entry_bits * context_map.size());
     writer->Write(1, 1);
     writer->Write(2, entry_bits);
-    for (size_t i = 0; i < context_map.size(); i++) {
-      writer->Write(entry_bits, context_map[i]);
+    for (uint8_t entry : context_map) {
+      writer->Write(entry_bits, entry);
     }
+    allotment.ReclaimAndCharge(writer, layer, aux_out);
   } else {
+    BitWriter::Allotment allotment(writer, 2 + tokens[0].size() * 24);
     writer->Write(1, 0);
-    writer->Write(1, use_mtf);  // Use/don't use MTF.
-    BuildAndEncodeHistograms(params, 1, tokens, &codes, &dummy_context_map,
-                             writer, layer, aux_out);
-    WriteTokens(tokens[0], codes, dummy_context_map, writer);
+    writer->Write(1, TO_JXL_BOOL(use_mtf));  // Use/don't use MTF.
+    EntropyEncodingData codes;
+    std::vector<uint8_t> sink_context_map;
+    BuildAndEncodeHistograms(memory_manager, params, 1, tokens, &codes,
+                             &sink_context_map, writer, layer, aux_out);
+    WriteTokens(tokens[0], codes, sink_context_map, 0, writer);
+    allotment.ReclaimAndCharge(writer, layer, aux_out);
   }
 }
 
 void EncodeBlockCtxMap(const BlockCtxMap& block_ctx_map, BitWriter* writer,
                        AuxOut* aux_out) {
-  auto& dct = block_ctx_map.dc_thresholds;
-  auto& qft = block_ctx_map.qf_thresholds;
-  auto& ctx_map = block_ctx_map.ctx_map;
+  const auto& dct = block_ctx_map.dc_thresholds;
+  const auto& qft = block_ctx_map.qf_thresholds;
+  const auto& ctx_map = block_ctx_map.ctx_map;
   BitWriter::Allotment allotment(
       writer,
       (dct[0].size() + dct[1].size() + dct[2].size() + qft.size()) * 34 + 1 +

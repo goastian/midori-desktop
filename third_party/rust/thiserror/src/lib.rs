@@ -62,7 +62,7 @@
 //!   which may be arbitrary expressions. For example:
 //!
 //!   ```rust
-//!   # use std::i32;
+//!   # use core::i32;
 //!   # use thiserror::Error;
 //!   #
 //!   #[derive(Error, Debug)]
@@ -129,7 +129,7 @@
 //!   std::error::Error` will work as a source.
 //!
 //!   ```rust
-//!   # use std::fmt::{self, Display};
+//!   # use core::fmt::{self, Display};
 //!   # use thiserror::Error;
 //!   #
 //!   #[derive(Error, Debug)]
@@ -228,18 +228,21 @@
 //!
 //!   [`anyhow`]: https://github.com/dtolnay/anyhow
 
+#![doc(html_root_url = "https://docs.rs/thiserror/1.0.61")]
 #![allow(
-    // Clippy bug: https://github.com/rust-lang/rust-clippy/issues/7421
-    clippy::doc_markdown,
     clippy::module_name_repetitions,
+    clippy::needless_lifetimes,
     clippy::return_self_not_must_use,
-    clippy::wildcard_imports,
+    clippy::wildcard_imports
 )]
-#![cfg_attr(provide_any, feature(provide_any))]
+#![cfg_attr(error_generic_member_access, feature(error_generic_member_access))]
+
+#[cfg(all(thiserror_nightly_testing, not(error_generic_member_access)))]
+compile_error!("Build script probe failed to compile.");
 
 mod aserror;
 mod display;
-#[cfg(provide_any)]
+#[cfg(error_generic_member_access)]
 mod provide;
 
 pub use thiserror_impl::*;
@@ -247,8 +250,11 @@ pub use thiserror_impl::*;
 // Not public API.
 #[doc(hidden)]
 pub mod __private {
+    #[doc(hidden)]
     pub use crate::aserror::AsDynError;
-    pub use crate::display::{DisplayAsDisplay, PathAsDisplay};
-    #[cfg(provide_any)]
+    #[doc(hidden)]
+    pub use crate::display::AsDisplay;
+    #[cfg(error_generic_member_access)]
+    #[doc(hidden)]
     pub use crate::provide::ThiserrorProvide;
 }

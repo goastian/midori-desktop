@@ -1,5 +1,8 @@
+use std::num::NonZeroU16;
+
 use proc_macro::{Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
 
+/// Turn a type into a [`TokenStream`].
 pub(crate) trait ToTokenStream: Sized {
     fn append_to(self, ts: &mut TokenStream);
 }
@@ -36,6 +39,14 @@ impl ToTokenTree for TokenTree {
 impl ToTokenTree for &str {
     fn into_token_tree(self) -> TokenTree {
         TokenTree::Literal(Literal::string(self))
+    }
+}
+
+impl ToTokenTree for NonZeroU16 {
+    fn into_token_tree(self) -> TokenTree {
+        quote_group! {{
+            unsafe { ::core::num::NonZeroU16::new_unchecked(#(self.get())) }
+        }}
     }
 }
 

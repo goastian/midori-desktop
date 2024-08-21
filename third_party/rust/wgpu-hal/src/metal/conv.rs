@@ -152,13 +152,11 @@ pub fn map_blend_factor(factor: wgt::BlendFactor) -> metal::MTLBlendFactor {
         Bf::OneMinusDstAlpha => OneMinusDestinationAlpha,
         Bf::Constant => BlendColor,
         Bf::OneMinusConstant => OneMinusBlendColor,
-        //Bf::ConstantAlpha => BlendAlpha,
-        //Bf::OneMinusConstantAlpha => OneMinusBlendAlpha,
         Bf::SrcAlphaSaturated => SourceAlphaSaturated,
-        //Bf::Src1 => Source1Color,
-        //Bf::OneMinusSrc1 => OneMinusSource1Color,
-        //Bf::Src1Alpha => Source1Alpha,
-        //Bf::OneMinusSrc1Alpha => OneMinusSource1Alpha,
+        Bf::Src1 => Source1Color,
+        Bf::OneMinusSrc1 => OneMinusSource1Color,
+        Bf::Src1Alpha => Source1Alpha,
+        Bf::OneMinusSrc1Alpha => OneMinusSource1Alpha,
     }
 }
 
@@ -224,6 +222,7 @@ pub fn map_vertex_format(format: wgt::VertexFormat) -> metal::MTLVertexFormat {
         Vf::Uint32x4 => UInt4,
         Vf::Sint32x4 => Int4,
         Vf::Float32x4 => Float4,
+        Vf::Unorm10_10_10_2 => UInt1010102Normalized,
         Vf::Float64 | Vf::Float64x2 | Vf::Float64x3 | Vf::Float64x4 => unimplemented!(),
     }
 }

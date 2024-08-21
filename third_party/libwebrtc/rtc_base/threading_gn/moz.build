@@ -18,7 +18,7 @@ DEFINES["WEBRTC_MOZILLA_BUILD"] = True
 DEFINES["WEBRTC_NON_STATIC_TRACE_EVENT_HANDLERS"] = "0"
 DEFINES["WEBRTC_STRICT_FIELD_TRIALS"] = "0"
 
-FINAL_LIBRARY = "webrtc"
+FINAL_LIBRARY = "xul"
 
 
 LOCAL_INCLUDES += [
@@ -31,11 +31,9 @@ LOCAL_INCLUDES += [
 ]
 
 UNIFIED_SOURCES += [
-    "/third_party/libwebrtc/rtc_base/async_resolver.cc",
     "/third_party/libwebrtc/rtc_base/internal/default_socket_server.cc",
     "/third_party/libwebrtc/rtc_base/network_monitor.cc",
     "/third_party/libwebrtc/rtc_base/network_monitor_factory.cc",
-    "/third_party/libwebrtc/rtc_base/physical_socket_server.cc",
     "/third_party/libwebrtc/rtc_base/thread.cc"
 ]
 
@@ -56,6 +54,7 @@ if CONFIG["OS_TARGET"] == "Android":
     DEFINES["HAVE_SYS_UIO_H"] = True
     DEFINES["WEBRTC_ANDROID"] = True
     DEFINES["WEBRTC_ANDROID_OPENSLES"] = True
+    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_LINUX"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_GNU_SOURCE"] = True
@@ -67,6 +66,10 @@ if CONFIG["OS_TARGET"] == "Android":
         "log"
     ]
 
+    UNIFIED_SOURCES += [
+        "/third_party/libwebrtc/rtc_base/physical_socket_server.cc"
+    ]
+
 if CONFIG["OS_TARGET"] == "Darwin":
 
     DEFINES["WEBRTC_MAC"] = True
@@ -76,6 +79,10 @@ if CONFIG["OS_TARGET"] == "Darwin":
     DEFINES["__STDC_CONSTANT_MACROS"] = True
     DEFINES["__STDC_FORMAT_MACROS"] = True
 
+    UNIFIED_SOURCES += [
+        "/third_party/libwebrtc/rtc_base/physical_socket_server.cc"
+    ]
+
 if CONFIG["OS_TARGET"] == "Linux":
 
     DEFINES["USE_AURA"] = "1"
@@ -83,6 +90,7 @@ if CONFIG["OS_TARGET"] == "Linux":
     DEFINES["USE_NSS_CERTS"] = "1"
     DEFINES["USE_OZONE"] = "1"
     DEFINES["USE_UDEV"] = True
+    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_LINUX"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_FILE_OFFSET_BITS"] = "64"
@@ -91,12 +99,17 @@ if CONFIG["OS_TARGET"] == "Linux":
     DEFINES["__STDC_CONSTANT_MACROS"] = True
     DEFINES["__STDC_FORMAT_MACROS"] = True
 
+    UNIFIED_SOURCES += [
+        "/third_party/libwebrtc/rtc_base/physical_socket_server.cc"
+    ]
+
 if CONFIG["OS_TARGET"] == "OpenBSD":
 
     DEFINES["USE_GLIB"] = "1"
     DEFINES["USE_OZONE"] = "1"
     DEFINES["USE_X11"] = "1"
     DEFINES["WEBRTC_BSD"] = True
+    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_FILE_OFFSET_BITS"] = "64"
     DEFINES["_LARGEFILE64_SOURCE"] = True
@@ -110,6 +123,7 @@ if CONFIG["OS_TARGET"] == "WINNT":
     DEFINES["NOMINMAX"] = True
     DEFINES["NTDDI_VERSION"] = "0x0A000000"
     DEFINES["PSAPI_VERSION"] = "2"
+    DEFINES["RTC_ENABLE_WIN_WGC"] = True
     DEFINES["UNICODE"] = True
     DEFINES["USE_AURA"] = "1"
     DEFINES["WEBRTC_WIN"] = True
@@ -137,12 +151,16 @@ if CONFIG["OS_TARGET"] == "WINNT":
         "winmm"
     ]
 
-if CONFIG["CPU_ARCH"] == "aarch64":
+    UNIFIED_SOURCES += [
+        "/third_party/libwebrtc/rtc_base/physical_socket_server.cc"
+    ]
+
+if CONFIG["TARGET_CPU"] == "aarch64":
 
     DEFINES["WEBRTC_ARCH_ARM64"] = True
     DEFINES["WEBRTC_HAS_NEON"] = True
 
-if CONFIG["CPU_ARCH"] == "arm":
+if CONFIG["TARGET_CPU"] == "arm":
 
     CXXFLAGS += [
         "-mfpu=neon"
@@ -152,21 +170,21 @@ if CONFIG["CPU_ARCH"] == "arm":
     DEFINES["WEBRTC_ARCH_ARM_V7"] = True
     DEFINES["WEBRTC_HAS_NEON"] = True
 
-if CONFIG["CPU_ARCH"] == "mips32":
+if CONFIG["TARGET_CPU"] == "mips32":
 
     DEFINES["MIPS32_LE"] = True
     DEFINES["MIPS_FPU_LE"] = True
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "mips64":
+if CONFIG["TARGET_CPU"] == "mips64":
 
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "x86":
+if CONFIG["TARGET_CPU"] == "x86":
 
     DEFINES["WEBRTC_ENABLE_AVX2"] = True
 
-if CONFIG["CPU_ARCH"] == "x86_64":
+if CONFIG["TARGET_CPU"] == "x86_64":
 
     DEFINES["WEBRTC_ENABLE_AVX2"] = True
 
@@ -194,32 +212,27 @@ if CONFIG["MOZ_X11"] == "1" and CONFIG["OS_TARGET"] == "Linux":
 
     DEFINES["USE_X11"] = "1"
 
-if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Android":
+if CONFIG["OS_TARGET"] == "Android" and CONFIG["TARGET_CPU"] == "arm":
 
     OS_LIBS += [
-        "android_support",
         "unwind"
     ]
 
-if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Android":
+if CONFIG["OS_TARGET"] == "Android" and CONFIG["TARGET_CPU"] == "x86":
 
     CXXFLAGS += [
         "-msse2"
     ]
 
-    OS_LIBS += [
-        "android_support"
-    ]
-
-if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "Linux":
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "aarch64":
 
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Linux":
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "arm":
 
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Linux":
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86":
 
     CXXFLAGS += [
         "-msse2"
@@ -227,7 +240,7 @@ if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Linux":
 
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86_64":
 
     DEFINES["_GNU_SOURCE"] = True
 

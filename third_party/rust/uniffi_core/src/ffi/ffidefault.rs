@@ -31,12 +31,18 @@ macro_rules! impl_ffi_default_with_default {
 }
 
 impl_ffi_default_with_default! {
-    i8, u8, i16, u16, i32, u32, i64, u64, f32, f64
+    bool, i8, u8, i16, u16, i32, u32, i64, u64, f32, f64
 }
 
 // Implement FfiDefault for the remaining types
 impl FfiDefault for () {
     fn ffi_default() {}
+}
+
+impl FfiDefault for crate::Handle {
+    fn ffi_default() -> Self {
+        Self::default()
+    }
 }
 
 impl FfiDefault for *const std::ffi::c_void {
@@ -48,5 +54,18 @@ impl FfiDefault for *const std::ffi::c_void {
 impl FfiDefault for crate::RustBuffer {
     fn ffi_default() -> Self {
         unsafe { Self::from_raw_parts(std::ptr::null_mut(), 0, 0) }
+    }
+}
+
+impl FfiDefault for crate::ForeignFuture {
+    fn ffi_default() -> Self {
+        extern "C" fn free(_handle: u64) {}
+        crate::ForeignFuture { handle: 0, free }
+    }
+}
+
+impl<T> FfiDefault for Option<T> {
+    fn ffi_default() -> Self {
+        None
     }
 }

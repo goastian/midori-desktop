@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "api/environment/environment.h"
 #include "api/fec_controller.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/task_queue/task_queue_base.h"
@@ -79,8 +80,10 @@ class VideoQualityTest : public test::CallTest,
       size_t video_idx);
   void SetupThumbnailCapturers(size_t num_thumbnail_streams);
   std::unique_ptr<VideoDecoder> CreateVideoDecoder(
+      const Environment& env,
       const SdpVideoFormat& format);
-  std::unique_ptr<VideoEncoder> CreateVideoEncoder(const SdpVideoFormat& format,
+  std::unique_ptr<VideoEncoder> CreateVideoEncoder(const Environment& env,
+                                                   const SdpVideoFormat& format,
                                                    VideoAnalyzer* analyzer);
   void SetupVideo(Transport* send_transport, Transport* recv_transport);
   void SetupThumbnails(Transport* send_transport, Transport* recv_transport);
@@ -90,8 +93,8 @@ class VideoQualityTest : public test::CallTest,
   void DestroyThumbnailStreams();
   // Helper method for creating a real ADM (using hardware) for all platforms.
   rtc::scoped_refptr<AudioDeviceModule> CreateAudioDevice();
-  void InitializeAudioDevice(Call::Config* send_call_config,
-                             Call::Config* recv_call_config,
+  void InitializeAudioDevice(CallConfig* send_call_config,
+                             CallConfig* recv_call_config,
                              bool use_real_adm);
   void SetupAudio(Transport* transport);
 

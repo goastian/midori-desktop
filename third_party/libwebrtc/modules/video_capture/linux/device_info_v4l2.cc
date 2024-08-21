@@ -34,11 +34,6 @@
 #include "modules/video_capture/video_capture_impl.h"
 #include "rtc_base/logging.h"
 
-#ifdef WEBRTC_LINUX
-#define EVENT_SIZE  ( sizeof (struct inotify_event) )
-#define BUF_LEN     ( 1024 * ( EVENT_SIZE + 16 ) )
-#endif
-
 // These defines are here to support building on kernel 3.16 which some
 // downstream projects, e.g. Firefox, use.
 // TODO(apehrson): Remove them and their undefs when no longer needed.
@@ -55,6 +50,11 @@
 #ifndef V4L2_PIX_FMT_RGBA32
 #define RGBA32_OVERRIDE 1
 #define V4L2_PIX_FMT_RGBA32 v4l2_fourcc('A', 'B', '2', '4')
+#endif
+
+#ifdef WEBRTC_LINUX
+#define EVENT_SIZE  ( sizeof (struct inotify_event) )
+#define BUF_LEN     ( 1024 * ( EVENT_SIZE + 16 ) )
 #endif
 
 namespace webrtc {
@@ -232,16 +232,16 @@ int32_t DeviceInfoV4l2::GetDeviceName(uint32_t deviceNumber,
                                       uint32_t deviceUniqueIdUTF8Length,
                                       char* /*productUniqueIdUTF8*/,
                                       uint32_t /*productUniqueIdUTF8Length*/,
-                                      pid_t* /*pid*/) {
+                                      pid_t* /*pid*/,
+                                      bool* /*deviceIsPlaceholder*/) {
   // Travel through /dev/video [0-63]
   uint32_t count = 0;
   char device[20];
   int fd = -1;
   bool found = false;
   struct v4l2_capability cap;
-  int device_index;
-  for (device_index = 0; device_index < 64; device_index++) {
-    sprintf(device, "/dev/video%d", device_index);
+  for (int n = 0; n < 64; n++) {
+    snprintf(device, sizeof(device), "/dev/video%d", n);
     if ((fd = open(device, O_RDONLY)) != -1) {
       // query device capabilities and make sure this is a video capture device
       if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0 || !IsVideoCaptureDevice(&cap)) {
@@ -293,15 +293,8 @@ int32_t DeviceInfoV4l2::GetDeviceName(uint32_t deviceNumber,
       RTC_LOG(LS_INFO) << "buffer passed is too small";
       return -1;
     }
-  } else {
-    // if there's no bus info to use for uniqueId, invent one - and it has to be repeatable
-    if (snprintf(deviceUniqueIdUTF8,
-                 deviceUniqueIdUTF8Length, "fake_%u", device_index) >=
-        (int) deviceUniqueIdUTF8Length)
-    {
-      return -1;
-    }
   }
+
   return 0;
 }
 

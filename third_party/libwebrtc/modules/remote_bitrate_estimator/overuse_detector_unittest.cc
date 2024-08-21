@@ -17,7 +17,6 @@
 #include <cstdlib>
 #include <memory>
 
-#include "api/transport/field_trial_based_config.h"
 #include "modules/remote_bitrate_estimator/inter_arrival.h"
 #include "modules/remote_bitrate_estimator/overuse_estimator.h"
 #include "rtc_base/random.h"
@@ -34,16 +33,10 @@ class OveruseDetectorTest : public ::testing::Test {
       : now_ms_(0),
         receive_time_ms_(0),
         rtp_timestamp_(10 * 90),
-        overuse_detector_(),
-        overuse_estimator_(new OveruseEstimator(options_)),
-        inter_arrival_(new InterArrival(5 * 90, kRtpTimestampToMs, true)),
+        inter_arrival_(5 * 90, kRtpTimestampToMs),
         random_(123456789) {}
 
  protected:
-  void SetUp() override {
-    overuse_detector_.reset(new OveruseDetector(&field_trials_));
-  }
-
   int Run100000Samples(int packets_per_frame,
                        size_t packet_size,
                        int mean_ms,
@@ -60,7 +53,7 @@ class OveruseDetectorTest : public ::testing::Test {
           receive_time_ms_,
           now_ms_ + static_cast<int64_t>(
                         random_.Gaussian(0, standard_deviation_ms) + 0.5));
-      if (BandwidthUsage::kBwOverusing == overuse_detector_->State()) {
+      if (BandwidthUsage::kBwOverusing == overuse_detector_.State()) {
         if (last_overuse + 1 != i) {
           unique_overuse++;
         }
@@ -86,7 +79,7 @@ class OveruseDetectorTest : public ::testing::Test {
           receive_time_ms_,
           now_ms_ + static_cast<int64_t>(
                         random_.Gaussian(0, standard_deviation_ms) + 0.5));
-      if (BandwidthUsage::kBwOverusing == overuse_detector_->State()) {
+      if (BandwidthUsage::kBwOverusing == overuse_detector_.State()) {
         return i + 1;
       }
     }
@@ -99,26 +92,24 @@ class OveruseDetectorTest : public ::testing::Test {
     uint32_t timestamp_delta;
     int64_t time_delta;
     int size_delta;
-    if (inter_arrival_->ComputeDeltas(
+    if (inter_arrival_.ComputeDeltas(
             rtp_timestamp, receive_time_ms, receive_time_ms, packet_size,
             &timestamp_delta, &time_delta, &size_delta)) {
       double timestamp_delta_ms = timestamp_delta / 90.0;
-      overuse_estimator_->Update(time_delta, timestamp_delta_ms, size_delta,
-                                 overuse_detector_->State(), receive_time_ms);
-      overuse_detector_->Detect(
-          overuse_estimator_->offset(), timestamp_delta_ms,
-          overuse_estimator_->num_of_deltas(), receive_time_ms);
+      overuse_estimator_.Update(time_delta, timestamp_delta_ms, size_delta,
+                                overuse_detector_.State(), receive_time_ms);
+      overuse_detector_.Detect(overuse_estimator_.offset(), timestamp_delta_ms,
+                               overuse_estimator_.num_of_deltas(),
+                               receive_time_ms);
     }
   }
 
-  const FieldTrialBasedConfig field_trials_;
   int64_t now_ms_;
   int64_t receive_time_ms_;
   uint32_t rtp_timestamp_;
-  OverUseDetectorOptions options_;
-  std::unique_ptr<OveruseDetector> overuse_detector_;
-  std::unique_ptr<OveruseEstimator> overuse_estimator_;
-  std::unique_ptr<InterArrival> inter_arrival_;
+  OveruseDetector overuse_detector_;
+  OveruseEstimator overuse_estimator_;
+  InterArrival inter_arrival_;
   Random random_;
 };
 
@@ -145,7 +136,7 @@ TEST_F(OveruseDetectorTest, SimpleNonOveruse30fps) {
     UpdateDetector(rtp_timestamp, now_ms_, packet_size);
     now_ms_ += frame_duration_ms;
     rtp_timestamp += frame_duration_ms * 90;
-    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_->State());
+    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_.State());
   }
 }
 
@@ -163,7 +154,7 @@ TEST_F(OveruseDetectorTest, SimpleNonOveruseWithReceiveVariance) {
     } else {
       now_ms_ += frame_duration_ms + 5;
     }
-    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_->State());
+    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_.State());
   }
 }
 
@@ -181,7 +172,7 @@ TEST_F(OveruseDetectorTest, SimpleNonOveruseWithRtpTimestampVariance) {
     } else {
       rtp_timestamp += (frame_duration_ms + 5) * 90;
     }
-    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_->State());
+    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_.State());
   }
 }
 
@@ -239,7 +230,7 @@ TEST_F(OveruseDetectorTest, OveruseWithLowVariance2000Kbit30fps) {
     } else {
       now_ms_ += frame_duration_ms + offset;
     }
-    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_->State());
+    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_.State());
   }
   // Simulate a higher send pace, that is too high.
   // Total build up of 30 ms.
@@ -252,10 +243,10 @@ TEST_F(OveruseDetectorTest, OveruseWithLowVariance2000Kbit30fps) {
     UpdateDetector(rtp_timestamp, now_ms_, packet_size);
     now_ms_ += frame_duration_ms + drift_per_frame_ms * 6;
     rtp_timestamp += frame_duration_ms * 90;
-    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_->State());
+    EXPECT_EQ(BandwidthUsage::kBwNormal, overuse_detector_.State());
   }
   UpdateDetector(rtp_timestamp, now_ms_, packet_size);
-  EXPECT_EQ(BandwidthUsage::kBwOverusing, overuse_detector_->State());
+  EXPECT_EQ(BandwidthUsage::kBwOverusing, overuse_detector_.State());
 }
 
 TEST_F(OveruseDetectorTest, LowGaussianVariance30Kbit3fps) {
@@ -569,7 +560,7 @@ TEST_F(OveruseDetectorTest, ThresholdAdapts) {
   bool overuse_detected = false;
   for (int i = 0; i < kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -582,7 +573,7 @@ TEST_F(OveruseDetectorTest, ThresholdAdapts) {
   overuse_detected = false;
   for (int i = 0; i < kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(1.1 * kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(1.1 * kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -595,7 +586,7 @@ TEST_F(OveruseDetectorTest, ThresholdAdapts) {
   overuse_detected = false;
   for (int i = 0; i < kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -607,7 +598,7 @@ TEST_F(OveruseDetectorTest, ThresholdAdapts) {
   // Pass in a low offset to make the threshold adapt down.
   for (int i = 0; i < 15 * kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(0.7 * kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(0.7 * kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -619,7 +610,7 @@ TEST_F(OveruseDetectorTest, ThresholdAdapts) {
   // Make sure the original offset now again triggers overuse.
   for (int i = 0; i < kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -642,7 +633,7 @@ TEST_F(OveruseDetectorTest, DoesntAdaptToSpikes) {
   bool overuse_detected = false;
   for (int i = 0; i < kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -656,7 +647,7 @@ TEST_F(OveruseDetectorTest, DoesntAdaptToSpikes) {
   overuse_detected = false;
   for (int i = 0; i < kShortBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(kLargeOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(kLargeOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }
@@ -669,7 +660,7 @@ TEST_F(OveruseDetectorTest, DoesntAdaptToSpikes) {
   overuse_detected = false;
   for (int i = 0; i < kBatchLength; ++i) {
     BandwidthUsage overuse_state =
-        overuse_detector_->Detect(kOffset, kTsDelta, num_deltas, now_ms);
+        overuse_detector_.Detect(kOffset, kTsDelta, num_deltas, now_ms);
     if (overuse_state == BandwidthUsage::kBwOverusing) {
       overuse_detected = true;
     }

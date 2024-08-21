@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime
 
-from taskgraph import files_changed
 from taskgraph.optimize.base import OptimizationStrategy, register_strategy
+from taskgraph.util.path import match as match_path
 from taskgraph.util.taskcluster import find_task_id, status_task
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 @register_strategy("index-search")
 class IndexSearch(OptimizationStrategy):
-
     # A task with no dependencies remaining after optimization will be replaced
     # if artifacts exist for the corresponding index_paths.
     # Otherwise, we're in one of the following cases:
@@ -23,12 +22,30 @@ class IndexSearch(OptimizationStrategy):
 
     fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
 
-    def should_replace_task(self, task, params, deadline, index_paths):
+    def should_replace_task(self, task, params, deadline, arg):
         "Look for a task with one of the given index paths"
+        batched = False
+        # Appease static checker that doesn't understand that this is not needed
+        label_to_taskid = {}
+        taskid_to_status = {}
+
+        if isinstance(arg, tuple) and len(arg) == 3:
+            # allow for a batched call optimization instead of two queries
+            # per index path
+            index_paths, label_to_taskid, taskid_to_status = arg
+            batched = True
+        else:
+            index_paths = arg
+
         for index_path in index_paths:
             try:
-                task_id = find_task_id(index_path)
-                status = status_task(task_id)
+                if batched:
+                    task_id = label_to_taskid[index_path]
+                    status = taskid_to_status[task_id]
+                else:
+                    # 404 is raised as `KeyError` also end up here
+                    task_id = find_task_id(index_path)
+                    status = status_task(task_id)
                 # status can be `None` if we're in `testing` mode
                 # (e.g. test-action-callback)
                 if not status or status.get("state") in ("exception", "failed"):
@@ -41,7 +58,7 @@ class IndexSearch(OptimizationStrategy):
 
                 return task_id
             except KeyError:
-                # 404 will end up here and go on to the next index path
+                # go on to the next index path
                 pass
 
         return False
@@ -49,17 +66,23 @@ class IndexSearch(OptimizationStrategy):
 
 @register_strategy("skip-unless-changed")
 class SkipUnlessChanged(OptimizationStrategy):
+
+    def check(self, files_changed, patterns):
+        for pattern in patterns:
+            for path in files_changed:
+                if match_path(path, pattern):
+                    return True
+        return False
+
     def should_remove_task(self, task, params, file_patterns):
         # pushlog_id == -1 - this is the case when run from a cron.yml job or on a git repository
         if params.get("repository_type") == "hg" and params.get("pushlog_id") == -1:
             return False
 
-        changed = files_changed.check(params, file_patterns)
+        changed = self.check(params["files_changed"], file_patterns)
         if not changed:
             logger.debug(
-                'no files found matching a pattern in `skip-unless-changed` for "{}"'.format(
-                    task.label
-                )
+                f'no files found matching a pattern in `skip-unless-changed` for "{task.label}"'
             )
             return True
         return False

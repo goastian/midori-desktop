@@ -5,16 +5,20 @@
 
 #include "lib/threads/thread_parallel_runner_internal.h"
 
+#include <jxl/parallel_runner.h>
+#include <jxl/types.h>
+
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <mutex>
+#include <thread>
 
 #if defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
     defined(THREAD_SANITIZER)
 #include "sanitizer/common_interface_defs.h"  // __sanitizer_print_stack_trace
 #endif                                        // defined(*_SANITIZER)
-
-#include <jxl/thread_parallel_runner.h>
-
-#include "lib/jxl/base/profiler.h"
 
 namespace {
 
@@ -117,9 +121,9 @@ void ThreadParallelRunner::RunRange(ThreadParallelRunner* self,
   //   because it avoids user-specified parameters.
 
   for (;;) {
-#if 0
-      // dynamic
-      const uint32_t my_size = std::max(num_tasks / (num_worker_threads * 4), 1);
+#if JXL_FALSE
+    // dynamic
+    const uint32_t my_size = std::max(num_tasks / (num_worker_threads * 4), 1);
 #else
     // guided
     const uint32_t num_reserved =
@@ -177,8 +181,6 @@ void ThreadParallelRunner::ThreadFunc(ThreadParallelRunner* self,
 ThreadParallelRunner::ThreadParallelRunner(const int num_worker_threads)
     : num_worker_threads_(num_worker_threads),
       num_threads_(std::max(num_worker_threads, 1)) {
-  PROFILER_ZONE("ThreadParallelRunner ctor");
-
   threads_.reserve(num_worker_threads_);
 
   // Suppress "unused-private-field" warning.
@@ -195,11 +197,6 @@ ThreadParallelRunner::ThreadParallelRunner(const int num_worker_threads)
   if (num_worker_threads_ != 0) {
     WorkersReadyBarrier();
   }
-
-  // Warm up profiler on worker threads so its expensive initialization
-  // doesn't count towards other timer measurements.
-  RunOnEachThread(
-      [](const int task, const int thread) { PROFILER_ZONE("@InitWorkers"); });
 }
 
 ThreadParallelRunner::~ThreadParallelRunner() {

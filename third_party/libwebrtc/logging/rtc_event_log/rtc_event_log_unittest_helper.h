@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <vector>
 
 #include "logging/rtc_event_log/events/rtc_event_alr_state.h"
 #include "logging/rtc_event_log/events/rtc_event_audio_network_adaptation.h"
@@ -124,8 +125,11 @@ class EventGenerator {
       bool all_configured_exts = true);
 
   // `configure_all` determines whether all supported extensions are configured,
-  // or a random subset.
-  RtpHeaderExtensionMap NewRtpHeaderExtensionMap(bool configure_all = false);
+  // or a random subset. Extensions in `excluded_extensions` will always be
+  // excluded.
+  RtpHeaderExtensionMap NewRtpHeaderExtensionMap(
+      bool configure_all = false,
+      const std::vector<RTPExtensionType>& excluded_extensions = {});
 
   std::unique_ptr<RtcEventAudioReceiveStreamConfig> NewAudioReceiveStreamConfig(
       uint32_t ssrc,
@@ -155,6 +159,10 @@ class EventVerifier {
  public:
   explicit EventVerifier(RtcEventLog::EncodingType encoding_type)
       : encoding_type_(encoding_type) {}
+
+  void ExpectDependencyDescriptorExtensionIsSet(bool value) {
+    expect_dependency_descriptor_rtp_header_extension_is_set_ = value;
+  }
 
   void VerifyLoggedAlrStateEvent(const RtcEventAlrState& original_event,
                                  const LoggedAlrStateEvent& logged_event) const;
@@ -327,7 +335,13 @@ class EventVerifier {
   void VerifyReportBlock(const rtcp::ReportBlock& original_report_block,
                          const rtcp::ReportBlock& logged_report_block);
 
+  template <typename Event>
+  void VerifyLoggedDependencyDescriptor(
+      const Event& packet,
+      const std::vector<uint8_t>& logged_dd) const;
+
   RtcEventLog::EncodingType encoding_type_;
+  bool expect_dependency_descriptor_rtp_header_extension_is_set_ = true;
 };
 
 }  // namespace test

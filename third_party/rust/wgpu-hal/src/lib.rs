@@ -1,21 +1,214 @@
-/*! This library describes the internal unsafe graphics abstraction API.
- *  It follows WebGPU for the most part, re-using wgpu-types,
- *  with the following deviations:
- *  - Fully unsafe: zero overhead, zero validation.
- *  - Compile-time backend selection via traits.
- *  - Objects are passed by references and returned by value. No IDs.
- *  - Mapping is persistent, with explicit synchronization.
- *  - Resource transitions are explicit.
- *  - All layouts are explicit. Binding model has compatibility.
+/*! A cross-platform unsafe graphics abstraction.
  *
- *  General design direction is to follow the majority by the following weights:
- *  - wgpu-core: 1.5
- *  - primary backends (Vulkan/Metal/DX12): 1.0 each
- *  - secondary backends (DX11/GLES): 0.5 each
+ * This crate defines a set of traits abstracting over modern graphics APIs,
+ * with implementations ("backends") for Vulkan, Metal, Direct3D, and GL.
+ *
+ * `wgpu-hal` is a spiritual successor to
+ * [gfx-hal](https://github.com/gfx-rs/gfx), but with reduced scope, and
+ * oriented towards WebGPU implementation goals. It has no overhead for
+ * validation or tracking, and the API translation overhead is kept to the bare
+ * minimum by the design of WebGPU. This API can be used for resource-demanding
+ * applications and engines.
+ *
+ * The `wgpu-hal` crate's main design choices:
+ *
+ * - Our traits are meant to be *portable*: proper use
+ *   should get equivalent results regardless of the backend.
+ *
+ * - Our traits' contracts are *unsafe*: implementations perform minimal
+ *   validation, if any, and incorrect use will often cause undefined behavior.
+ *   This allows us to minimize the overhead we impose over the underlying
+ *   graphics system. If you need safety, the [`wgpu-core`] crate provides a
+ *   safe API for driving `wgpu-hal`, implementing all necessary validation,
+ *   resource state tracking, and so on. (Note that `wgpu-core` is designed for
+ *   use via FFI; the [`wgpu`] crate provides more idiomatic Rust bindings for
+ *   `wgpu-core`.) Or, you can do your own validation.
+ *
+ * - In the same vein, returned errors *only cover cases the user can't
+ *   anticipate*, like running out of memory or losing the device. Any errors
+ *   that the user could reasonably anticipate are their responsibility to
+ *   avoid. For example, `wgpu-hal` returns no error for mapping a buffer that's
+ *   not mappable: as the buffer creator, the user should already know if they
+ *   can map it.
+ *
+ * - We use *static dispatch*. The traits are not
+ *   generally object-safe. You must select a specific backend type
+ *   like [`vulkan::Api`] or [`metal::Api`], and then use that
+ *   according to the main traits, or call backend-specific methods.
+ *
+ * - We use *idiomatic Rust parameter passing*,
+ *   taking objects by reference, returning them by value, and so on,
+ *   unlike `wgpu-core`, which refers to objects by ID.
+ *
+ * - We map buffer contents *persistently*. This means that the buffer
+ *   can remain mapped on the CPU while the GPU reads or writes to it.
+ *   You must explicitly indicate when data might need to be
+ *   transferred between CPU and GPU, if `wgpu-hal` indicates that the
+ *   mapping is not coherent (that is, automatically synchronized
+ *   between the two devices).
+ *
+ * - You must record *explicit barriers* between different usages of a
+ *   resource. For example, if a buffer is written to by a compute
+ *   shader, and then used as and index buffer to a draw call, you
+ *   must use [`CommandEncoder::transition_buffers`] between those two
+ *   operations.
+ *
+ * - Pipeline layouts are *explicitly specified* when setting bind
+ *   group. Incompatible layouts disturb groups bound at higher indices.
+ *
+ * - The API *accepts collections as iterators*, to avoid forcing the user to
+ *   store data in particular containers. The implementation doesn't guarantee
+ *   that any of the iterators are drained, unless stated otherwise by the
+ *   function documentation. For this reason, we recommend that iterators don't
+ *   do any mutating work.
+ *
+ * Unfortunately, `wgpu-hal`'s safety requirements are not fully documented.
+ * Ideally, all trait methods would have doc comments setting out the
+ * requirements users must meet to ensure correct and portable behavior. If you
+ * are aware of a specific requirement that a backend imposes that is not
+ * ensured by the traits' documented rules, please file an issue. Or, if you are
+ * a capable technical writer, please file a pull request!
+ *
+ * [`wgpu-core`]: https://crates.io/crates/wgpu-core
+ * [`wgpu`]: https://crates.io/crates/wgpu
+ * [`vulkan::Api`]: vulkan/struct.Api.html
+ * [`metal::Api`]: metal/struct.Api.html
+ *
+ * ## Primary backends
+ *
+ * The `wgpu-hal` crate has full-featured backends implemented on the following
+ * platform graphics APIs:
+ *
+ * - Vulkan, available on Linux, Android, and Windows, using the [`ash`] crate's
+ *   Vulkan bindings. It's also available on macOS, if you install [MoltenVK].
+ *
+ * - Metal on macOS, using the [`metal`] crate's bindings.
+ *
+ * - Direct3D 12 on Windows, using the [`d3d12`] crate's bindings.
+ *
+ * [`ash`]: https://crates.io/crates/ash
+ * [MoltenVK]: https://github.com/KhronosGroup/MoltenVK
+ * [`metal`]: https://crates.io/crates/metal
+ * [`d3d12`]: ahttps://crates.io/crates/d3d12
+ *
+ * ## Secondary backends
+ *
+ * The `wgpu-hal` crate has a partial implementation based on the following
+ * platform graphics API:
+ *
+ * - The GL backend is available anywhere OpenGL, OpenGL ES, or WebGL are
+ *   available. See the [`gles`] module documentation for details.
+ *
+ * [`gles`]: gles/index.html
+ *
+ * You can see what capabilities an adapter is missing by checking the
+ * [`DownlevelCapabilities`][tdc] in [`ExposedAdapter::capabilities`], available
+ * from [`Instance::enumerate_adapters`].
+ *
+ * The API is generally designed to fit the primary backends better than the
+ * secondary backends, so the latter may impose more overhead.
+ *
+ * [tdc]: wgt::DownlevelCapabilities
+ *
+ * ## Traits
+ *
+ * The `wgpu-hal` crate defines a handful of traits that together
+ * represent a cross-platform abstraction for modern GPU APIs.
+ *
+ * - The [`Api`] trait represents a `wgpu-hal` backend. It has no methods of its
+ *   own, only a collection of associated types.
+ *
+ * - [`Api::Instance`] implements the [`Instance`] trait. [`Instance::init`]
+ *   creates an instance value, which you can use to enumerate the adapters
+ *   available on the system. For example, [`vulkan::Api::Instance::init`][Ii]
+ *   returns an instance that can enumerate the Vulkan physical devices on your
+ *   system.
+ *
+ * - [`Api::Adapter`] implements the [`Adapter`] trait, representing a
+ *   particular device from a particular backend. For example, a Vulkan instance
+ *   might have a Lavapipe software adapter and a GPU-based adapter.
+ *
+ * - [`Api::Device`] implements the [`Device`] trait, representing an active
+ *   link to a device. You get a device value by calling [`Adapter::open`], and
+ *   then use it to create buffers, textures, shader modules, and so on.
+ *
+ * - [`Api::Queue`] implements the [`Queue`] trait, which you use to submit
+ *   command buffers to a given device.
+ *
+ * - [`Api::CommandEncoder`] implements the [`CommandEncoder`] trait, which you
+ *   use to build buffers of commands to submit to a queue. This has all the
+ *   methods for drawing and running compute shaders, which is presumably what
+ *   you're here for.
+ *
+ * - [`Api::Surface`] implements the [`Surface`] trait, which represents a
+ *   swapchain for presenting images on the screen, via interaction with the
+ *   system's window manager.
+ *
+ * The [`Api`] trait has various other associated types like [`Api::Buffer`] and
+ * [`Api::Texture`] that represent resources the rest of the interface can
+ * operate on, but these generally do not have their own traits.
+ *
+ * [Ii]: Instance::init
+ *
+ * ## Validation is the calling code's responsibility, not `wgpu-hal`'s
+ *
+ * As much as possible, `wgpu-hal` traits place the burden of validation,
+ * resource tracking, and state tracking on the caller, not on the trait
+ * implementations themselves. Anything which can reasonably be handled in
+ * backend-independent code should be. A `wgpu_hal` backend's sole obligation is
+ * to provide portable behavior, and report conditions that the calling code
+ * can't reasonably anticipate, like device loss or running out of memory.
+ *
+ * The `wgpu` crate collection is intended for use in security-sensitive
+ * applications, like web browsers, where the API is available to untrusted
+ * code. This means that `wgpu-core`'s validation is not simply a service to
+ * developers, to be provided opportunistically when the performance costs are
+ * acceptable and the necessary data is ready at hand. Rather, `wgpu-core`'s
+ * validation must be exhaustive, to ensure that even malicious content cannot
+ * provoke and exploit undefined behavior in the platform's graphics API.
+ *
+ * Because graphics APIs' requirements are complex, the only practical way for
+ * `wgpu` to provide exhaustive validation is to comprehensively track the
+ * lifetime and state of all the resources in the system. Implementing this
+ * separately for each backend is infeasible; effort would be better spent
+ * making the cross-platform validation in `wgpu-core` legible and trustworthy.
+ * Fortunately, the requirements are largely similar across the various
+ * platforms, so cross-platform validation is practical.
+ *
+ * Some backends have specific requirements that aren't practical to foist off
+ * on the `wgpu-hal` user. For example, properly managing macOS Objective-C or
+ * Microsoft COM reference counts is best handled by using appropriate pointer
+ * types within the backend.
+ *
+ * A desire for "defense in depth" may suggest performing additional validation
+ * in `wgpu-hal` when the opportunity arises, but this must be done with
+ * caution. Even experienced contributors infer the expectations their changes
+ * must meet by considering not just requirements made explicit in types, tests,
+ * assertions, and comments, but also those implicit in the surrounding code.
+ * When one sees validation or state-tracking code in `wgpu-hal`, it is tempting
+ * to conclude, "Oh, `wgpu-hal` checks for this, so `wgpu-core` needn't worry
+ * about it - that would be redundant!" The responsibility for exhaustive
+ * validation always rests with `wgpu-core`, regardless of what may or may not
+ * be checked in `wgpu-hal`.
+ *
+ * To this end, any "defense in depth" validation that does appear in `wgpu-hal`
+ * for requirements that `wgpu-core` should have enforced should report failure
+ * via the `unreachable!` macro, because problems detected at this stage always
+ * indicate a bug in `wgpu-core`.
+ *
+ * ## Debugging
+ *
+ * Most of the information on the wiki [Debugging wgpu Applications][wiki-debug]
+ * page still applies to this API, with the exception of API tracing/replay
+ * functionality, which is only available in `wgpu-core`.
+ *
+ * [wiki-debug]: https://github.com/gfx-rs/wgpu/wiki/Debugging-wgpu-Applications
  */
 
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![allow(
+    // this happens on the GL backend, where it is both thread safe and non-thread safe in the same code.
+    clippy::arc_with_non_send_sync,
     // for `if_then_panic` until it reaches stable
     unknown_lints,
     // We use loops for getting early-out of scope without closures.
@@ -51,36 +244,31 @@
     clippy::pattern_type_mismatch,
 )]
 
-/// DirectX11 API internals.
-#[cfg(all(feature = "dx11", windows))]
-pub mod dx11;
 /// DirectX12 API internals.
-#[cfg(all(feature = "dx12", windows))]
+#[cfg(dx12)]
 pub mod dx12;
 /// A dummy API implementation.
 pub mod empty;
 /// GLES API internals.
-#[cfg(all(feature = "gles"))]
+#[cfg(gles)]
 pub mod gles;
 /// Metal API internals.
-#[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
+#[cfg(metal)]
 pub mod metal;
 /// Vulkan API internals.
-#[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
+#[cfg(vulkan)]
 pub mod vulkan;
 
 pub mod auxil;
 pub mod api {
-    #[cfg(all(feature = "dx11", windows))]
-    pub use super::dx11::Api as Dx11;
-    #[cfg(all(feature = "dx12", windows))]
+    #[cfg(dx12)]
     pub use super::dx12::Api as Dx12;
     pub use super::empty::Api as Empty;
-    #[cfg(feature = "gles")]
+    #[cfg(gles)]
     pub use super::gles::Api as Gles;
-    #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
+    #[cfg(metal)]
     pub use super::metal::Api as Metal;
-    #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
+    #[cfg(vulkan)]
     pub use super::vulkan::Api as Vulkan;
 }
 
@@ -90,12 +278,17 @@ use std::{
     num::NonZeroU32,
     ops::{Range, RangeInclusive},
     ptr::NonNull,
-    sync::atomic::AtomicBool,
+    sync::Arc,
 };
 
 use bitflags::bitflags;
+use parking_lot::Mutex;
 use thiserror::Error;
+use wgt::WasmNotSendSync;
 
+// - Vertex + Fragment
+// - Compute
+pub const MAX_CONCURRENT_SHADER_STAGES: usize = 2;
 pub const MAX_ANISOTROPY: u8 = 16;
 pub const MAX_BIND_GROUPS: usize = 8;
 pub const MAX_VERTEX_BUFFERS: usize = 16;
@@ -117,6 +310,8 @@ pub enum DeviceError {
     OutOfMemory,
     #[error("Device is lost")]
     Lost,
+    #[error("Creation of a resource failed for a reason other than running out of memory.")]
+    ResourceCreationFailed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
@@ -138,6 +333,12 @@ pub enum PipelineError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
+pub enum PipelineCacheError {
+    #[error(transparent)]
+    Device(#[from] DeviceError),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum SurfaceError {
     #[error("Surface is lost")]
     Lost,
@@ -149,79 +350,221 @@ pub enum SurfaceError {
     Other(&'static str),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Error)]
-#[error("Not supported")]
-pub struct InstanceError;
+/// Error occurring while trying to create an instance, or create a surface from an instance;
+/// typically relating to the state of the underlying graphics API or hardware.
+#[derive(Clone, Debug, Error)]
+#[error("{message}")]
+pub struct InstanceError {
+    /// These errors are very platform specific, so do not attempt to encode them as an enum.
+    ///
+    /// This message should describe the problem in sufficient detail to be useful for a
+    /// user-to-developer “why won't this work on my machine” bug report, and otherwise follow
+    /// <https://rust-lang.github.io/api-guidelines/interoperability.html#error-types-are-meaningful-and-well-behaved-c-good-err>.
+    message: String,
 
-pub trait Api: Clone + Sized {
-    type Instance: Instance<Self>;
-    type Surface: Surface<Self>;
-    type Adapter: Adapter<Self>;
-    type Device: Device<Self>;
-
-    type Queue: Queue<Self>;
-    type CommandEncoder: CommandEncoder<Self>;
-    type CommandBuffer: Send + Sync + fmt::Debug;
-
-    type Buffer: fmt::Debug + Send + Sync + 'static;
-    type Texture: fmt::Debug + Send + Sync + 'static;
-    type SurfaceTexture: fmt::Debug + Send + Sync + Borrow<Self::Texture>;
-    type TextureView: fmt::Debug + Send + Sync;
-    type Sampler: fmt::Debug + Send + Sync;
-    type QuerySet: fmt::Debug + Send + Sync;
-    type Fence: fmt::Debug + Send + Sync;
-
-    type BindGroupLayout: Send + Sync;
-    type BindGroup: fmt::Debug + Send + Sync;
-    type PipelineLayout: Send + Sync;
-    type ShaderModule: fmt::Debug + Send + Sync;
-    type RenderPipeline: Send + Sync;
-    type ComputePipeline: Send + Sync;
+    /// Underlying error value, if any is available.
+    #[source]
+    source: Option<Arc<dyn std::error::Error + Send + Sync + 'static>>,
 }
 
-pub trait Instance<A: Api>: Sized + Send + Sync {
+impl InstanceError {
+    #[allow(dead_code)] // may be unused on some platforms
+    pub(crate) fn new(message: String) -> Self {
+        Self {
+            message,
+            source: None,
+        }
+    }
+    #[allow(dead_code)] // may be unused on some platforms
+    pub(crate) fn with_source(
+        message: String,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            message,
+            source: Some(Arc::new(source)),
+        }
+    }
+}
+
+pub trait Api: Clone + fmt::Debug + Sized {
+    type Instance: Instance<A = Self>;
+    type Surface: Surface<A = Self>;
+    type Adapter: Adapter<A = Self>;
+    type Device: Device<A = Self>;
+
+    type Queue: Queue<A = Self>;
+    type CommandEncoder: CommandEncoder<A = Self>;
+
+    /// This API's command buffer type.
+    ///
+    /// The only thing you can do with `CommandBuffer`s is build them
+    /// with a [`CommandEncoder`] and then pass them to
+    /// [`Queue::submit`] for execution, or destroy them by passing
+    /// them to [`CommandEncoder::reset_all`].
+    ///
+    /// [`CommandEncoder`]: Api::CommandEncoder
+    type CommandBuffer: WasmNotSendSync + fmt::Debug;
+
+    type Buffer: fmt::Debug + WasmNotSendSync + 'static;
+    type Texture: fmt::Debug + WasmNotSendSync + 'static;
+    type SurfaceTexture: fmt::Debug + WasmNotSendSync + Borrow<Self::Texture>;
+    type TextureView: fmt::Debug + WasmNotSendSync;
+    type Sampler: fmt::Debug + WasmNotSendSync;
+    type QuerySet: fmt::Debug + WasmNotSendSync;
+
+    /// A value you can block on to wait for something to finish.
+    ///
+    /// A `Fence` holds a monotonically increasing [`FenceValue`]. You can call
+    /// [`Device::wait`] to block until a fence reaches or passes a value you
+    /// choose. [`Queue::submit`] can take a `Fence` and a [`FenceValue`] to
+    /// store in it when the submitted work is complete.
+    ///
+    /// Attempting to set a fence to a value less than its current value has no
+    /// effect.
+    ///
+    /// Waiting on a fence returns as soon as the fence reaches *or passes* the
+    /// requested value. This implies that, in order to reliably determine when
+    /// an operation has completed, operations must finish in order of
+    /// increasing fence values: if a higher-valued operation were to finish
+    /// before a lower-valued operation, then waiting for the fence to reach the
+    /// lower value could return before the lower-valued operation has actually
+    /// finished.
+    type Fence: fmt::Debug + WasmNotSendSync;
+
+    type BindGroupLayout: fmt::Debug + WasmNotSendSync;
+    type BindGroup: fmt::Debug + WasmNotSendSync;
+    type PipelineLayout: fmt::Debug + WasmNotSendSync;
+    type ShaderModule: fmt::Debug + WasmNotSendSync;
+    type RenderPipeline: fmt::Debug + WasmNotSendSync;
+    type ComputePipeline: fmt::Debug + WasmNotSendSync;
+    type PipelineCache: fmt::Debug + WasmNotSendSync;
+
+    type AccelerationStructure: fmt::Debug + WasmNotSendSync + 'static;
+}
+
+pub trait Instance: Sized + WasmNotSendSync {
+    type A: Api;
+
     unsafe fn init(desc: &InstanceDescriptor) -> Result<Self, InstanceError>;
     unsafe fn create_surface(
         &self,
         display_handle: raw_window_handle::RawDisplayHandle,
         window_handle: raw_window_handle::RawWindowHandle,
-    ) -> Result<A::Surface, InstanceError>;
-    unsafe fn destroy_surface(&self, surface: A::Surface);
-    unsafe fn enumerate_adapters(&self) -> Vec<ExposedAdapter<A>>;
+    ) -> Result<<Self::A as Api>::Surface, InstanceError>;
+    unsafe fn destroy_surface(&self, surface: <Self::A as Api>::Surface);
+    unsafe fn enumerate_adapters(&self) -> Vec<ExposedAdapter<Self::A>>;
 }
 
-pub trait Surface<A: Api>: Send + Sync {
+pub trait Surface: WasmNotSendSync {
+    type A: Api;
+
+    /// Configure `self` to use `device`.
+    ///
+    /// # Safety
+    ///
+    /// - All GPU work using `self` must have been completed.
+    /// - All [`AcquiredSurfaceTexture`]s must have been destroyed.
+    /// - All [`Api::TextureView`]s derived from the [`AcquiredSurfaceTexture`]s must have been destroyed.
+    /// - The surface `self` must not currently be configured to use any other [`Device`].
     unsafe fn configure(
-        &mut self,
-        device: &A::Device,
+        &self,
+        device: &<Self::A as Api>::Device,
         config: &SurfaceConfiguration,
     ) -> Result<(), SurfaceError>;
 
-    unsafe fn unconfigure(&mut self, device: &A::Device);
-
-    /// Returns the next texture to be presented by the swapchain for drawing
+    /// Unconfigure `self` on `device`.
     ///
-    /// A `timeout` of `None` means to wait indefinitely, with no timeout.
+    /// # Safety
+    ///
+    /// - All GPU work that uses `surface` must have been completed.
+    /// - All [`AcquiredSurfaceTexture`]s must have been destroyed.
+    /// - All [`Api::TextureView`]s derived from the [`AcquiredSurfaceTexture`]s must have been destroyed.
+    /// - The surface `self` must have been configured on `device`.
+    unsafe fn unconfigure(&self, device: &<Self::A as Api>::Device);
+
+    /// Return the next texture to be presented by `self`, for the caller to draw on.
+    ///
+    /// On success, return an [`AcquiredSurfaceTexture`] representing the
+    /// texture into which the caller should draw the image to be displayed on
+    /// `self`.
+    ///
+    /// If `timeout` elapses before `self` has a texture ready to be acquired,
+    /// return `Ok(None)`. If `timeout` is `None`, wait indefinitely, with no
+    /// timeout.
+    ///
+    /// # Using an [`AcquiredSurfaceTexture`]
+    ///
+    /// On success, this function returns an [`AcquiredSurfaceTexture`] whose
+    /// [`texture`] field is a [`SurfaceTexture`] from which the caller can
+    /// [`borrow`] a [`Texture`] to draw on. The [`AcquiredSurfaceTexture`] also
+    /// carries some metadata about that [`SurfaceTexture`].
+    ///
+    /// All calls to [`Queue::submit`] that draw on that [`Texture`] must also
+    /// include the [`SurfaceTexture`] in the `surface_textures` argument.
+    ///
+    /// When you are done drawing on the texture, you can display it on `self`
+    /// by passing the [`SurfaceTexture`] and `self` to [`Queue::present`].
+    ///
+    /// If you do not wish to display the texture, you must pass the
+    /// [`SurfaceTexture`] to [`self.discard_texture`], so that it can be reused
+    /// by future acquisitions.
     ///
     /// # Portability
     ///
-    /// Some backends can't support a timeout when acquiring a texture and
-    /// the timeout will be ignored.
+    /// Some backends can't support a timeout when acquiring a texture. On these
+    /// backends, `timeout` is ignored.
     ///
-    /// Returns `None` on timing out.
+    /// # Safety
+    ///
+    /// - The surface `self` must currently be configured on some [`Device`].
+    ///
+    /// - The `fence` argument must be the same [`Fence`] passed to all calls to
+    ///   [`Queue::submit`] that used [`Texture`]s acquired from this surface.
+    ///
+    /// - You may only have one texture acquired from `self` at a time. When
+    ///   `acquire_texture` returns `Ok(Some(ast))`, you must pass the returned
+    ///   [`SurfaceTexture`] `ast.texture` to either [`Queue::present`] or
+    ///   [`Surface::discard_texture`] before calling `acquire_texture` again.
+    ///
+    /// [`texture`]: AcquiredSurfaceTexture::texture
+    /// [`SurfaceTexture`]: Api::SurfaceTexture
+    /// [`borrow`]: std::borrow::Borrow::borrow
+    /// [`Texture`]: Api::Texture
+    /// [`Fence`]: Api::Fence
+    /// [`self.discard_texture`]: Surface::discard_texture
     unsafe fn acquire_texture(
-        &mut self,
+        &self,
         timeout: Option<std::time::Duration>,
-    ) -> Result<Option<AcquiredSurfaceTexture<A>>, SurfaceError>;
-    unsafe fn discard_texture(&mut self, texture: A::SurfaceTexture);
+        fence: &<Self::A as Api>::Fence,
+    ) -> Result<Option<AcquiredSurfaceTexture<Self::A>>, SurfaceError>;
+
+    /// Relinquish an acquired texture without presenting it.
+    ///
+    /// After this call, the texture underlying [`SurfaceTexture`] may be
+    /// returned by subsequent calls to [`self.acquire_texture`].
+    ///
+    /// # Safety
+    ///
+    /// - The surface `self` must currently be configured on some [`Device`].
+    ///
+    /// - `texture` must be a [`SurfaceTexture`] returned by a call to
+    ///   [`self.acquire_texture`] that has not yet been passed to
+    ///   [`Queue::present`].
+    ///
+    /// [`SurfaceTexture`]: Api::SurfaceTexture
+    /// [`self.acquire_texture`]: Surface::acquire_texture
+    unsafe fn discard_texture(&self, texture: <Self::A as Api>::SurfaceTexture);
 }
 
-pub trait Adapter<A: Api>: Send + Sync {
+pub trait Adapter: WasmNotSendSync {
+    type A: Api;
+
     unsafe fn open(
         &self,
         features: wgt::Features,
         limits: &wgt::Limits,
-    ) -> Result<OpenDevice<A>, DeviceError>;
+    ) -> Result<OpenDevice<Self::A>, DeviceError>;
 
     /// Return the set of supported capabilities for a texture format.
     unsafe fn texture_format_capabilities(
@@ -232,7 +575,10 @@ pub trait Adapter<A: Api>: Send + Sync {
     /// Returns the capabilities of working with a specified surface.
     ///
     /// `None` means presentation is not supported for it.
-    unsafe fn surface_capabilities(&self, surface: &A::Surface) -> Option<SurfaceCapabilities>;
+    unsafe fn surface_capabilities(
+        &self,
+        surface: &<Self::A as Api>::Surface,
+    ) -> Option<SurfaceCapabilities>;
 
     /// Creates a [`PresentationTimestamp`] using the adapter's WSI.
     ///
@@ -240,164 +586,459 @@ pub trait Adapter<A: Api>: Send + Sync {
     unsafe fn get_presentation_timestamp(&self) -> wgt::PresentationTimestamp;
 }
 
-pub trait Device<A: Api>: Send + Sync {
+/// A connection to a GPU and a pool of resources to use with it.
+///
+/// A `wgpu-hal` `Device` represents an open connection to a specific graphics
+/// processor, controlled via the backend [`Device::A`]. A `Device` is mostly
+/// used for creating resources. Each `Device` has an associated [`Queue`] used
+/// for command submission.
+///
+/// On Vulkan a `Device` corresponds to a logical device ([`VkDevice`]). Other
+/// backends don't have an exact analog: for example, [`ID3D12Device`]s and
+/// [`MTLDevice`]s are owned by the backends' [`wgpu_hal::Adapter`]
+/// implementations, and shared by all [`wgpu_hal::Device`]s created from that
+/// `Adapter`.
+///
+/// A `Device`'s life cycle is generally:
+///
+/// 1)  Obtain a `Device` and its associated [`Queue`] by calling
+///     [`Adapter::open`].
+///
+///     Alternatively, the backend-specific types that implement [`Adapter`] often
+///     have methods for creating a `wgpu-hal` `Device` from a platform-specific
+///     handle. For example, [`vulkan::Adapter::device_from_raw`] can create a
+///     [`vulkan::Device`] from an [`ash::Device`].
+///
+/// 1)  Create resources to use on the device by calling methods like
+///     [`Device::create_texture`] or [`Device::create_shader_module`].
+///
+/// 1)  Call [`Device::create_command_encoder`] to obtain a [`CommandEncoder`],
+///     which you can use to build [`CommandBuffer`]s holding commands to be
+///     executed on the GPU.
+///
+/// 1)  Call [`Queue::submit`] on the `Device`'s associated [`Queue`] to submit
+///     [`CommandBuffer`]s for execution on the GPU. If needed, call
+///     [`Device::wait`] to wait for them to finish execution.
+///
+/// 1)  Free resources with methods like [`Device::destroy_texture`] or
+///     [`Device::destroy_shader_module`].
+///
+/// 1)  Shut down the device by calling [`Device::exit`].
+///
+/// [`vkDevice`]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkDevice
+/// [`ID3D12Device`]: https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nn-d3d12-id3d12device
+/// [`MTLDevice`]: https://developer.apple.com/documentation/metal/mtldevice
+/// [`wgpu_hal::Adapter`]: Adapter
+/// [`wgpu_hal::Device`]: Device
+/// [`vulkan::Adapter::device_from_raw`]: vulkan/struct.Adapter.html#method.device_from_raw
+/// [`vulkan::Device`]: vulkan/struct.Device.html
+/// [`ash::Device`]: https://docs.rs/ash/latest/ash/struct.Device.html
+/// [`CommandBuffer`]: Api::CommandBuffer
+///
+/// # Safety
+///
+/// As with other `wgpu-hal` APIs, [validation] is the caller's
+/// responsibility. Here are the general requirements for all `Device`
+/// methods:
+///
+/// - Any resource passed to a `Device` method must have been created by that
+///   `Device`. For example, a [`Texture`] passed to [`Device::destroy_texture`] must
+///   have been created with the `Device` passed as `self`.
+///
+/// - Resources may not be destroyed if they are used by any submitted command
+///   buffers that have not yet finished execution.
+///
+/// [validation]: index.html#validation-is-the-calling-codes-responsibility-not-wgpu-hals
+/// [`Texture`]: Api::Texture
+pub trait Device: WasmNotSendSync {
+    type A: Api;
+
     /// Exit connection to this logical device.
-    unsafe fn exit(self, queue: A::Queue);
+    unsafe fn exit(self, queue: <Self::A as Api>::Queue);
     /// Creates a new buffer.
     ///
     /// The initial usage is `BufferUses::empty()`.
-    unsafe fn create_buffer(&self, desc: &BufferDescriptor) -> Result<A::Buffer, DeviceError>;
-    unsafe fn destroy_buffer(&self, buffer: A::Buffer);
+    unsafe fn create_buffer(
+        &self,
+        desc: &BufferDescriptor,
+    ) -> Result<<Self::A as Api>::Buffer, DeviceError>;
+    unsafe fn destroy_buffer(&self, buffer: <Self::A as Api>::Buffer);
     //TODO: clarify if zero-sized mapping is allowed
     unsafe fn map_buffer(
         &self,
-        buffer: &A::Buffer,
+        buffer: &<Self::A as Api>::Buffer,
         range: MemoryRange,
     ) -> Result<BufferMapping, DeviceError>;
-    unsafe fn unmap_buffer(&self, buffer: &A::Buffer) -> Result<(), DeviceError>;
-    unsafe fn flush_mapped_ranges<I>(&self, buffer: &A::Buffer, ranges: I)
+    unsafe fn unmap_buffer(&self, buffer: &<Self::A as Api>::Buffer) -> Result<(), DeviceError>;
+    unsafe fn flush_mapped_ranges<I>(&self, buffer: &<Self::A as Api>::Buffer, ranges: I)
     where
         I: Iterator<Item = MemoryRange>;
-    unsafe fn invalidate_mapped_ranges<I>(&self, buffer: &A::Buffer, ranges: I)
+    unsafe fn invalidate_mapped_ranges<I>(&self, buffer: &<Self::A as Api>::Buffer, ranges: I)
     where
         I: Iterator<Item = MemoryRange>;
 
     /// Creates a new texture.
     ///
     /// The initial usage for all subresources is `TextureUses::UNINITIALIZED`.
-    unsafe fn create_texture(&self, desc: &TextureDescriptor) -> Result<A::Texture, DeviceError>;
-    unsafe fn destroy_texture(&self, texture: A::Texture);
+    unsafe fn create_texture(
+        &self,
+        desc: &TextureDescriptor,
+    ) -> Result<<Self::A as Api>::Texture, DeviceError>;
+    unsafe fn destroy_texture(&self, texture: <Self::A as Api>::Texture);
     unsafe fn create_texture_view(
         &self,
-        texture: &A::Texture,
+        texture: &<Self::A as Api>::Texture,
         desc: &TextureViewDescriptor,
-    ) -> Result<A::TextureView, DeviceError>;
-    unsafe fn destroy_texture_view(&self, view: A::TextureView);
-    unsafe fn create_sampler(&self, desc: &SamplerDescriptor) -> Result<A::Sampler, DeviceError>;
-    unsafe fn destroy_sampler(&self, sampler: A::Sampler);
+    ) -> Result<<Self::A as Api>::TextureView, DeviceError>;
+    unsafe fn destroy_texture_view(&self, view: <Self::A as Api>::TextureView);
+    unsafe fn create_sampler(
+        &self,
+        desc: &SamplerDescriptor,
+    ) -> Result<<Self::A as Api>::Sampler, DeviceError>;
+    unsafe fn destroy_sampler(&self, sampler: <Self::A as Api>::Sampler);
 
+    /// Create a fresh [`CommandEncoder`].
+    ///
+    /// The new `CommandEncoder` is in the "closed" state.
     unsafe fn create_command_encoder(
         &self,
-        desc: &CommandEncoderDescriptor<A>,
-    ) -> Result<A::CommandEncoder, DeviceError>;
-    unsafe fn destroy_command_encoder(&self, pool: A::CommandEncoder);
+        desc: &CommandEncoderDescriptor<Self::A>,
+    ) -> Result<<Self::A as Api>::CommandEncoder, DeviceError>;
+    unsafe fn destroy_command_encoder(&self, pool: <Self::A as Api>::CommandEncoder);
 
     /// Creates a bind group layout.
     unsafe fn create_bind_group_layout(
         &self,
         desc: &BindGroupLayoutDescriptor,
-    ) -> Result<A::BindGroupLayout, DeviceError>;
-    unsafe fn destroy_bind_group_layout(&self, bg_layout: A::BindGroupLayout);
+    ) -> Result<<Self::A as Api>::BindGroupLayout, DeviceError>;
+    unsafe fn destroy_bind_group_layout(&self, bg_layout: <Self::A as Api>::BindGroupLayout);
     unsafe fn create_pipeline_layout(
         &self,
-        desc: &PipelineLayoutDescriptor<A>,
-    ) -> Result<A::PipelineLayout, DeviceError>;
-    unsafe fn destroy_pipeline_layout(&self, pipeline_layout: A::PipelineLayout);
+        desc: &PipelineLayoutDescriptor<Self::A>,
+    ) -> Result<<Self::A as Api>::PipelineLayout, DeviceError>;
+    unsafe fn destroy_pipeline_layout(&self, pipeline_layout: <Self::A as Api>::PipelineLayout);
     unsafe fn create_bind_group(
         &self,
-        desc: &BindGroupDescriptor<A>,
-    ) -> Result<A::BindGroup, DeviceError>;
-    unsafe fn destroy_bind_group(&self, group: A::BindGroup);
+        desc: &BindGroupDescriptor<Self::A>,
+    ) -> Result<<Self::A as Api>::BindGroup, DeviceError>;
+    unsafe fn destroy_bind_group(&self, group: <Self::A as Api>::BindGroup);
 
     unsafe fn create_shader_module(
         &self,
         desc: &ShaderModuleDescriptor,
         shader: ShaderInput,
-    ) -> Result<A::ShaderModule, ShaderError>;
-    unsafe fn destroy_shader_module(&self, module: A::ShaderModule);
+    ) -> Result<<Self::A as Api>::ShaderModule, ShaderError>;
+    unsafe fn destroy_shader_module(&self, module: <Self::A as Api>::ShaderModule);
     unsafe fn create_render_pipeline(
         &self,
-        desc: &RenderPipelineDescriptor<A>,
-    ) -> Result<A::RenderPipeline, PipelineError>;
-    unsafe fn destroy_render_pipeline(&self, pipeline: A::RenderPipeline);
+        desc: &RenderPipelineDescriptor<Self::A>,
+    ) -> Result<<Self::A as Api>::RenderPipeline, PipelineError>;
+    unsafe fn destroy_render_pipeline(&self, pipeline: <Self::A as Api>::RenderPipeline);
     unsafe fn create_compute_pipeline(
         &self,
-        desc: &ComputePipelineDescriptor<A>,
-    ) -> Result<A::ComputePipeline, PipelineError>;
-    unsafe fn destroy_compute_pipeline(&self, pipeline: A::ComputePipeline);
+        desc: &ComputePipelineDescriptor<Self::A>,
+    ) -> Result<<Self::A as Api>::ComputePipeline, PipelineError>;
+    unsafe fn destroy_compute_pipeline(&self, pipeline: <Self::A as Api>::ComputePipeline);
+    unsafe fn create_pipeline_cache(
+        &self,
+        desc: &PipelineCacheDescriptor<'_>,
+    ) -> Result<<Self::A as Api>::PipelineCache, PipelineCacheError>;
+    fn pipeline_cache_validation_key(&self) -> Option<[u8; 16]> {
+        None
+    }
+    unsafe fn destroy_pipeline_cache(&self, cache: <Self::A as Api>::PipelineCache);
 
     unsafe fn create_query_set(
         &self,
         desc: &wgt::QuerySetDescriptor<Label>,
-    ) -> Result<A::QuerySet, DeviceError>;
-    unsafe fn destroy_query_set(&self, set: A::QuerySet);
-    unsafe fn create_fence(&self) -> Result<A::Fence, DeviceError>;
-    unsafe fn destroy_fence(&self, fence: A::Fence);
-    unsafe fn get_fence_value(&self, fence: &A::Fence) -> Result<FenceValue, DeviceError>;
-    /// Calling wait with a lower value than the current fence value will immediately return.
+    ) -> Result<<Self::A as Api>::QuerySet, DeviceError>;
+    unsafe fn destroy_query_set(&self, set: <Self::A as Api>::QuerySet);
+    unsafe fn create_fence(&self) -> Result<<Self::A as Api>::Fence, DeviceError>;
+    unsafe fn destroy_fence(&self, fence: <Self::A as Api>::Fence);
+    unsafe fn get_fence_value(
+        &self,
+        fence: &<Self::A as Api>::Fence,
+    ) -> Result<FenceValue, DeviceError>;
+
+    /// Wait for `fence` to reach `value`.
+    ///
+    /// Operations like [`Queue::submit`] can accept a [`Fence`] and a
+    /// [`FenceValue`] to store in it, so you can use this `wait` function
+    /// to wait for a given queue submission to finish execution.
+    ///
+    /// The `value` argument must be a value that some actual operation you have
+    /// already presented to the device is going to store in `fence`. You cannot
+    /// wait for values yet to be submitted. (This restriction accommodates
+    /// implementations like the `vulkan` backend's [`FencePool`] that must
+    /// allocate a distinct synchronization object for each fence value one is
+    /// able to wait for.)
+    ///
+    /// Calling `wait` with a lower [`FenceValue`] than `fence`'s current value
+    /// returns immediately.
+    ///
+    /// [`Fence`]: Api::Fence
+    /// [`FencePool`]: vulkan/enum.Fence.html#variant.FencePool
     unsafe fn wait(
         &self,
-        fence: &A::Fence,
+        fence: &<Self::A as Api>::Fence,
         value: FenceValue,
         timeout_ms: u32,
     ) -> Result<bool, DeviceError>;
 
     unsafe fn start_capture(&self) -> bool;
     unsafe fn stop_capture(&self);
+
+    #[allow(unused_variables)]
+    unsafe fn pipeline_cache_get_data(
+        &self,
+        cache: &<Self::A as Api>::PipelineCache,
+    ) -> Option<Vec<u8>> {
+        None
+    }
+
+    unsafe fn create_acceleration_structure(
+        &self,
+        desc: &AccelerationStructureDescriptor,
+    ) -> Result<<Self::A as Api>::AccelerationStructure, DeviceError>;
+    unsafe fn get_acceleration_structure_build_sizes(
+        &self,
+        desc: &GetAccelerationStructureBuildSizesDescriptor<Self::A>,
+    ) -> AccelerationStructureBuildSizes;
+    unsafe fn get_acceleration_structure_device_address(
+        &self,
+        acceleration_structure: &<Self::A as Api>::AccelerationStructure,
+    ) -> wgt::BufferAddress;
+    unsafe fn destroy_acceleration_structure(
+        &self,
+        acceleration_structure: <Self::A as Api>::AccelerationStructure,
+    );
 }
 
-pub trait Queue<A: Api>: Send + Sync {
-    /// Submits the command buffers for execution on GPU.
+pub trait Queue: WasmNotSendSync {
+    type A: Api;
+
+    /// Submit `command_buffers` for execution on GPU.
     ///
-    /// Valid usage:
-    /// - all of the command buffers were created from command pools
-    ///   that are associated with this queue.
-    /// - all of the command buffers had `CommadBuffer::finish()` called.
+    /// Update `fence` to `value` when the operation is complete. See
+    /// [`Fence`] for details.
+    ///
+    /// A `wgpu_hal` queue is "single threaded": all command buffers are
+    /// executed in the order they're submitted, with each buffer able to see
+    /// previous buffers' results. Specifically:
+    ///
+    /// - If two calls to `submit` on a single `Queue` occur in a particular
+    ///   order (that is, they happen on the same thread, or on two threads that
+    ///   have synchronized to establish an ordering), then the first
+    ///   submission's commands all complete execution before any of the second
+    ///   submission's commands begin. All results produced by one submission
+    ///   are visible to the next.
+    ///
+    /// - Within a submission, command buffers execute in the order in which they
+    ///   appear in `command_buffers`. All results produced by one buffer are
+    ///   visible to the next.
+    ///
+    /// If two calls to `submit` on a single `Queue` from different threads are
+    /// not synchronized to occur in a particular order, they must pass distinct
+    /// [`Fence`]s. As explained in the [`Fence`] documentation, waiting for
+    /// operations to complete is only trustworthy when operations finish in
+    /// order of increasing fence value, but submissions from different threads
+    /// cannot determine how to order the fence values if the submissions
+    /// themselves are unordered. If each thread uses a separate [`Fence`], this
+    /// problem does not arise.
+    ///
+    /// # Safety
+    ///
+    /// - Each [`CommandBuffer`][cb] in `command_buffers` must have been created
+    ///   from a [`CommandEncoder`][ce] that was constructed from the
+    ///   [`Device`][d] associated with this [`Queue`].
+    ///
+    /// - Each [`CommandBuffer`][cb] must remain alive until the submitted
+    ///   commands have finished execution. Since command buffers must not
+    ///   outlive their encoders, this implies that the encoders must remain
+    ///   alive as well.
+    ///
+    /// - All resources used by a submitted [`CommandBuffer`][cb]
+    ///   ([`Texture`][t]s, [`BindGroup`][bg]s, [`RenderPipeline`][rp]s, and so
+    ///   on) must remain alive until the command buffer finishes execution.
+    ///
+    /// - Every [`SurfaceTexture`][st] that any command in `command_buffers`
+    ///   writes to must appear in the `surface_textures` argument.
+    ///
+    /// - No [`SurfaceTexture`][st] may appear in the `surface_textures`
+    ///   argument more than once.
+    ///
+    /// - Each [`SurfaceTexture`][st] in `surface_textures` must be configured
+    ///   for use with the [`Device`][d] associated with this [`Queue`],
+    ///   typically by calling [`Surface::configure`].
+    ///
+    /// - All calls to this function that include a given [`SurfaceTexture`][st]
+    ///   in `surface_textures` must use the same [`Fence`].
+    ///
+    /// [`Fence`]: Api::Fence
+    /// [cb]: Api::CommandBuffer
+    /// [ce]: Api::CommandEncoder
+    /// [d]: Api::Device
+    /// [t]: Api::Texture
+    /// [bg]: Api::BindGroup
+    /// [rp]: Api::RenderPipeline
+    /// [st]: Api::SurfaceTexture
     unsafe fn submit(
-        &mut self,
-        command_buffers: &[&A::CommandBuffer],
-        signal_fence: Option<(&mut A::Fence, FenceValue)>,
+        &self,
+        command_buffers: &[&<Self::A as Api>::CommandBuffer],
+        surface_textures: &[&<Self::A as Api>::SurfaceTexture],
+        signal_fence: (&mut <Self::A as Api>::Fence, FenceValue),
     ) -> Result<(), DeviceError>;
     unsafe fn present(
-        &mut self,
-        surface: &mut A::Surface,
-        texture: A::SurfaceTexture,
+        &self,
+        surface: &<Self::A as Api>::Surface,
+        texture: <Self::A as Api>::SurfaceTexture,
     ) -> Result<(), SurfaceError>;
     unsafe fn get_timestamp_period(&self) -> f32;
 }
 
-/// Encoder for commands in command buffers.
-/// Serves as a parent for all the encoded command buffers.
-/// Works in bursts of action: one or more command buffers are recorded,
-/// then submitted to a queue, and then it needs to be `reset_all()`.
-pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
+/// Encoder and allocation pool for `CommandBuffer`s.
+///
+/// A `CommandEncoder` not only constructs `CommandBuffer`s but also
+/// acts as the allocation pool that owns the buffers' underlying
+/// storage. Thus, `CommandBuffer`s must not outlive the
+/// `CommandEncoder` that created them.
+///
+/// The life cycle of a `CommandBuffer` is as follows:
+///
+/// - Call [`Device::create_command_encoder`] to create a new
+///   `CommandEncoder`, in the "closed" state.
+///
+/// - Call `begin_encoding` on a closed `CommandEncoder` to begin
+///   recording commands. This puts the `CommandEncoder` in the
+///   "recording" state.
+///
+/// - Call methods like `copy_buffer_to_buffer`, `begin_render_pass`,
+///   etc. on a "recording" `CommandEncoder` to add commands to the
+///   list. (If an error occurs, you must call `discard_encoding`; see
+///   below.)
+///
+/// - Call `end_encoding` on a recording `CommandEncoder` to close the
+///   encoder and construct a fresh `CommandBuffer` consisting of the
+///   list of commands recorded up to that point.
+///
+/// - Call `discard_encoding` on a recording `CommandEncoder` to drop
+///   the commands recorded thus far and close the encoder. This is
+///   the only safe thing to do on a `CommandEncoder` if an error has
+///   occurred while recording commands.
+///
+/// - Call `reset_all` on a closed `CommandEncoder`, passing all the
+///   live `CommandBuffers` built from it. All the `CommandBuffer`s
+///   are destroyed, and their resources are freed.
+///
+/// # Safety
+///
+/// - The `CommandEncoder` must be in the states described above to
+///   make the given calls.
+///
+/// - A `CommandBuffer` that has been submitted for execution on the
+///   GPU must live until its execution is complete.
+///
+/// - A `CommandBuffer` must not outlive the `CommandEncoder` that
+///   built it.
+///
+/// - A `CommandEncoder` must not outlive its `Device`.
+///
+/// It is the user's responsibility to meet this requirements. This
+/// allows `CommandEncoder` implementations to keep their state
+/// tracking to a minimum.
+pub trait CommandEncoder: WasmNotSendSync + fmt::Debug {
+    type A: Api;
+
     /// Begin encoding a new command buffer.
+    ///
+    /// This puts this `CommandEncoder` in the "recording" state.
+    ///
+    /// # Safety
+    ///
+    /// This `CommandEncoder` must be in the "closed" state.
     unsafe fn begin_encoding(&mut self, label: Label) -> Result<(), DeviceError>;
-    /// Discard currently recorded list, if any.
+
+    /// Discard the command list under construction.
+    ///
+    /// If an error has occurred while recording commands, this
+    /// is the only safe thing to do with the encoder.
+    ///
+    /// This puts this `CommandEncoder` in the "closed" state.
+    ///
+    /// # Safety
+    ///
+    /// This `CommandEncoder` must be in the "recording" state.
+    ///
+    /// Callers must not assume that implementations of this
+    /// function are idempotent, and thus should not call it
+    /// multiple times in a row.
     unsafe fn discard_encoding(&mut self);
-    unsafe fn end_encoding(&mut self) -> Result<A::CommandBuffer, DeviceError>;
-    /// Reclaims all resources that are allocated for this encoder.
-    /// Must get all of the produced command buffers back,
-    /// and they must not be used by GPU at this moment.
+
+    /// Return a fresh [`CommandBuffer`] holding the recorded commands.
+    ///
+    /// The returned [`CommandBuffer`] holds all the commands recorded
+    /// on this `CommandEncoder` since the last call to
+    /// [`begin_encoding`].
+    ///
+    /// This puts this `CommandEncoder` in the "closed" state.
+    ///
+    /// # Safety
+    ///
+    /// This `CommandEncoder` must be in the "recording" state.
+    ///
+    /// The returned [`CommandBuffer`] must not outlive this
+    /// `CommandEncoder`. Implementations are allowed to build
+    /// `CommandBuffer`s that depend on storage owned by this
+    /// `CommandEncoder`.
+    ///
+    /// [`CommandBuffer`]: Api::CommandBuffer
+    /// [`begin_encoding`]: CommandEncoder::begin_encoding
+    unsafe fn end_encoding(&mut self) -> Result<<Self::A as Api>::CommandBuffer, DeviceError>;
+
+    /// Reclaim all resources belonging to this `CommandEncoder`.
+    ///
+    /// # Safety
+    ///
+    /// This `CommandEncoder` must be in the "closed" state.
+    ///
+    /// The `command_buffers` iterator must produce all the live
+    /// [`CommandBuffer`]s built using this `CommandEncoder` --- that
+    /// is, every extant `CommandBuffer` returned from `end_encoding`.
+    ///
+    /// [`CommandBuffer`]: Api::CommandBuffer
     unsafe fn reset_all<I>(&mut self, command_buffers: I)
     where
-        I: Iterator<Item = A::CommandBuffer>;
+        I: Iterator<Item = <Self::A as Api>::CommandBuffer>;
 
     unsafe fn transition_buffers<'a, T>(&mut self, barriers: T)
     where
-        T: Iterator<Item = BufferBarrier<'a, A>>;
+        T: Iterator<Item = BufferBarrier<'a, Self::A>>;
 
     unsafe fn transition_textures<'a, T>(&mut self, barriers: T)
     where
-        T: Iterator<Item = TextureBarrier<'a, A>>;
+        T: Iterator<Item = TextureBarrier<'a, Self::A>>;
 
     // copy operations
 
-    unsafe fn clear_buffer(&mut self, buffer: &A::Buffer, range: MemoryRange);
+    unsafe fn clear_buffer(&mut self, buffer: &<Self::A as Api>::Buffer, range: MemoryRange);
 
-    unsafe fn copy_buffer_to_buffer<T>(&mut self, src: &A::Buffer, dst: &A::Buffer, regions: T)
-    where
+    unsafe fn copy_buffer_to_buffer<T>(
+        &mut self,
+        src: &<Self::A as Api>::Buffer,
+        dst: &<Self::A as Api>::Buffer,
+        regions: T,
+    ) where
         T: Iterator<Item = BufferCopy>;
 
     /// Copy from an external image to an internal texture.
     /// Works with a single array layer.
     /// Note: `dst` current usage has to be `TextureUses::COPY_DST`.
     /// Note: the copy extent is in physical size (rounded to the block size)
-    #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+    #[cfg(webgl)]
     unsafe fn copy_external_image_to_texture<T>(
         &mut self,
         src: &wgt::ImageCopyExternalImage,
-        dst: &A::Texture,
+        dst: &<Self::A as Api>::Texture,
         dst_premultiplication: bool,
         regions: T,
     ) where
@@ -409,9 +1050,9 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
     /// Note: the copy extent is in physical size (rounded to the block size)
     unsafe fn copy_texture_to_texture<T>(
         &mut self,
-        src: &A::Texture,
+        src: &<Self::A as Api>::Texture,
         src_usage: TextureUses,
-        dst: &A::Texture,
+        dst: &<Self::A as Api>::Texture,
         regions: T,
     ) where
         T: Iterator<Item = TextureCopy>;
@@ -420,8 +1061,12 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
     /// Works with a single array layer.
     /// Note: `dst` current usage has to be `TextureUses::COPY_DST`.
     /// Note: the copy extent is in physical size (rounded to the block size)
-    unsafe fn copy_buffer_to_texture<T>(&mut self, src: &A::Buffer, dst: &A::Texture, regions: T)
-    where
+    unsafe fn copy_buffer_to_texture<T>(
+        &mut self,
+        src: &<Self::A as Api>::Buffer,
+        dst: &<Self::A as Api>::Texture,
+        regions: T,
+    ) where
         T: Iterator<Item = BufferTextureCopy>;
 
     /// Copy from texture to buffer.
@@ -429,9 +1074,9 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
     /// Note: the copy extent is in physical size (rounded to the block size)
     unsafe fn copy_texture_to_buffer<T>(
         &mut self,
-        src: &A::Texture,
+        src: &<Self::A as Api>::Texture,
         src_usage: TextureUses,
-        dst: &A::Buffer,
+        dst: &<Self::A as Api>::Buffer,
         regions: T,
     ) where
         T: Iterator<Item = BufferTextureCopy>;
@@ -439,20 +1084,28 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
     // pass common
 
     /// Sets the bind group at `index` to `group`, assuming the layout
-    /// of all the preceeding groups to be taken from `layout`.
+    /// of all the preceding groups to be taken from `layout`.
     unsafe fn set_bind_group(
         &mut self,
-        layout: &A::PipelineLayout,
+        layout: &<Self::A as Api>::PipelineLayout,
         index: u32,
-        group: &A::BindGroup,
+        group: &<Self::A as Api>::BindGroup,
         dynamic_offsets: &[wgt::DynamicOffset],
     );
 
+    /// Sets a range in push constant data.
+    ///
+    /// IMPORTANT: while the data is passed as words, the offset is in bytes!
+    ///
+    /// # Safety
+    ///
+    /// - `offset_bytes` must be a multiple of 4.
+    /// - The range of push constants written must be valid for the pipeline layout at draw time.
     unsafe fn set_push_constants(
         &mut self,
-        layout: &A::PipelineLayout,
+        layout: &<Self::A as Api>::PipelineLayout,
         stages: wgt::ShaderStages,
-        offset: u32,
+        offset_bytes: u32,
         data: &[u32],
     );
 
@@ -462,15 +1115,21 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
 
     // queries
 
-    unsafe fn begin_query(&mut self, set: &A::QuerySet, index: u32);
-    unsafe fn end_query(&mut self, set: &A::QuerySet, index: u32);
-    unsafe fn write_timestamp(&mut self, set: &A::QuerySet, index: u32);
-    unsafe fn reset_queries(&mut self, set: &A::QuerySet, range: Range<u32>);
+    /// # Safety:
+    ///
+    /// - If `set` is an occlusion query set, it must be the same one as used in the [`RenderPassDescriptor::occlusion_query_set`] parameter.
+    unsafe fn begin_query(&mut self, set: &<Self::A as Api>::QuerySet, index: u32);
+    /// # Safety:
+    ///
+    /// - If `set` is an occlusion query set, it must be the same one as used in the [`RenderPassDescriptor::occlusion_query_set`] parameter.
+    unsafe fn end_query(&mut self, set: &<Self::A as Api>::QuerySet, index: u32);
+    unsafe fn write_timestamp(&mut self, set: &<Self::A as Api>::QuerySet, index: u32);
+    unsafe fn reset_queries(&mut self, set: &<Self::A as Api>::QuerySet, range: Range<u32>);
     unsafe fn copy_query_results(
         &mut self,
-        set: &A::QuerySet,
+        set: &<Self::A as Api>::QuerySet,
         range: Range<u32>,
-        buffer: &A::Buffer,
+        buffer: &<Self::A as Api>::Buffer,
         offset: wgt::BufferAddress,
         stride: wgt::BufferSize,
     );
@@ -478,17 +1137,17 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
     // render passes
 
     // Begins a render pass, clears all active bindings.
-    unsafe fn begin_render_pass(&mut self, desc: &RenderPassDescriptor<A>);
+    unsafe fn begin_render_pass(&mut self, desc: &RenderPassDescriptor<Self::A>);
     unsafe fn end_render_pass(&mut self);
 
-    unsafe fn set_render_pipeline(&mut self, pipeline: &A::RenderPipeline);
+    unsafe fn set_render_pipeline(&mut self, pipeline: &<Self::A as Api>::RenderPipeline);
 
     unsafe fn set_index_buffer<'a>(
         &mut self,
-        binding: BufferBinding<'a, A>,
+        binding: BufferBinding<'a, Self::A>,
         format: wgt::IndexFormat,
     );
-    unsafe fn set_vertex_buffer<'a>(&mut self, index: u32, binding: BufferBinding<'a, A>);
+    unsafe fn set_vertex_buffer<'a>(&mut self, index: u32, binding: BufferBinding<'a, Self::A>);
     unsafe fn set_viewport(&mut self, rect: &Rect<f32>, depth_range: Range<f32>);
     unsafe fn set_scissor_rect(&mut self, rect: &Rect<u32>);
     unsafe fn set_stencil_reference(&mut self, value: u32);
@@ -496,44 +1155,44 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
 
     unsafe fn draw(
         &mut self,
-        start_vertex: u32,
+        first_vertex: u32,
         vertex_count: u32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     );
     unsafe fn draw_indexed(
         &mut self,
-        start_index: u32,
+        first_index: u32,
         index_count: u32,
         base_vertex: i32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     );
     unsafe fn draw_indirect(
         &mut self,
-        buffer: &A::Buffer,
+        buffer: &<Self::A as Api>::Buffer,
         offset: wgt::BufferAddress,
         draw_count: u32,
     );
     unsafe fn draw_indexed_indirect(
         &mut self,
-        buffer: &A::Buffer,
+        buffer: &<Self::A as Api>::Buffer,
         offset: wgt::BufferAddress,
         draw_count: u32,
     );
     unsafe fn draw_indirect_count(
         &mut self,
-        buffer: &A::Buffer,
+        buffer: &<Self::A as Api>::Buffer,
         offset: wgt::BufferAddress,
-        count_buffer: &A::Buffer,
+        count_buffer: &<Self::A as Api>::Buffer,
         count_offset: wgt::BufferAddress,
         max_count: u32,
     );
     unsafe fn draw_indexed_indirect_count(
         &mut self,
-        buffer: &A::Buffer,
+        buffer: &<Self::A as Api>::Buffer,
         offset: wgt::BufferAddress,
-        count_buffer: &A::Buffer,
+        count_buffer: &<Self::A as Api>::Buffer,
         count_offset: wgt::BufferAddress,
         max_count: u32,
     );
@@ -541,32 +1200,45 @@ pub trait CommandEncoder<A: Api>: Send + Sync + fmt::Debug {
     // compute passes
 
     // Begins a compute pass, clears all active bindings.
-    unsafe fn begin_compute_pass(&mut self, desc: &ComputePassDescriptor);
+    unsafe fn begin_compute_pass(&mut self, desc: &ComputePassDescriptor<Self::A>);
     unsafe fn end_compute_pass(&mut self);
 
-    unsafe fn set_compute_pipeline(&mut self, pipeline: &A::ComputePipeline);
+    unsafe fn set_compute_pipeline(&mut self, pipeline: &<Self::A as Api>::ComputePipeline);
 
     unsafe fn dispatch(&mut self, count: [u32; 3]);
-    unsafe fn dispatch_indirect(&mut self, buffer: &A::Buffer, offset: wgt::BufferAddress);
-}
+    unsafe fn dispatch_indirect(
+        &mut self,
+        buffer: &<Self::A as Api>::Buffer,
+        offset: wgt::BufferAddress,
+    );
 
-bitflags!(
-    /// Instance initialization flags.
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-    pub struct InstanceFlags: u32 {
-        /// Generate debug information in shaders and objects.
-        const DEBUG = 1 << 0;
-        /// Enable validation, if possible.
-        const VALIDATION = 1 << 1;
-    }
-);
+    /// To get the required sizes for the buffer allocations use `get_acceleration_structure_build_sizes` per descriptor
+    /// All buffers must be synchronized externally
+    /// All buffer regions, which are written to may only be passed once per function call,
+    /// with the exception of updates in the same descriptor.
+    /// Consequences of this limitation:
+    /// - scratch buffers need to be unique
+    /// - a tlas can't be build in the same call with a blas it contains
+    unsafe fn build_acceleration_structures<'a, T>(
+        &mut self,
+        descriptor_count: u32,
+        descriptors: T,
+    ) where
+        Self::A: 'a,
+        T: IntoIterator<Item = BuildAccelerationStructureDescriptor<'a, Self::A>>;
+
+    unsafe fn place_acceleration_structure_barrier(
+        &mut self,
+        barrier: AccelerationStructureBarrier,
+    );
+}
 
 bitflags!(
     /// Pipeline layout creation flags.
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
     pub struct PipelineLayoutFlags: u32 {
-        /// Include support for base vertex/instance drawing.
-        const BASE_VERTEX_INSTANCE = 1 << 0;
+        /// Include support for `first_vertex` / `first_instance` drawing.
+        const FIRST_VERTEX_INSTANCE = 1 << 0;
         /// Include support for num work groups builtin.
         const NUM_WORK_GROUPS = 1 << 1;
     }
@@ -632,6 +1304,11 @@ bitflags!(
         const COLOR = 1 << 0;
         const DEPTH = 1 << 1;
         const STENCIL = 1 << 2;
+        const PLANE_0 = 1 << 3;
+        const PLANE_1 = 1 << 4;
+        const PLANE_2 = 1 << 5;
+
+        const DEPTH_STENCIL = Self::DEPTH.bits() | Self::STENCIL.bits();
     }
 );
 
@@ -641,6 +1318,9 @@ impl FormatAspects {
             wgt::TextureAspect::All => Self::all(),
             wgt::TextureAspect::DepthOnly => Self::DEPTH,
             wgt::TextureAspect::StencilOnly => Self::STENCIL,
+            wgt::TextureAspect::Plane0 => Self::PLANE_0,
+            wgt::TextureAspect::Plane1 => Self::PLANE_1,
+            wgt::TextureAspect::Plane2 => Self::PLANE_2,
         };
         Self::from(format) & aspect_mask
     }
@@ -655,6 +1335,9 @@ impl FormatAspects {
             Self::COLOR => wgt::TextureAspect::All,
             Self::DEPTH => wgt::TextureAspect::DepthOnly,
             Self::STENCIL => wgt::TextureAspect::StencilOnly,
+            Self::PLANE_0 => wgt::TextureAspect::Plane0,
+            Self::PLANE_1 => wgt::TextureAspect::Plane1,
+            Self::PLANE_2 => wgt::TextureAspect::Plane2,
             _ => unreachable!(),
         }
     }
@@ -668,8 +1351,9 @@ impl From<wgt::TextureFormat> for FormatAspects {
             | wgt::TextureFormat::Depth32Float
             | wgt::TextureFormat::Depth24Plus => Self::DEPTH,
             wgt::TextureFormat::Depth32FloatStencil8 | wgt::TextureFormat::Depth24PlusStencil8 => {
-                Self::DEPTH | Self::STENCIL
+                Self::DEPTH_STENCIL
             }
+            wgt::TextureFormat::NV12 => Self::PLANE_0 | Self::PLANE_1,
             _ => Self::COLOR,
         }
     }
@@ -717,12 +1401,17 @@ bitflags::bitflags! {
         const STORAGE_READ_WRITE = 1 << 8;
         /// The indirect or count buffer in a indirect draw or dispatch.
         const INDIRECT = 1 << 9;
+        /// A buffer used to store query results.
+        const QUERY_RESOLVE = 1 << 10;
+        const ACCELERATION_STRUCTURE_SCRATCH = 1 << 11;
+        const BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT = 1 << 12;
+        const TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT = 1 << 13;
         /// The combination of states that a buffer may be in _at the same time_.
         const INCLUSIVE = Self::MAP_READ.bits() | Self::COPY_SRC.bits() |
             Self::INDEX.bits() | Self::VERTEX.bits() | Self::UNIFORM.bits() |
-            Self::STORAGE_READ.bits() | Self::INDIRECT.bits();
+            Self::STORAGE_READ.bits() | Self::INDIRECT.bits() | Self::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT.bits() | Self::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT.bits();
         /// The combination of states that a buffer must exclusively be in.
-        const EXCLUSIVE = Self::MAP_WRITE.bits() | Self::COPY_DST.bits() | Self::STORAGE_READ_WRITE.bits();
+        const EXCLUSIVE = Self::MAP_WRITE.bits() | Self::COPY_DST.bits() | Self::STORAGE_READ_WRITE.bits() | Self::ACCELERATION_STRUCTURE_SCRATCH.bits();
         /// The combination of all usages that the are guaranteed to be be ordered by the hardware.
         /// If a usage is ordered, then if the buffer state doesn't change between draw calls, there
         /// are no barriers needed for synchronization.
@@ -774,8 +1463,9 @@ bitflags::bitflags! {
 #[derive(Clone, Debug)]
 pub struct InstanceDescriptor<'a> {
     pub name: &'a str,
-    pub flags: InstanceFlags,
+    pub flags: wgt::InstanceFlags,
     pub dx12_shader_compiler: wgt::Dx12Compiler,
+    pub gles_minor_version: wgt::Gles3MinorVersion,
 }
 
 #[derive(Clone, Debug)]
@@ -811,19 +1501,17 @@ pub struct SurfaceCapabilities {
     /// Must be at least one.
     pub formats: Vec<wgt::TextureFormat>,
 
-    /// Range for the swap chain sizes.
+    /// Range for the number of queued frames.
     ///
-    /// - `swap_chain_sizes.start` must be at least 1.
-    /// - `swap_chain_sizes.end` must be larger or equal to `swap_chain_sizes.start`.
-    pub swap_chain_sizes: RangeInclusive<u32>,
+    /// This adjusts either the swapchain frame count to value + 1 - or sets SetMaximumFrameLatency to the value given,
+    /// or uses a wait-for-present in the acquire method to limit rendering such that it acts like it's a value + 1 swapchain frame set.
+    ///
+    /// - `maximum_frame_latency.start` must be at least 1.
+    /// - `maximum_frame_latency.end` must be larger or equal to `maximum_frame_latency.start`.
+    pub maximum_frame_latency: RangeInclusive<u32>,
 
     /// Current extent of the surface, if known.
     pub current_extent: Option<wgt::Extent3d>,
-
-    /// Range of supported extents.
-    ///
-    /// `current_extent` must be inside this range.
-    pub extents: RangeInclusive<wgt::Extent3d>,
 
     /// Supported texture usage flags.
     ///
@@ -1033,6 +1721,7 @@ pub struct BindGroupDescriptor<'a, A: Api> {
     pub samplers: &'a [&'a A::Sampler],
     pub textures: &'a [TextureBinding<'a, A>],
     pub entries: &'a [BindGroupEntry],
+    pub acceleration_structures: &'a [&'a A::AccelerationStructure],
 }
 
 #[derive(Clone, Debug)]
@@ -1047,6 +1736,8 @@ pub struct NagaShader {
     pub module: Cow<'static, naga::Module>,
     /// Analysis information of the module.
     pub info: naga::valid::ModuleInfo,
+    /// Source codes for debug
+    pub debug_source: Option<DebugSource>,
 }
 
 // Custom implementation avoids the need to generate Debug impl code
@@ -1069,6 +1760,12 @@ pub struct ShaderModuleDescriptor<'a> {
     pub runtime_checks: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct DebugSource {
+    pub file_name: Cow<'static, str>,
+    pub source_code: Cow<'static, str>,
+}
+
 /// Describes a programmable pipeline stage.
 #[derive(Debug)]
 pub struct ProgrammableStage<'a, A: Api> {
@@ -1077,6 +1774,15 @@ pub struct ProgrammableStage<'a, A: Api> {
     /// The name of the entry point in the compiled shader. There must be a function with this name
     ///  in the shader.
     pub entry_point: &'a str,
+    /// Pipeline constants
+    pub constants: &'a naga::back::PipelineConstants,
+    /// Whether workgroup scoped memory will be initialized with zero values for this stage.
+    ///
+    /// This is required by the WebGPU spec, but may have overhead which can be avoided
+    /// for cross-platform applications
+    pub zero_initialize_workgroup_memory: bool,
+    /// Should the pipeline attempt to transform vertex shaders to use vertex pulling.
+    pub vertex_pulling_transform: bool,
 }
 
 // Rust gets confused about the impl requirements for `A`
@@ -1085,6 +1791,9 @@ impl<A: Api> Clone for ProgrammableStage<'_, A> {
         Self {
             module: self.module,
             entry_point: self.entry_point,
+            constants: self.constants,
+            zero_initialize_workgroup_memory: self.zero_initialize_workgroup_memory,
+            vertex_pulling_transform: self.vertex_pulling_transform,
         }
     }
 }
@@ -1097,6 +1806,13 @@ pub struct ComputePipelineDescriptor<'a, A: Api> {
     pub layout: &'a A::PipelineLayout,
     /// The compiled compute stage and its entry point.
     pub stage: ProgrammableStage<'a, A>,
+    /// The cache which will be used and filled when compiling this pipeline
+    pub cache: Option<&'a A::PipelineCache>,
+}
+
+pub struct PipelineCacheDescriptor<'a> {
+    pub label: Label<'a>,
+    pub data: Option<&'a [u8]>,
 }
 
 /// Describes how the vertex buffer is interpreted.
@@ -1133,13 +1849,15 @@ pub struct RenderPipelineDescriptor<'a, A: Api> {
     /// If the pipeline will be used with a multiview render pass, this indicates how many array
     /// layers the attachments will have.
     pub multiview: Option<NonZeroU32>,
+    /// The cache which will be used and filled when compiling this pipeline
+    pub cache: Option<&'a A::PipelineCache>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SurfaceConfiguration {
-    /// Number of textures in the swap chain. Must be in
-    /// `SurfaceCapabilities::swap_chain_size` range.
-    pub swap_chain_size: u32,
+    /// Maximum number of queued frames. Must be in
+    /// `SurfaceCapabilities::maximum_frame_latency` range.
+    pub maximum_frame_latency: u32,
     /// Vertical synchronization mode.
     pub present_mode: wgt::PresentMode,
     /// Alpha composition mode.
@@ -1261,6 +1979,24 @@ pub struct DepthStencilAttachment<'a, A: Api> {
     pub clear_value: (f32, u32),
 }
 
+#[derive(Debug)]
+pub struct RenderPassTimestampWrites<'a, A: Api> {
+    pub query_set: &'a A::QuerySet,
+    pub beginning_of_pass_write_index: Option<u32>,
+    pub end_of_pass_write_index: Option<u32>,
+}
+
+// Rust gets confused about the impl requirements for `A`
+impl<A: Api> Clone for RenderPassTimestampWrites<'_, A> {
+    fn clone(&self) -> Self {
+        Self {
+            query_set: self.query_set,
+            beginning_of_pass_write_index: self.beginning_of_pass_write_index,
+            end_of_pass_write_index: self.end_of_pass_write_index,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RenderPassDescriptor<'a, A: Api> {
     pub label: Label<'a>,
@@ -1269,15 +2005,39 @@ pub struct RenderPassDescriptor<'a, A: Api> {
     pub color_attachments: &'a [Option<ColorAttachment<'a, A>>],
     pub depth_stencil_attachment: Option<DepthStencilAttachment<'a, A>>,
     pub multiview: Option<NonZeroU32>,
+    pub timestamp_writes: Option<RenderPassTimestampWrites<'a, A>>,
+    pub occlusion_query_set: Option<&'a A::QuerySet>,
+}
+
+#[derive(Debug)]
+pub struct ComputePassTimestampWrites<'a, A: Api> {
+    pub query_set: &'a A::QuerySet,
+    pub beginning_of_pass_write_index: Option<u32>,
+    pub end_of_pass_write_index: Option<u32>,
+}
+
+// Rust gets confused about the impl requirements for `A`
+impl<A: Api> Clone for ComputePassTimestampWrites<'_, A> {
+    fn clone(&self) -> Self {
+        Self {
+            query_set: self.query_set,
+            beginning_of_pass_write_index: self.beginning_of_pass_write_index,
+            end_of_pass_write_index: self.end_of_pass_write_index,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
-pub struct ComputePassDescriptor<'a> {
+pub struct ComputePassDescriptor<'a, A: Api> {
     pub label: Label<'a>,
+    pub timestamp_writes: Option<ComputePassTimestampWrites<'a, A>>,
 }
 
-/// Stores if any API validation error has occurred in this process
-/// since it was last reset.
+/// Stores the text of any validation errors that have occurred since
+/// the last call to `get_and_reset`.
+///
+/// Each value is a validation error and a message associated with it,
+/// or `None` if the error has no message from the api.
 ///
 /// This is used for internal wgpu testing only and _must not_ be used
 /// as a way to check for errors.
@@ -1288,24 +2048,24 @@ pub struct ComputePassDescriptor<'a> {
 /// This prevents the issue of one validation error terminating the
 /// entire process.
 pub static VALIDATION_CANARY: ValidationCanary = ValidationCanary {
-    inner: AtomicBool::new(false),
+    inner: Mutex::new(Vec::new()),
 };
 
 /// Flag for internal testing.
 pub struct ValidationCanary {
-    inner: AtomicBool,
+    inner: Mutex<Vec<String>>,
 }
 
 impl ValidationCanary {
     #[allow(dead_code)] // in some configurations this function is dead
-    fn set(&self) {
-        self.inner.store(true, std::sync::atomic::Ordering::SeqCst);
+    fn add(&self, msg: String) {
+        self.inner.lock().push(msg);
     }
 
-    /// Returns true if any API validation error has occurred in this process
+    /// Returns any API validation errors that have occurred in this process
     /// since the last call to this function.
-    pub fn get_and_reset(&self) -> bool {
-        self.inner.swap(false, std::sync::atomic::Ordering::SeqCst)
+    pub fn get_and_reset(&self) -> Vec<String> {
+        self.inner.lock().drain(..).collect()
     }
 }
 
@@ -1313,4 +2073,135 @@ impl ValidationCanary {
 fn test_default_limits() {
     let limits = wgt::Limits::default();
     assert!(limits.max_bind_groups <= MAX_BIND_GROUPS as u32);
+}
+
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureDescriptor<'a> {
+    pub label: Label<'a>,
+    pub size: wgt::BufferAddress,
+    pub format: AccelerationStructureFormat,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AccelerationStructureFormat {
+    TopLevel,
+    BottomLevel,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AccelerationStructureBuildMode {
+    Build,
+    Update,
+}
+
+/// Information of the required size for a corresponding entries struct (+ flags)
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct AccelerationStructureBuildSizes {
+    pub acceleration_structure_size: wgt::BufferAddress,
+    pub update_scratch_size: wgt::BufferAddress,
+    pub build_scratch_size: wgt::BufferAddress,
+}
+
+/// Updates use source_acceleration_structure if present, else the update will be performed in place.
+/// For updates, only the data is allowed to change (not the meta data or sizes).
+#[derive(Clone, Debug)]
+pub struct BuildAccelerationStructureDescriptor<'a, A: Api> {
+    pub entries: &'a AccelerationStructureEntries<'a, A>,
+    pub mode: AccelerationStructureBuildMode,
+    pub flags: AccelerationStructureBuildFlags,
+    pub source_acceleration_structure: Option<&'a A::AccelerationStructure>,
+    pub destination_acceleration_structure: &'a A::AccelerationStructure,
+    pub scratch_buffer: &'a A::Buffer,
+    pub scratch_buffer_offset: wgt::BufferAddress,
+}
+
+/// - All buffers, buffer addresses and offsets will be ignored.
+/// - The build mode will be ignored.
+/// - Reducing the amount of Instances, Triangle groups or AABB groups (or the number of Triangles/AABBs in corresponding groups),
+/// may result in reduced size requirements.
+/// - Any other change may result in a bigger or smaller size requirement.
+#[derive(Clone, Debug)]
+pub struct GetAccelerationStructureBuildSizesDescriptor<'a, A: Api> {
+    pub entries: &'a AccelerationStructureEntries<'a, A>,
+    pub flags: AccelerationStructureBuildFlags,
+}
+
+/// Entries for a single descriptor
+/// * `Instances` - Multiple instances for a top level acceleration structure
+/// * `Triangles` - Multiple triangle meshes for a bottom level acceleration structure
+/// * `AABBs` - List of list of axis aligned bounding boxes for a bottom level acceleration structure
+#[derive(Debug)]
+pub enum AccelerationStructureEntries<'a, A: Api> {
+    Instances(AccelerationStructureInstances<'a, A>),
+    Triangles(Vec<AccelerationStructureTriangles<'a, A>>),
+    AABBs(Vec<AccelerationStructureAABBs<'a, A>>),
+}
+
+/// * `first_vertex` - offset in the vertex buffer (as number of vertices)
+/// * `indices` - optional index buffer with attributes
+/// * `transform` - optional transform
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureTriangles<'a, A: Api> {
+    pub vertex_buffer: Option<&'a A::Buffer>,
+    pub vertex_format: wgt::VertexFormat,
+    pub first_vertex: u32,
+    pub vertex_count: u32,
+    pub vertex_stride: wgt::BufferAddress,
+    pub indices: Option<AccelerationStructureTriangleIndices<'a, A>>,
+    pub transform: Option<AccelerationStructureTriangleTransform<'a, A>>,
+    pub flags: AccelerationStructureGeometryFlags,
+}
+
+/// * `offset` - offset in bytes
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureAABBs<'a, A: Api> {
+    pub buffer: Option<&'a A::Buffer>,
+    pub offset: u32,
+    pub count: u32,
+    pub stride: wgt::BufferAddress,
+    pub flags: AccelerationStructureGeometryFlags,
+}
+
+/// * `offset` - offset in bytes
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureInstances<'a, A: Api> {
+    pub buffer: Option<&'a A::Buffer>,
+    pub offset: u32,
+    pub count: u32,
+}
+
+/// * `offset` - offset in bytes
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureTriangleIndices<'a, A: Api> {
+    pub format: wgt::IndexFormat,
+    pub buffer: Option<&'a A::Buffer>,
+    pub offset: u32,
+    pub count: u32,
+}
+
+/// * `offset` - offset in bytes
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureTriangleTransform<'a, A: Api> {
+    pub buffer: &'a A::Buffer,
+    pub offset: u32,
+}
+
+pub use wgt::AccelerationStructureFlags as AccelerationStructureBuildFlags;
+pub use wgt::AccelerationStructureGeometryFlags;
+
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct AccelerationStructureUses: u8 {
+        // For blas used as input for tlas
+        const BUILD_INPUT = 1 << 0;
+        // Target for acceleration structure build
+        const BUILD_OUTPUT = 1 << 1;
+        // Tlas used in a shader
+        const SHADER_INPUT = 1 << 2;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AccelerationStructureBarrier {
+    pub usage: Range<AccelerationStructureUses>,
 }

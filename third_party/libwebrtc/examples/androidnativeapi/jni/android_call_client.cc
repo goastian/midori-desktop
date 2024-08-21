@@ -10,10 +10,10 @@
 
 #include "examples/androidnativeapi/jni/android_call_client.h"
 
+#include <memory>
 #include <utility>
 
-#include <memory>
-
+#include "api/enable_media_with_defaults.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/task_queue/default_task_queue_factory.h"
@@ -21,7 +21,6 @@
 #include "media/engine/internal_decoder_factory.h"
 #include "media/engine/internal_encoder_factory.h"
 #include "media/engine/webrtc_media_engine.h"
-#include "media/engine/webrtc_media_engine_defaults.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/native_api/video/wrapper.h"
 
@@ -155,19 +154,13 @@ void AndroidCallClient::CreatePeerConnectionFactory() {
   pcf_deps.worker_thread = worker_thread_.get();
   pcf_deps.signaling_thread = signaling_thread_.get();
   pcf_deps.task_queue_factory = webrtc::CreateDefaultTaskQueueFactory();
-  pcf_deps.call_factory = webrtc::CreateCallFactory();
-  pcf_deps.event_log_factory = std::make_unique<webrtc::RtcEventLogFactory>(
-      pcf_deps.task_queue_factory.get());
+  pcf_deps.event_log_factory = std::make_unique<webrtc::RtcEventLogFactory>();
 
-  cricket::MediaEngineDependencies media_deps;
-  media_deps.task_queue_factory = pcf_deps.task_queue_factory.get();
-  media_deps.video_encoder_factory =
+  pcf_deps.video_encoder_factory =
       std::make_unique<webrtc::InternalEncoderFactory>();
-  media_deps.video_decoder_factory =
+  pcf_deps.video_decoder_factory =
       std::make_unique<webrtc::InternalDecoderFactory>();
-  webrtc::SetMediaEngineDefaults(&media_deps);
-  pcf_deps.media_engine = cricket::CreateMediaEngine(std::move(media_deps));
-  RTC_LOG(LS_INFO) << "Media engine created: " << pcf_deps.media_engine.get();
+  EnableMediaWithDefaults(pcf_deps);
 
   pcf_ = CreateModularPeerConnectionFactory(std::move(pcf_deps));
   RTC_LOG(LS_INFO) << "PeerConnectionFactory created: " << pcf_.get();
@@ -186,8 +179,8 @@ void AndroidCallClient::CreatePeerConnection() {
 
   RTC_LOG(LS_INFO) << "PeerConnection created: " << pc_.get();
 
-  rtc::scoped_refptr<webrtc::VideoTrackInterface> local_video_track(
-      pcf_->CreateVideoTrack("video", video_source_.get()));
+  rtc::scoped_refptr<webrtc::VideoTrackInterface> local_video_track =
+      pcf_->CreateVideoTrack(video_source_, "video");
   local_video_track->AddOrUpdateSink(local_sink_.get(), rtc::VideoSinkWants());
   pc_->AddTransceiver(local_video_track);
   RTC_LOG(LS_INFO) << "Local video sink set up: " << local_video_track.get();

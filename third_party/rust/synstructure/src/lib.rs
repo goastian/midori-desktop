@@ -50,8 +50,7 @@
 //!             }
 //!         }
 //!         expands to {
-//!             #[allow(non_upper_case_globals)]
-//!             const _DERIVE_synstructure_test_traits_WalkFields_FOR_A: () = {
+//!             const _: () = {
 //!                 extern crate synstructure_test_traits;
 //!                 impl<T> synstructure_test_traits::WalkFields for A<T>
 //!                     where T: synstructure_test_traits::WalkFields
@@ -120,8 +119,7 @@
 //!             }
 //!         }
 //!         expands to {
-//!             #[allow(non_upper_case_globals)]
-//!             const _DERIVE_synstructure_test_traits_Interest_FOR_A: () = {
+//!             const _: () = {
 //!                 extern crate synstructure_test_traits;
 //!                 impl<T> synstructure_test_traits::Interest for A<T>
 //!                     where T: synstructure_test_traits::Interest
@@ -149,6 +147,14 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
+#![allow(
+    clippy::default_trait_access,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::needless_pass_by_value
+)]
+
 #[cfg(all(
     not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
     feature = "proc-macro"
@@ -171,8 +177,6 @@ use quote::{format_ident, quote_spanned, ToTokens};
 #[doc(hidden)]
 pub use quote::quote;
 
-use unicode_xid::UnicodeXID;
-
 use proc_macro2::{Span, TokenStream, TokenTree};
 
 // NOTE: This module has documentation hidden, as it only exports macros (which
@@ -182,6 +186,7 @@ use proc_macro2::{Span, TokenStream, TokenTree};
 pub mod macros;
 
 /// Changes how bounds are added
+#[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AddBounds {
     /// Add for fields and generics
@@ -238,27 +243,11 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
     for (&seen, param) in set.iter().zip(generics.params.iter()) {
         if seen {
             if let GenericParam::Type(tparam) = param {
-                tys.push(&tparam.ident)
+                tys.push(&tparam.ident);
             }
         }
     }
     tys
-}
-
-// Internal method for sanitizing an identifier for hygiene purposes.
-fn sanitize_ident(s: &str) -> Ident {
-    let mut res = String::with_capacity(s.len());
-    for mut c in s.chars() {
-        if !UnicodeXID::is_xid_continue(c) {
-            c = '_'
-        }
-        // Deduplicate consecutive _ characters.
-        if res.ends_with('_') && c == '_' {
-            continue;
-        }
-        res.push(c);
-    }
-    Ident::new(&res, Span::call_site())
 }
 
 // Internal method to merge two Generics objects together intelligently.
@@ -443,7 +432,7 @@ pub struct VariantInfo<'a> {
     original_length: usize,
 }
 
-/// Helper function used by the VariantInfo constructor. Walks all of the types
+/// Helper function used by the `VariantInfo` constructor. Walks all of the types
 /// in `field` and returns a list of the type parameters from `ty_params` which
 /// are referenced in the field.
 fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
@@ -473,7 +462,7 @@ fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
             for r in &mut self.result {
                 *r = true;
             }
-            visit::visit_type_macro(self, x)
+            visit::visit_type_macro(self, x);
         }
     }
 
@@ -657,7 +646,7 @@ impl<'a> VariantInfo<'a> {
                         func(field, i).to_tokens(t);
                         quote!(,).to_tokens(t);
                     }
-                })
+                });
             }
             Fields::Named(FieldsNamed { named, .. }) => {
                 token::Brace::default().surround(&mut t, |t| {
@@ -667,7 +656,7 @@ impl<'a> VariantInfo<'a> {
                         func(field, i).to_tokens(t);
                         quote!(,).to_tokens(t);
                     }
-                })
+                });
             }
         }
         t
@@ -803,6 +792,71 @@ impl<'a> VariantInfo<'a> {
         self
     }
 
+    /// Iterates all the bindings of this `Variant` object and uses a closure to determine if a
+    /// binding should be removed. If the closure returns `true` the binding is removed from the
+    /// variant. If the closure returns `false`, the binding remains in the variant.
+    ///
+    /// All the removed bindings are moved to a new `Variant` object which is otherwise identical
+    /// to the current one. To understand the effects of removing a binding from a variant check
+    /// the [`VariantInfo::filter`] documentation.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A {
+    ///         B{ a: i32, b: i32 },
+    ///         C{ a: u32 },
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// let mut with_b = &mut s.variants_mut()[0];
+    ///
+    /// let with_a = with_b.drain_filter(|bi| {
+    ///     bi.ast().ident == Some(quote::format_ident!("a"))
+    /// });
+    ///
+    /// assert_eq!(
+    ///     with_a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::B{ a: ref __binding_0, .. } => {
+    ///             { println!("{:?}", __binding_0) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    ///
+    /// assert_eq!(
+    ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::B{ b: ref __binding_1, .. } => {
+    ///             { println!("{:?}", __binding_1) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    /// ```
+    #[allow(clippy::return_self_not_must_use)]
+    pub fn drain_filter<F>(&mut self, mut f: F) -> Self
+    where
+        F: FnMut(&BindingInfo<'_>) -> bool,
+    {
+        let mut other = VariantInfo {
+            prefix: self.prefix,
+            bindings: vec![],
+            ast: self.ast,
+            generics: self.generics,
+            original_length: self.original_length,
+        };
+
+        let (other_bindings, self_bindings) = self.bindings.drain(..).partition(&mut f);
+        other.bindings = other_bindings;
+        self.bindings = self_bindings;
+
+        other
+    }
+
     /// Remove the binding at the given index.
     ///
     /// # Panics
@@ -848,7 +902,7 @@ impl<'a> VariantInfo<'a> {
         F: FnMut(&BindingInfo<'_>) -> BindStyle,
     {
         for binding in &mut self.bindings {
-            binding.style = f(&binding);
+            binding.style = f(binding);
         }
         self
     }
@@ -939,7 +993,6 @@ impl<'a> VariantInfo<'a> {
 pub struct Structure<'a> {
     variants: Vec<VariantInfo<'a>>,
     omitted_variants: bool,
-    underscore_const: bool,
     ast: &'a DeriveInput,
     extra_impl: Vec<GenericParam>,
     extra_predicates: Vec<WherePredicate>,
@@ -981,21 +1034,12 @@ impl<'a> Structure<'a> {
                 })
                 .collect::<Vec<_>>(),
             Data::Struct(data) => {
-                // SAFETY NOTE: Normally putting an `Expr` in static storage
-                // wouldn't be safe, because it could contain `Term` objects
-                // which use thread-local interning. However, this static always
-                // contains the value `None`. Thus, it will never contain any
-                // unsafe values.
-                struct UnsafeMakeSync(Option<(token::Eq, Expr)>);
-                unsafe impl Sync for UnsafeMakeSync {}
-                static NONE_DISCRIMINANT: UnsafeMakeSync = UnsafeMakeSync(None);
-
                 vec![VariantInfo::new(
                     VariantAst {
                         attrs: &ast.attrs,
                         ident: &ast.ident,
                         fields: &data.fields,
-                        discriminant: &NONE_DISCRIMINANT.0,
+                        discriminant: &None,
                     },
                     None,
                     &ast.generics,
@@ -1012,7 +1056,6 @@ impl<'a> Structure<'a> {
         Ok(Structure {
             variants,
             omitted_variants: false,
-            underscore_const: false,
             ast,
             extra_impl: vec![],
             extra_predicates: vec![],
@@ -1234,6 +1277,74 @@ impl<'a> Structure<'a> {
         self
     }
 
+    /// Iterates all the bindings of this `Structure` object and uses a closure to determine if a
+    /// binding should be removed. If the closure returns `true` the binding is removed from the
+    /// structure. If the closure returns `false`, the binding remains in the structure.
+    ///
+    /// All the removed bindings are moved to a new `Structure` object which is otherwise identical
+    /// to the current one. To understand the effects of removing a binding from a structure check
+    /// the [`Structure::filter`] documentation.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A {
+    ///         B{ a: i32, b: i32 },
+    ///         C{ a: u32 },
+    ///     }
+    /// };
+    /// let mut with_b = Structure::new(&di);
+    ///
+    /// let with_a = with_b.drain_filter(|bi| {
+    ///     bi.ast().ident == Some(quote::format_ident!("a"))
+    /// });
+    ///
+    /// assert_eq!(
+    ///     with_a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::B{ a: ref __binding_0, .. } => {
+    ///             { println!("{:?}", __binding_0) }
+    ///         }
+    ///         A::C{ a: ref __binding_0, } => {
+    ///             { println!("{:?}", __binding_0) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    ///
+    /// assert_eq!(
+    ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::B{ b: ref __binding_1, .. } => {
+    ///             { println!("{:?}", __binding_1) }
+    ///         }
+    ///         A::C{ .. } => {
+    ///
+    ///         }
+    ///     }.to_string()
+    /// );
+    /// ```
+    #[allow(clippy::return_self_not_must_use)]
+    pub fn drain_filter<F>(&mut self, mut f: F) -> Self
+    where
+        F: FnMut(&BindingInfo<'_>) -> bool,
+    {
+        Self {
+            variants: self
+                .variants
+                .iter_mut()
+                .map(|variant| variant.drain_filter(&mut f))
+                .collect(),
+            omitted_variants: self.omitted_variants,
+            ast: self.ast,
+            extra_impl: self.extra_impl.clone(),
+            extra_predicates: self.extra_predicates.clone(),
+            add_bounds: self.add_bounds,
+        }
+    }
+
     /// Specify additional where predicate bounds which should be generated by
     /// impl-generating functions such as `gen_impl`, `bound_impl`, and
     /// `unsafe_bound_impl`.
@@ -1257,9 +1368,7 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
     ///                 where T: std::fmt::Display,
@@ -1303,9 +1412,7 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
     ///                 where T: krate::Trait,
@@ -1366,6 +1473,68 @@ impl<'a> Structure<'a> {
             self.omitted_variants = true;
         }
         self
+    }
+    /// Iterates all the variants of this `Structure` object and uses a closure to determine if a
+    /// variant should be removed. If the closure returns `true` the variant is removed from the
+    /// structure. If the closure returns `false`, the variant remains in the structure.
+    ///
+    /// All the removed variants are moved to a new `Structure` object which is otherwise identical
+    /// to the current one. To understand the effects of removing a variant from a structure check
+    /// the [`Structure::filter_variants`] documentation.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A {
+    ///         B(i32, i32),
+    ///         C(u32),
+    ///     }
+    /// };
+    ///
+    /// let mut with_c = Structure::new(&di);
+    ///
+    /// let with_b = with_c.drain_filter_variants(|v| v.ast().ident == "B");
+    ///
+    /// assert_eq!(
+    ///     with_c.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::C(ref __binding_0,) => {
+    ///             { println!("{:?}", __binding_0) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    ///
+    /// assert_eq!(
+    ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///             { println!("{:?}", __binding_0) }
+    ///             { println!("{:?}", __binding_1) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    #[allow(clippy::return_self_not_must_use)]
+    pub fn drain_filter_variants<F>(&mut self, mut f: F) -> Self
+    where
+        F: FnMut(&VariantInfo<'_>) -> bool,
+    {
+        let mut other = Self {
+            variants: vec![],
+            omitted_variants: self.omitted_variants,
+            ast: self.ast,
+            extra_impl: self.extra_impl.clone(),
+            extra_predicates: self.extra_predicates.clone(),
+            add_bounds: self.add_bounds,
+        };
+
+        let (other_variants, self_variants) = self.variants.drain(..).partition(&mut f);
+        other.variants = other_variants;
+        self.variants = self_variants;
+
+        other
     }
 
     /// Remove the variant at the given index.
@@ -1525,9 +1694,7 @@ impl<'a> Structure<'a> {
     ///         }
     ///     ).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U, X: krate::AnotherTrait> krate::Trait<X> for A<T, U>
     ///                 where T : krate :: Trait < X >,
@@ -1620,49 +1787,8 @@ impl<'a> Structure<'a> {
         }
     }
 
-    /// Configure whether to use `const _` instead of a generated const name in
-    /// code generated by `gen_impl` and `bound_impl`.
-    ///
-    /// This syntax is only supported by rust 1.37, and later versions.
-    ///
-    /// Defaults to `false` for backwards compatibility reasons.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use synstructure::*;
-    /// let di: syn::DeriveInput = syn::parse_quote! {
-    ///     struct MyStruct;
-    /// };
-    /// let mut s = Structure::new(&di);
-    ///
-    /// assert_eq!(
-    ///     s.underscore_const(true)
-    ///         .gen_impl(quote! { gen impl Trait for @Self { } })
-    ///         .to_string(),
-    ///     quote! {
-    ///         const _: () = {
-    ///             impl Trait for MyStruct { }
-    ///         };
-    ///     }
-    ///     .to_string()
-    /// );
-    ///
-    /// assert_eq!(
-    ///     s.underscore_const(false)
-    ///         .gen_impl(quote! { gen impl Trait for @Self { } })
-    ///         .to_string(),
-    ///     quote! {
-    ///         #[allow(non_upper_case_globals)]
-    ///         const _DERIVE_Trait_FOR_MyStruct: () = {
-    ///             impl Trait for MyStruct { }
-    ///         };
-    ///     }
-    ///     .to_string()
-    /// );
-    /// ```
-    pub fn underscore_const(&mut self, enabled: bool) -> &mut Self {
-        self.underscore_const = enabled;
+    /// This method is a no-op, underscore consts are used by default now.
+    pub fn underscore_const(&mut self, _enabled: bool) -> &mut Self {
         self
     }
 
@@ -1713,9 +1839,7 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
     ///                 where Option<U>: krate::Trait,
@@ -1783,9 +1907,7 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U>
     ///                 where Option<U>: krate::Trait,
@@ -1846,9 +1968,7 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U> {
     ///                 fn a() {}
@@ -1906,9 +2026,7 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         #[doc(hidden)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U> {
     ///                 fn a() {}
@@ -1937,7 +2055,7 @@ impl<'a> Structure<'a> {
         let mode = mode.unwrap_or(self.add_bounds);
         let name = &self.ast.ident;
         let mut gen_clone = self.ast.generics.clone();
-        gen_clone.params.extend(self.extra_impl.clone().into_iter());
+        gen_clone.params.extend(self.extra_impl.iter().cloned());
         let (impl_generics, _, _) = gen_clone.split_for_impl();
         let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
@@ -1966,23 +2084,8 @@ impl<'a> Structure<'a> {
             }
         };
 
-        if self.underscore_const {
-            quote! {
-                const _: () = { #generated };
-            }
-        } else {
-            let dummy_const: Ident = sanitize_ident(&format!(
-                "_DERIVE_{}_FOR_{}",
-                (&bound).into_token_stream(),
-                name.into_token_stream(),
-            ));
-            quote! {
-                #[allow(non_upper_case_globals)]
-                #[doc(hidden)]
-                const #dummy_const: () = {
-                    #generated
-                };
-            }
+        quote! {
+            const _: () = { #generated };
         }
     }
 
@@ -2028,7 +2131,7 @@ impl<'a> Structure<'a> {
     ///
     /// # Hygiene
     ///
-    /// This method tries to handle hygiene intelligenly for both stable and
+    /// This method tries to handle hygiene intelligently for both stable and
     /// unstable proc-macro implementations, however there are visible
     /// differences.
     ///
@@ -2038,19 +2141,6 @@ impl<'a> Structure<'a> {
     ///
     /// By default, the above invocation may generate an output like the
     /// following:
-    ///
-    /// ```ignore
-    /// const _DERIVE_krate_Trait_FOR_Struct: () = {
-    ///     extern crate krate;
-    ///     use krate::Trait as MyTrait;
-    ///     impl<T> MyTrait for Struct<T> where T: MyTrait {
-    ///         fn f(&self) { ... }
-    ///     }
-    /// };
-    /// ```
-    ///
-    /// The `Structure` may also be confired with the [`underscore_const`] method
-    /// to generate `const _` instead.
     ///
     /// ```ignore
     /// const _: () = {
@@ -2123,8 +2213,7 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
     ///             where
@@ -2149,8 +2238,7 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<X: krate::OtherTrait, T, U> krate::Trait<X> for A<T, U>
     ///             where
@@ -2178,8 +2266,7 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }).to_string(),
     ///     quote!{
-    ///         #[allow(non_upper_case_globals)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
     ///             where
@@ -2286,23 +2373,9 @@ impl<'a> Structure<'a> {
         };
 
         if wrap {
-            if self.underscore_const {
-                Ok(quote! {
-                    const _: () = { #generated };
-                })
-            } else {
-                let dummy_const: Ident = sanitize_ident(&format!(
-                    "_DERIVE_{}_FOR_{}",
-                    (&bound).into_token_stream(),
-                    name.into_token_stream(),
-                ));
-                Ok(quote! {
-                    #[allow(non_upper_case_globals)]
-                    const #dummy_const: () = {
-                        #generated
-                    };
-                })
-            }
+            Ok(quote! {
+                const _: () = { #generated };
+            })
         } else {
             Ok(generated)
         }
@@ -2328,8 +2401,7 @@ impl<'a> Structure<'a> {
 /// # use quote::quote;
 /// assert_eq!(
 ///     synstructure::unpretty_print(quote! {
-///         #[allow(non_upper_case_globals)]
-///         const _DERIVE_krate_Trait_FOR_A: () = {
+///         const _: () = {
 ///             extern crate krate;
 ///             impl<T, U> krate::Trait for A<T, U>
 ///             where
@@ -2340,11 +2412,7 @@ impl<'a> Structure<'a> {
 ///             }
 ///         };
 ///     }),
-///     "# [
-///     allow (
-///         non_upper_case_globals )
-///     ]
-/// const _DERIVE_krate_Trait_FOR_A : (
+///     "const _ : (
 ///     )
 /// = {
 ///     extern crate krate ;

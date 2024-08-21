@@ -24,10 +24,8 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "api/array_view.h"
-#include "api/async_resolver_factory.h"
 #include "api/audio/audio_mixer.h"
 #include "api/audio_options.h"
-#include "api/call/call_factory_interface.h"
 #include "api/fec_controller.h"
 #include "api/function_view.h"
 #include "api/media_stream_interface.h"
@@ -306,7 +304,7 @@ class VideoDumpOptions {
 struct VideoConfig {
   explicit VideoConfig(const VideoResolution& resolution);
   VideoConfig(size_t width, size_t height, int32_t fps);
-  VideoConfig(std::string stream_label,
+  VideoConfig(absl::string_view stream_label,
               size_t width,
               size_t height,
               int32_t fps);
@@ -375,19 +373,13 @@ struct VideoConfig {
 
 // Contains properties for audio in the call.
 struct AudioConfig {
-  enum Mode {
-    kGenerated,
-    kFile,
-  };
-
   AudioConfig() = default;
-  explicit AudioConfig(std::string stream_label);
+  explicit AudioConfig(absl::string_view stream_label);
 
   // Have to be unique among all specified configs for all peers in the call.
   // Will be auto generated if omitted.
   absl::optional<std::string> stream_label;
-  Mode mode = kGenerated;
-  // Have to be specified only if mode = kFile
+  // If no file is specified an audio will be generated.
   absl::optional<std::string> input_file_name;
   // If specified the input stream will be also copied to specified file.
   absl::optional<std::string> input_dump_file_name;
@@ -405,8 +397,8 @@ struct AudioConfig {
 };
 
 struct VideoCodecConfig {
-  explicit VideoCodecConfig(std::string name);
-  VideoCodecConfig(std::string name,
+  explicit VideoCodecConfig(absl::string_view name);
+  VideoCodecConfig(absl::string_view name,
                    std::map<std::string, std::string> required_params);
   // Next two fields are used to specify concrete video codec, that should be
   // used in the test. Video code will be negotiated in SDP during offer/

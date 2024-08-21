@@ -72,13 +72,13 @@ pub fn test_double_spill() {
     );
 }
 
-/// https://github.com/servo/rust-smallvec/issues/4
+// https://github.com/servo/rust-smallvec/issues/4
 #[test]
 fn issue_4() {
     SmallVec::<[Box<u32>; 2]>::new();
 }
 
-/// https://github.com/servo/rust-smallvec/issues/5
+// https://github.com/servo/rust-smallvec/issues/5
 #[test]
 fn issue_5() {
     assert!(Some(SmallVec::<[&u32; 2]>::new()).is_some());
@@ -833,12 +833,9 @@ fn test_write() {
 }
 
 #[cfg(feature = "serde")]
-extern crate bincode;
-
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
-    use self::bincode::{config, deserialize};
+    use bincode::{config, deserialize};
     let mut small_vec: SmallVec<[i32; 2]> = SmallVec::new();
     small_vec.push(1);
     let encoded = config().limit(100).serialize(&small_vec).unwrap();
@@ -925,6 +922,12 @@ fn const_new() {
     assert_eq!(v.len(), 2);
     assert_eq!(v[0], 1);
     assert_eq!(v[1], 4);
+    let v = const_new_with_len();
+    assert_eq!(v.capacity(), 4);
+    assert_eq!(v.len(), 3);
+    assert_eq!(v[0], 2);
+    assert_eq!(v[1], 5);
+    assert_eq!(v[2], 7);
 }
 #[cfg(feature = "const_new")]
 const fn const_new_inner() -> SmallVec<[i32; 4]> {
@@ -937,6 +940,12 @@ const fn const_new_inline_sized() -> SmallVec<[i32; 4]> {
 #[cfg(feature = "const_new")]
 const fn const_new_inline_args() -> SmallVec<[i32; 2]> {
     crate::smallvec_inline![1, 4]
+}
+#[cfg(feature = "const_new")]
+const fn const_new_with_len() -> SmallVec<[i32; 4]> {
+    unsafe {
+        SmallVec::<[i32; 4]>::from_const_with_len_unchecked([2, 5, 7, 0], 3)
+    }
 }
 
 #[test]
@@ -982,4 +991,35 @@ fn test_clone_from() {
 
     b.clone_from(&c);
     assert_eq!(&*b, &[20, 21, 22]);
+}
+
+#[test]
+fn test_size() {
+    use core::mem::size_of;
+    assert_eq!(24, size_of::<SmallVec<[u8; 8]>>());
+}
+
+#[cfg(feature = "drain_filter")]
+#[test]
+fn drain_filter() {
+    let mut a: SmallVec<[u8; 2]> = smallvec![1u8, 2, 3, 4, 5, 6, 7, 8];
+
+    let b: SmallVec<[u8; 2]> = a.drain_filter(|x| *x % 3 == 0).collect();
+
+    assert_eq!(a, SmallVec::<[u8; 2]>::from_slice(&[1u8, 2, 4, 5, 7, 8]));
+    assert_eq!(b, SmallVec::<[u8; 2]>::from_slice(&[3u8, 6]));
+}
+
+#[cfg(feature = "drain_keep_rest")]
+#[test]
+fn drain_keep_rest() {
+    let mut a: SmallVec<[i32; 3]> = smallvec![1i32, 2, 3, 4, 5, 6, 7, 8];
+    let mut df = a.drain_filter(|x| *x % 2 == 0);
+
+    assert_eq!(df.next().unwrap(), 2);
+    assert_eq!(df.next().unwrap(), 4);
+
+    df.keep_rest();
+
+    assert_eq!(a, SmallVec::<[i32; 3]>::from_slice(&[1i32, 3, 5, 6, 7, 8]));
 }

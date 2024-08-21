@@ -127,10 +127,23 @@ TEST(TimestampExtrapolatorTest, NegativeRtpTimestampWrapAround) {
   ts_extrapolator.Update(clock.CurrentTime(), rtp);
   EXPECT_THAT(ts_extrapolator.ExtrapolateLocalTime(rtp),
               Optional(clock.CurrentTime()));
-  // Go backwards!
-  rtp -= kRtpHz.hertz();
+  // Go backwards! Static cast to avoid undefined behaviour with -=.
+  rtp -= static_cast<uint32_t>(kRtpHz.hertz());
   EXPECT_THAT(ts_extrapolator.ExtrapolateLocalTime(rtp),
               Optional(clock.CurrentTime() - TimeDelta::Seconds(1)));
+}
+
+TEST(TimestampExtrapolatorTest, NegativeRtpTimestampWrapAroundSecondScenario) {
+  SimulatedClock clock(Timestamp::Millis(1337));
+  TimestampExtrapolator ts_extrapolator(clock.CurrentTime());
+  uint32_t rtp = 0;
+  ts_extrapolator.Update(clock.CurrentTime(), rtp);
+  EXPECT_THAT(ts_extrapolator.ExtrapolateLocalTime(rtp),
+              Optional(clock.CurrentTime()));
+  // Go backwards! Static cast to avoid undefined behaviour with -=.
+  rtp -= static_cast<uint32_t>(kRtpHz * TimeDelta::Seconds(10));
+  ts_extrapolator.Update(clock.CurrentTime(), rtp);
+  EXPECT_THAT(ts_extrapolator.ExtrapolateLocalTime(rtp), absl::nullopt);
 }
 
 TEST(TimestampExtrapolatorTest, Slow90KHzClock) {
@@ -215,6 +228,22 @@ TEST(TimestampExtrapolatorTest, TimestampJump) {
   clock.AdvanceTime(k25FpsDelay);
   ts_extrapolator.Update(clock.CurrentTime(), new_rtp);
   EXPECT_THAT(ts_extrapolator.ExtrapolateLocalTime(new_rtp),
+              Optional(clock.CurrentTime()));
+}
+
+TEST(TimestampExtrapolatorTest, GapInReceivedFrames) {
+  SimulatedClock clock(
+      Timestamp::Seconds(std::numeric_limits<uint32_t>::max() / 90000 - 31));
+  TimestampExtrapolator ts_extrapolator(clock.CurrentTime());
+
+  uint32_t rtp = std::numeric_limits<uint32_t>::max();
+  clock.AdvanceTime(k25FpsDelay);
+  ts_extrapolator.Update(clock.CurrentTime(), rtp);
+
+  rtp += 30 * 90000;
+  clock.AdvanceTime(TimeDelta::Seconds(30));
+  ts_extrapolator.Update(clock.CurrentTime(), rtp);
+  EXPECT_THAT(ts_extrapolator.ExtrapolateLocalTime(rtp),
               Optional(clock.CurrentTime()));
 }
 

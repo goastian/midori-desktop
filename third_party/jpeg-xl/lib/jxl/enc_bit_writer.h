@@ -8,17 +8,19 @@
 
 // BitWriter class: unbuffered writes using unaligned 64-bit stores.
 
-#include <stddef.h>
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "lib/jxl/base/common.h"
 #include "lib/jxl/base/compiler_specific.h"
-#include "lib/jxl/base/padded_bytes.h"
 #include "lib/jxl/base/span.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
+#include "lib/jxl/padded_bytes.h"
 
 namespace jxl {
 
@@ -32,7 +34,8 @@ struct BitWriter {
   // yet zero-initialized).
   static constexpr size_t kMaxBitsPerCall = 56;
 
-  BitWriter() : bits_written_(0) {}
+  explicit BitWriter(JxlMemoryManager* memory_manager)
+      : bits_written_(0), storage_(memory_manager) {}
 
   // Disallow copying - may lead to bugs.
   BitWriter(const BitWriter&) = delete;
@@ -42,10 +45,12 @@ struct BitWriter {
 
   size_t BitsWritten() const { return bits_written_; }
 
+  JxlMemoryManager* memory_manager() const { return storage_.memory_manager(); }
+
   Span<const uint8_t> GetSpan() const {
     // Callers must ensure byte alignment to avoid uninitialized bits.
     JXL_ASSERT(bits_written_ % kBitsPerByte == 0);
-    return Span<const uint8_t>(storage_.data(), bits_written_ / kBitsPerByte);
+    return Bytes(storage_.data(), bits_written_ / kBitsPerByte);
   }
 
   // Example usage: bytes = std::move(writer).TakeBytes(); Useful for the
@@ -58,15 +63,15 @@ struct BitWriter {
     return std::move(storage_);
   }
 
- private:
   // Must be byte-aligned before calling.
   void AppendByteAligned(const Span<const uint8_t>& span);
 
- public:
   // NOTE: no allotment needed, the other BitWriters have already been charged.
   void AppendByteAligned(const BitWriter& other);
   void AppendByteAligned(const std::vector<std::unique_ptr<BitWriter>>& others);
   void AppendByteAligned(const std::vector<BitWriter>& others);
+
+  void AppendUnaligned(const BitWriter& other);
 
   class Allotment {
    public:

@@ -11,9 +11,17 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "lib/jxl/enc_params.h"
+#include <vector>
+
+#include "lib/jxl/common.h"
 
 namespace jxl {
+
+// Forward declaration to break include cycle.
+struct CompressParams;
+
+// RebalanceHistogram requires a signed type.
+using ANSHistBin = int32_t;
 
 struct HistogramParams {
   enum class ClusteringType {
@@ -62,6 +70,10 @@ struct HistogramParams {
     }
   }
 
+  static HistogramParams ForModular(
+      const CompressParams& cparams,
+      const std::vector<uint8_t>& extra_dc_precision, bool streaming_mode);
+
   ClusteringType clustering = ClusteringType::kBest;
   HybridUintMethod uint_method = HybridUintMethod::kBest;
   LZ77Method lz77_method = LZ77Method::kRLE;
@@ -69,6 +81,10 @@ struct HistogramParams {
   std::vector<size_t> image_widths;
   size_t max_histograms = ~0;
   bool force_huffman = false;
+  bool initialize_global_state = true;
+  bool streaming_mode = false;
+  bool add_missing_symbols = false;
+  bool add_fixed_histograms = false;
 };
 
 }  // namespace jxl

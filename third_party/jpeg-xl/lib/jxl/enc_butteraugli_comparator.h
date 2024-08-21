@@ -11,7 +11,6 @@
 
 #include <memory>
 
-#include "lib/jxl/base/data_parallel.h"
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/butteraugli/butteraugli.h"
 #include "lib/jxl/enc_comparator.h"
@@ -26,6 +25,7 @@ class JxlButteraugliComparator : public Comparator {
                                     const JxlCmsInterface& cms);
 
   Status SetReferenceImage(const ImageBundle& ref) override;
+  Status SetLinearReferenceImage(const Image3F& linear);
 
   Status CompareWith(const ImageBundle& actual, ImageF* diffmap,
                      float* score) override;
@@ -40,19 +40,6 @@ class JxlButteraugliComparator : public Comparator {
   size_t xsize_ = 0;
   size_t ysize_ = 0;
 };
-
-// Returns the butteraugli distance between rgb0 and rgb1.
-// If distmap is not null, it must be the same size as rgb0 and rgb1.
-float ButteraugliDistance(const ImageBundle& rgb0, const ImageBundle& rgb1,
-                          const ButteraugliParams& params,
-                          const JxlCmsInterface& cms, ImageF* distmap = nullptr,
-                          ThreadPool* pool = nullptr);
-
-float ButteraugliDistance(const std::vector<ImageBundle>& frames0,
-                          const std::vector<ImageBundle>& frames1,
-                          const ButteraugliParams& params,
-                          const JxlCmsInterface& cms, ImageF* distmap = nullptr,
-                          ThreadPool* pool = nullptr);
 
 }  // namespace jxl
 

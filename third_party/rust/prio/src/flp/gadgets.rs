@@ -3,7 +3,7 @@
 //! A collection of gadgets.
 
 use crate::fft::{discrete_fourier_transform, discrete_fourier_transform_inv_finish};
-use crate::field::FieldElement;
+use crate::field::FftFriendlyFieldElement;
 use crate::flp::{gadget_poly_len, wire_poly_len, FlpError, Gadget};
 use crate::polynomial::{poly_deg, poly_eval, poly_mul};
 
@@ -21,7 +21,7 @@ const FFT_THRESHOLD: usize = 60;
 
 /// An arity-2 gadget that multiples its inputs.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Mul<F: FieldElement> {
+pub struct Mul<F: FftFriendlyFieldElement> {
     /// Size of buffer for FFT operations.
     n: usize,
     /// Inverse of `n` in `F`.
@@ -30,7 +30,7 @@ pub struct Mul<F: FieldElement> {
     num_calls: usize,
 }
 
-impl<F: FieldElement> Mul<F> {
+impl<F: FftFriendlyFieldElement> Mul<F> {
     /// Return a new multiplier gadget. `num_calls` is the number of times this gadget will be
     /// called by the validity circuit.
     pub fn new(num_calls: usize) -> Self {
@@ -72,7 +72,7 @@ impl<F: FieldElement> Mul<F> {
     }
 }
 
-impl<F: FieldElement> Gadget<F> for Mul<F> {
+impl<F: FftFriendlyFieldElement> Gadget<F> for Mul<F> {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
         gadget_call_check(self, inp.len())?;
         Ok(inp[0] * inp[1])
@@ -108,7 +108,7 @@ impl<F: FieldElement> Gadget<F> for Mul<F> {
 //
 // TODO Make `poly` an array of length determined by a const generic.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PolyEval<F: FieldElement> {
+pub struct PolyEval<F: FftFriendlyFieldElement> {
     poly: Vec<F>,
     /// Size of buffer for FFT operations.
     n: usize,
@@ -118,7 +118,7 @@ pub struct PolyEval<F: FieldElement> {
     num_calls: usize,
 }
 
-impl<F: FieldElement> PolyEval<F> {
+impl<F: FftFriendlyFieldElement> PolyEval<F> {
     /// Returns a gadget that evaluates its input on `poly`. `num_calls` is the number of times
     /// this gadget is called by the validity circuit.
     pub fn new(poly: Vec<F>, num_calls: usize) -> Self {
@@ -133,7 +133,7 @@ impl<F: FieldElement> PolyEval<F> {
     }
 }
 
-impl<F: FieldElement> PolyEval<F> {
+impl<F: FftFriendlyFieldElement> PolyEval<F> {
     // Multiply input polynomials directly.
     fn call_poly_direct(&mut self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
         outp[0] = self.poly[0];
@@ -181,7 +181,7 @@ impl<F: FieldElement> PolyEval<F> {
     }
 }
 
-impl<F: FieldElement> Gadget<F> for PolyEval<F> {
+impl<F: FftFriendlyFieldElement> Gadget<F> for PolyEval<F> {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
         gadget_call_check(self, inp.len())?;
         Ok(poly_eval(&self.poly, inp[0]))
@@ -218,135 +218,25 @@ impl<F: FieldElement> Gadget<F> for PolyEval<F> {
     }
 }
 
-/// An arity-2 gadget that returns `poly(in[0]) * in[1]` for some polynomial `poly`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BlindPolyEval<F: FieldElement> {
-    poly: Vec<F>,
-    /// Size of buffer for the outer FFT multiplication.
-    n: usize,
-    /// Inverse of `n` in `F`.
-    n_inv: F,
-    /// The number of times this gadget will be called.
-    num_calls: usize,
-}
-
-impl<F: FieldElement> BlindPolyEval<F> {
-    /// Returns a `BlindPolyEval` gadget for polynomial `poly`.
-    pub fn new(poly: Vec<F>, num_calls: usize) -> Self {
-        let n = gadget_poly_fft_mem_len(poly_deg(&poly) + 1, num_calls);
-        let n_inv = F::from(F::Integer::try_from(n).unwrap()).inv();
-        Self {
-            poly,
-            n,
-            n_inv,
-            num_calls,
-        }
-    }
-
-    fn call_poly_direct(&mut self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
-        let x = &inp[0];
-        let y = &inp[1];
-
-        let mut z = y.to_vec();
-        for i in 0..self.poly.len() {
-            for j in 0..z.len() {
-                outp[j] += self.poly[i] * z[j];
-            }
-
-            if i < self.poly.len() - 1 {
-                z = poly_mul(&z, x);
-            }
-        }
-        Ok(())
-    }
-
-    fn call_poly_fft(&mut self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
-        let n = self.n;
-        let x = &inp[0];
-        let y = &inp[1];
-
-        let mut x_vals = vec![F::zero(); n];
-        discrete_fourier_transform(&mut x_vals, x, n)?;
-
-        let mut z_vals = vec![F::zero(); n];
-        discrete_fourier_transform(&mut z_vals, y, n)?;
-
-        let mut z = vec![F::zero(); n];
-        let mut z_len = y.len();
-        z[..y.len()].clone_from_slice(y);
-
-        for i in 0..self.poly.len() {
-            for j in 0..z_len {
-                outp[j] += self.poly[i] * z[j];
-            }
-
-            if i < self.poly.len() - 1 {
-                for j in 0..n {
-                    z_vals[j] *= x_vals[j];
-                }
-
-                discrete_fourier_transform(&mut z, &z_vals, n)?;
-                discrete_fourier_transform_inv_finish(&mut z, n, self.n_inv);
-                z_len += x.len();
-            }
-        }
-        Ok(())
-    }
-}
-
-impl<F: FieldElement> Gadget<F> for BlindPolyEval<F> {
-    fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
-        gadget_call_check(self, inp.len())?;
-        Ok(inp[1] * poly_eval(&self.poly, inp[0]))
-    }
-
-    fn call_poly(&mut self, outp: &mut [F], inp: &[Vec<F>]) -> Result<(), FlpError> {
-        gadget_call_poly_check(self, outp, inp)?;
-
-        for x in outp.iter_mut() {
-            *x = F::zero();
-        }
-
-        if inp[0].len() >= FFT_THRESHOLD {
-            self.call_poly_fft(outp, inp)
-        } else {
-            self.call_poly_direct(outp, inp)
-        }
-    }
-
-    fn arity(&self) -> usize {
-        2
-    }
-
-    fn degree(&self) -> usize {
-        poly_deg(&self.poly) + 1
-    }
-
-    fn calls(&self) -> usize {
-        self.num_calls
-    }
-
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-/// Marker trait for abstracting over [`ParallelSum`].
-pub trait ParallelSumGadget<F: FieldElement, G>: Gadget<F> + Debug {
-    /// Wraps `inner` into a sum gadget with `chunks` chunks
+/// Trait for abstracting over [`ParallelSum`].
+pub trait ParallelSumGadget<F: FftFriendlyFieldElement, G>: Gadget<F> + Debug {
+    /// Wraps `inner` into a sum gadget that calls it `chunks` many times, and adds the reuslts.
     fn new(inner: G, chunks: usize) -> Self;
 }
 
 /// A wrapper gadget that applies the inner gadget to chunks of input and returns the sum of the
-/// outputs. The arity is equal to the arity of the inner gadget times the number of chunks.
+/// outputs. The arity is equal to the arity of the inner gadget times the number of times it is
+/// called.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ParallelSum<F: FieldElement, G: Gadget<F>> {
+pub struct ParallelSum<F: FftFriendlyFieldElement, G: Gadget<F>> {
     inner: G,
     chunks: usize,
     phantom: PhantomData<F>,
 }
 
-impl<F: FieldElement, G: 'static + Gadget<F>> ParallelSumGadget<F, G> for ParallelSum<F, G> {
+impl<F: FftFriendlyFieldElement, G: 'static + Gadget<F>> ParallelSumGadget<F, G>
+    for ParallelSum<F, G>
+{
     fn new(inner: G, chunks: usize) -> Self {
         Self {
             inner,
@@ -356,7 +246,7 @@ impl<F: FieldElement, G: 'static + Gadget<F>> ParallelSumGadget<F, G> for Parall
     }
 }
 
-impl<F: FieldElement, G: 'static + Gadget<F>> Gadget<F> for ParallelSum<F, G> {
+impl<F: FftFriendlyFieldElement, G: 'static + Gadget<F>> Gadget<F> for ParallelSum<F, G> {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
         gadget_call_check(self, inp.len())?;
         let mut outp = F::zero();
@@ -408,14 +298,14 @@ impl<F: FieldElement, G: 'static + Gadget<F>> Gadget<F> for ParallelSum<F, G> {
 #[cfg(feature = "multithreaded")]
 #[cfg_attr(docsrs, doc(cfg(feature = "multithreaded")))]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ParallelSumMultithreaded<F: FieldElement, G: Gadget<F>> {
+pub struct ParallelSumMultithreaded<F: FftFriendlyFieldElement, G: Gadget<F>> {
     serial_sum: ParallelSum<F, G>,
 }
 
 #[cfg(feature = "multithreaded")]
 impl<F, G> ParallelSumGadget<F, G> for ParallelSumMultithreaded<F, G>
 where
-    F: FieldElement + Sync + Send,
+    F: FftFriendlyFieldElement + Sync + Send,
     G: 'static + Gadget<F> + Clone + Sync + Send,
 {
     fn new(inner: G, chunks: usize) -> Self {
@@ -441,7 +331,7 @@ impl<F, G> ParallelSumFoldState<F, G> {
     fn new(gadget: &G, length: usize) -> ParallelSumFoldState<F, G>
     where
         G: Clone,
-        F: FieldElement,
+        F: FftFriendlyFieldElement,
     {
         ParallelSumFoldState {
             inner: gadget.clone(),
@@ -454,7 +344,7 @@ impl<F, G> ParallelSumFoldState<F, G> {
 #[cfg(feature = "multithreaded")]
 impl<F, G> Gadget<F> for ParallelSumMultithreaded<F, G>
 where
-    F: FieldElement + Sync + Send,
+    F: FftFriendlyFieldElement + Sync + Send,
     G: 'static + Gadget<F> + Clone + Sync + Send,
 {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
@@ -522,7 +412,7 @@ where
 }
 
 // Check that the input parameters of g.call() are well-formed.
-fn gadget_call_check<F: FieldElement, G: Gadget<F>>(
+fn gadget_call_check<F: FftFriendlyFieldElement, G: Gadget<F>>(
     gadget: &G,
     in_len: usize,
 ) -> Result<(), FlpError> {
@@ -542,7 +432,7 @@ fn gadget_call_check<F: FieldElement, G: Gadget<F>>(
 }
 
 // Check that the input parameters of g.call_poly() are well-formed.
-fn gadget_call_poly_check<F: FieldElement, G: Gadget<F>>(
+fn gadget_call_poly_check<F: FftFriendlyFieldElement, G: Gadget<F>>(
     gadget: &G,
     outp: &[F],
     inp: &[Vec<F>],
@@ -581,7 +471,9 @@ fn gadget_poly_fft_mem_len(degree: usize, num_calls: usize) -> usize {
 mod tests {
     use super::*;
 
-    use crate::field::{random_vector, Field96 as TestField};
+    #[cfg(feature = "multithreaded")]
+    use crate::field::FieldElement;
+    use crate::field::{random_vector, Field64 as TestField};
     use crate::prng::Prng;
 
     #[test]
@@ -613,25 +505,11 @@ mod tests {
     }
 
     #[test]
-    fn test_blind_poly_eval() {
-        let poly: Vec<TestField> = random_vector(10).unwrap();
-
-        let num_calls = FFT_THRESHOLD / 2;
-        let mut g: BlindPolyEval<TestField> = BlindPolyEval::new(poly.clone(), num_calls);
-        gadget_test(&mut g, num_calls);
-
-        let num_calls = FFT_THRESHOLD;
-        let mut g: BlindPolyEval<TestField> = BlindPolyEval::new(poly, num_calls);
-        gadget_test(&mut g, num_calls);
-    }
-
-    #[test]
     fn test_parallel_sum() {
-        let poly: Vec<TestField> = random_vector(10).unwrap();
         let num_calls = 10;
         let chunks = 23;
 
-        let mut g = ParallelSum::new(BlindPolyEval::new(poly, num_calls), chunks);
+        let mut g = ParallelSum::new(Mul::<TestField>::new(num_calls), chunks);
         gadget_test(&mut g, num_calls);
     }
 
@@ -641,15 +519,13 @@ mod tests {
         use std::iter;
 
         for num_calls in [1, 10, 100] {
-            let poly: Vec<TestField> = random_vector(10).unwrap();
             let chunks = 23;
 
-            let mut g =
-                ParallelSumMultithreaded::new(BlindPolyEval::new(poly.clone(), num_calls), chunks);
+            let mut g = ParallelSumMultithreaded::new(Mul::new(num_calls), chunks);
             gadget_test(&mut g, num_calls);
 
             // Test that the multithreaded version has the same output as the normal version.
-            let mut g_serial = ParallelSum::new(BlindPolyEval::new(poly, num_calls), chunks);
+            let mut g_serial = ParallelSum::new(Mul::new(num_calls), chunks);
             assert_eq!(g.arity(), g_serial.arity());
             assert_eq!(g.degree(), g_serial.degree());
             assert_eq!(g.calls(), g_serial.calls());
@@ -687,7 +563,7 @@ mod tests {
 
     // Test that calling g.call_poly() and evaluating the output at a given point is equivalent
     // to evaluating each of the inputs at the same point and applying g.call() on the results.
-    fn gadget_test<F: FieldElement, G: Gadget<F>>(g: &mut G, num_calls: usize) {
+    fn gadget_test<F: FftFriendlyFieldElement, G: Gadget<F>>(g: &mut G, num_calls: usize) {
         let wire_poly_len = (1 + num_calls).next_power_of_two();
         let mut prng = Prng::new().unwrap();
         let mut inp = vec![F::zero(); g.arity()];

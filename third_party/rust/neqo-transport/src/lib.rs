@@ -4,10 +4,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![cfg_attr(feature = "deny-warnings", deny(warnings))]
-#![warn(clippy::use_self)]
+#![allow(clippy::module_name_repetitions)] // This lint doesn't work here.
 
-use neqo_common::qinfo;
+use neqo_common::qwarn;
 use neqo_crypto::Error as CryptoError;
 
 mod ackrate;
@@ -16,18 +15,30 @@ mod cc;
 mod cid;
 mod connection;
 mod crypto;
-mod dump;
+mod ecn;
 mod events;
 mod fc;
+#[cfg(fuzzing)]
+pub mod frame;
+#[cfg(not(fuzzing))]
 mod frame;
 mod pace;
+#[cfg(fuzzing)]
+pub mod packet;
+#[cfg(not(fuzzing))]
 mod packet;
 mod path;
 mod qlog;
 mod quic_datagrams;
 mod recovery;
+#[cfg(feature = "bench")]
+pub mod recv_stream;
+#[cfg(not(feature = "bench"))]
 mod recv_stream;
 mod rtt;
+#[cfg(feature = "bench")]
+pub mod send_stream;
+#[cfg(not(feature = "bench"))]
 mod send_stream;
 mod sender;
 pub mod server;
@@ -38,34 +49,38 @@ pub mod tparams;
 mod tracking;
 pub mod version;
 
-pub use self::cc::CongestionControlAlgorithm;
-pub use self::cid::{
-    ConnectionId, ConnectionIdDecoder, ConnectionIdGenerator, ConnectionIdRef,
-    EmptyConnectionIdGenerator, RandomConnectionIdGenerator,
+pub use self::{
+    cc::CongestionControlAlgorithm,
+    cid::{
+        ConnectionId, ConnectionIdDecoder, ConnectionIdGenerator, ConnectionIdRef,
+        EmptyConnectionIdGenerator, RandomConnectionIdGenerator,
+    },
+    connection::{
+        params::{ConnectionParameters, ACK_RATIO_SCALE},
+        Connection, Output, State, ZeroRttState,
+    },
+    events::{ConnectionEvent, ConnectionEvents},
+    frame::CloseError,
+    packet::MIN_INITIAL_PACKET_SIZE,
+    quic_datagrams::DatagramTracking,
+    recv_stream::{RecvStreamStats, RECV_BUFFER_SIZE},
+    send_stream::{SendStreamStats, SEND_BUFFER_SIZE},
+    stats::Stats,
+    stream_id::{StreamId, StreamType},
+    version::Version,
 };
-pub use self::connection::{
-    params::ConnectionParameters, params::ACK_RATIO_SCALE, Connection, Output, State, ZeroRttState,
-};
-pub use self::events::{ConnectionEvent, ConnectionEvents};
-pub use self::frame::CloseError;
-pub use self::quic_datagrams::DatagramTracking;
-pub use self::stats::Stats;
-pub use self::stream_id::{StreamId, StreamType};
-pub use self::version::Version;
-
-pub use self::recv_stream::RECV_BUFFER_SIZE;
-pub use self::send_stream::SEND_BUFFER_SIZE;
 
 pub type TransportError = u64;
 const ERROR_APPLICATION_CLOSE: TransportError = 12;
+const ERROR_CRYPTO_BUFFER_EXCEEDED: TransportError = 13;
 const ERROR_AEAD_LIMIT_REACHED: TransportError = 15;
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub enum Error {
     NoError,
-    // Each time tihe error is return a different parameter is supply.
-    // This will be use to distinguish each occurance of this error.
-    InternalError(u16),
+    // Each time this error is returned a different parameter is supplied.
+    // This will be used to distinguish each occurance of this error.
+    InternalError,
     ConnectionRefused,
     FlowControlError,
     StreamLimitError,
@@ -76,6 +91,7 @@ pub enum Error {
     ProtocolViolation,
     InvalidToken,
     ApplicationError,
+    CryptoBufferExceeded,
     CryptoError(CryptoError),
     QlogError,
     CryptoAlert(u8),
@@ -124,6 +140,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[must_use]
     pub fn code(&self) -> TransportError {
         match self {
             Self::NoError
@@ -142,6 +159,7 @@ impl Error {
             Self::KeysExhausted => ERROR_AEAD_LIMIT_REACHED,
             Self::ApplicationError => ERROR_APPLICATION_CLOSE,
             Self::NoAvailablePath => 16,
+            Self::CryptoBufferExceeded => ERROR_CRYPTO_BUFFER_EXCEEDED,
             Self::CryptoAlert(a) => 0x100 + u64::from(*a),
             // As we have a special error code for ECH fallbacks, we lose the alert.
             // Send the server "ech_required" directly.
@@ -155,7 +173,7 @@ impl Error {
 
 impl From<CryptoError> for Error {
     fn from(err: CryptoError) -> Self {
-        qinfo!("Crypto operation failed {:?}", err);
+        qwarn!("Crypto operation failed {:?}", err);
         match err {
             CryptoError::EchRetry(config) => Self::EchRetry(config),
             _ => Self::CryptoError(err),
@@ -176,7 +194,7 @@ impl From<std::num::TryFromIntError> for Error {
 }
 
 impl ::std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::CryptoError(e) => Some(e),
             _ => None,
@@ -186,28 +204,43 @@ impl ::std::error::Error for Error {
 
 impl ::std::fmt::Display for Error {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "Transport error: {:?}", self)
+        write!(f, "Transport error: {self:?}")
     }
 }
 
 pub type AppError = u64;
 
+#[deprecated(note = "use `CloseReason` instead")]
+pub type ConnectionError = CloseReason;
+
+/// Reason why a connection closed.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
-pub enum ConnectionError {
+pub enum CloseReason {
     Transport(Error),
     Application(AppError),
 }
 
-impl ConnectionError {
+impl CloseReason {
+    #[must_use]
     pub fn app_code(&self) -> Option<AppError> {
         match self {
             Self::Application(e) => Some(*e),
-            _ => None,
+            Self::Transport(_) => None,
         }
+    }
+
+    /// Checks enclosed error for [`Error::NoError`] and
+    /// [`CloseReason::Application(0)`].
+    #[must_use]
+    pub fn is_error(&self) -> bool {
+        !matches!(
+            self,
+            CloseReason::Transport(Error::NoError) | CloseReason::Application(0),
+        )
     }
 }
 
-impl From<CloseError> for ConnectionError {
+impl From<CloseError> for CloseReason {
     fn from(err: CloseError) -> Self {
         match err {
             CloseError::Transport(c) => Self::Transport(Error::PeerError(c)),

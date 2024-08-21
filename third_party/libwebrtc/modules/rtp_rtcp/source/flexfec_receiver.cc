@@ -14,6 +14,8 @@
 
 #include "api/array_view.h"
 #include "api/scoped_refptr.h"
+#include "api/units/time_delta.h"
+#include "api/units/timestamp.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 
@@ -25,7 +27,7 @@ namespace {
 constexpr size_t kMinFlexfecHeaderSize = 20;
 
 // How often to log the recovered packets to the text log.
-constexpr int kPacketLogIntervalMs = 10000;
+constexpr TimeDelta kPacketLogInterval = TimeDelta::Seconds(10);
 
 }  // namespace
 
@@ -50,8 +52,7 @@ FlexfecReceiver::FlexfecReceiver(
       erasure_code_(
           ForwardErrorCorrection::CreateFlexfec(ssrc, protected_media_ssrc)),
       recovered_packet_receiver_(recovered_packet_receiver),
-      clock_(clock),
-      last_recovered_packet_ms_(-1) {
+      clock_(clock) {
   // It's OK to create this object on a different thread/task queue than
   // the one used during main operation.
   sequence_checker_.Detach();
@@ -150,7 +151,12 @@ void FlexfecReceiver::ProcessReceivedPacket(
   RTC_DCHECK_RUN_ON(&sequence_checker_);
 
   // Decode.
-  erasure_code_->DecodeFec(received_packet, &recovered_packets_);
+  ForwardErrorCorrection::DecodeFecResult decode_result =
+      erasure_code_->DecodeFec(received_packet, &recovered_packets_);
+
+  if (decode_result.num_recovered_packets == 0) {
+    return;
+  }
 
   // Return recovered packets through callback.
   for (const auto& recovered_packet : recovered_packets_) {
@@ -175,9 +181,9 @@ void FlexfecReceiver::ProcessReceivedPacket(
     recovered_packet_receiver_->OnRecoveredPacket(parsed_packet);
 
     // Periodically log the incoming packets at LS_INFO.
-    int64_t now_ms = clock_->TimeInMilliseconds();
+    Timestamp now = clock_->CurrentTime();
     bool should_log_periodically =
-        now_ms - last_recovered_packet_ms_ > kPacketLogIntervalMs;
+        now - last_recovered_packet_ > kPacketLogInterval;
     if (RTC_LOG_CHECK_LEVEL(LS_VERBOSE) || should_log_periodically) {
       rtc::LoggingSeverity level =
           should_log_periodically ? rtc::LS_INFO : rtc::LS_VERBOSE;
@@ -185,9 +191,11 @@ void FlexfecReceiver::ProcessReceivedPacket(
                        << parsed_packet.Ssrc() << " seq "
                        << parsed_packet.SequenceNumber() << " recovered length "
                        << recovered_packet->pkt->data.size()
+                       << " received length "
+                       << received_packet.pkt->data.size()
                        << " from FlexFEC stream with SSRC: " << ssrc_;
       if (should_log_periodically) {
-        last_recovered_packet_ms_ = now_ms;
+        last_recovered_packet_ = now;
       }
     }
   }

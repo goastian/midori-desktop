@@ -4,30 +4,38 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Libprio-rs
+//! # libprio-rs
 //!
 //! Implementation of the [Prio](https://crypto.stanford.edu/prio/) private data aggregation
-//! protocol. For now we only support 0 / 1 vectors.
+//! protocol.
+//!
+//! Prio3 is available in the `vdaf` module as part of an implementation of [Verifiable Distributed
+//! Aggregation Functions][vdaf], along with an experimental implementation of Poplar1.
+//!
+//! [vdaf]: https://datatracker.ietf.org/doc/draft-irtf-cfrg-vdaf/05/
 
 pub mod benchmarked;
-#[cfg(feature = "prio2")]
-pub mod client;
-#[cfg(feature = "prio2")]
-pub mod encrypt;
-#[cfg(feature = "prio2")]
-pub mod server;
-
 pub mod codec;
+#[cfg(feature = "experimental")]
+#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
+pub mod dp;
 mod fft;
 pub mod field;
 pub mod flp;
 mod fp;
+#[cfg(all(feature = "crypto-dependencies", feature = "experimental"))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "crypto-dependencies", feature = "experimental")))
+)]
+pub mod idpf;
 mod polynomial;
 mod prng;
-// Module test_vector depends on crate `rand` so we make it an optional feature
-// to spare most clients the extra dependency.
-#[cfg(all(any(feature = "test-util", test), feature = "prio2"))]
-pub mod test_vector;
-#[cfg(feature = "prio2")]
-pub mod util;
+pub mod topology;
 pub mod vdaf;
+#[cfg(all(feature = "crypto-dependencies", feature = "experimental"))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "crypto-dependencies", feature = "experimental")))
+)]
+pub mod vidpf;

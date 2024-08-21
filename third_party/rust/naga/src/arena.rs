@@ -5,8 +5,7 @@ use std::{cmp::Ordering, fmt, hash, marker::PhantomData, num::NonZeroU32, ops};
 /// the same size and representation as `Handle<T>`.
 type Index = NonZeroU32;
 
-use crate::Span;
-use indexmap::set::IndexSet;
+use crate::{FastIndexSet, Span};
 
 #[derive(Clone, Copy, Debug, thiserror::Error, PartialEq)]
 #[error("Handle {index} of {kind} is either not present, or inaccessible yet")]
@@ -42,10 +41,7 @@ pub struct Handle<T> {
 
 impl<T> Clone for Handle<T> {
     fn clone(&self) -> Self {
-        Handle {
-            index: self.index,
-            marker: self.marker,
-        }
+        *self
     }
 }
 
@@ -61,7 +57,7 @@ impl<T> Eq for Handle<T> {}
 
 impl<T> PartialOrd for Handle<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.index.partial_cmp(&other.index)
+        Some(self.cmp(other))
     }
 }
 
@@ -126,6 +122,7 @@ impl<T> Handle<T> {
     serde(transparent)
 )]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Range<T> {
     inner: ops::Range<u32>,
     #[cfg_attr(any(feature = "serialize", feature = "deserialize"), serde(skip))]
@@ -144,6 +141,7 @@ impl<T> Range<T> {
 
 // NOTE: Keep this diagnostic in sync with that of [`BadHandle`].
 #[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
 #[error("Handle range {range:?} of {kind} is either not present, or inaccessible yet")]
 pub struct BadRangeError {
     // This error is used for many `Handle` types, but there's no point in making this generic, so
@@ -192,9 +190,46 @@ impl<T> Iterator for Range<T> {
 }
 
 impl<T> Range<T> {
+    /// Return a range enclosing handles `first` through `last`, inclusive.
     pub fn new_from_bounds(first: Handle<T>, last: Handle<T>) -> Self {
         Self {
             inner: (first.index() as u32)..(last.index() as u32 + 1),
+            marker: Default::default(),
+        }
+    }
+
+    /// return the first and last handles included in `self`.
+    ///
+    /// If `self` is an empty range, there are no handles included, so
+    /// return `None`.
+    pub fn first_and_last(&self) -> Option<(Handle<T>, Handle<T>)> {
+        if self.inner.start < self.inner.end {
+            Some((
+                // `Range::new_from_bounds` expects a 1-based, start- and
+                // end-inclusive range, but `self.inner` is a zero-based,
+                // end-exclusive range.
+                Handle::new(Index::new(self.inner.start + 1).unwrap()),
+                Handle::new(Index::new(self.inner.end).unwrap()),
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Return the zero-based index range covered by `self`.
+    pub fn zero_based_index_range(&self) -> ops::Range<u32> {
+        self.inner.clone()
+    }
+
+    /// Construct a `Range` that covers the zero-based indices in `inner`.
+    pub fn from_zero_based_index_range(inner: ops::Range<u32>, arena: &Arena<T>) -> Self {
+        // Since `inner` is a `Range<u32>`, we only need to check that
+        // the start and end are well-ordered, and that the end fits
+        // within `arena`.
+        assert!(inner.start <= inner.end);
+        assert!(inner.end as usize <= arena.len());
+        Self {
+            inner,
             marker: Default::default(),
         }
     }
@@ -206,7 +241,7 @@ impl<T> Range<T> {
 /// Adding new items to the arena produces a strongly-typed [`Handle`].
 /// The arena can be indexed using the given handle to obtain
 /// a reference to the stored item.
-#[cfg_attr(feature = "clone", derive(Clone))]
+#[derive(Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[cfg_attr(feature = "serialize", serde(transparent))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -214,7 +249,6 @@ impl<T> Range<T> {
 pub struct Arena<T> {
     /// Values of this arena.
     data: Vec<T>,
-    #[cfg(feature = "span")]
     #[cfg_attr(feature = "serialize", serde(skip))]
     span_info: Vec<Span>,
 }
@@ -236,7 +270,6 @@ impl<T> Arena<T> {
     pub const fn new() -> Self {
         Arena {
             data: Vec::new(),
-            #[cfg(feature = "span")]
             span_info: Vec::new(),
         }
     }
@@ -266,6 +299,17 @@ impl<T> Arena<T> {
             .map(|(i, v)| unsafe { (Handle::from_usize_unchecked(i), v) })
     }
 
+    /// Drains the arena, returning an iterator over the items stored.
+    pub fn drain(&mut self) -> impl DoubleEndedIterator<Item = (Handle<T>, T, Span)> {
+        let arena = std::mem::take(self);
+        arena
+            .data
+            .into_iter()
+            .zip(arena.span_info)
+            .enumerate()
+            .map(|(i, (v, span))| unsafe { (Handle::from_usize_unchecked(i), v, span) })
+    }
+
     /// Returns a iterator over the items stored in this arena,
     /// returning both the item's handle and a mutable reference to it.
     pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = (Handle<T>, &mut T)> {
@@ -277,11 +321,8 @@ impl<T> Arena<T> {
 
     /// Adds a new value to the arena, returning a typed handle.
     pub fn append(&mut self, value: T, span: Span) -> Handle<T> {
-        #[cfg(not(feature = "span"))]
-        let _ = span;
         let index = self.data.len();
         self.data.push(value);
-        #[cfg(feature = "span")]
         self.span_info.push(span);
         Handle::from_usize(index)
     }
@@ -344,18 +385,10 @@ impl<T> Arena<T> {
     }
 
     pub fn get_span(&self, handle: Handle<T>) -> Span {
-        #[cfg(feature = "span")]
-        {
-            *self
-                .span_info
-                .get(handle.index())
-                .unwrap_or(&Span::default())
-        }
-        #[cfg(not(feature = "span"))]
-        {
-            let _ = handle;
-            Span::default()
-        }
+        *self
+            .span_info
+            .get(handle.index())
+            .unwrap_or(&Span::default())
     }
 
     /// Assert that `handle` is valid for this arena.
@@ -369,18 +402,52 @@ impl<T> Arena<T> {
 
     /// Assert that `range` is valid for this arena.
     pub fn check_contains_range(&self, range: &Range<T>) -> Result<(), BadRangeError> {
-        // Since `range.inner` is a `Range<u32>`, we only need to
-        // check that the start precedes the end, and that the end is
-        // in range.
-        if range.inner.start > range.inner.end
-            || self
-                .check_contains_handle(Handle::new(range.inner.end.try_into().unwrap()))
-                .is_err()
-        {
-            Err(BadRangeError::new(range.clone()))
-        } else {
-            Ok(())
+        // Since `range.inner` is a `Range<u32>`, we only need to check that the
+        // start precedes the end, and that the end is in range.
+        if range.inner.start > range.inner.end {
+            return Err(BadRangeError::new(range.clone()));
         }
+
+        // Empty ranges are tolerated: they can be produced by compaction.
+        if range.inner.start == range.inner.end {
+            return Ok(());
+        }
+
+        // `range.inner` is zero-based, but end-exclusive, so `range.inner.end`
+        // is actually the right one-based index for the last handle within the
+        // range.
+        let last_handle = Handle::new(range.inner.end.try_into().unwrap());
+        if self.check_contains_handle(last_handle).is_err() {
+            return Err(BadRangeError::new(range.clone()));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "compact")]
+    pub(crate) fn retain_mut<P>(&mut self, mut predicate: P)
+    where
+        P: FnMut(Handle<T>, &mut T) -> bool,
+    {
+        let mut index = 0;
+        let mut retained = 0;
+        self.data.retain_mut(|elt| {
+            let handle = Handle::new(Index::new(index as u32 + 1).unwrap());
+            let keep = predicate(handle, elt);
+
+            // Since `predicate` needs mutable access to each element,
+            // we can't feasibly call it twice, so we have to compact
+            // spans by hand in parallel as part of this iteration.
+            if keep {
+                self.span_info[retained] = self.span_info[index];
+                retained += 1;
+            }
+
+            index += 1;
+            keep
+        });
+
+        self.span_info.truncate(retained);
     }
 }
 
@@ -394,16 +461,11 @@ where
         D: serde::Deserializer<'de>,
     {
         let data = Vec::deserialize(deserializer)?;
-        #[cfg(feature = "span")]
         let span_info = std::iter::repeat(Span::default())
             .take(data.len())
             .collect();
 
-        Ok(Self {
-            data,
-            #[cfg(feature = "span")]
-            span_info,
-        })
+        Ok(Self { data, span_info })
     }
 }
 
@@ -482,17 +544,16 @@ mod tests {
 ///
 /// `UniqueArena` is similar to [`Arena`]: If `Arena` is vector-like,
 /// `UniqueArena` is `HashSet`-like.
-#[cfg_attr(feature = "clone", derive(Clone))]
+#[derive(Clone)]
 pub struct UniqueArena<T> {
-    set: IndexSet<T>,
+    set: FastIndexSet<T>,
 
     /// Spans for the elements, indexed by handle.
     ///
-    /// The length of this vector is always equal to `set.len()`. `IndexSet`
+    /// The length of this vector is always equal to `set.len()`. `FastIndexSet`
     /// promises that its elements "are indexed in a compact range, without
     /// holes in the range 0..set.len()", so we can always use the indices
     /// returned by insertion as indices into this vector.
-    #[cfg(feature = "span")]
     span_info: Vec<Span>,
 }
 
@@ -500,8 +561,7 @@ impl<T> UniqueArena<T> {
     /// Create a new arena with no initial capacity allocated.
     pub fn new() -> Self {
         UniqueArena {
-            set: IndexSet::new(),
-            #[cfg(feature = "span")]
+            set: FastIndexSet::default(),
             span_info: Vec::new(),
         }
     }
@@ -519,7 +579,6 @@ impl<T> UniqueArena<T> {
     /// Clears the arena, keeping all allocations.
     pub fn clear(&mut self) {
         self.set.clear();
-        #[cfg(feature = "span")]
         self.span_info.clear();
     }
 
@@ -527,21 +586,43 @@ impl<T> UniqueArena<T> {
     ///
     /// If a value has been inserted multiple times, the span returned is the
     /// one provided with the first insertion.
-    ///
-    /// If the `span` feature is not enabled, always return `Span::default`.
-    /// This can be detected with [`Span::is_defined`].
     pub fn get_span(&self, handle: Handle<T>) -> Span {
-        #[cfg(feature = "span")]
-        {
-            *self
-                .span_info
-                .get(handle.index())
-                .unwrap_or(&Span::default())
+        *self
+            .span_info
+            .get(handle.index())
+            .unwrap_or(&Span::default())
+    }
+
+    #[cfg(feature = "compact")]
+    pub(crate) fn drain_all(&mut self) -> UniqueArenaDrain<T> {
+        UniqueArenaDrain {
+            inner_elts: self.set.drain(..),
+            inner_spans: self.span_info.drain(..),
+            index: Index::new(1).unwrap(),
         }
-        #[cfg(not(feature = "span"))]
-        {
-            let _ = handle;
-            Span::default()
+    }
+}
+
+#[cfg(feature = "compact")]
+pub(crate) struct UniqueArenaDrain<'a, T> {
+    inner_elts: indexmap::set::Drain<'a, T>,
+    inner_spans: std::vec::Drain<'a, Span>,
+    index: Index,
+}
+
+#[cfg(feature = "compact")]
+impl<'a, T> Iterator for UniqueArenaDrain<'a, T> {
+    type Item = (Handle<T>, T, Span);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner_elts.next() {
+            Some(elt) => {
+                let handle = Handle::new(self.index);
+                self.index = self.index.checked_add(1).unwrap();
+                let span = self.inner_spans.next().unwrap();
+                Some((handle, elt, span))
+            }
+            None => None,
         }
     }
 }
@@ -565,27 +646,21 @@ impl<T: Eq + hash::Hash> UniqueArena<T> {
     /// If this arena already contains an element that is `Eq` to `value`,
     /// return a `Handle` to the existing element, and drop `value`.
     ///
-    /// When the `span` feature is enabled, if `value` is inserted into the
-    /// arena, associate `span` with it. An element's span can be retrieved with
-    /// the [`get_span`] method.
+    /// If `value` is inserted into the arena, associate `span` with
+    /// it. An element's span can be retrieved with the [`get_span`]
+    /// method.
     ///
     /// [`Handle<T>`]: Handle
     /// [`get_span`]: UniqueArena::get_span
     pub fn insert(&mut self, value: T, span: Span) -> Handle<T> {
         let (index, added) = self.set.insert_full(value);
 
-        #[cfg(feature = "span")]
-        {
-            if added {
-                debug_assert!(index == self.span_info.len());
-                self.span_info.push(span);
-            }
-
-            debug_assert!(self.set.len() == self.span_info.len());
+        if added {
+            debug_assert!(index == self.span_info.len());
+            self.span_info.push(span);
         }
 
-        #[cfg(not(feature = "span"))]
-        let _ = (span, added);
+        debug_assert!(self.set.len() == self.span_info.len());
 
         Handle::from_usize(index)
     }
@@ -671,15 +746,10 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let set = IndexSet::deserialize(deserializer)?;
-        #[cfg(feature = "span")]
+        let set = FastIndexSet::deserialize(deserializer)?;
         let span_info = std::iter::repeat(Span::default()).take(set.len()).collect();
 
-        Ok(Self {
-            set,
-            #[cfg(feature = "span")]
-            span_info,
-        })
+        Ok(Self { set, span_info })
     }
 }
 
@@ -693,7 +763,6 @@ where
         let mut arena = Self::default();
         for elem in u.arbitrary_iter()? {
             arena.set.insert(elem?);
-            #[cfg(feature = "span")]
             arena.span_info.push(Span::UNDEFINED);
         }
         Ok(arena)
@@ -703,7 +772,6 @@ where
         let mut arena = Self::default();
         for elem in u.arbitrary_take_rest_iter()? {
             arena.set.insert(elem?);
-            #[cfg(feature = "span")]
             arena.span_info.push(Span::UNDEFINED);
         }
         Ok(arena)

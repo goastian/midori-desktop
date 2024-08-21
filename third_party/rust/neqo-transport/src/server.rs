@@ -6,48 +6,42 @@
 
 // This file implements a server that can handle multiple connections.
 
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet, VecDeque},
+    fs::OpenOptions,
+    mem,
+    net::SocketAddr,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+    rc::{Rc, Weak},
+    time::Instant,
+};
+
 use neqo_common::{
     self as common, event::Provider, hex, qdebug, qerror, qinfo, qlog::NeqoQlog, qtrace, qwarn,
-    timer::Timer, Datagram, Decoder, Role,
+    Datagram, Decoder, Role,
 };
 use neqo_crypto::{
     encode_ech_config, AntiReplay, Cipher, PrivateKey, PublicKey, ZeroRttCheckResult,
     ZeroRttChecker,
 };
+use qlog::streamer::QlogStreamer;
 
 pub use crate::addr_valid::ValidateAddress;
-use crate::addr_valid::{AddressValidation, AddressValidationResult};
-use crate::cid::{ConnectionId, ConnectionIdDecoder, ConnectionIdGenerator, ConnectionIdRef};
-use crate::connection::{Connection, Output, State};
-use crate::packet::{PacketBuilder, PacketType, PublicPacket};
-use crate::{ConnectionParameters, Res, Version};
-
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs::OpenOptions;
-use std::mem;
-use std::net::SocketAddr;
-use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
-use std::rc::{Rc, Weak};
-use std::time::{Duration, Instant};
+use crate::{
+    addr_valid::{AddressValidation, AddressValidationResult},
+    cid::{ConnectionId, ConnectionIdDecoder, ConnectionIdGenerator, ConnectionIdRef},
+    connection::{Connection, Output, State},
+    packet::{PacketBuilder, PacketType, PublicPacket, MIN_INITIAL_PACKET_SIZE},
+    ConnectionParameters, Res, Version,
+};
 
 pub enum InitialResult {
     Accept,
     Drop,
     Retry(Vec<u8>),
 }
-
-/// MIN_INITIAL_PACKET_SIZE is the smallest packet that can be used to establish
-/// a new connection across all QUIC versions this server supports.
-const MIN_INITIAL_PACKET_SIZE: usize = 1200;
-/// The size of timer buckets.  This is higher than the actual timer granularity
-/// as this depends on there being some distribution of events.
-const TIMER_GRANULARITY: Duration = Duration::from_millis(4);
-/// The number of buckets in the timer.  As mentioned in the definition of `Timer`,
-/// the granularity and capacity need to multiply to be larger than the largest
-/// delay that might be used.  That's the idle timeout (currently 30s).
-const TIMER_CAPACITY: usize = 16384;
 
 type StateRef = Rc<RefCell<ServerConnectionState>>;
 type ConnectionTableRef = Rc<RefCell<HashMap<ConnectionId, StateRef>>>;
@@ -56,7 +50,21 @@ type ConnectionTableRef = Rc<RefCell<HashMap<ConnectionId, StateRef>>>;
 pub struct ServerConnectionState {
     c: Connection,
     active_attempt: Option<AttemptKey>,
-    last_timer: Instant,
+    wake_at: Option<Instant>,
+}
+
+impl ServerConnectionState {
+    fn set_wake_at(&mut self, at: Instant) {
+        self.wake_at = Some(at);
+    }
+
+    fn needs_waking(&self, now: Instant) -> bool {
+        self.wake_at.map_or(false, |t| t <= now)
+    }
+
+    fn woken(&mut self) {
+        self.wake_at = None;
+    }
 }
 
 impl Deref for ServerConnectionState {
@@ -163,14 +171,14 @@ pub struct Server {
     /// the same key are routed to the connection that was first accepted.
     /// This is cleared out when the connection is closed or established.
     active_attempts: HashMap<AttemptKey, StateRef>,
-    /// All connections, keyed by ConnectionId.
+    /// All connections, keyed by `ConnectionId`.
     connections: ConnectionTableRef,
     /// The connections that have new events.
     active: HashSet<ActiveConnectionRef>,
     /// The set of connections that need immediate processing.
     waiting: VecDeque<StateRef>,
-    /// Outstanding timers for connections.
-    timers: Timer<StateRef>,
+    /// The latest [`Output::Callback`] returned from [`Server::process`].
+    wake_at: Option<Instant>,
     /// Address validation logic, which determines whether we send a Retry.
     address_validation: Rc<RefCell<AddressValidation>>,
     /// Directory to create qlog traces in
@@ -185,11 +193,13 @@ impl Server {
     /// * `certs` is a list of the certificates that should be configured.
     /// * `protocols` is the preference list of ALPN values.
     /// * `anti_replay` is an anti-replay context.
-    /// * `zero_rtt_checker` determines whether 0-RTT should be accepted. This
-    ///   will be passed the value of the `extra` argument that was passed to
-    ///   `Connection::send_ticket` to see if it is OK.
-    /// * `cid_generator` is responsible for generating connection IDs and parsing them;
-    ///   connection IDs produced by the manager cannot be zero-length.
+    /// * `zero_rtt_checker` determines whether 0-RTT should be accepted. This will be passed the
+    ///   value of the `extra` argument that was passed to `Connection::send_ticket` to see if it is
+    ///   OK.
+    /// * `cid_generator` is responsible for generating connection IDs and parsing them; connection
+    ///   IDs produced by the manager cannot be zero-length.
+    /// # Errors
+    /// When address validation state cannot be created.
     pub fn new(
         now: Instant,
         certs: &[impl AsRef<str>],
@@ -212,10 +222,10 @@ impl Server {
             connections: Rc::default(),
             active: HashSet::default(),
             waiting: VecDeque::default(),
-            timers: Timer::new(now, TIMER_GRANULARITY, TIMER_CAPACITY),
             address_validation: Rc::new(RefCell::new(validation)),
             qlog_dir: None,
             ech_config: None,
+            wake_at: None,
         })
     }
 
@@ -235,6 +245,8 @@ impl Server {
         self.ciphers = Vec::from(ciphers.as_ref());
     }
 
+    /// # Errors
+    /// When the configuration is invalid.
     pub fn enable_ech(
         &mut self,
         config: u8,
@@ -246,19 +258,15 @@ impl Server {
         Ok(())
     }
 
+    #[must_use]
     pub fn ech_config(&self) -> &[u8] {
         self.ech_config.as_ref().map_or(&[], |cfg| &cfg.encoded)
     }
 
-    fn remove_timer(&mut self, c: &StateRef) {
-        let last = c.borrow().last_timer;
-        self.timers.remove(last, |t| Rc::ptr_eq(t, c));
-    }
-
     fn process_connection(
         &mut self,
-        c: StateRef,
-        dgram: Option<Datagram>,
+        c: &StateRef,
+        dgram: Option<&Datagram>,
         now: Instant,
     ) -> Option<Datagram> {
         qtrace!([self], "Process connection {:?}", c);
@@ -266,24 +274,20 @@ impl Server {
         match out {
             Output::Datagram(_) => {
                 qtrace!([self], "Sending packet, added to waiting connections");
-                self.waiting.push_back(Rc::clone(&c));
+                self.waiting.push_back(Rc::clone(c));
             }
             Output::Callback(delay) => {
                 let next = now + delay;
-                if next != c.borrow().last_timer {
-                    qtrace!([self], "Change timer to {:?}", next);
-                    self.remove_timer(&c);
-                    c.borrow_mut().last_timer = next;
-                    self.timers.add(next, Rc::clone(&c));
+                c.borrow_mut().set_wake_at(next);
+                if self.wake_at.map_or(true, |c| c > next) {
+                    self.wake_at = Some(next);
                 }
             }
-            _ => {
-                self.remove_timer(&c);
-            }
+            Output::None => {}
         }
         if c.borrow().has_events() {
             qtrace!([self], "Connection active: {:?}", c);
-            self.active.insert(ActiveConnectionRef { c: Rc::clone(&c) });
+            self.active.insert(ActiveConnectionRef { c: Rc::clone(c) });
         }
 
         if *c.borrow().state() > State::Handshaking {
@@ -297,19 +301,19 @@ impl Server {
             c.borrow_mut().set_qlog(NeqoQlog::disabled());
             self.connections
                 .borrow_mut()
-                .retain(|_, v| !Rc::ptr_eq(v, &c));
+                .retain(|_, v| !Rc::ptr_eq(v, c));
         }
         out.dgram()
     }
 
-    fn connection(&self, cid: &ConnectionIdRef) -> Option<StateRef> {
-        self.connections.borrow().get(&cid[..]).map(Rc::clone)
+    fn connection(&self, cid: ConnectionIdRef) -> Option<StateRef> {
+        self.connections.borrow().get(&cid[..]).cloned()
     }
 
     fn handle_initial(
         &mut self,
         initial: InitialDetails,
-        dgram: Datagram,
+        dgram: &Datagram,
         now: Instant,
     ) -> Option<Datagram> {
         qdebug!([self], "Handle initial");
@@ -331,9 +335,7 @@ impl Server {
                     dgram.source(),
                     now,
                 );
-                let token = if let Ok(t) = res {
-                    t
-                } else {
+                let Ok(token) = res else {
                     qerror!([self], "unable to generate token, dropping packet");
                     return None;
                 };
@@ -346,7 +348,13 @@ impl Server {
                         &initial.dst_cid,
                     );
                     if let Ok(p) = packet {
-                        let retry = Datagram::new(dgram.destination(), dgram.source(), p);
+                        let retry = Datagram::new(
+                            dgram.destination(),
+                            dgram.source(),
+                            dgram.tos(),
+                            dgram.ttl(),
+                            p,
+                        );
                         Some(retry)
                     } else {
                         qerror!([self], "unable to encode retry, dropping packet");
@@ -363,7 +371,7 @@ impl Server {
     fn connection_attempt(
         &mut self,
         initial: InitialDetails,
-        dgram: Datagram,
+        dgram: &Datagram,
         orig_dcid: Option<ConnectionId>,
         now: Instant,
     ) -> Option<Datagram> {
@@ -378,17 +386,17 @@ impl Server {
                 attempt_key
             );
             let c = Rc::clone(c);
-            self.process_connection(c, Some(dgram), now)
+            self.process_connection(&c, Some(dgram), now)
         } else {
             self.accept_connection(attempt_key, initial, dgram, orig_dcid, now)
         }
     }
 
-    fn create_qlog_trace(&self, attempt_key: &AttemptKey) -> NeqoQlog {
+    fn create_qlog_trace(&self, odcid: ConnectionIdRef<'_>) -> NeqoQlog {
         if let Some(qlog_dir) = &self.qlog_dir {
-            let mut qlog_path = qlog_dir.to_path_buf();
+            let mut qlog_path = qlog_dir.clone();
 
-            qlog_path.push(format!("{}.qlog", attempt_key.odcid));
+            qlog_path.push(format!("{odcid}.qlog"));
 
             // The original DCID is chosen by the client. Using create_new()
             // prevents attackers from overwriting existing logs.
@@ -400,13 +408,14 @@ impl Server {
                 Ok(f) => {
                     qinfo!("Qlog output to {}", qlog_path.display());
 
-                    let streamer = ::qlog::QlogStreamer::new(
+                    let streamer = QlogStreamer::new(
                         qlog::QLOG_VERSION.to_string(),
                         Some("Neqo server qlog".to_string()),
                         Some("Neqo server qlog".to_string()),
                         None,
                         std::time::Instant::now(),
                         common::qlog::new_trace(Role::Server),
+                        qlog::events::EventImportance::Base,
                         Box::new(f),
                     );
                     let n_qlog = NeqoQlog::enabled(streamer, qlog_path);
@@ -446,10 +455,10 @@ impl Server {
         }
         if let Some(odcid) = orig_dcid {
             // There was a retry, so set the connection IDs for.
-            c.set_retry_cids(odcid, initial.src_cid, initial.dst_cid);
+            c.set_retry_cids(&odcid, initial.src_cid, &initial.dst_cid);
         }
-        c.set_validation(Rc::clone(&self.address_validation));
-        c.set_qlog(self.create_qlog_trace(attempt_key));
+        c.set_validation(&self.address_validation);
+        c.set_qlog(self.create_qlog_trace(attempt_key.odcid.as_cid_ref()));
         if let Some(cfg) = &self.ech_config {
             if c.server_enable_ech(cfg.config, &cfg.public_name, &cfg.sk, &cfg.pk)
                 .is_err()
@@ -463,7 +472,7 @@ impl Server {
         &mut self,
         attempt_key: AttemptKey,
         initial: InitialDetails,
-        dgram: Datagram,
+        dgram: &Datagram,
         orig_dcid: Option<ConnectionId>,
         now: Instant,
     ) -> Option<Datagram> {
@@ -487,20 +496,30 @@ impl Server {
             params,
         );
 
-        if let Ok(mut c) = sconn {
-            self.setup_connection(&mut c, &attempt_key, initial, orig_dcid);
-            let c = Rc::new(RefCell::new(ServerConnectionState {
-                c,
-                last_timer: now,
-                active_attempt: Some(attempt_key.clone()),
-            }));
-            cid_mgr.borrow_mut().set_connection(Rc::clone(&c));
-            let previous_attempt = self.active_attempts.insert(attempt_key, Rc::clone(&c));
-            debug_assert!(previous_attempt.is_none());
-            self.process_connection(c, Some(dgram), now)
-        } else {
-            qwarn!([self], "Unable to create connection");
-            None
+        match sconn {
+            Ok(mut c) => {
+                self.setup_connection(&mut c, &attempt_key, initial, orig_dcid);
+                let c = Rc::new(RefCell::new(ServerConnectionState {
+                    c,
+                    wake_at: None,
+                    active_attempt: Some(attempt_key.clone()),
+                }));
+                cid_mgr.borrow_mut().set_connection(&c);
+                let previous_attempt = self.active_attempts.insert(attempt_key, Rc::clone(&c));
+                debug_assert!(previous_attempt.is_none());
+                self.process_connection(&c, Some(dgram), now)
+            }
+            Err(e) => {
+                qwarn!([self], "Unable to create connection");
+                if e == crate::Error::VersionNegotiation {
+                    crate::qlog::server_version_information_failed(
+                        &mut self.create_qlog_trace(attempt_key.odcid.as_cid_ref()),
+                        self.conn_params.get_versions().all(),
+                        initial.version.wire_version(),
+                    );
+                }
+                None
+            }
         }
     }
 
@@ -509,7 +528,7 @@ impl Server {
     /// receives a connection ID from the server.
     fn handle_0rtt(
         &mut self,
-        dgram: Datagram,
+        dgram: &Datagram,
         dcid: ConnectionId,
         now: Instant,
     ) -> Option<Datagram> {
@@ -524,30 +543,27 @@ impl Server {
                 attempt_key
             );
             let c = Rc::clone(c);
-            self.process_connection(c, Some(dgram), now)
+            self.process_connection(&c, Some(dgram), now)
         } else {
             qdebug!([self], "Dropping 0-RTT for unknown connection");
             None
         }
     }
 
-    fn process_input(&mut self, dgram: Datagram, now: Instant) -> Option<Datagram> {
+    fn process_input(&mut self, dgram: &Datagram, now: Instant) -> Option<Datagram> {
         qtrace!("Process datagram: {}", hex(&dgram[..]));
 
         // This is only looking at the first packet header in the datagram.
         // All packets in the datagram are routed to the same connection.
         let res = PublicPacket::decode(&dgram[..], self.cid_generator.borrow().as_decoder());
-        let (packet, _remainder) = match res {
-            Ok(res) => res,
-            _ => {
-                qtrace!([self], "Discarding {:?}", dgram);
-                return None;
-            }
+        let Ok((packet, _remainder)) = res else {
+            qtrace!([self], "Discarding {:?}", dgram);
+            return None;
         };
 
         // Finding an existing connection. Should be the most common case.
         if let Some(c) = self.connection(packet.dcid()) {
-            return self.process_connection(c, Some(dgram), now);
+            return self.process_connection(&c, Some(dgram), now);
         }
 
         if packet.packet_type() == PacketType::Short {
@@ -571,12 +587,25 @@ impl Server {
 
             qdebug!([self], "Unsupported version: {:x}", packet.wire_version());
             let vn = PacketBuilder::version_negotiation(
-                packet.scid(),
-                packet.dcid(),
+                &packet.scid()[..],
+                &packet.dcid()[..],
                 packet.wire_version(),
                 self.conn_params.get_versions().all(),
             );
-            return Some(Datagram::new(dgram.destination(), dgram.source(), vn));
+
+            crate::qlog::server_version_information_failed(
+                &mut self.create_qlog_trace(packet.dcid()),
+                self.conn_params.get_versions().all(),
+                packet.wire_version(),
+            );
+
+            return Some(Datagram::new(
+                dgram.destination(),
+                dgram.source(),
+                dgram.tos(),
+                dgram.ttl(),
+                vn,
+            ));
         }
 
         match packet.packet_type() {
@@ -585,7 +614,8 @@ impl Server {
                     qdebug!([self], "Drop initial: too short");
                     return None;
                 }
-                // Copy values from `packet` because they are currently still borrowing from `dgram`.
+                // Copy values from `packet` because they are currently still borrowing from
+                // `dgram`.
                 let initial = InitialDetails::new(&packet);
                 self.handle_initial(initial, dgram, now)
             }
@@ -606,50 +636,44 @@ impl Server {
     fn process_next_output(&mut self, now: Instant) -> Option<Datagram> {
         qtrace!([self], "No packet to send, look at waiting connections");
         while let Some(c) = self.waiting.pop_front() {
-            if let Some(d) = self.process_connection(c, None, now) {
+            if let Some(d) = self.process_connection(&c, None, now) {
                 return Some(d);
             }
         }
-        qtrace!([self], "No packet to send still, run timers");
-        while let Some(c) = self.timers.take_next(now) {
-            if let Some(d) = self.process_connection(c, None, now) {
-                return Some(d);
+
+        qtrace!([self], "No packet to send still, check wake up times");
+        loop {
+            let connection = self
+                .connections
+                .borrow()
+                .values()
+                .find(|c| c.borrow().needs_waking(now))
+                .cloned()?;
+            let datagram = self.process_connection(&connection, None, now);
+            connection.borrow_mut().woken();
+            if datagram.is_some() {
+                return datagram;
             }
         }
-        None
     }
 
-    fn next_time(&mut self, now: Instant) -> Option<Duration> {
-        if self.waiting.is_empty() {
-            self.timers.next_time().map(|x| x - now)
-        } else {
-            Some(Duration::new(0, 0))
+    pub fn process(&mut self, dgram: Option<&Datagram>, now: Instant) -> Output {
+        if self.wake_at.map_or(false, |c| c <= now) {
+            self.wake_at = None;
         }
-    }
 
-    pub fn process(&mut self, dgram: Option<Datagram>, now: Instant) -> Output {
-        let out = if let Some(d) = dgram {
-            self.process_input(d, now)
-        } else {
-            None
-        };
-        let out = out.or_else(|| self.process_next_output(now));
-        match out {
-            Some(d) => {
+        dgram
+            .and_then(|d| self.process_input(d, now))
+            .or_else(|| self.process_next_output(now))
+            .map(|d| {
                 qtrace!([self], "Send packet: {:?}", d);
                 Output::Datagram(d)
-            }
-            _ => match self.next_time(now) {
-                Some(delay) => {
-                    qtrace!([self], "Wait: {:?}", delay);
-                    Output::Callback(delay)
-                }
-                _ => {
-                    qtrace!([self], "Go dormant");
-                    Output::None
-                }
-            },
-        }
+            })
+            .or_else(|| self.wake_at.take().map(|c| Output::Callback(c - now)))
+            .unwrap_or_else(|| {
+                qtrace!([self], "Go dormant");
+                Output::None
+            })
     }
 
     /// This lists the connections that have received new events
@@ -658,7 +682,14 @@ impl Server {
         mem::take(&mut self.active).into_iter().collect()
     }
 
-    pub fn add_to_waiting(&mut self, c: ActiveConnectionRef) {
+    /// Whether any connections have received new events as a result of calling
+    /// `process()`.
+    #[must_use]
+    pub fn has_active_connections(&self) -> bool {
+        !self.active.is_empty()
+    }
+
+    pub fn add_to_waiting(&mut self, c: &ActiveConnectionRef) {
         self.waiting.push_back(c.connection());
     }
 }
@@ -669,6 +700,7 @@ pub struct ActiveConnectionRef {
 }
 
 impl ActiveConnectionRef {
+    #[must_use]
     pub fn borrow(&self) -> impl Deref<Target = Connection> + '_ {
         std::cell::Ref::map(self.c.borrow(), |c| &c.c)
     }
@@ -677,6 +709,7 @@ impl ActiveConnectionRef {
         std::cell::RefMut::map(self.c.borrow_mut(), |c| &mut c.c)
     }
 
+    #[must_use]
     pub fn connection(&self) -> StateRef {
         Rc::clone(&self.c)
     }
@@ -685,7 +718,7 @@ impl ActiveConnectionRef {
 impl std::hash::Hash for ActiveConnectionRef {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let ptr: *const _ = self.c.as_ref();
-        ptr.hash(state)
+        ptr.hash(state);
     }
 }
 
@@ -705,13 +738,13 @@ struct ServerConnectionIdGenerator {
 }
 
 impl ServerConnectionIdGenerator {
-    pub fn set_connection(&mut self, c: StateRef) {
+    pub fn set_connection(&mut self, c: &StateRef) {
         let saved = std::mem::replace(&mut self.saved_cids, Vec::with_capacity(0));
         for cid in saved {
             qtrace!("ServerConnectionIdGenerator inserting saved cid {}", cid);
-            self.insert_cid(cid, Rc::clone(&c));
+            self.insert_cid(cid, Rc::clone(c));
         }
-        self.c = Rc::downgrade(&c);
+        self.c = Rc::downgrade(c);
     }
 
     fn insert_cid(&mut self, cid: ConnectionId, rc: StateRef) {

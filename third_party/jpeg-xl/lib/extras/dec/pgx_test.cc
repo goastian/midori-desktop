@@ -5,8 +5,17 @@
 
 #include "lib/extras/dec/pgx.h"
 
+#include <cstdint>
+#include <cstring>
+#include <string>
+
+#include "lib/extras/packed_image.h"
 #include "lib/extras/packed_image_convert.h"
+#include "lib/jxl/base/span.h"
 #include "lib/jxl/image_bundle.h"
+#include "lib/jxl/image_ops.h"
+#include "lib/jxl/test_memory_manager.h"
+#include "lib/jxl/test_utils.h"
 #include "lib/jxl/testing.h"
 
 namespace jxl {
@@ -14,8 +23,7 @@ namespace extras {
 namespace {
 
 Span<const uint8_t> MakeSpan(const char* str) {
-  return Span<const uint8_t>(reinterpret_cast<const uint8_t*>(str),
-                             strlen(str));
+  return Bytes(reinterpret_cast<const uint8_t*>(str), strlen(str));
 }
 
 TEST(CodecPGXTest, Test8bits) {
@@ -25,7 +33,7 @@ TEST(CodecPGXTest, Test8bits) {
   ThreadPool* pool = nullptr;
 
   EXPECT_TRUE(DecodeImagePGX(MakeSpan(pgx.c_str()), ColorHints(), &ppf));
-  CodecInOut io;
+  CodecInOut io{jxl::test::MemoryManager()};
   EXPECT_TRUE(ConvertPackedPixelFileToCodecInOut(ppf, pool, &io));
 
   ScaleImage(255.f, io.Main().color());
@@ -52,7 +60,7 @@ TEST(CodecPGXTest, Test16bits) {
   ThreadPool* pool = nullptr;
 
   EXPECT_TRUE(DecodeImagePGX(MakeSpan(pgx.c_str()), ColorHints(), &ppf));
-  CodecInOut io;
+  CodecInOut io{jxl::test::MemoryManager()};
   EXPECT_TRUE(ConvertPackedPixelFileToCodecInOut(ppf, pool, &io));
 
   ScaleImage(255.f, io.Main().color());

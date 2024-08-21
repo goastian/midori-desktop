@@ -1,5 +1,4 @@
 use super::*;
-use std::convert::TryFrom;
 
 impl Module {
     /// Encode this Wasm module into bytes.
@@ -33,13 +32,50 @@ impl Module {
         }
 
         let mut section = wasm_encoder::TypeSection::new();
-        for ty in &self.types {
-            match ty {
-                Type::Func(ty) => {
-                    section.function(ty.params.iter().cloned(), ty.results.iter().cloned());
-                }
+
+        for group in &self.rec_groups {
+            if group.end - group.start == 1 {
+                let ty = &self.types[group.start];
+                section.subtype(&wasm_encoder::SubType {
+                    is_final: ty.is_final,
+                    supertype_idx: ty.supertype,
+                    composite_type: match &ty.composite_type {
+                        CompositeType::Array(a) => wasm_encoder::CompositeType::Array(a.clone()),
+                        CompositeType::Func(f) => {
+                            wasm_encoder::CompositeType::Func(wasm_encoder::FuncType::new(
+                                f.params.iter().cloned(),
+                                f.results.iter().cloned(),
+                            ))
+                        }
+                        CompositeType::Struct(s) => wasm_encoder::CompositeType::Struct(s.clone()),
+                    },
+                });
+            } else {
+                section.rec(
+                    self.types[group.clone()]
+                        .iter()
+                        .map(|ty| wasm_encoder::SubType {
+                            is_final: ty.is_final,
+                            supertype_idx: ty.supertype,
+                            composite_type: match &ty.composite_type {
+                                CompositeType::Array(a) => {
+                                    wasm_encoder::CompositeType::Array(a.clone())
+                                }
+                                CompositeType::Func(f) => {
+                                    wasm_encoder::CompositeType::Func(wasm_encoder::FuncType::new(
+                                        f.params.iter().cloned(),
+                                        f.results.iter().cloned(),
+                                    ))
+                                }
+                                CompositeType::Struct(s) => {
+                                    wasm_encoder::CompositeType::Struct(s.clone())
+                                }
+                            },
+                        }),
+                );
             }
         }
+
         module.section(&section);
     }
 
@@ -85,12 +121,22 @@ impl Module {
     }
 
     fn encode_tables(&self, module: &mut wasm_encoder::Module) {
-        if self.num_defined_tables == 0 {
+        if self.defined_tables.is_empty() {
             return;
         }
         let mut tables = wasm_encoder::TableSection::new();
-        for t in self.tables[self.tables.len() - self.num_defined_tables..].iter() {
-            tables.table(*t);
+        for (t, init) in self.tables[self.tables.len() - self.defined_tables.len()..]
+            .iter()
+            .zip(&self.defined_tables)
+        {
+            match init {
+                Some(init) => {
+                    tables.table_with_init(*t, init);
+                }
+                None => {
+                    tables.table(*t);
+                }
+            }
         }
         module.section(&tables);
     }
@@ -113,10 +159,7 @@ impl Module {
         let mut globals = wasm_encoder::GlobalSection::new();
         for (idx, expr) in &self.defined_globals {
             let ty = &self.globals[*idx as usize];
-            match expr {
-                GlobalInitExpr::ConstExpr(expr) => globals.global(*ty, expr),
-                GlobalInitExpr::FuncRef(func) => globals.global(*ty, &ConstExpr::ref_func(*func)),
-            };
+            globals.global(*ty, expr);
         }
         module.section(&globals);
     }
@@ -143,24 +186,13 @@ impl Module {
             return;
         }
         let mut elems = wasm_encoder::ElementSection::new();
-        let mut exps = vec![];
         for el in &self.elems {
             let elements = match &el.items {
-                Elements::Expressions(es) => {
-                    exps.clear();
-                    exps.extend(es.iter().map(|e| {
-                        // TODO(nagisa): generate global.get of imported ref globals too.
-                        match e {
-                            Some(i) => match el.ty {
-                                RefType::FUNCREF => wasm_encoder::ConstExpr::ref_func(*i),
-                                _ => unreachable!(),
-                            },
-                            None => wasm_encoder::ConstExpr::ref_null(el.ty.heap_type),
-                        }
-                    }));
-                    wasm_encoder::Elements::Expressions(&exps)
+                Elements::Expressions(es) => wasm_encoder::Elements::Expressions(el.ty, es),
+                Elements::Functions(fs) => {
+                    assert_eq!(el.ty, RefType::FUNCREF);
+                    wasm_encoder::Elements::Functions(fs)
                 }
-                Elements::Functions(fs) => wasm_encoder::Elements::Functions(fs),
             };
             match &el.kind {
                 ElementKind::Active { table, offset } => {
@@ -169,13 +201,13 @@ impl Module {
                         Offset::Const64(n) => ConstExpr::i64_const(n),
                         Offset::Global(g) => ConstExpr::global_get(g),
                     };
-                    elems.active(*table, &offset, el.ty, elements);
+                    elems.active(*table, &offset, elements);
                 }
                 ElementKind::Passive => {
-                    elems.passive(el.ty, elements);
+                    elems.passive(elements);
                 }
                 ElementKind::Declared => {
-                    elems.declared(el.ty, elements);
+                    elems.declared(elements);
                 }
             }
         }
@@ -184,7 +216,7 @@ impl Module {
 
     fn encode_data_count(&self, module: &mut wasm_encoder::Module) {
         // Without bulk memory there's no need for a data count section,
-        if !self.config.bulk_memory_enabled() {
+        if !self.config.bulk_memory_enabled {
             return;
         }
         // ... and also if there's no data no need for a data count section.

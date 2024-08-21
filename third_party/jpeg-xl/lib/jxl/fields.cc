@@ -5,10 +5,10 @@
 
 #include "lib/jxl/fields.h"
 
-#include <stddef.h>
-
 #include <algorithm>
+#include <cinttypes>  // PRIu64
 #include <cmath>
+#include <cstddef>
 #include <hwy/base.h>
 
 #include "lib/jxl/base/bits.h"
@@ -109,7 +109,7 @@ struct SetDefaultVisitor : public VisitorBase {
 
 class AllDefaultVisitor : public VisitorBase {
  public:
-  explicit AllDefaultVisitor() : VisitorBase() {}
+  explicit AllDefaultVisitor() = default;
 
   Status Bits(const size_t bits, const uint32_t default_value,
               uint32_t* JXL_RESTRICT value) override {
@@ -148,7 +148,7 @@ class AllDefaultVisitor : public VisitorBase {
 
 class ReadVisitor : public VisitorBase {
  public:
-  explicit ReadVisitor(BitReader* reader) : VisitorBase(), reader_(reader) {}
+  explicit ReadVisitor(BitReader* reader) : reader_(reader) {}
 
   Status Bits(const size_t bits, const uint32_t /*default_value*/,
               uint32_t* JXL_RESTRICT value) override {
@@ -266,6 +266,9 @@ class ReadVisitor : public VisitorBase {
   uint64_t extension_bits_[Bundle::kMaxExtensions] = {0};
   uint64_t total_extension_bits_ = 0;
   size_t pos_after_ext_size_ = 0;  // 0 iff extensions == 0.
+
+  friend Status jxl::CheckHasEnoughBits(Visitor* /* visitor */,
+                                        size_t /* bits */);
 };
 
 class MaxBitsVisitor : public VisitorBase {
@@ -319,7 +322,7 @@ class MaxBitsVisitor : public VisitorBase {
 
 class CanEncodeVisitor : public VisitorBase {
  public:
-  explicit CanEncodeVisitor() : VisitorBase() {}
+  explicit CanEncodeVisitor() = default;
 
   Status Bits(const size_t bits, const uint32_t /*default_value*/,
               uint32_t* JXL_RESTRICT value) override {
@@ -411,19 +414,19 @@ class CanEncodeVisitor : public VisitorBase {
 void Bundle::Init(Fields* fields) {
   InitVisitor visitor;
   if (!visitor.Visit(fields)) {
-    JXL_ABORT("Init should never fail");
+    JXL_UNREACHABLE("Init should never fail");
   }
 }
 void Bundle::SetDefault(Fields* fields) {
   SetDefaultVisitor visitor;
   if (!visitor.Visit(fields)) {
-    JXL_ABORT("SetDefault should never fail");
+    JXL_UNREACHABLE("SetDefault should never fail");
   }
 }
 bool Bundle::AllDefault(const Fields& fields) {
   AllDefaultVisitor visitor;
   if (!visitor.VisitConst(fields)) {
-    JXL_ABORT("AllDefault should never fail");
+    JXL_UNREACHABLE("AllDefault should never fail");
   }
   return visitor.AllDefault();
 }
@@ -637,6 +640,18 @@ Status F16Coder::CanEncode(float value, size_t* JXL_RESTRICT encoded_bits) {
     return JXL_FAILURE("Should not attempt to store NaN and infinity");
   }
   return std::abs(value) <= 65504.0f;
+}
+
+Status CheckHasEnoughBits(Visitor* visitor, size_t bits) {
+  if (!visitor->IsReading()) return false;
+  ReadVisitor* rv = static_cast<ReadVisitor*>(visitor);
+  size_t have_bits = rv->reader_->TotalBytes() * kBitsPerByte;
+  size_t want_bits = bits + rv->reader_->TotalBitsConsumed();
+  if (have_bits < want_bits) {
+    return JXL_STATUS(StatusCode::kNotEnoughBytes,
+                      "Not enough bytes for header");
+  }
+  return true;
 }
 
 }  // namespace jxl

@@ -34,6 +34,7 @@
 #include "test/testsupport/file_utils.h"
 #include "test/testsupport/frame_writer.h"
 #include "test/testsupport/test_artifacts.h"
+#include "test/video_test_constants.h"
 
 ABSL_FLAG(bool,
           save_worst_frame,
@@ -59,7 +60,7 @@ constexpr int kKeepAliveIntervalIterations =
     kKeepAliveInterval.ms() / kProbingInterval.ms();
 
 bool IsFlexfec(int payload_type) {
-  return payload_type == test::CallTest::kFlexfecPayloadType;
+  return payload_type == test::VideoTestConstants::kFlexfecPayloadType;
 }
 
 }  // namespace
@@ -255,12 +256,12 @@ void VideoAnalyzer::DeliverRtpPacket(
 void VideoAnalyzer::PreEncodeOnFrame(const VideoFrame& video_frame) {
   MutexLock lock(&lock_);
   if (!first_encoded_timestamp_) {
-    while (frames_.front().timestamp() != video_frame.timestamp()) {
+    while (frames_.front().rtp_timestamp() != video_frame.rtp_timestamp()) {
       ++dropped_frames_before_first_encode_;
       frames_.pop_front();
       RTC_CHECK(!frames_.empty());
     }
-    first_encoded_timestamp_ = video_frame.timestamp();
+    first_encoded_timestamp_ = video_frame.rtp_timestamp();
   }
 }
 
@@ -271,15 +272,14 @@ void VideoAnalyzer::PostEncodeOnFrame(size_t stream_id, uint32_t timestamp) {
   }
 }
 
-bool VideoAnalyzer::SendRtp(const uint8_t* packet,
-                            size_t length,
+bool VideoAnalyzer::SendRtp(rtc::ArrayView<const uint8_t> packet,
                             const PacketOptions& options) {
   RtpPacket rtp_packet;
-  rtp_packet.Parse(packet, length);
+  rtp_packet.Parse(packet);
 
   int64_t current_time = clock_->CurrentNtpInMilliseconds();
 
-  bool result = transport_->SendRtp(packet, length, options);
+  bool result = transport_->SendRtp(packet, options);
   {
     MutexLock lock(&lock_);
     if (rtp_timestamp_delta_ == 0 && rtp_packet.Ssrc() == ssrc_to_analyze_) {
@@ -305,8 +305,8 @@ bool VideoAnalyzer::SendRtp(const uint8_t* packet,
   return result;
 }
 
-bool VideoAnalyzer::SendRtcp(const uint8_t* packet, size_t length) {
-  return transport_->SendRtcp(packet, length);
+bool VideoAnalyzer::SendRtcp(rtc::ArrayView<const uint8_t> packet) {
+  return transport_->SendRtcp(packet);
 }
 
 void VideoAnalyzer::OnFrame(const VideoFrame& video_frame) {
@@ -317,9 +317,10 @@ void VideoAnalyzer::OnFrame(const VideoFrame& video_frame) {
   StartExcludingCpuThreadTime();
 
   int64_t send_timestamp =
-      wrap_handler_.Unwrap(video_frame.timestamp() - rtp_timestamp_delta_);
+      wrap_handler_.Unwrap(video_frame.rtp_timestamp() - rtp_timestamp_delta_);
 
-  while (wrap_handler_.Unwrap(frames_.front().timestamp()) < send_timestamp) {
+  while (wrap_handler_.Unwrap(frames_.front().rtp_timestamp()) <
+         send_timestamp) {
     if (!last_rendered_frame_) {
       // No previous frame rendered, this one was dropped after sending but
       // before rendering.
@@ -335,7 +336,7 @@ void VideoAnalyzer::OnFrame(const VideoFrame& video_frame) {
   VideoFrame reference_frame = frames_.front();
   frames_.pop_front();
   int64_t reference_timestamp =
-      wrap_handler_.Unwrap(reference_frame.timestamp());
+      wrap_handler_.Unwrap(reference_frame.rtp_timestamp());
   if (send_timestamp == reference_timestamp - 1) {
     // TODO(ivica): Make this work for > 2 streams.
     // Look at RTPSender::BuildRTPHeader.
@@ -437,7 +438,7 @@ double VideoAnalyzer::GetCpuUsagePercent() {
 
 bool VideoAnalyzer::IsInSelectedSpatialAndTemporalLayer(
     const RtpPacket& rtp_packet) {
-  if (rtp_packet.PayloadType() == test::CallTest::kPayloadTypeVP8) {
+  if (rtp_packet.PayloadType() == test::VideoTestConstants::kPayloadTypeVP8) {
     auto parsed_payload = vp8_depacketizer_->Parse(rtp_packet.PayloadBuffer());
     RTC_DCHECK(parsed_payload);
     const auto& vp8_header = absl::get<RTPVideoHeaderVP8>(
@@ -447,7 +448,7 @@ bool VideoAnalyzer::IsInSelectedSpatialAndTemporalLayer(
            temporal_idx <= selected_tl_;
   }
 
-  if (rtp_packet.PayloadType() == test::CallTest::kPayloadTypeVP9) {
+  if (rtp_packet.PayloadType() == test::VideoTestConstants::kPayloadTypeVP9) {
     auto parsed_payload = vp9_depacketizer_->Parse(rtp_packet.PayloadBuffer());
     RTC_DCHECK(parsed_payload);
     const auto& vp9_header = absl::get<RTPVideoHeaderVP9>(
@@ -906,7 +907,7 @@ void VideoAnalyzer::AddFrameComparison(const VideoFrame& reference,
                                        const VideoFrame& render,
                                        bool dropped,
                                        int64_t render_time_ms) {
-  int64_t reference_timestamp = wrap_handler_.Unwrap(reference.timestamp());
+  int64_t reference_timestamp = wrap_handler_.Unwrap(reference.rtp_timestamp());
   int64_t send_time_ms = send_times_[reference_timestamp];
   send_times_.erase(reference_timestamp);
   int64_t recv_time_ms = recv_times_[reference_timestamp];
@@ -1011,10 +1012,10 @@ void VideoAnalyzer::CapturedFrameForwarder::OnFrame(
   VideoFrame copy = video_frame;
   // Frames from the capturer does not have a rtp timestamp.
   // Create one so it can be used for comparison.
-  RTC_DCHECK_EQ(0, video_frame.timestamp());
+  RTC_DCHECK_EQ(0, video_frame.rtp_timestamp());
   if (video_frame.ntp_time_ms() == 0)
     copy.set_ntp_time_ms(clock_->CurrentNtpInMilliseconds());
-  copy.set_timestamp(copy.ntp_time_ms() * 90);
+  copy.set_rtp_timestamp(copy.ntp_time_ms() * 90);
   analyzer_->AddCapturedFrameForComparison(copy);
   MutexLock lock(&lock_);
   ++captured_frames_;

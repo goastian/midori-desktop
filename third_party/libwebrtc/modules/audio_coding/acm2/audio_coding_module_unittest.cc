@@ -85,8 +85,6 @@ class RtpData {
     rtp_header->markerBit = false;
     rtp_header->ssrc = 0x1234;
     rtp_header->numCSRCs = 0;
-
-    rtp_header->payload_type_frequency = kSampleRateHz;
   }
 
   void Forward(RTPHeader* rtp_header) {
@@ -172,12 +170,11 @@ class AudioCodingModuleTestOldApi : public ::testing::Test {
   void TearDown() {}
 
   void SetUp() {
-    acm_.reset(AudioCodingModule::Create([this] {
-      AudioCodingModule::Config config;
-      config.clock = clock_;
-      config.decoder_factory = CreateBuiltinAudioDecoderFactory();
-      return config;
-    }()));
+    acm_ = AudioCodingModule::Create();
+    acm2::AcmReceiver::Config config;
+    config.clock = *clock_;
+    config.decoder_factory = CreateBuiltinAudioDecoderFactory();
+    acm_receiver_ = std::make_unique<acm2::AcmReceiver>(config);
 
     rtp_utility_->Populate(&rtp_header_);
 
@@ -200,7 +197,7 @@ class AudioCodingModuleTestOldApi : public ::testing::Test {
   }
 
   virtual void RegisterCodec() {
-    acm_->SetReceiveCodecs({{kPayloadType, *audio_format_}});
+    acm_receiver_->SetCodecs({{kPayloadType, *audio_format_}});
     acm_->SetEncoder(CreateBuiltinAudioEncoderFactory()->MakeAudioEncoder(
         kPayloadType, *audio_format_, absl::nullopt));
   }
@@ -212,15 +209,16 @@ class AudioCodingModuleTestOldApi : public ::testing::Test {
 
   virtual void InsertPacket() {
     const uint8_t kPayload[kPayloadSizeBytes] = {0};
-    ASSERT_EQ(0,
-              acm_->IncomingPacket(kPayload, kPayloadSizeBytes, rtp_header_));
+    ASSERT_EQ(0, acm_receiver_->InsertPacket(rtp_header_,
+                                             rtc::ArrayView<const uint8_t>(
+                                                 kPayload, kPayloadSizeBytes)));
     rtp_utility_->Forward(&rtp_header_);
   }
 
   virtual void PullAudio() {
     AudioFrame audio_frame;
     bool muted;
-    ASSERT_EQ(0, acm_->PlayoutData10Ms(-1, &audio_frame, &muted));
+    ASSERT_EQ(0, acm_receiver_->GetAudio(-1, &audio_frame, &muted));
     ASSERT_FALSE(muted);
   }
 
@@ -242,6 +240,7 @@ class AudioCodingModuleTestOldApi : public ::testing::Test {
 
   std::unique_ptr<RtpData> rtp_utility_;
   std::unique_ptr<AudioCodingModule> acm_;
+  std::unique_ptr<acm2::AcmReceiver> acm_receiver_;
   PacketizationCallbackStubOldApi packet_cb_;
   RTPHeader rtp_header_;
   AudioFrame input_frame_;
@@ -255,19 +254,6 @@ class AudioCodingModuleTestOldApi : public ::testing::Test {
 class AudioCodingModuleTestOldApiDeathTest
     : public AudioCodingModuleTestOldApi {};
 
-TEST_F(AudioCodingModuleTestOldApi, VerifyOutputFrame) {
-  AudioFrame audio_frame;
-  const int kSampleRateHz = 32000;
-  bool muted;
-  EXPECT_EQ(0, acm_->PlayoutData10Ms(kSampleRateHz, &audio_frame, &muted));
-  ASSERT_FALSE(muted);
-  EXPECT_EQ(0u, audio_frame.timestamp_);
-  EXPECT_GT(audio_frame.num_channels_, 0u);
-  EXPECT_EQ(static_cast<size_t>(kSampleRateHz / 100),
-            audio_frame.samples_per_channel_);
-  EXPECT_EQ(kSampleRateHz, audio_frame.sample_rate_hz_);
-}
-
 // The below test is temporarily disabled on Windows due to problems
 // with clang debug builds.
 // TODO(tommi): Re-enable when we've figured out what the problem is.
@@ -277,7 +263,7 @@ TEST_F(AudioCodingModuleTestOldApi, VerifyOutputFrame) {
 TEST_F(AudioCodingModuleTestOldApiDeathTest, FailOnZeroDesiredFrequency) {
   AudioFrame audio_frame;
   bool muted;
-  RTC_EXPECT_DEATH(acm_->PlayoutData10Ms(0, &audio_frame, &muted),
+  RTC_EXPECT_DEATH(acm_receiver_->GetAudio(0, &audio_frame, &muted),
                    "dst_sample_rate_hz");
 }
 #endif
@@ -310,8 +296,8 @@ class AudioCodingModuleTestWithComfortNoiseOldApi
     : public AudioCodingModuleTestOldApi {
  protected:
   void RegisterCngCodec(int rtp_payload_type) {
-    acm_->SetReceiveCodecs({{kPayloadType, *audio_format_},
-                            {rtp_payload_type, {"cn", kSampleRateHz, 1}}});
+    acm_receiver_->SetCodecs({{kPayloadType, *audio_format_},
+                              {rtp_payload_type, {"cn", kSampleRateHz, 1}}});
     acm_->ModifyEncoder([&](std::unique_ptr<AudioEncoder>* enc) {
       AudioEncoderCngConfig config;
       config.speech_encoder = std::move(*enc);
@@ -721,7 +707,7 @@ class AcmSenderBitExactnessNewApi : public AcmSenderBitExactnessOldApi {};
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcm16_8000khz_10ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("L16", 8000, 1, 107, 80, 80));
-  Run(/*audio_checksum_ref=*/"69118ed438ac76252d023e0463819471",
+  Run(/*audio_checksum_ref=*/"3e43fd5d3c73a59e8118e68fbfafe2c7",
       /*payload_checksum_ref=*/"c1edd36339ce0326cc4550041ad719a0",
       /*expected_packets=*/100,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kMonoOutput);
@@ -729,7 +715,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcm16_8000khz_10ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcm16_16000khz_10ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("L16", 16000, 1, 108, 160, 160));
-  Run(/*audio_checksum_ref=*/"f95c87bdd33f631bcf80f4b19445bbd2",
+  Run(/*audio_checksum_ref=*/"608750138315cbab33d76d38e8367807",
       /*payload_checksum_ref=*/"ad786526383178b08d80d6eee06e9bad",
       /*expected_packets=*/100,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kMonoOutput);
@@ -737,7 +723,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcm16_16000khz_10ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcm16_32000khz_10ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("L16", 32000, 1, 109, 320, 320));
-  Run(/*audio_checksum_ref=*/"c50244419c5c3a2f04cc69a022c266a2",
+  Run(/*audio_checksum_ref=*/"02e9927ef5e4d2cd792a5df0bdee5e19",
       /*payload_checksum_ref=*/"5ef82ea885e922263606c6fdbc49f651",
       /*expected_packets=*/100,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kMonoOutput);
@@ -745,7 +731,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcm16_32000khz_10ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcm16_stereo_8000khz_10ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("L16", 8000, 2, 111, 80, 80));
-  Run(/*audio_checksum_ref=*/"4fccf4cc96f1e8e8de4b9fadf62ded9e",
+  Run(/*audio_checksum_ref=*/"4ff38de045b19f64de9c7e229ba36317",
       /*payload_checksum_ref=*/"62ce5adb0d4965d0a52ec98ae7f98974",
       /*expected_packets=*/100,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kStereoOutput);
@@ -753,7 +739,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcm16_stereo_8000khz_10ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcm16_stereo_16000khz_10ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("L16", 16000, 2, 112, 160, 160));
-  Run(/*audio_checksum_ref=*/"e15e388d9d4af8c02a59fe1552fedee3",
+  Run(/*audio_checksum_ref=*/"1ee35394cfca78ad6d55468441af36fa",
       /*payload_checksum_ref=*/"41ca8edac4b8c71cd54fd9f25ec14870",
       /*expected_packets=*/100,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kStereoOutput);
@@ -761,7 +747,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcm16_stereo_16000khz_10ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcm16_stereo_32000khz_10ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("L16", 32000, 2, 113, 320, 320));
-  Run(/*audio_checksum_ref=*/"b240520c0d05003fde7a174ae5957286",
+  Run(/*audio_checksum_ref=*/"19cae34730a0f6a17cf4e76bf21b69d6",
       /*payload_checksum_ref=*/"50e58502fb04421bf5b857dda4c96879",
       /*expected_packets=*/100,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kStereoOutput);
@@ -777,7 +763,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcmu_20ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcma_20ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("PCMA", 8000, 1, 8, 160, 160));
-  Run(/*audio_checksum_ref=*/"47eb60e855eb12d1b0e6da9c975754a4",
+  Run(/*audio_checksum_ref=*/"ae259cab624095270b7369e53a7b53a3",
       /*payload_checksum_ref=*/"6ad745e55aa48981bfc790d0eeef2dd1",
       /*expected_packets=*/50,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kMonoOutput);
@@ -793,7 +779,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcmu_stereo_20ms) {
 
 TEST_F(AcmSenderBitExactnessOldApi, Pcma_stereo_20ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("PCMA", 8000, 2, 118, 160, 160));
-  Run(/*audio_checksum_ref=*/"a84d75e098d87ab6b260687eb4b612a2",
+  Run(/*audio_checksum_ref=*/"f2e81d2531a805c40e61da5106b50006",
       /*payload_checksum_ref=*/"92b282c83efd20e7eeef52ba40842cf7",
       /*expected_packets=*/50,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kStereoOutput);
@@ -803,7 +789,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Pcma_stereo_20ms) {
     defined(WEBRTC_ARCH_X86_64)
 TEST_F(AcmSenderBitExactnessOldApi, Ilbc_30ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("ILBC", 8000, 1, 102, 240, 240));
-  Run(/*audio_checksum_ref=*/"b14dba0de36efa5ec88a32c0b320b70f",
+  Run(/*audio_checksum_ref=*/"a739434bec8a754e9356ce2115603ce5",
       /*payload_checksum_ref=*/"cfae2e9f6aba96e145f2bcdd5050ce78",
       /*expected_packets=*/33,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kMonoOutput);
@@ -813,7 +799,7 @@ TEST_F(AcmSenderBitExactnessOldApi, Ilbc_30ms) {
 #if defined(WEBRTC_LINUX) && defined(WEBRTC_ARCH_X86_64)
 TEST_F(AcmSenderBitExactnessOldApi, G722_20ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("G722", 16000, 1, 9, 320, 160));
-  Run(/*audio_checksum_ref=*/"f5264affff25cf2cbd2e1e8a5217f9a3",
+  Run(/*audio_checksum_ref=*/"b875d9a3e41f5470857bdff02e3b368f",
       /*payload_checksum_ref=*/"fc68a87e1380614e658087cb35d5ca10",
       /*expected_packets=*/50,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kMonoOutput);
@@ -823,7 +809,7 @@ TEST_F(AcmSenderBitExactnessOldApi, G722_20ms) {
 #if defined(WEBRTC_LINUX) && defined(WEBRTC_ARCH_X86_64)
 TEST_F(AcmSenderBitExactnessOldApi, G722_stereo_20ms) {
   ASSERT_NO_FATAL_FAILURE(SetUpTest("G722", 16000, 2, 119, 320, 160));
-  Run(/*audio_checksum_ref=*/"be0b8528ff9db3a2219f55ddd36faf7f",
+  Run(/*audio_checksum_ref=*/"02c427d73363b2f37853a0dd17fe1aba",
       /*payload_checksum_ref=*/"66516152eeaa1e650ad94ff85f668dac",
       /*expected_packets=*/50,
       /*expected_channels=*/test::AcmReceiveTestOldApi::kStereoOutput);
@@ -911,8 +897,8 @@ TEST_F(AcmSenderBitExactnessNewApi, OpusFromFormat_stereo_20ms_voip) {
   ASSERT_NO_FATAL_FAILURE(SetUpTestExternalEncoder(
       AudioEncoderOpus::MakeAudioEncoder(*config, 120), 120));
   const std::string audio_maybe_sse =
-      "1010e60ad34cee73c939edaf563d0593"
-      "|c05b4523d4c3fad2bab96d2a56baa2d0";
+      "cb644fc17d9666a0f5986eef24818159"
+      "|4a74024473c7c729543c2790829b1e42";
 
   const std::string payload_maybe_sse =
       "ea48d94e43217793af9b7e15ece94e54"

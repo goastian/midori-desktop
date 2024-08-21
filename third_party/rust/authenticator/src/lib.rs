@@ -9,13 +9,13 @@
 #[macro_use]
 mod util;
 
-#[cfg(any(target_os = "linux"))]
+#[cfg(target_os = "linux")]
 extern crate libudev;
 
-#[cfg(any(target_os = "freebsd"))]
+#[cfg(target_os = "freebsd")]
 extern crate devd_rs;
 
-#[cfg(any(target_os = "macos"))]
+#[cfg(target_os = "macos")]
 extern crate core_foundation;
 
 extern crate libc;
@@ -27,32 +27,32 @@ extern crate runloop;
 #[macro_use]
 extern crate bitflags;
 
-pub mod authenticatorservice;
 mod consts;
+mod manager;
 mod statemachine;
-mod u2fprotocol;
+mod status_update;
+mod transport;
 mod u2ftypes;
 
-mod manager;
-
+pub mod authenticatorservice;
+pub mod crypto;
 pub mod ctap2;
-pub use ctap2::attestation::AttestationObject;
-pub use ctap2::client_data::CollectedClientData;
-pub use ctap2::commands::client_pin::{Pin, PinError};
-pub use ctap2::commands::get_assertion::Assertion;
-pub use ctap2::commands::get_info::AuthenticatorInfo;
-pub use ctap2::GetAssertionResult;
-
 pub mod errors;
 pub mod statecallback;
-mod transport;
-mod virtualdevices;
-
-mod status_update;
-pub use status_update::*;
-
-mod crypto;
-pub use crypto::COSEAlgorithm;
+pub use ctap2::attestation::AttestationObject;
+pub use ctap2::commands::bio_enrollment::BioEnrollmentResult;
+pub use ctap2::commands::client_pin::{Pin, PinError};
+pub use ctap2::commands::credential_management::CredentialManagementResult;
+pub use ctap2::commands::get_assertion::{Assertion, GetAssertionResult};
+pub use ctap2::commands::get_info::AuthenticatorInfo;
+pub use ctap2::commands::make_credentials::MakeCredentialsResult;
+use serde::Serialize;
+pub use statemachine::StateMachine;
+pub use status_update::{
+    BioEnrollmentCmd, CredManagementCmd, InteractiveRequest, InteractiveUpdate, StatusPinUv,
+    StatusUpdate,
+};
+pub use transport::{FidoDevice, FidoDeviceIO, FidoProtocol, VirtualFidoDevice};
 
 // Keep this in sync with the constants in u2fhid-capi.h.
 bitflags! {
@@ -83,19 +83,23 @@ pub struct KeyHandle {
 
 pub type AppId = Vec<u8>;
 
-#[derive(Debug)]
-pub enum RegisterResult {
-    CTAP1(Vec<u8>, u2ftypes::U2FDeviceInfo),
-    CTAP2(AttestationObject),
-}
+pub type RegisterResult = MakeCredentialsResult;
+pub type SignResult = GetAssertionResult;
 
-#[derive(Debug)]
-pub enum SignResult {
-    CTAP1(AppId, Vec<u8>, Vec<u8>, u2ftypes::U2FDeviceInfo),
-    CTAP2(GetAssertionResult),
+#[derive(Debug, Serialize)]
+pub enum ManageResult {
+    Success,
+    CredManagement(CredentialManagementResult),
+    BioEnrollment(BioEnrollmentResult),
 }
 
 pub type ResetResult = ();
+
+impl From<ResetResult> for ManageResult {
+    fn from(_value: ResetResult) -> Self {
+        ManageResult::Success
+    }
+}
 
 pub type Result<T> = std::result::Result<T, errors::AuthenticatorError>;
 
@@ -105,7 +109,5 @@ extern crate assert_matches;
 
 #[cfg(fuzzing)]
 pub use consts::*;
-#[cfg(fuzzing)]
-pub use u2fprotocol::*;
 #[cfg(fuzzing)]
 pub use u2ftypes::*;

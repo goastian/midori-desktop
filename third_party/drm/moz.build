@@ -1,6 +1,0 @@
-if CONFIG['MOZ_WEBRTC']:
-    EXPORTS.drm = [
-        'drm/include/libdrm/drm.h',
-        'drm/xf86drm.h',
-    ]
-

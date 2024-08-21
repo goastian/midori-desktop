@@ -4,10 +4,13 @@ use hal::CommandEncoder as _;
 use crate::device::trace::Command as TraceCommand;
 use crate::{
     command::{CommandBuffer, CommandEncoderError},
-    hub::{Global, GlobalIdentityHandlerFactory, HalApi, Storage, Token},
-    id::{self, Id, TypedId},
+    device::{DeviceError, MissingFeatures},
+    global::Global,
+    hal_api::HalApi,
+    id::{self, Id},
     init_tracker::MemoryInitKind,
-    resource::QuerySet,
+    resource::{QuerySet, Resource},
+    storage::Storage,
     Epoch, FastHashMap, Index,
 };
 use std::{iter, marker::PhantomData};
@@ -15,11 +18,11 @@ use thiserror::Error;
 use wgt::BufferAddress;
 
 #[derive(Debug)]
-pub(super) struct QueryResetMap<A: hal::Api> {
+pub(crate) struct QueryResetMap<A: HalApi> {
     map: FastHashMap<Index, (Vec<bool>, Epoch)>,
     _phantom: PhantomData<A>,
 }
-impl<A: hal::Api> QueryResetMap<A> {
+impl<A: HalApi> QueryResetMap<A> {
     pub fn new() -> Self {
         Self {
             map: FastHashMap::default(),
@@ -43,12 +46,12 @@ impl<A: hal::Api> QueryResetMap<A> {
     }
 
     pub fn reset_queries(
-        self,
+        &mut self,
         raw_encoder: &mut A::CommandEncoder,
-        query_set_storage: &Storage<QuerySet<A>, id::QuerySetId>,
+        query_set_storage: &Storage<QuerySet<A>>,
         backend: wgt::Backend,
     ) -> Result<(), id::QuerySetId> {
-        for (query_set_id, (state, epoch)) in self.map.into_iter() {
+        for (query_set_id, (state, epoch)) in self.map.drain() {
             let id = Id::zip(query_set_id, epoch, backend);
             let query_set = query_set_storage.get(id).map_err(|_| id)?;
 
@@ -65,7 +68,7 @@ impl<A: hal::Api> QueryResetMap<A> {
                     // We've hit the end of a run, dispatch a reset
                     (Some(start), false) => {
                         run_start = None;
-                        unsafe { raw_encoder.reset_queries(&query_set.raw, start..idx as u32) };
+                        unsafe { raw_encoder.reset_queries(query_set.raw(), start..idx as u32) };
                     }
                     // We're starting a run
                     (None, true) => {
@@ -102,7 +105,11 @@ impl From<wgt::QueryType> for SimplifiedQueryType {
 #[non_exhaustive]
 pub enum QueryError {
     #[error(transparent)]
+    Device(#[from] DeviceError),
+    #[error(transparent)]
     Encoder(#[from] CommandEncoderError),
+    #[error(transparent)]
+    MissingFeature(#[from] MissingFeatures),
     #[error("Error encountered while trying to use queries")]
     Use(#[from] QueryUseError),
     #[error("Error encountered while trying to resolve a query")]
@@ -207,7 +214,7 @@ impl<A: HalApi> QuerySet<A> {
             });
         }
 
-        Ok(&self.raw)
+        Ok(self.raw())
     }
 
     pub(super) fn validate_and_write_timestamp(
@@ -228,9 +235,44 @@ impl<A: HalApi> QuerySet<A> {
         unsafe {
             // If we don't have a reset state tracker which can defer resets, we must reset now.
             if needs_reset {
-                raw_encoder.reset_queries(&self.raw, query_index..(query_index + 1));
+                raw_encoder.reset_queries(self.raw(), query_index..(query_index + 1));
             }
             raw_encoder.write_timestamp(query_set, query_index);
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn validate_and_begin_occlusion_query(
+        &self,
+        raw_encoder: &mut A::CommandEncoder,
+        query_set_id: id::QuerySetId,
+        query_index: u32,
+        reset_state: Option<&mut QueryResetMap<A>>,
+        active_query: &mut Option<(id::QuerySetId, u32)>,
+    ) -> Result<(), QueryUseError> {
+        let needs_reset = reset_state.is_none();
+        let query_set = self.validate_query(
+            query_set_id,
+            SimplifiedQueryType::Occlusion,
+            query_index,
+            reset_state,
+        )?;
+
+        if let Some((_old_id, old_idx)) = active_query.replace((query_set_id, query_index)) {
+            return Err(QueryUseError::AlreadyStarted {
+                active_query_index: old_idx,
+                new_query_index: query_index,
+            });
+        }
+
+        unsafe {
+            // If we don't have a reset state tracker which can defer resets, we must reset now.
+            if needs_reset {
+                raw_encoder
+                    .reset_queries(self.raw.as_ref().unwrap(), query_index..(query_index + 1));
+            }
+            raw_encoder.begin_query(query_set, query_index);
         }
 
         Ok(())
@@ -262,7 +304,7 @@ impl<A: HalApi> QuerySet<A> {
         unsafe {
             // If we don't have a reset state tracker which can defer resets, we must reset now.
             if needs_reset {
-                raw_encoder.reset_queries(&self.raw, query_index..(query_index + 1));
+                raw_encoder.reset_queries(self.raw(), query_index..(query_index + 1));
             }
             raw_encoder.begin_query(query_set, query_index);
         }
@@ -271,16 +313,16 @@ impl<A: HalApi> QuerySet<A> {
     }
 }
 
-pub(super) fn end_pipeline_statistics_query<A: HalApi>(
+pub(super) fn end_occlusion_query<A: HalApi>(
     raw_encoder: &mut A::CommandEncoder,
-    storage: &Storage<QuerySet<A>, id::QuerySetId>,
+    storage: &Storage<QuerySet<A>>,
     active_query: &mut Option<(id::QuerySetId, u32)>,
 ) -> Result<(), QueryUseError> {
     if let Some((query_set_id, query_index)) = active_query.take() {
         // We can unwrap here as the validity was validated when the active query was set
         let query_set = storage.get(query_set_id).unwrap();
 
-        unsafe { raw_encoder.end_query(&query_set.raw, query_index) };
+        unsafe { raw_encoder.end_query(query_set.raw.as_ref().unwrap(), query_index) };
 
         Ok(())
     } else {
@@ -288,7 +330,24 @@ pub(super) fn end_pipeline_statistics_query<A: HalApi>(
     }
 }
 
-impl<G: GlobalIdentityHandlerFactory> Global<G> {
+pub(super) fn end_pipeline_statistics_query<A: HalApi>(
+    raw_encoder: &mut A::CommandEncoder,
+    storage: &Storage<QuerySet<A>>,
+    active_query: &mut Option<(id::QuerySetId, u32)>,
+) -> Result<(), QueryUseError> {
+    if let Some((query_set_id, query_index)) = active_query.take() {
+        // We can unwrap here as the validity was validated when the active query was set
+        let query_set = storage.get(query_set_id).unwrap();
+
+        unsafe { raw_encoder.end_query(query_set.raw(), query_index) };
+
+        Ok(())
+    } else {
+        Err(QueryUseError::AlreadyStopped)
+    }
+}
+
+impl Global {
     pub fn command_encoder_write_timestamp<A: HalApi>(
         &self,
         command_encoder_id: id::CommandEncoderId,
@@ -296,24 +355,31 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         query_index: u32,
     ) -> Result<(), QueryError> {
         let hub = A::hub(self);
-        let mut token = Token::root();
 
-        let (mut cmd_buf_guard, mut token) = hub.command_buffers.write(&mut token);
-        let (query_set_guard, _) = hub.query_sets.read(&mut token);
+        let cmd_buf = CommandBuffer::get_encoder(hub, command_encoder_id)?;
 
-        let cmd_buf = CommandBuffer::get_encoder_mut(&mut cmd_buf_guard, command_encoder_id)?;
-        let raw_encoder = cmd_buf.encoder.open();
+        cmd_buf
+            .device
+            .require_features(wgt::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)?;
+
+        let mut cmd_buf_data = cmd_buf.data.lock();
+        let cmd_buf_data = cmd_buf_data.as_mut().unwrap();
 
         #[cfg(feature = "trace")]
-        if let Some(ref mut list) = cmd_buf.commands {
+        if let Some(ref mut list) = cmd_buf_data.commands {
             list.push(TraceCommand::WriteTimestamp {
                 query_set_id,
                 query_index,
             });
         }
 
-        let query_set = cmd_buf
-            .trackers
+        let encoder = &mut cmd_buf_data.encoder;
+        let tracker = &mut cmd_buf_data.trackers;
+
+        let raw_encoder = encoder.open()?;
+
+        let query_set_guard = hub.query_sets.read();
+        let query_set = tracker
             .query_sets
             .add_single(&*query_set_guard, query_set_id)
             .ok_or(QueryError::InvalidQuerySet(query_set_id))?;
@@ -333,17 +399,13 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         destination_offset: BufferAddress,
     ) -> Result<(), QueryError> {
         let hub = A::hub(self);
-        let mut token = Token::root();
 
-        let (mut cmd_buf_guard, mut token) = hub.command_buffers.write(&mut token);
-        let (query_set_guard, mut token) = hub.query_sets.read(&mut token);
-        let (buffer_guard, _) = hub.buffers.read(&mut token);
-
-        let cmd_buf = CommandBuffer::get_encoder_mut(&mut cmd_buf_guard, command_encoder_id)?;
-        let raw_encoder = cmd_buf.encoder.open();
+        let cmd_buf = CommandBuffer::get_encoder(hub, command_encoder_id)?;
+        let mut cmd_buf_data = cmd_buf.data.lock();
+        let cmd_buf_data = cmd_buf_data.as_mut().unwrap();
 
         #[cfg(feature = "trace")]
-        if let Some(ref mut list) = cmd_buf.commands {
+        if let Some(ref mut list) = cmd_buf_data.commands {
             list.push(TraceCommand::ResolveQuerySet {
                 query_set_id,
                 start_query,
@@ -353,22 +415,43 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             });
         }
 
+        let encoder = &mut cmd_buf_data.encoder;
+        let tracker = &mut cmd_buf_data.trackers;
+        let buffer_memory_init_actions = &mut cmd_buf_data.buffer_memory_init_actions;
+        let raw_encoder = encoder.open()?;
+
         if destination_offset % wgt::QUERY_RESOLVE_BUFFER_ALIGNMENT != 0 {
             return Err(QueryError::Resolve(ResolveError::BufferOffsetAlignment));
         }
-
-        let query_set = cmd_buf
-            .trackers
+        let query_set_guard = hub.query_sets.read();
+        let query_set = tracker
             .query_sets
             .add_single(&*query_set_guard, query_set_id)
             .ok_or(QueryError::InvalidQuerySet(query_set_id))?;
 
-        let (dst_buffer, dst_pending) = cmd_buf
-            .trackers
-            .buffers
-            .set_single(&*buffer_guard, destination, hal::BufferUses::COPY_DST)
-            .ok_or(QueryError::InvalidBuffer(destination))?;
-        let dst_barrier = dst_pending.map(|pending| pending.into_hal(dst_buffer));
+        if query_set.device.as_info().id() != cmd_buf.device.as_info().id() {
+            return Err(DeviceError::WrongDevice.into());
+        }
+
+        let (dst_buffer, dst_pending) = {
+            let buffer_guard = hub.buffers.read();
+            let dst_buffer = buffer_guard
+                .get(destination)
+                .map_err(|_| QueryError::InvalidBuffer(destination))?;
+
+            if dst_buffer.device.as_info().id() != cmd_buf.device.as_info().id() {
+                return Err(DeviceError::WrongDevice.into());
+            }
+
+            tracker
+                .buffers
+                .set_single(dst_buffer, hal::BufferUses::COPY_DST)
+                .ok_or(QueryError::InvalidBuffer(destination))?
+        };
+
+        let snatch_guard = dst_buffer.device.snatchable_lock.read();
+
+        let dst_barrier = dst_pending.map(|pending| pending.into_hal(&dst_buffer, &snatch_guard));
 
         if !dst_buffer.usage.contains(wgt::BufferUsages::QUERY_RESOLVE) {
             return Err(ResolveError::MissingBufferUsage.into());
@@ -407,20 +490,23 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             .into());
         }
 
-        cmd_buf
-            .buffer_memory_init_actions
-            .extend(dst_buffer.initialization_status.create_action(
-                destination,
-                buffer_start_offset..buffer_end_offset,
-                MemoryInitKind::ImplicitlyInitialized,
-            ));
+        // TODO(https://github.com/gfx-rs/wgpu/issues/3993): Need to track initialization state.
+        buffer_memory_init_actions.extend(dst_buffer.initialization_status.read().create_action(
+            &dst_buffer,
+            buffer_start_offset..buffer_end_offset,
+            MemoryInitKind::ImplicitlyInitialized,
+        ));
+
+        let raw_dst_buffer = dst_buffer
+            .raw(&snatch_guard)
+            .ok_or(QueryError::InvalidBuffer(destination))?;
 
         unsafe {
             raw_encoder.transition_buffers(dst_barrier.into_iter());
             raw_encoder.copy_query_results(
-                &query_set.raw,
+                query_set.raw(),
                 start_query..end_query,
-                dst_buffer.raw.as_ref().unwrap(),
+                raw_dst_buffer,
                 destination_offset,
                 wgt::BufferSize::new_unchecked(stride as u64),
             );

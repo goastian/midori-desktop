@@ -29,7 +29,8 @@ class Lifetime(enum.Enum):
 class DataSensitivity(enum.Enum):
     technical = 1
     interaction = 2
-    web_activity = 3
+    stored_content = 3
+    web_activity = 3  # Old, deprecated name
     highly_sensitive = 4
 
 
@@ -85,8 +86,7 @@ class Metric:
         if send_in_pings is None:
             send_in_pings = ["default"]
         self.send_in_pings = send_in_pings
-        if unit is not None:
-            self.unit = unit
+        self.unit = unit
         self.gecko_datapoint = gecko_datapoint
         if no_lint is None:
             no_lint = []
@@ -177,8 +177,11 @@ class Metric:
                 d[key] = [x.name for x in val]
         del d["name"]
         del d["category"]
+        if not d["unit"]:
+            d.pop("unit")
         d.pop("_config", None)
         d.pop("_generate_enums", None)
+        d.pop("_generate_structure", None)
         return d
 
     def _serialize_input(self) -> Dict[str, util.JSONType]:
@@ -430,6 +433,65 @@ class Denominator(Counter):
 
 class Text(Metric):
     typename = "text"
+
+
+class Object(Metric):
+    typename = "object"
+
+    def __init__(self, *args, **kwargs):
+        structure = kwargs.pop("structure", None)
+        if not structure:
+            raise ValueError("`object` is missing required parameter `structure`")
+
+        self._generate_structure = self.validate_structure(structure)
+        super().__init__(*args, **kwargs)
+
+    ALLOWED_TOPLEVEL = {"type", "properties", "items"}
+    ALLOWED_TYPES = ["object", "array", "number", "string", "boolean"]
+
+    @staticmethod
+    def _validate_substructure(structure):
+        extra = set(structure.keys()) - Object.ALLOWED_TOPLEVEL
+        if extra:
+            extra = ", ".join(extra)
+            allowed = ", ".join(Object.ALLOWED_TOPLEVEL)
+            raise ValueError(
+                f"Found additional fields: {extra}. Only allowed: {allowed}"
+            )
+
+        if "type" not in structure or structure["type"] not in Object.ALLOWED_TYPES:
+            raise ValueError("invalid or missing `type` in object structure")
+
+        if structure["type"] == "object":
+            if "items" in structure:
+                raise ValueError("`items` not allowed in object structure")
+
+            if "properties" not in structure:
+                raise ValueError("`properties` missing for type `object`")
+
+            for key in structure["properties"]:
+                value = structure["properties"][key]
+                structure["properties"][key] = Object._validate_substructure(value)
+
+        if structure["type"] == "array":
+            if "properties" in structure:
+                raise ValueError("`properties` not allowed in array structure")
+
+            if "items" not in structure:
+                raise ValueError("`items` missing for type `array`")
+
+            value = structure["items"]
+            structure["items"] = Object._validate_substructure(value)
+
+        return structure
+
+    @staticmethod
+    def validate_structure(structure):
+        if None:
+            raise ValueError("`structure` needed for object metric.")
+
+        structure = Object._validate_substructure(structure)
+        return structure
 
 
 ObjectTree = Dict[str, Dict[str, Union[Metric, pings.Ping, tags.Tag]]]

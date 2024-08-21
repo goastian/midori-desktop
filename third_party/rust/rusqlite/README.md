@@ -27,7 +27,7 @@ In your Cargo.toml:
 # That said, it's not ideal for all scenarios and in particular, generic
 # libraries built around `rusqlite` should probably not enable it, which
 # is why it is not a default feature -- it could become hard to disable.
-rusqlite = { version = "0.28.0", features = ["bundled"] }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
 ```
 
 Simple example usage:
@@ -81,7 +81,7 @@ fn main() -> Result<()> {
 
 ### Supported SQLite Versions
 
-The base `rusqlite` package supports SQLite version 3.6.8 or newer. If you need
+The base `rusqlite` package supports SQLite version 3.14.0 or newer. If you need
 support for older versions, please file an issue. Some cargo features require a
 newer SQLite version; see details below.
 
@@ -92,6 +92,7 @@ features](https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-s
 
 * [`load_extension`](https://docs.rs/rusqlite/~0/rusqlite/struct.LoadExtensionGuard.html)
   allows loading dynamic library-based SQLite extensions.
+* `loadable_extension` to program [loadable extension](https://sqlite.org/loadext.html) in Rust.
 * [`backup`](https://docs.rs/rusqlite/~0/rusqlite/backup/index.html)
   allows use of SQLite's online backup API. Note: This feature requires SQLite 3.6.11 or later.
 * [`functions`](https://docs.rs/rusqlite/~0/rusqlite/functions/index.html)
@@ -113,8 +114,8 @@ features](https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-s
   and [`ToSql`](https://docs.rs/rusqlite/~0/rusqlite/types/trait.ToSql.html) for the
   `Value` type from the [`serde_json` crate](https://crates.io/crates/serde_json).
 * `time` implements [`FromSql`](https://docs.rs/rusqlite/~0/rusqlite/types/trait.FromSql.html)
-   and [`ToSql`](https://docs.rs/rusqlite/~0/rusqlite/types/trait.ToSql.html) for the
-   `time::OffsetDateTime` type from the [`time` crate](https://crates.io/crates/time).
+  and [`ToSql`](https://docs.rs/rusqlite/~0/rusqlite/types/trait.ToSql.html) for various
+  types from the [`time` crate](https://crates.io/crates/time).
 * `url` implements [`FromSql`](https://docs.rs/rusqlite/~0/rusqlite/types/trait.FromSql.html)
   and [`ToSql`](https://docs.rs/rusqlite/~0/rusqlite/types/trait.ToSql.html) for the
   `Url` type from the [`url` crate](https://crates.io/crates/url).
@@ -136,7 +137,7 @@ features](https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-s
 * `extra_check` fail when a query passed to execute is readonly or has a column count > 0.
 * `column_decltype` provides `columns()` method for Statements and Rows; omit if linking to a version of SQLite/SQLCipher compiled with `-DSQLITE_OMIT_DECLTYPE`.
 * `collation` exposes [`sqlite3_create_collation_v2`](https://sqlite.org/c3ref/create_collation.html).
-* `winsqlite3` allows linking against the SQLite present in newer versions of Windows
+* `serialize` exposes [`sqlite3_serialize`](http://sqlite.org/c3ref/serialize.html) (3.23.0).
 
 ## Notes on building rusqlite and libsqlite3-sys
 
@@ -149,11 +150,11 @@ You can adjust this behavior in a number of ways:
 * If you use the `bundled`, `bundled-sqlcipher`, or `bundled-sqlcipher-vendored-openssl` features, `libsqlite3-sys` will use the
   [cc](https://crates.io/crates/cc) crate to compile SQLite or SQLCipher from source and
   link against that. This source is embedded in the `libsqlite3-sys` crate and
-  is currently SQLite 3.39.0 (as of `rusqlite` 0.28.0 / `libsqlite3-sys`
-  0.25.0).  This is probably the simplest solution to any build problems. You can enable this by adding the following in your `Cargo.toml` file:
+  is currently SQLite 3.45.1 (as of `rusqlite` 0.31.0 / `libsqlite3-sys`
+  0.28.0).  This is probably the simplest solution to any build problems. You can enable this by adding the following in your `Cargo.toml` file:
   ```toml
   [dependencies.rusqlite]
-  version = "0.28.0"
+  version = "0.31.0"
   features = ["bundled"]
   ```
 * When using any of the `bundled` features, the build script will honor `SQLITE_MAX_VARIABLE_NUMBER` and `SQLITE_MAX_EXPR_DEPTH` variables. It will also honor a `LIBSQLITE3_FLAGS` variable, which can have a format like `"-USQLITE_ALPHA -DSQLITE_BETA SQLITE_GAMMA ..."`. That would disable the `SQLITE_ALPHA` flag, and set the `SQLITE_BETA` and `SQLITE_GAMMA` flags. (The initial `-D` can be omitted, as on the last one.)
@@ -191,9 +192,7 @@ minimum SQLite version that supports your chosen features. If you are using
 `libsqlite3-sys` directly, you can use the same features to choose which
 pregenerated bindings are chosen:
 
-* `min_sqlite_version_3_6_8` - SQLite 3.6.8 bindings (this is the default)
-* `min_sqlite_version_3_6_23` - SQLite 3.6.23 bindings
-* `min_sqlite_version_3_7_7` - SQLite 3.7.7 bindings
+* `min_sqlite_version_3_14_0` - SQLite 3.14.0 bindings (this is the default)
 
 If you use any of the `bundled` features, you will get pregenerated bindings for the
 bundled version of SQLite/SQLCipher. If you need other specific pregenerated binding

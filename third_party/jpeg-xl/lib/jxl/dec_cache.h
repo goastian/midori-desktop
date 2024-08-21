@@ -7,24 +7,37 @@
 #define LIB_JXL_DEC_CACHE_H_
 
 #include <jxl/decode.h>
-#include <stdint.h>
+#include <jxl/memory_manager.h>
+#include <jxl/types.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <cstdint>
 #include <hwy/base.h>  // HWY_ALIGN_MAX
+#include <memory>
+#include <vector>
 
+#include "hwy/aligned_allocator.h"
 #include "lib/jxl/ac_strategy.h"
-#include "lib/jxl/base/profiler.h"
+#include "lib/jxl/base/common.h"  // kMaxNumPasses
+#include "lib/jxl/base/compiler_specific.h"
+#include "lib/jxl/base/data_parallel.h"
+#include "lib/jxl/base/status.h"
 #include "lib/jxl/coeff_order.h"
 #include "lib/jxl/common.h"
-#include "lib/jxl/convolve.h"
-#include "lib/jxl/dec_group_border.h"
-#include "lib/jxl/dec_noise.h"
+#include "lib/jxl/dct_util.h"
+#include "lib/jxl/dec_ans.h"
+#include "lib/jxl/dec_xyb.h"
+#include "lib/jxl/frame_dimensions.h"
+#include "lib/jxl/frame_header.h"
 #include "lib/jxl/image.h"
+#include "lib/jxl/image_bundle.h"
+#include "lib/jxl/image_metadata.h"
 #include "lib/jxl/passes_state.h"
-#include "lib/jxl/quant_weights.h"
 #include "lib/jxl/render_pipeline/render_pipeline.h"
+#include "lib/jxl/render_pipeline/render_pipeline_stage.h"
 #include "lib/jxl/render_pipeline/stage_upsampling.h"
-#include "lib/jxl/sanitizers.h"
 
 namespace jxl {
 
@@ -40,7 +53,8 @@ struct PixelCallback {
     const bool has_init = init != nullptr;
     const bool has_run = run != nullptr;
     const bool has_destroy = destroy != nullptr;
-    JXL_ASSERT(has_init == has_run && has_run == has_destroy);
+    const bool healthy = (has_init == has_run) && (has_run == has_destroy);
+    JXL_ASSERT(healthy);
 #endif
   }
 
@@ -73,6 +87,10 @@ struct ImageOutput {
 // Per-frame decoder state. All the images here should be accessed through a
 // group rect (either with block units or pixel units).
 struct PassesDecoderState {
+  explicit PassesDecoderState(JxlMemoryManager* memory_manager)
+      : shared_storage(memory_manager),
+        frame_storage_for_referencing(memory_manager) {}
+
   PassesSharedState shared_storage;
   // Allows avoiding copies for encoder loop.
   const PassesSharedState* JXL_RESTRICT shared = &shared_storage;
@@ -116,7 +134,7 @@ struct PassesDecoderState {
   std::atomic<uint32_t> used_acs{0};
 
   // Storage for coefficients if in "accumulate" mode.
-  std::unique_ptr<ACImage> coefficients = make_unique<ACImageT<int32_t>>(0, 0);
+  std::unique_ptr<ACImage> coefficients = make_unique<ACImageT<int32_t>>();
 
   // Rendering pipeline.
   std::unique_ptr<RenderPipeline> render_pipeline;
@@ -128,19 +146,23 @@ struct PassesDecoderState {
     bool use_slow_render_pipeline;
     bool coalescing;
     bool render_spotcolors;
+    bool render_noise;
   };
 
-  Status PreparePipeline(ImageBundle* decoded, PipelineOptions options);
+  JxlMemoryManager* memory_manager() const { return shared->memory_manager; }
+
+  Status PreparePipeline(const FrameHeader& frame_header,
+                         const ImageMetadata* metadata, ImageBundle* decoded,
+                         PipelineOptions options);
 
   // Information for colour conversions.
   OutputEncodingInfo output_encoding_info;
 
   // Initializes decoder-specific structures using information from *shared.
-  Status Init() {
-    x_dm_multiplier =
-        std::pow(1 / (1.25f), shared->frame_header.x_qm_scale - 2.0f);
-    b_dm_multiplier =
-        std::pow(1 / (1.25f), shared->frame_header.b_qm_scale - 2.0f);
+  Status Init(const FrameHeader& frame_header) {
+    JxlMemoryManager* memory_manager = this->memory_manager();
+    x_dm_multiplier = std::pow(1 / (1.25f), frame_header.x_qm_scale - 2.0f);
+    b_dm_multiplier = std::pow(1 / (1.25f), frame_header.b_qm_scale - 2.0f);
 
     main_output.callback = PixelCallback();
     main_output.buffer = nullptr;
@@ -153,15 +175,18 @@ struct PassesDecoderState {
     used_acs = 0;
 
     upsampler8x = GetUpsamplingStage(shared->metadata->transform_data, 0, 3);
-    if (shared->frame_header.loop_filter.epf_iters > 0) {
-      sigma = ImageF(shared->frame_dim.xsize_blocks + 2 * kSigmaPadding,
-                     shared->frame_dim.ysize_blocks + 2 * kSigmaPadding);
+    if (frame_header.loop_filter.epf_iters > 0) {
+      JXL_ASSIGN_OR_RETURN(
+          sigma,
+          ImageF::Create(memory_manager,
+                         shared->frame_dim.xsize_blocks + 2 * kSigmaPadding,
+                         shared->frame_dim.ysize_blocks + 2 * kSigmaPadding));
     }
     return true;
   }
 
   // Initialize the decoder state after all of DC is decoded.
-  Status InitForAC(ThreadPool* pool) {
+  Status InitForAC(size_t num_passes, ThreadPool* pool) {
     shared_storage.coeff_order_size = 0;
     for (uint8_t o = 0; o < AcStrategy::kNumValidStrategies; ++o) {
       if (((1 << o) & used_acs) == 0) continue;
@@ -170,33 +195,28 @@ struct PassesDecoderState {
           std::max(kCoeffOrderOffset[3 * (ord + 1)] * kDCTBlockSize,
                    shared_storage.coeff_order_size);
     }
-    size_t sz = shared_storage.frame_header.passes.num_passes *
-                shared_storage.coeff_order_size;
+    size_t sz = num_passes * shared_storage.coeff_order_size;
     if (sz > shared_storage.coeff_orders.size()) {
       shared_storage.coeff_orders.resize(sz);
     }
     return true;
   }
-
-  // Fills the `state->filter_weights.sigma` image with the precomputed sigma
-  // values in the area inside `block_rect`. Accesses the AC strategy, quant
-  // field and epf_sharpness fields in the corresponding positions.
-  void ComputeSigma(const Rect& block_rect, PassesDecoderState* state);
 };
 
 // Temp images required for decoding a single group. Reduces memory allocations
 // for large images because we only initialize min(#threads, #groups) instances.
 struct GroupDecCache {
-  void InitOnce(size_t num_passes, size_t used_acs) {
-    PROFILER_FUNC;
-
+  Status InitOnce(JxlMemoryManager* memory_manager, size_t num_passes,
+                  size_t used_acs) {
     for (size_t i = 0; i < num_passes; i++) {
       if (num_nzeroes[i].xsize() == 0) {
         // Allocate enough for a whole group - partial groups on the
         // right/bottom border just use a subset. The valid size is passed via
         // Rect.
 
-        num_nzeroes[i] = Image3I(kGroupDimInBlocks, kGroupDimInBlocks);
+        JXL_ASSIGN_OR_RETURN(num_nzeroes[i],
+                             Image3I::Create(memory_manager, kGroupDimInBlocks,
+                                             kGroupDimInBlocks));
       }
     }
     size_t max_block_area = 0;
@@ -213,7 +233,7 @@ struct GroupDecCache {
       max_block_area_ = max_block_area;
       // We need 3x float blocks for dequantized coefficients and 1x for scratch
       // space for transforms.
-      float_memory_ = hwy::AllocateAligned<float>(max_block_area_ * 4);
+      float_memory_ = hwy::AllocateAligned<float>(max_block_area_ * 7);
       // We need 3x int32 or int16 blocks for quantized coefficients.
       int32_memory_ = hwy::AllocateAligned<int32_t>(max_block_area_ * 3);
       int16_memory_ = hwy::AllocateAligned<int16_t>(max_block_area_ * 3);
@@ -223,13 +243,18 @@ struct GroupDecCache {
     scratch_space = dec_group_block + max_block_area_ * 3;
     dec_group_qblock = int32_memory_.get();
     dec_group_qblock16 = int16_memory_.get();
+    return true;
   }
 
-  void InitDCBufferOnce() {
+  Status InitDCBufferOnce(JxlMemoryManager* memory_manager) {
     if (dc_buffer.xsize() == 0) {
-      dc_buffer = ImageF(kGroupDimInBlocks + kRenderPipelineXOffset * 2,
-                         kGroupDimInBlocks + 4);
+      JXL_ASSIGN_OR_RETURN(
+          dc_buffer,
+          ImageF::Create(memory_manager,
+                         kGroupDimInBlocks + kRenderPipelineXOffset * 2,
+                         kGroupDimInBlocks + 4));
     }
+    return true;
   }
 
   // Scratch space used by DecGroupImpl().

@@ -2,11 +2,14 @@
 
 use core::num::{NonZeroU16, NonZeroU8};
 
+use num_conv::prelude::*;
+
+use crate::convert::*;
 use crate::format_description::modifier;
 #[cfg(feature = "large-dates")]
 use crate::parsing::combinator::n_to_m_digits_padded;
 use crate::parsing::combinator::{
-    any_digit, exactly_n_digits, exactly_n_digits_padded, first_match, opt, sign,
+    any_digit, exactly_n_digits, exactly_n_digits_padded, first_match, n_to_m_digits, opt, sign,
 };
 use crate::parsing::ParsedItem;
 use crate::{Month, Weekday};
@@ -24,14 +27,14 @@ pub(crate) fn parse_year(input: &[u8], modifiers: modifier::Year) -> Option<Pars
             let ParsedItem(input, year) =
                 n_to_m_digits_padded::<4, 6, u32>(modifiers.padding)(input)?;
             match sign {
-                Some(b'-') => Some(ParsedItem(input, -(year as i32))),
+                Some(b'-') => Some(ParsedItem(input, -year.cast_signed())),
                 None if modifiers.sign_is_mandatory || year >= 10_000 => None,
-                _ => Some(ParsedItem(input, year as i32)),
+                _ => Some(ParsedItem(input, year.cast_signed())),
             }
         }
-        modifier::YearRepr::LastTwo => {
-            Some(exactly_n_digits_padded::<2, u32>(modifiers.padding)(input)?.map(|v| v as i32))
-        }
+        modifier::YearRepr::LastTwo => Some(
+            exactly_n_digits_padded::<2, u32>(modifiers.padding)(input)?.map(|v| v.cast_signed()),
+        ),
     }
 }
 
@@ -242,11 +245,11 @@ pub(crate) fn parse_subsecond(
         Nine => exactly_n_digits::<9, _>(input)?,
         OneOrMore => {
             let ParsedItem(mut input, mut value) =
-                any_digit(input)?.map(|v| (v - b'0') as u32 * 100_000_000);
+                any_digit(input)?.map(|v| (v - b'0').extend::<u32>() * 100_000_000);
 
             let mut multiplier = 10_000_000;
             while let Some(ParsedItem(new_input, digit)) = any_digit(input) {
-                value += (digit - b'0') as u32 * multiplier;
+                value += (digit - b'0').extend::<u32>() * multiplier;
                 input = new_input;
                 multiplier /= 10;
             }
@@ -259,16 +262,18 @@ pub(crate) fn parse_subsecond(
 
 // region: offset components
 /// Parse the "hour" component of a `UtcOffset`.
+///
+/// Returns the value and whether the value is negative. This is used for when "-0" is parsed.
 pub(crate) fn parse_offset_hour(
     input: &[u8],
     modifiers: modifier::OffsetHour,
-) -> Option<ParsedItem<'_, i8>> {
+) -> Option<ParsedItem<'_, (i8, bool)>> {
     let ParsedItem(input, sign) = opt(sign)(input);
     let ParsedItem(input, hour) = exactly_n_digits_padded::<2, u8>(modifiers.padding)(input)?;
     match sign {
-        Some(b'-') => Some(ParsedItem(input, -(hour as i8))),
+        Some(b'-') => Some(ParsedItem(input, (-hour.cast_signed(), true))),
         None if modifiers.sign_is_mandatory => None,
-        _ => Some(ParsedItem(input, hour as i8)),
+        _ => Some(ParsedItem(input, (hour.cast_signed(), false))),
     }
 }
 
@@ -279,7 +284,7 @@ pub(crate) fn parse_offset_minute(
 ) -> Option<ParsedItem<'_, i8>> {
     Some(
         exactly_n_digits_padded::<2, u8>(modifiers.padding)(input)?
-            .map(|offset_minute| offset_minute as _),
+            .map(|offset_minute| offset_minute.cast_signed()),
     )
 }
 
@@ -290,7 +295,52 @@ pub(crate) fn parse_offset_second(
 ) -> Option<ParsedItem<'_, i8>> {
     Some(
         exactly_n_digits_padded::<2, u8>(modifiers.padding)(input)?
-            .map(|offset_second| offset_second as _),
+            .map(|offset_second| offset_second.cast_signed()),
     )
 }
 // endregion offset components
+
+/// Ignore the given number of bytes.
+pub(crate) fn parse_ignore(
+    input: &[u8],
+    modifiers: modifier::Ignore,
+) -> Option<ParsedItem<'_, ()>> {
+    let modifier::Ignore { count } = modifiers;
+    let input = input.get((count.get().extend())..)?;
+    Some(ParsedItem(input, ()))
+}
+
+/// Parse the Unix timestamp component.
+pub(crate) fn parse_unix_timestamp(
+    input: &[u8],
+    modifiers: modifier::UnixTimestamp,
+) -> Option<ParsedItem<'_, i128>> {
+    let ParsedItem(input, sign) = opt(sign)(input);
+    let ParsedItem(input, nano_timestamp) = match modifiers.precision {
+        modifier::UnixTimestampPrecision::Second => n_to_m_digits::<1, 14, u128>(input)?
+            .map(|val| val * Nanosecond::per(Second).extend::<u128>()),
+        modifier::UnixTimestampPrecision::Millisecond => n_to_m_digits::<1, 17, u128>(input)?
+            .map(|val| val * Nanosecond::per(Millisecond).extend::<u128>()),
+        modifier::UnixTimestampPrecision::Microsecond => n_to_m_digits::<1, 20, u128>(input)?
+            .map(|val| val * Nanosecond::per(Microsecond).extend::<u128>()),
+        modifier::UnixTimestampPrecision::Nanosecond => n_to_m_digits::<1, 23, _>(input)?,
+    };
+
+    match sign {
+        Some(b'-') => Some(ParsedItem(input, -nano_timestamp.cast_signed())),
+        None if modifiers.sign_is_mandatory => None,
+        _ => Some(ParsedItem(input, nano_timestamp.cast_signed())),
+    }
+}
+
+/// Parse the `end` component, which represents the end of input. If any input is remaining, `None`
+/// is returned.
+pub(crate) const fn parse_end(input: &[u8], end: modifier::End) -> Option<ParsedItem<'_, ()>> {
+    let modifier::End {} = end;
+
+    if input.is_empty() {
+        Some(ParsedItem(input, ()))
+    } else {
+        None
+    }
+}

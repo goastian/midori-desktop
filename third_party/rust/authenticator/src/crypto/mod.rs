@@ -12,7 +12,6 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use serde_bytes::ByteBuf;
-use serde_cbor::Value;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -32,21 +31,13 @@ mod dummy;
 use dummy as backend;
 
 use backend::{
-    decrypt_aes_256_cbc_no_pad, ecdhe_p256_raw, encrypt_aes_256_cbc_no_pad, hmac_sha256,
+    decrypt_aes_256_cbc_no_pad, ecdhe_p256_raw, encrypt_aes_256_cbc_no_pad, gen_p256, hmac_sha256,
     random_bytes, sha256,
 };
 
-// Object identifiers in DER tag-length-value form
-const DER_OID_EC_PUBLIC_KEY_BYTES: &[u8] = &[
-    0x06, 0x07,
-    /* {iso(1) member-body(2) us(840) ansi-x962(10045) keyType(2) ecPublicKey(1)} */
-    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
-];
-const DER_OID_P256_BYTES: &[u8] = &[
-    0x06, 0x08,
-    /* {iso(1) member-body(2) us(840) ansi-x962(10045) curves(3) prime(1) prime256v1(7)} */
-    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07,
-];
+mod der;
+
+pub use backend::ecdsa_p256_sha256_sign_raw;
 
 pub struct PinUvAuthProtocol(Box<dyn PinProtocolImpl + Send + Sync>);
 impl PinUvAuthProtocol {
@@ -150,11 +141,26 @@ impl TryFrom<&AuthenticatorInfo> for PinUvAuthProtocol {
         // "If there are multiple mutually supported protocols, and the platform
         // has no preference, it SHOULD select the one listed first in
         // pinUvAuthProtocols."
-        for proto_id in info.pin_protocols.iter() {
-            match proto_id {
-                1 => return Ok(PinUvAuthProtocol(Box::new(PinUvAuth1 {}))),
-                2 => return Ok(PinUvAuthProtocol(Box::new(PinUvAuth2 {}))),
-                _ => continue,
+        if let Some(pin_protocols) = &info.pin_protocols {
+            for proto_id in pin_protocols.iter() {
+                match proto_id {
+                    1 => return Ok(PinUvAuthProtocol(Box::new(PinUvAuth1 {}))),
+                    2 => return Ok(PinUvAuthProtocol(Box::new(PinUvAuth2 {}))),
+                    _ => continue,
+                }
+            }
+        } else {
+            match info.max_supported_version() {
+                crate::ctap2::commands::get_info::AuthenticatorVersion::U2F_V2 => {
+                    return Err(CommandError::UnsupportedPinProtocol)
+                }
+                crate::ctap2::commands::get_info::AuthenticatorVersion::FIDO_2_0 => {
+                    return Ok(PinUvAuthProtocol(Box::new(PinUvAuth1 {})))
+                }
+                crate::ctap2::commands::get_info::AuthenticatorVersion::FIDO_2_1_PRE
+                | crate::ctap2::commands::get_info::AuthenticatorVersion::FIDO_2_1 => {
+                    return Ok(PinUvAuthProtocol(Box::new(PinUvAuth2 {})))
+                }
             }
         }
         Err(CommandError::UnsupportedPinProtocol)
@@ -342,8 +348,7 @@ impl SharedSecret {
 pub struct PinUvAuthToken {
     pub pin_protocol: PinUvAuthProtocol,
     pin_token: Vec<u8>,
-    #[allow(dead_code)] // Not yet used
-    permissions: PinUvAuthTokenPermission,
+    pub permissions: PinUvAuthTokenPermission,
 }
 
 impl PinUvAuthToken {
@@ -387,7 +392,7 @@ impl Serialize for PinUvAuthParam {
 
 /// A Curve identifier. You probably will never need to alter
 /// or use this value, as it is set inside the Credential for you.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Curve {
     // +---------+-------+----------+------------------------------------+
     // | Name    | Value | Key Type | Description                        |
@@ -416,17 +421,26 @@ pub enum Curve {
     Ed448 = 7,
 }
 
-impl TryFrom<u64> for Curve {
+impl Serialize for Curve {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i64(*self as i64)
+    }
+}
+
+impl TryFrom<i64> for Curve {
     type Error = CryptoError;
-    fn try_from(i: u64) -> Result<Self, Self::Error> {
+    fn try_from(i: i64) -> Result<Self, Self::Error> {
         match i {
-            1 => Ok(Curve::SECP256R1),
-            2 => Ok(Curve::SECP384R1),
-            3 => Ok(Curve::SECP521R1),
-            4 => Ok(Curve::X25519),
-            5 => Ok(Curve::X448),
-            6 => Ok(Curve::Ed25519),
-            7 => Ok(Curve::Ed448),
+            i if i == Curve::SECP256R1 as i64 => Ok(Curve::SECP256R1),
+            i if i == Curve::SECP384R1 as i64 => Ok(Curve::SECP384R1),
+            i if i == Curve::SECP521R1 as i64 => Ok(Curve::SECP521R1),
+            i if i == Curve::X25519 as i64 => Ok(Curve::X25519),
+            i if i == Curve::X448 as i64 => Ok(Curve::X448),
+            i if i == Curve::Ed25519 as i64 => Ok(Curve::Ed25519),
+            i if i == Curve::Ed448 as i64 => Ok(Curve::Ed448),
             _ => Err(CryptoError::UnknownKeyType),
         }
     }
@@ -534,71 +548,7 @@ impl Serialize for COSEAlgorithm {
     where
         S: Serializer,
     {
-        match *self {
-            COSEAlgorithm::RS512 => serializer.serialize_i16(-259),
-            COSEAlgorithm::RS384 => serializer.serialize_i16(-258),
-            COSEAlgorithm::RS256 => serializer.serialize_i16(-257),
-            COSEAlgorithm::ES256K => serializer.serialize_i8(-47),
-            COSEAlgorithm::HSS_LMS => serializer.serialize_i8(-46),
-            COSEAlgorithm::SHAKE256 => serializer.serialize_i8(-45),
-            COSEAlgorithm::SHA512 => serializer.serialize_i8(-44),
-            COSEAlgorithm::SHA384 => serializer.serialize_i8(-43),
-            COSEAlgorithm::RSAES_OAEP_SHA_512 => serializer.serialize_i8(-42),
-            COSEAlgorithm::RSAES_OAEP_SHA_256 => serializer.serialize_i8(-41),
-            COSEAlgorithm::RSAES_OAEP_RFC_8017_default => serializer.serialize_i8(-40),
-            COSEAlgorithm::PS512 => serializer.serialize_i8(-39),
-            COSEAlgorithm::PS384 => serializer.serialize_i8(-38),
-            COSEAlgorithm::PS256 => serializer.serialize_i8(-37),
-            COSEAlgorithm::ES512 => serializer.serialize_i8(-36),
-            COSEAlgorithm::ES384 => serializer.serialize_i8(-35),
-            COSEAlgorithm::ECDH_SS_A256KW => serializer.serialize_i8(-34),
-            COSEAlgorithm::ECDH_SS_A192KW => serializer.serialize_i8(-33),
-            COSEAlgorithm::ECDH_SS_A128KW => serializer.serialize_i8(-32),
-            COSEAlgorithm::ECDH_ES_A256KW => serializer.serialize_i8(-31),
-            COSEAlgorithm::ECDH_ES_A192KW => serializer.serialize_i8(-30),
-            COSEAlgorithm::ECDH_ES_A128KW => serializer.serialize_i8(-29),
-            COSEAlgorithm::ECDH_SS_HKDF512 => serializer.serialize_i8(-28),
-            COSEAlgorithm::ECDH_SS_HKDF256 => serializer.serialize_i8(-27),
-            COSEAlgorithm::ECDH_ES_HKDF512 => serializer.serialize_i8(-26),
-            COSEAlgorithm::ECDH_ES_HKDF256 => serializer.serialize_i8(-25),
-            COSEAlgorithm::SHAKE128 => serializer.serialize_i8(-18),
-            COSEAlgorithm::SHA512_256 => serializer.serialize_i8(-17),
-            COSEAlgorithm::SHA256 => serializer.serialize_i8(-16),
-            COSEAlgorithm::SHA256_64 => serializer.serialize_i8(-15),
-            COSEAlgorithm::SHA1 => serializer.serialize_i8(-14),
-            COSEAlgorithm::Direct_HKDF_AES256 => serializer.serialize_i8(-13),
-            COSEAlgorithm::Direct_HKDF_AES128 => serializer.serialize_i8(-12),
-            COSEAlgorithm::Direct_HKDF_SHA512 => serializer.serialize_i8(-11),
-            COSEAlgorithm::Direct_HKDF_SHA256 => serializer.serialize_i8(-10),
-            COSEAlgorithm::EDDSA => serializer.serialize_i8(-8),
-            COSEAlgorithm::ES256 => serializer.serialize_i8(-7),
-            COSEAlgorithm::Direct => serializer.serialize_i8(-6),
-            COSEAlgorithm::A256KW => serializer.serialize_i8(-5),
-            COSEAlgorithm::A192KW => serializer.serialize_i8(-4),
-            COSEAlgorithm::A128KW => serializer.serialize_i8(-3),
-            COSEAlgorithm::A128GCM => serializer.serialize_i8(1),
-            COSEAlgorithm::A192GCM => serializer.serialize_i8(2),
-            COSEAlgorithm::A256GCM => serializer.serialize_i8(3),
-            COSEAlgorithm::HMAC256_64 => serializer.serialize_i8(4),
-            COSEAlgorithm::HMAC256_256 => serializer.serialize_i8(5),
-            COSEAlgorithm::HMAC384_384 => serializer.serialize_i8(6),
-            COSEAlgorithm::HMAC512_512 => serializer.serialize_i8(7),
-            COSEAlgorithm::AES_CCM_16_64_128 => serializer.serialize_i8(10),
-            COSEAlgorithm::AES_CCM_16_64_256 => serializer.serialize_i8(11),
-            COSEAlgorithm::AES_CCM_64_64_128 => serializer.serialize_i8(12),
-            COSEAlgorithm::AES_CCM_64_64_256 => serializer.serialize_i8(13),
-            COSEAlgorithm::AES_MAC_128_64 => serializer.serialize_i8(14),
-            COSEAlgorithm::AES_MAC_256_64 => serializer.serialize_i8(15),
-            COSEAlgorithm::ChaCha20_Poly1305 => serializer.serialize_i8(24),
-            COSEAlgorithm::AES_MAC_128_128 => serializer.serialize_i8(25),
-            COSEAlgorithm::AES_MAC_256_128 => serializer.serialize_i8(26),
-            COSEAlgorithm::AES_CCM_16_128_128 => serializer.serialize_i8(30),
-            COSEAlgorithm::AES_CCM_16_128_256 => serializer.serialize_i8(31),
-            COSEAlgorithm::AES_CCM_64_128_128 => serializer.serialize_i8(32),
-            COSEAlgorithm::AES_CCM_64_128_256 => serializer.serialize_i8(33),
-            COSEAlgorithm::IV_GENERATION => serializer.serialize_i8(34),
-            COSEAlgorithm::INSECURE_RS1 => serializer.serialize_i32(-65535),
-        }
+        serializer.serialize_i64(*self as i64)
     }
 }
 
@@ -634,69 +584,101 @@ impl TryFrom<i64> for COSEAlgorithm {
     type Error = CryptoError;
     fn try_from(i: i64) -> Result<Self, Self::Error> {
         match i {
-            -259 => Ok(COSEAlgorithm::RS512),
-            -258 => Ok(COSEAlgorithm::RS384),
-            -257 => Ok(COSEAlgorithm::RS256),
-            -47 => Ok(COSEAlgorithm::ES256K),
-            -46 => Ok(COSEAlgorithm::HSS_LMS),
-            -45 => Ok(COSEAlgorithm::SHAKE256),
-            -44 => Ok(COSEAlgorithm::SHA512),
-            -43 => Ok(COSEAlgorithm::SHA384),
-            -42 => Ok(COSEAlgorithm::RSAES_OAEP_SHA_512),
-            -41 => Ok(COSEAlgorithm::RSAES_OAEP_SHA_256),
-            -40 => Ok(COSEAlgorithm::RSAES_OAEP_RFC_8017_default),
-            -39 => Ok(COSEAlgorithm::PS512),
-            -38 => Ok(COSEAlgorithm::PS384),
-            -37 => Ok(COSEAlgorithm::PS256),
-            -36 => Ok(COSEAlgorithm::ES512),
-            -35 => Ok(COSEAlgorithm::ES384),
-            -34 => Ok(COSEAlgorithm::ECDH_SS_A256KW),
-            -33 => Ok(COSEAlgorithm::ECDH_SS_A192KW),
-            -32 => Ok(COSEAlgorithm::ECDH_SS_A128KW),
-            -31 => Ok(COSEAlgorithm::ECDH_ES_A256KW),
-            -30 => Ok(COSEAlgorithm::ECDH_ES_A192KW),
-            -29 => Ok(COSEAlgorithm::ECDH_ES_A128KW),
-            -28 => Ok(COSEAlgorithm::ECDH_SS_HKDF512),
-            -27 => Ok(COSEAlgorithm::ECDH_SS_HKDF256),
-            -26 => Ok(COSEAlgorithm::ECDH_ES_HKDF512),
-            -25 => Ok(COSEAlgorithm::ECDH_ES_HKDF256),
-            -18 => Ok(COSEAlgorithm::SHAKE128),
-            -17 => Ok(COSEAlgorithm::SHA512_256),
-            -16 => Ok(COSEAlgorithm::SHA256),
-            -15 => Ok(COSEAlgorithm::SHA256_64),
-            -14 => Ok(COSEAlgorithm::SHA1),
-            -13 => Ok(COSEAlgorithm::Direct_HKDF_AES256),
-            -12 => Ok(COSEAlgorithm::Direct_HKDF_AES128),
-            -11 => Ok(COSEAlgorithm::Direct_HKDF_SHA512),
-            -10 => Ok(COSEAlgorithm::Direct_HKDF_SHA256),
-            -8 => Ok(COSEAlgorithm::EDDSA),
-            -7 => Ok(COSEAlgorithm::ES256),
-            -6 => Ok(COSEAlgorithm::Direct),
-            -5 => Ok(COSEAlgorithm::A256KW),
-            -4 => Ok(COSEAlgorithm::A192KW),
-            -3 => Ok(COSEAlgorithm::A128KW),
-            1 => Ok(COSEAlgorithm::A128GCM),
-            2 => Ok(COSEAlgorithm::A192GCM),
-            3 => Ok(COSEAlgorithm::A256GCM),
-            4 => Ok(COSEAlgorithm::HMAC256_64),
-            5 => Ok(COSEAlgorithm::HMAC256_256),
-            6 => Ok(COSEAlgorithm::HMAC384_384),
-            7 => Ok(COSEAlgorithm::HMAC512_512),
-            10 => Ok(COSEAlgorithm::AES_CCM_16_64_128),
-            11 => Ok(COSEAlgorithm::AES_CCM_16_64_256),
-            12 => Ok(COSEAlgorithm::AES_CCM_64_64_128),
-            13 => Ok(COSEAlgorithm::AES_CCM_64_64_256),
-            14 => Ok(COSEAlgorithm::AES_MAC_128_64),
-            15 => Ok(COSEAlgorithm::AES_MAC_256_64),
-            24 => Ok(COSEAlgorithm::ChaCha20_Poly1305),
-            25 => Ok(COSEAlgorithm::AES_MAC_128_128),
-            26 => Ok(COSEAlgorithm::AES_MAC_256_128),
-            30 => Ok(COSEAlgorithm::AES_CCM_16_128_128),
-            31 => Ok(COSEAlgorithm::AES_CCM_16_128_256),
-            32 => Ok(COSEAlgorithm::AES_CCM_64_128_128),
-            33 => Ok(COSEAlgorithm::AES_CCM_64_128_256),
-            34 => Ok(COSEAlgorithm::IV_GENERATION),
-            -65535 => Ok(COSEAlgorithm::INSECURE_RS1),
+            i if i == COSEAlgorithm::RS512 as i64 => Ok(COSEAlgorithm::RS512),
+            i if i == COSEAlgorithm::RS384 as i64 => Ok(COSEAlgorithm::RS384),
+            i if i == COSEAlgorithm::RS256 as i64 => Ok(COSEAlgorithm::RS256),
+            i if i == COSEAlgorithm::ES256K as i64 => Ok(COSEAlgorithm::ES256K),
+            i if i == COSEAlgorithm::HSS_LMS as i64 => Ok(COSEAlgorithm::HSS_LMS),
+            i if i == COSEAlgorithm::SHAKE256 as i64 => Ok(COSEAlgorithm::SHAKE256),
+            i if i == COSEAlgorithm::SHA512 as i64 => Ok(COSEAlgorithm::SHA512),
+            i if i == COSEAlgorithm::SHA384 as i64 => Ok(COSEAlgorithm::SHA384),
+            i if i == COSEAlgorithm::RSAES_OAEP_SHA_512 as i64 => {
+                Ok(COSEAlgorithm::RSAES_OAEP_SHA_512)
+            }
+            i if i == COSEAlgorithm::RSAES_OAEP_SHA_256 as i64 => {
+                Ok(COSEAlgorithm::RSAES_OAEP_SHA_256)
+            }
+            i if i == COSEAlgorithm::RSAES_OAEP_RFC_8017_default as i64 => {
+                Ok(COSEAlgorithm::RSAES_OAEP_RFC_8017_default)
+            }
+            i if i == COSEAlgorithm::PS512 as i64 => Ok(COSEAlgorithm::PS512),
+            i if i == COSEAlgorithm::PS384 as i64 => Ok(COSEAlgorithm::PS384),
+            i if i == COSEAlgorithm::PS256 as i64 => Ok(COSEAlgorithm::PS256),
+            i if i == COSEAlgorithm::ES512 as i64 => Ok(COSEAlgorithm::ES512),
+            i if i == COSEAlgorithm::ES384 as i64 => Ok(COSEAlgorithm::ES384),
+            i if i == COSEAlgorithm::ECDH_SS_A256KW as i64 => Ok(COSEAlgorithm::ECDH_SS_A256KW),
+            i if i == COSEAlgorithm::ECDH_SS_A192KW as i64 => Ok(COSEAlgorithm::ECDH_SS_A192KW),
+            i if i == COSEAlgorithm::ECDH_SS_A128KW as i64 => Ok(COSEAlgorithm::ECDH_SS_A128KW),
+            i if i == COSEAlgorithm::ECDH_ES_A256KW as i64 => Ok(COSEAlgorithm::ECDH_ES_A256KW),
+            i if i == COSEAlgorithm::ECDH_ES_A192KW as i64 => Ok(COSEAlgorithm::ECDH_ES_A192KW),
+            i if i == COSEAlgorithm::ECDH_ES_A128KW as i64 => Ok(COSEAlgorithm::ECDH_ES_A128KW),
+            i if i == COSEAlgorithm::ECDH_SS_HKDF512 as i64 => Ok(COSEAlgorithm::ECDH_SS_HKDF512),
+            i if i == COSEAlgorithm::ECDH_SS_HKDF256 as i64 => Ok(COSEAlgorithm::ECDH_SS_HKDF256),
+            i if i == COSEAlgorithm::ECDH_ES_HKDF512 as i64 => Ok(COSEAlgorithm::ECDH_ES_HKDF512),
+            i if i == COSEAlgorithm::ECDH_ES_HKDF256 as i64 => Ok(COSEAlgorithm::ECDH_ES_HKDF256),
+            i if i == COSEAlgorithm::SHAKE128 as i64 => Ok(COSEAlgorithm::SHAKE128),
+            i if i == COSEAlgorithm::SHA512_256 as i64 => Ok(COSEAlgorithm::SHA512_256),
+            i if i == COSEAlgorithm::SHA256 as i64 => Ok(COSEAlgorithm::SHA256),
+            i if i == COSEAlgorithm::SHA256_64 as i64 => Ok(COSEAlgorithm::SHA256_64),
+            i if i == COSEAlgorithm::SHA1 as i64 => Ok(COSEAlgorithm::SHA1),
+            i if i == COSEAlgorithm::Direct_HKDF_AES256 as i64 => {
+                Ok(COSEAlgorithm::Direct_HKDF_AES256)
+            }
+            i if i == COSEAlgorithm::Direct_HKDF_AES128 as i64 => {
+                Ok(COSEAlgorithm::Direct_HKDF_AES128)
+            }
+            i if i == COSEAlgorithm::Direct_HKDF_SHA512 as i64 => {
+                Ok(COSEAlgorithm::Direct_HKDF_SHA512)
+            }
+            i if i == COSEAlgorithm::Direct_HKDF_SHA256 as i64 => {
+                Ok(COSEAlgorithm::Direct_HKDF_SHA256)
+            }
+            i if i == COSEAlgorithm::EDDSA as i64 => Ok(COSEAlgorithm::EDDSA),
+            i if i == COSEAlgorithm::ES256 as i64 => Ok(COSEAlgorithm::ES256),
+            i if i == COSEAlgorithm::Direct as i64 => Ok(COSEAlgorithm::Direct),
+            i if i == COSEAlgorithm::A256KW as i64 => Ok(COSEAlgorithm::A256KW),
+            i if i == COSEAlgorithm::A192KW as i64 => Ok(COSEAlgorithm::A192KW),
+            i if i == COSEAlgorithm::A128KW as i64 => Ok(COSEAlgorithm::A128KW),
+            i if i == COSEAlgorithm::A128GCM as i64 => Ok(COSEAlgorithm::A128GCM),
+            i if i == COSEAlgorithm::A192GCM as i64 => Ok(COSEAlgorithm::A192GCM),
+            i if i == COSEAlgorithm::A256GCM as i64 => Ok(COSEAlgorithm::A256GCM),
+            i if i == COSEAlgorithm::HMAC256_64 as i64 => Ok(COSEAlgorithm::HMAC256_64),
+            i if i == COSEAlgorithm::HMAC256_256 as i64 => Ok(COSEAlgorithm::HMAC256_256),
+            i if i == COSEAlgorithm::HMAC384_384 as i64 => Ok(COSEAlgorithm::HMAC384_384),
+            i if i == COSEAlgorithm::HMAC512_512 as i64 => Ok(COSEAlgorithm::HMAC512_512),
+            i if i == COSEAlgorithm::AES_CCM_16_64_128 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_16_64_128)
+            }
+            i if i == COSEAlgorithm::AES_CCM_16_64_256 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_16_64_256)
+            }
+            i if i == COSEAlgorithm::AES_CCM_64_64_128 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_64_64_128)
+            }
+            i if i == COSEAlgorithm::AES_CCM_64_64_256 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_64_64_256)
+            }
+            i if i == COSEAlgorithm::AES_MAC_128_64 as i64 => Ok(COSEAlgorithm::AES_MAC_128_64),
+            i if i == COSEAlgorithm::AES_MAC_256_64 as i64 => Ok(COSEAlgorithm::AES_MAC_256_64),
+            i if i == COSEAlgorithm::ChaCha20_Poly1305 as i64 => {
+                Ok(COSEAlgorithm::ChaCha20_Poly1305)
+            }
+            i if i == COSEAlgorithm::AES_MAC_128_128 as i64 => Ok(COSEAlgorithm::AES_MAC_128_128),
+            i if i == COSEAlgorithm::AES_MAC_256_128 as i64 => Ok(COSEAlgorithm::AES_MAC_256_128),
+            i if i == COSEAlgorithm::AES_CCM_16_128_128 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_16_128_128)
+            }
+            i if i == COSEAlgorithm::AES_CCM_16_128_256 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_16_128_256)
+            }
+            i if i == COSEAlgorithm::AES_CCM_64_128_128 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_64_128_128)
+            }
+            i if i == COSEAlgorithm::AES_CCM_64_128_256 as i64 => {
+                Ok(COSEAlgorithm::AES_CCM_64_128_256)
+            }
+            i if i == COSEAlgorithm::IV_GENERATION as i64 => Ok(COSEAlgorithm::IV_GENERATION),
+            i if i == COSEAlgorithm::INSECURE_RS1 as i64 => Ok(COSEAlgorithm::INSECURE_RS1),
             _ => Err(CryptoError::UnknownAlgorithm),
         }
     }
@@ -733,38 +715,26 @@ impl COSEEC2Key {
         })
     }
 
-    fn der_spki(&self) -> Result<Vec<u8>, CryptoError> {
-        let (curve_oid, seq_len, alg_len, spk_len) = match self.curve {
-            Curve::SECP256R1 => (
-                DER_OID_P256_BYTES,
-                [0x59].as_slice(),
-                [0x13].as_slice(),
-                [0x42].as_slice(),
-            ),
-            x => return Err(CryptoError::UnsupportedCurve(x)),
-        };
+    pub fn der_spki(&self) -> Result<Vec<u8>, CryptoError> {
+        if self.curve != Curve::SECP256R1 {
+            return Err(CryptoError::UnsupportedCurve(self.curve));
+        }
 
-        // [RFC 5280]
-        let mut spki: Vec<u8> = vec![];
         // SubjectPublicKeyInfo
-        spki.push(0x30);
-        spki.extend_from_slice(seq_len);
-        //      AlgorithmIdentifier
-        spki.push(0x30);
-        spki.extend_from_slice(alg_len);
-        //          ObjectIdentifier
-        spki.extend_from_slice(DER_OID_EC_PUBLIC_KEY_BYTES);
-        //          RFC 5480 ECParameters
-        spki.extend_from_slice(curve_oid);
-        //      BIT STRING encoding uncompressed SEC1 public point
-        spki.push(0x03);
-        spki.extend_from_slice(spk_len);
-        spki.push(0x0); // no trailing zeros
-        spki.push(0x04); // SEC 1 encoded uncompressed point
-        spki.extend_from_slice(&self.x);
-        spki.extend_from_slice(&self.y);
-
-        Ok(spki)
+        der::sequence(&[
+            // algorithm: AlgorithmIdentifier
+            &der::sequence(&[
+                // algorithm
+                &der::object_id(der::OID_EC_PUBLIC_KEY_BYTES)?,
+                // parameters
+                &der::object_id(der::OID_SECP256R1_BYTES)?,
+            ])?,
+            // subjectPublicKey
+            &der::bit_string(
+                // SEC 1 uncompressed format
+                &[&[0x04], self.x.as_slice(), self.y.as_slice()].concat(),
+            )?,
+        ])
     }
 }
 
@@ -779,10 +749,31 @@ pub struct COSEOKPKey {
     pub x: Vec<u8>,
 }
 
-/// A COSE RSA PublicKey. This is a provided credential from a registered
-/// authenticator.
-/// You will likely never need to interact with this value, as it is part of the Credential
-/// API.
+impl COSEOKPKey {
+    pub fn der_spki(&self) -> Result<Vec<u8>, CryptoError> {
+        if self.curve != Curve::Ed25519 {
+            return Err(CryptoError::UnsupportedCurve(self.curve));
+        }
+
+        // SubjectPublicKeyInfo
+        der::sequence(&[
+            // algorithm: AlgorithmIdentifier
+            &der::sequence(&[
+                // algorithm
+                &der::object_id(der::OID_ED25519_BYTES)?,
+                // parameters
+                // (absent as per RFC 8410)
+            ])?,
+            // subjectPublicKey
+            &der::bit_string(
+                // RFC 8410
+                self.x.as_slice(),
+            )?,
+        ])
+    }
+}
+
+/// A COSE RSA PublicKey. This is a provided credential from a registered authenticator.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct COSERSAKey {
     /// An RSA modulus
@@ -791,19 +782,29 @@ pub struct COSERSAKey {
     pub e: Vec<u8>,
 }
 
-/// A Octet Key Pair (OKP).
-/// The other version uses only the x-coordinate as the y-coordinate is
-/// either to be recomputed or not needed for the key agreement operation ('OKP').
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct COSESymmetricKey {
-    /// The key
-    pub key: Vec<u8>,
+impl COSERSAKey {
+    pub fn der_spki(&self) -> Result<Vec<u8>, CryptoError> {
+        // SubjectPublicKeyInfo
+        der::sequence(&[
+            // algorithm: AlgorithmIdentifier
+            &der::sequence(&[
+                // algorithm
+                &der::object_id(der::OID_RS256_BYTES)?,
+                // parameters
+                &der::null()?,
+            ])?,
+            // subjectPublicKey
+            &der::bit_string(
+                // RFC 4055 RSAPublicKey
+                &der::sequence(&[&der::integer(&self.n)?, &der::integer(&self.e)?])?,
+            )?,
+        ])
+    }
 }
 
 // https://tools.ietf.org/html/rfc8152#section-13
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(i64)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum COSEKeyTypeId {
     // Reserved is invalid
     // Reserved = 0,
@@ -813,18 +814,24 @@ pub enum COSEKeyTypeId {
     EC2 = 2,
     /// RSA
     RSA = 3,
-    /// Symmetric
-    Symmetric = 4,
 }
 
-impl TryFrom<u64> for COSEKeyTypeId {
+impl Serialize for COSEKeyTypeId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i64(*self as i64)
+    }
+}
+
+impl TryFrom<i64> for COSEKeyTypeId {
     type Error = CryptoError;
-    fn try_from(i: u64) -> Result<Self, Self::Error> {
+    fn try_from(i: i64) -> Result<Self, Self::Error> {
         match i {
-            1 => Ok(COSEKeyTypeId::OKP),
-            2 => Ok(COSEKeyTypeId::EC2),
-            3 => Ok(COSEKeyTypeId::RSA),
-            4 => Ok(COSEKeyTypeId::Symmetric),
+            i if i == COSEKeyTypeId::OKP as i64 => Ok(COSEKeyTypeId::OKP),
+            i if i == COSEKeyTypeId::EC2 as i64 => Ok(COSEKeyTypeId::EC2),
+            i if i == COSEKeyTypeId::RSA as i64 => Ok(COSEKeyTypeId::RSA),
             _ => Err(CryptoError::UnknownKeyType),
         }
     }
@@ -835,24 +842,12 @@ impl TryFrom<u64> for COSEKeyTypeId {
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum COSEKeyType {
-    //    +-----------+-------+-----------------------------------------------+
-    //    | Name      | Value | Description                                   |
-    //    +-----------+-------+-----------------------------------------------+
-    //    | OKP       | 1     | Octet Key Pair                                |
-    //    | EC2       | 2     | Elliptic Curve Keys w/ x- and y-coordinate    |
-    //    |           |       | pair                                          |
-    //    | Symmetric | 4     | Symmetric Keys                                |
-    //    | Reserved  | 0     | This value is reserved                        |
-    //    +-----------+-------+-----------------------------------------------+
-    // Reserved, // should always be invalid.
-    /// Identifies this as an Elliptic Curve octet key pair
-    OKP(COSEOKPKey), // Not used here
     /// Identifies this as an Elliptic Curve EC2 key
     EC2(COSEEC2Key),
+    /// Identifies this as an Elliptic Curve octet key pair
+    OKP(COSEOKPKey),
     /// Identifies this as an RSA key
-    RSA(COSERSAKey), // Not used here
-    /// Identifies this as a Symmetric key
-    Symmetric(COSESymmetricKey), // Not used here
+    RSA(COSERSAKey),
 }
 
 /// A COSE Key as provided by the Authenticator. You should never need
@@ -864,6 +859,31 @@ pub struct COSEKey {
     pub alg: COSEAlgorithm,
     /// The public key
     pub key: COSEKeyType,
+}
+
+impl COSEKey {
+    /// Generates a new key pair for the specified algorithm.
+    /// Returns an PKCS#8 encoding of the private key, and the public key as a COSEKey.
+    pub fn generate(alg: COSEAlgorithm) -> Result<(Vec<u8>, Self), CryptoError> {
+        if alg != COSEAlgorithm::ES256 && alg != COSEAlgorithm::ECDH_ES_HKDF256 {
+            return Err(CryptoError::UnsupportedAlgorithm(alg));
+        }
+        let (private, public) = gen_p256()?;
+        let cose_ec2_key = COSEEC2Key::from_sec1_uncompressed(Curve::SECP256R1, &public)?;
+        let public = COSEKey {
+            alg,
+            key: COSEKeyType::EC2(cose_ec2_key),
+        };
+        Ok((private, public))
+    }
+
+    pub fn der_spki(&self) -> Result<Vec<u8>, CryptoError> {
+        match &self.key {
+            COSEKeyType::EC2(ec2_key) => ec2_key.der_spki(),
+            COSEKeyType::OKP(okp_key) => okp_key.der_spki(),
+            COSEKeyType::RSA(rsa_key) => rsa_key.der_spki(),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for COSEKey {
@@ -884,60 +904,29 @@ impl<'de> Deserialize<'de> for COSEKey {
             where
                 M: MapAccess<'de>,
             {
-                let mut curve: Option<Curve> = None;
                 let mut key_type: Option<COSEKeyTypeId> = None;
                 let mut alg: Option<COSEAlgorithm> = None;
+                // OKP / EC2
+                let mut curve: Option<Curve> = None;
                 let mut x: Option<Vec<u8>> = None;
                 let mut y: Option<Vec<u8>> = None;
 
+                // RSA specific
+                let mut n: Option<Vec<u8>> = None;
+                let mut e: Option<Vec<u8>> = None;
+
                 while let Some(key) = map.next_key()? {
-                    trace!("cose key {:?}", key);
+                    // See https://www.iana.org/assignments/cose/cose.xhtml#key-type-parameters
                     match key {
                         1 => {
                             if key_type.is_some() {
                                 return Err(SerdeError::duplicate_field("key_type"));
                             }
-                            let value: u64 = map.next_value()?;
+                            let value: i64 = map.next_value()?;
                             let val = COSEKeyTypeId::try_from(value).map_err(|_| {
                                 SerdeError::custom(format!("unsupported key_type {value}"))
                             })?;
                             key_type = Some(val);
-                            // key_type = Some(map.next_value()?);
-                        }
-                        -1 => {
-                            let key_type =
-                                key_type.ok_or_else(|| SerdeError::missing_field("key_type"))?;
-                            if key_type == COSEKeyTypeId::RSA {
-                                if y.is_some() {
-                                    return Err(SerdeError::duplicate_field("y"));
-                                }
-                                let value: ByteBuf = map.next_value()?;
-                                y = Some(value.to_vec());
-                            } else {
-                                if curve.is_some() {
-                                    return Err(SerdeError::duplicate_field("curve"));
-                                }
-                                let value: u64 = map.next_value()?;
-                                let val = Curve::try_from(value).map_err(|_| {
-                                    SerdeError::custom(format!("unsupported curve {value}"))
-                                })?;
-                                curve = Some(val);
-                                // curve = Some(map.next_value()?);
-                            }
-                        }
-                        -2 => {
-                            if x.is_some() {
-                                return Err(SerdeError::duplicate_field("x"));
-                            }
-                            let value: ByteBuf = map.next_value()?;
-                            x = Some(value.to_vec());
-                        }
-                        -3 => {
-                            if y.is_some() {
-                                return Err(SerdeError::duplicate_field("y"));
-                            }
-                            let value: ByteBuf = map.next_value()?;
-                            y = Some(value.to_vec());
                         }
                         3 => {
                             if alg.is_some() {
@@ -948,38 +937,77 @@ impl<'de> Deserialize<'de> for COSEKey {
                                 SerdeError::custom(format!("unsupported algorithm {value}"))
                             })?;
                             alg = Some(val);
-                            // alg = map.next_value()?;
                         }
-                        _ => {
-                            // This unknown field should raise an error, but
-                            // there is a couple of field I(baloo) do not understand
-                            // yet. I(baloo) chose to ignore silently the
-                            // error instead because of that
-                            let value: Value = map.next_value()?;
-                            trace!("cose unknown value {:?}:{:?}", key, value);
+                        -1 => match key_type {
+                            None => return Err(SerdeError::missing_field("key_type")),
+                            Some(COSEKeyTypeId::OKP) | Some(COSEKeyTypeId::EC2) => {
+                                if curve.is_some() {
+                                    return Err(SerdeError::duplicate_field("curve"));
+                                }
+                                let value: i64 = map.next_value()?;
+                                let val = Curve::try_from(value).map_err(|_| {
+                                    SerdeError::custom(format!("unsupported curve {value}"))
+                                })?;
+                                curve = Some(val);
+                            }
+                            Some(COSEKeyTypeId::RSA) => {
+                                if n.is_some() {
+                                    return Err(SerdeError::duplicate_field("n"));
+                                }
+                                let value: ByteBuf = map.next_value()?;
+                                n = Some(value.to_vec());
+                            }
+                        },
+                        -2 => match key_type {
+                            None => return Err(SerdeError::missing_field("key_type")),
+                            Some(COSEKeyTypeId::OKP) | Some(COSEKeyTypeId::EC2) => {
+                                if x.is_some() {
+                                    return Err(SerdeError::duplicate_field("x"));
+                                }
+                                let value: ByteBuf = map.next_value()?;
+                                x = Some(value.to_vec());
+                            }
+                            Some(COSEKeyTypeId::RSA) => {
+                                if e.is_some() {
+                                    return Err(SerdeError::duplicate_field("e"));
+                                }
+                                let value: ByteBuf = map.next_value()?;
+                                e = Some(value.to_vec());
+                            }
+                        },
+                        -3 if key_type == Some(COSEKeyTypeId::EC2) => {
+                            if y.is_some() {
+                                return Err(SerdeError::duplicate_field("y"));
+                            }
+                            let value: ByteBuf = map.next_value()?;
+                            y = Some(value.to_vec());
+                        }
+                        other => {
+                            return Err(SerdeError::custom(format!("unexpected field: {other}")));
                         }
                     };
                 }
 
-                let key_type = key_type.ok_or_else(|| SerdeError::missing_field("key_type"))?;
-                let x = x.ok_or_else(|| SerdeError::missing_field("x"))?;
-                let alg = alg.ok_or_else(|| SerdeError::missing_field("alg"))?;
+                let key_type = key_type.ok_or_else(|| SerdeError::missing_field("key_type (1)"))?;
+                let alg = alg.ok_or_else(|| SerdeError::missing_field("alg (3)"))?;
 
                 let res = match key_type {
                     COSEKeyTypeId::OKP => {
-                        let curve = curve.ok_or_else(|| SerdeError::missing_field("curve"))?;
+                        let curve = curve.ok_or_else(|| SerdeError::missing_field("curve (-1)"))?;
+                        let x = x.ok_or_else(|| SerdeError::missing_field("x (-2)"))?;
                         COSEKeyType::OKP(COSEOKPKey { curve, x })
                     }
                     COSEKeyTypeId::EC2 => {
-                        let curve = curve.ok_or_else(|| SerdeError::missing_field("curve"))?;
-                        let y = y.ok_or_else(|| SerdeError::missing_field("y"))?;
+                        let curve = curve.ok_or_else(|| SerdeError::missing_field("curve (-1)"))?;
+                        let x = x.ok_or_else(|| SerdeError::missing_field("x (-2)"))?;
+                        let y = y.ok_or_else(|| SerdeError::missing_field("y (-3)"))?;
                         COSEKeyType::EC2(COSEEC2Key { curve, x, y })
                     }
                     COSEKeyTypeId::RSA => {
-                        let e = y.ok_or_else(|| SerdeError::missing_field("y"))?;
-                        COSEKeyType::RSA(COSERSAKey { e, n: x })
+                        let n = n.ok_or_else(|| SerdeError::missing_field("n (-1)"))?;
+                        let e = e.ok_or_else(|| SerdeError::missing_field("e (-2)"))?;
+                        COSEKeyType::RSA(COSERSAKey { e, n })
                     }
-                    COSEKeyTypeId::Symmetric => COSEKeyType::Symmetric(COSESymmetricKey { key: x }),
                 };
                 Ok(COSEKey { alg, key: res })
             }
@@ -995,10 +1023,9 @@ impl Serialize for COSEKey {
         S: Serializer,
     {
         let map_len = match &self.key {
-            COSEKeyType::OKP(_) => 3,
+            COSEKeyType::OKP(_) => 4,
             COSEKeyType::EC2(_) => 5,
             COSEKeyType::RSA(_) => 4,
-            COSEKeyType::Symmetric(_) => 3,
         };
         let mut map = serializer.serialize_map(Some(map_len))?;
         match &self.key {
@@ -1006,25 +1033,20 @@ impl Serialize for COSEKey {
                 map.serialize_entry(&1, &COSEKeyTypeId::OKP)?;
                 map.serialize_entry(&3, &self.alg)?;
                 map.serialize_entry(&-1, &key.curve)?;
-                map.serialize_entry(&-2, &key.x)?;
+                map.serialize_entry(&-2, &serde_bytes::Bytes::new(&key.x))?;
             }
             COSEKeyType::EC2(key) => {
-                map.serialize_entry(&1, &(COSEKeyTypeId::EC2 as u8))?;
+                map.serialize_entry(&1, &COSEKeyTypeId::EC2)?;
                 map.serialize_entry(&3, &self.alg)?;
-                map.serialize_entry(&-1, &(key.curve as u8))?;
+                map.serialize_entry(&-1, &key.curve)?;
                 map.serialize_entry(&-2, &serde_bytes::Bytes::new(&key.x))?;
                 map.serialize_entry(&-3, &serde_bytes::Bytes::new(&key.y))?;
             }
             COSEKeyType::RSA(key) => {
                 map.serialize_entry(&1, &COSEKeyTypeId::RSA)?;
                 map.serialize_entry(&3, &self.alg)?;
-                map.serialize_entry(&-1, &key.n)?;
-                map.serialize_entry(&-2, &key.e)?;
-            }
-            COSEKeyType::Symmetric(key) => {
-                map.serialize_entry(&1, &COSEKeyTypeId::Symmetric)?;
-                map.serialize_entry(&3, &self.alg)?;
-                map.serialize_entry(&-1, &key.key)?;
+                map.serialize_entry(&-1, &serde_bytes::Bytes::new(&key.n))?;
+                map.serialize_entry(&-2, &serde_bytes::Bytes::new(&key.e))?;
             }
         }
 
@@ -1126,40 +1148,215 @@ pub fn parse_u2f_der_certificate(data: &[u8]) -> Result<U2FRegisterAnswer, Crypt
 
 #[cfg(all(test, not(feature = "crypto_dummy")))]
 mod test {
+    use std::convert::TryFrom;
+
+    #[cfg(feature = "crypto_nss")]
+    use super::backend::{ecdsa_p256_sha256_sign_raw, test_ecdsa_p256_sha256_verify_raw};
     use super::{
         backend::hmac_sha256, backend::sha256, backend::test_ecdh_p256_raw, COSEAlgorithm, COSEKey,
         Curve, PinProtocolImpl, PinUvAuth1, PinUvAuth2, PinUvAuthProtocol, PublicInputs,
         SharedSecret,
     };
-    use crate::crypto::{COSEEC2Key, COSEKeyType};
+    use crate::crypto::{COSEEC2Key, COSEKeyType, COSEOKPKey, COSERSAKey};
+    use crate::ctap2::attestation::AAGuid;
     use crate::ctap2::commands::client_pin::Pin;
+    use crate::ctap2::commands::get_info::{
+        tests::AAGUID_RAW, AuthenticatorOptions, AuthenticatorVersion,
+    };
     use crate::util::decode_hex;
+    use crate::AuthenticatorInfo;
     use serde_cbor::de::from_slice;
 
-    #[test]
-    fn test_serialize_key() {
-        let x = [
-            0xfc, 0x9e, 0xd3, 0x6f, 0x7c, 0x1a, 0xa9, 0x15, 0xce, 0x3e, 0xa1, 0x77, 0xf0, 0x75,
-            0x67, 0xf0, 0x7f, 0x16, 0xf9, 0x47, 0x9d, 0x95, 0xad, 0x8e, 0xd4, 0x97, 0x1d, 0x33,
-            0x05, 0xe3, 0x1a, 0x80,
-        ];
-        let y = [
-            0x50, 0xb7, 0x33, 0xaf, 0x8c, 0x0b, 0x0e, 0xe1, 0xda, 0x8d, 0xe0, 0xac, 0xf9, 0xd8,
-            0xe1, 0x32, 0x82, 0xf0, 0x63, 0xb7, 0xb3, 0x0d, 0x73, 0xd4, 0xd3, 0x2c, 0x9a, 0xad,
-            0x6d, 0xfa, 0x8b, 0x27,
-        ];
-        let serialized_key = [
-            0x04, 0xfc, 0x9e, 0xd3, 0x6f, 0x7c, 0x1a, 0xa9, 0x15, 0xce, 0x3e, 0xa1, 0x77, 0xf0,
-            0x75, 0x67, 0xf0, 0x7f, 0x16, 0xf9, 0x47, 0x9d, 0x95, 0xad, 0x8e, 0xd4, 0x97, 0x1d,
-            0x33, 0x05, 0xe3, 0x1a, 0x80, 0x50, 0xb7, 0x33, 0xaf, 0x8c, 0x0b, 0x0e, 0xe1, 0xda,
-            0x8d, 0xe0, 0xac, 0xf9, 0xd8, 0xe1, 0x32, 0x82, 0xf0, 0x63, 0xb7, 0xb3, 0x0d, 0x73,
-            0xd4, 0xd3, 0x2c, 0x9a, 0xad, 0x6d, 0xfa, 0x8b, 0x27,
-        ];
+    // Extracted from RFC 8410 Example 10.1
+    const SAMPLE_ED25519_KEY: &[u8] = &[
+        0x19, 0xbf, 0x44, 0x09, 0x69, 0x84, 0xcd, 0xfe, 0x85, 0x41, 0xba, 0xc1, 0x67, 0xdc, 0x3b,
+        0x96, 0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad, 0x70, 0x31,
+        0x66, 0xe1,
+    ];
 
-        let ec2_key = COSEEC2Key::from_sec1_uncompressed(Curve::SECP256R1, &serialized_key)
-            .expect("Failed to decode SEC 1 key");
-        assert_eq!(ec2_key.x, x);
-        assert_eq!(ec2_key.y, y);
+    const SAMPLE_P256_X: &[u8] = &[
+        0xfc, 0x9e, 0xd3, 0x6f, 0x7c, 0x1a, 0xa9, 0x15, 0xce, 0x3e, 0xa1, 0x77, 0xf0, 0x75, 0x67,
+        0xf0, 0x7f, 0x16, 0xf9, 0x47, 0x9d, 0x95, 0xad, 0x8e, 0xd4, 0x97, 0x1d, 0x33, 0x05, 0xe3,
+        0x1a, 0x80,
+    ];
+    const SAMPLE_P256_Y: &[u8] = &[
+        0x50, 0xb7, 0x33, 0xaf, 0x8c, 0x0b, 0x0e, 0xe1, 0xda, 0x8d, 0xe0, 0xac, 0xf9, 0xd8, 0xe1,
+        0x32, 0x82, 0xf0, 0x63, 0xb7, 0xb3, 0x0d, 0x73, 0xd4, 0xd3, 0x2c, 0x9a, 0xad, 0x6d, 0xfa,
+        0x8b, 0x27,
+    ];
+
+    const SAMPLE_RSA_MODULUS: &[u8] = &[
+        0xd4, 0xd2, 0x53, 0xed, 0x7a, 0x69, 0xb1, 0x84, 0xc9, 0xfb, 0x70, 0x30, 0x0c, 0x51, 0xb1,
+        0x8f, 0x89, 0x6c, 0xb1, 0x31, 0x6d, 0x87, 0xbe, 0xe1, 0xc7, 0xf7, 0xb0, 0x4f, 0xe7, 0x27,
+        0xa7, 0xb7, 0x7c, 0x55, 0x20, 0x37, 0xa8, 0xac, 0x40, 0xf4, 0xbc, 0x59, 0xc4, 0x92, 0x8f,
+        0x13, 0x5b, 0x5e, 0xa7, 0x18, 0x05, 0xcc, 0xd7, 0x9c, 0xfb, 0x88, 0x6c, 0xf1, 0xbc, 0x6b,
+        0x1b, 0x8d, 0xb7, 0x8d, 0x2d, 0xaa, 0xcb, 0xee, 0xdb, 0xab, 0x49, 0x36, 0x77, 0xe5, 0xd1,
+        0x84, 0xa1, 0x40, 0x3f, 0xf6, 0xf7, 0x98, 0x6c, 0xaa, 0x24, 0x48, 0x30, 0x44, 0xdc, 0x68,
+        0xbd, 0x9e, 0x74, 0x37, 0xaf, 0x27, 0x12, 0x90, 0x74, 0x0d, 0x9e, 0x3c, 0xa5, 0x3a, 0x1d,
+        0xb8, 0x54, 0x92, 0xd4, 0x6d, 0x1f, 0xf9, 0x39, 0xb8, 0x1d, 0x8a, 0x5e, 0xbe, 0x12, 0xbd,
+        0xe2, 0x9c, 0xf2, 0x5a, 0x48, 0x5d, 0x71, 0x2c, 0x71, 0x72, 0x6d, 0xd2, 0xcb, 0x37, 0xb1,
+        0xe6, 0x2f, 0x76, 0x43, 0xda, 0xca, 0x44, 0x30, 0x7b, 0x28, 0xe7, 0xe4, 0xec, 0xa9, 0xc9,
+        0x1a, 0x5f, 0xe5, 0x51, 0x03, 0x25, 0x60, 0x7c, 0x5a, 0x69, 0x12, 0x4d, 0x50, 0xfd, 0xb2,
+        0xb8, 0x6e, 0x13, 0xb2, 0x92, 0xda, 0x0e, 0x31, 0xc9, 0xf1, 0x9c, 0xde, 0x17, 0x63, 0xe4,
+        0xcb, 0xac, 0xd5, 0xee, 0x84, 0x06, 0xde, 0x67, 0x2d, 0xb8, 0xd2, 0xe1, 0x4b, 0xbb, 0x49,
+        0xea, 0x45, 0xd4, 0xa1, 0x7f, 0x46, 0xf2, 0xd6, 0x0c, 0x05, 0x9d, 0x1d, 0x1a, 0x99, 0x41,
+        0x20, 0x5e, 0x1a, 0xa4, 0xcc, 0x21, 0x44, 0x58, 0x8b, 0xcd, 0x98, 0xe4, 0x3d, 0x53, 0x20,
+        0xfc, 0xfc, 0x7b, 0x9f, 0x43, 0x35, 0xfb, 0x38, 0x37, 0x23, 0xd0, 0x76, 0xe3, 0x3d, 0x4f,
+        0x89, 0x9b, 0x89, 0x32, 0x81, 0x89, 0xed, 0x58, 0xc0, 0x80, 0x18, 0x83, 0x5b, 0xaf, 0x5a,
+        0xa5,
+    ];
+
+    #[test]
+    fn test_rsa_key_to_der_spki() {
+        // $ ascii2der | xxd -i
+        // SEQUENCE {
+        //   SEQUENCE {
+        //     # sha256WithRSAEncryption
+        //     OBJECT_IDENTIFIER { 1.2.840.113549.1.1.11 }
+        //     NULL {}
+        //   }
+        //   BIT_STRING {
+        //     `00`
+        //     SEQUENCE {
+        //       INTEGER { `00d4d253ed7a69b184c9fb70300c51b18f896cb1316d87bee1c7f7b04fe727a7b77c552037a8ac40f4bc59c4928f135b5ea71805ccd79cfb886cf1bc6b1b8db78d2daacbeedbab493677e5d184a1403ff6f7986caa24483044dc68bd9e7437af271290740d9e3ca53a1db85492d46d1ff939b81d8a5ebe12bde29cf25a485d712c71726dd2cb37b1e62f7643daca44307b28e7e4eca9c91a5fe5510325607c5a69124d50fdb2b86e13b292da0e31c9f19cde1763e4cbacd5ee8406de672db8d2e14bbb49ea45d4a17f46f2d60c059d1d1a9941205e1aa4cc2144588bcd98e43d5320fcfc7b9f4335fb383723d076e33d4f899b89328189ed58c08018835baf5aa5` }
+        //       INTEGER { 65537 }
+        //     }
+        //   }
+        // }
+        let expected: &[u8] = &[
+            0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d,
+            0x01, 0x01, 0x0b, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a,
+            0x02, 0x82, 0x01, 0x01, 0x00, 0xd4, 0xd2, 0x53, 0xed, 0x7a, 0x69, 0xb1, 0x84, 0xc9,
+            0xfb, 0x70, 0x30, 0x0c, 0x51, 0xb1, 0x8f, 0x89, 0x6c, 0xb1, 0x31, 0x6d, 0x87, 0xbe,
+            0xe1, 0xc7, 0xf7, 0xb0, 0x4f, 0xe7, 0x27, 0xa7, 0xb7, 0x7c, 0x55, 0x20, 0x37, 0xa8,
+            0xac, 0x40, 0xf4, 0xbc, 0x59, 0xc4, 0x92, 0x8f, 0x13, 0x5b, 0x5e, 0xa7, 0x18, 0x05,
+            0xcc, 0xd7, 0x9c, 0xfb, 0x88, 0x6c, 0xf1, 0xbc, 0x6b, 0x1b, 0x8d, 0xb7, 0x8d, 0x2d,
+            0xaa, 0xcb, 0xee, 0xdb, 0xab, 0x49, 0x36, 0x77, 0xe5, 0xd1, 0x84, 0xa1, 0x40, 0x3f,
+            0xf6, 0xf7, 0x98, 0x6c, 0xaa, 0x24, 0x48, 0x30, 0x44, 0xdc, 0x68, 0xbd, 0x9e, 0x74,
+            0x37, 0xaf, 0x27, 0x12, 0x90, 0x74, 0x0d, 0x9e, 0x3c, 0xa5, 0x3a, 0x1d, 0xb8, 0x54,
+            0x92, 0xd4, 0x6d, 0x1f, 0xf9, 0x39, 0xb8, 0x1d, 0x8a, 0x5e, 0xbe, 0x12, 0xbd, 0xe2,
+            0x9c, 0xf2, 0x5a, 0x48, 0x5d, 0x71, 0x2c, 0x71, 0x72, 0x6d, 0xd2, 0xcb, 0x37, 0xb1,
+            0xe6, 0x2f, 0x76, 0x43, 0xda, 0xca, 0x44, 0x30, 0x7b, 0x28, 0xe7, 0xe4, 0xec, 0xa9,
+            0xc9, 0x1a, 0x5f, 0xe5, 0x51, 0x03, 0x25, 0x60, 0x7c, 0x5a, 0x69, 0x12, 0x4d, 0x50,
+            0xfd, 0xb2, 0xb8, 0x6e, 0x13, 0xb2, 0x92, 0xda, 0x0e, 0x31, 0xc9, 0xf1, 0x9c, 0xde,
+            0x17, 0x63, 0xe4, 0xcb, 0xac, 0xd5, 0xee, 0x84, 0x06, 0xde, 0x67, 0x2d, 0xb8, 0xd2,
+            0xe1, 0x4b, 0xbb, 0x49, 0xea, 0x45, 0xd4, 0xa1, 0x7f, 0x46, 0xf2, 0xd6, 0x0c, 0x05,
+            0x9d, 0x1d, 0x1a, 0x99, 0x41, 0x20, 0x5e, 0x1a, 0xa4, 0xcc, 0x21, 0x44, 0x58, 0x8b,
+            0xcd, 0x98, 0xe4, 0x3d, 0x53, 0x20, 0xfc, 0xfc, 0x7b, 0x9f, 0x43, 0x35, 0xfb, 0x38,
+            0x37, 0x23, 0xd0, 0x76, 0xe3, 0x3d, 0x4f, 0x89, 0x9b, 0x89, 0x32, 0x81, 0x89, 0xed,
+            0x58, 0xc0, 0x80, 0x18, 0x83, 0x5b, 0xaf, 0x5a, 0xa5, 0x02, 0x03, 0x01, 0x00, 0x01,
+        ];
+        let rsa_key = COSERSAKey {
+            e: vec![1, 0, 1],
+            n: SAMPLE_RSA_MODULUS.to_vec(),
+        };
+        let cose_key: COSEKey = COSEKey {
+            alg: COSEAlgorithm::RS256,
+            key: COSEKeyType::RSA(rsa_key),
+        };
+        let actual = cose_key.der_spki().expect("Failed to serialize to SPKI");
+        assert_eq!(expected, &actual);
+    }
+
+    #[test]
+    fn test_rsa_key_to_cbor() {
+        let key = COSERSAKey {
+            e: vec![1, 0, 1],
+            n: SAMPLE_RSA_MODULUS.to_vec(),
+        };
+        let cose_key: COSEKey = COSEKey {
+            alg: COSEAlgorithm::RS256,
+            key: COSEKeyType::RSA(key),
+        };
+        let cose_key_cbor = serde_cbor::to_vec(&cose_key).expect("Failed to serialize key");
+        let actual = serde_cbor::from_slice(&cose_key_cbor).expect("Failed to deserialize key");
+        assert_eq!(cose_key, actual);
+    }
+
+    #[test]
+    fn test_ec2_key_to_der_spki() {
+        // $ ascii2der | xxd -i
+        // SEQUENCE {
+        //   SEQUENCE {
+        //     # ecPublicKey
+        //     OBJECT_IDENTIFIER { 1.2.840.10045.2.1 }
+        //     # secp256r1
+        //     OBJECT_IDENTIFIER { 1.2.840.10045.3.1.7 }
+        //   }
+        //   BIT_STRING { `00` `04fc9ed36f7c1aa915ce3ea177f07567f07f16f9479d95ad8ed4971d3305e31a8050b733af8c0b0ee1da8de0acf9d8e13282f063b7b30d73d4d32c9aad6dfa8b27` }
+        // }
+        let expected = [
+            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
+            0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04, 0xfc,
+            0x9e, 0xd3, 0x6f, 0x7c, 0x1a, 0xa9, 0x15, 0xce, 0x3e, 0xa1, 0x77, 0xf0, 0x75, 0x67,
+            0xf0, 0x7f, 0x16, 0xf9, 0x47, 0x9d, 0x95, 0xad, 0x8e, 0xd4, 0x97, 0x1d, 0x33, 0x05,
+            0xe3, 0x1a, 0x80, 0x50, 0xb7, 0x33, 0xaf, 0x8c, 0x0b, 0x0e, 0xe1, 0xda, 0x8d, 0xe0,
+            0xac, 0xf9, 0xd8, 0xe1, 0x32, 0x82, 0xf0, 0x63, 0xb7, 0xb3, 0x0d, 0x73, 0xd4, 0xd3,
+            0x2c, 0x9a, 0xad, 0x6d, 0xfa, 0x8b, 0x27,
+        ];
+        let ec2_key = COSEEC2Key {
+            curve: Curve::SECP256R1,
+            x: SAMPLE_P256_X.to_vec(),
+            y: SAMPLE_P256_Y.to_vec(),
+        };
+        let cose_key = COSEKey {
+            alg: COSEAlgorithm::EDDSA,
+            key: COSEKeyType::EC2(ec2_key),
+        };
+        let actual = cose_key.der_spki().expect("Failed to serialize key");
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_ec2_key_to_cbor() {
+        let ec2_key = COSEEC2Key {
+            curve: Curve::SECP256R1,
+            x: SAMPLE_P256_X.to_vec(),
+            y: SAMPLE_P256_Y.to_vec(),
+        };
+        let cose_key = COSEKey {
+            alg: COSEAlgorithm::EDDSA,
+            key: COSEKeyType::EC2(ec2_key),
+        };
+        let cose_key_cbor = serde_cbor::to_vec(&cose_key).expect("Failed to serialize key");
+        let actual = serde_cbor::from_slice(&cose_key_cbor).expect("Failed to deserialize key");
+        assert_eq!(cose_key, actual);
+    }
+
+    #[test]
+    fn test_okp_key_to_der_spki() {
+        // RFC 8410 Example 10.1
+        let expected = [
+            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00, 0x19, 0xbf,
+            0x44, 0x09, 0x69, 0x84, 0xcd, 0xfe, 0x85, 0x41, 0xba, 0xc1, 0x67, 0xdc, 0x3b, 0x96,
+            0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad, 0x70, 0x31,
+            0x66, 0xe1,
+        ];
+        let okp_key = COSEOKPKey {
+            curve: Curve::Ed25519,
+            x: SAMPLE_ED25519_KEY.to_vec(),
+        };
+        let cose_key = COSEKey {
+            alg: COSEAlgorithm::EDDSA,
+            key: COSEKeyType::OKP(okp_key),
+        };
+        let actual = cose_key.der_spki().expect("Failed to serialize key");
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_okp_key_to_cbor() {
+        let okp_key = COSEOKPKey {
+            curve: Curve::Ed25519,
+            x: SAMPLE_ED25519_KEY.to_vec(),
+        };
+        let cose_key = COSEKey {
+            alg: COSEAlgorithm::EDDSA,
+            key: COSEKeyType::OKP(okp_key),
+        };
+        let cose_key_cbor = serde_cbor::to_vec(&cose_key).expect("Failed to serialize key");
+        let actual = serde_cbor::from_slice(&cose_key_cbor).expect("Failed to deserialize key");
+        assert_eq!(cose_key, actual);
     }
 
     #[test]
@@ -1339,5 +1536,103 @@ mod test {
             .authenticate(&shared_secret, &new_pin_enc)
             .expect("HMAC-SHA256 failed");
         assert_eq!(pin_auth[0..16], expected_pin_auth);
+    }
+
+    #[test]
+    fn test_pin_protocol() {
+        let mut info = AuthenticatorInfo {
+            versions: vec![AuthenticatorVersion::U2F_V2, AuthenticatorVersion::FIDO_2_0],
+            extensions: vec![],
+            aaguid: AAGuid(AAGUID_RAW),
+            options: AuthenticatorOptions {
+                platform_device: false,
+                resident_key: true,
+                client_pin: Some(false),
+                user_presence: true,
+                ..Default::default()
+            },
+            max_msg_size: Some(1200),
+            pin_protocols: None,
+            ..Default::default()
+        };
+
+        // Valid pin_protocols
+        info.pin_protocols = Some(vec![1, 2]);
+        let pin = PinUvAuthProtocol::try_from(&info).unwrap();
+        assert_eq!(pin.id(), 1); // The one listed first
+
+        // Invalid pin_protocols
+        info.pin_protocols = Some(vec![0, 10]);
+        PinUvAuthProtocol::try_from(&info).unwrap_err();
+
+        info.pin_protocols = None;
+        // No PIN protocols. CTAP1 - not supported
+        info.versions = vec![AuthenticatorVersion::U2F_V2];
+        PinUvAuthProtocol::try_from(&info).unwrap_err();
+
+        // No PIN protocols. CTAP2.0 - Fallback to 1
+        info.versions = vec![AuthenticatorVersion::U2F_V2, AuthenticatorVersion::FIDO_2_0];
+        let pin = PinUvAuthProtocol::try_from(&info).unwrap();
+        assert_eq!(pin.id(), 1);
+
+        // No PIN protocols. CTAP2.1 - Fallback to 2
+        info.versions = vec![AuthenticatorVersion::FIDO_2_1];
+        let pin = PinUvAuthProtocol::try_from(&info).unwrap();
+        assert_eq!(pin.id(), 2);
+
+        // No PIN protocols. CTAP2.1_PRE - Fallback to 2
+        info.versions = vec![
+            AuthenticatorVersion::FIDO_2_0,
+            AuthenticatorVersion::FIDO_2_1_PRE,
+        ];
+        let pin = PinUvAuthProtocol::try_from(&info).unwrap();
+        assert_eq!(pin.id(), 2);
+    }
+
+    #[test]
+    #[cfg(feature = "crypto_nss")]
+    fn test_sign() {
+        let (good_private, good_public) =
+            COSEKey::generate(COSEAlgorithm::ES256).expect("could not generate a key pair");
+        let good_spki = match good_public.key {
+            COSEKeyType::EC2(ref x) => x.der_spki().expect("could not serialize public key"),
+            _ => unreachable!(),
+        };
+
+        let good_data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let good_signature =
+            ecdsa_p256_sha256_sign_raw(&good_private, &good_data).expect("could not sign");
+        let good_signature2 =
+            ecdsa_p256_sha256_sign_raw(&good_private, &good_data).expect("could not sign");
+
+        // Signing is randomized
+        assert_ne!(good_signature, good_signature2);
+
+        // Good signature verifies
+        assert!(test_ecdsa_p256_sha256_verify_raw(&good_spki, &good_signature, &good_data).is_ok());
+
+        // Wrong data does not verify
+        let other_data = vec![0, 0, 0, 0, 5, 6, 7, 8];
+        assert!(
+            test_ecdsa_p256_sha256_verify_raw(&good_spki, &good_signature, &other_data).is_err()
+        );
+
+        // Wrong signature does not verify
+        let other_signature =
+            ecdsa_p256_sha256_sign_raw(&good_private, &other_data).expect("could not sign");
+        assert!(
+            test_ecdsa_p256_sha256_verify_raw(&good_spki, &other_signature, &good_data).is_err()
+        );
+
+        // Wrong key does not verify
+        let (_, other_public) =
+            COSEKey::generate(COSEAlgorithm::ES256).expect("could not generate a key pair");
+        let other_spki = match other_public.key {
+            COSEKeyType::EC2(ref x) => x.der_spki().expect("could not serialize public key"),
+            _ => unreachable!(),
+        };
+        assert!(
+            test_ecdsa_p256_sha256_verify_raw(&other_spki, &good_signature, &good_data).is_err()
+        );
     }
 }

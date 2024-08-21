@@ -14,7 +14,7 @@ use objc::{
     runtime::{Class, Object, Sel, BOOL, NO, YES},
     sel, sel_impl,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 #[cfg(target_os = "macos")]
 #[link(name = "QuartzCore", kind = "framework")]
@@ -63,8 +63,8 @@ impl super::Surface {
         Self {
             view,
             render_layer: Mutex::new(layer),
-            swapchain_format: None,
-            extent: wgt::Extent3d::default(),
+            swapchain_format: RwLock::new(None),
+            extent: RwLock::new(wgt::Extent3d::default()),
             main_thread_id: thread::current().id(),
             present_with_transaction: false,
         }
@@ -169,17 +169,19 @@ impl super::Surface {
     }
 }
 
-impl crate::Surface<super::Api> for super::Surface {
+impl crate::Surface for super::Surface {
+    type A = super::Api;
+
     unsafe fn configure(
-        &mut self,
+        &self,
         device: &super::Device,
         config: &crate::SurfaceConfiguration,
     ) -> Result<(), crate::SurfaceError> {
-        log::info!("build swapchain {:?}", config);
+        log::debug!("build swapchain {:?}", config);
 
         let caps = &device.shared.private_caps;
-        self.swapchain_format = Some(config.format);
-        self.extent = config.extent;
+        *self.swapchain_format.write() = Some(config.format);
+        *self.extent.write() = config.extent;
 
         let render_layer = self.render_layer.lock();
         let framebuffer_only = config.usage == crate::TextureUses::COLOR_TARGET;
@@ -221,7 +223,7 @@ impl crate::Surface<super::Api> for super::Surface {
         }
 
         // this gets ignored on iOS for certain OS/device combinations (iphone5s iOS 10.3)
-        render_layer.set_maximum_drawable_count(config.swap_chain_size as _);
+        render_layer.set_maximum_drawable_count(config.maximum_frame_latency as u64 + 1);
         render_layer.set_drawable_size(drawable_size);
         if caps.can_set_next_drawable_timeout {
             let () = msg_send![*render_layer, setAllowsNextDrawableTimeout:false];
@@ -233,13 +235,14 @@ impl crate::Surface<super::Api> for super::Surface {
         Ok(())
     }
 
-    unsafe fn unconfigure(&mut self, _device: &super::Device) {
-        self.swapchain_format = None;
+    unsafe fn unconfigure(&self, _device: &super::Device) {
+        *self.swapchain_format.write() = None;
     }
 
     unsafe fn acquire_texture(
-        &mut self,
+        &self,
         _timeout_ms: Option<std::time::Duration>, //TODO
+        _fence: &super::Fence,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let render_layer = self.render_layer.lock();
         let (drawable, texture) = match autoreleasepool(|| {
@@ -251,16 +254,18 @@ impl crate::Surface<super::Api> for super::Surface {
             None => return Ok(None),
         };
 
+        let swapchain_format = self.swapchain_format.read().unwrap();
+        let extent = self.extent.read();
         let suf_texture = super::SurfaceTexture {
             texture: super::Texture {
                 raw: texture,
-                format: self.swapchain_format.unwrap(),
+                format: swapchain_format,
                 raw_type: metal::MTLTextureType::D2,
                 array_layers: 1,
                 mip_levels: 1,
                 copy_size: crate::CopyExtent {
-                    width: self.extent.width,
-                    height: self.extent.height,
+                    width: extent.width,
+                    height: extent.height,
                     depth: 1,
                 },
             },
@@ -274,5 +279,5 @@ impl crate::Surface<super::Api> for super::Surface {
         }))
     }
 
-    unsafe fn discard_texture(&mut self, _texture: super::SurfaceTexture) {}
+    unsafe fn discard_texture(&self, _texture: super::SurfaceTexture) {}
 }

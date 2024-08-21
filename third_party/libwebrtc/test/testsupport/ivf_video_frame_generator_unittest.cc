@@ -146,7 +146,7 @@ class IvfVideoFrameGeneratorTest : public ::testing::Test {
       const uint32_t timestamp =
           last_frame_timestamp +
           kVideoPayloadTypeFrequency / codec_settings.maxFramerate;
-      frame.set_timestamp(timestamp);
+      frame.set_rtp_timestamp(timestamp);
 
       last_frame_timestamp = timestamp;
 
@@ -163,6 +163,12 @@ class IvfVideoFrameGeneratorTest : public ::testing::Test {
 };
 
 }  // namespace
+
+TEST_F(IvfVideoFrameGeneratorTest, DoesNotKnowFps) {
+  CreateTestVideoFile(VideoCodecType::kVideoCodecVP8, VP8Encoder::Create());
+  IvfVideoFrameGenerator generator(file_name_);
+  EXPECT_EQ(generator.fps(), absl::nullopt);
+}
 
 TEST_F(IvfVideoFrameGeneratorTest, Vp8) {
   CreateTestVideoFile(VideoCodecType::kVideoCodecVP8, VP8Encoder::Create());
@@ -196,9 +202,7 @@ TEST_F(IvfVideoFrameGeneratorTest, Vp9) {
 
 #if defined(WEBRTC_USE_H264)
 TEST_F(IvfVideoFrameGeneratorTest, H264) {
-  CreateTestVideoFile(
-      VideoCodecType::kVideoCodecH264,
-      H264Encoder::Create(cricket::VideoCodec(cricket::kH264CodecName)));
+  CreateTestVideoFile(VideoCodecType::kVideoCodecH264, H264Encoder::Create());
   IvfVideoFrameGenerator generator(file_name_);
   for (size_t i = 0; i < video_frames_.size(); ++i) {
     auto& expected_frame = video_frames_[i];

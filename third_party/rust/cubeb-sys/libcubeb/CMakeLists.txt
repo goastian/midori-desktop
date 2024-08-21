@@ -19,8 +19,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(USE_SANITIZERS)
   if(NOT COMMAND add_sanitizers)
@@ -71,12 +72,13 @@ if(NOT MSVC)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti")
 else()
-  string(REPLACE "/GR" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable RTTI
-  string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable Exceptions
+  string(REPLACE "/GR" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}") # Disable RTTI
+  string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}") # Disable Exceptions
 endif()
 
 add_library(cubeb
   src/cubeb.c
+  src/cubeb_audio_dump.cpp
   src/cubeb_mixer.cpp
   src/cubeb_resampler.cpp
   src/cubeb_log.cpp
@@ -169,6 +171,10 @@ if(LAZY_LOAD_LIBS)
 
   if(USE_PULSE OR USE_ALSA OR USE_JACK OR USE_SNDIO OR USE_AAUDIO)
     target_link_libraries(cubeb PRIVATE ${CMAKE_DL_LIBS})
+
+    if(ANDROID)
+      target_compile_definitions(cubeb PRIVATE __ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__)
+    endif()
   endif()
 
 else()
@@ -259,7 +265,7 @@ if(USE_WASAPI)
   target_sources(cubeb PRIVATE
     src/cubeb_wasapi.cpp)
   target_compile_definitions(cubeb PRIVATE USE_WASAPI)
-  target_link_libraries(cubeb PRIVATE avrt ole32 ksuser)
+  target_link_libraries(cubeb PRIVATE ole32 ksuser)
 endif()
 
 check_include_files("windows.h;mmsystem.h" USE_WINMM)
@@ -273,7 +279,7 @@ endif()
 check_include_files(SLES/OpenSLES.h USE_OPENSL)
 if(USE_OPENSL)
   target_sources(cubeb PRIVATE
-    src/cubeb_opensl.c
+    src/cubeb_opensl.cpp
     src/cubeb-jni.cpp)
   target_compile_definitions(cubeb PRIVATE USE_OPENSL)
   target_link_libraries(cubeb PRIVATE OpenSLES)
@@ -399,6 +405,9 @@ if(BUILD_TESTS)
   add_sanitizers(test_resampler)
 
   cubeb_add_test(duplex)
+  cubeb_add_test(logging)
+  cubeb_add_test(triple_buffer)
+  cubeb_add_test(audio_dump)
 
   if (USE_WASAPI)
     cubeb_add_test(overload_callback)
@@ -421,14 +430,19 @@ if(BUILD_TOOLS)
   install(TARGETS cubeb-test)
 endif()
 
+if(NOT CLANG_FORMAT_BINARY)
+set(CLANG_FORMAT_BINARY clang-format)
+endif()
+
 add_custom_target(clang-format-check
   find
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/test
     -type f (-name "*.cpp" -o -name "*.c" -o -name "*.h")
     -not -path "*/subprojects/speex/*"
     -print0
-  | xargs -0 clang-format -Werror -n
+  | xargs -0 ${CLANG_FORMAT_BINARY} -Werror -n
   COMMENT "Check formatting with clang-format"
   VERBATIM)
 

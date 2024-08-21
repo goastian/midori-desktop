@@ -1,34 +1,39 @@
-From: Michael Froman <mfroman@mozilla.com>
-Date: Wed, 12 Apr 2023 16:03:00 +0000
-Subject: Bug 1826428 - remove libwebrtc's jvm_android.cc from build
- r=ng,webrtc-reviewers
+From: Byron Campen <docfaraday@gmail.com>
+Date: Thu, 20 Jul 2023 14:24:00 +0000
+Subject: Bug 1838080: Work around a race in
+ ChannelSendFrameTransformerDelegate. r=pehrsons,webrtc-reviewers
 
-Based on info from John Lin and previous try runs, we're almost
-certainly not using this.  Let's try removing it from the build
-and landing it.  If no problems emerge, we'll be able to remove
-our custom changes to upstream code in jvm_android.cc.
+This variable can be null when a ChannelSendFrameTransformerDelegate is in use,
+because that does an async dispatch to the encoder queue in the handling for
+transformed frames. If this is unset while that dispatch is in flight, we
+nullptr crash.
 
-Differential Revision: https://phabricator.services.mozilla.com/D174793
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/dca1b97525487ae57d43ced1ebdb4a2d9c9dae89
+Differential Revision: https://phabricator.services.mozilla.com/D180735
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/56555ecee7f36ae73abff1cbbd06807c2b65fc19
 ---
- modules/utility/BUILD.gn | 4 ++++
- 1 file changed, 4 insertions(+)
+ audio/channel_send.cc | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
 
-diff --git a/modules/utility/BUILD.gn b/modules/utility/BUILD.gn
-index 3fe4ca8c92..46bca17f02 100644
---- a/modules/utility/BUILD.gn
-+++ b/modules/utility/BUILD.gn
-@@ -47,6 +47,10 @@ rtc_source_set("utility") {
-       "../../rtc_base:platform_thread",
-       "../../rtc_base/system:arch",
-     ]
-+
-+    if (build_with_mozilla) {
-+      sources -= [ "source/jvm_android.cc" ]
+diff --git a/audio/channel_send.cc b/audio/channel_send.cc
+index 1a39be95d1..6d7b515de7 100644
+--- a/audio/channel_send.cc
++++ b/audio/channel_send.cc
+@@ -285,12 +285,16 @@ class RtpPacketSenderProxy : public RtpPacketSender {
+   void EnqueuePackets(
+       std::vector<std::unique_ptr<RtpPacketToSend>> packets) override {
+     MutexLock lock(&mutex_);
+-    rtp_packet_pacer_->EnqueuePackets(std::move(packets));
++    if (rtp_packet_pacer_) {
++      rtp_packet_pacer_->EnqueuePackets(std::move(packets));
 +    }
    }
- }
  
--- 
-2.34.1
-
+   void RemovePacketsForSsrc(uint32_t ssrc) override {
+     MutexLock lock(&mutex_);
+-    rtp_packet_pacer_->RemovePacketsForSsrc(ssrc);
++    if (rtp_packet_pacer_) {
++      rtp_packet_pacer_->RemovePacketsForSsrc(ssrc);
++    }
+   }
+ 
+  private:

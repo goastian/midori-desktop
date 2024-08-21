@@ -18,6 +18,12 @@ rtc_library("bitrate_settings") {
   absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
 
+rtc_library("bandwidth_estimation_settings") {
+  visibility = [ "*" ]
+  sources = [ "bandwidth_estimation_settings.h" ]
+  deps = [ "../../rtc_base/system:rtc_export" ]
+}
+
 rtc_source_set("enums") {
   visibility = [ "*" ]
   sources = [ "enums.h" ]
@@ -53,6 +59,7 @@ rtc_library("field_trial_based_config") {
   ]
   deps = [
     "../../api:field_trials_registry",
+    "../../rtc_base/system:rtc_export",
     "../../system_wrappers:field_trial",
   ]
   absl_deps = [ "//third_party/abseil-cpp/absl/strings" ]
@@ -87,6 +94,7 @@ rtc_library("goog_cc") {
 rtc_source_set("sctp_transport_factory_interface") {
   visibility = [ "*" ]
   sources = [ "sctp_transport_factory_interface.h" ]
+  deps = [ "../../api/environment" ]
 }
 
 rtc_source_set("stun_types") {
@@ -157,6 +165,7 @@ if (rtc_include_tests) {
 
 if (rtc_include_tests) {
   rtc_source_set("mock_network_control") {
+    visibility = [ "*" ]
     testonly = true
     sources = [ "test/mock_network_control.h" ]
     deps = [

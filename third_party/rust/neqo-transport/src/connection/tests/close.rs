@@ -4,19 +4,23 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use super::super::{Connection, Output, State};
-use super::{connect, connect_force_idle, default_client, default_server, send_something};
-use crate::tparams::{self, TransportParameter};
-use crate::{AppError, ConnectionError, Error, ERROR_APPLICATION_CLOSE};
-
-use neqo_common::Datagram;
 use std::time::Duration;
-use test_fixture::{self, addr, now};
+
+use test_fixture::{datagram, now};
+
+use super::{
+    super::{Connection, Output, State},
+    connect, connect_force_idle, default_client, default_server, send_something,
+};
+use crate::{
+    tparams::{self, TransportParameter},
+    AppError, CloseReason, Error, ERROR_APPLICATION_CLOSE,
+};
 
 fn assert_draining(c: &Connection, expected: &Error) {
     assert!(c.state().closed());
     if let State::Draining {
-        error: ConnectionError::Transport(error),
+        error: CloseReason::Transport(error),
         ..
     } = c.state()
     {
@@ -36,9 +40,16 @@ fn connection_close() {
 
     client.close(now, 42, "");
 
+    let stats_before = client.stats().frame_tx;
     let out = client.process(None, now);
+    let stats_after = client.stats().frame_tx;
+    assert_eq!(
+        stats_after.connection_close,
+        stats_before.connection_close + 1
+    );
+    assert_eq!(stats_after.ack, stats_before.ack + 1);
 
-    server.process_input(out.dgram().unwrap(), now);
+    server.process_input(&out.dgram().unwrap(), now);
     assert_draining(&server, &Error::PeerApplicationError(42));
 }
 
@@ -53,9 +64,16 @@ fn connection_close_with_long_reason_string() {
     let long_reason = String::from_utf8([0x61; 2048].to_vec()).unwrap();
     client.close(now, 42, long_reason);
 
+    let stats_before = client.stats().frame_tx;
     let out = client.process(None, now);
+    let stats_after = client.stats().frame_tx;
+    assert_eq!(
+        stats_after.connection_close,
+        stats_before.connection_close + 1
+    );
+    assert_eq!(stats_after.ack, stats_before.ack + 1);
 
-    server.process_input(out.dgram().unwrap(), now);
+    server.process_input(&out.dgram().unwrap(), now);
     assert_draining(&server, &Error::PeerApplicationError(42));
 }
 
@@ -68,7 +86,7 @@ fn early_application_close() {
     // One flight each.
     let dgram = client.process(None, now()).dgram();
     assert!(dgram.is_some());
-    let dgram = server.process(dgram, now()).dgram();
+    let dgram = server.process(dgram.as_ref(), now()).dgram();
     assert!(dgram.is_some());
 
     server.close(now(), 77, String::new());
@@ -76,7 +94,7 @@ fn early_application_close() {
     let dgram = server.process(None, now()).dgram();
     assert!(dgram.is_some());
 
-    client.process_input(dgram.unwrap(), now());
+    client.process_input(&dgram.unwrap(), now());
     assert_draining(&client, &Error::PeerError(ERROR_APPLICATION_CLOSE));
 }
 
@@ -93,13 +111,13 @@ fn bad_tls_version() {
 
     let dgram = client.process(None, now()).dgram();
     assert!(dgram.is_some());
-    let dgram = server.process(dgram, now()).dgram();
+    let dgram = server.process(dgram.as_ref(), now()).dgram();
     assert_eq!(
         *server.state(),
-        State::Closed(ConnectionError::Transport(Error::ProtocolViolation))
+        State::Closed(CloseReason::Transport(Error::ProtocolViolation))
     );
     assert!(dgram.is_some());
-    client.process_input(dgram.unwrap(), now());
+    client.process_input(&dgram.unwrap(), now());
     assert_draining(&client, &Error::PeerError(Error::ProtocolViolation.code()));
 }
 
@@ -116,11 +134,11 @@ fn closing_timers_interation() {
     // We're going to induce time-based loss recovery so that timer is set.
     let _p1 = send_something(&mut client, now);
     let p2 = send_something(&mut client, now);
-    let ack = server.process(Some(p2), now).dgram();
+    let ack = server.process(Some(&p2), now).dgram();
     assert!(ack.is_some()); // This is an ACK.
 
     // After processing the ACK, we should be on the loss recovery timer.
-    let cb = client.process(ack, now).callback();
+    let cb = client.process(ack.as_ref(), now).callback();
     assert_ne!(cb, Duration::from_secs(0));
     now += cb;
 
@@ -150,10 +168,9 @@ fn closing_and_draining() {
     assert!(client_close.is_some());
     let client_close_timer = client.process(None, now()).callback();
     assert_ne!(client_close_timer, Duration::from_secs(0));
-
     // The client will spit out the same packet in response to anything it receives.
     let p3 = send_something(&mut server, now());
-    let client_close2 = client.process(Some(p3), now()).dgram();
+    let client_close2 = client.process(Some(&p3), now()).dgram();
     assert_eq!(
         client_close.as_ref().unwrap().len(),
         client_close2.as_ref().unwrap().len()
@@ -164,25 +181,25 @@ fn closing_and_draining() {
     assert_eq!(end, Output::None);
     assert_eq!(
         *client.state(),
-        State::Closed(ConnectionError::Application(APP_ERROR))
+        State::Closed(CloseReason::Application(APP_ERROR))
     );
 
     // When the server receives the close, it too should generate CONNECTION_CLOSE.
-    let server_close = server.process(client_close, now()).dgram();
+    let server_close = server.process(client_close.as_ref(), now()).dgram();
     assert!(server.state().closed());
     assert!(server_close.is_some());
     // .. but it ignores any further close packets.
-    let server_close_timer = server.process(client_close2, now()).callback();
+    let server_close_timer = server.process(client_close2.as_ref(), now()).callback();
     assert_ne!(server_close_timer, Duration::from_secs(0));
     // Even a legitimate packet without a close in it.
-    let server_close_timer2 = server.process(Some(p1), now()).callback();
+    let server_close_timer2 = server.process(Some(&p1), now()).callback();
     assert_eq!(server_close_timer, server_close_timer2);
 
     let end = server.process(None, now() + server_close_timer);
     assert_eq!(end, Output::None);
     assert_eq!(
         *server.state(),
-        State::Closed(ConnectionError::Transport(Error::PeerApplicationError(
+        State::Closed(CloseReason::Transport(Error::PeerApplicationError(
             APP_ERROR
         )))
     );
@@ -201,6 +218,6 @@ fn stateless_reset_client() {
         .unwrap();
     connect_force_idle(&mut client, &mut server);
 
-    client.process_input(Datagram::new(addr(), addr(), vec![77; 21]), now());
+    client.process_input(&datagram(vec![77; 21]), now());
     assert_draining(&client, &Error::StatelessReset);
 }

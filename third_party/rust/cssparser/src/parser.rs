@@ -39,6 +39,28 @@ impl ParserState {
     }
 }
 
+/// When parsing until a given token, sometimes the caller knows that parsing is going to restart
+/// at some earlier point, and consuming until we find a top level delimiter is just wasted work.
+///
+/// In that case, callers can pass ParseUntilErrorBehavior::Stop to avoid doing all that wasted
+/// work.
+///
+/// This is important for things like CSS nesting, where something like:
+///
+///   foo:is(..) {
+///     ...
+///   }
+///
+/// Would need to scan the whole {} block to find a semicolon, only for parsing getting restarted
+/// as a qualified rule later.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ParseUntilErrorBehavior {
+    /// Consume until we see the relevant delimiter or the end of the stream.
+    Consume,
+    /// Eagerly error.
+    Stop,
+}
+
 /// Details about a `BasicParseError`
 #[derive(Clone, Debug, PartialEq)]
 pub enum BasicParseErrorKind<'i> {
@@ -94,18 +116,30 @@ impl<'i, T> From<BasicParseError<'i>> for ParseError<'i, T> {
 impl SourceLocation {
     /// Create a new BasicParseError at this location for an unexpected token
     #[inline]
-    pub fn new_basic_unexpected_token_error<'i>(self, token: Token<'i>) -> BasicParseError<'i> {
+    pub fn new_basic_unexpected_token_error(self, token: Token<'_>) -> BasicParseError<'_> {
+        self.new_basic_error(BasicParseErrorKind::UnexpectedToken(token))
+    }
+
+    /// Create a new BasicParseError at this location
+    #[inline]
+    pub fn new_basic_error(self, kind: BasicParseErrorKind<'_>) -> BasicParseError<'_> {
         BasicParseError {
-            kind: BasicParseErrorKind::UnexpectedToken(token),
+            kind,
             location: self,
         }
     }
 
     /// Create a new ParseError at this location for an unexpected token
     #[inline]
-    pub fn new_unexpected_token_error<'i, E>(self, token: Token<'i>) -> ParseError<'i, E> {
+    pub fn new_unexpected_token_error<E>(self, token: Token<'_>) -> ParseError<'_, E> {
+        self.new_error(BasicParseErrorKind::UnexpectedToken(token))
+    }
+
+    /// Create a new basic ParseError at the current location
+    #[inline]
+    pub fn new_error<E>(self, kind: BasicParseErrorKind<'_>) -> ParseError<'_, E> {
         ParseError {
-            kind: ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(token)),
+            kind: ParseErrorKind::Basic(kind),
             location: self,
         }
     }
@@ -213,15 +247,6 @@ impl<'i> ParserInput<'i> {
         }
     }
 
-    /// Create a new input for a parser.  Line numbers in locations
-    /// are offset by the given value.
-    pub fn new_with_line_number_offset(input: &'i str, first_line_number: u32) -> ParserInput<'i> {
-        ParserInput {
-            tokenizer: Tokenizer::with_first_line_number(input, first_line_number),
-            cached_token: None,
-        }
-    }
-
     #[inline]
     fn cached_token_ref(&self) -> &Token<'i> {
         &self.cached_token.as_ref().unwrap().token
@@ -322,16 +347,22 @@ impl Delimiters {
     }
 
     #[inline]
-    fn from_byte(byte: Option<u8>) -> Delimiters {
+    pub(crate) fn from_byte(byte: Option<u8>) -> Delimiters {
+        const TABLE: [Delimiters; 256] = {
+            let mut table = [Delimiter::None; 256];
+            table[b';' as usize] = Delimiter::Semicolon;
+            table[b'!' as usize] = Delimiter::Bang;
+            table[b',' as usize] = Delimiter::Comma;
+            table[b'{' as usize] = Delimiter::CurlyBracketBlock;
+            table[b'}' as usize] = ClosingDelimiter::CloseCurlyBracket;
+            table[b']' as usize] = ClosingDelimiter::CloseSquareBracket;
+            table[b')' as usize] = ClosingDelimiter::CloseParenthesis;
+            table
+        };
+
         match byte {
-            Some(b';') => Delimiter::Semicolon,
-            Some(b'!') => Delimiter::Bang,
-            Some(b',') => Delimiter::Comma,
-            Some(b'{') => Delimiter::CurlyBracketBlock,
-            Some(b'}') => ClosingDelimiter::CloseCurlyBracket,
-            Some(b']') => ClosingDelimiter::CloseSquareBracket,
-            Some(b')') => ClosingDelimiter::CloseParenthesis,
-            _ => Delimiter::None,
+            None => Delimiter::None,
+            Some(b) => TABLE[b as usize],
         }
     }
 }
@@ -356,7 +387,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     #[inline]
     pub fn new(input: &'t mut ParserInput<'i>) -> Parser<'i, 't> {
         Parser {
-            input: input,
+            input,
             at_start_of: None,
             stop_before: Delimiter::None,
         }
@@ -431,19 +462,13 @@ impl<'i: 't, 't> Parser<'i, 't> {
     /// Create a new BasicParseError at the current location
     #[inline]
     pub fn new_basic_error(&self, kind: BasicParseErrorKind<'i>) -> BasicParseError<'i> {
-        BasicParseError {
-            kind,
-            location: self.current_source_location(),
-        }
+        self.current_source_location().new_basic_error(kind)
     }
 
     /// Create a new basic ParseError at the current location
     #[inline]
     pub fn new_error<E>(&self, kind: BasicParseErrorKind<'i>) -> ParseError<'i, E> {
-        ParseError {
-            kind: ParseErrorKind::Basic(kind),
-            location: self.current_source_location(),
-        }
+        self.current_source_location().new_error(kind)
     }
 
     /// Create a new custom BasicParseError at the current location
@@ -587,6 +612,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     /// See the `Parser::parse_nested_block` method to parse the content of functions or blocks.
     ///
     /// This only returns a closing token when it is unmatched (and therefore an error).
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<&Token<'i>, BasicParseError<'i>> {
         self.skip_whitespace();
         self.next_including_whitespace_and_comments()
@@ -633,9 +659,8 @@ impl<'i: 't, 't> Parser<'i, 't> {
         let token = if using_cached_token {
             let cached_token = self.input.cached_token.as_ref().unwrap();
             self.input.tokenizer.reset(&cached_token.end_state);
-            match cached_token.token {
-                Token::Function(ref name) => self.input.tokenizer.see_function(name),
-                _ => {}
+            if let Token::Function(ref name) = cached_token.token {
+                self.input.tokenizer.see_function(name)
             }
             &cached_token.token
         } else {
@@ -659,7 +684,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     }
 
     /// Have the given closure parse something, then check the the input is exhausted.
-    /// The result is overridden to `Err(())` if some input remains.
+    /// The result is overridden to an `Err(..)` if some input remains.
     ///
     /// This can help tell e.g. `color: green;` from `color: green 4px;`
     #[inline]
@@ -680,7 +705,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     ///
     /// Successful results are accumulated in a vector.
     ///
-    /// This method returns `Err(())` the first time that a closure call does,
+    /// This method returns an`Err(..)` the first time that a closure call does,
     /// or if a closure call leaves some input before the next comma or the end
     /// of the input.
     #[inline]
@@ -729,7 +754,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
             match self.parse_until_before(Delimiter::Comma, &mut parse_one) {
                 Ok(v) => values.push(v),
                 Err(e) if !ignore_errors => return Err(e),
-                Err(_) => {},
+                Err(_) => {}
             }
             match self.next() {
                 Err(_) => return Ok(values),
@@ -749,7 +774,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     /// The given closure is called with a "delimited" parser
     /// that stops at the end of the block or function (at the matching closing token).
     ///
-    /// The result is overridden to `Err(())` if the closure leaves some input before that point.
+    /// The result is overridden to an `Err(..)` if the closure leaves some input before that point.
     #[inline]
     pub fn parse_nested_block<F, T, E>(&mut self, parse: F) -> Result<T, ParseError<'i, E>>
     where
@@ -765,7 +790,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     /// that stops before the first character at this block/function nesting level
     /// that matches the given set of delimiters, or at the end of the input.
     ///
-    /// The result is overridden to `Err(())` if the closure leaves some input before that point.
+    /// The result is overridden to an `Err(..)` if the closure leaves some input before that point.
     #[inline]
     pub fn parse_until_before<F, T, E>(
         &mut self,
@@ -775,7 +800,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     where
         F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
     {
-        parse_until_before(self, delimiters, parse)
+        parse_until_before(self, delimiters, ParseUntilErrorBehavior::Consume, parse)
     }
 
     /// Like `parse_until_before`, but also consume the delimiter token.
@@ -792,7 +817,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     where
         F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
     {
-        parse_until_after(self, delimiters, parse)
+        parse_until_after(self, delimiters, ParseUntilErrorBehavior::Consume, parse)
     }
 
     /// Parse a <whitespace-token> and return its value.
@@ -816,7 +841,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     /// expect_ident, but clone the CowRcStr
     #[inline]
     pub fn expect_ident_cloned(&mut self) -> Result<CowRcStr<'i>, BasicParseError<'i>> {
-        self.expect_ident().map(|s| s.clone())
+        self.expect_ident().cloned()
     }
 
     /// Parse a <ident-token> whose unescaped value is an ASCII-insensitive match for the given value.
@@ -841,7 +866,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
     /// expect_string, but clone the CowRcStr
     #[inline]
     pub fn expect_string_cloned(&mut self) -> Result<CowRcStr<'i>, BasicParseError<'i>> {
-        self.expect_string().map(|s| s.clone())
+        self.expect_string().cloned()
     }
 
     /// Parse either a <ident-token> or a <string-token>, and return the unescaped value.
@@ -860,7 +885,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
             Token::UnquotedUrl(ref value) => Ok(value.clone()),
             Token::Function(ref name) if name.eq_ignore_ascii_case("url") => {
                 self.parse_nested_block(|input| {
-                    input.expect_string().map_err(Into::into).map(|s| s.clone())
+                    input.expect_string().map_err(Into::into).cloned()
                 })
                 .map_err(ParseError::<()>::basic)
             }
@@ -875,7 +900,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
             Token::QuotedString(ref value) => Ok(value.clone()),
             Token::Function(ref name) if name.eq_ignore_ascii_case("url") => {
                 self.parse_nested_block(|input| {
-                    input.expect_string().map_err(Into::into).map(|s| s.clone())
+                    input.expect_string().map_err(Into::into).cloned()
                 })
                 .map_err(ParseError::<()>::basic)
             }
@@ -1022,6 +1047,7 @@ impl<'i: 't, 't> Parser<'i, 't> {
 pub fn parse_until_before<'i: 't, 't, F, T, E>(
     parser: &mut Parser<'i, 't>,
     delimiters: Delimiters,
+    error_behavior: ParseUntilErrorBehavior,
     parse: F,
 ) -> Result<T, ParseError<'i, E>>
 where
@@ -1037,6 +1063,9 @@ where
             stop_before: delimiters,
         };
         result = delimited_parser.parse_entirely(parse);
+        if error_behavior == ParseUntilErrorBehavior::Stop && result.is_err() {
+            return result;
+        }
         if let Some(block_type) = delimited_parser.at_start_of {
             consume_until_end_of_block(block_type, &mut delimited_parser.input.tokenizer);
         }
@@ -1060,12 +1089,16 @@ where
 pub fn parse_until_after<'i: 't, 't, F, T, E>(
     parser: &mut Parser<'i, 't>,
     delimiters: Delimiters,
+    error_behavior: ParseUntilErrorBehavior,
     parse: F,
 ) -> Result<T, ParseError<'i, E>>
 where
     F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
 {
-    let result = parser.parse_until_before(delimiters, parse);
+    let result = parse_until_before(parser, delimiters, error_behavior, parse);
+    if error_behavior == ParseUntilErrorBehavior::Stop && result.is_err() {
+        return result;
+    }
     let next_byte = parser.input.tokenizer.next_byte();
     if next_byte.is_some()
         && !parser

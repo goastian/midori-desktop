@@ -4,64 +4,86 @@
 class InternalError(Exception):
     pass
 
-class RustCallStatus(ctypes.Structure):
+class _UniffiRustCallStatus(ctypes.Structure):
     """
     Error runtime.
     """
     _fields_ = [
         ("code", ctypes.c_int8),
-        ("error_buf", RustBuffer),
+        ("error_buf", _UniffiRustBuffer),
     ]
 
     # These match the values from the uniffi::rustcalls module
     CALL_SUCCESS = 0
     CALL_ERROR = 1
-    CALL_PANIC = 2
+    CALL_UNEXPECTED_ERROR = 2
+
+    @staticmethod
+    def default():
+        return _UniffiRustCallStatus(code=_UniffiRustCallStatus.CALL_SUCCESS, error_buf=_UniffiRustBuffer.default())
 
     def __str__(self):
-        if self.code == RustCallStatus.CALL_SUCCESS:
-            return "RustCallStatus(CALL_SUCCESS)"
-        elif self.code == RustCallStatus.CALL_ERROR:
-            return "RustCallStatus(CALL_ERROR)"
-        elif self.code == RustCallStatus.CALL_PANIC:
-            return "RustCallStatus(CALL_PANIC)"
+        if self.code == _UniffiRustCallStatus.CALL_SUCCESS:
+            return "_UniffiRustCallStatus(CALL_SUCCESS)"
+        elif self.code == _UniffiRustCallStatus.CALL_ERROR:
+            return "_UniffiRustCallStatus(CALL_ERROR)"
+        elif self.code == _UniffiRustCallStatus.CALL_UNEXPECTED_ERROR:
+            return "_UniffiRustCallStatus(CALL_UNEXPECTED_ERROR)"
         else:
-            return "RustCallStatus(<invalid code>)"
+            return "_UniffiRustCallStatus(<invalid code>)"
 
-def rust_call(fn, *args):
+def _rust_call(fn, *args):
     # Call a rust function
-    return rust_call_with_error(None, fn, *args)
+    return _rust_call_with_error(None, fn, *args)
 
-def rust_call_with_error(error_ffi_converter, fn, *args):
+def _rust_call_with_error(error_ffi_converter, fn, *args):
     # Call a rust function and handle any errors
     #
     # This function is used for rust calls that return Result<> and therefore can set the CALL_ERROR status code.
-    # error_ffi_converter must be set to the FfiConverter for the error class that corresponds to the result.
-    call_status = RustCallStatus(code=RustCallStatus.CALL_SUCCESS, error_buf=RustBuffer(0, 0, None))
+    # error_ffi_converter must be set to the _UniffiConverter for the error class that corresponds to the result.
+    call_status = _UniffiRustCallStatus.default()
 
     args_with_error = args + (ctypes.byref(call_status),)
     result = fn(*args_with_error)
-    if call_status.code == RustCallStatus.CALL_SUCCESS:
-        return result
-    elif call_status.code == RustCallStatus.CALL_ERROR:
+    _uniffi_check_call_status(error_ffi_converter, call_status)
+    return result
+
+def _uniffi_check_call_status(error_ffi_converter, call_status):
+    if call_status.code == _UniffiRustCallStatus.CALL_SUCCESS:
+        pass
+    elif call_status.code == _UniffiRustCallStatus.CALL_ERROR:
         if error_ffi_converter is None:
             call_status.error_buf.free()
-            raise InternalError("rust_call_with_error: CALL_ERROR, but error_ffi_converter is None")
+            raise InternalError("_rust_call_with_error: CALL_ERROR, but error_ffi_converter is None")
         else:
             raise error_ffi_converter.lift(call_status.error_buf)
-    elif call_status.code == RustCallStatus.CALL_PANIC:
-        # When the rust code sees a panic, it tries to construct a RustBuffer
+    elif call_status.code == _UniffiRustCallStatus.CALL_UNEXPECTED_ERROR:
+        # When the rust code sees a panic, it tries to construct a _UniffiRustBuffer
         # with the message.  But if that code panics, then it just sends back
         # an empty buffer.
         if call_status.error_buf.len > 0:
-            msg = FfiConverterString.lift(call_status.error_buf)
+            msg = _UniffiConverterString.lift(call_status.error_buf)
         else:
             msg = "Unknown rust panic"
         raise InternalError(msg)
     else:
-        raise InternalError("Invalid RustCallStatus code: {}".format(
+        raise InternalError("Invalid _UniffiRustCallStatus code: {}".format(
             call_status.code))
 
-# A function pointer for a callback as defined by UniFFI.
-# Rust definition `fn(handle: u64, method: u32, args: RustBuffer, buf_ptr: *mut RustBuffer) -> int`
-FOREIGN_CALLBACK_T = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_ulonglong, ctypes.c_ulong, RustBuffer, ctypes.POINTER(RustBuffer))
+def _uniffi_trait_interface_call(call_status, make_call, write_return_value):
+    try:
+        return write_return_value(make_call())
+    except Exception as e:
+        call_status.code = _UniffiRustCallStatus.CALL_UNEXPECTED_ERROR
+        call_status.error_buf = {{ Type::String.borrow()|lower_fn }}(repr(e))
+
+def _uniffi_trait_interface_call_with_error(call_status, make_call, write_return_value, error_type, lower_error):
+    try:
+        try:
+            return write_return_value(make_call())
+        except error_type as e:
+            call_status.code = _UniffiRustCallStatus.CALL_ERROR
+            call_status.error_buf = lower_error(e)
+    except Exception as e:
+        call_status.code = _UniffiRustCallStatus.CALL_UNEXPECTED_ERROR
+        call_status.error_buf = {{ Type::String.borrow()|lower_fn }}(repr(e))

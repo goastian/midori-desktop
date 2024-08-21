@@ -12,7 +12,8 @@
 
 #include <hwy/highway.h>
 
-#include "lib/jxl/base/profiler.h"
+#include "lib/jxl/base/data_parallel.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/image_ops.h"
 
@@ -119,10 +120,10 @@ class Neighbors {
 // Returns indices for SetTableIndices such that TableLookupLanes on the
 // rightmost unaligned vector (rightmost sample in its most-significant lane)
 // returns the mirrored values, with the mirror outside the last valid sample.
-static inline const int32_t* MirrorLanes(const size_t mod) {
+inline const int32_t* MirrorLanes(const size_t mod) {
   const HWY_CAPPED(float, 16) d;
   constexpr size_t kN = MaxLanes(d);
-
+  // typo:off
   // For mod = `image width mod 16` 0..15:
   // last full vec     mirrored (mem order)  loadedVec  mirrorVec  idxVec
   // 0123456789abcdef| fedcba9876543210      fed..210   012..def   012..def
@@ -141,6 +142,7 @@ static inline const int32_t* MirrorLanes(const size_t mod) {
   // 0123456789abcdef|0123456789ABC CBA
   // 0123456789abcdef|0123456789ABCD DC
   // 0123456789abcdef|0123456789ABCDE E      EDC..10f   EED..210   ffe..321
+  // typo:on
 #if HWY_CAP_GE512
   HWY_ALIGN static constexpr int32_t idx_lanes[2 * kN - 1] = {
       1,  2,  3,  4,  5,  6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15,  //
@@ -179,11 +181,10 @@ class ConvolveT {
   template <class Image, class Weights>
   static void Run(const Image& in, const Rect& rect, const Weights& weights,
                   ThreadPool* pool, Image* out) {
-    PROFILER_ZONE("ConvolveT::Run");
     JXL_CHECK(SameSize(rect, *out));
     JXL_CHECK(rect.xsize() >= MinWidth());
 
-    static_assert(int64_t(kRadius) <= 3,
+    static_assert(static_cast<int64_t>(kRadius) <= 3,
                   "Must handle [0, kRadius) and >= kRadius");
     switch (rect.xsize() % Lanes(Simd())) {
       case 0:
@@ -275,15 +276,17 @@ class ConvolveT {
                                  const Weights& weights, ThreadPool* pool,
                                  Image* out) {
     const int64_t ysize = rect.ysize();
-    RunBorderRows<kSizeModN>(in, rect, 0, std::min(int64_t(kRadius), ysize),
+    RunBorderRows<kSizeModN>(in, rect, 0,
+                             std::min(static_cast<int64_t>(kRadius), ysize),
                              weights, out);
-    if (ysize > 2 * int64_t(kRadius)) {
-      RunInteriorRows<kSizeModN>(in, rect, int64_t(kRadius),
-                                 ysize - int64_t(kRadius), weights, pool, out);
+    if (ysize > 2 * static_cast<int64_t>(kRadius)) {
+      RunInteriorRows<kSizeModN>(in, rect, static_cast<int64_t>(kRadius),
+                                 ysize - static_cast<int64_t>(kRadius), weights,
+                                 pool, out);
     }
-    if (ysize > int64_t(kRadius)) {
-      RunBorderRows<kSizeModN>(in, rect, ysize - int64_t(kRadius), ysize,
-                               weights, out);
+    if (ysize > static_cast<int64_t>(kRadius)) {
+      RunBorderRows<kSizeModN>(in, rect, ysize - static_cast<int64_t>(kRadius),
+                               ysize, weights, out);
     }
   }
 };

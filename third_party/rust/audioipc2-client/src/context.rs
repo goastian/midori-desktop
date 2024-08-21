@@ -17,8 +17,8 @@ use audioipc::{
     ServerMessage,
 };
 use cubeb_backend::{
-    capi_new, ffi, Context, ContextOps, DeviceCollectionRef, DeviceId, DeviceType, Error, Ops,
-    Result, Stream, StreamParams, StreamParamsRef,
+    capi_new, ffi, Context, ContextOps, DeviceCollectionRef, DeviceId, DeviceType, Error,
+    InputProcessingParams, Ops, Result, Stream, StreamParams, StreamParamsRef,
 };
 use std::ffi::{CStr, CString};
 use std::os::raw::c_void;
@@ -239,6 +239,14 @@ impl ContextOps for ClientContext {
         send_recv!(self.rpc(), ContextGetPreferredSampleRate => ContextPreferredSampleRate())
     }
 
+    fn supported_input_processing_params(&mut self) -> Result<InputProcessingParams> {
+        assert_not_in_callback();
+        send_recv!(self.rpc(),
+                   ContextGetSupportedInputProcessingParams =>
+                   ContextSupportedInputProcessingParams())
+        .map(InputProcessingParams::from_bits_truncate)
+    }
+
     fn enumerate_devices(
         &mut self,
         devtype: DeviceType,
@@ -264,11 +272,7 @@ impl ContextOps for ClientContext {
         assert_not_in_callback();
         unsafe {
             let coll = &mut *collection.as_ptr();
-            let mut devices = Vec::from_raw_parts(
-                coll.device as *mut ffi::cubeb_device_info,
-                coll.count,
-                coll.count,
-            );
+            let mut devices = Vec::from_raw_parts(coll.device, coll.count, coll.count);
             for dev in &mut devices {
                 if !dev.device_id.is_null() {
                     let _ = CString::from_raw(dev.device_id as *mut _);

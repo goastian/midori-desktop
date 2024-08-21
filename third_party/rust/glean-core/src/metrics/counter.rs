@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use crate::common_metric_data::CommonMetricDataInternal;
@@ -62,16 +63,23 @@ impl CounterMetric {
             return;
         }
 
-        if amount <= 0 {
-            record_error(
-                glean,
-                &self.meta,
-                ErrorType::InvalidValue,
-                format!("Added negative or zero value {}", amount),
-                None,
-            );
-            return;
-        }
+        match amount.cmp(&0) {
+            Ordering::Less => {
+                record_error(
+                    glean,
+                    &self.meta,
+                    ErrorType::InvalidValue,
+                    format!("Added negative value {}", amount),
+                    None,
+                );
+                return;
+            }
+            Ordering::Equal => {
+                // Silently ignore.
+                return;
+            }
+            Ordering::Greater => (),
+        };
 
         // Let's be defensive here:
         // The uploader tries to store a counter metric,
@@ -97,7 +105,6 @@ impl CounterMetric {
     ///
     /// # Arguments
     ///
-    /// * `glean` - The Glean instance this metric belongs to.
     /// * `amount` - The amount to increase by. Should be positive.
     ///
     /// ## Notes
@@ -135,6 +142,15 @@ impl CounterMetric {
     /// Gets the currently stored value as an integer.
     ///
     /// This doesn't clear the stored value.
+    ///
+    /// # Arguments
+    ///
+    /// * `ping_name` - the optional name of the ping to retrieve the metric
+    ///                 for. Defaults to the first value in `send_in_pings`.
+    ///
+    /// # Returns
+    ///
+    /// The stored value or `None` if nothing stored.
     pub fn test_get_value(&self, ping_name: Option<String>) -> Option<i32> {
         crate::block_on_dispatcher();
         crate::core::with_glean(|glean| self.get_value(glean, ping_name.as_deref()))
@@ -147,8 +163,6 @@ impl CounterMetric {
     /// # Arguments
     ///
     /// * `error` - The type of error
-    /// * `ping_name` - represents the optional name of the ping to retrieve the
-    ///   metric for. inner to the first value in `send_in_pings`.
     ///
     /// # Returns
     ///

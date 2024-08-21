@@ -5,24 +5,30 @@
 
 #include "lib/jxl/splines.h"
 
-#include <algorithm>
-#include <cmath>
+#include <jxl/memory_manager.h>
 
-#include "lib/jxl/ans_params.h"
+#include <algorithm>
+#include <cinttypes>  // PRIu64
+#include <cmath>
+#include <limits>
+
+#include "lib/jxl/base/common.h"
 #include "lib/jxl/base/printf_macros.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/chroma_from_luma.h"
-#include "lib/jxl/common.h"
+#include "lib/jxl/common.h"  // JXL_HIGH_PRECISION
 #include "lib/jxl/dct_scales.h"
-#include "lib/jxl/entropy_coder.h"
-#include "lib/jxl/opsin_params.h"
+#include "lib/jxl/dec_ans.h"
+#include "lib/jxl/dec_bit_reader.h"
+#include "lib/jxl/pack_signed.h"
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/splines.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
-#include "lib/jxl/fast_math-inl.h"
+#include "lib/jxl/base/fast_math-inl.h"
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
 namespace HWY_NAMESPACE {
@@ -37,7 +43,7 @@ using hwy::HWY_NAMESPACE::Sub;
 
 // Given a set of DCT coefficients, this returns the result of performing cosine
 // interpolation on the original samples.
-float ContinuousIDCT(const float dct[32], const float t) {
+float ContinuousIDCT(const Dct32& dct, const float t) {
   // We compute here the DCT-3 of the `dct` vector, rescaled by a factor of
   // sqrt(32). This is such that an input vector vector {x, 0, ..., 0} produces
   // a constant result of x. dct[0] was scaled in Dequantize() to allow uniform
@@ -57,7 +63,7 @@ float ContinuousIDCT(const float dct[32], const float t) {
   for (int i = 0; i < 32; i += Lanes(df)) {
     auto cos_arg = Mul(LoadU(df, kMultipliers + i), tandhalf);
     auto cos = FastCosf(df, cos_arg);
-    auto local_res = Mul(LoadU(df, dct + i), cos);
+    auto local_res = Mul(LoadU(df, dct.data() + i), cos);
     result = MulAdd(Set(df, kSqrt2), local_res, result);
   }
   return GetLane(SumOfLanes(df, result));
@@ -91,11 +97,11 @@ void DrawSegment(DF df, const SplineSegment& segment, const bool add,
 
 void DrawSegment(const SplineSegment& segment, const bool add, const size_t y,
                  const ssize_t x0, ssize_t x1, float* JXL_RESTRICT rows[3]) {
-  ssize_t x =
-      std::max<ssize_t>(x0, segment.center_x - segment.maximum_distance + 0.5f);
+  ssize_t x = std::max<ssize_t>(
+      x0, std::llround(segment.center_x - segment.maximum_distance));
   // one-past-the-end
-  x1 =
-      std::min<ssize_t>(x1, segment.center_x + segment.maximum_distance + 1.5f);
+  x1 = std::min<ssize_t>(
+      x1, std::llround(segment.center_x + segment.maximum_distance) + 1);
   HWY_FULL(float) df;
   for (; x + static_cast<ssize_t>(Lanes(df)) <= x1; x += Lanes(df)) {
     DrawSegment(df, segment, add, y, x, rows);
@@ -137,8 +143,9 @@ void ComputeSegments(const Spline::Point& center, const float intensity,
   segment.inv_sigma = 1.0f / sigma;
   segment.sigma_over_4_times_intensity = .25f * sigma * intensity;
   segment.maximum_distance = maximum_distance;
-  ssize_t y0 = center.y - maximum_distance + .5f;
-  ssize_t y1 = center.y + maximum_distance + 1.5f;  // one-past-the-end
+  ssize_t y0 = std::llround(center.y - maximum_distance);
+  ssize_t y1 =
+      std::llround(center.y + maximum_distance) + 1;  // one-past-the-end
   for (ssize_t y = std::max<ssize_t>(y0, 0); y < y1; y++) {
     segments_by_y.emplace_back(y, segments.size());
   }
@@ -224,7 +231,7 @@ float InvAdjustedQuant(const int32_t adjustment) {
 }
 
 // X, Y, B, sigma.
-static constexpr float kChannelWeight[] = {0.0042f, 0.075f, 0.07f, .3333f};
+constexpr float kChannelWeight[] = {0.0042f, 0.075f, 0.07f, .3333f};
 
 Status DecodeAllStartingPoints(std::vector<Spline::Point>* const points,
                                BitReader* const br, ANSSymbolReader* reader,
@@ -361,13 +368,14 @@ QuantizedSpline::QuantizedSpline(const Spline& original,
   JXL_ASSERT(!original.control_points.empty());
   control_points_.reserve(original.control_points.size() - 1);
   const Spline::Point& starting_point = original.control_points.front();
-  int previous_x = static_cast<int>(roundf(starting_point.x)),
-      previous_y = static_cast<int>(roundf(starting_point.y));
-  int previous_delta_x = 0, previous_delta_y = 0;
+  int previous_x = static_cast<int>(std::roundf(starting_point.x));
+  int previous_y = static_cast<int>(std::roundf(starting_point.y));
+  int previous_delta_x = 0;
+  int previous_delta_y = 0;
   for (auto it = original.control_points.begin() + 1;
        it != original.control_points.end(); ++it) {
-    const int new_x = static_cast<int>(roundf(it->x));
-    const int new_y = static_cast<int>(roundf(it->y));
+    const int new_x = static_cast<int>(std::roundf(it->x));
+    const int new_y = static_cast<int>(std::roundf(it->y));
     const int new_delta_x = new_x - previous_x;
     const int new_delta_y = new_y - previous_y;
     control_points_.emplace_back(new_delta_x - previous_delta_x,
@@ -379,7 +387,10 @@ QuantizedSpline::QuantizedSpline(const Spline& original,
   }
 
   const auto to_int = [](float v) -> int {
-    return static_cast<int>(roundf(v));
+    // Maximal int representable with float.
+    constexpr float kMax = std::numeric_limits<int>::max() - 127;
+    constexpr float kMin = -kMax;
+    return static_cast<int>(std::roundf(Clamp1(v, kMin, kMax)));
   };
 
   const auto quant = AdjustedQuant(quantization_adjustment);
@@ -391,9 +402,9 @@ QuantizedSpline::QuantizedSpline(const Spline& original,
       const float inv_dct_factor = (i == 0) ? kSqrt0_5 : 1.0f;
       auto restored_y =
           color_dct_[1][i] * inv_dct_factor * kChannelWeight[1] * inv_quant;
-      auto decorellated = original.color_dct[c][i] - factor * restored_y;
+      auto decorrelated = original.color_dct[c][i] - factor * restored_y;
       color_dct_[c][i] =
-          to_int(decorellated * dct_factor * quant / kChannelWeight[c]);
+          to_int(decorrelated * dct_factor * quant / kChannelWeight[c]);
     }
   }
   for (int i = 0; i < 32; ++i) {
@@ -409,28 +420,37 @@ Status QuantizedSpline::Dequantize(const Spline::Point& starting_point,
                                    const uint64_t image_size,
                                    uint64_t* total_estimated_area_reached,
                                    Spline& result) const {
+  constexpr uint64_t kOne = static_cast<uint64_t>(1);
+  const uint64_t area_limit =
+      std::min(1024 * image_size + (kOne << 32), kOne << 42);
+
   result.control_points.clear();
   result.control_points.reserve(control_points_.size() + 1);
-  float px = roundf(starting_point.x);
-  float py = roundf(starting_point.y);
+  float px = std::roundf(starting_point.x);
+  float py = std::roundf(starting_point.y);
   JXL_RETURN_IF_ERROR(ValidateSplinePointPos(px, py));
   int current_x = static_cast<int>(px);
   int current_y = static_cast<int>(py);
-  result.control_points.push_back(Spline::Point{static_cast<float>(current_x),
-                                                static_cast<float>(current_y)});
-  int current_delta_x = 0, current_delta_y = 0;
-  size_t manhattan_distance = 0;
+  result.control_points.emplace_back(static_cast<float>(current_x),
+                                     static_cast<float>(current_y));
+  int current_delta_x = 0;
+  int current_delta_y = 0;
+  uint64_t manhattan_distance = 0;
   for (const auto& point : control_points_) {
     current_delta_x += point.first;
     current_delta_y += point.second;
-    manhattan_distance += abs(current_delta_x) + abs(current_delta_y);
+    manhattan_distance += std::abs(current_delta_x) + std::abs(current_delta_y);
+    if (manhattan_distance > area_limit) {
+      return JXL_FAILURE("Too large manhattan_distance reached: %" PRIu64,
+                         manhattan_distance);
+    }
     JXL_RETURN_IF_ERROR(
         ValidateSplinePointPos(current_delta_x, current_delta_y));
     current_x += current_delta_x;
     current_y += current_delta_y;
     JXL_RETURN_IF_ERROR(ValidateSplinePointPos(current_x, current_y));
-    result.control_points.push_back(Spline::Point{
-        static_cast<float>(current_x), static_cast<float>(current_y)});
+    result.control_points.emplace_back(static_cast<float>(current_x),
+                                       static_cast<float>(current_y));
   }
 
   const auto inv_quant = InvAdjustedQuant(quantization_adjustment);
@@ -450,19 +470,22 @@ Status QuantizedSpline::Dequantize(const Spline::Point& starting_point,
   uint64_t color[3] = {};
   for (int c = 0; c < 3; ++c) {
     for (int i = 0; i < 32; ++i) {
-      color[c] +=
-          static_cast<uint64_t>(ceil(inv_quant * std::abs(color_dct_[c][i])));
+      color[c] += static_cast<uint64_t>(
+          std::ceil(inv_quant * std::abs(color_dct_[c][i])));
     }
   }
-  color[0] += static_cast<uint64_t>(ceil(abs(y_to_x))) * color[1];
-  color[2] += static_cast<uint64_t>(ceil(abs(y_to_b))) * color[1];
+  color[0] += static_cast<uint64_t>(std::ceil(std::abs(y_to_x))) * color[1];
+  color[2] += static_cast<uint64_t>(std::ceil(std::abs(y_to_b))) * color[1];
   // This is not taking kChannelWeight into account, but up to constant factors
   // it gives an indication of the influence of the color values on the area
   // that will need to be rendered.
-  uint64_t logcolor = std::max(
-      uint64_t(1),
-      static_cast<uint64_t>(CeilLog2Nonzero(
-          uint64_t(1) + std::max(color[1], std::max(color[0], color[2])))));
+  const uint64_t max_color = std::max({color[1], color[0], color[2]});
+  uint64_t logcolor =
+      std::max(kOne, static_cast<uint64_t>(CeilLog2Nonzero(kOne + max_color)));
+
+  const float weight_limit =
+      std::ceil(std::sqrt((static_cast<float>(area_limit) / logcolor) /
+                          std::max<size_t>(1, manhattan_distance)));
 
   for (int i = 0; i < 32; ++i) {
     const float inv_dct_factor = (i == 0) ? kSqrt0_5 : 1.0f;
@@ -472,16 +495,14 @@ Status QuantizedSpline::Dequantize(const Spline::Point& starting_point,
     // realistic area estimate. We leave it out to simplify the calculations,
     // and understand that this way we underestimate the area by a factor of
     // 1/(0.3333*0.3333). This is taken into account in the limits below.
-    uint64_t weight = std::max(
-        uint64_t(1),
-        static_cast<uint64_t>(ceil(inv_quant * std::abs(sigma_dct_[i]))));
+    float weight_f = std::ceil(inv_quant * std::abs(sigma_dct_[i]));
+    uint64_t weight =
+        static_cast<uint64_t>(std::min(weight_limit, std::max(1.0f, weight_f)));
     width_estimate += weight * weight * logcolor;
   }
   *total_estimated_area_reached += (width_estimate * manhattan_distance);
-  if (*total_estimated_area_reached >
-      std::min((1024 * image_size + (uint64_t(1) << 32)),
-               (uint64_t(1) << 42))) {
-    return JXL_FAILURE("Too large total_estimated_area_reached: %" PRIu64,
+  if (*total_estimated_area_reached > area_limit) {
+    return JXL_FAILURE("Too large total_estimated_area eached: %" PRIu64,
                        *total_estimated_area_reached);
   }
 
@@ -495,6 +516,9 @@ Status QuantizedSpline::Decode(const std::vector<uint8_t>& context_map,
                                size_t* total_num_control_points) {
   const size_t num_control_points =
       decoder->ReadHybridUint(kNumControlPointsContext, br, context_map);
+  if (num_control_points > max_control_points) {
+    return JXL_FAILURE("Too many control points: %" PRIuS, num_control_points);
+  }
   *total_num_control_points += num_control_points;
   if (*total_num_control_points > max_control_points) {
     return JXL_FAILURE("Too many control points: %" PRIuS,
@@ -519,14 +543,18 @@ Status QuantizedSpline::Decode(const std::vector<uint8_t>& context_map,
   }
 
   const auto decode_dct = [decoder, br, &context_map](int dct[32]) -> Status {
+    constexpr int kWeirdNumber = std::numeric_limits<int>::min();
     for (int i = 0; i < 32; ++i) {
       dct[i] =
           UnpackSigned(decoder->ReadHybridUint(kDCTContext, br, context_map));
+      if (dct[i] == kWeirdNumber) {
+        return JXL_FAILURE("The weird number in spline DCT");
+      }
     }
     return true;
   };
-  for (int c = 0; c < 3; ++c) {
-    JXL_RETURN_IF_ERROR(decode_dct(color_dct_[c]));
+  for (auto& dct : color_dct_) {
+    JXL_RETURN_IF_ERROR(decode_dct(dct));
   }
   JXL_RETURN_IF_ERROR(decode_dct(sigma_dct_));
   return true;
@@ -541,19 +569,23 @@ void Splines::Clear() {
   segment_y_start_.clear();
 }
 
-Status Splines::Decode(jxl::BitReader* br, const size_t num_pixels) {
+Status Splines::Decode(JxlMemoryManager* memory_manager, jxl::BitReader* br,
+                       const size_t num_pixels) {
   std::vector<uint8_t> context_map;
   ANSCode code;
-  JXL_RETURN_IF_ERROR(
-      DecodeHistograms(br, kNumSplineContexts, &code, &context_map));
-  ANSSymbolReader decoder(&code, br);
-  const size_t num_splines =
-      1 + decoder.ReadHybridUint(kNumSplinesContext, br, context_map);
+  JXL_RETURN_IF_ERROR(DecodeHistograms(memory_manager, br, kNumSplineContexts,
+                                       &code, &context_map));
+  JXL_ASSIGN_OR_RETURN(ANSSymbolReader decoder,
+                       ANSSymbolReader::Create(&code, br));
+  size_t num_splines =
+      decoder.ReadHybridUint(kNumSplinesContext, br, context_map);
   size_t max_control_points = std::min(
       kMaxNumControlPoints, num_pixels / kMaxNumControlPointsPerPixelRatio);
-  if (num_splines > max_control_points) {
+  if (num_splines > max_control_points ||
+      num_splines + 1 > max_control_points) {
     return JXL_FAILURE("Too many splines: %" PRIuS, num_splines);
   }
+  num_splines++;
   JXL_RETURN_IF_ERROR(DecodeAllStartingPoints(&starting_points_, br, &decoder,
                                               context_map, num_splines));
 
@@ -581,20 +613,20 @@ Status Splines::Decode(jxl::BitReader* br, const size_t num_pixels) {
 
 void Splines::AddTo(Image3F* const opsin, const Rect& opsin_rect,
                     const Rect& image_rect) const {
-  return Apply</*add=*/true>(opsin, opsin_rect, image_rect);
+  Apply</*add=*/true>(opsin, opsin_rect, image_rect);
 }
 void Splines::AddToRow(float* JXL_RESTRICT row_x, float* JXL_RESTRICT row_y,
                        float* JXL_RESTRICT row_b, const Rect& image_row) const {
-  return ApplyToRow</*add=*/true>(row_x, row_y, row_b, image_row);
+  ApplyToRow</*add=*/true>(row_x, row_y, row_b, image_row);
 }
 
 void Splines::SubtractFrom(Image3F* const opsin) const {
-  return Apply</*add=*/false>(opsin, Rect(*opsin), Rect(*opsin));
+  Apply</*add=*/false>(opsin, Rect(*opsin), Rect(*opsin));
 }
 
 Status Splines::InitializeDrawCache(const size_t image_xsize,
                                     const size_t image_ysize,
-                                    const ColorCorrelationMap& cmap) {
+                                    const ColorCorrelation& color_correlation) {
   // TODO(veluca): avoid storing segments that are entirely outside image
   // boundaries.
   segments_.clear();
@@ -607,9 +639,9 @@ Status Splines::InitializeDrawCache(const size_t image_xsize,
   for (size_t i = 0; i < splines_.size(); ++i) {
     Spline spline;
     JXL_RETURN_IF_ERROR(splines_[i].Dequantize(
-        starting_points_[i], quantization_adjustment_, cmap.YtoXRatio(0),
-        cmap.YtoBRatio(0), image_xsize * image_ysize,
-        &total_estimated_area_reached, spline));
+        starting_points_[i], quantization_adjustment_,
+        color_correlation.YtoXRatio(0), color_correlation.YtoBRatio(0),
+        image_xsize * image_ysize, &total_estimated_area_reached, spline));
     if (std::adjacent_find(spline.control_points.begin(),
                            spline.control_points.end()) !=
         spline.control_points.end()) {
@@ -622,11 +654,15 @@ Status Splines::InitializeDrawCache(const size_t image_xsize,
   }
   // TODO(firsching) Change this into a JXL_FAILURE for level 5 codestreams.
   if (total_estimated_area_reached >
-      std::min((8 * image_xsize * image_ysize + (uint64_t(1) << 25)),
-               (uint64_t(1) << 30))) {
+      std::min(
+          (8 * image_xsize * image_ysize + (static_cast<uint64_t>(1) << 25)),
+          (static_cast<uint64_t>(1) << 30))) {
     JXL_WARNING(
         "Large total_estimated_area_reached, expect slower decoding: %" PRIu64,
         total_estimated_area_reached);
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    return JXL_FAILURE("Total spline area is too large");
+#endif
   }
 
   for (Spline& spline : splines) {

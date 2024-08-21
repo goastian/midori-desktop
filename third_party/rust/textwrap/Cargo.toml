@@ -10,19 +10,20 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2018"
+edition = "2021"
+rust-version = "1.56"
 name = "textwrap"
-version = "0.15.2"
+version = "0.16.1"
 authors = ["Martin Geisler <martin@geisler.net>"]
 exclude = [
     ".github/",
     ".gitignore",
-    "benches/",
+    "benchmarks/",
     "examples/",
     "fuzz/",
     "images/",
 ]
-description = "Powerful library for word wrapping, indenting, and dedenting strings"
+description = "Library for word wrapping, indenting, and dedenting strings. Has optional support for Unicode and emojis as well as machine hyphenation."
 documentation = "https://docs.rs/textwrap/"
 readme = "README.md"
 keywords = [
@@ -52,16 +53,6 @@ name = "termwidth"
 path = "examples/termwidth.rs"
 required-features = ["terminal_size"]
 
-[[bench]]
-name = "linear"
-path = "benches/linear.rs"
-harness = false
-
-[[bench]]
-name = "indent"
-path = "benches/indent.rs"
-harness = false
-
 [dependencies.hyphenation]
 version = "0.8.4"
 features = ["embed_en-us"]
@@ -72,22 +63,16 @@ version = "0.3.1"
 optional = true
 
 [dependencies.terminal_size]
-version = "0.1.17"
+version = "0.2.1"
 optional = true
 
 [dependencies.unicode-linebreak]
-version = "0.1.2"
+version = "0.1.4"
 optional = true
 
 [dependencies.unicode-width]
-version = "0.1.9"
+version = "0.1.10"
 optional = true
-
-[dev-dependencies.criterion]
-version = "0.3.5"
-
-[dev-dependencies.lipsum]
-version = "0.8.0"
 
 [dev-dependencies.unic-emoji-char]
 version = "0.9.0"
@@ -103,4 +88,4 @@ default = [
 ]
 
 [target."cfg(unix)".dev-dependencies.termion]
-version = "1.5.6"
+version = "2.0.1"

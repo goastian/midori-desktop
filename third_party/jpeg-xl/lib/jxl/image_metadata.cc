@@ -10,9 +10,8 @@
 
 #include "lib/jxl/alpha.h"
 #include "lib/jxl/base/byte_order.h"
-#include "lib/jxl/base/padded_bytes.h"
-#include "lib/jxl/base/profiler.h"
-#include "lib/jxl/color_management.h"
+#include "lib/jxl/base/matrix_ops.h"
+#include "lib/jxl/cms/opsin_params.h"
 #include "lib/jxl/fields.h"
 #include "lib/jxl/frame_header.h"
 #include "lib/jxl/quantizer.h"
@@ -60,6 +59,7 @@ Status BitDepth::VisitFields(Visitor* JXL_RESTRICT visitor) {
   return true;
 }
 
+#if JXL_DEBUG_V_LEVEL >= 1
 std::string BitDepth::DebugString() const {
   std::ostringstream os;
   os << (floating_point_sample ? "F" : "U");
@@ -67,6 +67,7 @@ std::string BitDepth::DebugString() const {
   if (floating_point_sample) os << "." << exponent_bits_per_sample;
   return os.str();
 }
+#endif
 
 CustomTransformData::CustomTransformData() { Bundle::Init(this); }
 Status CustomTransformData::VisitFields(Visitor* JXL_RESTRICT visitor) {
@@ -132,6 +133,7 @@ Status CustomTransformData::VisitFields(Visitor* JXL_RESTRICT visitor) {
     }
   }
   if (visitor->Conditional((custom_weights_mask & 0x4) != 0)) {
+    // typo:off
     // 64 5x5 kernels, all of them can be obtained by symmetry from
     // 10, 4 of which are symmetric along their main diagonals. The top
     // left 16 kernels are defined by
@@ -158,6 +160,7 @@ Status CustomTransformData::VisitFields(Visitor* JXL_RESTRICT visitor) {
     // 11 24 36 47 57  66 74 81 8d 98  a2 ab b3 ba c0  c5 c9 cc cd ce
     // 12 25 37 48 58  67 75 82 8e 99  a3 ac b4 bb c1  c6 ca cd cf d0
     // 13 26 38 49 59  68 76 83 8f 9a  a4 ad b5 bc c2  c7 cb ce d0 d1
+    // typo:on
     constexpr float kWeights8[210] = {
         -0.02928613f, -0.03706353f, -0.03783812f, -0.03324558f, -0.00447632f,
         -0.02519406f, -0.03752601f, -0.03901508f, -0.03663285f, -0.00646649f,
@@ -245,14 +248,15 @@ Status ExtraChannelInfo::VisitFields(Visitor* JXL_RESTRICT visitor) {
   }
 
   if (type == ExtraChannel::kUnknown ||
-      (int(ExtraChannel::kReserved0) <= int(type) &&
-       int(type) <= int(ExtraChannel::kReserved7))) {
+      (static_cast<int>(ExtraChannel::kReserved0) <= static_cast<int>(type) &&
+       static_cast<int>(type) <= static_cast<int>(ExtraChannel::kReserved7))) {
     return JXL_FAILURE("Unknown extra channel (bits %u, shift %u, name '%s')\n",
                        bit_depth.bits_per_sample, dim_shift, name.c_str());
   }
   return true;
 }
 
+#if JXL_DEBUG_V_LEVEL >= 1
 std::string ExtraChannelInfo::DebugString() const {
   std::ostringstream os;
   os << (type == ExtraChannel::kAlpha           ? "Alpha"
@@ -268,6 +272,7 @@ std::string ExtraChannelInfo::DebugString() const {
   os << " shift: " << dim_shift;
   return os.str();
 }
+#endif
 
 ImageMetadata::ImageMetadata() { Bundle::Init(this); }
 Status ImageMetadata::VisitFields(Visitor* JXL_RESTRICT visitor) {
@@ -352,13 +357,17 @@ Status OpsinInverseMatrix::VisitFields(Visitor* JXL_RESTRICT visitor) {
     visitor->SetDefault(this);
     return true;
   }
-  for (int i = 0; i < 9; ++i) {
-    JXL_QUIET_RETURN_IF_ERROR(visitor->F16(
-        DefaultInverseOpsinAbsorbanceMatrix()[i], &inverse_matrix[i]));
+  const Matrix3x3& default_inverse =
+      jxl::cms::DefaultInverseOpsinAbsorbanceMatrix();
+  for (int j = 0; j < 3; ++j) {
+    for (int i = 0; i < 3; ++i) {
+      JXL_QUIET_RETURN_IF_ERROR(
+          visitor->F16(default_inverse[j][i], &inverse_matrix[j][i]));
+    }
   }
   for (int i = 0; i < 3; ++i) {
-    JXL_QUIET_RETURN_IF_ERROR(
-        visitor->F16(kNegOpsinAbsorbanceBiasRGB[i], &opsin_biases[i]));
+    JXL_QUIET_RETURN_IF_ERROR(visitor->F16(
+        jxl::cms::kNegOpsinAbsorbanceBiasRGB[i], &opsin_biases[i]));
   }
   for (int i = 0; i < 4; ++i) {
     JXL_QUIET_RETURN_IF_ERROR(
@@ -438,6 +447,7 @@ void ImageMetadata::SetAlphaBits(uint32_t bits, bool alpha_is_premultiplied) {
   if (bits > 12) modular_16_bit_buffer_sufficient = false;
 }
 
+#if JXL_DEBUG_V_LEVEL >= 1
 std::string ImageMetadata::DebugString() const {
   std::ostringstream os;
   os << bit_depth.DebugString();
@@ -468,5 +478,6 @@ std::string CodecMetadata::DebugString() const {
   os << " " << m.DebugString();
   return os.str();
 }
+#endif
 
 }  // namespace jxl

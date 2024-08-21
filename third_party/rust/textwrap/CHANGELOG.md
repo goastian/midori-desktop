@@ -3,11 +3,53 @@
 This file lists the most important changes made in each release of
 `textwrap`.
 
+## Version 0.16.1 (2024-02-17)
+
+This release fixes `display_width` to ignore inline-hyperlinks. The minimum
+supported version of Rust is now documented to be 1.56.
+
+* [#526](https://github.com/mgeisler/textwrap/pull/526): Ignore ANSI hyperlinks
+  in `display_width`: calculations.
+* [#521](https://github.com/mgeisler/textwrap/pull/521): Add `Options::width`
+  setter method.
+* [#520](https://github.com/mgeisler/textwrap/pull/520): Clarify that
+  `WordSeparator` is an enum rather than a trait.
+* [#518](https://github.com/mgeisler/textwrap/pull/518): Test with latest stable
+  and nightly Rust, but check that we can build with Rust 1.56.
+
+## Version 0.16.0 (2022-10-23)
+
+This release marks `Options` as `non_exhaustive` and extends it to
+make line endings configurable, it adds new fast paths to `fill` and
+`wrap`, and it fixes crashes in `unfill` and `refill`.
+
+* [#480](https://github.com/mgeisler/textwrap/pull/480): Mark
+  `Options` as `non_exhaustive`. This will allow us to extend the
+  struct in the future without breaking backwards compatibility.
+* [#478](https://github.com/mgeisler/textwrap/pull/478): Add fast
+  paths to `fill` and `wrap`. This makes the functions 10-25 times
+  faster when the no wrapping is needed.
+* [#468](https://github.com/mgeisler/textwrap/pull/468): Fix `refill`
+  to add back correct line ending.
+* [#467](https://github.com/mgeisler/textwrap/pull/467): Fix crashes
+  in `unfill` and `refill`.
+* [#458](https://github.com/mgeisler/textwrap/pull/458): Test with
+  Rust 1.56 (first compiler release with support for Rust 2021).
+* [#454](https://github.com/mgeisler/textwrap/pull/454): Make line
+  endings configurable.
+* [#448](https://github.com/mgeisler/textwrap/pull/448): Migrate to
+  the Rust 2021 edition.
+
 ## Version 0.15.2 (2022-10-24)
 
 This release is identical to 0.15.0 and is only there to give people a
 way to install crates which depend on the yanked 0.15.1 release. See
 [#484](https://github.com/mgeisler/textwrap/issues/484) for details.
+
+## Version 0.15.1 (2022-09-15)
+
+This release was yanked since it accidentally broke backwards
+compatibility with 0.15.0.
 
 ## Version 0.15.0 (2022-02-27)
 
@@ -17,7 +59,7 @@ This is a major feature release with two main changes:
   instead of `usize` for fragment widths.
 
   This fixes problems with overflows in the internal computations of
-  `wrap_optimal_fit` when fragments (words) or line lenghts had
+  `wrap_optimal_fit` when fragments (words) or line lengths had
   extreme values, such as `usize::MAX`.
 
 * [#438](https://github.com/mgeisler/textwrap/pull/438): Simplify
@@ -107,7 +149,7 @@ let options: Options<
 > = Options::new(80);
 ```
 
-This is quite a mouthful, so we suggest using type inferrence where
+This is quite a mouthful, so we suggest using type inference where
 possible. You won’t see any chance if you call `wrap` directly with a
 width or with an `Options` value constructed on the fly. Please open
 an issue if this causes problems for you!
@@ -458,7 +500,7 @@ Added a regression test for the case where `width` is set to
 
 ## Version 0.8.0 (2017-09-04)
 
-The `Wrapper` stuct is now generic over the type of word splitter
+The `Wrapper` struct is now generic over the type of word splitter
 being used. This means less boxing and a nicer API. The
 `Wrapper::word_splitter` method has been removed. This is a *breaking
 API change* if you used the method to change the word splitter.

@@ -140,7 +140,6 @@ if (rtc_include_tests) {
       "desktop_region_unittest.cc",
       "differ_block_unittest.cc",
       "fallback_desktop_capturer_wrapper_unittest.cc",
-      "mouse_cursor_monitor_unittest.cc",
       "rgba_color_unittest.cc",
       "test_utils.cc",
       "test_utils.h",
@@ -335,6 +334,8 @@ rtc_library("desktop_capture") {
       "mac/desktop_configuration.h",
       "mac/desktop_configuration_monitor.cc",
       "mac/desktop_configuration_monitor.h",
+      "mac/desktop_frame_utils.cc",
+      "mac/desktop_frame_utils.h",
       "mac/full_screen_mac_application_handler.cc",
       "mac/full_screen_mac_application_handler.h",
       "mac/window_list_utils.cc",
@@ -383,6 +384,9 @@ rtc_library("desktop_capture") {
       "Xrandr",
       "Xtst",
     ]
+    if (build_with_mozilla) {
+      libs -= [ "Xtst" ]
+    }
   }
 
   if (!is_win && !is_mac && !rtc_use_x11_extensions && !rtc_use_pipewire &&
@@ -492,9 +496,11 @@ rtc_library("desktop_capture") {
     libs = [
       "d3d11.lib",
       "dxgi.lib",
+      "shcore.lib",
     ]
     deps += [
       "../../rtc_base:win32",
+      "../../rtc_base/containers:flat_map",
       "../../rtc_base/win:create_direct3d_device",
       "../../rtc_base/win:get_activation_factory",
       "../../rtc_base/win:windows_version",

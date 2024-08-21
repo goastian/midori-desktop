@@ -22,6 +22,7 @@
 #include "p2p/base/udp_port.h"
 #include "rtc_base/memory/always_valid_pointer.h"
 #include "rtc_base/net_helpers.h"
+#include "rtc_base/net_test_helpers.h"
 #include "rtc_base/task_queue_for_test.h"
 #include "rtc_base/thread.h"
 
@@ -63,6 +64,7 @@ class TestUDPPort : public UDPPort {
               bool emit_localhost_for_anyaddress,
               const webrtc::FieldTrialsView* field_trials)
       : UDPPort(thread,
+                webrtc::IceCandidateType::kHost,
                 factory,
                 network,
                 min_port,
@@ -91,6 +93,7 @@ class FakePortAllocatorSession : public PortAllocatorSession {
                              ice_ufrag,
                              ice_pwd,
                              allocator->flags()),
+        allocator_(allocator),
         network_thread_(network_thread),
         factory_(factory),
         ipv4_network_("network",
@@ -108,7 +111,6 @@ class FakePortAllocatorSession : public PortAllocatorSession {
         field_trials_(field_trials) {
     ipv4_network_.AddIP(rtc::IPAddress(INADDR_LOOPBACK));
     ipv6_network_.AddIP(rtc::IPAddress(in6addr_loopback));
-    set_ice_tiebreaker(/*kTiebreakerDefault = */ 44444);
   }
 
   void SetCandidateFilter(uint32_t filter) override {
@@ -125,7 +127,7 @@ class FakePortAllocatorSession : public PortAllocatorSession {
                                       username(), password(), false,
                                       field_trials_));
       RTC_DCHECK(port_);
-      port_->SetIceTiebreaker(ice_tiebreaker());
+      port_->SetIceTiebreaker(allocator_->ice_tiebreaker());
       port_->SubscribePortDestroyed(
           [this](PortInterface* port) { OnPortDestroyed(port); });
       AddPort(port_.get());
@@ -197,6 +199,7 @@ class FakePortAllocatorSession : public PortAllocatorSession {
     port_.release();
   }
 
+  PortAllocator* allocator_;
   rtc::Thread* network_thread_;
   rtc::PacketSocketFactory* factory_;
   rtc::Network ipv4_network_;

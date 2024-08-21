@@ -76,6 +76,14 @@ pub trait ConnExt {
         Ok(res)
     }
 
+    /// Return true if a query returns any rows
+    fn exists<P: Params>(&self, sql: &str, params: P) -> SqlResult<bool> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(sql)?;
+        let exists = stmt.query(params)?.next()?.is_some();
+        Ok(exists)
+    }
+
     /// Execute a query that returns 0 or 1 result columns, returning None
     /// if there were no rows, or if the only result was NULL.
     fn try_query_one<T: FromSql, P: Params>(
@@ -118,7 +126,7 @@ pub trait ConnExt {
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?)
     }
 
-    /// Helper for when you'd like to get a Vec<T> of all the rows returned by a
+    /// Helper for when you'd like to get a `Vec<T>` of all the rows returned by a
     /// query that takes named arguments. See also
     /// `query_rows_and_then_cached`.
     fn query_rows_and_then<T, E, P, F>(&self, sql: &str, params: P, mapper: F) -> Result<Vec<T>, E>
@@ -131,7 +139,7 @@ pub trait ConnExt {
         query_rows_and_then_cachable(self.conn(), sql, params, mapper, false)
     }
 
-    /// Helper for when you'd like to get a Vec<T> of all the rows returned by a
+    /// Helper for when you'd like to get a `Vec<T>` of all the rows returned by a
     /// query that takes named arguments.
     fn query_rows_and_then_cached<T, E, P, F>(
         &self,
@@ -193,7 +201,7 @@ pub trait ConnExt {
     }
 
     // This should probably have a longer name...
-    /// Like `query_row_and_then_cachable` but returns None instead of erroring
+    /// Like `query_row_and_then_cacheable` but returns None instead of erroring
     /// if no such row exists.
     fn try_query_row<T, E, P, F>(
         &self,
@@ -286,7 +294,7 @@ impl<'conn> ConnExt for Savepoint<'conn> {
 /// crate. Aside from type's name and location (and the fact that `rusqlite`'s
 /// detects slightly more misuse at compile time, and has more features), the
 /// main difference is: `rusqlite`'s does not track when a transaction began,
-/// which unfortunatly seems to be used by the coop-transaction management in
+/// which unfortunately seems to be used by the coop-transaction management in
 /// places in some fashion.
 ///
 /// There are at least two options for how to fix this:

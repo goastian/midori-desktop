@@ -21,6 +21,7 @@
 #include "absl/strings/string_view.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/net_helpers.h"
+#include "rtc_base/net_test_helpers.h"
 #include "rtc_base/network_monitor.h"
 #include "rtc_base/network_monitor_factory.h"
 #include "rtc_base/physical_socket_server.h"
@@ -44,6 +45,12 @@ using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedElementsAreArray;
 
 namespace rtc {
+
+#define MAYBE_SKIP_IPV4                        \
+  if (!HasIPv4Enabled()) {                     \
+    RTC_LOG(LS_INFO) << "No IPv4... skipping"; \
+    return;                                    \
+  }
 
 namespace {
 
@@ -340,11 +347,9 @@ TEST_F(NetworkTest, TestNetworkConstruct) {
 
 TEST_F(NetworkTest, TestIsIgnoredNetworkIgnoresIPsStartingWith0) {
   Network ipv4_network1("test_eth0", "Test Network Adapter 1",
-                        IPAddress(0x12345600U), 24, ADAPTER_TYPE_ETHERNET,
-                        &field_trials_);
+                        IPAddress(0x12345600U), 24, ADAPTER_TYPE_ETHERNET);
   Network ipv4_network2("test_eth1", "Test Network Adapter 2",
-                        IPAddress(0x010000U), 24, ADAPTER_TYPE_ETHERNET,
-                        &field_trials_);
+                        IPAddress(0x010000U), 24, ADAPTER_TYPE_ETHERNET);
   PhysicalSocketServer socket_server;
   BasicNetworkManager network_manager(&socket_server);
   network_manager.StartUpdating();
@@ -824,19 +829,19 @@ TEST_F(NetworkTest, NetworksSortedByInterfaceName) {
 
 TEST_F(NetworkTest, TestNetworkAdapterTypes) {
   Network wifi("wlan0", "Wireless Adapter", IPAddress(0x12345600U), 24,
-               ADAPTER_TYPE_WIFI, &field_trials_);
+               ADAPTER_TYPE_WIFI);
   EXPECT_EQ(ADAPTER_TYPE_WIFI, wifi.type());
   Network ethernet("eth0", "Ethernet", IPAddress(0x12345600U), 24,
-                   ADAPTER_TYPE_ETHERNET, &field_trials_);
+                   ADAPTER_TYPE_ETHERNET);
   EXPECT_EQ(ADAPTER_TYPE_ETHERNET, ethernet.type());
   Network cellular("test_cell", "Cellular Adapter", IPAddress(0x12345600U), 24,
-                   ADAPTER_TYPE_CELLULAR, &field_trials_);
+                   ADAPTER_TYPE_CELLULAR);
   EXPECT_EQ(ADAPTER_TYPE_CELLULAR, cellular.type());
   Network vpn("bridge_test", "VPN Adapter", IPAddress(0x12345600U), 24,
-              ADAPTER_TYPE_VPN, &field_trials_);
+              ADAPTER_TYPE_VPN);
   EXPECT_EQ(ADAPTER_TYPE_VPN, vpn.type());
   Network unknown("test", "Test Adapter", IPAddress(0x12345600U), 24,
-                  ADAPTER_TYPE_UNKNOWN, &field_trials_);
+                  ADAPTER_TYPE_UNKNOWN);
   EXPECT_EQ(ADAPTER_TYPE_UNKNOWN, unknown.type());
 }
 
@@ -881,9 +886,25 @@ TEST_F(NetworkTest, TestConvertIfAddrsNotRunning) {
   memset(&list, 0, sizeof(list));
   list.ifa_name = const_cast<char*>("test_iface");
   sockaddr ifa_addr;
+  ifa_addr.sa_family = AF_UNSPEC;
   sockaddr ifa_netmask;
   list.ifa_addr = &ifa_addr;
   list.ifa_netmask = &ifa_netmask;
+
+  std::vector<std::unique_ptr<Network>> result;
+  PhysicalSocketServer socket_server;
+  BasicNetworkManager manager(&socket_server);
+  manager.StartUpdating();
+  CallConvertIfAddrs(manager, &list, true, &result);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST_F(NetworkTest, TestConvertIfAddrsGetsNullAddr) {
+  ifaddrs list;
+  memset(&list, 0, sizeof(list));
+  list.ifa_name = const_cast<char*>("test_iface");
+  list.ifa_addr = nullptr;
+  list.ifa_netmask = nullptr;
 
   std::vector<std::unique_ptr<Network>> result;
   PhysicalSocketServer socket_server;
@@ -1159,9 +1180,6 @@ TEST_F(NetworkTest, TestIPv6Selection) {
 
 // Test that the filtering logic follows the defined ruleset in network.h.
 TEST_F(NetworkTest, TestGetBestIPWithPreferGlobalIPv6ToLinkLocalEnabled) {
-  webrtc::test::ScopedKeyValueConfig field_trials(
-      "WebRTC-IPv6NetworkResolutionFixes/"
-      "Enabled,PreferGlobalIPv6Address:true/");
   InterfaceAddress ip, link_local;
   std::string ipstr;
 
@@ -1170,7 +1188,7 @@ TEST_F(NetworkTest, TestGetBestIPWithPreferGlobalIPv6ToLinkLocalEnabled) {
 
   // Create a network with this prefix.
   Network ipv6_network("test_eth0", "Test NetworkAdapter", TruncateIP(ip, 64),
-                       64, ADAPTER_TYPE_UNKNOWN, &field_trials);
+                       64, ADAPTER_TYPE_UNKNOWN);
 
   // When there is no address added, it should return an unspecified
   // address.
@@ -1252,6 +1270,7 @@ TEST_F(NetworkTest, TestNetworkMonitoring) {
 #define MAYBE_DefaultLocalAddress DefaultLocalAddress
 #endif
 TEST_F(NetworkTest, MAYBE_DefaultLocalAddress) {
+  MAYBE_SKIP_IPV4;
   IPAddress ip;
   FakeNetworkMonitorFactory factory;
   PhysicalSocketServer socket_server;

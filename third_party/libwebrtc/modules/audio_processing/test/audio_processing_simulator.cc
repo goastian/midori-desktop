@@ -19,13 +19,13 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "api/audio/echo_canceller3_config_json.h"
 #include "api/audio/echo_canceller3_factory.h"
 #include "api/audio/echo_detector_creator.h"
 #include "modules/audio_processing/aec_dump/aec_dump_factory.h"
 #include "modules/audio_processing/echo_control_mobile_impl.h"
 #include "modules/audio_processing/include/audio_processing.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
+#include "modules/audio_processing/test/echo_canceller3_config_json.h"
 #include "modules/audio_processing/test/fake_recording_device.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -622,7 +622,7 @@ void AudioProcessingSimulator::ConfigureAudioProcessor() {
 
   if (settings_.aec_dump_output_filename) {
     ap_->AttachAecDump(AecDumpFactory::Create(
-        *settings_.aec_dump_output_filename, -1, &worker_queue_));
+        *settings_.aec_dump_output_filename, -1, worker_queue_.Get()));
   }
 }
 

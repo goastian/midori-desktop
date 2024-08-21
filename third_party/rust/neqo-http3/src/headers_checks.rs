@@ -4,12 +4,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![allow(clippy::expl_impl_clone_on_copy)] // see https://github.com/Lymia/enumset/issues/28
+#![allow(clippy::unused_unit)] // see https://github.com/Lymia/enumset/issues/44
 
-use crate::{Error, MessageType, Res};
 use enumset::{enum_set, EnumSet, EnumSetType};
 use neqo_common::Header;
-use std::convert::TryFrom;
+
+use crate::{Error, MessageType, Res};
 
 #[derive(EnumSetType, Debug)]
 enum PseudoHeaderState {
@@ -45,7 +45,9 @@ impl TryFrom<(MessageType, &str)> for PseudoHeaderState {
 }
 
 /// Check whether the response is informational(1xx).
+///
 /// # Errors
+///
 /// Returns an error if response headers do not contain
 /// a status header or if the value of the header is 101 or cannot be parsed.
 pub fn is_interim(headers: &[Header]) -> Res<bool> {
@@ -89,10 +91,14 @@ fn track_pseudo(
 
 /// Checks if request/response headers are well formed, i.e. contain
 /// allowed pseudo headers and in a right order, etc.
+///
 /// # Errors
+///
 /// Returns an error if headers are not well formed.
 pub fn headers_valid(headers: &[Header], message_type: MessageType) -> Res<()> {
     let mut method_value: Option<&str> = None;
+    let mut protocol_value: Option<&str> = None;
+    let mut scheme_value: Option<&str> = None;
     let mut pseudo_state = EnumSet::new();
     for header in headers {
         let is_pseudo = track_pseudo(header.name(), &mut pseudo_state, message_type)?;
@@ -101,8 +107,12 @@ pub fn headers_valid(headers: &[Header], message_type: MessageType) -> Res<()> {
         if is_pseudo {
             if header.name() == ":method" {
                 method_value = Some(header.value());
+            } else if header.name() == ":protocol" {
+                protocol_value = Some(header.value());
+            } else if header.name() == ":scheme" {
+                scheme_value = Some(header.value());
             }
-            let _ = bytes.next();
+            _ = bytes.next();
         }
 
         if bytes.any(|b| matches!(b, 0 | 0x10 | 0x13 | 0x3a | 0x41..=0x5a)) {
@@ -115,7 +125,18 @@ pub fn headers_valid(headers: &[Header], message_type: MessageType) -> Res<()> {
         MessageType::Response => enum_set!(PseudoHeaderState::Status),
         MessageType::Request => {
             if method_value == Some("CONNECT") {
-                PseudoHeaderState::Method | PseudoHeaderState::Authority
+                let connect_mask = PseudoHeaderState::Method | PseudoHeaderState::Authority;
+                if let Some(protocol) = protocol_value {
+                    // For a webtransport CONNECT, the :scheme field must be set to https.
+                    if protocol == "webtransport" && scheme_value != Some("https") {
+                        return Err(Error::InvalidHeader);
+                    }
+                    // The CONNECT request for with :protocol included must have the scheme,
+                    // authority, and path set.
+                    connect_mask | PseudoHeaderState::Scheme | PseudoHeaderState::Path
+                } else {
+                    connect_mask
+                }
             } else {
                 PseudoHeaderState::Method | PseudoHeaderState::Scheme | PseudoHeaderState::Path
             }
@@ -138,7 +159,9 @@ pub fn headers_valid(headers: &[Header], message_type: MessageType) -> Res<()> {
 
 /// Checks if trailers are well formed, i.e. pseudo headers are not
 /// allowed in trailers.
+///
 /// # Errors
+///
 /// Returns an error if trailers are not well formed.
 pub fn trailers_valid(headers: &[Header]) -> Res<()> {
     for header in headers {
@@ -147,4 +170,60 @@ pub fn trailers_valid(headers: &[Header]) -> Res<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use neqo_common::Header;
+
+    use super::headers_valid;
+    use crate::MessageType;
+
+    fn create_connect_headers() -> Vec<Header> {
+        vec![
+            Header::new(":method", "CONNECT"),
+            Header::new(":protocol", "webtransport"),
+            Header::new(":scheme", "https"),
+            Header::new(":authority", "something.com"),
+            Header::new(":path", "/here"),
+        ]
+    }
+
+    fn create_connect_headers_without_field(field: &str) -> Vec<Header> {
+        create_connect_headers()
+            .into_iter()
+            .filter(|header| header.name() != field)
+            .collect()
+    }
+
+    #[test]
+    fn connect_with_missing_header() {
+        for field in &[":scheme", ":path", ":authority"] {
+            assert!(headers_valid(
+                &create_connect_headers_without_field(field),
+                MessageType::Request
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_scheme_webtransport_connect() {
+        assert!(headers_valid(
+            &[
+                Header::new(":method", "CONNECT"),
+                Header::new(":protocol", "webtransport"),
+                Header::new(":authority", "something.com"),
+                Header::new(":scheme", "http"),
+                Header::new(":path", "/here"),
+            ],
+            MessageType::Request
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn valid_webtransport_connect() {
+        assert!(headers_valid(&create_connect_headers(), MessageType::Request).is_ok());
+    }
 }

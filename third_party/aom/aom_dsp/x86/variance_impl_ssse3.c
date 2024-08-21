@@ -15,6 +15,7 @@
 #include "config/aom_dsp_rtcd.h"
 
 #include "aom_dsp/x86/synonyms.h"
+#include "aom_dsp/x86/variance_impl_ssse3.h"
 
 void aom_var_filter_block2d_bil_first_pass_ssse3(
     const uint8_t *a, uint16_t *b, unsigned int src_pixels_per_line,
@@ -25,8 +26,8 @@ void aom_var_filter_block2d_bil_first_pass_ssse3(
   // Change {128, 0} to {64, 0} and reduce FILTER_BITS by 1 to avoid overflow.
   const int16_t round = (1 << (FILTER_BITS - 1)) >> 1;
   const __m128i r = _mm_set1_epi16(round);
-  const uint8_t f0 = filter[0] >> 1;
-  const uint8_t f1 = filter[1] >> 1;
+  const int8_t f0 = (int8_t)(filter[0] >> 1);
+  const int8_t f1 = (int8_t)(filter[1] >> 1);
   const __m128i filters = _mm_setr_epi8(f0, f1, f0, f1, f0, f1, f0, f1, f0, f1,
                                         f0, f1, f0, f1, f0, f1);
   unsigned int i, j;

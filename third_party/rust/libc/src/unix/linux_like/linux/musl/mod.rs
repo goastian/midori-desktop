@@ -22,8 +22,6 @@ pub type fsblkcnt_t = ::c_ulonglong;
 pub type fsfilcnt_t = ::c_ulonglong;
 pub type rlim_t = ::c_ulonglong;
 
-pub type flock64 = flock;
-
 cfg_if! {
     if #[cfg(doc)] {
         // Used in `linux::arch` to define ioctl constants.
@@ -189,6 +187,14 @@ s! {
         pub l_pid: ::pid_t,
     }
 
+    pub struct flock64 {
+        pub l_type: ::c_short,
+        pub l_whence: ::c_short,
+        pub l_start: ::off64_t,
+        pub l_len: ::off64_t,
+        pub l_pid: ::pid_t,
+    }
+
     pub struct regex_t {
         __re_nsub: ::size_t,
         __opaque: *mut ::c_void,
@@ -265,6 +271,83 @@ s! {
         pub maxerror: ::c_long,
         pub esterror: ::c_long,
     }
+
+    // linux/if_xdp.h
+
+    pub struct sockaddr_xdp {
+        pub sxdp_family: ::__u16,
+        pub sxdp_flags: ::__u16,
+        pub sxdp_ifindex: ::__u32,
+        pub sxdp_queue_id: ::__u32,
+        pub sxdp_shared_umem_fd: ::__u32,
+    }
+
+    pub struct xdp_ring_offset {
+        pub producer: ::__u64,
+        pub consumer: ::__u64,
+        pub desc: ::__u64,
+        pub flags: ::__u64,
+    }
+
+    pub struct xdp_mmap_offsets {
+        pub rx: xdp_ring_offset,
+        pub tx: xdp_ring_offset,
+        pub fr: xdp_ring_offset,
+        pub cr: xdp_ring_offset,
+    }
+
+    pub struct xdp_ring_offset_v1 {
+        pub producer: ::__u64,
+        pub consumer: ::__u64,
+        pub desc: ::__u64,
+    }
+
+    pub struct xdp_mmap_offsets_v1 {
+        pub rx: xdp_ring_offset_v1,
+        pub tx: xdp_ring_offset_v1,
+        pub fr: xdp_ring_offset_v1,
+        pub cr: xdp_ring_offset_v1,
+    }
+
+    pub struct xdp_umem_reg {
+        pub addr: ::__u64,
+        pub len: ::__u64,
+        pub chunk_size: ::__u32,
+        pub headroom: ::__u32,
+        pub flags: ::__u32,
+    }
+
+    pub struct xdp_umem_reg_v1 {
+        pub addr: ::__u64,
+        pub len: ::__u64,
+        pub chunk_size: ::__u32,
+        pub headroom: ::__u32,
+    }
+
+    pub struct xdp_statistics {
+        pub rx_dropped: ::__u64,
+        pub rx_invalid_descs: ::__u64,
+        pub tx_invalid_descs: ::__u64,
+        pub rx_ring_full: ::__u64,
+        pub rx_fill_ring_empty_descs: ::__u64,
+        pub tx_ring_empty_descs: ::__u64,
+    }
+
+    pub struct xdp_statistics_v1 {
+        pub rx_dropped: ::__u64,
+        pub rx_invalid_descs: ::__u64,
+        pub tx_invalid_descs: ::__u64,
+    }
+
+    pub struct xdp_options {
+        pub flags: ::__u32,
+    }
+
+    pub struct xdp_desc {
+        pub addr: ::__u64,
+        pub len: ::__u32,
+        pub options: ::__u32,
+    }
 }
 
 s_no_extra_traits! {
@@ -287,12 +370,14 @@ s_no_extra_traits! {
 
     // FIXME: musl added paddings and adjusted
     // layout in 1.2.0 but our CI is still 1.1.24.
-    // So, I'm leaving some fields as comments for now.
+    // So, I'm leaving some fields as cfg for now.
     // ref. https://github.com/bminor/musl/commit/
     // 1e7f0fcd7ff2096904fd93a2ee6d12a2392be392
+    //
+    // OpenHarmony uses the musl 1.2 layout.
     pub struct utmpx {
         pub ut_type: ::c_short,
-        //__ut_pad1: ::c_short,
+        __ut_pad1: ::c_short,
         pub ut_pid: ::pid_t,
         pub ut_line: [::c_char; 32],
         pub ut_id: [::c_char; 4],
@@ -300,15 +385,22 @@ s_no_extra_traits! {
         pub ut_host: [::c_char; 256],
         pub ut_exit: __exit_status,
 
-        //#[cfg(target_endian = "little")]
+        #[cfg(target_env = "musl")]
         pub ut_session: ::c_long,
-        //#[cfg(target_endian = "little")]
-        //__ut_pad2: ::c_long,
 
-        //#[cfg(not(target_endian = "little"))]
-        //__ut_pad2: ::c_int,
-        //#[cfg(not(target_endian = "little"))]
-        //pub ut_session: ::c_int,
+        #[cfg(target_env = "ohos")]
+        #[cfg(target_endian = "little")]
+        pub ut_session: ::c_int,
+        #[cfg(target_env = "ohos")]
+        #[cfg(target_endian = "little")]
+        __ut_pad2: ::c_int,
+
+        #[cfg(target_env = "ohos")]
+        #[cfg(not(target_endian = "little"))]
+        __ut_pad2: ::c_int,
+        #[cfg(target_env = "ohos")]
+        #[cfg(not(target_endian = "little"))]
+        pub ut_session: ::c_int,
 
         pub ut_tv: ::timeval,
         pub ut_addr_v6: [::c_uint; 4],
@@ -497,6 +589,10 @@ pub const ECOMM: ::c_int = 70;
 pub const EPROTO: ::c_int = 71;
 pub const EDOTDOT: ::c_int = 73;
 
+pub const F_OFD_GETLK: ::c_int = 36;
+pub const F_OFD_SETLK: ::c_int = 37;
+pub const F_OFD_SETLKW: ::c_int = 38;
+
 pub const F_RDLCK: ::c_int = 0;
 pub const F_WRLCK: ::c_int = 1;
 pub const F_UNLCK: ::c_int = 2;
@@ -526,7 +622,9 @@ pub const POSIX_MADV_DONTNEED: ::c_int = 4;
 
 pub const MAP_ANONYMOUS: ::c_int = MAP_ANON;
 
+pub const SOCK_SEQPACKET: ::c_int = 5;
 pub const SOCK_DCCP: ::c_int = 6;
+pub const SOCK_NONBLOCK: ::c_int = O_NONBLOCK;
 pub const SOCK_PACKET: ::c_int = 10;
 
 pub const SOMAXCONN: ::c_int = 128;
@@ -537,6 +635,7 @@ pub const SIGUNUSED: ::c_int = ::SIGSYS;
 pub const __SIZEOF_PTHREAD_CONDATTR_T: usize = 4;
 pub const __SIZEOF_PTHREAD_MUTEXATTR_T: usize = 4;
 pub const __SIZEOF_PTHREAD_RWLOCKATTR_T: usize = 8;
+pub const __SIZEOF_PTHREAD_BARRIERATTR_T: usize = 4;
 
 pub const CPU_SETSIZE: ::c_int = 128;
 
@@ -569,11 +668,8 @@ pub const PTRACE_SEIZE: ::c_int = 0x4206;
 pub const PTRACE_INTERRUPT: ::c_int = 0x4207;
 pub const PTRACE_LISTEN: ::c_int = 0x4208;
 pub const PTRACE_PEEKSIGINFO: ::c_int = 0x4209;
-
-pub const FAN_MARK_INODE: ::c_uint = 0x0000_0000;
-pub const FAN_MARK_MOUNT: ::c_uint = 0x0000_0010;
-// NOTE: FAN_MARK_FILESYSTEM requires Linux Kernel >= 4.20.0
-pub const FAN_MARK_FILESYSTEM: ::c_uint = 0x0000_0100;
+pub const PTRACE_GETSIGMASK: ::c_uint = 0x420a;
+pub const PTRACE_SETSIGMASK: ::c_uint = 0x420b;
 
 pub const AF_IB: ::c_int = 27;
 pub const AF_MPLS: ::c_int = 28;
@@ -684,6 +780,40 @@ pub const TIME_ERROR: ::c_int = 5;
 pub const TIME_BAD: ::c_int = TIME_ERROR;
 pub const MAXTC: ::c_long = 6;
 
+pub const SOL_XDP: ::c_int = 283;
+
+// linux/if_xdp.h
+pub const XDP_SHARED_UMEM: ::__u16 = 1 << 0;
+pub const XDP_COPY: ::__u16 = 1 << 1;
+pub const XDP_ZEROCOPY: ::__u16 = 1 << 2;
+pub const XDP_USE_NEED_WAKEUP: ::__u16 = 1 << 3;
+pub const XDP_USE_SG: ::__u16 = 1 << 4;
+
+pub const XDP_UMEM_UNALIGNED_CHUNK_FLAG: ::__u32 = 1 << 0;
+
+pub const XDP_RING_NEED_WAKEUP: ::__u32 = 1 << 0;
+
+pub const XDP_MMAP_OFFSETS: ::c_int = 1;
+pub const XDP_RX_RING: ::c_int = 2;
+pub const XDP_TX_RING: ::c_int = 3;
+pub const XDP_UMEM_REG: ::c_int = 4;
+pub const XDP_UMEM_FILL_RING: ::c_int = 5;
+pub const XDP_UMEM_COMPLETION_RING: ::c_int = 6;
+pub const XDP_STATISTICS: ::c_int = 7;
+pub const XDP_OPTIONS: ::c_int = 8;
+
+pub const XDP_OPTIONS_ZEROCOPY: ::__u32 = 1 << 0;
+
+pub const XDP_PGOFF_RX_RING: ::off_t = 0;
+pub const XDP_PGOFF_TX_RING: ::off_t = 0x80000000;
+pub const XDP_UMEM_PGOFF_FILL_RING: ::c_ulonglong = 0x100000000;
+pub const XDP_UMEM_PGOFF_COMPLETION_RING: ::c_ulonglong = 0x180000000;
+
+pub const XSK_UNALIGNED_BUF_OFFSET_SHIFT: ::c_int = 48;
+pub const XSK_UNALIGNED_BUF_ADDR_MASK: ::c_ulonglong = (1 << XSK_UNALIGNED_BUF_OFFSET_SHIFT) - 1;
+
+pub const XDP_PKT_CONTD: ::__u32 = 1 << 0;
+
 cfg_if! {
     if #[cfg(target_arch = "s390x")] {
         pub const POSIX_FADV_DONTNEED: ::c_int = 6;
@@ -709,8 +839,6 @@ extern "C" {
         timeout: *mut ::timespec,
     ) -> ::c_int;
 
-    pub fn getrlimit64(resource: ::c_int, rlim: *mut ::rlimit64) -> ::c_int;
-    pub fn setrlimit64(resource: ::c_int, rlim: *const ::rlimit64) -> ::c_int;
     pub fn getrlimit(resource: ::c_int, rlim: *mut ::rlimit) -> ::c_int;
     pub fn setrlimit(resource: ::c_int, rlim: *const ::rlimit) -> ::c_int;
     pub fn prlimit(
@@ -719,13 +847,6 @@ extern "C" {
         new_limit: *const ::rlimit,
         old_limit: *mut ::rlimit,
     ) -> ::c_int;
-    pub fn prlimit64(
-        pid: ::pid_t,
-        resource: ::c_int,
-        new_limit: *const ::rlimit64,
-        old_limit: *mut ::rlimit64,
-    ) -> ::c_int;
-
     pub fn ioctl(fd: ::c_int, request: ::c_int, ...) -> ::c_int;
     pub fn gettimeofday(tp: *mut ::timeval, tz: *mut ::c_void) -> ::c_int;
     pub fn ptrace(request: ::c_int, ...) -> ::c_long;
@@ -768,11 +889,22 @@ extern "C" {
         format: *const ::c_char,
         tm: *const ::tm,
     ) -> ::size_t;
+    pub fn strftime_l(
+        s: *mut ::c_char,
+        max: ::size_t,
+        format: *const ::c_char,
+        tm: *const ::tm,
+        locale: ::locale_t,
+    ) -> ::size_t;
     pub fn strptime(s: *const ::c_char, format: *const ::c_char, tm: *mut ::tm) -> *mut ::c_char;
 
     pub fn dirname(path: *mut ::c_char) -> *mut ::c_char;
     pub fn basename(path: *mut ::c_char) -> *mut ::c_char;
 }
+
+// Alias <foo> to <foo>64 to mimic glibc's LFS64 support
+mod lfs64;
+pub use self::lfs64::*;
 
 cfg_if! {
     if #[cfg(any(target_arch = "x86_64",

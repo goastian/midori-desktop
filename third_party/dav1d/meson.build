@@ -23,14 +23,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 project('dav1d', ['c'],
-    version: '1.1.0',
+    version: '1.4.1',
     default_options: ['c_std=c99',
                       'warning_level=2',
                       'buildtype=release',
                       'b_ndebug=if-release'],
     meson_version: '>= 0.49.0')
 
-dav1d_soname_version       = '6.8.0'
+dav1d_soname_version       = '7.0.0'
 dav1d_api_version_array    = dav1d_soname_version.split('.')
 dav1d_api_version_major    = dav1d_api_version_array[0]
 dav1d_api_version_minor    = dav1d_api_version_array[1]
@@ -62,11 +62,13 @@ endforeach
 
 # ASM option
 is_asm_enabled = (get_option('enable_asm') == true and
-    (host_machine.cpu_family() == 'x86' or
-     (host_machine.cpu_family() == 'x86_64' and cc.get_define('__ILP32__').strip() == '') or
-     host_machine.cpu_family() == 'aarch64'      or
+    (host_machine.cpu_family() == 'aarch64' or
      host_machine.cpu_family().startswith('arm') or
-     host_machine.cpu() == 'ppc64le'))
+     host_machine.cpu() == 'ppc64le' or
+     host_machine.cpu_family().startswith('riscv') or
+     host_machine.cpu_family().startswith('loongarch') or
+     host_machine.cpu_family() == 'x86' or
+     (host_machine.cpu_family() == 'x86_64' and cc.get_define('__ILP32__').strip() == '')))
 cdata.set10('HAVE_ASM', is_asm_enabled)
 
 if is_asm_enabled and get_option('b_sanitize') == 'memory'
@@ -78,6 +80,8 @@ cdata.set10('TRIM_DSP_FUNCTIONS', get_option('trim_dsp') == 'true' or
 
 # Logging option
 cdata.set10('CONFIG_LOG', get_option('logging'))
+
+cdata.set10('CONFIG_MACOS_KPERF', get_option('macos_kperf'))
 
 #
 # OS/Compiler checks and defines
@@ -134,7 +138,7 @@ if host_machine.system() == 'windows'
     rc_data.set('API_VERSION_MAJOR', dav1d_api_version_major)
     rc_data.set('API_VERSION_MINOR', dav1d_api_version_minor)
     rc_data.set('API_VERSION_REVISION', dav1d_api_version_revision)
-    rc_data.set('COPYRIGHT_YEARS', '2018-2023')
+    rc_data.set('COPYRIGHT_YEARS', '2018-2024')
 else
     thread_dependency = dependency('threads')
     thread_compat_dep = []
@@ -148,6 +152,10 @@ else
             error('clock_gettime not found')
         endif
         cdata.set('HAVE_CLOCK_GETTIME', 1)
+    endif
+
+    if cc.has_function('posix_memalign', prefix : '#include <stdlib.h>', args : test_args)
+        cdata.set('HAVE_POSIX_MEMALIGN', 1)
     endif
 endif
 
@@ -226,17 +234,11 @@ else
     getopt_dependency = []
 endif
 
-if cc.has_function('_aligned_malloc', prefix : '#include <malloc.h>', args : test_args)
-    cdata.set('HAVE_ALIGNED_MALLOC', 1)
-elif cc.has_function('posix_memalign', prefix : '#include <stdlib.h>', args : test_args)
-    cdata.set('HAVE_POSIX_MEMALIGN', 1)
-elif cc.has_function('memalign', prefix : '#include <malloc.h>', args : test_args)
-    cdata.set('HAVE_MEMALIGN', 1)
-endif
-
 if (host_machine.cpu_family() == 'aarch64' or
     host_machine.cpu_family().startswith('arm') or
-    host_machine.cpu() == 'ppc64le')
+    host_machine.cpu_family().startswith('loongarch') or
+    host_machine.cpu() == 'ppc64le' or
+    host_machine.cpu_family().startswith('riscv'))
     if cc.has_function('getauxval', prefix : '#include <sys/auxv.h>', args : test_args)
         cdata.set('HAVE_GETAUXVAL', 1)
     endif
@@ -309,6 +311,10 @@ if (host_machine.system() in ['darwin', 'ios', 'tvos'] and cc.get_id() == 'clang
     optional_arguments += '-fno-stack-check'
 endif
 
+if (host_machine.cpu_family() == 'aarch64' or host_machine.cpu_family().startswith('arm'))
+    optional_arguments += '-fno-align-functions'
+endif
+
 add_project_arguments(cc.get_supported_arguments(optional_arguments), language : 'c')
 add_project_link_arguments(cc.get_supported_link_arguments(optional_link_arguments), language : 'c')
 
@@ -365,6 +371,66 @@ if (is_asm_enabled and
     if cc.compiles(check_pic_code)
         cdata.set('PIC', '3')
     endif
+
+    if host_machine.cpu_family() == 'aarch64'
+        have_as_arch = cc.compiles('''__asm__ (".arch armv8-a");''')
+        cdata.set10('HAVE_AS_ARCH_DIRECTIVE', have_as_arch)
+        as_arch_str = ''
+        if have_as_arch
+            as_arch_level = 'armv8-a'
+            # Check what .arch levels are supported. In principle, we only
+            # want to detect up to armv8.2-a here (binutils requires that
+            # in order to enable i8mm). However, older Clang versions
+            # (before Clang 17, and Xcode versions up to and including 15.0)
+            # didn't support controlling dotprod/i8mm extensions via
+            # .arch_extension, therefore try to enable a high enough .arch
+            # level as well, to implicitly make them available via that.
+            foreach arch : ['armv8.2-a', 'armv8.4-a', 'armv8.6-a']
+                if cc.compiles('__asm__ (".arch ' + arch + '\\n");')
+                    as_arch_level = arch
+                endif
+            endforeach
+            # Clang versions before 17 also had a bug
+            # (https://github.com/llvm/llvm-project/issues/32220)
+            # causing a plain ".arch <level>" to not have any effect unless it
+            # had an extra "+<feature>" included - but it was activated on the
+            # next ".arch_extension" directive instead. Check if we can include
+            # "+crc" as dummy feature to make the .arch directive behave as
+            # expected and take effect right away.
+            if cc.compiles('__asm__ (".arch ' + as_arch_level + '+crc\\n");')
+                as_arch_level = as_arch_level + '+crc'
+            endif
+            cdata.set('AS_ARCH_LEVEL', as_arch_level)
+            as_arch_str = '".arch ' + as_arch_level + '\\n"'
+        endif
+        extensions = {
+            'dotprod': 'udot v0.4s, v0.16b, v0.16b',
+            'i8mm':    'usdot v0.4s, v0.16b, v0.16b',
+            'sve':     'whilelt p0.s, x0, x1',
+            'sve2':    'sqrdmulh z0.s, z0.s, z0.s',
+        }
+        foreach name, instr : extensions
+            # Test for support for the various extensions. First test if
+            # the assembler supports the .arch_extension directive for
+            # enabling/disabling the extension, then separately check whether
+            # the instructions themselves are supported. Even if .arch_extension
+            # isn't supported, we may be able to assemble the instructions
+            # if the .arch level includes support for them.
+            code = '__asm__ (' + as_arch_str
+            code += '".arch_extension ' + name + '\\n"'
+            code += ');'
+            supports_archext = cc.compiles(code)
+            cdata.set10('HAVE_AS_ARCHEXT_' + name.to_upper() + '_DIRECTIVE', supports_archext)
+            code = '__asm__ (' + as_arch_str
+            if supports_archext
+                code += '".arch_extension ' + name + '\\n"'
+            endif
+            code += '"' + instr + '\\n"'
+            code += ');'
+            supports_instr = cc.compiles(code, name: name.to_upper())
+            cdata.set10('HAVE_' + name.to_upper(), supports_instr)
+        endforeach
+    endif
 endif
 
 cdata.set10('ARCH_X86', host_machine.cpu_family().startswith('x86'))
@@ -382,6 +448,14 @@ if host_machine.cpu_family().startswith('x86')
 endif
 
 cdata.set10('ARCH_PPC64LE', host_machine.cpu() == 'ppc64le')
+
+cdata.set10('ARCH_RISCV', host_machine.cpu_family().startswith('riscv'))
+cdata.set10('ARCH_RV32', host_machine.cpu_family() == 'riscv32')
+cdata.set10('ARCH_RV64', host_machine.cpu_family() == 'riscv64')
+
+cdata.set10('ARCH_LOONGARCH', host_machine.cpu_family().startswith('loongarch'))
+cdata.set10('ARCH_LOONGARCH32', host_machine.cpu_family() == 'loongarch32')
+cdata.set10('ARCH_LOONGARCH64', host_machine.cpu_family() == 'loongarch64')
 
 # meson's cc.symbols_have_underscore_prefix() is unfortunately unrelieably
 # when additional flags like '-fprofile-instr-generate' are passed via CFLAGS
@@ -467,6 +541,17 @@ if (is_asm_enabled and
             '-c',
             '-o', '@OUTPUT@'
         ])
+endif
+
+if is_asm_enabled and host_machine.cpu_family().startswith('riscv')
+    as_option_code = '''__asm__ (
+".option arch, +v\n"
+"vsetivli zero, 0, e8, m1, ta, ma"
+);
+'''
+    if not cc.compiles(as_option_code, name : 'RISC-V Vector')
+        error('Compiler doesn\'t support \'.option arch\' asm directive. Update to binutils>=2.38 or clang>=17 or use \'-Denable_asm=false\'.')
+    endif
 endif
 
 # Generate config.h

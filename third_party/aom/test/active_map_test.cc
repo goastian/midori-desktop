@@ -19,26 +19,35 @@
 
 namespace {
 
+// Params: test mode, speed, aq_mode and screen_content mode.
 class ActiveMapTest
-    : public ::libaom_test::CodecTestWith2Params<libaom_test::TestMode, int>,
+    : public ::libaom_test::CodecTestWith4Params<libaom_test::TestMode, int,
+                                                 int, int>,
       public ::libaom_test::EncoderTest {
  protected:
   static const int kWidth = 208;
   static const int kHeight = 144;
 
   ActiveMapTest() : EncoderTest(GET_PARAM(0)) {}
-  virtual ~ActiveMapTest() {}
+  ~ActiveMapTest() override = default;
 
-  virtual void SetUp() {
-    InitializeConfig();
-    SetMode(GET_PARAM(1));
+  void SetUp() override {
+    InitializeConfig(GET_PARAM(1));
     cpu_used_ = GET_PARAM(2);
+    aq_mode_ = GET_PARAM(3);
+    screen_mode_ = GET_PARAM(4);
   }
 
-  virtual void PreEncodeFrameHook(::libaom_test::VideoSource *video,
-                                  ::libaom_test::Encoder *encoder) {
-    if (video->frame() == 1) {
+  void PreEncodeFrameHook(::libaom_test::VideoSource *video,
+                          ::libaom_test::Encoder *encoder) override {
+    if (video->frame() == 0) {
       encoder->Control(AOME_SET_CPUUSED, cpu_used_);
+      encoder->Control(AV1E_SET_ALLOW_WARPED_MOTION, 0);
+      encoder->Control(AV1E_SET_ENABLE_GLOBAL_MOTION, 0);
+      encoder->Control(AV1E_SET_ENABLE_OBMC, 0);
+      encoder->Control(AV1E_SET_AQ_MODE, aq_mode_);
+      encoder->Control(AV1E_SET_TUNE_CONTENT, screen_mode_);
+      if (screen_mode_) encoder->Control(AV1E_SET_ENABLE_PALETTE, 1);
     } else if (video->frame() == 3) {
       aom_active_map_t map = aom_active_map_t();
       /* clang-format off */
@@ -64,7 +73,7 @@ class ActiveMapTest
       aom_active_map_t map = aom_active_map_t();
       map.cols = (kWidth + 15) / 16;
       map.rows = (kHeight + 15) / 16;
-      map.active_map = NULL;
+      map.active_map = nullptr;
       encoder->Control(AOME_SET_ACTIVEMAP, &map);
     }
   }
@@ -77,27 +86,22 @@ class ActiveMapTest
     cfg_.g_pass = AOM_RC_ONE_PASS;
     cfg_.rc_end_usage = AOM_CBR;
     cfg_.kf_max_dist = 90000;
-    ::libaom_test::I420VideoSource video("hantro_odd.yuv", kWidth, kHeight, 30,
-                                         1, 0, 20);
+    ::libaom_test::I420VideoSource video("hantro_odd.yuv", kWidth, kHeight, 100,
+                                         1, 0, 100);
 
     ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
   }
 
   int cpu_used_;
+  int aq_mode_;
+  int screen_mode_;
 };
 
 TEST_P(ActiveMapTest, Test) { DoTest(); }
 
-class ActiveMapTestLarge : public ActiveMapTest {};
-
-TEST_P(ActiveMapTestLarge, Test) { DoTest(); }
-
-AV1_INSTANTIATE_TEST_CASE(ActiveMapTestLarge,
-                          ::testing::Values(::libaom_test::kRealTime),
-                          ::testing::Range(0, 5));
-
-AV1_INSTANTIATE_TEST_CASE(ActiveMapTest,
-                          ::testing::Values(::libaom_test::kRealTime),
-                          ::testing::Range(5, 9));
+AV1_INSTANTIATE_TEST_SUITE(ActiveMapTest,
+                           ::testing::Values(::libaom_test::kRealTime),
+                           ::testing::Range(5, 12), ::testing::Values(0, 3),
+                           ::testing::Values(0, 1));
 
 }  // namespace

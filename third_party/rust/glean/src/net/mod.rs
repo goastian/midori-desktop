@@ -19,6 +19,20 @@ use thread_state::{AtomicState, State};
 
 mod http_uploader;
 
+/// Everything you need to request a ping to be uploaded.
+pub struct PingUploadRequest {
+    /// The URL the Glean SDK expects you to use to upload the ping.
+    pub url: String,
+    /// The body, already content-encoded, for upload.
+    pub body: Vec<u8>,
+    /// The HTTP headers, including any Content-Encoding.
+    pub headers: Vec<(String, String)>,
+    /// Whether the body has {client|ping}_info sections in it.
+    pub body_has_info_sections: bool,
+    /// The name (aka doctype) of the ping.
+    pub ping_name: String,
+}
+
 /// A description of a component used to upload pings.
 pub trait PingUploader: std::fmt::Debug + Send + Sync {
     /// Uploads a ping to a server.
@@ -29,7 +43,7 @@ pub trait PingUploader: std::fmt::Debug + Send + Sync {
     /// * `body` - the serialized text data to send.
     /// * `headers` - a vector of tuples containing the headers to send with
     ///   the request, i.e. (Name, Value).
-    fn upload(&self, url: String, body: Vec<u8>, headers: Vec<(String, String)>) -> UploadResult;
+    fn upload(&self, upload_request: PingUploadRequest) -> UploadResult;
 }
 
 /// The logic for uploading pings: this leaves the actual upload mechanism as
@@ -105,7 +119,14 @@ impl UploadManager {
                             let upload_url = format!("{}{}", inner.server_endpoint, request.path);
                             let headers: Vec<(String, String)> =
                                 request.headers.into_iter().collect();
-                            let result = inner.uploader.upload(upload_url, request.body, headers);
+                            let upload_request = PingUploadRequest {
+                                url: upload_url,
+                                body: request.body,
+                                headers,
+                                body_has_info_sections: request.body_has_info_sections,
+                                ping_name: request.ping_name,
+                            };
+                            let result = inner.uploader.upload(upload_request);
                             // Process the upload response.
                             match glean_core::glean_process_ping_upload_response(doc_id, result) {
                                 UploadTaskAction::Next => (),
@@ -138,9 +159,26 @@ impl UploadManager {
                     Ordering::SeqCst,
                     Ordering::SeqCst,
                 );
-            })
-            .expect("Failed to spawn Glean's uploader thread");
-        *handle = Some(thread);
+            });
+
+        match thread {
+            Ok(thread) => *handle = Some(thread),
+            Err(err) => {
+                log::warn!("Failed to spawn Glean's uploader thread. This will be retried on next upload. Error: {err}");
+                // Swapping back the thread state. We're the ones setting it to `Running`, so
+                // should be able to set it back.
+                let state_change = self.inner.thread_running.compare_exchange(
+                    State::Running,
+                    State::Stopped,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+
+                if state_change.is_err() {
+                    log::warn!("Failed to swap back thread state. Someone else jumped in and changed the state.");
+                }
+            }
+        };
     }
 
     pub(crate) fn shutdown(&self) {

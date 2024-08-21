@@ -5,8 +5,8 @@
 
 use backend::*;
 use cubeb_backend::{
-    ffi, log_enabled, Context, ContextOps, DeviceCollectionRef, DeviceId, DeviceType, Error, Ops,
-    Result, Stream, StreamParams, StreamParamsRef,
+    ffi, log_enabled, Context, ContextOps, DeviceCollectionRef, DeviceId, DeviceType, Error,
+    InputProcessingParams, Ops, Result, Stream, StreamParams, StreamParamsRef,
 };
 use pulse::{self, ProplistExt};
 use pulse_ffi::*;
@@ -163,6 +163,11 @@ impl PulseContext {
     pub fn destroy(&mut self) {
         self.context_destroy();
 
+        assert!(
+            self.input_collection_changed_callback.is_none()
+                && self.output_collection_changed_callback.is_none()
+        );
+
         if !self.mainloop.is_null() {
             self.mainloop.stop();
         }
@@ -291,6 +296,10 @@ impl ContextOps for PulseContext {
                 Err(Error::error())
             }
         }
+    }
+
+    fn supported_input_processing_params(&mut self) -> Result<InputProcessingParams> {
+        Ok(InputProcessingParams::NONE)
     }
 
     fn enumerate_devices(
@@ -488,11 +497,7 @@ impl ContextOps for PulseContext {
         debug_assert!(!collection.as_ptr().is_null());
         unsafe {
             let coll = &mut *collection.as_ptr();
-            let mut devices = Vec::from_raw_parts(
-                coll.device as *mut ffi::cubeb_device_info,
-                coll.count,
-                coll.count,
-            );
+            let mut devices = Vec::from_raw_parts(coll.device, coll.count, coll.count);
             for dev in &mut devices {
                 if !dev.group_id.is_null() {
                     let _ = CString::from_raw(dev.group_id as *mut _);
@@ -510,7 +515,7 @@ impl ContextOps for PulseContext {
         Ok(())
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    #[allow(clippy::too_many_arguments)]
     fn stream_init(
         &mut self,
         stream_name: Option<&CStr>,

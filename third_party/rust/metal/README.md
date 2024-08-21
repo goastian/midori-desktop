@@ -2,7 +2,11 @@
 [![Actions Status](https://github.com/gfx-rs/metal-rs/workflows/ci/badge.svg)](https://github.com/gfx-rs/metal-rs/actions)
 [![Crates.io](https://img.shields.io/crates/v/metal.svg?label=metal)](https://crates.io/crates/metal)
 
-Unsafe Rust bindings for the Metal 3D Graphics API.
+<p align="center">
+  <img width="150" height="150" src="./assets/metal.svg">
+</p>
+
+<p align="center">Unsafe Rust bindings for the Metal 3D Graphics API.</p>
 
 ## Examples
 

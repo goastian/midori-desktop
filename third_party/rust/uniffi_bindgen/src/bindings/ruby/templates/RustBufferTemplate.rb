@@ -1,6 +1,6 @@
 class RustBuffer < FFI::Struct
-  layout :capacity, :int32,
-         :len,      :int32,
+  layout :capacity, :uint64,
+         :len,      :uint64,
          :data,     :pointer
 
   def self.alloc(size)
@@ -61,7 +61,7 @@ class RustBuffer < FFI::Struct
   end
 
   {%- for typ in ci.iter_types() -%}
-  {%- let canonical_type_name = typ.canonical_name() -%}
+  {%- let canonical_type_name = canonical_name(typ) -%}
   {%- match typ -%}
 
   {% when Type::String -%}
@@ -77,6 +77,22 @@ class RustBuffer < FFI::Struct
   def consumeIntoString
     consumeWithStream do |stream|
       return stream.read(stream.remaining).force_encoding(Encoding::UTF_8)
+    end
+  end
+
+  {% when Type::Bytes -%}
+  # The primitive Bytes type.
+
+  def self.allocFromBytes(value)
+    RustBuffer.allocWithBuilder do |builder|
+      builder.write_Bytes(value)
+      return builder.finalize
+    end
+  end
+
+  def consumeIntoBytes
+    consumeWithStream do |stream|
+      return stream.readBytes
     end
   end
 
@@ -108,10 +124,16 @@ class RustBuffer < FFI::Struct
     end
   end
 
-  {% when Type::Record with (record_name) -%}
-  {%- let rec = ci.get_record_definition(record_name).unwrap() -%}
+  {% when Type::Record { name: record_name, module_path } -%}
+  {%- let rec = ci|get_record_definition(record_name) -%}
   # The Record type {{ record_name }}.
 
+  def self.check_lower_{{ canonical_type_name }}(v)
+    {%- for field in rec.fields() %}
+    {{ "v.{}"|format(field.name()|var_name_rb)|check_lower_rb(field.as_type().borrow()) }}
+    {%- endfor %}
+  end
+
   def self.alloc_from_{{ canonical_type_name }}(v)
     RustBuffer.allocWithBuilder do |builder|
       builder.write_{{ canonical_type_name }}(v)
@@ -125,10 +147,24 @@ class RustBuffer < FFI::Struct
     end
   end
 
-  {% when Type::Enum with (enum_name) -%}
-  {%- let e = ci.get_enum_definition(enum_name).unwrap() -%}
+  {% when Type::Enum { name: enum_name, module_path }  -%}
+  {% if !ci.is_name_used_as_error(enum_name) %}
+  {%- let e = ci|get_enum_definition(enum_name) -%}
   # The Enum type {{ enum_name }}.
 
+  def self.check_lower_{{ canonical_type_name }}(v)
+    {%- if !e.is_flat() %}
+    {%- for variant in e.variants() %}
+    if v.{{ variant.name()|var_name_rb }}?
+      {%- for field in variant.fields() %}
+        {{ "v.{}"|format(field.name())|check_lower_rb(field.as_type().borrow()) }}
+      {%- endfor %}
+      return
+    end
+    {%- endfor %}
+    {%- endif %}
+  end
+
   def self.alloc_from_{{ canonical_type_name }}(v)
     RustBuffer.allocWithBuilder do |builder|
       builder.write_{{ canonical_type_name }}(v)
@@ -141,9 +177,16 @@ class RustBuffer < FFI::Struct
       return stream.read{{ canonical_type_name }}
     end
   end
+  {% endif %}
 
-  {% when Type::Optional with (inner_type) -%}
-  # The Optional<T> type for {{ inner_type.canonical_name() }}.
+  {% when Type::Optional { inner_type } -%}
+  # The Optional<T> type for {{ canonical_name(inner_type) }}.
+
+  def self.check_lower_{{ canonical_type_name }}(v)
+    if not v.nil?
+      {{ "v"|check_lower_rb(inner_type.borrow()) }}
+    end
+  end
 
   def self.alloc_from_{{ canonical_type_name }}(v)
     RustBuffer.allocWithBuilder do |builder|
@@ -158,8 +201,14 @@ class RustBuffer < FFI::Struct
     end
   end
 
-  {% when Type::Sequence with (inner_type) -%}
-  # The Sequence<T> type for {{ inner_type.canonical_name() }}.
+  {% when Type::Sequence { inner_type } -%}
+  # The Sequence<T> type for {{ canonical_name(inner_type) }}.
+
+  def self.check_lower_{{ canonical_type_name }}(v)
+    v.each do |item|
+      {{ "item"|check_lower_rb(inner_type.borrow()) }}
+    end
+  end
 
   def self.alloc_from_{{ canonical_type_name }}(v)
     RustBuffer.allocWithBuilder do |builder|
@@ -174,8 +223,15 @@ class RustBuffer < FFI::Struct
     end
   end
 
-  {% when Type::Map with (k, inner_type) -%}
-  # The Map<T> type for {{ inner_type.canonical_name() }}.
+  {% when Type::Map { key_type: k, value_type: inner_type } -%}
+  # The Map<T> type for {{ canonical_name(inner_type) }}.
+
+  def self.check_lower_{{ canonical_type_name }}(v)
+    v.each do |k, v|
+      {{ "k"|check_lower_rb(k.borrow()) }}
+      {{ "v"|check_lower_rb(inner_type.borrow()) }}
+    end
+  end
 
   def self.alloc_from_{{ canonical_type_name }}(v)
     RustBuffer.allocWithBuilder do |builder|

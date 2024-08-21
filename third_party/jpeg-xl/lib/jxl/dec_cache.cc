@@ -5,9 +5,14 @@
 
 #include "lib/jxl/dec_cache.h"
 
+#include <jxl/memory_manager.h>
+
+#include "lib/jxl/base/status.h"
 #include "lib/jxl/blending.h"
+#include "lib/jxl/common.h"  // JXL_HIGH_PRECISION
 #include "lib/jxl/render_pipeline/stage_blending.h"
 #include "lib/jxl/render_pipeline/stage_chroma_upsampling.h"
+#include "lib/jxl/render_pipeline/stage_cms.h"
 #include "lib/jxl/render_pipeline/stage_epf.h"
 #include "lib/jxl/render_pipeline/stage_from_linear.h"
 #include "lib/jxl/render_pipeline/stage_gaborish.h"
@@ -24,20 +29,22 @@
 
 namespace jxl {
 
-Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
+Status PassesDecoderState::PreparePipeline(const FrameHeader& frame_header,
+                                           const ImageMetadata* metadata,
+                                           ImageBundle* decoded,
                                            PipelineOptions options) {
-  const FrameHeader& frame_header = shared->frame_header;
+  JxlMemoryManager* memory_manager = this->memory_manager();
   size_t num_c = 3 + frame_header.nonserialized_metadata->m.num_extra_channels;
-  if ((frame_header.flags & FrameHeader::kNoise) != 0) {
-    num_c += 3;
-  }
+  bool render_noise =
+      (options.render_noise && (frame_header.flags & FrameHeader::kNoise) != 0);
+  size_t num_tmp_c = render_noise ? 3 : 0;
 
   if (frame_header.CanBeReferenced()) {
     // Necessary so that SetInputSizes() can allocate output buffers as needed.
-    frame_storage_for_referencing = ImageBundle(decoded->metadata());
+    frame_storage_for_referencing = ImageBundle(memory_manager, metadata);
   }
 
-  RenderPipeline::Builder builder(num_c);
+  RenderPipeline::Builder builder(memory_manager, num_c + num_tmp_c);
 
   if (options.use_slow_render_pipeline) {
     builder.UseSimpleImplementation();
@@ -92,9 +99,9 @@ Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
   }
 
   if ((frame_header.flags & FrameHeader::kPatches) != 0) {
-    builder.AddStage(
-        GetPatchesStage(&shared->image_features.patches,
-                        3 + shared->metadata->m.num_extra_channels));
+    builder.AddStage(GetPatchesStage(
+        &shared->image_features.patches,
+        &frame_header.nonserialized_metadata->m.extra_channel_info));
   }
   if ((frame_header.flags & FrameHeader::kSplines) != 0) {
     builder.AddStage(GetSplineStage(&shared->image_features.splines));
@@ -110,28 +117,26 @@ Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
           CeilLog2Nonzero(frame_header.upsampling)));
     }
   }
-
-  if ((frame_header.flags & FrameHeader::kNoise) != 0) {
-    builder.AddStage(GetConvolveNoiseStage(num_c - 3));
+  if (render_noise) {
+    builder.AddStage(GetConvolveNoiseStage(num_c));
     builder.AddStage(GetAddNoiseStage(shared->image_features.noise_params,
-                                      shared->cmap, num_c - 3));
+                                      shared->cmap.base(), num_c));
   }
   if (frame_header.dc_level != 0) {
     builder.AddStage(GetWriteToImage3FStage(
-        &shared_storage.dc_frames[frame_header.dc_level - 1]));
+        memory_manager, &shared_storage.dc_frames[frame_header.dc_level - 1]));
   }
 
   if (frame_header.CanBeReferenced() &&
       frame_header.save_before_color_transform) {
-    builder.AddStage(GetWriteToImageBundleStage(
-        &frame_storage_for_referencing, output_encoding_info.color_encoding));
+    builder.AddStage(GetWriteToImageBundleStage(&frame_storage_for_referencing,
+                                                output_encoding_info));
   }
 
   bool has_alpha = false;
   size_t alpha_c = 0;
-  for (size_t i = 0; i < decoded->metadata()->extra_channel_info.size(); i++) {
-    if (decoded->metadata()->extra_channel_info[i].type ==
-        ExtraChannel::kAlpha) {
+  for (size_t i = 0; i < metadata->extra_channel_info.size(); i++) {
+    if (metadata->extra_channel_info[i].type == ExtraChannel::kAlpha) {
       has_alpha = true;
       alpha_c = 3 + i;
       break;
@@ -139,16 +144,18 @@ Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
   }
 
   if (fast_xyb_srgb8_conversion) {
-    JXL_ASSERT(!NeedsBlending(this));
+#if !JXL_HIGH_PRECISION
+    JXL_ASSERT(!NeedsBlending(frame_header));
     JXL_ASSERT(!frame_header.CanBeReferenced() ||
                frame_header.save_before_color_transform);
     JXL_ASSERT(!options.render_spotcolors ||
-               !decoded->metadata()->Find(ExtraChannel::kSpotColor));
+               !metadata->Find(ExtraChannel::kSpotColor));
     bool is_rgba = (main_output.format.num_channels == 4);
     uint8_t* rgb_output = reinterpret_cast<uint8_t*>(main_output.buffer);
     builder.AddStage(GetFastXYBTosRGB8Stage(rgb_output, main_output.stride,
                                             width, height, is_rgba, has_alpha,
                                             alpha_c));
+#endif
   } else {
     bool linear = false;
     if (frame_header.color_transform == ColorTransform::kYCbCr) {
@@ -161,13 +168,13 @@ Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
       }
     }  // Nothing to do for kNone.
 
-    if (options.coalescing && NeedsBlending(this)) {
+    if (options.coalescing && NeedsBlending(frame_header)) {
       if (linear) {
         builder.AddStage(GetFromLinearStage(output_encoding_info));
         linear = false;
       }
-      builder.AddStage(
-          GetBlendingStage(this, output_encoding_info.color_encoding));
+      builder.AddStage(GetBlendingStage(frame_header, this,
+                                        output_encoding_info.color_encoding));
     }
 
     if (options.coalescing && frame_header.CanBeReferenced() &&
@@ -177,16 +184,14 @@ Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
         linear = false;
       }
       builder.AddStage(GetWriteToImageBundleStage(
-          &frame_storage_for_referencing, output_encoding_info.color_encoding));
+          &frame_storage_for_referencing, output_encoding_info));
     }
 
     if (options.render_spotcolors &&
         frame_header.nonserialized_metadata->m.Find(ExtraChannel::kSpotColor)) {
-      for (size_t i = 0; i < decoded->metadata()->extra_channel_info.size();
-           i++) {
+      for (size_t i = 0; i < metadata->extra_channel_info.size(); i++) {
         // Don't use Find() because there may be multiple spot color channels.
-        const ExtraChannelInfo& eci =
-            decoded->metadata()->extra_channel_info[i];
+        const ExtraChannelInfo& eci = metadata->extra_channel_info[i];
         if (eci.type == ExtraChannel::kSpotColor) {
           builder.AddStage(GetSpotColorStage(3 + i, eci.spot_color));
         }
@@ -198,31 +203,65 @@ Status PassesDecoderState::PreparePipeline(ImageBundle* decoded,
       if (!linear) {
         auto to_linear_stage = GetToLinearStage(output_encoding_info);
         if (!to_linear_stage) {
-          return JXL_FAILURE(
-              "attempting to perform tone mapping on colorspace not "
-              "convertible to linear");
+          if (!output_encoding_info.cms_set) {
+            return JXL_FAILURE("Cannot tonemap this colorspace without a CMS");
+          }
+          auto cms_stage = GetCmsStage(output_encoding_info);
+          if (cms_stage) {
+            builder.AddStage(std::move(cms_stage));
+          }
+        } else {
+          builder.AddStage(std::move(to_linear_stage));
         }
-        builder.AddStage(std::move(to_linear_stage));
         linear = true;
       }
       builder.AddStage(std::move(tone_mapping_stage));
     }
 
     if (linear) {
-      builder.AddStage(GetFromLinearStage(output_encoding_info));
+      const size_t channels_src =
+          (output_encoding_info.orig_color_encoding.IsCMYK()
+               ? 4
+               : output_encoding_info.orig_color_encoding.Channels());
+      const size_t channels_dst =
+          output_encoding_info.color_encoding.Channels();
+      bool mixing_color_and_grey = (channels_dst != channels_src);
+      if ((output_encoding_info.color_encoding_is_original) ||
+          (!output_encoding_info.cms_set) || mixing_color_and_grey) {
+        // in those cases we only need a linear stage in other cases we attempt
+        // to obtain a cms stage: the cases are
+        // - output_encoding_info.color_encoding_is_original: no cms stage
+        // needed because it would be a no-op
+        // - !output_encoding_info.cms_set: can't use the cms, so no point in
+        // trying to add a cms stage
+        // - mixing_color_and_grey: cms stage can't handle that
+        // TODO(firsching): remove "mixing_color_and_grey" condition after
+        // adding support for greyscale to cms stage.
+        builder.AddStage(GetFromLinearStage(output_encoding_info));
+      } else {
+        if (!output_encoding_info.linear_color_encoding.CreateICC()) {
+          return JXL_FAILURE("Failed to create ICC");
+        }
+        auto cms_stage = GetCmsStage(output_encoding_info);
+        if (cms_stage) {
+          builder.AddStage(std::move(cms_stage));
+        }
+      }
       linear = false;
     }
+    (void)linear;
 
     if (main_output.callback.IsPresent() || main_output.buffer) {
-      builder.AddStage(GetWriteToOutputStage(main_output, width, height,
-                                             has_alpha, unpremul_alpha, alpha_c,
-                                             undo_orientation, extra_output));
+      builder.AddStage(GetWriteToOutputStage(
+          main_output, width, height, has_alpha, unpremul_alpha, alpha_c,
+          undo_orientation, extra_output, memory_manager));
     } else {
-      builder.AddStage(GetWriteToImageBundleStage(
-          decoded, output_encoding_info.color_encoding));
+      builder.AddStage(
+          GetWriteToImageBundleStage(decoded, output_encoding_info));
     }
   }
-  render_pipeline = std::move(builder).Finalize(shared->frame_dim);
+  JXL_ASSIGN_OR_RETURN(render_pipeline,
+                       std::move(builder).Finalize(shared->frame_dim));
   return render_pipeline->IsInitialized();
 }
 

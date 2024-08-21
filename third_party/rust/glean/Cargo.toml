@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.62"
+rust-version = "1.66"
 name = "glean"
-version = "52.7.0"
+version = "60.1.1"
 authors = [
     "Jan-Erik Rediger <jrediger@mozilla.com>",
     "The Glean Team <glean-team@mozilla.com>",
@@ -33,17 +33,9 @@ keywords = [
 ]
 license = "MPL-2.0"
 repository = "https://github.com/mozilla/glean"
-resolver = "1"
-
-[dependencies.chrono]
-version = "0.4.10"
-features = ["serde"]
-
-[dependencies.crossbeam-channel]
-version = "0.5"
 
 [dependencies.glean-core]
-version = "52.7.0"
+version = "=60.1.1"
 
 [dependencies.inherent]
 version = "1"
@@ -52,34 +44,17 @@ version = "1"
 version = "0.4.8"
 
 [dependencies.once_cell]
-version = "1.2.0"
-
-[dependencies.serde]
-version = "1.0.104"
-features = ["derive"]
-
-[dependencies.serde_json]
-version = "1.0.44"
-
-[dependencies.thiserror]
-version = "1.0.4"
-
-[dependencies.time]
-version = "0.1.40"
-
-[dependencies.uuid]
-version = "1.0"
-features = ["v4"]
+version = "1.18.0"
 
 [dependencies.whatsys]
 version = "0.3.0"
 
+[dev-dependencies.crossbeam-channel]
+version = "0.5"
+
 [dev-dependencies.env_logger]
 version = "0.10.0"
-features = [
-    "auto-color",
-    "humantime",
-]
+features = ["humantime"]
 default-features = false
 
 [dev-dependencies.flate2]
@@ -87,6 +62,12 @@ version = "1.0.19"
 
 [dev-dependencies.jsonschema-valid]
 version = "0.5.0"
+
+[dev-dependencies.libc]
+version = "0.2"
+
+[dev-dependencies.serde_json]
+version = "1.0.44"
 
 [dev-dependencies.tempfile]
 version = "3.1.0"

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.60"
 name = "once_cell"
-version = "1.17.1"
+version = "1.19.0"
 authors = ["Aleksey Kladov <aleksey.kladov@gmail.com>"]
 exclude = [
     "*.png",
@@ -37,6 +37,7 @@ repository = "https://github.com/matklad/once_cell"
 
 [package.metadata.docs.rs]
 all-features = true
+rustdoc-args = ["--generate-link-to-definition"]
 
 [[example]]
 name = "bench"
@@ -44,10 +45,6 @@ required-features = ["std"]
 
 [[example]]
 name = "bench_acquire"
-required-features = ["std"]
-
-[[example]]
-name = "bench_vs_lazy_static"
 required-features = ["std"]
 
 [[example]]
@@ -66,31 +63,22 @@ required-features = ["std"]
 name = "test_synchronization"
 required-features = ["std"]
 
-[dependencies.atomic_polyfill]
+[dependencies.critical-section]
 version = "1"
 optional = true
-package = "atomic-polyfill"
-
-[dependencies.critical_section]
-version = "1"
-optional = true
-package = "critical-section"
 
 [dependencies.parking_lot_core]
 version = "0.9.3"
 optional = true
 default_features = false
 
-[dev-dependencies.critical_section]
+[dependencies.portable-atomic]
+version = "1"
+optional = true
+
+[dev-dependencies.critical-section]
 version = "1.1.1"
 features = ["std"]
-package = "critical-section"
-
-[dev-dependencies.crossbeam-utils]
-version = "0.8.7"
-
-[dev-dependencies.lazy_static]
-version = "1.0.0"
 
 [dev-dependencies.regex]
 version = "1.2.0"
@@ -99,11 +87,11 @@ version = "1.2.0"
 alloc = ["race"]
 atomic-polyfill = ["critical-section"]
 critical-section = [
-    "critical_section",
-    "atomic_polyfill",
+    "dep:critical-section",
+    "portable-atomic",
 ]
 default = ["std"]
-parking_lot = ["parking_lot_core"]
+parking_lot = ["dep:parking_lot_core"]
 race = []
 std = ["alloc"]
 unstable = []

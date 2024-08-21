@@ -5,21 +5,14 @@
 
 #include "lib/jxl/enc_noise.h"
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <numeric>
 #include <utility>
 
-#include "lib/jxl/base/compiler_specific.h"
-#include "lib/jxl/chroma_from_luma.h"
-#include "lib/jxl/convolve.h"
 #include "lib/jxl/enc_aux_out.h"
 #include "lib/jxl/enc_optimize.h"
-#include "lib/jxl/image_ops.h"
-#include "lib/jxl/opsin_params.h"
 
 namespace jxl {
 namespace {
@@ -116,7 +109,7 @@ class NoiseHistogram {
  private:
   template <typename T>
   T ClampX(const T x) const {
-    return std::min(std::max(T(0), x), T(kBins - 1));
+    return std::min(std::max(static_cast<T>(0), x), static_cast<T>(kBins - 1));
   }
   size_t Index(const float x) const { return ClampX(static_cast<int>(x)); }
 
@@ -323,7 +316,7 @@ std::vector<NoiseLevel> GetNoiseLevel(
 
 void EncodeFloatParam(float val, float precision, BitWriter* writer) {
   JXL_ASSERT(val >= 0);
-  const int absval_quant = static_cast<int>(val * precision + 0.5f);
+  const int absval_quant = static_cast<int>(std::lround(val * precision));
   JXL_ASSERT(absval_quant < (1 << 10));
   writer->Write(10, absval_quant);
 }

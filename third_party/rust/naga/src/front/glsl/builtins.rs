@@ -7,10 +7,9 @@ use super::{
     Error, ErrorKind, Frontend, Result,
 };
 use crate::{
-    BinaryOperator, Block, Constant, DerivativeAxis as Axis, DerivativeControl as Ctrl, Expression,
-    Handle, ImageClass, ImageDimension as Dim, ImageQuery, MathFunction, Module,
-    RelationalFunction, SampleLevel, ScalarKind as Sk, Span, Type, TypeInner, UnaryOperator,
-    VectorSize,
+    BinaryOperator, DerivativeAxis as Axis, DerivativeControl as Ctrl, Expression, Handle,
+    ImageClass, ImageDimension as Dim, ImageQuery, MathFunction, Module, RelationalFunction,
+    SampleLevel, Scalar, ScalarKind as Sk, Span, Type, TypeInner, UnaryOperator, VectorSize,
 };
 
 impl crate::ScalarKind {
@@ -55,18 +54,17 @@ impl Module {
 }
 
 const fn make_coords_arg(number_of_components: usize, kind: Sk) -> TypeInner {
-    let width = 4;
+    let scalar = Scalar { kind, width: 4 };
 
     match number_of_components {
-        1 => TypeInner::Scalar { kind, width },
+        1 => TypeInner::Scalar(scalar),
         _ => TypeInner::Vector {
             size: match number_of_components {
                 2 => VectorSize::Bi,
                 3 => VectorSize::Tri,
                 _ => VectorSize::Quad,
             },
-            kind,
-            width,
+            scalar,
         },
     }
 }
@@ -99,7 +97,6 @@ pub fn inject_builtin(
         inject_double_builtin(declaration, module, name)
     }
 
-    let width = 4;
     match name {
         "texture"
         | "textureGrad"
@@ -236,18 +233,12 @@ pub fn inject_builtin(
                     let mut args = vec![image, vector];
 
                     if num_coords == 5 {
-                        args.push(TypeInner::Scalar {
-                            kind: Sk::Float,
-                            width,
-                        });
+                        args.push(TypeInner::Scalar(Scalar::F32));
                     }
 
                     match level_type {
                         TextureLevelType::Lod => {
-                            args.push(TypeInner::Scalar {
-                                kind: Sk::Float,
-                                width,
-                            });
+                            args.push(TypeInner::Scalar(Scalar::F32));
                         }
                         TextureLevelType::Grad => {
                             args.push(make_coords_arg(num_coords_from_dim, Sk::Float));
@@ -261,10 +252,7 @@ pub fn inject_builtin(
                     }
 
                     if bias {
-                        args.push(TypeInner::Scalar {
-                            kind: Sk::Float,
-                            width,
-                        });
+                        args.push(TypeInner::Scalar(Scalar::F32));
                     }
 
                     declaration
@@ -291,10 +279,7 @@ pub fn inject_builtin(
                 let mut args = vec![image];
 
                 if !multi {
-                    args.push(TypeInner::Scalar {
-                        kind: Sk::Sint,
-                        width,
-                    })
+                    args.push(TypeInner::Scalar(Scalar::I32))
                 }
 
                 declaration
@@ -324,14 +309,7 @@ pub fn inject_builtin(
                 let dim_value = image_dims_to_coords_size(dim);
                 let coordinates = make_coords_arg(dim_value + arrayed as usize, Sk::Sint);
 
-                let mut args = vec![
-                    image,
-                    coordinates,
-                    TypeInner::Scalar {
-                        kind: Sk::Sint,
-                        width,
-                    },
-                ];
+                let mut args = vec![image, coordinates, TypeInner::Scalar(Scalar::I32)];
 
                 if offset {
                     args.push(make_coords_arg(dim_value, Sk::Sint));
@@ -442,8 +420,7 @@ pub fn inject_builtin(
                     coordinates,
                     TypeInner::Vector {
                         size: VectorSize::Quad,
-                        kind,
-                        width,
+                        scalar: Scalar { kind, width: 4 },
                     },
                 ];
 
@@ -465,7 +442,6 @@ fn inject_standard_builtins(
     module: &mut Module,
     name: &str,
 ) {
-    let width = 4;
     match name {
         "sampler1D" | "sampler1DArray" | "sampler2D" | "sampler2DArray" | "sampler2DMS"
         | "sampler2DMSArray" | "sampler3D" | "samplerCube" | "samplerCubeArray" => {
@@ -545,12 +521,12 @@ fn inject_standard_builtins(
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let kind = Sk::Float;
+                let scalar = Scalar::F32;
 
                 declaration.overloads.push(module.add_builtin(
                     vec![match size {
-                        Some(size) => TypeInner::Vector { size, kind, width },
-                        None => TypeInner::Scalar { kind, width },
+                        Some(size) => TypeInner::Vector { size, scalar },
+                        None => TypeInner::Scalar(scalar),
                     }],
                     match name {
                         "sin" => MacroCall::MathFunction(MathFunction::Sin),
@@ -596,15 +572,15 @@ fn inject_standard_builtins(
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let kind = match name {
-                    "intBitsToFloat" => Sk::Sint,
-                    _ => Sk::Uint,
+                let scalar = match name {
+                    "intBitsToFloat" => Scalar::I32,
+                    _ => Scalar::U32,
                 };
 
                 declaration.overloads.push(module.add_builtin(
                     vec![match size {
-                        Some(size) => TypeInner::Vector { size, kind, width },
-                        None => TypeInner::Scalar { kind, width },
+                        Some(size) => TypeInner::Vector { size, scalar },
+                        None => TypeInner::Scalar(scalar),
                     }],
                     MacroCall::BitCast(Sk::Float),
                 ))
@@ -620,10 +596,10 @@ fn inject_standard_builtins(
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let kind = Sk::Float;
+                let scalar = Scalar::F32;
                 let ty = || match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
 
                 declaration.overloads.push(
@@ -643,14 +619,14 @@ fn inject_standard_builtins(
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let kind = match bits >> 2 {
-                    0b0 => Sk::Float,
-                    _ => Sk::Sint,
+                let scalar = match bits >> 2 {
+                    0b0 => Scalar::F32,
+                    _ => Scalar::I32,
                 };
 
                 let args = vec![match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 }];
 
                 declaration.overloads.push(module.add_builtin(
@@ -685,9 +661,9 @@ fn inject_standard_builtins(
             // bit 0 - int/uint
             // bit 1 through 2 - dims
             for bits in 0..0b1000 {
-                let kind = match bits & 0b1 {
-                    0b0 => Sk::Sint,
-                    _ => Sk::Uint,
+                let scalar = match bits & 0b1 {
+                    0b0 => Scalar::I32,
+                    _ => Scalar::U32,
                 };
                 let size = match bits >> 1 {
                     0b00 => None,
@@ -697,39 +673,27 @@ fn inject_standard_builtins(
                 };
 
                 let ty = || match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
 
                 let mut args = vec![ty()];
 
                 match fun {
                     MathFunction::ExtractBits => {
-                        args.push(TypeInner::Scalar {
-                            kind: Sk::Sint,
-                            width: 4,
-                        });
-                        args.push(TypeInner::Scalar {
-                            kind: Sk::Sint,
-                            width: 4,
-                        });
+                        args.push(TypeInner::Scalar(Scalar::I32));
+                        args.push(TypeInner::Scalar(Scalar::I32));
                     }
                     MathFunction::InsertBits => {
                         args.push(ty());
-                        args.push(TypeInner::Scalar {
-                            kind: Sk::Sint,
-                            width: 4,
-                        });
-                        args.push(TypeInner::Scalar {
-                            kind: Sk::Sint,
-                            width: 4,
-                        });
+                        args.push(TypeInner::Scalar(Scalar::I32));
+                        args.push(TypeInner::Scalar(Scalar::I32));
                     }
                     _ => {}
                 }
 
                 // we need to cast the return type of findLsb / findMsb
-                let mc = if kind == Sk::Uint {
+                let mc = if scalar.kind == Sk::Uint {
                     match mc {
                         MacroCall::MathFunction(MathFunction::FindLsb) => MacroCall::FindLsbUint,
                         MacroCall::MathFunction(MathFunction::FindMsb) => MacroCall::FindMsbUint,
@@ -754,16 +718,14 @@ fn inject_standard_builtins(
 
             let ty = match fun {
                 MathFunction::Pack4x8snorm | MathFunction::Pack4x8unorm => TypeInner::Vector {
-                    size: crate::VectorSize::Quad,
-                    kind: Sk::Float,
-                    width: 4,
+                    size: VectorSize::Quad,
+                    scalar: Scalar::F32,
                 },
                 MathFunction::Pack2x16unorm
                 | MathFunction::Pack2x16snorm
                 | MathFunction::Pack2x16float => TypeInner::Vector {
-                    size: crate::VectorSize::Bi,
-                    kind: Sk::Float,
-                    width: 4,
+                    size: VectorSize::Bi,
+                    scalar: Scalar::F32,
                 },
                 _ => unreachable!(),
             };
@@ -785,10 +747,7 @@ fn inject_standard_builtins(
                 _ => unreachable!(),
             };
 
-            let args = vec![TypeInner::Scalar {
-                kind: Sk::Uint,
-                width: 4,
-            }];
+            let args = vec![TypeInner::Scalar(Scalar::U32)];
 
             declaration
                 .overloads
@@ -809,10 +768,10 @@ fn inject_standard_builtins(
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let kind = Sk::Float;
+                let scalar = Scalar::F32;
                 let ty = || match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
 
                 let mut args = vec![ty()];
@@ -838,14 +797,13 @@ fn inject_standard_builtins(
 
                 let args = vec![TypeInner::Vector {
                     size,
-                    kind: Sk::Bool,
-                    width: crate::BOOL_WIDTH,
+                    scalar: Scalar::BOOL,
                 }];
 
                 let fun = match name {
                     "all" => MacroCall::Relational(RelationalFunction::All),
                     "any" => MacroCall::Relational(RelationalFunction::Any),
-                    "not" => MacroCall::Unary(UnaryOperator::Not),
+                    "not" => MacroCall::Unary(UnaryOperator::LogicalNot),
                     _ => unreachable!(),
                 };
 
@@ -854,19 +812,19 @@ fn inject_standard_builtins(
         }
         "lessThan" | "greaterThan" | "lessThanEqual" | "greaterThanEqual" => {
             for bits in 0..0b1001 {
-                let (size, kind) = match bits {
-                    0b0000 => (VectorSize::Bi, Sk::Float),
-                    0b0001 => (VectorSize::Tri, Sk::Float),
-                    0b0010 => (VectorSize::Quad, Sk::Float),
-                    0b0011 => (VectorSize::Bi, Sk::Sint),
-                    0b0100 => (VectorSize::Tri, Sk::Sint),
-                    0b0101 => (VectorSize::Quad, Sk::Sint),
-                    0b0110 => (VectorSize::Bi, Sk::Uint),
-                    0b0111 => (VectorSize::Tri, Sk::Uint),
-                    _ => (VectorSize::Quad, Sk::Uint),
+                let (size, scalar) = match bits {
+                    0b0000 => (VectorSize::Bi, Scalar::F32),
+                    0b0001 => (VectorSize::Tri, Scalar::F32),
+                    0b0010 => (VectorSize::Quad, Scalar::F32),
+                    0b0011 => (VectorSize::Bi, Scalar::I32),
+                    0b0100 => (VectorSize::Tri, Scalar::I32),
+                    0b0101 => (VectorSize::Quad, Scalar::I32),
+                    0b0110 => (VectorSize::Bi, Scalar::U32),
+                    0b0111 => (VectorSize::Tri, Scalar::U32),
+                    _ => (VectorSize::Quad, Scalar::U32),
                 };
 
-                let ty = || TypeInner::Vector { size, kind, width };
+                let ty = || TypeInner::Vector { size, scalar };
                 let args = vec![ty(), ty()];
 
                 let fun = MacroCall::Binary(match name {
@@ -882,28 +840,22 @@ fn inject_standard_builtins(
         }
         "equal" | "notEqual" => {
             for bits in 0..0b1100 {
-                let (size, kind) = match bits {
-                    0b0000 => (VectorSize::Bi, Sk::Float),
-                    0b0001 => (VectorSize::Tri, Sk::Float),
-                    0b0010 => (VectorSize::Quad, Sk::Float),
-                    0b0011 => (VectorSize::Bi, Sk::Sint),
-                    0b0100 => (VectorSize::Tri, Sk::Sint),
-                    0b0101 => (VectorSize::Quad, Sk::Sint),
-                    0b0110 => (VectorSize::Bi, Sk::Uint),
-                    0b0111 => (VectorSize::Tri, Sk::Uint),
-                    0b1000 => (VectorSize::Quad, Sk::Uint),
-                    0b1001 => (VectorSize::Bi, Sk::Bool),
-                    0b1010 => (VectorSize::Tri, Sk::Bool),
-                    _ => (VectorSize::Quad, Sk::Bool),
+                let (size, scalar) = match bits {
+                    0b0000 => (VectorSize::Bi, Scalar::F32),
+                    0b0001 => (VectorSize::Tri, Scalar::F32),
+                    0b0010 => (VectorSize::Quad, Scalar::F32),
+                    0b0011 => (VectorSize::Bi, Scalar::I32),
+                    0b0100 => (VectorSize::Tri, Scalar::I32),
+                    0b0101 => (VectorSize::Quad, Scalar::I32),
+                    0b0110 => (VectorSize::Bi, Scalar::U32),
+                    0b0111 => (VectorSize::Tri, Scalar::U32),
+                    0b1000 => (VectorSize::Quad, Scalar::U32),
+                    0b1001 => (VectorSize::Bi, Scalar::BOOL),
+                    0b1010 => (VectorSize::Tri, Scalar::BOOL),
+                    _ => (VectorSize::Quad, Scalar::BOOL),
                 };
 
-                let width = if let Sk::Bool = kind {
-                    crate::BOOL_WIDTH
-                } else {
-                    width
-                };
-
-                let ty = || TypeInner::Vector { size, kind, width };
+                let ty = || TypeInner::Vector { size, scalar };
                 let args = vec![ty(), ty()];
 
                 let fun = MacroCall::Binary(match name {
@@ -920,10 +872,10 @@ fn inject_standard_builtins(
             // bit 0 through 1 - scalar kind
             // bit 2 through 4 - dims
             for bits in 0..0b11100 {
-                let kind = match bits & 0b11 {
-                    0b00 => Sk::Float,
-                    0b01 => Sk::Sint,
-                    0b10 => Sk::Uint,
+                let scalar = match bits & 0b11 {
+                    0b00 => Scalar::F32,
+                    0b01 => Scalar::I32,
+                    0b10 => Scalar::U32,
                     _ => continue,
                 };
                 let (size, second_size) = match bits >> 2 {
@@ -938,12 +890,12 @@ fn inject_standard_builtins(
 
                 let args = vec![
                     match size {
-                        Some(size) => TypeInner::Vector { size, kind, width },
-                        None => TypeInner::Scalar { kind, width },
+                        Some(size) => TypeInner::Vector { size, scalar },
+                        None => TypeInner::Scalar(scalar),
                     },
                     match second_size {
-                        Some(size) => TypeInner::Vector { size, kind, width },
-                        None => TypeInner::Scalar { kind, width },
+                        Some(size) => TypeInner::Vector { size, scalar },
+                        None => TypeInner::Scalar(scalar),
                     },
                 ];
 
@@ -970,25 +922,25 @@ fn inject_standard_builtins(
                     0b10 => Some(VectorSize::Quad),
                     _ => None,
                 };
-                let (kind, splatted, boolean) = match bits >> 2 {
-                    0b000 => (Sk::Sint, false, true),
-                    0b001 => (Sk::Uint, false, true),
-                    0b010 => (Sk::Float, false, true),
-                    0b011 => (Sk::Float, false, false),
-                    _ => (Sk::Float, true, false),
+                let (scalar, splatted, boolean) = match bits >> 2 {
+                    0b000 => (Scalar::I32, false, true),
+                    0b001 => (Scalar::U32, false, true),
+                    0b010 => (Scalar::F32, false, true),
+                    0b011 => (Scalar::F32, false, false),
+                    _ => (Scalar::F32, true, false),
                 };
 
-                let ty = |kind, width| match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                let ty = |scalar| match size {
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
                 let args = vec![
-                    ty(kind, width),
-                    ty(kind, width),
+                    ty(scalar),
+                    ty(scalar),
                     match (boolean, splatted) {
-                        (true, _) => ty(Sk::Bool, crate::BOOL_WIDTH),
-                        (_, false) => TypeInner::Scalar { kind, width },
-                        _ => ty(kind, width),
+                        (true, _) => ty(Scalar::BOOL),
+                        (_, false) => TypeInner::Scalar(scalar),
+                        _ => ty(scalar),
                     },
                 ];
 
@@ -1010,10 +962,10 @@ fn inject_standard_builtins(
             // 0b11010 is the last element since splatted single elements
             // were already added
             for bits in 0..0b11011 {
-                let kind = match bits & 0b11 {
-                    0b00 => Sk::Float,
-                    0b01 => Sk::Sint,
-                    0b10 => Sk::Uint,
+                let scalar = match bits & 0b11 {
+                    0b00 => Scalar::F32,
+                    0b01 => Scalar::I32,
+                    0b10 => Scalar::U32,
                     _ => continue,
                 };
                 let size = match (bits >> 2) & 0b11 {
@@ -1025,11 +977,11 @@ fn inject_standard_builtins(
                 let splatted = bits & 0b10000 == 0b10000;
 
                 let base_ty = || match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
                 let limit_ty = || match splatted {
-                    true => TypeInner::Scalar { kind, width },
+                    true => TypeInner::Scalar(scalar),
                     false => base_ty(),
                 };
 
@@ -1050,7 +1002,6 @@ fn inject_standard_builtins(
 
 /// Injects the builtins into declaration that need doubles
 fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Module, name: &str) {
-    let width = 8;
     match name {
         "abs" | "sign" => {
             // bits layout
@@ -1062,11 +1013,11 @@ fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Mod
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let kind = Sk::Float;
+                let scalar = Scalar::F64;
 
                 let args = vec![match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 }];
 
                 declaration.overloads.push(module.add_builtin(
@@ -1092,16 +1043,16 @@ fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Mod
                     0b101 => (Some(VectorSize::Tri), Some(VectorSize::Tri)),
                     _ => (Some(VectorSize::Quad), Some(VectorSize::Quad)),
                 };
-                let kind = Sk::Float;
+                let scalar = Scalar::F64;
 
                 let args = vec![
                     match size {
-                        Some(size) => TypeInner::Vector { size, kind, width },
-                        None => TypeInner::Scalar { kind, width },
+                        Some(size) => TypeInner::Vector { size, scalar },
+                        None => TypeInner::Scalar(scalar),
                     },
                     match second_size {
-                        Some(size) => TypeInner::Vector { size, kind, width },
-                        None => TypeInner::Scalar { kind, width },
+                        Some(size) => TypeInner::Vector { size, scalar },
+                        None => TypeInner::Scalar(scalar),
                     },
                 ];
 
@@ -1128,24 +1079,24 @@ fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Mod
                     0b10 => Some(VectorSize::Tri),
                     _ => None,
                 };
-                let kind = Sk::Float;
+                let scalar = Scalar::F64;
                 let (splatted, boolean) = match bits >> 2 {
                     0b00 => (false, false),
                     0b01 => (false, true),
                     _ => (true, false),
                 };
 
-                let ty = |kind, width| match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                let ty = |scalar| match size {
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
                 let args = vec![
-                    ty(kind, width),
-                    ty(kind, width),
+                    ty(scalar),
+                    ty(scalar),
                     match (boolean, splatted) {
-                        (true, _) => ty(Sk::Bool, crate::BOOL_WIDTH),
-                        (_, false) => TypeInner::Scalar { kind, width },
-                        _ => ty(kind, width),
+                        (true, _) => ty(Scalar::BOOL),
+                        (_, false) => TypeInner::Scalar(scalar),
+                        _ => ty(scalar),
                     },
                 ];
 
@@ -1166,7 +1117,7 @@ fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Mod
             // 0b110 is the last element since splatted with single elements
             // is equal to normal single elements
             for bits in 0..0b111 {
-                let kind = Sk::Float;
+                let scalar = Scalar::F64;
                 let size = match bits & 0b11 {
                     0b00 => Some(VectorSize::Bi),
                     0b01 => Some(VectorSize::Tri),
@@ -1176,11 +1127,11 @@ fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Mod
                 let splatted = bits & 0b100 == 0b100;
 
                 let base_ty = || match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
                 let limit_ty = || match splatted {
-                    true => TypeInner::Scalar { kind, width },
+                    true => TypeInner::Scalar(scalar),
                     false => base_ty(),
                 };
 
@@ -1193,14 +1144,15 @@ fn inject_double_builtin(declaration: &mut FunctionDeclaration, module: &mut Mod
         }
         "lessThan" | "greaterThan" | "lessThanEqual" | "greaterThanEqual" | "equal"
         | "notEqual" => {
+            let scalar = Scalar::F64;
             for bits in 0..0b11 {
-                let (size, kind) = match bits {
-                    0b00 => (VectorSize::Bi, Sk::Float),
-                    0b01 => (VectorSize::Tri, Sk::Float),
-                    _ => (VectorSize::Quad, Sk::Float),
+                let size = match bits {
+                    0b00 => VectorSize::Bi,
+                    0b01 => VectorSize::Tri,
+                    _ => VectorSize::Quad,
                 };
 
-                let ty = || TypeInner::Vector { size, kind, width };
+                let ty = || TypeInner::Vector { size, scalar };
                 let args = vec![ty(), ty()];
 
                 let fun = MacroCall::Binary(match name {
@@ -1228,6 +1180,10 @@ fn inject_common_builtin(
     name: &str,
     float_width: crate::Bytes,
 ) {
+    let float_scalar = Scalar {
+        kind: Sk::Float,
+        width: float_width,
+    };
     match name {
         "ceil" | "round" | "roundEven" | "floor" | "fract" | "trunc" | "sqrt" | "inversesqrt"
         | "normalize" | "length" | "isinf" | "isnan" => {
@@ -1244,13 +1200,9 @@ fn inject_common_builtin(
                 let args = vec![match size {
                     Some(size) => TypeInner::Vector {
                         size,
-                        kind: Sk::Float,
-                        width: float_width,
+                        scalar: float_scalar,
                     },
-                    None => TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
+                    None => TypeInner::Scalar(float_scalar),
                 }];
 
                 let fun = match name {
@@ -1281,16 +1233,9 @@ fn inject_common_builtin(
                     0b10 => Some(VectorSize::Tri),
                     _ => Some(VectorSize::Quad),
                 };
-                let ty = || match size {
-                    Some(size) => TypeInner::Vector {
-                        size,
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
-                    None => TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
+                let ty = |scalar| match size {
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
 
                 let fun = match name {
@@ -1301,9 +1246,14 @@ fn inject_common_builtin(
                     _ => unreachable!(),
                 };
 
+                let second_scalar = match fun {
+                    MacroCall::MathFunction(MathFunction::Ldexp) => Scalar::I32,
+                    _ => float_scalar,
+                };
+
                 declaration
                     .overloads
-                    .push(module.add_builtin(vec![ty(), ty()], fun))
+                    .push(module.add_builtin(vec![ty(float_scalar), ty(second_scalar)], fun))
             }
         }
         "transpose" => {
@@ -1326,7 +1276,7 @@ fn inject_common_builtin(
                     vec![TypeInner::Matrix {
                         columns,
                         rows,
-                        width: float_width,
+                        scalar: float_scalar,
                     }],
                     MacroCall::MathFunction(MathFunction::Transpose),
                 ))
@@ -1345,7 +1295,7 @@ fn inject_common_builtin(
                 let args = vec![TypeInner::Matrix {
                     columns,
                     rows,
-                    width: float_width,
+                    scalar: float_scalar,
                 }];
 
                 declaration.overloads.push(module.add_builtin(
@@ -1384,13 +1334,9 @@ fn inject_common_builtin(
                     args.push(match maybe_size {
                         Some(size) => TypeInner::Vector {
                             size,
-                            kind: Sk::Float,
-                            width: float_width,
+                            scalar: float_scalar,
                         },
-                        None => TypeInner::Scalar {
-                            kind: Sk::Float,
-                            width: float_width,
-                        },
+                        None => TypeInner::Scalar(float_scalar),
                     })
                 }
 
@@ -1403,73 +1349,17 @@ fn inject_common_builtin(
                 declaration.overloads.push(module.add_builtin(args, fun))
             }
         }
-        "modf" | "frexp" => {
-            // bits layout
-            // bit 0 through 1 - dims
-            for bits in 0..0b100 {
-                let size = match bits {
-                    0b00 => None,
-                    0b01 => Some(VectorSize::Bi),
-                    0b10 => Some(VectorSize::Tri),
-                    _ => Some(VectorSize::Quad),
-                };
-
-                let ty = module.types.insert(
-                    Type {
-                        name: None,
-                        inner: match size {
-                            Some(size) => TypeInner::Vector {
-                                size,
-                                kind: Sk::Float,
-                                width: float_width,
-                            },
-                            None => TypeInner::Scalar {
-                                kind: Sk::Float,
-                                width: float_width,
-                            },
-                        },
-                    },
-                    Span::default(),
-                );
-
-                let parameters = vec![ty, ty];
-
-                let fun = match name {
-                    "modf" => MacroCall::MathFunction(MathFunction::Modf),
-                    "frexp" => MacroCall::MathFunction(MathFunction::Frexp),
-                    _ => unreachable!(),
-                };
-
-                declaration.overloads.push(Overload {
-                    parameters,
-                    parameters_info: vec![
-                        ParameterInfo {
-                            qualifier: ParameterQualifier::In,
-                            depth: false,
-                        },
-                        ParameterInfo {
-                            qualifier: ParameterQualifier::Out,
-                            depth: false,
-                        },
-                    ],
-                    kind: FunctionKind::Macro(fun),
-                    defined: false,
-                    internal: true,
-                    void: false,
-                })
-            }
-        }
+        // TODO: https://github.com/gfx-rs/naga/issues/2526
+        // "modf" | "frexp" => { ... }
         "cross" => {
             let args = vec![
                 TypeInner::Vector {
                     size: VectorSize::Tri,
-                    kind: Sk::Float,
-                    width: float_width,
+                    scalar: float_scalar,
                 },
                 TypeInner::Vector {
                     size: VectorSize::Tri,
-                    kind: Sk::Float,
-                    width: float_width,
+                    scalar: float_scalar,
                 },
             ];
 
@@ -1496,13 +1386,11 @@ fn inject_common_builtin(
                 let args = vec![
                     TypeInner::Vector {
                         size: size1,
-                        kind: Sk::Float,
-                        width: float_width,
+                        scalar: float_scalar,
                     },
                     TypeInner::Vector {
                         size: size2,
-                        kind: Sk::Float,
-                        width: float_width,
+                        scalar: float_scalar,
                     },
                 ];
 
@@ -1525,13 +1413,9 @@ fn inject_common_builtin(
                 let ty = || match size {
                     Some(size) => TypeInner::Vector {
                         size,
-                        kind: Sk::Float,
-                        width: float_width,
+                        scalar: float_scalar,
                     },
-                    None => TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
+                    None => TypeInner::Scalar(float_scalar),
                 };
                 let args = vec![ty(), ty(), ty()];
 
@@ -1558,22 +1442,11 @@ fn inject_common_builtin(
                 let ty = || match size {
                     Some(size) => TypeInner::Vector {
                         size,
-                        kind: Sk::Float,
-                        width: float_width,
+                        scalar: float_scalar,
                     },
-                    None => TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
+                    None => TypeInner::Scalar(float_scalar),
                 };
-                let args = vec![
-                    ty(),
-                    ty(),
-                    TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: 4,
-                    },
-                ];
+                let args = vec![ty(), ty(), TypeInner::Scalar(Scalar::F32)];
                 declaration
                     .overloads
                     .push(module.add_builtin(args, MacroCall::MathFunction(MathFunction::Refract)))
@@ -1598,19 +1471,12 @@ fn inject_common_builtin(
                 let base_ty = || match size {
                     Some(size) => TypeInner::Vector {
                         size,
-                        kind: Sk::Float,
-                        width: float_width,
+                        scalar: float_scalar,
                     },
-                    None => TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
+                    None => TypeInner::Scalar(float_scalar),
                 };
                 let ty = || match splatted {
-                    true => TypeInner::Scalar {
-                        kind: Sk::Float,
-                        width: float_width,
-                    },
+                    true => TypeInner::Scalar(float_scalar),
                     false => base_ty(),
                 };
                 declaration.overloads.push(module.add_builtin(
@@ -1679,7 +1545,6 @@ impl MacroCall {
         &self,
         frontend: &mut Frontend,
         ctx: &mut Context,
-        body: &mut Block,
         args: &mut [Handle<Expression>],
         meta: Span,
     ) -> Result<Option<Handle<Expression>>> {
@@ -1689,14 +1554,8 @@ impl MacroCall {
                 args[0]
             }
             MacroCall::SamplerShadow => {
-                sampled_to_depth(
-                    &mut frontend.module,
-                    ctx,
-                    args[0],
-                    meta,
-                    &mut frontend.errors,
-                );
-                frontend.invalidate_expression(ctx, args[0], meta)?;
+                sampled_to_depth(ctx, args[0], meta, &mut frontend.errors);
+                ctx.invalidate_expression(args[0], meta)?;
                 ctx.samplers.insert(args[0], args[1]);
                 args[0]
             }
@@ -1709,7 +1568,7 @@ impl MacroCall {
                 let mut coords = args[1];
 
                 if proj {
-                    let size = match *frontend.resolve_type(ctx, coords, meta)? {
+                    let size = match *ctx.resolve_type(coords, meta)? {
                         TypeInner::Vector { size, .. } => size,
                         _ => unreachable!(),
                     };
@@ -1719,8 +1578,7 @@ impl MacroCall {
                             index: size as u32 - 1,
                         },
                         Span::default(),
-                        body,
-                    );
+                    )?;
                     let left = if let VectorSize::Bi = size {
                         ctx.add_expression(
                             Expression::AccessIndex {
@@ -1728,8 +1586,7 @@ impl MacroCall {
                                 index: 0,
                             },
                             Span::default(),
-                            body,
-                        )
+                        )?
                     } else {
                         let size = match size {
                             VectorSize::Tri => VectorSize::Bi,
@@ -1738,9 +1595,8 @@ impl MacroCall {
                         right = ctx.add_expression(
                             Expression::Splat { size, value: right },
                             Span::default(),
-                            body,
-                        );
-                        ctx.vector_resize(size, coords, Span::default(), body)
+                        )?;
+                        ctx.vector_resize(size, coords, Span::default())?
                     };
                     coords = ctx.add_expression(
                         Expression::Binary {
@@ -1749,13 +1605,11 @@ impl MacroCall {
                             right,
                         },
                         Span::default(),
-                        body,
-                    );
+                    )?;
                 }
 
                 let extra = args.get(2).copied();
-                let comps =
-                    frontend.coordinate_components(ctx, args[0], coords, extra, meta, body)?;
+                let comps = frontend.coordinate_components(ctx, args[0], coords, extra, meta)?;
 
                 let mut num_args = 2;
 
@@ -1802,7 +1656,7 @@ impl MacroCall {
                     true => {
                         let offset_arg = args[num_args];
                         num_args += 1;
-                        match frontend.solve_constant(ctx, offset_arg, meta) {
+                        match ctx.lift_up_const_expression(offset_arg) {
                             Ok(v) => Some(v),
                             Err(e) => {
                                 frontend.errors.push(e);
@@ -1821,7 +1675,7 @@ impl MacroCall {
                         .map_or(SampleLevel::Auto, SampleLevel::Bias);
                 }
 
-                texture_call(ctx, args[0], level, comps, texture_offset, body, meta)?
+                texture_call(ctx, args[0], level, comps, texture_offset, meta)?
             }
 
             MacroCall::TextureSize { arrayed } => {
@@ -1833,20 +1687,18 @@ impl MacroCall {
                         },
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
 
                 if arrayed {
                     let mut components = Vec::with_capacity(4);
 
-                    let size = match *frontend.resolve_type(ctx, expr, meta)? {
+                    let size = match *ctx.resolve_type(expr, meta)? {
                         TypeInner::Vector { size: ori_size, .. } => {
                             for index in 0..(ori_size as u32) {
                                 components.push(ctx.add_expression(
                                     Expression::AccessIndex { base: expr, index },
                                     Span::default(),
-                                    body,
-                                ))
+                                )?)
                             }
 
                             match ori_size {
@@ -1866,22 +1718,20 @@ impl MacroCall {
                             query: ImageQuery::NumLayers,
                         },
                         Span::default(),
-                        body,
-                    ));
+                    )?);
 
-                    let ty = frontend.module.types.insert(
+                    let ty = ctx.module.types.insert(
                         Type {
                             name: None,
                             inner: TypeInner::Vector {
                                 size,
-                                kind: crate::ScalarKind::Uint,
-                                width: 4,
+                                scalar: Scalar::U32,
                             },
                         },
                         Span::default(),
                     );
 
-                    expr = ctx.add_expression(Expression::Compose { components, ty }, meta, body)
+                    expr = ctx.add_expression(Expression::Compose { components, ty }, meta)?
                 }
 
                 ctx.add_expression(
@@ -1891,12 +1741,10 @@ impl MacroCall {
                         convert: Some(4),
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::ImageLoad { multi } => {
-                let comps =
-                    frontend.coordinate_components(ctx, args[0], args[1], None, meta, body)?;
+                let comps = frontend.coordinate_components(ctx, args[0], args[1], None, meta)?;
                 let (sample, level) = match (multi, args.get(2)) {
                     (_, None) => (None, None),
                     (true, Some(&arg)) => (Some(arg), None),
@@ -1911,14 +1759,12 @@ impl MacroCall {
                         level,
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::ImageStore => {
-                let comps =
-                    frontend.coordinate_components(ctx, args[0], args[1], None, meta, body)?;
-                ctx.emit_restart(body);
-                body.push(
+                let comps = frontend.coordinate_components(ctx, args[0], args[1], None, meta)?;
+                ctx.emit_restart();
+                ctx.body.push(
                     crate::Statement::ImageStore {
                         image: args[0],
                         coordinate: comps.coordinate,
@@ -1938,8 +1784,7 @@ impl MacroCall {
                     arg3: args.get(3).copied(),
                 },
                 Span::default(),
-                body,
-            ),
+            )?,
             mc @ (MacroCall::FindLsbUint | MacroCall::FindMsbUint) => {
                 let fun = match mc {
                     MacroCall::FindLsbUint => MathFunction::FindLsb,
@@ -1955,8 +1800,7 @@ impl MacroCall {
                         arg3: None,
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 ctx.add_expression(
                     Expression::As {
                         expr: res,
@@ -1964,8 +1808,7 @@ impl MacroCall {
                         convert: Some(4),
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::BitfieldInsert => {
                 let conv_arg_2 = ctx.add_expression(
@@ -1975,8 +1818,7 @@ impl MacroCall {
                         convert: Some(4),
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 let conv_arg_3 = ctx.add_expression(
                     Expression::As {
                         expr: args[3],
@@ -1984,8 +1826,7 @@ impl MacroCall {
                         convert: Some(4),
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 ctx.add_expression(
                     Expression::Math {
                         fun: MathFunction::InsertBits,
@@ -1995,8 +1836,7 @@ impl MacroCall {
                         arg3: Some(conv_arg_3),
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::BitfieldExtract => {
                 let conv_arg_1 = ctx.add_expression(
@@ -2006,8 +1846,7 @@ impl MacroCall {
                         convert: Some(4),
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 let conv_arg_2 = ctx.add_expression(
                     Expression::As {
                         expr: args[2],
@@ -2015,8 +1854,7 @@ impl MacroCall {
                         convert: Some(4),
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 ctx.add_expression(
                     Expression::Math {
                         fun: MathFunction::ExtractBits,
@@ -2026,8 +1864,7 @@ impl MacroCall {
                         arg3: None,
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::Relational(fun) => ctx.add_expression(
                 Expression::Relational {
@@ -2035,13 +1872,10 @@ impl MacroCall {
                     argument: args[0],
                 },
                 Span::default(),
-                body,
-            ),
-            MacroCall::Unary(op) => ctx.add_expression(
-                Expression::Unary { op, expr: args[0] },
-                Span::default(),
-                body,
-            ),
+            )?,
+            MacroCall::Unary(op) => {
+                ctx.add_expression(Expression::Unary { op, expr: args[0] }, Span::default())?
+            }
             MacroCall::Binary(op) => ctx.add_expression(
                 Expression::Binary {
                     op,
@@ -2049,10 +1883,9 @@ impl MacroCall {
                     right: args[1],
                 },
                 Span::default(),
-                body,
-            ),
+            )?,
             MacroCall::Mod(size) => {
-                ctx.implicit_splat(frontend, &mut args[1], meta, size)?;
+                ctx.implicit_splat(&mut args[1], meta, size)?;
 
                 // x - y * floor(x / y)
 
@@ -2063,8 +1896,7 @@ impl MacroCall {
                         right: args[1],
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 let floor = ctx.add_expression(
                     Expression::Math {
                         fun: MathFunction::Floor,
@@ -2074,8 +1906,7 @@ impl MacroCall {
                         arg3: None,
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 let mult = ctx.add_expression(
                     Expression::Binary {
                         op: BinaryOperator::Multiply,
@@ -2083,8 +1914,7 @@ impl MacroCall {
                         right: args[1],
                     },
                     Span::default(),
-                    body,
-                );
+                )?;
                 ctx.add_expression(
                     Expression::Binary {
                         op: BinaryOperator::Subtract,
@@ -2092,11 +1922,10 @@ impl MacroCall {
                         right: mult,
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::Splatted(fun, size, i) => {
-                ctx.implicit_splat(frontend, &mut args[i], meta, size)?;
+                ctx.implicit_splat(&mut args[i], meta, size)?;
 
                 ctx.add_expression(
                     Expression::Math {
@@ -2107,8 +1936,7 @@ impl MacroCall {
                         arg3: args.get(3).copied(),
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::MixBoolean => ctx.add_expression(
                 Expression::Select {
@@ -2117,11 +1945,10 @@ impl MacroCall {
                     reject: args[0],
                 },
                 Span::default(),
-                body,
-            ),
+            )?,
             MacroCall::Clamp(size) => {
-                ctx.implicit_splat(frontend, &mut args[1], meta, size)?;
-                ctx.implicit_splat(frontend, &mut args[2], meta, size)?;
+                ctx.implicit_splat(&mut args[1], meta, size)?;
+                ctx.implicit_splat(&mut args[2], meta, size)?;
 
                 ctx.add_expression(
                     Expression::Math {
@@ -2132,8 +1959,7 @@ impl MacroCall {
                         arg3: args.get(3).copied(),
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
             MacroCall::BitCast(kind) => ctx.add_expression(
                 Expression::As {
@@ -2142,8 +1968,7 @@ impl MacroCall {
                     convert: None,
                 },
                 Span::default(),
-                body,
-            ),
+            )?,
             MacroCall::Derivate(axis, ctrl) => ctx.add_expression(
                 Expression::Derivative {
                     axis,
@@ -2151,16 +1976,16 @@ impl MacroCall {
                     expr: args[0],
                 },
                 Span::default(),
-                body,
-            ),
+            )?,
             MacroCall::Barrier => {
-                ctx.emit_restart(body);
-                body.push(crate::Statement::Barrier(crate::Barrier::all()), meta);
+                ctx.emit_restart();
+                ctx.body
+                    .push(crate::Statement::Barrier(crate::Barrier::all()), meta);
                 return Ok(None);
             }
             MacroCall::SmoothStep { splatted } => {
-                ctx.implicit_splat(frontend, &mut args[0], meta, splatted)?;
-                ctx.implicit_splat(frontend, &mut args[1], meta, splatted)?;
+                ctx.implicit_splat(&mut args[0], meta, splatted)?;
+                ctx.implicit_splat(&mut args[1], meta, splatted)?;
 
                 ctx.add_expression(
                     Expression::Math {
@@ -2171,8 +1996,7 @@ impl MacroCall {
                         arg3: None,
                     },
                     Span::default(),
-                    body,
-                )
+                )?
             }
         }))
     }
@@ -2183,15 +2007,14 @@ fn texture_call(
     image: Handle<Expression>,
     level: SampleLevel,
     comps: CoordComponents,
-    offset: Option<Handle<Constant>>,
-    body: &mut Block,
+    offset: Option<Handle<Expression>>,
     meta: Span,
 ) -> Result<Handle<Expression>> {
     if let Some(sampler) = ctx.samplers.get(&image).copied() {
         let mut array_index = comps.array_index;
 
         if let Some(ref mut array_index_expr) = array_index {
-            ctx.conversion(array_index_expr, meta, Sk::Sint, 4)?;
+            ctx.conversion(array_index_expr, meta, Scalar::I32)?;
         }
 
         Ok(ctx.add_expression(
@@ -2206,8 +2029,7 @@ fn texture_call(
                 depth_ref: comps.depth_ref,
             },
             meta,
-            body,
-        ))
+        )?)
     } else {
         Err(Error {
             kind: ErrorKind::SemanticError("Bad call".into()),
@@ -2236,13 +2058,12 @@ impl Frontend {
         coord: Handle<Expression>,
         extra: Option<Handle<Expression>>,
         meta: Span,
-        body: &mut Block,
     ) -> Result<CoordComponents> {
         if let TypeInner::Image {
             dim,
             arrayed,
             class,
-        } = *self.resolve_type(ctx, image, meta)?
+        } = *ctx.resolve_type(image, meta)?
         {
             let image_size = match dim {
                 Dim::D1 => None,
@@ -2250,7 +2071,7 @@ impl Frontend {
                 Dim::D3 => Some(VectorSize::Tri),
                 Dim::Cube => Some(VectorSize::Tri),
             };
-            let coord_size = match *self.resolve_type(ctx, coord, meta)? {
+            let coord_size = match *ctx.resolve_type(coord, meta)? {
                 TypeInner::Vector { size, .. } => Some(size),
                 _ => None,
             };
@@ -2262,7 +2083,7 @@ impl Frontend {
 
             let coordinate = match (image_size, coord_size) {
                 (Some(size), Some(coord_s)) if size != coord_s => {
-                    ctx.vector_resize(size, coord, Span::default(), body)
+                    ctx.vector_resize(size, coord, Span::default())?
                 }
                 (None, Some(_)) => ctx.add_expression(
                     Expression::AccessIndex {
@@ -2270,8 +2091,7 @@ impl Frontend {
                         index: 0,
                     },
                     Span::default(),
-                    body,
-                ),
+                )?,
                 _ => coord,
             };
 
@@ -2284,8 +2104,7 @@ impl Frontend {
                 Some(ctx.add_expression(
                     Expression::AccessIndex { base: coord, index },
                     Span::default(),
-                    body,
-                ))
+                )?)
             } else {
                 None
             };
@@ -2301,8 +2120,7 @@ impl Frontend {
                         Some(ctx.add_expression(
                             Expression::AccessIndex { base: coord, index },
                             Span::default(),
-                            body,
-                        ))
+                        )?)
                     }
                 }
                 false => None,
@@ -2333,7 +2151,6 @@ impl Frontend {
 /// Helper function to cast a expression holding a sampled image to a
 /// depth image.
 pub fn sampled_to_depth(
-    module: &mut Module,
     ctx: &mut Context,
     image: Handle<Expression>,
     meta: Span,
@@ -2341,7 +2158,7 @@ pub fn sampled_to_depth(
 ) {
     // Get the a mutable type handle of the underlying image storage
     let ty = match ctx[image] {
-        Expression::GlobalVariable(handle) => &mut module.global_variables.get_mut(handle).ty,
+        Expression::GlobalVariable(handle) => &mut ctx.module.global_variables.get_mut(handle).ty,
         Expression::FunctionArgument(i) => {
             // Mark the function argument as carrying a depth texture
             ctx.parameters_info[i as usize].depth = true;
@@ -2357,7 +2174,7 @@ pub fn sampled_to_depth(
         }
     };
 
-    match module.types[*ty].inner {
+    match ctx.module.types[*ty].inner {
         // Update the image class to depth in case it already isn't
         TypeInner::Image {
             class,
@@ -2365,7 +2182,7 @@ pub fn sampled_to_depth(
             arrayed,
         } => match class {
             ImageClass::Sampled { multi, .. } => {
-                *ty = module.types.insert(
+                *ty = ctx.module.types.insert(
                     Type {
                         name: None,
                         inner: TypeInner::Image {

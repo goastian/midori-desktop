@@ -139,8 +139,8 @@ impl<'a> Expander<'a> {
             Instruction::Block(bt)
             | Instruction::If(bt)
             | Instruction::Loop(bt)
-            | Instruction::Let(LetType { block: bt, .. })
-            | Instruction::Try(bt) => {
+            | Instruction::Try(bt)
+            | Instruction::TryTable(TryTable { block: bt, .. }) => {
                 // No expansion necessary, a type reference is already here.
                 // We'll verify that it's the same as the inline type, if any,
                 // later.
@@ -172,9 +172,6 @@ impl<'a> Expander<'a> {
                     }
                 }
                 self.expand_type_use(&mut bt.ty);
-            }
-            Instruction::FuncBind(b) => {
-                self.expand_type_use(&mut b.ty);
             }
             Instruction::CallIndirect(c) | Instruction::ReturnCallIndirect(c) => {
                 self.expand_type_use(&mut c.ty);
@@ -218,6 +215,7 @@ impl<'a> Expander<'a> {
             name: None,
             def: key.to_def(span),
             parent: None,
+            final_type: None,
         }));
         let idx = Index::Id(id);
         key.insert(self, idx);

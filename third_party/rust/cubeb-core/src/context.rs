@@ -8,7 +8,9 @@ use std::ffi::CStr;
 use std::os::raw::c_void;
 use std::{ptr, str};
 use util::opt_bytes;
-use {DeviceCollection, DeviceId, DeviceType, Result, Stream, StreamParamsRef};
+use {
+    DeviceCollection, DeviceId, DeviceType, InputProcessingParams, Result, Stream, StreamParamsRef,
+};
 
 macro_rules! as_ptr {
     ($e:expr) => {
@@ -78,11 +80,22 @@ impl ContextRef {
         Ok(rate)
     }
 
+    pub fn supported_input_processing_params(&self) -> Result<InputProcessingParams> {
+        let mut params = ffi::CUBEB_INPUT_PROCESSING_PARAM_NONE;
+        unsafe {
+            call!(ffi::cubeb_get_supported_input_processing_params(
+                self.as_ptr(),
+                &mut params
+            ))?;
+        };
+        Ok(InputProcessingParams::from_bits_truncate(params))
+    }
+
     /// # Safety
     ///
     /// This function is unsafe because it dereferences the given `data_callback`, `state_callback`, and `user_ptr` pointers.
     /// The caller should ensure those pointers are valid.
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn stream_init(
         &self,
         stream_name: Option<&CStr>,

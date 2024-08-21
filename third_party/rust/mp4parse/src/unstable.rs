@@ -146,7 +146,7 @@ pub fn create_sample_table(
     };
 
     // According to spec, no sync table means every sample is sync sample.
-    let has_sync_table = matches!(track.stss, Some(_));
+    let has_sync_table = track.stss.is_some();
 
     let mut sample_size_iter = stsz.sample_sizes.iter();
 
@@ -465,7 +465,7 @@ impl<'a> SampleToChunkIterator<'a> {
 /// (n * s) / d is split into floor(n / d) * s + (n % d) * s / d.
 ///
 /// Return None on overflow or if the denominator is zero.
-fn rational_scale<T, S>(numerator: T, denominator: T, scale2: S) -> Option<T>
+pub fn rational_scale<T, S>(numerator: T, denominator: T, scale2: S) -> Option<T>
 where
     T: PrimInt + Zero,
     S: PrimInt,

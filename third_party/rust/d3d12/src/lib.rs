@@ -1,5 +1,9 @@
-#[macro_use]
-extern crate bitflags;
+#![cfg(windows)]
+#![allow(
+    clippy::missing_safety_doc,
+    clippy::too_many_arguments,
+    clippy::not_unsafe_ptr_arg_deref
+)]
 
 use std::{convert::TryFrom, ffi::CStr};
 use winapi::{
@@ -96,9 +100,9 @@ impl TryFrom<u32> for FeatureLevel {
     }
 }
 
-pub type Blob = WeakPtr<d3dcommon::ID3DBlob>;
+pub type Blob = ComPtr<d3dcommon::ID3DBlob>;
 
-pub type Error = WeakPtr<d3dcommon::ID3DBlob>;
+pub type Error = ComPtr<d3dcommon::ID3DBlob>;
 impl Error {
     pub unsafe fn as_c_str(&self) -> &CStr {
         debug_assert!(!self.is_null());

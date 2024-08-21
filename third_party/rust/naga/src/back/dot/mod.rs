@@ -18,7 +18,7 @@ use std::{
 };
 
 /// Configuration options for the dot backend
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Options {
     /// Only emit function bodies
     pub cfg_only: bool,
@@ -252,6 +252,11 @@ impl StatementGraph {
                     }
                     "Atomic"
                 }
+                S::WorkGroupUniformLoad { pointer, result } => {
+                    self.emits.push((id, result));
+                    self.dependencies.push((id, pointer, "pointer"));
+                    "WorkGroupUniformLoad"
+                }
                 S::RayQuery { query, ref fun } => {
                     self.dependencies.push((id, query, "query"));
                     match *fun {
@@ -272,6 +277,94 @@ impl StatementGraph {
                             "RayQueryProceed"
                         }
                         crate::RayQueryFunction::Terminate => "RayQueryTerminate",
+                    }
+                }
+                S::SubgroupBallot { result, predicate } => {
+                    if let Some(predicate) = predicate {
+                        self.dependencies.push((id, predicate, "predicate"));
+                    }
+                    self.emits.push((id, result));
+                    "SubgroupBallot"
+                }
+                S::SubgroupCollectiveOperation {
+                    op,
+                    collective_op,
+                    argument,
+                    result,
+                } => {
+                    self.dependencies.push((id, argument, "arg"));
+                    self.emits.push((id, result));
+                    match (collective_op, op) {
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::All) => {
+                            "SubgroupAll"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Any) => {
+                            "SubgroupAny"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Add) => {
+                            "SubgroupAdd"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Mul) => {
+                            "SubgroupMul"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Max) => {
+                            "SubgroupMax"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Min) => {
+                            "SubgroupMin"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::And) => {
+                            "SubgroupAnd"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Or) => {
+                            "SubgroupOr"
+                        }
+                        (crate::CollectiveOperation::Reduce, crate::SubgroupOperation::Xor) => {
+                            "SubgroupXor"
+                        }
+                        (
+                            crate::CollectiveOperation::ExclusiveScan,
+                            crate::SubgroupOperation::Add,
+                        ) => "SubgroupExclusiveAdd",
+                        (
+                            crate::CollectiveOperation::ExclusiveScan,
+                            crate::SubgroupOperation::Mul,
+                        ) => "SubgroupExclusiveMul",
+                        (
+                            crate::CollectiveOperation::InclusiveScan,
+                            crate::SubgroupOperation::Add,
+                        ) => "SubgroupInclusiveAdd",
+                        (
+                            crate::CollectiveOperation::InclusiveScan,
+                            crate::SubgroupOperation::Mul,
+                        ) => "SubgroupInclusiveMul",
+                        _ => unimplemented!(),
+                    }
+                }
+                S::SubgroupGather {
+                    mode,
+                    argument,
+                    result,
+                } => {
+                    match mode {
+                        crate::GatherMode::BroadcastFirst => {}
+                        crate::GatherMode::Broadcast(index)
+                        | crate::GatherMode::Shuffle(index)
+                        | crate::GatherMode::ShuffleDown(index)
+                        | crate::GatherMode::ShuffleUp(index)
+                        | crate::GatherMode::ShuffleXor(index) => {
+                            self.dependencies.push((id, index, "index"))
+                        }
+                    }
+                    self.dependencies.push((id, argument, "arg"));
+                    self.emits.push((id, result));
+                    match mode {
+                        crate::GatherMode::BroadcastFirst => "SubgroupBroadcastFirst",
+                        crate::GatherMode::Broadcast(_) => "SubgroupBroadcast",
+                        crate::GatherMode::Shuffle(_) => "SubgroupShuffle",
+                        crate::GatherMode::ShuffleDown(_) => "SubgroupShuffleDown",
+                        crate::GatherMode::ShuffleUp(_) => "SubgroupShuffleUp",
+                        crate::GatherMode::ShuffleXor(_) => "SubgroupShuffleXor",
                     }
                 }
             };
@@ -397,6 +490,14 @@ fn write_function_expressions(
     for (handle, expression) in fun.expressions.iter() {
         use crate::Expression as E;
         let (label, color_id) = match *expression {
+            E::Literal(_) => ("Literal".into(), 2),
+            E::Constant(_) => ("Constant".into(), 2),
+            E::Override(_) => ("Override".into(), 2),
+            E::ZeroValue(_) => ("ZeroValue".into(), 2),
+            E::Compose { ref components, .. } => {
+                payload = Some(Payload::Arguments(components));
+                ("Compose".into(), 3)
+            }
             E::Access { base, index } => {
                 edges.insert("base", base);
                 edges.insert("index", index);
@@ -406,7 +507,6 @@ fn write_function_expressions(
                 edges.insert("base", base);
                 (format!("AccessIndex[{index}]").into(), 1)
             }
-            E::Constant(_) => ("Constant".into(), 2),
             E::Splat { size, value } => {
                 edges.insert("value", value);
                 (format!("Splat{size:?}").into(), 3)
@@ -418,10 +518,6 @@ fn write_function_expressions(
             } => {
                 edges.insert("vector", vector);
                 (format!("Swizzle{:?}", &pattern[..size as usize]).into(), 3)
-            }
-            E::Compose { ref components, .. } => {
-                payload = Some(Payload::Arguments(components));
-                ("Compose".into(), 3)
             }
             E::FunctionArgument(index) => (format!("Argument[{index}]").into(), 1),
             E::GlobalVariable(h) => {
@@ -568,6 +664,7 @@ fn write_function_expressions(
             }
             E::CallResult(_function) => ("CallResult".into(), 4),
             E::AtomicResult { .. } => ("AtomicResult".into(), 4),
+            E::WorkGroupUniformLoadResult { .. } => ("WorkGroupUniformLoadResult".into(), 4),
             E::ArrayLength(expr) => {
                 edges.insert("", expr);
                 ("ArrayLength".into(), 7)
@@ -578,6 +675,8 @@ fn write_function_expressions(
                 let ty = if committed { "Committed" } else { "Candidate" };
                 (format!("rayQueryGet{}Intersection", ty).into(), 4)
             }
+            E::SubgroupBallotResult => ("SubgroupBallotResult".into(), 4),
+            E::SubgroupOperationResult { .. } => ("SubgroupOperationResult".into(), 4),
         };
 
         // give uniform expressions an outline

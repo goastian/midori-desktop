@@ -13,11 +13,16 @@
 edition = "2021"
 name = "wpf-gpu-raster"
 version = "0.1.0"
+include = [
+    "src/**/*",
+    "LICENSE",
+    "README.md",
+]
 readme = "README.md"
 license = "MIT"
 
 [profile.release]
-debug = true
+debug = 2
 
 [dependencies]
 typed-arena-nomut = "0.1.0"

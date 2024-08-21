@@ -132,10 +132,7 @@ s! {
 
 pub const __SIZEOF_PTHREAD_RWLOCK_T: usize = 56;
 pub const __SIZEOF_PTHREAD_MUTEX_T: usize = 40;
-
-pub const SOCK_NONBLOCK: ::c_int = 2048;
-
-pub const SOCK_SEQPACKET: ::c_int = 5;
+pub const __SIZEOF_PTHREAD_BARRIER_T: usize = 32;
 
 extern "C" {
     pub fn getrandom(buf: *mut ::c_void, buflen: ::size_t, flags: ::c_uint) -> ::ssize_t;

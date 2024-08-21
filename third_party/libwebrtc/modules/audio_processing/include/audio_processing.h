@@ -23,21 +23,19 @@
 
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/audio/echo_canceller3_config.h"
 #include "api/audio/echo_control.h"
+#include "api/ref_count.h"
 #include "api/scoped_refptr.h"
+#include "api/task_queue/task_queue_base.h"
 #include "modules/audio_processing/include/audio_processing_statistics.h"
 #include "rtc_base/arraysize.h"
-#include "rtc_base/ref_count.h"
 #include "rtc_base/system/file_wrapper.h"
 #include "rtc_base/system/rtc_export.h"
-
-namespace rtc {
-class TaskQueue;
-}  // namespace rtc
 
 namespace webrtc {
 
@@ -127,7 +125,7 @@ class CustomProcessing;
 // // Close the application...
 // apm.reset();
 //
-class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
+class RTC_EXPORT AudioProcessing : public RefCountInterface {
  public:
   // The struct below constitutes the new parameter scheme for the audio
   // processing. It is being introduced gradually and until it is fully
@@ -632,12 +630,14 @@ class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
   // return value of true indicates that the file has been
   // sucessfully opened, while a value of false indicates that
   // opening the file failed.
-  virtual bool CreateAndAttachAecDump(absl::string_view file_name,
-                                      int64_t max_log_size_bytes,
-                                      rtc::TaskQueue* worker_queue) = 0;
-  virtual bool CreateAndAttachAecDump(FILE* handle,
-                                      int64_t max_log_size_bytes,
-                                      rtc::TaskQueue* worker_queue) = 0;
+  virtual bool CreateAndAttachAecDump(
+      absl::string_view file_name,
+      int64_t max_log_size_bytes,
+      absl::Nonnull<TaskQueueBase*> worker_queue) = 0;
+  virtual bool CreateAndAttachAecDump(
+      absl::Nonnull<FILE*> handle,
+      int64_t max_log_size_bytes,
+      absl::Nonnull<TaskQueueBase*> worker_queue) = 0;
 
   // TODO(webrtc:5298) Deprecated variant.
   // Attaches provided webrtc::AecDump for recording debugging
@@ -912,7 +912,7 @@ class CustomProcessing {
 };
 
 // Interface for an echo detector submodule.
-class EchoDetector : public rtc::RefCountInterface {
+class EchoDetector : public RefCountInterface {
  public:
   // (Re-)Initializes the submodule.
   virtual void Initialize(int capture_sample_rate_hz,

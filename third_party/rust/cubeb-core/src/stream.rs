@@ -5,7 +5,7 @@
 
 use ffi;
 use std::ffi::CStr;
-use std::os::raw::c_void;
+use std::os::raw::{c_int, c_void};
 use std::ptr;
 use {ChannelLayout, DeviceRef, Result, SampleFormat};
 
@@ -49,11 +49,28 @@ impl From<State> for ffi::cubeb_state {
 bitflags! {
     /// Miscellaneous stream preferences.
     pub struct StreamPrefs: ffi::cubeb_stream_prefs {
-        const NONE = ffi::CUBEB_STREAM_PREF_NONE;
         const LOOPBACK = ffi::CUBEB_STREAM_PREF_LOOPBACK;
         const DISABLE_DEVICE_SWITCHING = ffi::CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING;
         const VOICE = ffi::CUBEB_STREAM_PREF_VOICE;
     }
+}
+
+impl StreamPrefs {
+    pub const NONE: Self = Self::empty();
+}
+
+bitflags! {
+    /// Input stream processing parameters.
+    pub struct InputProcessingParams: ffi::cubeb_input_processing_params {
+        const ECHO_CANCELLATION = ffi::CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION;
+        const NOISE_SUPPRESSION = ffi::CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION;
+        const AUTOMATIC_GAIN_CONTROL = ffi::CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL;
+        const VOICE_ISOLATION = ffi::CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION;
+    }
+}
+
+impl InputProcessingParams {
+    pub const NONE: Self = Self::empty();
 }
 
 ffi_type_stack! {
@@ -172,6 +189,22 @@ impl StreamRef {
                 &mut device
             ))?;
             Ok(DeviceRef::from_ptr(device))
+        }
+    }
+
+    /// Set the mute state for an input stream.
+    pub fn set_input_mute(&self, mute: bool) -> Result<()> {
+        let mute: c_int = if mute { 1 } else { 0 };
+        unsafe { call!(ffi::cubeb_stream_set_input_mute(self.as_ptr(), mute)) }
+    }
+
+    /// Set the processing parameters for an input stream.
+    pub fn set_input_processing_params(&self, params: InputProcessingParams) -> Result<()> {
+        unsafe {
+            call!(ffi::cubeb_stream_set_input_processing_params(
+                self.as_ptr(),
+                params.bits()
+            ))
         }
     }
 

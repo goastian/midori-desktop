@@ -2,209 +2,181 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use std::collections::BTreeMap;
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned};
+use syn::{visit_mut::VisitMut, Item, Type};
 
-use proc_macro2::{Ident, TokenStream};
-use quote::{format_ident, quote, quote_spanned};
-use uniffi_meta::{checksum, FnMetadata, MethodMetadata, Type};
-
-pub(crate) mod metadata;
+mod attributes;
+mod callback_interface;
+mod item;
 mod scaffolding;
+mod trait_interface;
+mod utrait;
 
-pub use self::metadata::gen_metadata;
 use self::{
-    metadata::convert::{convert_type, try_split_result},
-    scaffolding::{gen_fn_scaffolding, gen_method_scaffolding},
+    item::{ExportItem, ImplItem},
+    scaffolding::{
+        gen_constructor_scaffolding, gen_ffi_function, gen_fn_scaffolding, gen_method_scaffolding,
+    },
 };
-use crate::util::{assert_type_eq, create_metadata_static_var};
+use crate::util::{ident_to_string, mod_path};
+pub use attributes::{DefaultMap, ExportFnArgs, ExportedImplFnArgs};
+pub use callback_interface::ffi_converter_callback_interface_impl;
 
-// TODO(jplatte): Ensure no generics, no async, …
+// TODO(jplatte): Ensure no generics, …
 // TODO(jplatte): Aggregate errors instead of short-circuiting, wherever possible
 
-pub enum ExportItem {
-    Function {
-        sig: Signature,
-        metadata: FnMetadata,
-    },
-    Impl {
-        self_ident: Ident,
-        methods: Vec<syn::Result<Method>>,
-    },
-}
+pub(crate) fn expand_export(
+    mut item: Item,
+    all_args: proc_macro::TokenStream,
+    udl_mode: bool,
+) -> syn::Result<TokenStream> {
+    let mod_path = mod_path()?;
+    // If the input is an `impl` block, rewrite any uses of the `Self` type
+    // alias to the actual type, so we don't have to special-case it in the
+    // metadata collection or scaffolding code generation (which generates
+    // new functions outside of the `impl`).
+    rewrite_self_type(&mut item);
 
-pub struct Method {
-    sig: Signature,
-    metadata: MethodMetadata,
-}
+    let metadata = ExportItem::new(item, all_args)?;
 
-pub struct Signature {
-    ident: Ident,
-    inputs: Vec<syn::FnArg>,
-    output: Option<FunctionReturn>,
-}
-
-impl Signature {
-    fn new(item: syn::Signature) -> syn::Result<Self> {
-        let output = match item.output {
-            syn::ReturnType::Default => None,
-            syn::ReturnType::Type(_, ty) => Some(FunctionReturn::new(ty)?),
-        };
-
-        Ok(Self {
-            ident: item.ident,
-            inputs: item.inputs.into_iter().collect(),
-            output,
-        })
-    }
-}
-
-pub struct FunctionReturn {
-    ty: Box<syn::Type>,
-    throws: Option<Ident>,
-}
-
-impl FunctionReturn {
-    fn new(ty: Box<syn::Type>) -> syn::Result<Self> {
-        Ok(match try_split_result(&ty)? {
-            Some((ok_type, throws)) => FunctionReturn {
-                ty: Box::new(ok_type.to_owned()),
-                throws: Some(throws),
-            },
-            None => FunctionReturn { ty, throws: None },
-        })
-    }
-}
-
-pub fn expand_export(metadata: ExportItem, mod_path: &[String]) -> TokenStream {
     match metadata {
-        ExportItem::Function { sig, metadata } => {
-            let checksum = checksum(&metadata);
-            let scaffolding = gen_fn_scaffolding(&sig, mod_path, checksum);
-            let type_assertions = fn_type_assertions(&sig);
-            let meta_static_var = create_metadata_static_var(&sig.ident, metadata.into());
-
-            quote! {
-                #scaffolding
-                #type_assertions
-                #meta_static_var
-            }
+        ExportItem::Function { sig, args } => {
+            gen_fn_scaffolding(sig, &args.async_runtime, udl_mode)
         }
         ExportItem::Impl {
-            methods,
+            items,
             self_ident,
+            args,
         } => {
-            let method_tokens: TokenStream = methods
-                .into_iter()
-                .map(|res| {
-                    res.map_or_else(
-                        syn::Error::into_compile_error,
-                        |Method { sig, metadata }| {
-                            let checksum = checksum(&metadata);
-                            let scaffolding =
-                                gen_method_scaffolding(&sig, mod_path, checksum, &self_ident);
-                            let type_assertions = fn_type_assertions(&sig);
-                            let meta_static_var = create_metadata_static_var(
-                                &format_ident!("{}_{}", metadata.self_name, sig.ident),
-                                metadata.into(),
-                            );
-
-                            quote! {
-                                #scaffolding
-                                #type_assertions
-                                #meta_static_var
-                            }
-                        },
-                    )
-                })
-                .collect();
-
-            quote_spanned! {self_ident.span()=>
-                ::uniffi::deps::static_assertions::assert_type_eq_all!(
-                    #self_ident,
-                    crate::uniffi_types::#self_ident
-                );
-
-                #method_tokens
+            if let Some(rt) = &args.async_runtime {
+                if items
+                    .iter()
+                    .all(|item| !matches!(item, ImplItem::Method(sig) if sig.is_async))
+                {
+                    return Err(syn::Error::new_spanned(
+                        rt,
+                        "no async methods in this impl block",
+                    ));
+                }
             }
+
+            let item_tokens: TokenStream = items
+                .into_iter()
+                .map(|item| match item {
+                    ImplItem::Constructor(sig) => {
+                        gen_constructor_scaffolding(sig, &args.async_runtime, udl_mode)
+                    }
+                    ImplItem::Method(sig) => {
+                        gen_method_scaffolding(sig, &args.async_runtime, udl_mode)
+                    }
+                })
+                .collect::<syn::Result<_>>()?;
+            Ok(quote_spanned! { self_ident.span() => #item_tokens })
+        }
+        ExportItem::Trait {
+            items,
+            self_ident,
+            with_foreign,
+            callback_interface_only: false,
+            docstring,
+            args,
+        } => trait_interface::gen_trait_scaffolding(
+            &mod_path,
+            args,
+            self_ident,
+            items,
+            udl_mode,
+            with_foreign,
+            docstring,
+        ),
+        ExportItem::Trait {
+            items,
+            self_ident,
+            callback_interface_only: true,
+            docstring,
+            ..
+        } => {
+            let trait_name = ident_to_string(&self_ident);
+            let trait_impl_ident = callback_interface::trait_impl_ident(&trait_name);
+            let trait_impl = callback_interface::trait_impl(&mod_path, &self_ident, &items)
+                .unwrap_or_else(|e| e.into_compile_error());
+            let metadata_items = (!udl_mode).then(|| {
+                let items =
+                    callback_interface::metadata_items(&self_ident, &items, &mod_path, docstring)
+                        .unwrap_or_else(|e| vec![e.into_compile_error()]);
+                quote! { #(#items)* }
+            });
+            let ffi_converter_tokens =
+                ffi_converter_callback_interface_impl(&self_ident, &trait_impl_ident, udl_mode);
+
+            Ok(quote! {
+                #trait_impl
+
+                #ffi_converter_tokens
+
+                #metadata_items
+            })
+        }
+        ExportItem::Struct {
+            self_ident,
+            uniffi_traits,
+            ..
+        } => {
+            assert!(!udl_mode);
+            utrait::expand_uniffi_trait_export(self_ident, uniffi_traits)
         }
     }
 }
 
-fn fn_type_assertions(sig: &Signature) -> TokenStream {
-    // Convert uniffi_meta::Type back to a Rust type
-    fn convert_type_back(ty: &Type) -> TokenStream {
-        match &ty {
-            Type::U8 => quote! { ::std::primitive::u8 },
-            Type::U16 => quote! { ::std::primitive::u16 },
-            Type::U32 => quote! { ::std::primitive::u32 },
-            Type::U64 => quote! { ::std::primitive::u64 },
-            Type::I8 => quote! { ::std::primitive::i8 },
-            Type::I16 => quote! { ::std::primitive::i16 },
-            Type::I32 => quote! { ::std::primitive::i32 },
-            Type::I64 => quote! { ::std::primitive::i64 },
-            Type::F32 => quote! { ::std::primitive::f32 },
-            Type::F64 => quote! { ::std::primitive::f64 },
-            Type::Bool => quote! { ::std::primitive::bool },
-            Type::String => quote! { ::std::string::String },
-            Type::Option { inner_type } => {
-                let inner = convert_type_back(inner_type);
-                quote! { ::std::option::Option<#inner> }
-            }
-            Type::Vec { inner_type } => {
-                let inner = convert_type_back(inner_type);
-                quote! { ::std::vec::Vec<#inner> }
-            }
-            Type::HashMap {
-                key_type,
-                value_type,
-            } => {
-                let key = convert_type_back(key_type);
-                let value = convert_type_back(value_type);
-                quote! { ::std::collections::HashMap<#key, #value> }
-            }
-            Type::ArcObject { object_name } => {
-                let object_ident = format_ident!("{object_name}");
-                quote! { ::std::sync::Arc<crate::uniffi_types::#object_ident> }
-            }
-            Type::Unresolved { name } => {
-                let ident = format_ident!("{name}");
-                quote! { crate::uniffi_types::#ident }
+/// Rewrite Self type alias usage in an impl block to the type itself.
+///
+/// For example,
+///
+/// ```ignore
+/// impl some::module::Foo {
+///     fn method(
+///         self: Arc<Self>,
+///         arg: Option<Bar<(), Self>>,
+///     ) -> Result<Self, Error> {
+///         todo!()
+///     }
+/// }
+/// ```
+///
+/// will be rewritten to
+///
+///  ```ignore
+/// impl some::module::Foo {
+///     fn method(
+///         self: Arc<some::module::Foo>,
+///         arg: Option<Bar<(), some::module::Foo>>,
+///     ) -> Result<some::module::Foo, Error> {
+///         todo!()
+///     }
+/// }
+/// ```
+pub fn rewrite_self_type(item: &mut Item) {
+    let item = match item {
+        Item::Impl(i) => i,
+        _ => return,
+    };
+
+    struct RewriteSelfVisitor<'a>(&'a Type);
+
+    impl<'a> VisitMut for RewriteSelfVisitor<'a> {
+        fn visit_type_mut(&mut self, i: &mut Type) {
+            match i {
+                Type::Path(p) if p.qself.is_none() && p.path.is_ident("Self") => {
+                    *i = self.0.clone();
+                }
+                _ => syn::visit_mut::visit_type_mut(self, i),
             }
         }
     }
 
-    let input_types = sig.inputs.iter().filter_map(|input| match input {
-        syn::FnArg::Receiver(_) => None,
-        syn::FnArg::Typed(pat_ty) => match &*pat_ty.pat {
-            // Self type is asserted separately for impl blocks
-            syn::Pat::Ident(i) if i.ident == "self" => None,
-            _ => Some(&pat_ty.ty),
-        },
-    });
-    let output_type = sig.output.as_ref().map(|s| &s.ty);
-
-    let type_assertions: BTreeMap<_, _> = input_types
-        .chain(output_type)
-        .filter_map(|ty| {
-            convert_type(ty).ok().map(|meta_ty| {
-                let expected_ty = convert_type_back(&meta_ty);
-                let assert = assert_type_eq(ty, expected_ty);
-                (meta_ty, assert)
-            })
-        })
-        .collect();
-    let input_output_type_assertions: TokenStream = type_assertions.into_values().collect();
-
-    let throws_type_assertion = sig.output.as_ref().and_then(|s| {
-        let ident = s.throws.as_ref()?;
-        Some(assert_type_eq(
-            ident,
-            quote! { crate::uniffi_types::#ident },
-        ))
-    });
-
-    quote! {
-        #input_output_type_assertions
-        #throws_type_assertion
+    let mut visitor = RewriteSelfVisitor(&item.self_ty);
+    for item in &mut item.items {
+        visitor.visit_impl_item_mut(item);
     }
 }

@@ -1,19 +1,23 @@
-{%- let e = ci.get_error_definition(name).unwrap() %}
+{%- call swift::docstring(e, 0) %}
 public enum {{ type_name }} {
 
     {% if e.is_flat() %}
     {% for variant in e.variants() %}
-    // Simple error enums only carry a message
+    {%- call swift::docstring(variant, 4) %}
     case {{ variant.name()|class_name }}(message: String)
     {% endfor %}
 
     {%- else %}
     {% for variant in e.variants() %}
-    case {{ variant.name()|class_name }}{% if variant.fields().len() > 0 %}({% call swift::field_list_decl(variant) %}){% endif -%}
+    {%- call swift::docstring(variant, 4) %}
+    case {{ variant.name()|class_name }}{% if variant.fields().len() > 0 %}(
+        {%- call swift::field_list_decl(variant, variant.has_nameless_fields()) %}
+    ){% endif -%}
     {% endfor %}
 
     {%- endif %}
 }
+
 
 public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
     typealias SwiftType = {{ type_name }}
@@ -52,9 +56,8 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
         {% if e.is_flat() %}
 
         {% for variant in e.variants() %}
-        case let .{{ variant.name()|class_name }}(message):
+        case .{{ variant.name()|class_name }}(_ /* message is ignored*/):
             writeInt(&buf, Int32({{ loop.index }}))
-            {{ Type::String.borrow()|write_fn }}(message, into: &buf)
         {%- endfor %}
 
         {% else %}

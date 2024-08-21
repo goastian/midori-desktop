@@ -18,12 +18,15 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "api/sequence_checker.h"
 #include "api/units/time_delta.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/event.h"
 #include "rtc_base/fake_clock.h"
 #include "rtc_base/logging.h"
+#if !defined(WEBRTC_BSD)
 #include "rtc_base/physical_socket_server.h"
+#endif
 #include "rtc_base/socket_address_pair.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/time_utils.h"

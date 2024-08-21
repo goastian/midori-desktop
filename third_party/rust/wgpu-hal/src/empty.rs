@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Api;
 pub struct Context;
 #[derive(Debug)]
@@ -29,6 +29,8 @@ impl crate::Api for Api {
     type Sampler = Resource;
     type QuerySet = Resource;
     type Fence = Resource;
+    type AccelerationStructure = Resource;
+    type PipelineCache = Resource;
 
     type BindGroupLayout = Resource;
     type BindGroup = Resource;
@@ -38,7 +40,9 @@ impl crate::Api for Api {
     type ComputePipeline = Resource;
 }
 
-impl crate::Instance<Api> for Context {
+impl crate::Instance for Context {
+    type A = Api;
+
     unsafe fn init(desc: &crate::InstanceDescriptor) -> Result<Self, crate::InstanceError> {
         Ok(Context)
     }
@@ -55,27 +59,32 @@ impl crate::Instance<Api> for Context {
     }
 }
 
-impl crate::Surface<Api> for Context {
+impl crate::Surface for Context {
+    type A = Api;
+
     unsafe fn configure(
-        &mut self,
+        &self,
         device: &Context,
         config: &crate::SurfaceConfiguration,
     ) -> Result<(), crate::SurfaceError> {
         Ok(())
     }
 
-    unsafe fn unconfigure(&mut self, device: &Context) {}
+    unsafe fn unconfigure(&self, device: &Context) {}
 
     unsafe fn acquire_texture(
-        &mut self,
+        &self,
         timeout: Option<std::time::Duration>,
+        fence: &Resource,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<Api>>, crate::SurfaceError> {
         Ok(None)
     }
-    unsafe fn discard_texture(&mut self, texture: Resource) {}
+    unsafe fn discard_texture(&self, texture: Resource) {}
 }
 
-impl crate::Adapter<Api> for Context {
+impl crate::Adapter for Context {
+    type A = Api;
+
     unsafe fn open(
         &self,
         features: wgt::Features,
@@ -99,17 +108,20 @@ impl crate::Adapter<Api> for Context {
     }
 }
 
-impl crate::Queue<Api> for Context {
+impl crate::Queue for Context {
+    type A = Api;
+
     unsafe fn submit(
-        &mut self,
+        &self,
         command_buffers: &[&Resource],
-        signal_fence: Option<(&mut Resource, crate::FenceValue)>,
+        surface_textures: &[&Resource],
+        signal_fence: (&mut Resource, crate::FenceValue),
     ) -> DeviceResult<()> {
         Ok(())
     }
     unsafe fn present(
-        &mut self,
-        surface: &mut Context,
+        &self,
+        surface: &Context,
         texture: Resource,
     ) -> Result<(), crate::SurfaceError> {
         Ok(())
@@ -120,7 +132,9 @@ impl crate::Queue<Api> for Context {
     }
 }
 
-impl crate::Device<Api> for Context {
+impl crate::Device for Context {
+    type A = Api;
+
     unsafe fn exit(self, queue: Context) {}
     unsafe fn create_buffer(&self, desc: &crate::BufferDescriptor) -> DeviceResult<Resource> {
         Ok(Resource)
@@ -208,6 +222,13 @@ impl crate::Device<Api> for Context {
         Ok(Resource)
     }
     unsafe fn destroy_compute_pipeline(&self, pipeline: Resource) {}
+    unsafe fn create_pipeline_cache(
+        &self,
+        desc: &crate::PipelineCacheDescriptor<'_>,
+    ) -> Result<Resource, crate::PipelineCacheError> {
+        Ok(Resource)
+    }
+    unsafe fn destroy_pipeline_cache(&self, cache: Resource) {}
 
     unsafe fn create_query_set(
         &self,
@@ -236,9 +257,30 @@ impl crate::Device<Api> for Context {
         false
     }
     unsafe fn stop_capture(&self) {}
+    unsafe fn create_acceleration_structure(
+        &self,
+        desc: &crate::AccelerationStructureDescriptor,
+    ) -> DeviceResult<Resource> {
+        Ok(Resource)
+    }
+    unsafe fn get_acceleration_structure_build_sizes<'a>(
+        &self,
+        _desc: &crate::GetAccelerationStructureBuildSizesDescriptor<'a, Api>,
+    ) -> crate::AccelerationStructureBuildSizes {
+        Default::default()
+    }
+    unsafe fn get_acceleration_structure_device_address(
+        &self,
+        _acceleration_structure: &Resource,
+    ) -> wgt::BufferAddress {
+        Default::default()
+    }
+    unsafe fn destroy_acceleration_structure(&self, _acceleration_structure: Resource) {}
 }
 
-impl crate::CommandEncoder<Api> for Encoder {
+impl crate::CommandEncoder for Encoder {
+    type A = Api;
+
     unsafe fn begin_encoding(&mut self, label: crate::Label) -> DeviceResult<()> {
         Ok(())
     }
@@ -264,7 +306,7 @@ impl crate::CommandEncoder<Api> for Encoder {
 
     unsafe fn copy_buffer_to_buffer<T>(&mut self, src: &Resource, dst: &Resource, regions: T) {}
 
-    #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+    #[cfg(webgl)]
     unsafe fn copy_external_image_to_texture<T>(
         &mut self,
         src: &wgt::ImageCopyExternalImage,
@@ -327,7 +369,7 @@ impl crate::CommandEncoder<Api> for Encoder {
         &mut self,
         layout: &Resource,
         stages: wgt::ShaderStages,
-        offset: u32,
+        offset_bytes: u32,
         data: &[u32],
     ) {
     }
@@ -353,18 +395,18 @@ impl crate::CommandEncoder<Api> for Encoder {
 
     unsafe fn draw(
         &mut self,
-        start_vertex: u32,
+        first_vertex: u32,
         vertex_count: u32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     ) {
     }
     unsafe fn draw_indexed(
         &mut self,
-        start_index: u32,
+        first_index: u32,
         index_count: u32,
         base_vertex: i32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     ) {
     }
@@ -403,11 +445,27 @@ impl crate::CommandEncoder<Api> for Encoder {
 
     // compute
 
-    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor) {}
+    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor<Api>) {}
     unsafe fn end_compute_pass(&mut self) {}
 
     unsafe fn set_compute_pipeline(&mut self, pipeline: &Resource) {}
 
     unsafe fn dispatch(&mut self, count: [u32; 3]) {}
     unsafe fn dispatch_indirect(&mut self, buffer: &Resource, offset: wgt::BufferAddress) {}
+
+    unsafe fn build_acceleration_structures<'a, T>(
+        &mut self,
+        _descriptor_count: u32,
+        descriptors: T,
+    ) where
+        Api: 'a,
+        T: IntoIterator<Item = crate::BuildAccelerationStructureDescriptor<'a, Api>>,
+    {
+    }
+
+    unsafe fn place_acceleration_structure_barrier(
+        &mut self,
+        _barriers: crate::AccelerationStructureBarrier,
+    ) {
+    }
 }

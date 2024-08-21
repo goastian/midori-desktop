@@ -360,7 +360,7 @@ fn read_mdhd_invalid_timescale() {
     let mut stream = iter.next_box().unwrap().unwrap();
     assert_eq!(stream.head.name, BoxType::MediaHeaderBox);
     assert_eq!(stream.head.size, 44);
-    let r = super::parse_mdhd(&mut stream, &mut super::Track::new(0));
+    let r = super::parse_mdhd(&mut stream, &super::Track::new(0));
     assert!(r.is_err());
 }
 
@@ -421,6 +421,25 @@ fn read_mvhd_unknown_duration() {
     let parsed = super::read_mvhd(&mut stream).unwrap();
     assert_eq!(parsed.timescale, 1234);
     assert_eq!(parsed.duration, ::std::u64::MAX);
+}
+
+#[test]
+fn read_mvhd_v0_trailing_data() {
+    let mut stream = make_fullbox(BoxSize::Short(110), b"mvhd", 0, |s| {
+        s.B32(0)
+            .B32(0)
+            .B32(1234)
+            .B32(5678)
+            .append_repeated(0, 80)
+            .B16(0)
+    });
+    let mut iter = super::BoxIter::new(&mut stream);
+    let mut stream = iter.next_box().unwrap().unwrap();
+    assert_eq!(stream.head.name, BoxType::MovieHeaderBox);
+    assert_eq!(stream.head.size, 110);
+    let parsed = super::read_mvhd(&mut stream).unwrap();
+    assert_eq!(parsed.timescale, 1234);
+    assert_eq!(parsed.duration, 5678);
 }
 
 #[test]
@@ -944,7 +963,7 @@ fn skip_padding_in_stsd() {
 
     let mut iter = super::BoxIter::new(&mut stream);
     let mut stream = iter.next_box().unwrap().unwrap();
-    super::read_stsd(&mut stream, &mut super::Track::new(0)).expect("fail to skip padding: stsd");
+    super::read_stsd(&mut stream, &super::Track::new(0)).expect("fail to skip padding: stsd");
 }
 
 #[test]

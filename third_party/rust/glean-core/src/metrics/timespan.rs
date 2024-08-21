@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -253,6 +252,15 @@ impl TimespanMetric {
     /// Gets the currently stored value as an integer.
     ///
     /// This doesn't clear the stored value.
+    ///
+    /// # Arguments
+    ///
+    /// * `ping_name` - the optional name of the ping to retrieve the metric
+    ///                 for. Defaults to the first value in `send_in_pings`.
+    ///
+    /// # Returns
+    ///
+    /// The stored value or `None` if nothing stored.
     pub fn test_get_value(&self, ping_name: Option<String>) -> Option<i64> {
         crate::block_on_dispatcher();
         crate::core::with_glean(|glean| {
@@ -292,8 +300,6 @@ impl TimespanMetric {
     /// # Arguments
     ///
     /// * `error` - The type of error
-    /// * `ping_name` - represents the optional name of the ping to retrieve the
-    ///   metric for. Defaults to the first value in `send_in_pings`.
     ///
     /// # Returns
     ///

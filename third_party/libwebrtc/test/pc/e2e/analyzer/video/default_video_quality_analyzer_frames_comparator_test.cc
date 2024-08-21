@@ -36,14 +36,11 @@ using ::testing::SizeIs;
 
 using StatsSample = ::webrtc::SamplesStatsCounter::StatsSample;
 
-constexpr int kMaxFramesInFlightPerStream = 10;
-
 DefaultVideoQualityAnalyzerOptions AnalyzerOptionsForTest() {
   DefaultVideoQualityAnalyzerOptions options;
   options.compute_psnr = false;
   options.compute_ssim = false;
   options.adjust_cropping_before_comparing_frames = false;
-  options.max_frames_in_flight_per_stream_count = kMaxFramesInFlightPerStream;
   return options;
 }
 
@@ -219,6 +216,8 @@ TEST(
   FrameStats frame_stats2 = FrameStatsWith10msDeltaBetweenPhasesAnd10x10Frame(
       /*frame_id=*/2, stream_start_time + TimeDelta::Millis(15));
   frame_stats2.prev_frame_rendered_time = frame_stats1.rendered_time;
+  frame_stats2.time_between_rendered_frames =
+      frame_stats2.rendered_time - frame_stats1.rendered_time;
 
   comparator.Start(/*max_threads_count=*/1);
   comparator.EnsureStatsForStream(stream, sender, peers_count,
@@ -1605,11 +1604,16 @@ TEST(DefaultVideoQualityAnalyzerFramesComparatorTest,
 
   // Add 5 frames which were rendered with 30 fps (~30ms between frames)
   // Frame ids are in [1..5] and last frame is with 120ms offset from first.
-  Timestamp prev_frame_rendered_time = Timestamp::MinusInfinity();
+  absl::optional<Timestamp> prev_frame_rendered_time = absl::nullopt;
   for (int i = 0; i < 5; ++i) {
     FrameStats frame_stats = FrameStatsWith10msDeltaBetweenPhasesAnd10x10Frame(
         /*frame_id=*/i + 1, stream_start_time + TimeDelta::Millis(30 * i));
     frame_stats.prev_frame_rendered_time = prev_frame_rendered_time;
+    frame_stats.time_between_rendered_frames =
+        prev_frame_rendered_time.has_value()
+            ? absl::optional<TimeDelta>(frame_stats.rendered_time -
+                                        *prev_frame_rendered_time)
+            : absl::nullopt;
     prev_frame_rendered_time = frame_stats.rendered_time;
 
     comparator.AddComparison(stats_key,
@@ -1624,6 +1628,8 @@ TEST(DefaultVideoQualityAnalyzerFramesComparatorTest,
       FrameStatsWith10msDeltaBetweenPhasesAnd10x10Frame(
           /*frame_id=*/10, stream_start_time + TimeDelta::Millis(120 + 300));
   freeze_frame_stats.prev_frame_rendered_time = prev_frame_rendered_time;
+  freeze_frame_stats.time_between_rendered_frames =
+      freeze_frame_stats.rendered_time - *prev_frame_rendered_time;
 
   comparator.AddComparison(stats_key,
                            /*skipped_between_rendered=*/4,

@@ -16,7 +16,6 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -39,12 +38,12 @@
 #include "pc/track_media_info_map.h"
 #include "pc/transport_stats.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/containers/flat_set.h"
 #include "rtc_base/event.h"
 #include "rtc_base/ref_count.h"
 #include "rtc_base/ssl_certificate.h"
 #include "rtc_base/ssl_identity.h"
 #include "rtc_base/synchronization/mutex.h"
-#include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/time_utils.h"
 
@@ -57,8 +56,7 @@ class RtpReceiverInternal;
 // Stats are gathered on the signaling, worker and network threads
 // asynchronously. The callback is invoked on the signaling thread. Resulting
 // reports are cached for `cache_lifetime_` ms.
-class RTCStatsCollector : public rtc::RefCountInterface,
-                          public sigslot::has_slots<> {
+class RTCStatsCollector : public rtc::RefCountInterface {
  public:
   static rtc::scoped_refptr<RTCStatsCollector> Create(
       PeerConnectionInternal* pc,
@@ -91,6 +89,10 @@ class RTCStatsCollector : public rtc::RefCountInterface,
   // If there is a `GetStatsReport` requests in-flight, waits until it has been
   // completed. Must be called on the signaling thread.
   void WaitForPendingRequest();
+
+  // Called by the PeerConnection instance when data channel states change.
+  void OnSctpDataChannelStateChanged(int channel_id,
+                                     DataChannelInterface::DataState state);
 
  protected:
   RTCStatsCollector(PeerConnectionInternal* pc, int64_t cache_lifetime_us);
@@ -184,7 +186,7 @@ class RTCStatsCollector : public rtc::RefCountInterface,
       const std::map<std::string, CertificateStatsPair>& transport_cert_stats,
       RTCStatsReport* report) const;
   // Produces `RTCDataChannelStats`.
-  void ProduceDataChannelStats_s(Timestamp timestamp,
+  void ProduceDataChannelStats_n(Timestamp timestamp,
                                  RTCStatsReport* report) const;
   // Produces `RTCIceCandidatePairStats` and `RTCIceCandidateStats`.
   void ProduceIceCandidateAndPairStats_n(
@@ -193,12 +195,6 @@ class RTCStatsCollector : public rtc::RefCountInterface,
           transport_stats_by_name,
       const Call::Stats& call_stats,
       RTCStatsReport* report) const;
-  // Produces `RTCMediaStreamStats`.
-  void ProduceMediaStreamStats_s(Timestamp timestamp,
-                                 RTCStatsReport* report) const;
-  // Produces `RTCMediaStreamTrackStats`.
-  void ProduceMediaStreamTrackStats_s(Timestamp timestamp,
-                                      RTCStatsReport* report) const;
   // Produces RTCMediaSourceStats, including RTCAudioSourceStats and
   // RTCVideoSourceStats.
   void ProduceMediaSourceStats_s(Timestamp timestamp,
@@ -209,7 +205,7 @@ class RTCStatsCollector : public rtc::RefCountInterface,
   // Produces `RTCAudioPlayoutStats`.
   void ProduceAudioPlayoutStats_s(Timestamp timestamp,
                                   RTCStatsReport* report) const;
-  // Produces `RTCInboundRTPStreamStats`, `RTCOutboundRTPStreamStats`,
+  // Produces `RTCInboundRtpStreamStats`, `RTCOutboundRtpStreamStats`,
   // `RTCRemoteInboundRtpStreamStats`, `RTCRemoteOutboundRtpStreamStats` and any
   // referenced `RTCCodecStats`. This has to be invoked after transport stats
   // have been created because some metrics are calculated through lookup of
@@ -254,12 +250,6 @@ class RTCStatsCollector : public rtc::RefCountInterface,
       rtc::scoped_refptr<const RTCStatsReport> report,
       rtc::scoped_refptr<RtpSenderInternal> sender_selector,
       rtc::scoped_refptr<RtpReceiverInternal> receiver_selector);
-
-  // Slots for signals (sigslot) that are wired up to `pc_`.
-  void OnSctpDataChannelCreated(SctpDataChannel* channel);
-  // Slots for signals (sigslot) that are wired up to `channel`.
-  void OnDataChannelOpened(DataChannelInterface* channel);
-  void OnDataChannelClosed(DataChannelInterface* channel);
 
   PeerConnectionInternal* const pc_;
   rtc::Thread* const signaling_thread_;
@@ -325,17 +315,12 @@ class RTCStatsCollector : public rtc::RefCountInterface,
     // before reaching the open state does not affect these counters.
     uint32_t data_channels_opened;
     uint32_t data_channels_closed;
-    // Identifies by address channels that have been opened, which remain in the
-    // set until they have been fully closed.
-    std::set<uintptr_t> opened_data_channels;
+    // Identifies channels that have been opened, whose internal id is stored in
+    // the set until they have been fully closed.
+    flat_set<int> opened_data_channels;
   };
   InternalRecord internal_record_;
 };
-
-const char* CandidateTypeToRTCIceCandidateTypeForTesting(
-    const std::string& type);
-const char* DataStateToRTCDataChannelStateForTesting(
-    DataChannelInterface::DataState state);
 
 }  // namespace webrtc
 

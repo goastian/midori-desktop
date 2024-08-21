@@ -14,6 +14,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
@@ -60,11 +61,11 @@ MATCHER(IsValidFeedback, "") {
 
 TransportFeedback Parse(rtc::ArrayView<const uint8_t> buffer) {
   rtcp::CommonHeader header;
-  RTC_DCHECK(header.Parse(buffer.data(), buffer.size()));
-  RTC_DCHECK_EQ(header.type(), TransportFeedback::kPacketType);
-  RTC_DCHECK_EQ(header.fmt(), TransportFeedback::kFeedbackMessageType);
+  EXPECT_TRUE(header.Parse(buffer.data(), buffer.size()));
+  EXPECT_EQ(header.type(), TransportFeedback::kPacketType);
+  EXPECT_EQ(header.fmt(), TransportFeedback::kFeedbackMessageType);
   TransportFeedback feedback;
-  RTC_DCHECK(feedback.Parse(header));
+  EXPECT_TRUE(feedback.Parse(header));
   return feedback;
 }
 
@@ -89,7 +90,7 @@ class FeedbackTester {
       temp_timestamps = GenerateReceiveTimestamps(received_seq);
       received_ts = temp_timestamps;
     }
-    RTC_DCHECK_EQ(received_seq.size(), received_ts.size());
+    ASSERT_EQ(received_seq.size(), received_ts.size());
 
     expected_deltas_.clear();
     feedback_.emplace(include_timestamps_);
@@ -150,7 +151,7 @@ class FeedbackTester {
 
   std::vector<Timestamp> GenerateReceiveTimestamps(
       rtc::ArrayView<const uint16_t> seq_nums) {
-    RTC_DCHECK(!seq_nums.empty());
+    RTC_CHECK(!seq_nums.empty());
     uint16_t last_seq = seq_nums[0];
     Timestamp time = Timestamp::Zero();
     std::vector<Timestamp> result;

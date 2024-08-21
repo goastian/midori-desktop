@@ -69,6 +69,7 @@ impl AggregateDevice {
         input_id: AudioObjectID,
         output_id: AudioObjectID,
     ) -> std::result::Result<Self, Error> {
+        debug_assert_running_serially();
         let plugin_id = Self::get_system_plugin_id()?;
         let device_id = Self::create_blank_device_sync(plugin_id)?;
 
@@ -148,11 +149,12 @@ impl AggregateDevice {
     pub fn create_blank_device_sync(
         plugin_id: AudioObjectID,
     ) -> std::result::Result<AudioObjectID, Error> {
+        debug_assert_running_serially();
         let waiting_time = Duration::new(5, 0);
 
-        let condvar_pair = Arc::new((Mutex::new(Vec::<AudioObjectID>::new()), Condvar::new()));
+        let condvar_pair = Arc::new((Mutex::new(()), Condvar::new()));
         let mut cloned_condvar_pair = condvar_pair.clone();
-        let data_ptr = &mut cloned_condvar_pair as *mut Arc<(Mutex<Vec<AudioObjectID>>, Condvar)>;
+        let data_ptr = &mut cloned_condvar_pair as *mut Arc<(Mutex<()>, Condvar)>;
 
         let address = get_property_address(
             Property::HardwareDevices,
@@ -180,19 +182,17 @@ impl AggregateDevice {
         let device = Self::create_blank_device(plugin_id)?;
 
         // Wait until the aggregate is created.
-        let &(ref lock, ref cvar) = &*condvar_pair;
-        let devices = lock.lock().unwrap();
-        if !devices.contains(&device) {
-            let (devs, timeout_res) = cvar.wait_timeout(devices, waiting_time).unwrap();
-            if timeout_res.timed_out() {
-                cubeb_log!(
-                    "Time out for waiting the creation of aggregate device {}!",
-                    device
-                );
-            }
-            if !devs.contains(&device) {
-                return Err(Error::from(waiting_time));
-            }
+        let (lock, cvar) = &*condvar_pair;
+        let guard = lock.lock().unwrap();
+        let (_guard, timeout_res) = cvar
+            .wait_timeout_while(guard, waiting_time, |()| !get_devices().contains(&device))
+            .unwrap();
+        if timeout_res.timed_out() {
+            cubeb_log!(
+                "Time out for waiting the creation of aggregate device {}!",
+                device
+            );
+            return Err(Error::from(waiting_time));
         }
 
         extern "C" fn devices_changed_callback(
@@ -202,10 +202,9 @@ impl AggregateDevice {
             data: *mut c_void,
         ) -> OSStatus {
             assert_eq!(id, kAudioObjectSystemObject);
-            let pair = unsafe { &mut *(data as *mut Arc<(Mutex<Vec<AudioObjectID>>, Condvar)>) };
-            let &(ref lock, ref cvar) = &**pair;
-            let mut devices = lock.lock().unwrap();
-            *devices = audiounit_get_devices();
+            let pair = unsafe { &mut *(data as *mut Arc<(Mutex<()>, Condvar)>) };
+            let (lock, cvar) = &**pair;
+            let _guard = lock.lock().unwrap();
             cvar.notify_one();
             NO_ERR
         }
@@ -217,6 +216,7 @@ impl AggregateDevice {
         plugin_id: AudioObjectID,
     ) -> std::result::Result<AudioObjectID, Error> {
         assert_ne!(plugin_id, kAudioObjectUnknown);
+        debug_assert_running_serially();
 
         let address = AudioObjectPropertyAddress {
             mSelector: kAudioPlugInCreateAggregateDevice,
@@ -305,6 +305,7 @@ impl AggregateDevice {
         input_id: AudioDeviceID,
         output_id: AudioDeviceID,
     ) -> std::result::Result<(), Error> {
+        debug_assert_running_serially();
         let address = AudioObjectPropertyAddress {
             mSelector: kAudioAggregateDevicePropertyFullSubDeviceList,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -339,7 +340,7 @@ impl AggregateDevice {
         Self::set_sub_devices(device_id, input_id, output_id)?;
 
         // Wait until the sub devices are added.
-        let &(ref lock, ref cvar) = &*condvar_pair;
+        let (lock, cvar) = &*condvar_pair;
         let device = lock.lock().unwrap();
         if *device != device_id {
             let (dev, timeout_res) = cvar.wait_timeout(device, waiting_time).unwrap();
@@ -370,7 +371,7 @@ impl AggregateDevice {
             data: *mut c_void,
         ) -> OSStatus {
             let pair = unsafe { &mut *(data as *mut Arc<(Mutex<AudioObjectID>, Condvar)>) };
-            let &(ref lock, ref cvar) = &**pair;
+            let (lock, cvar) = &**pair;
             let mut device = lock.lock().unwrap();
             *device = id;
             cvar.notify_one();
@@ -391,20 +392,21 @@ impl AggregateDevice {
         assert_ne!(input_id, kAudioObjectUnknown);
         assert_ne!(output_id, kAudioObjectUnknown);
         assert_ne!(input_id, output_id);
+        debug_assert_running_serially();
 
-        let output_sub_devices = Self::get_sub_devices(output_id)?;
-        let input_sub_devices = Self::get_sub_devices(input_id)?;
+        let output_sub_devices = Self::get_sub_devices_or_self(output_id)?;
+        let input_sub_devices = Self::get_sub_devices_or_self(input_id)?;
 
         unsafe {
             let sub_devices = CFArrayCreateMutable(ptr::null(), 0, &kCFTypeArrayCallBacks);
             // The order of the items in the array is significant and is used to determine the order of the streams
             // of the AudioAggregateDevice.
-            for device in output_sub_devices {
+            for device in input_sub_devices {
                 let uid = get_device_global_uid(device)?;
                 CFArrayAppendValue(sub_devices, uid.get_raw() as *const c_void);
             }
 
-            for device in input_sub_devices {
+            for device in output_sub_devices {
                 let uid = get_device_global_uid(device)?;
                 CFArrayAppendValue(sub_devices, uid.get_raw() as *const c_void);
             }
@@ -430,6 +432,7 @@ impl AggregateDevice {
         device_id: AudioDeviceID,
     ) -> std::result::Result<Vec<AudioObjectID>, Error> {
         assert_ne!(device_id, kAudioObjectUnknown);
+        debug_assert_running_serially();
 
         let mut sub_devices = Vec::new();
         let address = AudioObjectPropertyAddress {
@@ -440,15 +443,9 @@ impl AggregateDevice {
         let mut size: usize = 0;
         let status = audio_object_get_property_data_size(device_id, &address, &mut size);
 
-        if status == kAudioHardwareUnknownPropertyError as OSStatus {
-            // Return a vector containing the device itself if the device has no sub devices.
-            sub_devices.push(device_id);
-            return Ok(sub_devices);
-        } else if status != NO_ERR {
+        if status != NO_ERR {
             return Err(Error::from(status));
         }
-
-        assert_ne!(size, 0);
 
         let count = size / mem::size_of::<AudioObjectID>();
         sub_devices = allocate_array(count);
@@ -466,12 +463,47 @@ impl AggregateDevice {
         }
     }
 
+    pub fn get_sub_devices_or_self(
+        device_id: AudioDeviceID,
+    ) -> std::result::Result<Vec<AudioObjectID>, Error> {
+        AggregateDevice::get_sub_devices(device_id).or_else(|e| match e {
+            Error::OS(status) if status == kAudioHardwareUnknownPropertyError as OSStatus => {
+                Ok(vec![device_id])
+            }
+            _ => Err(e),
+        })
+    }
+
+    pub fn get_master_device_uid(device_id: AudioDeviceID) -> std::result::Result<String, Error> {
+        debug_assert_running_serially();
+        let address = AudioObjectPropertyAddress {
+            mSelector: kAudioAggregateDevicePropertyMainSubDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMaster,
+        };
+
+        let mut master: CFStringRef = ptr::null_mut();
+        let mut size = mem::size_of::<CFStringRef>();
+        let status = audio_object_get_property_data(device_id, &address, &mut size, &mut master);
+        if status != NO_ERR {
+            return Err(Error::from(status));
+        }
+
+        if master.is_null() {
+            return Ok(String::default());
+        }
+
+        let master = StringRef::new(master as _);
+        Ok(master.into_string())
+    }
+
     pub fn set_master_device(
         device_id: AudioDeviceID,
         primary_id: AudioDeviceID,
     ) -> std::result::Result<(), Error> {
         assert_ne!(device_id, kAudioObjectUnknown);
         assert_ne!(primary_id, kAudioObjectUnknown);
+        debug_assert_running_serially();
 
         cubeb_log!(
             "Set master device of the aggregate device {} to device {}",
@@ -480,13 +512,13 @@ impl AggregateDevice {
         );
 
         let address = AudioObjectPropertyAddress {
-            mSelector: kAudioAggregateDevicePropertyMasterSubDevice,
+            mSelector: kAudioAggregateDevicePropertyMainSubDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMaster,
         };
 
-        // Master become the 1st sub device of the primary device
-        let output_sub_devices = Self::get_sub_devices(primary_id)?;
+        // The master device will be the 1st sub device of the primary device.
+        let output_sub_devices = Self::get_sub_devices_or_self(primary_id)?;
         assert!(!output_sub_devices.is_empty());
         let master_sub_device_uid = get_device_global_uid(output_sub_devices[0]).unwrap();
         let master_sub_device = master_sub_device_uid.get_raw();
@@ -503,6 +535,7 @@ impl AggregateDevice {
         device_id: AudioObjectID,
     ) -> std::result::Result<(), Error> {
         assert_ne!(device_id, kAudioObjectUnknown);
+        debug_assert_running_serially();
         let address = AudioObjectPropertyAddress {
             mSelector: kAudioObjectPropertyOwnedObjects,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -548,16 +581,23 @@ impl AggregateDevice {
             return Err(Error::from(status));
         }
 
+        let master_sub_device_uid = Self::get_master_device_uid(device_id)?;
+
         let address = AudioObjectPropertyAddress {
             mSelector: kAudioSubDevicePropertyDriftCompensation,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMaster,
         };
 
-        // Start from the second device since the first is the master clock
-        for device in &sub_devices[1..] {
+        for &device in &sub_devices {
+            let uid = get_device_global_uid(device)
+                .map(|sr| sr.into_string())
+                .unwrap_or_default();
+            if uid == master_sub_device_uid {
+                continue;
+            }
             let status = audio_object_set_property_data(
-                *device,
+                device,
                 &address,
                 mem::size_of::<u32>(),
                 &DRIFT_COMPENSATION,
@@ -579,6 +619,7 @@ impl AggregateDevice {
     ) -> std::result::Result<(), Error> {
         assert_ne!(plugin_id, kAudioObjectUnknown);
         assert_ne!(device_id, kAudioObjectUnknown);
+        debug_assert_running_serially();
 
         let address = AudioObjectPropertyAddress {
             mSelector: kAudioPlugInDestroyAggregateDevice,
@@ -610,6 +651,7 @@ impl AggregateDevice {
         assert_ne!(input_id, kAudioObjectUnknown);
         assert_ne!(output_id, kAudioObjectUnknown);
         assert_ne!(input_id, output_id);
+        debug_assert_running_serially();
 
         let label = get_device_label(input_id, DeviceType::INPUT)?;
         let input_label = label.into_string();
@@ -671,6 +713,7 @@ impl Default for AggregateDevice {
 
 impl Drop for AggregateDevice {
     fn drop(&mut self) {
+        debug_assert_running_serially();
         if self.plugin_id != kAudioObjectUnknown && self.device_id != kAudioObjectUnknown {
             if let Err(r) = Self::destroy_device(self.plugin_id, self.device_id) {
                 cubeb_log!(

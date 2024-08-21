@@ -10,36 +10,41 @@
 
 #include "p2p/base/port.h"
 
-#include <math.h>
-
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "p2p/base/connection.h"
-#include "p2p/base/port_allocator.h"
+#include "api/array_view.h"
+#include "api/rtc_error.h"
+#include "api/units/time_delta.h"
+#include "p2p/base/p2p_constants.h"
+#include "p2p/base/stun_request.h"
+#include "rtc_base/byte_buffer.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/crc32.h"
 #include "rtc_base/helpers.h"
+#include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/mdns_responder_interface.h"
-#include "rtc_base/message_digest.h"
+#include "rtc_base/net_helper.h"
 #include "rtc_base/network.h"
-#include "rtc_base/numerics/safe_minmax.h"
+#include "rtc_base/socket_address.h"
 #include "rtc_base/string_encode.h"
 #include "rtc_base/string_utils.h"
 #include "rtc_base/strings/string_builder.h"
-#include "rtc_base/third_party/base64/base64.h"
+#include "rtc_base/time_utils.h"
 #include "rtc_base/trace_event.h"
+
+using webrtc::IceCandidateType;
 
 namespace cricket {
 namespace {
 
+using ::webrtc::IceCandidateType;
 using ::webrtc::RTCError;
 using ::webrtc::RTCErrorType;
 using ::webrtc::TaskQueueBase;
@@ -67,13 +72,6 @@ const int kPortTimeoutDelay = cricket::STUN_TOTAL_TIMEOUT + 5000;
 
 }  // namespace
 
-// TODO(ronghuawu): Use "local", "srflx", "prflx" and "relay". But this requires
-// the signaling part be updated correspondingly as well.
-const char LOCAL_PORT_TYPE[] = "local";
-const char STUN_PORT_TYPE[] = "stun";
-const char PRFLX_PORT_TYPE[] = "prflx";
-const char RELAY_PORT_TYPE[] = "relay";
-
 static const char* const PROTO_NAMES[] = {UDP_PROTOCOL_NAME, TCP_PROTOCOL_NAME,
                                           SSLTCP_PROTOCOL_NAME,
                                           TLS_PROTOCOL_NAME};
@@ -91,63 +89,54 @@ absl::optional<ProtocolType> StringToProto(absl::string_view proto_name) {
   return absl::nullopt;
 }
 
+IceCandidateType PortTypeToIceCandidateType(const absl::string_view type) {
+  if (type == "host" || type == LOCAL_PORT_TYPE)
+    return IceCandidateType::kHost;
+  if (type == "srflx" || type == STUN_PORT_TYPE)
+    return IceCandidateType::kSrflx;
+  if (type == PRFLX_PORT_TYPE)
+    return IceCandidateType::kPrflx;
+  RTC_DCHECK_EQ(type, RELAY_PORT_TYPE);
+  return IceCandidateType::kRelay;
+}
+
 // RFC 6544, TCP candidate encoding rules.
 const int DISCARD_PORT = 9;
 const char TCPTYPE_ACTIVE_STR[] = "active";
 const char TCPTYPE_PASSIVE_STR[] = "passive";
 const char TCPTYPE_SIMOPEN_STR[] = "so";
 
-std::string Port::ComputeFoundation(absl::string_view type,
-                                    absl::string_view protocol,
-                                    absl::string_view relay_protocol,
-                                    const rtc::SocketAddress& base_address) {
-  // TODO(bugs.webrtc.org/14605): ensure IceTiebreaker() is set.
-  rtc::StringBuilder sb;
-  sb << type << base_address.ipaddr().ToString() << protocol << relay_protocol
-     << rtc::ToString(IceTiebreaker());
-  return rtc::ToString(rtc::ComputeCrc32(sb.Release()));
-}
-
 Port::Port(TaskQueueBase* thread,
-           absl::string_view type,
+           webrtc::IceCandidateType type,
            rtc::PacketSocketFactory* factory,
            const rtc::Network* network,
            absl::string_view username_fragment,
            absl::string_view password,
            const webrtc::FieldTrialsView* field_trials)
-    : thread_(thread),
-      factory_(factory),
-      type_(type),
-      send_retransmit_count_attribute_(false),
-      network_(network),
-      min_port_(0),
-      max_port_(0),
-      component_(ICE_CANDIDATE_COMPONENT_DEFAULT),
-      generation_(0),
-      ice_username_fragment_(username_fragment),
-      password_(password),
-      timeout_delay_(kPortTimeoutDelay),
-      enable_port_packets_(false),
-      ice_role_(ICEROLE_UNKNOWN),
-      tiebreaker_(0),
-      shared_socket_(true),
-      weak_factory_(this),
-      field_trials_(field_trials) {
-  RTC_DCHECK(factory_ != NULL);
-  Construct();
-}
+    : Port(thread,
+           type,
+           factory,
+           network,
+           0,
+           0,
+           username_fragment,
+           password,
+           field_trials,
+           true) {}
 
 Port::Port(TaskQueueBase* thread,
-           absl::string_view type,
+           webrtc::IceCandidateType type,
            rtc::PacketSocketFactory* factory,
            const rtc::Network* network,
            uint16_t min_port,
            uint16_t max_port,
            absl::string_view username_fragment,
            absl::string_view password,
-           const webrtc::FieldTrialsView* field_trials)
+           const webrtc::FieldTrialsView* field_trials,
+           bool shared_socket /*= false*/)
     : thread_(thread),
       factory_(factory),
+      field_trials_(field_trials),
       type_(type),
       send_retransmit_count_attribute_(false),
       network_(network),
@@ -161,14 +150,11 @@ Port::Port(TaskQueueBase* thread,
       enable_port_packets_(false),
       ice_role_(ICEROLE_UNKNOWN),
       tiebreaker_(0),
-      shared_socket_(false),
-      weak_factory_(this),
-      field_trials_(field_trials) {
-  RTC_DCHECK(factory_ != NULL);
-  Construct();
-}
-
-void Port::Construct() {
+      shared_socket_(shared_socket),
+      network_cost_(network->GetCost(*field_trials_)),
+      weak_factory_(this) {
+  RTC_DCHECK_RUN_ON(thread_);
+  RTC_DCHECK(factory_ != nullptr);
   // TODO(pthatcher): Remove this old behavior once we're sure no one
   // relies on it.  If the username_fragment and password are empty,
   // we should just create one.
@@ -178,7 +164,6 @@ void Port::Construct() {
     password_ = rtc::CreateRandomString(ICE_PWD_LENGTH);
   }
   network_->SignalTypeChanged.connect(this, &Port::OnNetworkTypeChanged);
-  network_cost_ = network_->GetCost(field_trials());
 
   PostDestroyIfDead(/*delayed=*/true);
   RTC_LOG(LS_INFO) << ToString() << ": Port created with network cost "
@@ -187,11 +172,11 @@ void Port::Construct() {
 
 Port::~Port() {
   RTC_DCHECK_RUN_ON(thread_);
-  CancelPendingTasks();
   DestroyAllConnections();
+  CancelPendingTasks();
 }
 
-const std::string& Port::Type() const {
+IceCandidateType Port::Type() const {
   return type_;
 }
 const rtc::Network* Port::Network() const {
@@ -256,23 +241,32 @@ void Port::AddAddress(const rtc::SocketAddress& address,
                       absl::string_view protocol,
                       absl::string_view relay_protocol,
                       absl::string_view tcptype,
-                      absl::string_view type,
+                      IceCandidateType type,
                       uint32_t type_preference,
                       uint32_t relay_preference,
                       absl::string_view url,
                       bool is_final) {
   RTC_DCHECK_RUN_ON(thread_);
-  if (protocol == TCP_PROTOCOL_NAME && type == LOCAL_PORT_TYPE) {
+
+  // TODO(tommi): Set relay_protocol and optionally provide the base address
+  // to automatically compute the foundation in the ctor? It would be a good
+  // thing for the Candidate class to know the base address and keep it const.
+  Candidate c(component_, protocol, address, 0U, username_fragment(), password_,
+              type, generation_, "", network_->id(), network_cost_);
+  // Set the relay protocol before computing the foundation field.
+  c.set_relay_protocol(relay_protocol);
+  // TODO(bugs.webrtc.org/14605): ensure IceTiebreaker() is set.
+  c.ComputeFoundation(base_address, tiebreaker_);
+
+  c.set_priority(
+      c.GetPriority(type_preference, network_->preference(), relay_preference,
+                    field_trials_->IsEnabled(
+                        "WebRTC-IncreaseIceCandidatePriorityHostSrflx")));
+#if RTC_DCHECK_IS_ON
+  if (protocol == TCP_PROTOCOL_NAME && c.is_local()) {
     RTC_DCHECK(!tcptype.empty());
   }
-
-  std::string foundation =
-      ComputeFoundation(type, protocol, relay_protocol, base_address);
-  Candidate c(component_, protocol, address, 0U, username_fragment(), password_,
-              type, generation_, foundation, network_->id(), network_cost_);
-  c.set_priority(
-      c.GetPriority(type_preference, network_->preference(), relay_preference));
-  c.set_relay_protocol(relay_protocol);
+#endif
   c.set_tcptype(tcptype);
   c.set_network_name(network_->name());
   c.set_network_type(network_->type());
@@ -280,26 +274,24 @@ void Port::AddAddress(const rtc::SocketAddress& address,
   c.set_url(url);
   c.set_related_address(related_address);
 
-  bool pending = MaybeObfuscateAddress(&c, type, is_final);
+  bool pending = MaybeObfuscateAddress(c, is_final);
 
   if (!pending) {
     FinishAddingAddress(c, is_final);
   }
 }
 
-bool Port::MaybeObfuscateAddress(Candidate* c,
-                                 absl::string_view type,
-                                 bool is_final) {
+bool Port::MaybeObfuscateAddress(const Candidate& c, bool is_final) {
   // TODO(bugs.webrtc.org/9723): Use a config to control the feature of IP
   // handling with mDNS.
   if (network_->GetMdnsResponder() == nullptr) {
     return false;
   }
-  if (type != LOCAL_PORT_TYPE) {
+  if (!c.is_local()) {
     return false;
   }
 
-  auto copy = *c;
+  auto copy = c;
   auto weak_ptr = weak_factory_.GetWeakPtr();
   auto callback = [weak_ptr, copy, is_final](const rtc::IPAddress& addr,
                                              absl::string_view name) mutable {
@@ -356,10 +348,10 @@ void Port::AddOrReplaceConnection(Connection* conn) {
   }
 }
 
-void Port::OnReadPacket(const char* data,
-                        size_t size,
-                        const rtc::SocketAddress& addr,
-                        ProtocolType proto) {
+void Port::OnReadPacket(const rtc::ReceivedPacket& packet, ProtocolType proto) {
+  const char* data = reinterpret_cast<const char*>(packet.payload().data());
+  size_t size = packet.payload().size();
+  const rtc::SocketAddress& addr = packet.source_address();
   // If the user has enabled port packets, just hand this over.
   if (enable_port_packets_) {
     SignalReadPacket(this, data, size, addr);
@@ -428,6 +420,7 @@ bool Port::GetStunMessage(const char* data,
                           const rtc::SocketAddress& addr,
                           std::unique_ptr<IceMessage>* out_msg,
                           std::string* out_username) {
+  RTC_DCHECK_RUN_ON(thread_);
   // NOTE: This could clearly be optimized to avoid allocating any memory.
   //       However, at the data rates we'll be looking at on the client side,
   //       this probably isn't worth worrying about.
@@ -448,7 +441,8 @@ bool Port::GetStunMessage(const char* data,
   // Parse the request message.  If the packet is not a complete and correct
   // STUN message, then ignore it.
   std::unique_ptr<IceMessage> stun_msg(new IceMessage());
-  rtc::ByteBufferReader buf(data, size);
+  rtc::ByteBufferReader buf(
+      rtc::MakeArrayView(reinterpret_cast<const uint8_t*>(data), size));
   if (!stun_msg->Read(&buf) || (buf.Length() > 0)) {
     return false;
   }
@@ -656,6 +650,7 @@ bool Port::ParseStunUsername(const StunMessage* stun_msg,
 bool Port::MaybeIceRoleConflict(const rtc::SocketAddress& addr,
                                 IceMessage* stun_msg,
                                 absl::string_view remote_ufrag) {
+  RTC_DCHECK_RUN_ON(thread_);
   // Validate ICE_CONTROLLING or ICE_CONTROLLED attributes.
   bool ret = true;
   IceRole remote_ice_role = ICEROLE_UNKNOWN;
@@ -715,14 +710,12 @@ bool Port::MaybeIceRoleConflict(const rtc::SocketAddress& addr,
 }
 
 std::string Port::CreateStunUsername(absl::string_view remote_username) const {
+  RTC_DCHECK_RUN_ON(thread_);
   return std::string(remote_username) + ":" + username_fragment();
 }
 
 bool Port::HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
-                                const char* data,
-                                size_t size,
-                                const rtc::SocketAddress& remote_addr,
-                                int64_t packet_time_us) {
+                                const rtc::ReceivedPacket& packet) {
   RTC_DCHECK_NOTREACHED();
   return false;
 }
@@ -735,6 +728,7 @@ void Port::SendBindingErrorResponse(StunMessage* message,
                                     const rtc::SocketAddress& addr,
                                     int error_code,
                                     absl::string_view reason) {
+  RTC_DCHECK_RUN_ON(thread_);
   RTC_DCHECK(message->type() == STUN_BINDING_REQUEST ||
              message->type() == GOOG_PING_REQUEST);
 
@@ -784,6 +778,7 @@ void Port::SendUnknownAttributesErrorResponse(
     StunMessage* message,
     const rtc::SocketAddress& addr,
     const std::vector<uint16_t>& unknown_types) {
+  RTC_DCHECK_RUN_ON(thread_);
   RTC_DCHECK(message->type() == STUN_BINDING_REQUEST);
 
   // Fill in the response message.
@@ -878,8 +873,9 @@ void Port::OnNetworkTypeChanged(const rtc::Network* network) {
 std::string Port::ToString() const {
   rtc::StringBuilder ss;
   ss << "Port[" << rtc::ToHex(reinterpret_cast<uintptr_t>(this)) << ":"
-     << content_name_ << ":" << component_ << ":" << generation_ << ":" << type_
-     << ":" << network_->ToString() << "]";
+     << content_name_ << ":" << component_ << ":" << generation_ << ":"
+     << webrtc::IceCandidateTypeToString(type_) << ":" << network_->ToString()
+     << "]";
   return ss.Release();
 }
 
@@ -957,7 +953,8 @@ void Port::Destroy() {
   delete this;
 }
 
-const std::string Port::username_fragment() const {
+const std::string& Port::username_fragment() const {
+  RTC_DCHECK_RUN_ON(thread_);
   return ice_username_fragment_;
 }
 

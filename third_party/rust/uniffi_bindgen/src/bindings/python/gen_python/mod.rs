@@ -2,29 +2,92 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use askama::Template;
+use camino::Utf8Path;
 use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fmt::Debug;
 
-use crate::backend::{CodeOracle, CodeType, TemplateExpression, TypeIdentifier};
+use crate::backend::TemplateExpression;
+use crate::bindings::python;
 use crate::interface::*;
-use crate::MergeWith;
+use crate::{BindingGenerator, BindingsConfig};
 
 mod callback_interface;
 mod compounds;
 mod custom;
 mod enum_;
-mod error;
 mod external;
 mod miscellany;
 mod object;
 mod primitives;
 mod record;
+
+pub struct PythonBindingGenerator;
+
+impl BindingGenerator for PythonBindingGenerator {
+    type Config = Config;
+
+    fn write_bindings(
+        &self,
+        ci: &ComponentInterface,
+        config: &Config,
+        out_dir: &Utf8Path,
+        try_format_code: bool,
+    ) -> Result<()> {
+        python::write_bindings(config, ci, out_dir, try_format_code)
+    }
+
+    fn check_library_path(&self, library_path: &Utf8Path, cdylib_name: Option<&str>) -> Result<()> {
+        if cdylib_name.is_none() {
+            bail!("Generate bindings for Python requires a cdylib, but {library_path} was given");
+        }
+        Ok(())
+    }
+}
+
+/// A trait tor the implementation.
+trait CodeType: Debug {
+    /// The language specific label used to reference this type. This will be used in
+    /// method signatures and property declarations.
+    fn type_label(&self) -> String;
+
+    /// A representation of this type label that can be used as part of another
+    /// identifier. e.g. `read_foo()`, or `FooInternals`.
+    ///
+    /// This is especially useful when creating specialized objects or methods to deal
+    /// with this type only.
+    fn canonical_name(&self) -> String {
+        self.type_label()
+    }
+
+    fn literal(&self, _literal: &Literal) -> String {
+        unimplemented!("Unimplemented for {}", self.type_label())
+    }
+
+    /// Name of the FfiConverter
+    ///
+    /// This is the object that contains the lower, write, lift, and read methods for this type.
+    fn ffi_converter_name(&self) -> String {
+        format!("FfiConverter{}", self.canonical_name())
+    }
+
+    /// A list of imports that are needed if this type is in use.
+    /// Classes are imported exactly once.
+    fn imports(&self) -> Option<Vec<String>> {
+        None
+    }
+
+    /// Function to run at startup
+    fn initialization_fn(&self) -> Option<String> {
+        None
+    }
+}
 
 // Taken from Python's `keyword.py` module.
 static KEYWORDS: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -75,6 +138,8 @@ pub struct Config {
     cdylib_name: Option<String>,
     #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
+    #[serde(default)]
+    external_packages: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -94,24 +159,30 @@ impl Config {
             "uniffi".into()
         }
     }
-}
 
-impl From<&ComponentInterface> for Config {
-    fn from(ci: &ComponentInterface) -> Self {
-        Config {
-            cdylib_name: Some(format!("uniffi_{}", ci.namespace())),
-            custom_types: HashMap::new(),
+    /// Get the package name for a given external namespace.
+    pub fn module_for_namespace(&self, ns: &str) -> String {
+        let ns = ns.to_string().to_snake_case();
+        match self.external_packages.get(&ns) {
+            None => format!(".{ns}"),
+            Some(value) if value.is_empty() => ns,
+            Some(value) => format!("{value}.{ns}"),
         }
     }
 }
 
-impl MergeWith for Config {
-    fn merge_with(&self, other: &Self) -> Self {
-        Config {
-            cdylib_name: self.cdylib_name.merge_with(&other.cdylib_name),
-            custom_types: self.custom_types.merge_with(&other.custom_types),
-        }
+impl BindingsConfig for Config {
+    fn update_from_ci(&mut self, ci: &ComponentInterface) {
+        self.cdylib_name
+            .get_or_insert_with(|| format!("uniffi_{}", ci.namespace()));
     }
+
+    fn update_from_cdylib_name(&mut self, cdylib_name: &str) {
+        self.cdylib_name
+            .get_or_insert_with(|| cdylib_name.to_string());
+    }
+
+    fn update_from_dependency_configs(&mut self, _config_map: HashMap<&str, &Self>) {}
 }
 
 // Generate python bindings for the given ComponentInterface, as a string.
@@ -267,54 +338,8 @@ fn fixup_keyword(name: String) -> String {
 pub struct PythonCodeOracle;
 
 impl PythonCodeOracle {
-    // Map `Type` instances to a `Box<dyn CodeType>` for that type.
-    //
-    // There is a companion match in `templates/Types.py` which performs a similar function for the
-    // template code.
-    //
-    //   - When adding additional types here, make sure to also add a match arm to the `Types.py` template.
-    //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
-    fn create_code_type(&self, type_: TypeIdentifier) -> Box<dyn CodeType> {
-        match type_ {
-            Type::UInt8 => Box::new(primitives::UInt8CodeType),
-            Type::Int8 => Box::new(primitives::Int8CodeType),
-            Type::UInt16 => Box::new(primitives::UInt16CodeType),
-            Type::Int16 => Box::new(primitives::Int16CodeType),
-            Type::UInt32 => Box::new(primitives::UInt32CodeType),
-            Type::Int32 => Box::new(primitives::Int32CodeType),
-            Type::UInt64 => Box::new(primitives::UInt64CodeType),
-            Type::Int64 => Box::new(primitives::Int64CodeType),
-            Type::Float32 => Box::new(primitives::Float32CodeType),
-            Type::Float64 => Box::new(primitives::Float64CodeType),
-            Type::Boolean => Box::new(primitives::BooleanCodeType),
-            Type::String => Box::new(primitives::StringCodeType),
-
-            Type::Timestamp => Box::new(miscellany::TimestampCodeType),
-            Type::Duration => Box::new(miscellany::DurationCodeType),
-
-            Type::Enum(id) => Box::new(enum_::EnumCodeType::new(id)),
-            Type::Object(id) => Box::new(object::ObjectCodeType::new(id)),
-            Type::Record(id) => Box::new(record::RecordCodeType::new(id)),
-            Type::Error(id) => Box::new(error::ErrorCodeType::new(id)),
-            Type::CallbackInterface(id) => {
-                Box::new(callback_interface::CallbackInterfaceCodeType::new(id))
-            }
-
-            Type::Optional(inner) => Box::new(compounds::OptionalCodeType::new(*inner)),
-            Type::Sequence(inner) => Box::new(compounds::SequenceCodeType::new(*inner)),
-            Type::Map(key, value) => Box::new(compounds::MapCodeType::new(*key, *value)),
-            Type::External { name, .. } => Box::new(external::ExternalCodeType::new(name)),
-            Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name)),
-            Type::Unresolved { name } => {
-                unreachable!("Type `{name}` must be resolved before calling create_code_type")
-            }
-        }
-    }
-}
-
-impl CodeOracle for PythonCodeOracle {
-    fn find(&self, type_: &TypeIdentifier) -> Box<dyn CodeType> {
-        self.create_code_type(type_.clone())
+    fn find(&self, type_: &Type) -> Box<dyn CodeType> {
+        type_.clone().as_type().as_codetype()
     }
 
     /// Get the idiomatic Python rendering of a class name (for enums, records, errors, etc).
@@ -337,14 +362,16 @@ impl CodeOracle for PythonCodeOracle {
         fixup_keyword(nm.to_string().to_shouty_snake_case())
     }
 
-    /// Get the idiomatic Python rendering of an exception name
-    /// This replaces "Error" at the end of the name with "Exception".
-    fn error_name(&self, nm: &str) -> String {
-        let name = fixup_keyword(self.class_name(nm));
-        match name.strip_suffix("Error") {
-            None => name,
-            Some(stripped) => format!("{stripped}Exception"),
-        }
+    /// Get the idiomatic Python rendering of an FFI callback function name
+    fn ffi_callback_name(&self, nm: &str) -> String {
+        format!("UNIFFI_{}", nm.to_shouty_snake_case())
+    }
+
+    /// Get the idiomatic Python rendering of an FFI struct name
+    fn ffi_struct_name(&self, nm: &str) -> String {
+        // The ctypes docs use both SHOUTY_SNAKE_CASE AND UpperCamelCase for structs. Let's use
+        // UpperCamelCase and reserve shouting for global variables
+        format!("Uniffi{}", nm.to_upper_camel_case())
     }
 
     fn ffi_type_label(&self, ffi_type: &FfiType) -> String {
@@ -359,90 +386,242 @@ impl CodeOracle for PythonCodeOracle {
             FfiType::UInt64 => "ctypes.c_uint64".to_string(),
             FfiType::Float32 => "ctypes.c_float".to_string(),
             FfiType::Float64 => "ctypes.c_double".to_string(),
+            FfiType::Handle => "ctypes.c_uint64".to_string(),
             FfiType::RustArcPtr(_) => "ctypes.c_void_p".to_string(),
             FfiType::RustBuffer(maybe_suffix) => match maybe_suffix {
-                Some(suffix) => format!("RustBuffer{}", suffix),
-                None => "RustBuffer".to_string(),
+                Some(suffix) => format!("_UniffiRustBuffer{suffix}"),
+                None => "_UniffiRustBuffer".to_string(),
             },
-            FfiType::ForeignBytes => "ForeignBytes".to_string(),
-            FfiType::ForeignCallback => "FOREIGN_CALLBACK_T".to_string(),
+            FfiType::RustCallStatus => "_UniffiRustCallStatus".to_string(),
+            FfiType::ForeignBytes => "_UniffiForeignBytes".to_string(),
+            FfiType::Callback(name) => self.ffi_callback_name(name),
+            FfiType::Struct(name) => self.ffi_struct_name(name),
+            // Pointer to an `asyncio.EventLoop` instance
+            FfiType::Reference(inner) => format!("ctypes.POINTER({})", self.ffi_type_label(inner)),
+            FfiType::VoidPointer => "ctypes.c_void_p".to_string(),
+        }
+    }
+
+    /// Default values for FFI types
+    ///
+    /// Used to set a default return value when returning an error
+    fn ffi_default_value(&self, return_type: Option<&FfiType>) -> String {
+        match return_type {
+            Some(t) => match t {
+                FfiType::UInt8
+                | FfiType::Int8
+                | FfiType::UInt16
+                | FfiType::Int16
+                | FfiType::UInt32
+                | FfiType::Int32
+                | FfiType::UInt64
+                | FfiType::Int64 => "0".to_owned(),
+                FfiType::Float32 | FfiType::Float64 => "0.0".to_owned(),
+                FfiType::RustArcPtr(_) => "ctypes.c_void_p()".to_owned(),
+                FfiType::RustBuffer(maybe_suffix) => match maybe_suffix {
+                    Some(suffix) => format!("_UniffiRustBuffer{suffix}.default()"),
+                    None => "_UniffiRustBuffer.default()".to_owned(),
+                },
+                _ => unimplemented!("FFI return type: {t:?}"),
+            },
+            // When we need to use a value for void returns, we use a `u8` placeholder
+            None => "0".to_owned(),
+        }
+    }
+
+    /// Get the name of the protocol and class name for an object.
+    ///
+    /// If we support callback interfaces, the protocol name is the object name, and the class name is derived from that.
+    /// Otherwise, the class name is the object name and the protocol name is derived from that.
+    ///
+    /// This split determines what types `FfiConverter.lower()` inputs.  If we support callback
+    /// interfaces, `lower` must lower anything that implements the protocol.  If not, then lower
+    /// only lowers the concrete class.
+    fn object_names(&self, obj: &Object) -> (String, String) {
+        let class_name = self.class_name(obj.name());
+        if obj.has_callback_interface() {
+            let impl_name = format!("{class_name}Impl");
+            (class_name, impl_name)
+        } else {
+            (format!("{class_name}Protocol"), class_name)
+        }
+    }
+}
+
+trait AsCodeType {
+    fn as_codetype(&self) -> Box<dyn CodeType>;
+}
+
+impl<T: AsType> AsCodeType for T {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        // Map `Type` instances to a `Box<dyn CodeType>` for that type.
+        //
+        // There is a companion match in `templates/Types.py` which performs a similar function for the
+        // template code.
+        //
+        //   - When adding additional types here, make sure to also add a match arm to the `Types.py` template.
+        //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
+        match self.as_type() {
+            Type::UInt8 => Box::new(primitives::UInt8CodeType),
+            Type::Int8 => Box::new(primitives::Int8CodeType),
+            Type::UInt16 => Box::new(primitives::UInt16CodeType),
+            Type::Int16 => Box::new(primitives::Int16CodeType),
+            Type::UInt32 => Box::new(primitives::UInt32CodeType),
+            Type::Int32 => Box::new(primitives::Int32CodeType),
+            Type::UInt64 => Box::new(primitives::UInt64CodeType),
+            Type::Int64 => Box::new(primitives::Int64CodeType),
+            Type::Float32 => Box::new(primitives::Float32CodeType),
+            Type::Float64 => Box::new(primitives::Float64CodeType),
+            Type::Boolean => Box::new(primitives::BooleanCodeType),
+            Type::String => Box::new(primitives::StringCodeType),
+            Type::Bytes => Box::new(primitives::BytesCodeType),
+
+            Type::Timestamp => Box::new(miscellany::TimestampCodeType),
+            Type::Duration => Box::new(miscellany::DurationCodeType),
+
+            Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name)),
+            Type::Object { name, .. } => Box::new(object::ObjectCodeType::new(name)),
+            Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name)),
+            Type::CallbackInterface { name, .. } => {
+                Box::new(callback_interface::CallbackInterfaceCodeType::new(name))
+            }
+            Type::Optional { inner_type } => {
+                Box::new(compounds::OptionalCodeType::new(*inner_type))
+            }
+            Type::Sequence { inner_type } => {
+                Box::new(compounds::SequenceCodeType::new(*inner_type))
+            }
+            Type::Map {
+                key_type,
+                value_type,
+            } => Box::new(compounds::MapCodeType::new(*key_type, *value_type)),
+            Type::External { name, .. } => Box::new(external::ExternalCodeType::new(name)),
+            Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name)),
         }
     }
 }
 
 pub mod filters {
     use super::*;
+    pub use crate::backend::filters::*;
 
-    fn oracle() -> &'static PythonCodeOracle {
-        &PythonCodeOracle
+    pub(super) fn type_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(as_ct.as_codetype().type_label())
     }
 
-    pub fn type_name(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        let oracle = oracle();
-        Ok(codetype.type_label(oracle))
+    pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(String::from("_Uniffi") + &as_ct.as_codetype().ffi_converter_name()[3..])
     }
 
-    pub fn ffi_converter_name(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        let oracle = oracle();
-        Ok(codetype.ffi_converter_name(oracle))
+    pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(as_ct.as_codetype().canonical_name())
     }
 
-    pub fn canonical_name(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        let oracle = oracle();
-        Ok(codetype.canonical_name(oracle))
+    pub(super) fn lift_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(format!("{}.lift", ffi_converter_name(as_ct)?))
     }
 
-    pub fn lift_fn(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        Ok(format!("{}.lift", ffi_converter_name(codetype)?))
+    pub(super) fn check_lower_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(format!("{}.check_lower", ffi_converter_name(as_ct)?))
     }
 
-    pub fn lower_fn(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        Ok(format!("{}.lower", ffi_converter_name(codetype)?))
+    pub(super) fn lower_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(format!("{}.lower", ffi_converter_name(as_ct)?))
     }
 
-    pub fn read_fn(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        Ok(format!("{}.read", ffi_converter_name(codetype)?))
+    pub(super) fn read_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(format!("{}.read", ffi_converter_name(as_ct)?))
     }
 
-    pub fn write_fn(codetype: &impl CodeType) -> Result<String, askama::Error> {
-        Ok(format!("{}.write", ffi_converter_name(codetype)?))
+    pub(super) fn write_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(format!("{}.write", ffi_converter_name(as_ct)?))
     }
 
-    pub fn literal_py(
+    pub(super) fn literal_py(
         literal: &Literal,
-        codetype: &impl CodeType,
+        as_ct: &impl AsCodeType,
     ) -> Result<String, askama::Error> {
-        let oracle = oracle();
-        Ok(codetype.literal(oracle, literal))
+        Ok(as_ct.as_codetype().literal(literal))
     }
 
-    /// Get the Python syntax for representing a given low-level `FfiType`.
+    // Get the idiomatic Python rendering of an individual enum variant's discriminant
+    pub fn variant_discr_literal(e: &Enum, index: &usize) -> Result<String, askama::Error> {
+        let literal = e.variant_discr(*index).expect("invalid index");
+        Ok(Type::UInt64.as_codetype().literal(&literal))
+    }
+
     pub fn ffi_type_name(type_: &FfiType) -> Result<String, askama::Error> {
-        Ok(oracle().ffi_type_label(type_))
+        Ok(PythonCodeOracle.ffi_type_label(type_))
+    }
+
+    pub fn ffi_default_value(return_type: Option<FfiType>) -> Result<String, askama::Error> {
+        Ok(PythonCodeOracle.ffi_default_value(return_type.as_ref()))
     }
 
     /// Get the idiomatic Python rendering of a class name (for enums, records, errors, etc).
     pub fn class_name(nm: &str) -> Result<String, askama::Error> {
-        Ok(oracle().class_name(nm))
+        Ok(PythonCodeOracle.class_name(nm))
     }
 
     /// Get the idiomatic Python rendering of a function name.
     pub fn fn_name(nm: &str) -> Result<String, askama::Error> {
-        Ok(oracle().fn_name(nm))
+        Ok(PythonCodeOracle.fn_name(nm))
     }
 
     /// Get the idiomatic Python rendering of a variable name.
     pub fn var_name(nm: &str) -> Result<String, askama::Error> {
-        Ok(oracle().var_name(nm))
+        Ok(PythonCodeOracle.var_name(nm))
     }
 
     /// Get the idiomatic Python rendering of an individual enum variant.
     pub fn enum_variant_py(nm: &str) -> Result<String, askama::Error> {
-        Ok(oracle().enum_variant_name(nm))
+        Ok(PythonCodeOracle.enum_variant_name(nm))
     }
 
-    pub fn coerce_py(nm: &str, type_: &Type) -> Result<String, askama::Error> {
-        let oracle = oracle();
-        Ok(oracle.find(type_).coerce(oracle, nm))
+    /// Get the idiomatic Python rendering of an FFI callback function name
+    pub fn ffi_callback_name(nm: &str) -> Result<String, askama::Error> {
+        Ok(PythonCodeOracle.ffi_callback_name(nm))
+    }
+
+    /// Get the idiomatic Python rendering of an FFI struct name
+    pub fn ffi_struct_name(nm: &str) -> Result<String, askama::Error> {
+        Ok(PythonCodeOracle.ffi_struct_name(nm))
+    }
+
+    /// Get the idiomatic Python rendering of an individual enum variant.
+    pub fn object_names(obj: &Object) -> Result<(String, String), askama::Error> {
+        Ok(PythonCodeOracle.object_names(obj))
+    }
+
+    /// Get the idiomatic Python rendering of docstring
+    pub fn docstring(docstring: &str, spaces: &i32) -> Result<String, askama::Error> {
+        let docstring = textwrap::dedent(docstring);
+        // Escape triple quotes to avoid syntax error
+        let escaped = docstring.replace(r#"""""#, r#"\"\"\""#);
+
+        let wrapped = format!("\"\"\"\n{escaped}\n\"\"\"");
+
+        let spaces = usize::try_from(*spaces).unwrap_or_default();
+        Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_docstring_escape() {
+        let docstring = r#""""This is a docstring beginning with triple quotes.
+Contains "quotes" in it.
+It also has a triple quote: """
+And a even longer quote: """"""#;
+
+        let expected = r#""""
+\"\"\"This is a docstring beginning with triple quotes.
+Contains "quotes" in it.
+It also has a triple quote: \"\"\"
+And a even longer quote: \"\"\"""
+""""#;
+
+        assert_eq!(super::filters::docstring(docstring, &0).unwrap(), expected);
     }
 }

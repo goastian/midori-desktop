@@ -3,11 +3,19 @@
 
 // TODO: panics with unwrap on None for apisetschema.dll, fhuxgraphics.dll and some others
 
-use alloc::vec::Vec;
+use core::cmp::max;
 
+use alloc::borrow::Cow;
+use alloc::string::String;
+use alloc::vec::Vec;
+use log::warn;
+
+pub mod authenticode;
+pub mod certificate_table;
 pub mod characteristic;
 pub mod data_directories;
 pub mod debug;
+pub mod dll_characteristic;
 pub mod exception;
 pub mod export;
 pub mod header;
@@ -16,18 +24,25 @@ pub mod optional_header;
 pub mod options;
 pub mod relocation;
 pub mod section_table;
+pub mod subsystem;
 pub mod symbol;
 pub mod utils;
 
 use crate::container;
 use crate::error;
+use crate::pe::utils::pad;
 use crate::strtab;
+
+use scroll::{ctx, Pwrite};
 
 use log::debug;
 
 #[derive(Debug)]
 /// An analyzed PE32/PE32+ binary
 pub struct PE<'a> {
+    /// Underlying bytes
+    bytes: &'a [u8],
+    authenticode_excluded_sections: Option<authenticode::ExcludedSections>,
     /// The PE header
     pub header: header::Header,
     /// A list of the sections in this PE binary
@@ -58,6 +73,8 @@ pub struct PE<'a> {
     pub debug_data: Option<debug::DebugData<'a>>,
     /// Exception handling and stack unwind information, if any, contained in the PE header
     pub exception_data: Option<exception::ExceptionData<'a>>,
+    /// Certificates present, if any, described by the Certificate Table
+    pub certificates: certificate_table::CertificateDirectoryTable<'a>,
 }
 
 impl<'a> PE<'a> {
@@ -69,11 +86,15 @@ impl<'a> PE<'a> {
     /// Reads a PE binary from the underlying `bytes`
     pub fn parse_with_opts(bytes: &'a [u8], opts: &options::ParseOptions) -> error::Result<Self> {
         let header = header::Header::parse(bytes)?;
+        let mut authenticode_excluded_sections = None;
+
         debug!("{:#?}", header);
-        let offset = &mut (header.dos_header.pe_pointer as usize
+        let optional_header_offset = header.dos_header.pe_pointer as usize
             + header::SIZEOF_PE_MAGIC
-            + header::SIZEOF_COFF_HEADER
-            + header.coff_header.size_of_optional_header as usize);
+            + header::SIZEOF_COFF_HEADER;
+        let offset =
+            &mut (optional_header_offset + header.coff_header.size_of_optional_header as usize);
+
         let sections = header.coff_header.sections(bytes, offset)?;
         let is_lib = characteristic::is_dll(header.coff_header.characteristics);
         let mut entry = 0;
@@ -86,8 +107,41 @@ impl<'a> PE<'a> {
         let mut libraries = vec![];
         let mut debug_data = None;
         let mut exception_data = None;
+        let mut certificates = Default::default();
         let mut is_64 = false;
         if let Some(optional_header) = header.optional_header {
+            // Sections we are assembling through the parsing, eventually, it will be passed
+            // to the authenticode_sections attribute of `PE`.
+            let (checksum, datadir_entry_certtable) = match optional_header.standard_fields.magic {
+                optional_header::MAGIC_32 => {
+                    let standard_field_offset =
+                        optional_header_offset + optional_header::SIZEOF_STANDARD_FIELDS_32;
+                    let checksum_field_offset =
+                        standard_field_offset + optional_header::OFFSET_WINDOWS_FIELDS_32_CHECKSUM;
+                    (
+                        checksum_field_offset..checksum_field_offset + 4,
+                        optional_header_offset + 128..optional_header_offset + 136,
+                    )
+                }
+                optional_header::MAGIC_64 => {
+                    let standard_field_offset =
+                        optional_header_offset + optional_header::SIZEOF_STANDARD_FIELDS_64;
+                    let checksum_field_offset =
+                        standard_field_offset + optional_header::OFFSET_WINDOWS_FIELDS_64_CHECKSUM;
+
+                    (
+                        checksum_field_offset..checksum_field_offset + 4,
+                        optional_header_offset + 144..optional_header_offset + 152,
+                    )
+                }
+                magic => {
+                    return Err(error::Error::Malformed(format!(
+                        "Unsupported header magic ({:#x})",
+                        magic
+                    )))
+                }
+            };
+
             entry = optional_header.standard_fields.address_of_entry_point as usize;
             image_base = optional_header.windows_fields.image_base as usize;
             is_64 = optional_header.container()? == container::Container::Big;
@@ -96,7 +150,7 @@ impl<'a> PE<'a> {
                 entry, image_base, is_64
             );
             let file_alignment = optional_header.windows_fields.file_alignment;
-            if let Some(export_table) = *optional_header.data_directories.get_export_table() {
+            if let Some(&export_table) = optional_header.data_directories.get_export_table() {
                 if let Ok(ed) = export::ExportData::parse_with_opts(
                     bytes,
                     export_table,
@@ -118,7 +172,7 @@ impl<'a> PE<'a> {
                 }
             }
             debug!("exports: {:#?}", exports);
-            if let Some(import_table) = *optional_header.data_directories.get_import_table() {
+            if let Some(&import_table) = optional_header.data_directories.get_import_table() {
                 let id = if is_64 {
                     import::ImportData::parse_with_opts::<u64>(
                         bytes,
@@ -152,7 +206,7 @@ impl<'a> PE<'a> {
                 import_data = Some(id);
             }
             debug!("imports: {:#?}", imports);
-            if let Some(debug_table) = *optional_header.data_directories.get_debug_table() {
+            if let Some(&debug_table) = optional_header.data_directories.get_debug_table() {
                 debug_data = Some(debug::DebugData::parse_with_opts(
                     bytes,
                     debug_table,
@@ -165,8 +219,8 @@ impl<'a> PE<'a> {
             if header.coff_header.machine == header::COFF_MACHINE_X86_64 {
                 // currently only x86_64 is supported
                 debug!("exception data: {:#?}", exception_data);
-                if let Some(exception_table) =
-                    *optional_header.data_directories.get_exception_table()
+                if let Some(&exception_table) =
+                    optional_header.data_directories.get_exception_table()
                 {
                     exception_data = Some(exception::ExceptionData::parse_with_opts(
                         bytes,
@@ -177,8 +231,36 @@ impl<'a> PE<'a> {
                     )?);
                 }
             }
+
+            // Parse attribute certificates unless opted out of
+            let certificate_table_size = if opts.parse_attribute_certificates {
+                if let Some(&certificate_table) =
+                    optional_header.data_directories.get_certificate_table()
+                {
+                    certificates = certificate_table::enumerate_certificates(
+                        bytes,
+                        certificate_table.virtual_address,
+                        certificate_table.size,
+                    )?;
+
+                    certificate_table.size as usize
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            authenticode_excluded_sections = Some(authenticode::ExcludedSections::new(
+                checksum,
+                datadir_entry_certtable,
+                certificate_table_size,
+                optional_header.windows_fields.size_of_headers as usize,
+            ));
         }
         Ok(PE {
+            bytes,
+            authenticode_excluded_sections,
             header,
             sections,
             size: 0,
@@ -194,7 +276,286 @@ impl<'a> PE<'a> {
             libraries,
             debug_data,
             exception_data,
+            certificates,
         })
+    }
+
+    pub fn write_sections(
+        &self,
+        bytes: &mut [u8],
+        offset: &mut usize,
+        file_alignment: Option<usize>,
+        ctx: scroll::Endian,
+    ) -> Result<usize, error::Error> {
+        // sections table and data
+        debug_assert!(
+            self.sections
+                .iter()
+                .flat_map(|section_a| {
+                    self.sections
+                        .iter()
+                        .map(move |section_b| (section_a, section_b))
+                })
+                // given sections = (s_1, …, s_n)
+                // for all (s_i, s_j), i != j, verify that s_i does not overlap with s_j and vice versa.
+                .all(|(section_i, section_j)| section_i == section_j
+                    || !section_i.overlaps_with(section_j)),
+            "Overlapping sections were found, this is not supported."
+        );
+
+        for section in &self.sections {
+            let section_data = section.data(&self.bytes)?.ok_or_else(|| {
+                error::Error::Malformed(format!(
+                    "Section data `{}` is malformed",
+                    section.name().unwrap_or("unknown name")
+                ))
+            })?;
+            let file_section_offset =
+                usize::try_from(section.pointer_to_raw_data).map_err(|_| {
+                    error::Error::Malformed(format!(
+                        "Section `{}`'s pointer to raw data does not fit in platform `usize`",
+                        section.name().unwrap_or("unknown name")
+                    ))
+                })?;
+            let vsize: usize = section.virtual_size.try_into()?;
+            let ondisk_size: usize = section.size_of_raw_data.try_into()?;
+            let section_name = String::from(section.name().unwrap_or("unknown name"));
+
+            let mut file_offset = file_section_offset;
+            // `file_section_offset` is a on-disk offset which can be anywhere in the file.
+            // Write section data first to avoid the final consumption.
+            match section_data {
+                Cow::Borrowed(borrowed) => bytes.gwrite(borrowed, &mut file_offset)?,
+                Cow::Owned(owned) => bytes.gwrite(owned.as_slice(), &mut file_offset)?,
+            };
+
+            // Section tables follows the header.
+            bytes.gwrite_with(section, offset, ctx)?;
+
+            // for size size_of_raw_data
+            // if < virtual_size, pad with 0
+            // Pad with zeros if necessary
+            if file_offset < vsize {
+                bytes.gwrite(vec![0u8; vsize - file_offset].as_slice(), &mut file_offset)?;
+            }
+
+            // Align on a boundary as per file alignement field.
+            if let Some(pad) = pad(file_offset - file_section_offset, file_alignment) {
+                debug!(
+                    "aligning `{}` {:#x} -> {:#x} bytes'",
+                    section_name,
+                    file_offset - file_section_offset,
+                    file_offset - file_section_offset + pad.len()
+                );
+                bytes.gwrite(pad.as_slice(), &mut file_offset)?;
+            }
+
+            let written_data_size = file_offset - file_section_offset;
+            if ondisk_size != written_data_size {
+                warn!("Original PE is inefficient or bug (on-disk data size in PE: {:#x}), we wrote {:#x} bytes",
+                    ondisk_size,
+                    written_data_size);
+            }
+        }
+
+        Ok(*offset)
+    }
+
+    pub fn write_certificates(
+        &self,
+        bytes: &mut [u8],
+        ctx: scroll::Endian,
+    ) -> Result<usize, error::Error> {
+        let opt_header = self
+            .header
+            .optional_header
+            .ok_or(error::Error::Malformed(format!(
+                "This PE binary has no optional header; it is required to write certificates"
+            )))?;
+        let mut max_offset = 0;
+
+        if let Some(certificate_directory) = opt_header.data_directories.get_certificate_table() {
+            let mut certificate_start = certificate_directory.virtual_address.try_into()?;
+            for certificate in &self.certificates {
+                bytes.gwrite_with(certificate, &mut certificate_start, ctx)?;
+                max_offset = max(certificate_start, max_offset);
+            }
+        }
+
+        Ok(max_offset)
+    }
+}
+
+impl<'a> ctx::TryIntoCtx<scroll::Endian> for PE<'a> {
+    type Error = error::Error;
+
+    fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+        // We need to maintain a `max_offset` because
+        // we could be writing sections in the wrong order (i.e. not an increasing order for the
+        // pointer on raw disk)
+        // and there could be holes between sections.
+        // If we don't re-layout sections, we cannot fix that ourselves.
+        // Same can be said about the certificate table, there could be a hole between sections
+        // and the certificate data.
+        // To avoid those troubles, we maintain the max over all offsets we see so far.
+        let mut max_offset = 0;
+        let file_alignment: Option<usize> = match self.header.optional_header {
+            Some(opt_header) => {
+                debug_assert!(
+                    opt_header.windows_fields.file_alignment.count_ones() == 1,
+                    "file alignment should be a power of 2"
+                );
+                Some(opt_header.windows_fields.file_alignment.try_into()?)
+            }
+            _ => None,
+        };
+        bytes.gwrite_with(self.header, &mut offset, ctx)?;
+        max_offset = max(offset, max_offset);
+        self.write_sections(bytes, &mut offset, file_alignment, ctx)?;
+        // We want the section offset for which we have the highest pointer on disk.
+        // The next offset is reserved for debug tables (outside of sections) and/or certificate
+        // tables.
+        max_offset = max(
+            self.sections
+                .iter()
+                .max_by_key(|section| section.pointer_to_raw_data as usize)
+                .map(|section| (section.pointer_to_raw_data + section.size_of_raw_data) as usize)
+                .unwrap_or(offset),
+            max_offset,
+        );
+
+        // COFF Symbol Table
+        // Auxiliary Symbol Records
+        // COFF String Table
+        assert!(
+            self.header.coff_header.pointer_to_symbol_table == 0,
+            "Symbol tables in PE are deprecated and not supported to write"
+        );
+
+        // The following data directories are
+        // taken care inside a section:
+        // - export table (.edata)
+        // - import table (.idata)
+        // - bound import table
+        // - import address table
+        // - delay import tables
+        // - resource table (.rsrc)
+        // - exception table (.pdata)
+        // - base relocation table (.reloc)
+        // - debug table (.debug) <- this one is special, it can be outside of a
+        // section.
+        // - load config table
+        // - tls table (.tls)
+        // - architecture (reserved, 0 for now)
+        // - global ptr is a "empty" data directory (header-only)
+        // - clr runtime header (.cormeta is object-only)
+        //
+        // Nonetheless, we need to write the attribute certificate table one.
+        max_offset = max(max_offset, self.write_certificates(bytes, ctx)?);
+
+        // TODO: we would like to support debug table outside of a section.
+        // i.e. debug tables that are never mapped in memory
+        // See https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#debug-directory-image-only
+        // > The debug directory can be in a discardable .debug section (if one exists), or it can be included in any other section in the image file, or not be in a section at all.
+        // In case it's not in a section at all, we need to find a way
+        // to rewrite it again.
+        // and we need to respect the ordering between attribute certificates
+        // and debug table.
+
+        Ok(max_offset)
+    }
+}
+
+/// An analyzed TE binary
+///
+/// A TE binary is a PE/PE32+ binary that has had it's header stripped and
+/// re-formatted to the TE specification. This presents a challenge for
+/// parsing, as all relative addresses (RVAs) are not updated to take this into
+/// account, and are thus incorrect. The parsing of a TE must take this into
+/// account by using the [header::TeHeader::stripped_size`] field of the TE
+/// header to adjust the RVAs during parsing.
+#[cfg(feature = "te")]
+#[derive(Debug)]
+pub struct TE<'a> {
+    /// The TE header
+    pub header: header::TeHeader,
+    /// A list of the sections in this TE binary
+    pub sections: Vec<section_table::SectionTable>,
+    /// Debug information, contained in the PE header
+    pub debug_data: debug::DebugData<'a>,
+    /// The offset to apply to addresses not parsed by the TE parser
+    /// itself: [header::TeHeader::stripped_size] - size_of::<[header::TeHeader]>()
+    pub rva_offset: usize,
+}
+
+#[cfg(feature = "te")]
+impl<'a> TE<'a> {
+    /// Reads a TE binary from the underlying `bytes`
+    pub fn parse(bytes: &'a [u8]) -> error::Result<Self> {
+        let opts = &options::ParseOptions {
+            resolve_rva: false,
+            parse_attribute_certificates: false,
+        };
+
+        let mut offset = 0;
+
+        // Parse the TE header and adjust the offsets
+        let header = header::TeHeader::parse(bytes, &mut offset)?;
+        let rva_offset = header.stripped_size as usize - core::mem::size_of::<header::TeHeader>();
+
+        // Parse the sections and adjust the offsets
+        let sections = header.sections(bytes, &mut offset)?;
+
+        // Parse the debug data. Must adjust offsets before parsing the image_debug_directory
+        let mut debug_data = debug::DebugData::default();
+        debug_data.image_debug_directory = debug::ImageDebugDirectory::parse_with_opts(
+            bytes,
+            header.debug_dir,
+            &sections,
+            0,
+            opts,
+        )?;
+        TE::fixup_debug_data(&mut debug_data, rva_offset as u32);
+        debug_data.codeview_pdb70_debug_info = debug::CodeviewPDB70DebugInfo::parse_with_opts(
+            bytes,
+            &debug_data.image_debug_directory,
+            opts,
+        )?;
+
+        Ok(TE {
+            header,
+            sections,
+            debug_data,
+            rva_offset,
+        })
+    }
+
+    /// Adjust all addresses in the TE binary debug data.
+    fn fixup_debug_data(dd: &mut debug::DebugData, rva_offset: u32) {
+        debug!(
+            "ImageDebugDirectory address of raw data fixed up from: 0x{:X} to 0x{:X}",
+            dd.image_debug_directory.address_of_raw_data,
+            dd.image_debug_directory
+                .address_of_raw_data
+                .wrapping_sub(rva_offset),
+        );
+        dd.image_debug_directory.address_of_raw_data = dd
+            .image_debug_directory
+            .address_of_raw_data
+            .wrapping_sub(rva_offset);
+
+        debug!(
+            "ImageDebugDirectory pointer to raw data fixed up from: 0x{:X} to 0x{:X}",
+            dd.image_debug_directory.pointer_to_raw_data,
+            dd.image_debug_directory
+                .pointer_to_raw_data
+                .wrapping_sub(rva_offset),
+        );
+        dd.image_debug_directory.pointer_to_raw_data = dd
+            .image_debug_directory
+            .pointer_to_raw_data
+            .wrapping_sub(rva_offset);
     }
 }
 
@@ -205,10 +566,12 @@ pub struct Coff<'a> {
     pub header: header::CoffHeader,
     /// A list of the sections in this COFF binary
     pub sections: Vec<section_table::SectionTable>,
-    /// The COFF symbol table.
-    pub symbols: symbol::SymbolTable<'a>,
-    /// The string table.
-    pub strings: strtab::Strtab<'a>,
+    /// The COFF symbol table, they are not guaranteed to exist.
+    /// For an image, this is expected to be None as COFF debugging information
+    /// has been deprecated.
+    pub symbols: Option<symbol::SymbolTable<'a>>,
+    /// The string table, they don't exist if COFF symbol table does not exist.
+    pub strings: Option<strtab::Strtab<'a>>,
 }
 
 impl<'a> Coff<'a> {
@@ -345,7 +708,7 @@ mod tests {
     #[test]
     fn string_table_excludes_length() {
         let coff = Coff::parse(&&COFF_FILE_SINGLE_STRING_IN_STRING_TABLE[..]).unwrap();
-        let string_table = coff.strings.to_vec().unwrap();
+        let string_table = coff.strings.unwrap().to_vec().unwrap();
 
         assert!(string_table == vec!["ExitProcess"]);
     }
@@ -353,9 +716,10 @@ mod tests {
     #[test]
     fn symbol_name_excludes_length() {
         let coff = Coff::parse(&COFF_FILE_SINGLE_STRING_IN_STRING_TABLE).unwrap();
-        let strings = coff.strings;
+        let strings = coff.strings.unwrap();
         let symbols = coff
             .symbols
+            .unwrap()
             .iter()
             .filter(|(_, name, _)| name.is_none())
             .map(|(_, _, sym)| sym.name(&strings).unwrap().to_owned())

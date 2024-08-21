@@ -127,7 +127,10 @@ impl<'a> Expander<'a> {
                 }
                 None
             }
-            ComponentField::Start(_) | ComponentField::Alias(_) | ComponentField::Custom(_) => None,
+            ComponentField::Start(_)
+            | ComponentField::Alias(_)
+            | ComponentField::Custom(_)
+            | ComponentField::Producers(_) => None,
         };
 
         if let Some(expanded) = expanded {
@@ -136,7 +139,7 @@ impl<'a> Expander<'a> {
     }
 
     fn expand_core_module(&mut self, module: &mut CoreModule<'a>) -> Option<ComponentField<'a>> {
-        for (name, url) in module.exports.names.drain(..) {
+        for name in module.exports.names.drain(..) {
             let id = gensym::fill(module.span, &mut module.id);
             self.component_fields_to_append
                 .push(ComponentField::Export(ComponentExport {
@@ -144,7 +147,6 @@ impl<'a> Expander<'a> {
                     id: None,
                     debug_name: None,
                     name,
-                    url,
                     kind: ComponentExportKind::module(module.span, id),
                     ty: None,
                 }));
@@ -157,7 +159,6 @@ impl<'a> Expander<'a> {
                 Some(ComponentField::Import(ComponentImport {
                     span: module.span,
                     name: import.name,
-                    url: import.url,
                     item: ItemSig {
                         span: module.span,
                         id: module.id,
@@ -184,7 +185,7 @@ impl<'a> Expander<'a> {
         &mut self,
         component: &mut NestedComponent<'a>,
     ) -> Option<ComponentField<'a>> {
-        for (name, url) in component.exports.names.drain(..) {
+        for name in component.exports.names.drain(..) {
             let id = gensym::fill(component.span, &mut component.id);
             self.component_fields_to_append
                 .push(ComponentField::Export(ComponentExport {
@@ -192,7 +193,6 @@ impl<'a> Expander<'a> {
                     id: None,
                     debug_name: None,
                     name,
-                    url,
                     kind: ComponentExportKind::component(component.span, id),
                     ty: None,
                 }));
@@ -207,7 +207,6 @@ impl<'a> Expander<'a> {
                 Some(ComponentField::Import(ComponentImport {
                     span: component.span,
                     name: import.name,
-                    url: import.url,
                     item: ItemSig {
                         span: component.span,
                         id: component.id,
@@ -220,7 +219,7 @@ impl<'a> Expander<'a> {
     }
 
     fn expand_instance(&mut self, instance: &mut Instance<'a>) -> Option<ComponentField<'a>> {
-        for (name, url) in instance.exports.names.drain(..) {
+        for name in instance.exports.names.drain(..) {
             let id = gensym::fill(instance.span, &mut instance.id);
             self.component_fields_to_append
                 .push(ComponentField::Export(ComponentExport {
@@ -228,7 +227,6 @@ impl<'a> Expander<'a> {
                     id: None,
                     debug_name: None,
                     name,
-                    url,
                     kind: ComponentExportKind::instance(instance.span, id),
                     ty: None,
                 }));
@@ -239,7 +237,6 @@ impl<'a> Expander<'a> {
                 Some(ComponentField::Import(ComponentImport {
                     span: instance.span,
                     name: import.name,
-                    url: import.url,
                     item: ItemSig {
                         span: instance.span,
                         id: instance.id,
@@ -263,7 +260,10 @@ impl<'a> Expander<'a> {
             CanonicalFuncKind::Lift { ty, .. } => {
                 self.expand_component_type_use(ty);
             }
-            CanonicalFuncKind::Lower(_) => {}
+            CanonicalFuncKind::Lower(_)
+            | CanonicalFuncKind::ResourceNew(_)
+            | CanonicalFuncKind::ResourceRep(_)
+            | CanonicalFuncKind::ResourceDrop(_) => {}
         }
     }
 
@@ -285,11 +285,31 @@ impl<'a> Expander<'a> {
                 name: func.name,
                 kind: CanonicalFuncKind::Lower(mem::take(info)),
             })),
+            CoreFuncKind::ResourceNew(info) => Some(ComponentField::CanonicalFunc(CanonicalFunc {
+                span: func.span,
+                id: func.id,
+                name: func.name,
+                kind: CanonicalFuncKind::ResourceNew(mem::take(info)),
+            })),
+            CoreFuncKind::ResourceDrop(info) => {
+                Some(ComponentField::CanonicalFunc(CanonicalFunc {
+                    span: func.span,
+                    id: func.id,
+                    name: func.name,
+                    kind: CanonicalFuncKind::ResourceDrop(mem::take(info)),
+                }))
+            }
+            CoreFuncKind::ResourceRep(info) => Some(ComponentField::CanonicalFunc(CanonicalFunc {
+                span: func.span,
+                id: func.id,
+                name: func.name,
+                kind: CanonicalFuncKind::ResourceRep(mem::take(info)),
+            })),
         }
     }
 
     fn expand_func(&mut self, func: &mut Func<'a>) -> Option<ComponentField<'a>> {
-        for (name, url) in func.exports.names.drain(..) {
+        for name in func.exports.names.drain(..) {
             let id = gensym::fill(func.span, &mut func.id);
             self.component_fields_to_append
                 .push(ComponentField::Export(ComponentExport {
@@ -297,7 +317,6 @@ impl<'a> Expander<'a> {
                     id: None,
                     debug_name: None,
                     name,
-                    url,
                     kind: ComponentExportKind::func(func.span, id),
                     ty: None,
                 }));
@@ -308,7 +327,6 @@ impl<'a> Expander<'a> {
                 Some(ComponentField::Import(ComponentImport {
                     span: func.span,
                     name: import.name,
-                    url: import.url,
                     item: ItemSig {
                         span: func.span,
                         id: func.id,
@@ -362,6 +380,7 @@ impl<'a> Expander<'a> {
             TypeDef::Func(f) => self.expand_func_ty(f),
             TypeDef::Component(c) => self.expand_component_ty(c),
             TypeDef::Instance(i) => self.expand_instance_ty(i),
+            TypeDef::Resource(_) => {}
         }
 
         let id = gensym::fill(field.span, &mut field.id);
@@ -371,15 +390,15 @@ impl<'a> Expander<'a> {
             TypeDef::Func(t) => t.key().insert(self, index),
             TypeDef::Component(t) => t.key().insert(self, index),
             TypeDef::Instance(t) => t.key().insert(self, index),
+            TypeDef::Resource(_) => {}
         }
-        for (name, url) in field.exports.names.drain(..) {
+        for name in field.exports.names.drain(..) {
             self.component_fields_to_append
                 .push(ComponentField::Export(ComponentExport {
                     span: field.span,
                     id: None,
                     debug_name: None,
                     name,
-                    url,
                     kind: ComponentExportKind::ty(field.span, id),
                     ty: None,
                 }));
@@ -459,6 +478,7 @@ impl<'a> Expander<'a> {
                         name: None,
                         def: key.to_def(item.span),
                         parent: None,
+                        final_type: None,
                     }));
                     let idx = Index::Id(id);
                     t.index = Some(idx);
@@ -535,11 +555,6 @@ impl<'a> Expander<'a> {
                     self.expand_component_val_ty(field);
                 }
             }
-            ComponentDefinedType::Union(u) => {
-                for ty in u.types.iter_mut() {
-                    self.expand_component_val_ty(ty);
-                }
-            }
             ComponentDefinedType::Option(t) => {
                 self.expand_component_val_ty(&mut t.element);
             }
@@ -552,6 +567,7 @@ impl<'a> Expander<'a> {
                     self.expand_component_val_ty(ty);
                 }
             }
+            ComponentDefinedType::Own(_) | ComponentDefinedType::Borrow(_) => {}
         }
     }
 

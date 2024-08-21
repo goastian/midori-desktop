@@ -12,10 +12,12 @@
 
 #include <limits>
 
+#include "api/environment/environment_factory.h"
 #include "api/video/encoded_image.h"
 #include "api/video/i420_buffer.h"
 #include "api/video_codecs/video_codec.h"
 #include "media/base/media_constants.h"
+#include "modules/video_coding/codecs/av1/dav1d_decoder.h"
 #include "modules/video_coding/codecs/h264/include/h264.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
@@ -78,8 +80,7 @@ FrameGeneratorInterface::VideoFrameData IvfVideoFrameGenerator::NextFrame() {
   RTC_CHECK(image);
   // Last parameter is undocumented and there is no usage of it found.
   RTC_CHECK_EQ(WEBRTC_VIDEO_CODEC_OK,
-               video_decoder_->Decode(*image, /*missing_frames=*/false,
-                                      /*render_time_ms=*/0));
+               video_decoder_->Decode(*image, /*render_time_ms=*/0));
   bool decoded = next_frame_decoded_.Wait(kMaxNextFrameWaitTimeout);
   RTC_CHECK(decoded) << "Failed to decode next frame in "
                      << kMaxNextFrameWaitTimeout << ". Can't continue";
@@ -103,6 +104,11 @@ void IvfVideoFrameGenerator::ChangeResolution(size_t width, size_t height) {
   MutexLock lock(&lock_);
   width_ = width;
   height_ = height;
+}
+
+FrameGeneratorInterface::Resolution IvfVideoFrameGenerator::GetResolution()
+    const {
+  return {.width = width_, .height = height_};
 }
 
 int32_t IvfVideoFrameGenerator::DecodedCallback::Decoded(
@@ -132,13 +138,21 @@ void IvfVideoFrameGenerator::OnFrameDecoded(const VideoFrame& decoded_frame) {
 std::unique_ptr<VideoDecoder> IvfVideoFrameGenerator::CreateVideoDecoder(
     VideoCodecType codec_type) {
   if (codec_type == VideoCodecType::kVideoCodecVP8) {
-    return VP8Decoder::Create();
+    // Use a default environment for the VP8 decoder while there is no use case
+    // for a propagated environment in this test utility IvfVideoFrameGenerator.
+    return CreateVp8Decoder(CreateEnvironment());
   }
   if (codec_type == VideoCodecType::kVideoCodecVP9) {
     return VP9Decoder::Create();
   }
   if (codec_type == VideoCodecType::kVideoCodecH264) {
     return H264Decoder::Create();
+  }
+  if (codec_type == VideoCodecType::kVideoCodecAV1) {
+    return CreateDav1dDecoder();
+  }
+  if (codec_type == VideoCodecType::kVideoCodecH265) {
+    // TODO(bugs.webrtc.org/13485): implement H265 decoder
   }
   return nullptr;
 }

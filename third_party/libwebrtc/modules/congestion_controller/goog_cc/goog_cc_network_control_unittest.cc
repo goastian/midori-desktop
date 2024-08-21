@@ -8,19 +8,36 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "api/test/network_emulation/create_cross_traffic.h"
 #include "api/test/network_emulation/cross_traffic.h"
 #include "api/transport/goog_cc_factory.h"
+#include "api/transport/network_control.h"
 #include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
+#include "api/units/data_size.h"
+#include "api/units/time_delta.h"
+#include "api/units/timestamp.h"
+#include "call/video_receive_stream.h"
 #include "logging/rtc_event_log/mock/mock_rtc_event_log.h"
 #include "test/field_trial.h"
 #include "test/gtest.h"
+#include "test/scenario/call_client.h"
+#include "test/scenario/column_printer.h"
 #include "test/scenario/scenario.h"
+#include "test/scenario/scenario_config.h"
 
+using ::testing::IsEmpty;
 using ::testing::NiceMock;
 
 namespace webrtc {
@@ -101,7 +118,7 @@ PacketResult CreatePacketResult(Timestamp arrival_time,
 }
 
 // Simulate sending packets and receiving transport feedback during
-// `runtime_ms`.
+// `runtime_ms`, then return the final target birate.
 absl::optional<DataRate> PacketTransmissionAndFeedbackBlock(
     NetworkControllerInterface* controller,
     int64_t runtime_ms,
@@ -135,6 +152,26 @@ absl::optional<DataRate> PacketTransmissionAndFeedbackBlock(
     }
   }
   return target_bitrate;
+}
+
+// Create transport packets feedback with a built-up delay.
+TransportPacketsFeedback CreateTransportPacketsFeedback(
+    TimeDelta per_packet_network_delay,
+    TimeDelta one_way_delay,
+    Timestamp send_time) {
+  TimeDelta delay_buildup = one_way_delay;
+  constexpr int kFeedbackSize = 3;
+  constexpr size_t kPayloadSize = 1000;
+  TransportPacketsFeedback feedback;
+  for (int i = 0; i < kFeedbackSize; ++i) {
+    PacketResult packet = CreatePacketResult(
+        /*arrival_time=*/send_time + delay_buildup, send_time, kPayloadSize,
+        PacedPacketInfo());
+    delay_buildup += per_packet_network_delay;
+    feedback.feedback_time = packet.receive_time + one_way_delay;
+    feedback.packet_feedbacks.push_back(packet);
+  }
+  return feedback;
 }
 
 // Scenarios:
@@ -222,6 +259,8 @@ DataRate RunRembDipScenario(absl::string_view test_name) {
 class NetworkControllerTestFixture {
  public:
   NetworkControllerTestFixture() : factory_() {}
+  explicit NetworkControllerTestFixture(GoogCcFactoryConfig googcc_config)
+      : factory_(std::move(googcc_config)) {}
 
   std::unique_ptr<NetworkControllerInterface> CreateController() {
     NetworkControllerConfig config = InitialConfig();
@@ -251,12 +290,15 @@ class NetworkControllerTestFixture {
   GoogCcNetworkControllerFactory factory_;
 };
 
-TEST(GoogCcNetworkControllerTest, InitializeTargetRateOnFirstProcessInterval) {
+TEST(GoogCcNetworkControllerTest,
+     InitializeTargetRateOnFirstProcessIntervalAfterNetworkAvailable) {
   NetworkControllerTestFixture fixture;
   std::unique_ptr<NetworkControllerInterface> controller =
       fixture.CreateController();
 
-  NetworkControlUpdate update =
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = Timestamp::Millis(123456), .network_available = true});
+  update =
       controller->OnProcessInterval({.at_time = Timestamp::Millis(123456)});
 
   EXPECT_EQ(update.target_rate->target_rate, kInitialBitrate);
@@ -273,8 +315,9 @@ TEST(GoogCcNetworkControllerTest, ReactsToChangedNetworkConditions) {
   std::unique_ptr<NetworkControllerInterface> controller =
       fixture.CreateController();
   Timestamp current_time = Timestamp::Millis(123);
-  NetworkControlUpdate update =
-      controller->OnProcessInterval({.at_time = current_time});
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = true});
+  update = controller->OnProcessInterval({.at_time = current_time});
   update = controller->OnRemoteBitrateReport(
       {.receive_time = current_time, .bandwidth = kInitialBitrate * 2});
 
@@ -298,8 +341,11 @@ TEST(GoogCcNetworkControllerTest, OnNetworkRouteChanged) {
   std::unique_ptr<NetworkControllerInterface> controller =
       fixture.CreateController();
   Timestamp current_time = Timestamp::Millis(123);
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = true});
   DataRate new_bitrate = DataRate::BitsPerSec(200000);
-  NetworkControlUpdate update = controller->OnNetworkRouteChange(
+
+  update = controller->OnNetworkRouteChange(
       CreateRouteChange(current_time, new_bitrate));
   EXPECT_EQ(update.target_rate->target_rate, new_bitrate);
   EXPECT_EQ(update.pacer_config->data_rate(), new_bitrate * kDefaultPacingRate);
@@ -320,7 +366,11 @@ TEST(GoogCcNetworkControllerTest, ProbeOnRouteChange) {
   std::unique_ptr<NetworkControllerInterface> controller =
       fixture.CreateController();
   Timestamp current_time = Timestamp::Millis(123);
-  NetworkControlUpdate update = controller->OnNetworkRouteChange(
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = true});
+  current_time += TimeDelta::Seconds(3);
+
+  update = controller->OnNetworkRouteChange(
       CreateRouteChange(current_time, 2 * kInitialBitrate, DataRate::Zero(),
                         20 * kInitialBitrate));
 
@@ -335,6 +385,28 @@ TEST(GoogCcNetworkControllerTest, ProbeOnRouteChange) {
   update = controller->OnProcessInterval({.at_time = current_time});
 }
 
+TEST(GoogCcNetworkControllerTest, ProbeAfterRouteChangeWhenTransportWritable) {
+  NetworkControllerTestFixture fixture;
+  std::unique_ptr<NetworkControllerInterface> controller =
+      fixture.CreateController();
+  Timestamp current_time = Timestamp::Millis(123);
+
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = false});
+  EXPECT_THAT(update.probe_cluster_configs, IsEmpty());
+
+  update = controller->OnNetworkRouteChange(
+      CreateRouteChange(current_time, 2 * kInitialBitrate, DataRate::Zero(),
+                        20 * kInitialBitrate));
+  // Transport is not writable. So not point in sending a probe.
+  EXPECT_THAT(update.probe_cluster_configs, IsEmpty());
+
+  // Probe is sent when transport becomes writable.
+  update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = true});
+  EXPECT_THAT(update.probe_cluster_configs, Not(IsEmpty()));
+}
+
 // Bandwidth estimation is updated when feedbacks are received.
 // Feedbacks which show an increasing delay cause the estimation to be reduced.
 TEST(GoogCcNetworkControllerTest, UpdatesDelayBasedEstimate) {
@@ -343,6 +415,8 @@ TEST(GoogCcNetworkControllerTest, UpdatesDelayBasedEstimate) {
       fixture.CreateController();
   const int64_t kRunTimeMs = 6000;
   Timestamp current_time = Timestamp::Millis(123);
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = true});
 
   // The test must run and insert packets/feedback long enough that the
   // BWE computes a valid estimate. This is first done in an environment which
@@ -367,8 +441,9 @@ TEST(GoogCcNetworkControllerTest, PaceAtMaxOfLowerLinkCapacityAndBwe) {
   std::unique_ptr<NetworkControllerInterface> controller =
       fixture.CreateController();
   Timestamp current_time = Timestamp::Millis(123);
-  NetworkControlUpdate update =
-      controller->OnProcessInterval({.at_time = current_time});
+  NetworkControlUpdate update = controller->OnNetworkAvailability(
+      {.at_time = current_time, .network_available = true});
+  update = controller->OnProcessInterval({.at_time = current_time});
   current_time += TimeDelta::Millis(100);
   NetworkStateEstimate network_estimate = {.link_capacity_lower =
                                                10 * kInitialBitrate};
@@ -921,14 +996,52 @@ TEST(GoogCcScenario, FallbackToLossBasedBweWithoutPacketFeedback) {
   EXPECT_GE(client->target_rate().kbps(), 500);
 
   // Update the network to create high loss ratio
-  net->UpdateConfig([](NetworkSimulationConfig* c) {
-    c->loss_rate = 0.15;
-  });
+  net->UpdateConfig([](NetworkSimulationConfig* c) { c->loss_rate = 0.15; });
   s.RunFor(TimeDelta::Seconds(20));
 
   // Bandwidth decreases thanks to loss based bwe v0.
   EXPECT_LE(client->target_rate().kbps(), 300);
 }
+
+class GoogCcRttTest : public ::testing::TestWithParam<bool> {
+ protected:
+  GoogCcFactoryConfig Config(bool feedback_only) {
+    GoogCcFactoryConfig config;
+    config.feedback_only = feedback_only;
+    return config;
+  }
+};
+
+TEST_P(GoogCcRttTest, CalculatesRttFromTransporFeedback) {
+  GoogCcFactoryConfig config(Config(/*feedback_only=*/GetParam()));
+  if (!GetParam()) {
+    // TODO(diepbp): understand the usage difference between
+    // UpdatePropagationRtt and UpdateRtt
+    GTEST_SKIP() << "This test should run only if "
+                    "feedback_only is enabled";
+  }
+  NetworkControllerTestFixture fixture(std::move(config));
+  std::unique_ptr<NetworkControllerInterface> controller =
+      fixture.CreateController();
+  Timestamp current_time = Timestamp::Millis(123);
+  TimeDelta one_way_delay = TimeDelta::Millis(10);
+  absl::optional<TimeDelta> rtt = absl::nullopt;
+
+  TransportPacketsFeedback feedback = CreateTransportPacketsFeedback(
+      /*per_packet_network_delay=*/TimeDelta::Millis(50), one_way_delay,
+      /*send_time=*/current_time);
+  NetworkControlUpdate update =
+      controller->OnTransportPacketsFeedback(feedback);
+  current_time += TimeDelta::Millis(50);
+  update = controller->OnProcessInterval({.at_time = current_time});
+  if (update.target_rate) {
+    rtt = update.target_rate->network_estimate.round_trip_time;
+  }
+  ASSERT_TRUE(rtt.has_value());
+  EXPECT_EQ(rtt->ms(), 2 * one_way_delay.ms());
+}
+
+INSTANTIATE_TEST_SUITE_P(GoogCcRttTests, GoogCcRttTest, ::testing::Bool());
 
 }  // namespace test
 }  // namespace webrtc

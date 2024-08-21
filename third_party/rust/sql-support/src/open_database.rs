@@ -22,6 +22,8 @@
 ///        it and call prepare(), upgrade_from() for each upgrade that needs to be applied, then
 ///        finish(). As above, a read-only connection will panic if upgrades are necessary, so
 ///        you should ensure the first connection opened is writable.
+///      - If the database file is corrupt, or upgrade_from() returns [`Error::Corrupt`], the
+///        database file will be removed and replaced with a new DB.
 ///      - If the connection is not writable, `finish()` will be called (ie, `finish()`, like
 ///        `prepare()`, is called for all connections)
 ///
@@ -38,11 +40,27 @@ use thiserror::Error;
 pub enum Error {
     #[error("Incompatible database version: {0}")]
     IncompatibleVersion(u32),
+    #[error("Database is corrupt")]
+    Corrupt,
     #[error("Error executing SQL: {0}")]
-    SqlError(#[from] rusqlite::Error),
-    // `.0` is the original `Error` in string form.
-    #[error("Failed to recover a corrupt database ('{0}') due to an error deleting the file: {1}")]
-    RecoveryError(String, std::io::Error),
+    SqlError(rusqlite::Error),
+    #[error("Failed to recover a corrupt database due to an error deleting the file: {0}")]
+    RecoveryError(std::io::Error),
+    #[error("In shutdown mode")]
+    Shutdown,
+}
+
+impl From<rusqlite::Error> for Error {
+    fn from(value: rusqlite::Error) -> Self {
+        match value {
+            RusqliteError::SqliteFailure(e, _)
+                if matches!(e.code, ErrorCode::DatabaseCorrupt | ErrorCode::NotADatabase) =>
+            {
+                Self::Corrupt
+            }
+            _ => Self::SqlError(value),
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -189,12 +207,7 @@ fn try_handle_db_failure<CI: ConnectionInitializer, P: AsRef<Path>>(
         return Err(err);
     }
 
-    let delete = match err {
-        Error::SqlError(RusqliteError::SqliteFailure(e, _)) => {
-            matches!(e.code, ErrorCode::DatabaseCorrupt | ErrorCode::NotADatabase)
-        }
-        _ => false,
-    };
+    let delete = matches!(err, Error::Corrupt);
     if delete {
         log::info!(
             "{}: the database is fatally damaged; deleting and starting fresh",
@@ -204,7 +217,7 @@ fn try_handle_db_failure<CI: ConnectionInitializer, P: AsRef<Path>>(
         // identify any value there - actually getting our hands on the file from a mobile device
         // is tricky and it would just take up disk space forever.
         if let Err(io_err) = std::fs::remove_file(path) {
-            return Err(Error::RecoveryError(err.to_string(), io_err));
+            return Err(Error::RecoveryError(io_err));
         }
         Ok(())
     } else {
@@ -230,93 +243,28 @@ fn set_schema_version(conn: &Connection, version: u32) -> Result<()> {
 // our other crates.
 pub mod test_utils {
     use super::*;
-    use std::path::PathBuf;
+    use std::{cell::RefCell, collections::HashSet, path::PathBuf};
     use tempfile::TempDir;
 
-    // Database file that we can programatically run upgrades on
-    //
-    // We purposefully don't keep a connection to the database around to force upgrades to always
-    // run against a newly opened DB, like they would in the real world.  See #4106 for
-    // details.
-    pub struct MigratedDatabaseFile<CI: ConnectionInitializer> {
-        // Keep around a TempDir to ensure the database file stays around until this struct is
-        // dropped
-        _tempdir: TempDir,
-        pub connection_initializer: CI,
-        pub path: PathBuf,
-    }
-
-    impl<CI: ConnectionInitializer> MigratedDatabaseFile<CI> {
-        pub fn new(connection_initializer: CI, init_sql: &str) -> Self {
-            Self::new_with_flags(connection_initializer, init_sql, OpenFlags::default())
-        }
-
-        pub fn new_with_flags(
-            connection_initializer: CI,
-            init_sql: &str,
-            open_flags: OpenFlags,
-        ) -> Self {
-            let tempdir = tempfile::tempdir().unwrap();
-            let path = tempdir.path().join(Path::new("db.sql"));
-            let conn = Connection::open_with_flags(&path, open_flags).unwrap();
-            conn.execute_batch(init_sql).unwrap();
-            Self {
-                _tempdir: tempdir,
-                connection_initializer,
-                path,
-            }
-        }
-
-        pub fn upgrade_to(&self, version: u32) {
-            let mut conn = self.open();
-            let tx = conn.transaction().unwrap();
-            let mut current_version = get_schema_version(&tx).unwrap();
-            while current_version < version {
-                self.connection_initializer
-                    .upgrade_from(&tx, current_version)
-                    .unwrap();
-                current_version += 1;
-            }
-            set_schema_version(&tx, current_version).unwrap();
-            self.connection_initializer.finish(&tx).unwrap();
-            tx.commit().unwrap();
-        }
-
-        pub fn run_all_upgrades(&self) {
-            let current_version = get_schema_version(&self.open()).unwrap();
-            for version in current_version..CI::END_VERSION {
-                self.upgrade_to(version + 1);
-            }
-        }
-
-        pub fn open(&self) -> Connection {
-            Connection::open(&self.path).unwrap()
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::test_utils::MigratedDatabaseFile;
-    use super::*;
-    use std::cell::RefCell;
-    use std::io::Write;
-
-    struct TestConnectionInitializer {
+    pub struct TestConnectionInitializer {
         pub calls: RefCell<Vec<&'static str>>,
         pub buggy_v3_upgrade: bool,
     }
 
+    impl Default for TestConnectionInitializer {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl TestConnectionInitializer {
         pub fn new() -> Self {
-            let _ = env_logger::try_init();
             Self {
                 calls: RefCell::new(Vec::new()),
                 buggy_v3_upgrade: false,
             }
         }
         pub fn new_with_buggy_logic() -> Self {
-            let _ = env_logger::try_init();
             Self {
                 calls: RefCell::new(Vec::new()),
                 buggy_v3_upgrade: true,
@@ -364,6 +312,12 @@ mod test {
 
         fn upgrade_from(&self, conn: &Transaction<'_>, version: u32) -> Result<()> {
             match version {
+                // This upgrade forces the database to be replaced by returning
+                // `Error::Corrupt`.
+                1 => {
+                    self.push_call("upgrade_from_v1");
+                    Err(Error::Corrupt)
+                }
                 2 => {
                     self.push_call("upgrade_from_v2");
                     conn.execute_batch(
@@ -403,6 +357,168 @@ mod test {
             Ok(())
         }
     }
+
+    // Database file that we can programmatically run upgrades on
+    //
+    // We purposefully don't keep a connection to the database around to force upgrades to always
+    // run against a newly opened DB, like they would in the real world.  See #4106 for
+    // details.
+    pub struct MigratedDatabaseFile<CI: ConnectionInitializer> {
+        // Keep around a TempDir to ensure the database file stays around until this struct is
+        // dropped
+        _tempdir: TempDir,
+        pub connection_initializer: CI,
+        pub path: PathBuf,
+    }
+
+    impl<CI: ConnectionInitializer> MigratedDatabaseFile<CI> {
+        pub fn new(connection_initializer: CI, init_sql: &str) -> Self {
+            Self::new_with_flags(connection_initializer, init_sql, OpenFlags::default())
+        }
+
+        pub fn new_with_flags(
+            connection_initializer: CI,
+            init_sql: &str,
+            open_flags: OpenFlags,
+        ) -> Self {
+            let tempdir = tempfile::tempdir().unwrap();
+            let path = tempdir.path().join(Path::new("db.sql"));
+            let conn = Connection::open_with_flags(&path, open_flags).unwrap();
+            conn.execute_batch(init_sql).unwrap();
+            Self {
+                _tempdir: tempdir,
+                connection_initializer,
+                path,
+            }
+        }
+
+        /// Attempt to run all upgrades up to a specific version.
+        ///
+        /// This will result in a panic if an upgrade fails to run.
+        pub fn upgrade_to(&self, version: u32) {
+            let mut conn = self.open();
+            let tx = conn.transaction().unwrap();
+            let mut current_version = get_schema_version(&tx).unwrap();
+            while current_version < version {
+                self.connection_initializer
+                    .upgrade_from(&tx, current_version)
+                    .unwrap();
+                current_version += 1;
+            }
+            set_schema_version(&tx, current_version).unwrap();
+            self.connection_initializer.finish(&tx).unwrap();
+            tx.commit().unwrap();
+        }
+
+        /// Attempt to run all upgrades
+        ///
+        /// This will result in a panic if an upgrade fails to run.
+        pub fn run_all_upgrades(&self) {
+            let current_version = get_schema_version(&self.open()).unwrap();
+            for version in current_version..CI::END_VERSION {
+                self.upgrade_to(version + 1);
+            }
+        }
+
+        pub fn assert_schema_matches_new_database(&self) {
+            let db = self.open();
+            let new_db = open_memory_database(&self.connection_initializer).unwrap();
+
+            let table_names = get_table_names(&db);
+            let new_db_table_names = get_table_names(&new_db);
+            let extra_tables = Vec::from_iter(table_names.difference(&new_db_table_names));
+            if !extra_tables.is_empty() {
+                panic!("Extra tables not present in new database: {extra_tables:?}");
+            }
+            let new_db_extra_tables = Vec::from_iter(new_db_table_names.difference(&table_names));
+            if !new_db_extra_tables.is_empty() {
+                panic!("Extra tables only present in new database: {new_db_extra_tables:?}");
+            }
+            for table_name in table_names {
+                assert_eq!(
+                    get_table_sql(&db, &table_name),
+                    get_table_sql(&new_db, &table_name),
+                    "sql differs for table: {table_name}",
+                );
+            }
+
+            let index_names = get_index_names(&db);
+            let new_db_index_names = get_index_names(&new_db);
+            let extra_index = Vec::from_iter(index_names.difference(&new_db_index_names));
+            if !extra_index.is_empty() {
+                panic!("Extra indexes not present in new database: {extra_index:?}");
+            }
+            let new_db_extra_index = Vec::from_iter(new_db_index_names.difference(&index_names));
+            if !new_db_extra_index.is_empty() {
+                panic!("Extra indexes only present in new database: {new_db_extra_index:?}");
+            }
+            for index_name in index_names {
+                assert_eq!(
+                    get_index_sql(&db, &index_name),
+                    get_index_sql(&new_db, &index_name),
+                    "sql differs for index: {index_name}",
+                );
+            }
+        }
+
+        pub fn open(&self) -> Connection {
+            Connection::open(&self.path).unwrap()
+        }
+    }
+
+    fn get_table_names(conn: &Connection) -> HashSet<String> {
+        conn.query_rows_and_then(
+            "SELECT name FROM sqlite_master WHERE type='table'",
+            (),
+            |row| row.get(0),
+        )
+        .unwrap()
+        .into_iter()
+        .collect()
+    }
+
+    fn get_table_sql(conn: &Connection, table_name: &str) -> String {
+        conn.query_row_and_then(
+            "SELECT sql FROM sqlite_master WHERE name = ? AND type='table'",
+            (&table_name,),
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap()
+    }
+
+    fn get_index_names(conn: &Connection) -> HashSet<String> {
+        conn.query_rows_and_then(
+            "SELECT name FROM sqlite_master WHERE type='index'",
+            (),
+            |row| row.get(0),
+        )
+        .unwrap()
+        .into_iter()
+        .collect()
+    }
+
+    fn get_index_sql(conn: &Connection, index_name: &str) -> String {
+        conn.query_row_and_then(
+            "SELECT sql FROM sqlite_master WHERE name = ? AND type='index'",
+            (&index_name,),
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::test_utils::{MigratedDatabaseFile, TestConnectionInitializer};
+    use super::*;
+    use std::io::Write;
+
+    // A special schema used to test the upgrade that forces the database to be
+    // replaced.
+    static INIT_V1: &str = "
+        CREATE TABLE prep_table(col);
+        PRAGMA user_version=1;
+    ";
 
     // Initialize the database to v2 to test upgrading from there
     static INIT_V2: &str = "
@@ -532,5 +648,19 @@ mod test {
         let metadata = std::fs::metadata(path).unwrap();
         // just check the file is no longer what it was before.
         assert_ne!(metadata.len(), 7);
+    }
+
+    #[test]
+    fn test_force_replace() {
+        let db_file = MigratedDatabaseFile::new(TestConnectionInitializer::new(), INIT_V1);
+        let conn = open_database(db_file.path.clone(), &db_file.connection_initializer).unwrap();
+        check_final_data(&conn);
+        db_file.connection_initializer.check_calls(vec![
+            "prep",
+            "upgrade_from_v1",
+            "prep",
+            "init",
+            "finish",
+        ]);
     }
 }

@@ -58,14 +58,20 @@ mod component;
 mod config;
 mod core;
 
-pub use crate::core::{
-    ConfiguredModule, InstructionKind, InstructionKinds, MaybeInvalidModule, Module,
-};
+pub use crate::core::{InstructionKind, InstructionKinds, Module};
 use arbitrary::{Result, Unstructured};
-pub use component::{Component, ConfiguredComponent};
-pub use config::{Config, DefaultConfig, SwarmConfig};
+pub use component::Component;
+pub use config::{Config, MemoryOffsetChoices};
 use std::{collections::HashSet, fmt::Write, str};
-use wasmparser::types::{KebabStr, KebabString};
+use wasm_encoder::MemoryType;
+
+#[cfg(feature = "_internal_cli")]
+pub use config::InternalOptionalConfig;
+
+pub(crate) fn page_size(mem: &MemoryType) -> u32 {
+    const DEFAULT_WASM_PAGE_SIZE: u32 = 65_536;
+    mem.page_size_log2.unwrap_or(DEFAULT_WASM_PAGE_SIZE)
+}
 
 /// Do something an arbitrary number of times.
 ///
@@ -108,10 +114,7 @@ pub(crate) fn limited_str<'a>(max_size: usize, u: &mut Unstructured<'a>) -> Resu
         Err(e) => {
             let i = e.valid_up_to();
             let valid = u.bytes(i).unwrap();
-            let s = unsafe {
-                debug_assert!(str::from_utf8(valid).is_ok());
-                str::from_utf8_unchecked(valid)
-            };
+            let s = str::from_utf8(valid).unwrap();
             Ok(s)
         }
     }
@@ -136,9 +139,9 @@ pub(crate) fn unique_string(
 
 pub(crate) fn unique_kebab_string(
     max_size: usize,
-    names: &mut HashSet<KebabString>,
+    names: &mut HashSet<String>,
     u: &mut Unstructured,
-) -> Result<KebabString> {
+) -> Result<String> {
     let size = std::cmp::min(u.arbitrary_len::<u8>()?, max_size);
     let mut name = String::with_capacity(size);
     let mut require_alpha = true;
@@ -173,11 +176,10 @@ pub(crate) fn unique_kebab_string(
         name.push('a');
     }
 
-    while names.contains(KebabStr::new(&name).unwrap()) {
+    while names.contains(&name) {
         write!(&mut name, "{}", names.len()).unwrap();
     }
 
-    let name = KebabString::new(name).unwrap();
     names.insert(name.clone());
 
     Ok(name)
@@ -185,7 +187,7 @@ pub(crate) fn unique_kebab_string(
 
 pub(crate) fn unique_url(
     max_size: usize,
-    names: &mut HashSet<KebabString>,
+    names: &mut HashSet<String>,
     u: &mut Unstructured,
 ) -> Result<String> {
     let path = unique_kebab_string(max_size, names, u)?;

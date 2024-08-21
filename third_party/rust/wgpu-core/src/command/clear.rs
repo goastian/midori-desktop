@@ -1,22 +1,24 @@
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 #[cfg(feature = "trace")]
 use crate::device::trace::Command as TraceCommand;
 use crate::{
+    api_log,
     command::CommandBuffer,
+    device::DeviceError,
     get_lowest_common_denom,
-    hub::{self, Global, GlobalIdentityHandlerFactory, HalApi, Token},
-    id::{BufferId, CommandEncoderId, DeviceId, TextureId, Valid},
+    global::Global,
+    hal_api::HalApi,
+    id::{BufferId, CommandEncoderId, DeviceId, TextureId},
     init_tracker::{MemoryInitKind, TextureInitRange},
-    resource::{Texture, TextureClearMode},
+    resource::{Resource, Texture, TextureClearMode},
+    snatch::SnatchGuard,
     track::{TextureSelector, TextureTracker},
 };
 
 use hal::CommandEncoder as _;
 use thiserror::Error;
-use wgt::{
-    math::align_to, BufferAddress, BufferSize, BufferUsages, ImageSubresourceRange, TextureAspect,
-};
+use wgt::{math::align_to, BufferAddress, BufferUsages, ImageSubresourceRange, TextureAspect};
 
 /// Error encountered while attempting a clear.
 #[derive(Clone, Debug, Error)]
@@ -24,8 +26,6 @@ use wgt::{
 pub enum ClearError {
     #[error("To use clear_texture the CLEAR_TEXTURE feature needs to be enabled")]
     MissingClearTextureFeature,
-    #[error("Command encoder {0:?} is invalid")]
-    InvalidCommandEncoder(CommandEncoderId),
     #[error("Device {0:?} is invalid")]
     InvalidDevice(DeviceId),
     #[error("Buffer {0:?} is invalid or destroyed")]
@@ -35,9 +35,14 @@ pub enum ClearError {
     #[error("Texture {0:?} can not be cleared")]
     NoValidTextureClearMode(TextureId),
     #[error("Buffer clear size {0:?} is not a multiple of `COPY_BUFFER_ALIGNMENT`")]
-    UnalignedFillSize(BufferSize),
+    UnalignedFillSize(BufferAddress),
     #[error("Buffer offset {0:?} is not a multiple of `COPY_BUFFER_ALIGNMENT`")]
     UnalignedBufferOffset(BufferAddress),
+    #[error("Clear starts at offset {start_offset} with size of {requested_size}, but these added together exceed `u64::MAX`")]
+    OffsetPlusSizeExceeds64BitBounds {
+        start_offset: BufferAddress,
+        requested_size: BufferAddress,
+    },
     #[error("Clear of {start_offset}..{end_offset} would end up overrunning the bounds of the buffer of size {buffer_size}")]
     BufferOverrun {
         start_offset: BufferAddress,
@@ -65,38 +70,54 @@ whereas subesource range specified start {subresource_base_array_layer} and coun
         subresource_base_array_layer: u32,
         subresource_array_layer_count: Option<u32>,
     },
+    #[error(transparent)]
+    Device(#[from] DeviceError),
+    #[error(transparent)]
+    CommandEncoderError(#[from] super::CommandEncoderError),
 }
 
-impl<G: GlobalIdentityHandlerFactory> Global<G> {
+impl Global {
     pub fn command_encoder_clear_buffer<A: HalApi>(
         &self,
         command_encoder_id: CommandEncoderId,
         dst: BufferId,
         offset: BufferAddress,
-        size: Option<BufferSize>,
+        size: Option<BufferAddress>,
     ) -> Result<(), ClearError> {
-        profiling::scope!("CommandEncoder::fill_buffer");
+        profiling::scope!("CommandEncoder::clear_buffer");
+        api_log!("CommandEncoder::clear_buffer {dst:?}");
 
         let hub = A::hub(self);
-        let mut token = Token::root();
-        let (mut cmd_buf_guard, mut token) = hub.command_buffers.write(&mut token);
-        let cmd_buf = CommandBuffer::get_encoder_mut(&mut *cmd_buf_guard, command_encoder_id)
-            .map_err(|_| ClearError::InvalidCommandEncoder(command_encoder_id))?;
-        let (buffer_guard, _) = hub.buffers.read(&mut token);
+
+        let cmd_buf = CommandBuffer::get_encoder(hub, command_encoder_id)?;
+        let mut cmd_buf_data = cmd_buf.data.lock();
+        let cmd_buf_data = cmd_buf_data.as_mut().unwrap();
 
         #[cfg(feature = "trace")]
-        if let Some(ref mut list) = cmd_buf.commands {
+        if let Some(ref mut list) = cmd_buf_data.commands {
             list.push(TraceCommand::ClearBuffer { dst, offset, size });
         }
 
-        let (dst_buffer, dst_pending) = cmd_buf
-            .trackers
-            .buffers
-            .set_single(&*buffer_guard, dst, hal::BufferUses::COPY_DST)
-            .ok_or(ClearError::InvalidBuffer(dst))?;
+        let (dst_buffer, dst_pending) = {
+            let buffer_guard = hub.buffers.read();
+            let dst_buffer = buffer_guard
+                .get(dst)
+                .map_err(|_| ClearError::InvalidBuffer(dst))?;
+
+            if dst_buffer.device.as_info().id() != cmd_buf.device.as_info().id() {
+                return Err(DeviceError::WrongDevice.into());
+            }
+
+            cmd_buf_data
+                .trackers
+                .buffers
+                .set_single(dst_buffer, hal::BufferUses::COPY_DST)
+                .ok_or(ClearError::InvalidBuffer(dst))?
+        };
+        let snatch_guard = dst_buffer.device.snatchable_lock.read();
         let dst_raw = dst_buffer
             .raw
-            .as_ref()
+            .get(&snatch_guard)
             .ok_or(ClearError::InvalidBuffer(dst))?;
         if !dst_buffer.usage.contains(BufferUsages::COPY_DST) {
             return Err(ClearError::MissingCopyDstUsageFlag(Some(dst), None));
@@ -106,43 +127,46 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         if offset % wgt::COPY_BUFFER_ALIGNMENT != 0 {
             return Err(ClearError::UnalignedBufferOffset(offset));
         }
-        if let Some(size) = size {
-            if size.get() % wgt::COPY_BUFFER_ALIGNMENT != 0 {
-                return Err(ClearError::UnalignedFillSize(size));
-            }
-            let destination_end_offset = offset + size.get();
-            if destination_end_offset > dst_buffer.size {
-                return Err(ClearError::BufferOverrun {
+
+        let size = size.unwrap_or(dst_buffer.size.saturating_sub(offset));
+        if size % wgt::COPY_BUFFER_ALIGNMENT != 0 {
+            return Err(ClearError::UnalignedFillSize(size));
+        }
+        let end_offset =
+            offset
+                .checked_add(size)
+                .ok_or(ClearError::OffsetPlusSizeExceeds64BitBounds {
                     start_offset: offset,
-                    end_offset: destination_end_offset,
-                    buffer_size: dst_buffer.size,
-                });
-            }
+                    requested_size: size,
+                })?;
+        if end_offset > dst_buffer.size {
+            return Err(ClearError::BufferOverrun {
+                start_offset: offset,
+                end_offset,
+                buffer_size: dst_buffer.size,
+            });
         }
 
-        let end = match size {
-            Some(size) => offset + size.get(),
-            None => dst_buffer.size,
-        };
-        if offset == end {
+        if offset == end_offset {
             log::trace!("Ignoring fill_buffer of size 0");
             return Ok(());
         }
 
         // Mark dest as initialized.
-        cmd_buf
-            .buffer_memory_init_actions
-            .extend(dst_buffer.initialization_status.create_action(
-                dst,
-                offset..end,
+        cmd_buf_data.buffer_memory_init_actions.extend(
+            dst_buffer.initialization_status.read().create_action(
+                &dst_buffer,
+                offset..end_offset,
                 MemoryInitKind::ImplicitlyInitialized,
-            ));
+            ),
+        );
+
         // actual hal barrier & operation
-        let dst_barrier = dst_pending.map(|pending| pending.into_hal(dst_buffer));
-        let cmd_buf_raw = cmd_buf.encoder.open();
+        let dst_barrier = dst_pending.map(|pending| pending.into_hal(&dst_buffer, &snatch_guard));
+        let cmd_buf_raw = cmd_buf_data.encoder.open()?;
         unsafe {
             cmd_buf_raw.transition_buffers(dst_barrier.into_iter());
-            cmd_buf_raw.clear_buffer(dst_raw, offset..end);
+            cmd_buf_raw.clear_buffer(dst_raw, offset..end_offset);
         }
         Ok(())
     }
@@ -154,18 +178,16 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         subresource_range: &ImageSubresourceRange,
     ) -> Result<(), ClearError> {
         profiling::scope!("CommandEncoder::clear_texture");
+        api_log!("CommandEncoder::clear_texture {dst:?}");
 
         let hub = A::hub(self);
-        let mut token = Token::root();
-        let (device_guard, mut token) = hub.devices.write(&mut token);
-        let (mut cmd_buf_guard, mut token) = hub.command_buffers.write(&mut token);
-        let cmd_buf = CommandBuffer::get_encoder_mut(&mut *cmd_buf_guard, command_encoder_id)
-            .map_err(|_| ClearError::InvalidCommandEncoder(command_encoder_id))?;
-        let (_, mut token) = hub.buffers.read(&mut token); // skip token
-        let (texture_guard, _) = hub.textures.read(&mut token);
+
+        let cmd_buf = CommandBuffer::get_encoder(hub, command_encoder_id)?;
+        let mut cmd_buf_data = cmd_buf.data.lock();
+        let cmd_buf_data = cmd_buf_data.as_mut().unwrap();
 
         #[cfg(feature = "trace")]
-        if let Some(ref mut list) = cmd_buf.commands {
+        if let Some(ref mut list) = cmd_buf_data.commands {
             list.push(TraceCommand::ClearTexture {
                 dst,
                 subresource_range: *subresource_range,
@@ -176,9 +198,14 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             return Err(ClearError::MissingClearTextureFeature);
         }
 
-        let dst_texture = texture_guard
+        let dst_texture = hub
+            .textures
             .get(dst)
             .map_err(|_| ClearError::InvalidTexture(dst))?;
+
+        if dst_texture.device.as_info().id() != cmd_buf.device.as_info().id() {
+            return Err(DeviceError::WrongDevice.into());
+        }
 
         // Check if subresource aspects are valid.
         let clear_aspects =
@@ -214,48 +241,54 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             });
         }
 
-        let device = &device_guard[cmd_buf.device_id.value];
+        let device = &cmd_buf.device;
+        if !device.is_valid() {
+            return Err(ClearError::InvalidDevice(cmd_buf.device.as_info().id()));
+        }
+        let (encoder, tracker) = cmd_buf_data.open_encoder_and_tracker()?;
 
+        let snatch_guard = device.snatchable_lock.read();
         clear_texture(
-            &*texture_guard,
-            Valid(dst),
+            &dst_texture,
             TextureInitRange {
                 mip_range: subresource_mip_range,
                 layer_range: subresource_layer_range,
             },
-            cmd_buf.encoder.open(),
-            &mut cmd_buf.trackers.textures,
+            encoder,
+            &mut tracker.textures,
             &device.alignments,
-            &device.zero_buffer,
+            device.zero_buffer.as_ref().unwrap(),
+            &snatch_guard,
         )
     }
 }
 
 pub(crate) fn clear_texture<A: HalApi>(
-    storage: &hub::Storage<Texture<A>, TextureId>,
-    dst_texture_id: Valid<TextureId>,
+    dst_texture: &Arc<Texture<A>>,
     range: TextureInitRange,
     encoder: &mut A::CommandEncoder,
     texture_tracker: &mut TextureTracker<A>,
     alignments: &hal::Alignments,
     zero_buffer: &A::Buffer,
+    snatch_guard: &SnatchGuard<'_>,
 ) -> Result<(), ClearError> {
-    let dst_texture = &storage[dst_texture_id];
-
     let dst_raw = dst_texture
-        .inner
-        .as_raw()
-        .ok_or(ClearError::InvalidTexture(dst_texture_id.0))?;
+        .raw(snatch_guard)
+        .ok_or_else(|| ClearError::InvalidTexture(dst_texture.as_info().id()))?;
 
     // Issue the right barrier.
-    let clear_usage = match dst_texture.clear_mode {
+    let clear_usage = match *dst_texture.clear_mode.read() {
         TextureClearMode::BufferCopy => hal::TextureUses::COPY_DST,
         TextureClearMode::RenderPass {
             is_color: false, ..
         } => hal::TextureUses::DEPTH_STENCIL_WRITE,
-        TextureClearMode::RenderPass { is_color: true, .. } => hal::TextureUses::COLOR_TARGET,
+        TextureClearMode::Surface { .. } | TextureClearMode::RenderPass { is_color: true, .. } => {
+            hal::TextureUses::COLOR_TARGET
+        }
         TextureClearMode::None => {
-            return Err(ClearError::NoValidTextureClearMode(dst_texture_id.0));
+            return Err(ClearError::NoValidTextureClearMode(
+                dst_texture.as_info().id(),
+            ));
         }
     };
 
@@ -278,15 +311,15 @@ pub(crate) fn clear_texture<A: HalApi>(
     // clear_texture api in order to remove this check and call the cheaper
     // change_replace_tracked whenever possible.
     let dst_barrier = texture_tracker
-        .set_single(dst_texture, dst_texture_id.0, selector, clear_usage)
+        .set_single(dst_texture, selector, clear_usage)
         .unwrap()
-        .map(|pending| pending.into_hal(dst_texture));
+        .map(|pending| pending.into_hal(dst_raw));
     unsafe {
         encoder.transition_textures(dst_barrier.into_iter());
     }
 
     // Record actual clearing
-    match dst_texture.clear_mode {
+    match *dst_texture.clear_mode.read() {
         TextureClearMode::BufferCopy => clear_texture_via_buffer_copies::<A>(
             &dst_texture.desc,
             alignments,
@@ -295,17 +328,22 @@ pub(crate) fn clear_texture<A: HalApi>(
             encoder,
             dst_raw,
         ),
+        TextureClearMode::Surface { .. } => {
+            clear_texture_via_render_passes(dst_texture, range, true, encoder)?
+        }
         TextureClearMode::RenderPass { is_color, .. } => {
             clear_texture_via_render_passes(dst_texture, range, is_color, encoder)?
         }
         TextureClearMode::None => {
-            return Err(ClearError::NoValidTextureClearMode(dst_texture_id.0));
+            return Err(ClearError::NoValidTextureClearMode(
+                dst_texture.as_info().id(),
+            ));
         }
     }
     Ok(())
 }
 
-fn clear_texture_via_buffer_copies<A: hal::Api>(
+fn clear_texture_via_buffer_copies<A: HalApi>(
     texture_desc: &wgt::TextureDescriptor<(), Vec<wgt::TextureFormat>>,
     alignments: &hal::Alignments,
     zero_buffer: &A::Buffer, // Buffer of size device::ZERO_BUFFER_SIZE
@@ -313,16 +351,18 @@ fn clear_texture_via_buffer_copies<A: hal::Api>(
     encoder: &mut A::CommandEncoder,
     dst_raw: &A::Texture,
 ) {
-    assert_eq!(
-        hal::FormatAspects::from(texture_desc.format),
-        hal::FormatAspects::COLOR
-    );
+    assert!(!texture_desc.format.is_depth_stencil_format());
+
+    if texture_desc.format == wgt::TextureFormat::NV12 {
+        // TODO: Currently COPY_DST for NV12 textures is unsupported.
+        return;
+    }
 
     // Gather list of zero_buffer copies and issue a single command then to perform them
     let mut zero_buffer_copy_regions = Vec::new();
     let buffer_copy_pitch = alignments.buffer_copy_pitch.get() as u32;
     let (block_width, block_height) = texture_desc.format.block_dimensions();
-    let block_size = texture_desc.format.block_size(None).unwrap();
+    let block_size = texture_desc.format.block_copy_size(None).unwrap();
 
     let bytes_per_row_alignment = get_lowest_common_denom(buffer_copy_pitch, block_size);
 
@@ -343,7 +383,7 @@ fn clear_texture_via_buffer_copies<A: hal::Api>(
         assert!(
             max_rows_per_copy > 0,
             "Zero buffer size is too small to fill a single row \
-                 of a texture with format {:?} and desc {:?}",
+            of a texture with format {:?} and desc {:?}",
             texture_desc.format,
             texture_desc.size
         );
@@ -397,7 +437,7 @@ fn clear_texture_via_buffer_copies<A: hal::Api>(
     }
 }
 
-fn clear_texture_via_render_passes<A: hal::Api>(
+fn clear_texture_via_render_passes<A: HalApi>(
     dst_texture: &Texture<A>,
     range: TextureInitRange,
     is_color: bool,
@@ -410,6 +450,7 @@ fn clear_texture_via_render_passes<A: hal::Api>(
         height: dst_texture.desc.size.height,
         depth_or_array_layers: 1, // Only one layer is cleared at a time.
     };
+    let clear_mode = &dst_texture.clear_mode.read();
 
     for mip_level in range.mip_range {
         let extent = extent_base.mip_level_size(mip_level, dst_texture.desc.dimension);
@@ -418,7 +459,12 @@ fn clear_texture_via_render_passes<A: hal::Api>(
             let (color_attachments, depth_stencil_attachment) = if is_color {
                 color_attachments_tmp = [Some(hal::ColorAttachment {
                     target: hal::Attachment {
-                        view: dst_texture.get_clear_view(mip_level, depth_or_layer),
+                        view: Texture::get_clear_view(
+                            clear_mode,
+                            &dst_texture.desc,
+                            mip_level,
+                            depth_or_layer,
+                        ),
                         usage: hal::TextureUses::COLOR_TARGET,
                     },
                     resolve_target: None,
@@ -431,7 +477,12 @@ fn clear_texture_via_render_passes<A: hal::Api>(
                     &[][..],
                     Some(hal::DepthStencilAttachment {
                         target: hal::Attachment {
-                            view: dst_texture.get_clear_view(mip_level, depth_or_layer),
+                            view: Texture::get_clear_view(
+                                clear_mode,
+                                &dst_texture.desc,
+                                mip_level,
+                                depth_or_layer,
+                            ),
                             usage: hal::TextureUses::DEPTH_STENCIL_WRITE,
                         },
                         depth_ops: hal::AttachmentOps::STORE,
@@ -448,6 +499,8 @@ fn clear_texture_via_render_passes<A: hal::Api>(
                     color_attachments,
                     depth_stencil_attachment,
                     multiview: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
                 });
                 encoder.end_render_pass();
             }

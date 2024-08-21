@@ -1,100 +1,166 @@
-From: Jan Grulich <jgrulich@redhat.com>
-Date: Mon, 27 Feb 2023 13:57:00 +0000
-Subject: Bug 1819044 - fix build non-pipewire builds
- r=webrtc-reviewers,pehrsons
+From: Michael Froman <mjfroman@mac.com>
+Date: Thu, 27 Jul 2023 12:42:44 -0500
+Subject: Bug 1838080: Store the rid in TransformableVideoSenderFrame.
+ r=ng,webrtc-reviewers
 
-We should check only for PipeWire presence when building code specific
-to PipeWire.
+This is necessary to reliably detect what rid a given keyframe is for, for the
+purposes of resolving promises from RTCRtpScriptTransformer.generateKeyFrame.
 
-Differential Revision: https://phabricator.services.mozilla.com/D171071
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/7a879ad084a6e9768479c73cc5c3f4e9d95a2ab9
-
-Also includes:
-
-    Bug 1819044 - fix build non-pipewire builds (attempt #2) r=webrtc-reviewers,pehrsons
-
-    Make the new API available to everyone and just return an empty capturer
-    in case when building without PipeWire. It will not make any difference
-    because using X11 based capturers on Wayland is useless anyway so if we
-    fail for missing PipeWire on Wayland, it will have the same outcome.
-
-    Differential Revision: https://phabricator.services.mozilla.com/D171192
-    Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/ad247b0aac896d884eba5e40f0ec8a9f50d8b85b
+Differential Revision: https://phabricator.services.mozilla.com/D180737
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/2f1a0ba74bf71cfa0bc4e77714b8a5276a70cc36
 ---
- modules/desktop_capture/desktop_capturer.cc | 7 +++----
- modules/desktop_capture/desktop_capturer.h  | 4 ----
- 2 files changed, 3 insertions(+), 8 deletions(-)
+ api/frame_transformer_interface.h                 |  1 +
+ modules/rtp_rtcp/source/rtp_sender.h              |  4 ++++
+ modules/rtp_rtcp/source/rtp_sender_video.cc       |  1 +
+ ...rtp_sender_video_frame_transformer_delegate.cc | 15 +++++++++++----
+ .../rtp_sender_video_frame_transformer_delegate.h |  2 ++
+ ..._stream_receiver_frame_transformer_delegate.cc |  5 +++++
+ 6 files changed, 24 insertions(+), 4 deletions(-)
 
-diff --git a/modules/desktop_capture/desktop_capturer.cc b/modules/desktop_capture/desktop_capturer.cc
-index 7df6becb4e..1af19a1fd2 100644
---- a/modules/desktop_capture/desktop_capturer.cc
-+++ b/modules/desktop_capture/desktop_capturer.cc
-@@ -26,7 +26,7 @@
- #include "rtc_base/win/windows_version.h"
- #endif  // defined(RTC_ENABLE_WIN_WGC)
+diff --git a/api/frame_transformer_interface.h b/api/frame_transformer_interface.h
+index 102ac33334..4869ad6909 100644
+--- a/api/frame_transformer_interface.h
++++ b/api/frame_transformer_interface.h
+@@ -60,6 +60,7 @@ class TransformableVideoFrameInterface : public TransformableFrameInterface {
+  public:
+   virtual ~TransformableVideoFrameInterface() = default;
+   virtual bool IsKeyFrame() const = 0;
++  virtual const std::string& GetRid() const = 0;
  
--#if defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
-+#if defined(WEBRTC_USE_PIPEWIRE)
- #include "modules/desktop_capture/linux/wayland/base_capturer_pipewire.h"
- #endif
+   virtual VideoFrameMetadata Metadata() const = 0;
  
-@@ -88,7 +88,6 @@ std::unique_ptr<DesktopCapturer> DesktopCapturer::CreateWindowCapturer(
-   return capturer;
- }
+diff --git a/modules/rtp_rtcp/source/rtp_sender.h b/modules/rtp_rtcp/source/rtp_sender.h
+index a398f16d46..8136730e4c 100644
+--- a/modules/rtp_rtcp/source/rtp_sender.h
++++ b/modules/rtp_rtcp/source/rtp_sender.h
+@@ -140,6 +140,10 @@ class RTPSender {
  
--#if defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
- // static
- std::unique_ptr<DesktopCapturer> DesktopCapturer::CreateGenericCapturer(
-     const DesktopCaptureOptions& options) {
-@@ -100,17 +99,17 @@ std::unique_ptr<DesktopCapturer> DesktopCapturer::CreateGenericCapturer(
-   return capturer;
- }
+   uint32_t SSRC() const RTC_LOCKS_EXCLUDED(send_mutex_) { return ssrc_; }
  
--// static
- std::unique_ptr<DesktopCapturer> DesktopCapturer::CreateRawGenericCapturer(
-     const DesktopCaptureOptions& options) {
-+#if defined(WEBRTC_USE_PIPEWIRE)
-   if (options.allow_pipewire() && DesktopCapturer::IsRunningUnderWayland()) {
-     return std::make_unique<BaseCapturerPipeWire>(options,
-                                                   CaptureType::kAnyScreenContent);
++  const std::string& Rid() const RTC_LOCKS_EXCLUDED(send_mutex_) {
++    return rid_;
++  }
++
+   absl::optional<uint32_t> FlexfecSsrc() const RTC_LOCKS_EXCLUDED(send_mutex_) {
+     return flexfec_ssrc_;
    }
-+#endif  // defined(WEBRTC_USE_PIPEWIRE)
+diff --git a/modules/rtp_rtcp/source/rtp_sender_video.cc b/modules/rtp_rtcp/source/rtp_sender_video.cc
+index e02d18cc46..3ba14b2b74 100644
+--- a/modules/rtp_rtcp/source/rtp_sender_video.cc
++++ b/modules/rtp_rtcp/source/rtp_sender_video.cc
+@@ -157,6 +157,7 @@ RTPSenderVideo::RTPSenderVideo(const Config& config)
+                     this,
+                     config.frame_transformer,
+                     rtp_sender_->SSRC(),
++                    rtp_sender_->Rid(),
+                     config.task_queue_factory)
+               : nullptr) {
+   if (frame_transformer_delegate_)
+diff --git a/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc b/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc
+index 2bb71941f9..ff15840529 100644
+--- a/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc
++++ b/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc
+@@ -38,7 +38,8 @@ class TransformableVideoSenderFrame : public TransformableVideoFrameInterface {
+                                 uint32_t rtp_timestamp,
+                                 TimeDelta expected_retransmission_time,
+                                 uint32_t ssrc,
+-                                std::vector<uint32_t> csrcs)
++                                std::vector<uint32_t> csrcs,
++                                const std::string& rid)
+       : encoded_data_(encoded_image.GetEncodedData()),
+         pre_transform_payload_size_(encoded_image.size()),
+         header_(video_header),
+@@ -50,7 +51,8 @@ class TransformableVideoSenderFrame : public TransformableVideoFrameInterface {
+         capture_time_identifier_(encoded_image.CaptureTimeIdentifier()),
+         expected_retransmission_time_(expected_retransmission_time),
+         ssrc_(ssrc),
+-        csrcs_(csrcs) {
++        csrcs_(csrcs),
++        rid_(rid) {
+     RTC_DCHECK_GE(payload_type_, 0);
+     RTC_DCHECK_LE(payload_type_, 127);
+   }
+@@ -113,6 +115,8 @@ class TransformableVideoSenderFrame : public TransformableVideoFrameInterface {
+     return mime_type + CodecTypeToPayloadString(*codec_type_);
+   }
  
-   return nullptr;
++  const std::string& GetRid() const override { return rid_; }
++
+  private:
+   rtc::scoped_refptr<EncodedImageBufferInterface> encoded_data_;
+   const size_t pre_transform_payload_size_;
+@@ -127,6 +131,7 @@ class TransformableVideoSenderFrame : public TransformableVideoFrameInterface {
+ 
+   uint32_t ssrc_;
+   std::vector<uint32_t> csrcs_;
++  const std::string rid_;
+ };
+ }  // namespace
+ 
+@@ -134,10 +139,12 @@ RTPSenderVideoFrameTransformerDelegate::RTPSenderVideoFrameTransformerDelegate(
+     RTPVideoFrameSenderInterface* sender,
+     rtc::scoped_refptr<FrameTransformerInterface> frame_transformer,
+     uint32_t ssrc,
++    const std::string& rid,
+     TaskQueueFactory* task_queue_factory)
+     : sender_(sender),
+       frame_transformer_(std::move(frame_transformer)),
+       ssrc_(ssrc),
++      rid_(rid),
+       transformation_queue_(task_queue_factory->CreateTaskQueue(
+           "video_frame_transformer",
+           TaskQueueFactory::Priority::NORMAL)) {}
+@@ -168,7 +175,7 @@ bool RTPSenderVideoFrameTransformerDelegate::TransformFrame(
+   frame_transformer_->Transform(std::make_unique<TransformableVideoSenderFrame>(
+       encoded_image, video_header, payload_type, codec_type, rtp_timestamp,
+       expected_retransmission_time, ssrc_,
+-      /*csrcs=*/std::vector<uint32_t>()));
++      /*csrcs=*/std::vector<uint32_t>(), rid_));
+   return true;
  }
--#endif  // defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
  
- // static
- std::unique_ptr<DesktopCapturer> DesktopCapturer::CreateScreenCapturer(
-diff --git a/modules/desktop_capture/desktop_capturer.h b/modules/desktop_capture/desktop_capturer.h
-index 951c4a9b10..12ef57ba26 100644
---- a/modules/desktop_capture/desktop_capturer.h
-+++ b/modules/desktop_capture/desktop_capturer.h
-@@ -170,11 +170,9 @@ class RTC_EXPORT DesktopCapturer {
-   // The return value if `pos` is out of the scope of the source is undefined.
-   virtual bool IsOccluded(const DesktopVector& pos);
+@@ -270,7 +277,7 @@ std::unique_ptr<TransformableVideoFrameInterface> CloneSenderVideoFrame(
+   return std::make_unique<TransformableVideoSenderFrame>(
+       encoded_image, new_header, original->GetPayloadType(), new_header.codec,
+       original->GetTimestamp(), kDefaultRetransmissionsTime,
+-      original->GetSsrc(), metadata.GetCsrcs());
++      original->GetSsrc(), metadata.GetCsrcs(), original->GetRid());
+ }
  
--#if defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
-   // Creates a DesktopCapturer instance which targets to capture windows and screens.
-   static std::unique_ptr<DesktopCapturer> CreateGenericCapturer(
-       const DesktopCaptureOptions& options);
--#endif
+ }  // namespace webrtc
+diff --git a/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h b/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h
+index 243f22ca9f..1f70a23ccc 100644
+--- a/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h
++++ b/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h
+@@ -58,6 +58,7 @@ class RTPSenderVideoFrameTransformerDelegate : public TransformedFrameCallback {
+       RTPVideoFrameSenderInterface* sender,
+       rtc::scoped_refptr<FrameTransformerInterface> frame_transformer,
+       uint32_t ssrc,
++      const std::string& rid,
+       TaskQueueFactory* send_transport_queue);
  
-   // Creates a DesktopCapturer instance which targets to capture windows.
-   static std::unique_ptr<DesktopCapturer> CreateWindowCapturer(
-@@ -204,12 +202,10 @@ class RTC_EXPORT DesktopCapturer {
-   // CroppingWindowCapturer needs to create raw capturers without wrappers, so
-   // the following two functions are protected.
+   void Init();
+@@ -106,6 +107,7 @@ class RTPSenderVideoFrameTransformerDelegate : public TransformedFrameCallback {
+   RTPVideoFrameSenderInterface* sender_ RTC_GUARDED_BY(sender_lock_);
+   rtc::scoped_refptr<FrameTransformerInterface> frame_transformer_;
+   const uint32_t ssrc_;
++  const std::string rid_;
+   // Used when the encoded frames arrives without a current task queue. This can
+   // happen if a hardware encoder was used.
+   std::unique_ptr<TaskQueueBase, TaskQueueDeleter> transformation_queue_;
+diff --git a/modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.cc b/modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.cc
+index ad3aa86c79..7af945c623 100644
+--- a/modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.cc
++++ b/modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.cc
+@@ -58,6 +58,11 @@ class TransformableVideoReceiverFrame
+     return frame_->FrameType() == VideoFrameType::kVideoFrameKey;
+   }
  
--#if defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
-   // Creates a platform specific DesktopCapturer instance which targets to
-   // capture windows and screens.
-   static std::unique_ptr<DesktopCapturer> CreateRawGenericCapturer(
-       const DesktopCaptureOptions& options);
--#endif
++  const std::string& GetRid() const override {
++    static const std::string empty;
++    return empty;
++  }
++
+   VideoFrameMetadata Metadata() const override { return metadata_; }
  
-   // Creates a platform specific DesktopCapturer instance which targets to
-   // capture windows.
--- 
-2.34.1
-
+   void SetMetadata(const VideoFrameMetadata& metadata) override {

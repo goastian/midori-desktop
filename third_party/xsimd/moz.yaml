@@ -1,8 +1,8 @@
 schema: 1
 
 bugzilla:
-  product: Toolkit
-  component: "General"
+  product: Core
+  component: Performance
 
 origin:
   name: xsimd
@@ -10,8 +10,8 @@ origin:
 
   url: https://github.com/QuantStack/xsimd
 
-  release: e8f209c3397c8a866be2312682689a04e4abfd66 (2023-02-27T06:32:46Z).
-  revision: e8f209c3397c8a866be2312682689a04e4abfd66
+  release: be9dcb5df413a893fb6646fa950eeb4aeac70ffc (2024-04-20T09:35:04Z).
+  revision: be9dcb5df413a893fb6646fa950eeb4aeac70ffc
 
   license: BSD-3-Clause
 
@@ -35,3 +35,11 @@ vendoring:
 
   keep:
     - include/
+
+updatebot:
+  maintainer-phab: padenot
+  maintainer-bz: padenot@mozilla.com
+  tasks:
+    - type: vendoring
+      enabled: true
+      frequency: release

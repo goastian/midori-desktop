@@ -98,16 +98,12 @@ TEST(AudioDecoderFactoryTest, MaxNrOfChannels) {
       CreateBuiltinAudioDecoderFactory();
   std::vector<std::string> codecs = {
 #ifdef WEBRTC_CODEC_OPUS
-    "opus",
+      "opus",
 #endif
 #ifdef WEBRTC_CODEC_ILBC
-    "ilbc",
+      "ilbc",
 #endif
-    "pcmu",
-    "pcma",
-    "l16",
-    "G722",
-    "G711",
+      "pcmu", "pcma", "l16", "G722", "G711",
   };
 
   for (auto codec : codecs) {
@@ -150,7 +146,7 @@ TEST(AudioDecoderFactoryTest, CreateOpus) {
   for (int hz : {8000, 16000, 32000, 48000}) {
     for (int channels : {0, 1, 2, 3}) {
       for (std::string stereo : {"XX", "0", "1", "2"}) {
-        SdpAudioFormat::Parameters params;
+        CodecParameterMap params;
         if (stereo != "XX") {
           params["stereo"] = stereo;
         }

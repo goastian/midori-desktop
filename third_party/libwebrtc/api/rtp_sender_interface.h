@@ -25,18 +25,18 @@
 #include "api/frame_transformer_interface.h"
 #include "api/media_stream_interface.h"
 #include "api/media_types.h"
+#include "api/ref_count.h"
 #include "api/rtc_error.h"
 #include "api/rtp_parameters.h"
 #include "api/scoped_refptr.h"
 #include "api/video_codecs/video_encoder_factory.h"
-#include "rtc_base/ref_count.h"
 #include "rtc_base/system/rtc_export.h"
 
 #include "api/rtp_sender_setparameters_callback.h"
 
 namespace webrtc {
 
-class RTC_EXPORT RtpSenderInterface : public rtc::RefCountInterface {
+class RTC_EXPORT RtpSenderInterface : public webrtc::RefCountInterface {
  public:
   // Returns true if successful in setting the track.
   // Fails if an audio track is set on a video RtpSender, or vice-versa.
@@ -108,11 +108,6 @@ class RTC_EXPORT RtpSenderInterface : public rtc::RefCountInterface {
   virtual void SetEncoderSelector(
       std::unique_ptr<VideoEncoderFactory::EncoderSelectorInterface>
           encoder_selector) = 0;
-
-  // TODO(crbug.com/1354101): make pure virtual again after Chrome roll.
-  virtual RTCError GenerateKeyFrame(const std::vector<std::string>& rids) {
-    return RTCError::OK();
-  }
 
  protected:
   ~RtpSenderInterface() override = default;

@@ -4,7 +4,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from collections import OrderedDict
 import datetime
 import functools
 import json
@@ -21,28 +20,18 @@ import jsonschema  # type: ignore
 from jsonschema import _utils  # type: ignore
 import yaml
 
-if sys.version_info < (3, 7):
-    import iso8601  # type: ignore
+try:
+    from yaml import CSafeLoader as SafeLoader
+except ImportError:
+    from yaml import SafeLoader  # type: ignore
 
-    def date_fromisoformat(datestr: str) -> datetime.date:
-        try:
-            return iso8601.parse_date(datestr).date()
-        except iso8601.ParseError:
-            raise ValueError()
 
-    def datetime_fromisoformat(datestr: str) -> datetime.datetime:
-        try:
-            return iso8601.parse_date(datestr)
-        except iso8601.ParseError:
-            raise ValueError()
+def date_fromisoformat(datestr: str) -> datetime.date:
+    return datetime.date.fromisoformat(datestr)
 
-else:
 
-    def date_fromisoformat(datestr: str) -> datetime.date:
-        return datetime.date.fromisoformat(datestr)
-
-    def datetime_fromisoformat(datestr: str) -> datetime.datetime:
-        return datetime.datetime.fromisoformat(datestr)
+def datetime_fromisoformat(datestr: str) -> datetime.datetime:
+    return datetime.datetime.fromisoformat(datestr)
 
 
 TESTING_MODE = "pytest" in sys.modules
@@ -55,24 +44,12 @@ The types supported by JSON.
 This is only an approximation -- this should really be a recursive type.
 """
 
-# Adapted from
-# https://stackoverflow.com/questions/34667108/ignore-dates-and-times-while-parsing-yaml
+
+class DictWrapper(dict):
+    pass
 
 
-# A wrapper around OrderedDict for Python < 3.7 (where dict ordering is not
-# maintained by default), and regular dict everywhere else.
-if sys.version_info < (3, 7):
-
-    class DictWrapper(OrderedDict):
-        pass
-
-else:
-
-    class DictWrapper(dict):
-        pass
-
-
-class _NoDatesSafeLoader(yaml.SafeLoader):
+class _NoDatesSafeLoader(SafeLoader):
     @classmethod
     def remove_implicit_resolver(cls, tag_to_remove):
         """
@@ -429,7 +406,7 @@ def is_expired(expires: str, major_version: Optional[int] = None) -> bool:
         return parse_expiration_version(expires) <= major_version
     else:
         date = parse_expiration_date(expires)
-        return date <= datetime.datetime.utcnow().date()
+        return date <= datetime.datetime.now(datetime.timezone.utc).date()
 
 
 def validate_expires(expires: str, major_version: Optional[int] = None) -> None:
@@ -481,7 +458,7 @@ def build_date(date: Optional[str]) -> datetime.datetime:
         else:
             ts = datetime_fromisoformat(date).replace(tzinfo=datetime.timezone.utc)
     else:
-        ts = datetime.datetime.utcnow()
+        ts = datetime.datetime.now(datetime.timezone.utc)
 
     return ts
 
@@ -552,6 +529,10 @@ ping_args = [
     "name",
     "include_client_id",
     "send_if_empty",
+    "precise_timestamps",
+    "include_info_sections",
+    "enabled",
+    "schedules_pings",
     "reason_codes",
 ]
 

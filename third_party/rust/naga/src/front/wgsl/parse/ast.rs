@@ -1,5 +1,6 @@
 use crate::front::wgsl::parse::number::Number;
-use crate::{Arena, FastHashSet, Handle, Span};
+use crate::front::wgsl::Scalar;
+use crate::{Arena, FastIndexSet, Handle, Span};
 use std::hash::Hash;
 
 #[derive(Debug, Default)]
@@ -73,7 +74,7 @@ pub struct GlobalDecl<'a> {
 
     /// Names of all module-scope or predeclared objects this
     /// declaration uses.
-    pub dependencies: FastHashSet<Dependency<'a>>,
+    pub dependencies: FastIndexSet<Dependency<'a>>,
 }
 
 #[derive(Debug)]
@@ -81,6 +82,7 @@ pub enum GlobalDeclKind<'a> {
     Fn(Function<'a>),
     Var(GlobalVariable<'a>),
     Const(Const<'a>),
+    Override(Override<'a>),
     Struct(Struct<'a>),
     Type(TypeAlias<'a>),
 }
@@ -89,29 +91,29 @@ pub enum GlobalDeclKind<'a> {
 pub struct FunctionArgument<'a> {
     pub name: Ident<'a>,
     pub ty: Handle<Type<'a>>,
-    pub binding: Option<crate::Binding>,
+    pub binding: Option<Binding<'a>>,
     pub handle: Handle<Local>,
 }
 
 #[derive(Debug)]
 pub struct FunctionResult<'a> {
     pub ty: Handle<Type<'a>>,
-    pub binding: Option<crate::Binding>,
+    pub binding: Option<Binding<'a>>,
 }
 
 #[derive(Debug)]
-pub struct EntryPoint {
+pub struct EntryPoint<'a> {
     pub stage: crate::ShaderStage,
     pub early_depth_test: Option<crate::EarlyDepthTest>,
-    pub workgroup_size: [u32; 3],
+    pub workgroup_size: Option<[Option<Handle<Expression<'a>>>; 3]>,
 }
 
 #[cfg(doc)]
-use crate::front::wgsl::lower::{ExpressionContext, StatementContext};
+use crate::front::wgsl::lower::{RuntimeExpressionContext, StatementContext};
 
 #[derive(Debug)]
 pub struct Function<'a> {
-    pub entry_point: Option<EntryPoint>,
+    pub entry_point: Option<EntryPoint<'a>>,
     pub name: Ident<'a>,
     pub arguments: Vec<FunctionArgument<'a>>,
     pub result: Option<FunctionResult<'a>>,
@@ -132,24 +134,41 @@ pub struct Function<'a> {
     /// During lowering, [`LocalDecl`] statements add entries to a per-function
     /// table that maps `Handle<Local>` values to their Naga representations,
     /// accessed via [`StatementContext::local_table`] and
-    /// [`ExpressionContext::local_table`]. This table is then consulted when
+    /// [`RuntimeExpressionContext::local_table`]. This table is then consulted when
     /// lowering subsequent [`Ident`] expressions.
     ///
     /// [`LocalDecl`]: StatementKind::LocalDecl
     /// [`arguments`]: Function::arguments
     /// [`Ident`]: Expression::Ident
     /// [`StatementContext::local_table`]: StatementContext::local_table
-    /// [`ExpressionContext::local_table`]: ExpressionContext::local_table
+    /// [`RuntimeExpressionContext::local_table`]: RuntimeExpressionContext::local_table
     pub locals: Arena<Local>,
 
     pub body: Block<'a>,
 }
 
 #[derive(Debug)]
+pub enum Binding<'a> {
+    BuiltIn(crate::BuiltIn),
+    Location {
+        location: Handle<Expression<'a>>,
+        second_blend_source: bool,
+        interpolation: Option<crate::Interpolation>,
+        sampling: Option<crate::Sampling>,
+    },
+}
+
+#[derive(Debug)]
+pub struct ResourceBinding<'a> {
+    pub group: Handle<Expression<'a>>,
+    pub binding: Handle<Expression<'a>>,
+}
+
+#[derive(Debug)]
 pub struct GlobalVariable<'a> {
     pub name: Ident<'a>,
     pub space: crate::AddressSpace,
-    pub binding: Option<crate::ResourceBinding>,
+    pub binding: Option<ResourceBinding<'a>>,
     pub ty: Handle<Type<'a>>,
     pub init: Option<Handle<Expression<'a>>>,
 }
@@ -158,9 +177,9 @@ pub struct GlobalVariable<'a> {
 pub struct StructMember<'a> {
     pub name: Ident<'a>,
     pub ty: Handle<Type<'a>>,
-    pub binding: Option<crate::Binding>,
-    pub align: Option<(u32, Span)>,
-    pub size: Option<(u32, Span)>,
+    pub binding: Option<Binding<'a>>,
+    pub align: Option<Handle<Expression<'a>>>,
+    pub size: Option<Handle<Expression<'a>>>,
 }
 
 #[derive(Debug)]
@@ -182,6 +201,14 @@ pub struct Const<'a> {
     pub init: Handle<Expression<'a>>,
 }
 
+#[derive(Debug)]
+pub struct Override<'a> {
+    pub name: Ident<'a>,
+    pub id: Option<Handle<Expression<'a>>>,
+    pub ty: Option<Handle<Type<'a>>>,
+    pub init: Option<Handle<Expression<'a>>>,
+}
+
 /// The size of an [`Array`] or [`BindingArray`].
 ///
 /// [`Array`]: Type::Array
@@ -195,24 +222,17 @@ pub enum ArraySize<'a> {
 
 #[derive(Debug)]
 pub enum Type<'a> {
-    Scalar {
-        kind: crate::ScalarKind,
-        width: crate::Bytes,
-    },
+    Scalar(Scalar),
     Vector {
         size: crate::VectorSize,
-        kind: crate::ScalarKind,
-        width: crate::Bytes,
+        scalar: Scalar,
     },
     Matrix {
         columns: crate::VectorSize,
         rows: crate::VectorSize,
         width: crate::Bytes,
     },
-    Atomic {
-        kind: crate::ScalarKind,
-        width: crate::Bytes,
-    },
+    Atomic(Scalar),
     Pointer {
         base: Handle<Type<'a>>,
         space: crate::AddressSpace,
@@ -292,16 +312,14 @@ pub enum StatementKind<'a> {
 }
 
 #[derive(Debug)]
-pub enum SwitchValue {
-    I32(i32),
-    U32(u32),
+pub enum SwitchValue<'a> {
+    Expr(Handle<Expression<'a>>),
     Default,
 }
 
 #[derive(Debug)]
 pub struct SwitchCase<'a> {
-    pub value: SwitchValue,
-    pub value_span: Span,
+    pub value: SwitchValue<'a>,
     pub body: Block<'a>,
     pub fall_through: bool,
 }
@@ -329,10 +347,7 @@ pub struct SwitchCase<'a> {
 #[derive(Debug)]
 pub enum ConstructorType<'a> {
     /// A scalar type or conversion: `f32(1)`.
-    Scalar {
-        kind: crate::ScalarKind,
-        width: crate::Bytes,
-    },
+    Scalar(Scalar),
 
     /// A vector construction whose component type is inferred from the
     /// argument: `vec3(1.0)`.
@@ -342,8 +357,7 @@ pub enum ConstructorType<'a> {
     /// `vec3<f32>(1.0)`.
     Vector {
         size: crate::VectorSize,
-        kind: crate::ScalarKind,
-        width: crate::Bytes,
+        scalar: Scalar,
     },
 
     /// A matrix construction whose component type is inferred from the

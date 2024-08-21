@@ -5,6 +5,7 @@
 
 import json
 import os
+import subprocess
 import tarfile
 from io import BytesIO
 from textwrap import dedent
@@ -15,7 +16,26 @@ except ImportError as e:
     zstd = e
 
 from taskgraph.util import docker
-from taskgraph.util.taskcluster import get_artifact_url, get_session
+from taskgraph.util.taskcluster import (
+    get_artifact_url,
+    get_session,
+)
+
+DEPLOY_WARNING = """
+*****************************************************************
+WARNING: Image is not suitable for deploying/pushing.
+
+To automatically tag the image the following files are required:
+- {image_dir}/REGISTRY
+- {image_dir}/VERSION
+
+The REGISTRY file contains the Docker registry hosting the image.
+A default REGISTRY file may also be defined in the parent docker
+directory.
+
+The VERSION file contains the version of the image.
+*****************************************************************
+"""
 
 
 def get_image_digest(image_name):
@@ -33,7 +53,7 @@ def get_image_digest(image_name):
 
 def load_image_by_name(image_name, tag=None):
     from taskgraph.generator import load_tasks_for_kind
-    from taskgraph.optimize import IndexSearch
+    from taskgraph.optimize.strategies import IndexSearch
     from taskgraph.parameters import Parameters
 
     params = Parameters(
@@ -42,17 +62,19 @@ def load_image_by_name(image_name, tag=None):
     )
     tasks = load_tasks_for_kind(params, "docker-image")
     task = tasks[f"build-docker-image-{image_name}"]
-    task_id = IndexSearch().should_replace_task(
-        task, {}, task.optimization.get("index-search", [])
-    )
+
+    indexes = task.optimization.get("index-search", [])
+    task_id = IndexSearch().should_replace_task(task, {}, None, indexes)
 
     if task_id in (True, False):
         print(
             "Could not find artifacts for a docker image "
             "named `{image_name}`. Local commits and other changes "
             "in your checkout may cause this error. Try "
-            "updating to a fresh checkout of mozilla-central "
-            "to download image.".format(image_name=image_name)
+            "updating to a fresh checkout of {project} "
+            "to download image.".format(
+                image_name=image_name, project=params["project"]
+            )
         )
         return False
 
@@ -80,7 +102,7 @@ def build_context(name, outputFile, args=None):
 
     image_dir = docker.image_path(name)
     if not os.path.isdir(image_dir):
-        raise Exception("image directory does not exist: %s" % image_dir)
+        raise Exception(f"image directory does not exist: {image_dir}")
 
     docker.create_context_tar(".", image_dir, outputFile, args)
 
@@ -95,23 +117,24 @@ def build_image(name, tag, args=None):
 
     image_dir = docker.image_path(name)
     if not os.path.isdir(image_dir):
-        raise Exception("image directory does not exist: %s" % image_dir)
+        raise Exception(f"image directory does not exist: {image_dir}")
 
     tag = tag or docker.docker_image(name, by_tag=True)
 
     buf = BytesIO()
     docker.stream_context_tar(".", image_dir, buf, "", args)
-    docker.post_to_docker(buf.getvalue(), "/build", nocache=1, t=tag)
+    cmdargs = ["docker", "image", "build", "--no-cache", "-"]
+    if tag:
+        cmdargs.insert(-1, f"-t={tag}")
+    subprocess.run(cmdargs, input=buf.getvalue())
 
-    print(f"Successfully built {name} and tagged with {tag}")
+    msg = f"Successfully built {name}"
+    if tag:
+        msg += f" and tagged with {tag}"
+    print(msg)
 
-    if tag.endswith(":latest"):
-        print("*" * 50)
-        print("WARNING: no VERSION file found in image directory.")
-        print("Image is not suitable for deploying/pushing.")
-        print("Create an image suitable for deploying/pushing by creating")
-        print("a VERSION file in the image directory.")
-        print("*" * 50)
+    if not tag or tag.endswith(":latest"):
+        print(DEPLOY_WARNING.format(image_dir=os.path.relpath(image_dir), image=name))
 
 
 def load_image(url, imageName=None, imageTag=None):
@@ -151,7 +174,6 @@ def load_image(url, imageName=None, imageTag=None):
         req.raise_for_status()
 
         with zstd.ZstdDecompressor().stream_reader(req.raw) as ifh:
-
             tarin = tarfile.open(
                 mode="r|",
                 fileobj=ifh,
@@ -206,7 +228,9 @@ def load_image(url, imageName=None, imageTag=None):
 
                 reader.close()
 
-    docker.post_to_docker(download_and_modify_image(), "/images/load", quiet=0)
+    subprocess.run(
+        ["docker", "image", "load"], input=b"".join(download_and_modify_image())
+    )
 
     # Check that we found a repositories file
     if not info.get("image") or not info.get("tag") or not info.get("layer"):

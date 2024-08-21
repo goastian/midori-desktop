@@ -1,7 +1,12 @@
-use super::{constants::ConstantSolvingError, token::TokenValue};
-use crate::Span;
+use super::token::TokenValue;
+use crate::SourceLocation;
+use crate::{proc::ConstantEvaluatorError, Span};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFile;
+use codespan_reporting::term;
 use pp_rs::token::PreprocessorError;
 use std::borrow::Cow;
+use termcolor::{NoColor, WriteColor};
 use thiserror::Error;
 
 fn join_with_comma(list: &[ExpectedToken]) -> String {
@@ -18,7 +23,7 @@ fn join_with_comma(list: &[ExpectedToken]) -> String {
 }
 
 /// One of the expected tokens returned in [`InvalidToken`](ErrorKind::InvalidToken).
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpectedToken {
     /// A specific token was expected.
     Token(TokenValue),
@@ -55,7 +60,7 @@ impl std::fmt::Display for ExpectedToken {
 }
 
 /// Information about the cause of an error.
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ErrorKind {
     /// Whilst parsing as encountered an unexpected EOF.
@@ -116,14 +121,14 @@ pub enum ErrorKind {
     InternalError(&'static str),
 }
 
-impl From<ConstantSolvingError> for ErrorKind {
-    fn from(err: ConstantSolvingError) -> Self {
+impl From<ConstantEvaluatorError> for ErrorKind {
+    fn from(err: ConstantEvaluatorError) -> Self {
         ErrorKind::SemanticError(err.to_string().into())
     }
 }
 
 /// Error returned during shader parsing.
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 #[error("{kind}")]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Error {
@@ -131,4 +136,64 @@ pub struct Error {
     pub kind: ErrorKind,
     /// Holds information about the range of the source code where the error happened.
     pub meta: Span,
+}
+
+impl Error {
+    /// Returns a [`SourceLocation`] for the error message.
+    pub fn location(&self, source: &str) -> Option<SourceLocation> {
+        Some(self.meta.location(source))
+    }
+}
+
+/// A collection of errors returned during shader parsing.
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct ParseErrors {
+    pub errors: Vec<Error>,
+}
+
+impl ParseErrors {
+    pub fn emit_to_writer(&self, writer: &mut impl WriteColor, source: &str) {
+        self.emit_to_writer_with_path(writer, source, "glsl");
+    }
+
+    pub fn emit_to_writer_with_path(&self, writer: &mut impl WriteColor, source: &str, path: &str) {
+        let path = path.to_string();
+        let files = SimpleFile::new(path, source);
+        let config = term::Config::default();
+
+        for err in &self.errors {
+            let mut diagnostic = Diagnostic::error().with_message(err.kind.to_string());
+
+            if let Some(range) = err.meta.to_range() {
+                diagnostic = diagnostic.with_labels(vec![Label::primary((), range)]);
+            }
+
+            term::emit(writer, &config, &files, &diagnostic).expect("cannot write error");
+        }
+    }
+
+    pub fn emit_to_string(&self, source: &str) -> String {
+        let mut writer = NoColor::new(Vec::new());
+        self.emit_to_writer(&mut writer, source);
+        String::from_utf8(writer.into_inner()).unwrap()
+    }
+}
+
+impl std::fmt::Display for ParseErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.errors.iter().try_for_each(|e| write!(f, "{e:?}"))
+    }
+}
+
+impl std::error::Error for ParseErrors {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+impl From<Vec<Error>> for ParseErrors {
+    fn from(errors: Vec<Error>) -> Self {
+        Self { errors }
+    }
 }

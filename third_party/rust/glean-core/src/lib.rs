@@ -17,7 +17,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,11 +24,11 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::unbounded;
-use log::{self, LevelFilter};
+use log::LevelFilter;
 use once_cell::sync::{Lazy, OnceCell};
 use uuid::Uuid;
 
-use metrics::MetricsEnabledConfig;
+use metrics::RemoteSettingsConfig;
 
 mod common_metric_data;
 mod core;
@@ -69,9 +68,9 @@ pub use crate::metrics::labeled::{
 pub use crate::metrics::{
     BooleanMetric, CounterMetric, CustomDistributionMetric, Datetime, DatetimeMetric,
     DenominatorMetric, DistributionData, EventMetric, MemoryDistributionMetric, MemoryUnit,
-    NumeratorMetric, PingType, QuantityMetric, Rate, RateMetric, RecordedEvent, RecordedExperiment,
-    StringListMetric, StringMetric, TextMetric, TimeUnit, TimerId, TimespanMetric,
-    TimingDistributionMetric, UrlMetric, UuidMetric,
+    NumeratorMetric, ObjectMetric, PingType, QuantityMetric, Rate, RateMetric, RecordedEvent,
+    RecordedExperiment, StringListMetric, StringMetric, TextMetric, TimeUnit, TimerId,
+    TimespanMetric, TimingDistributionMetric, UrlMetric, UuidMetric,
 };
 pub use crate::upload::{PingRequest, PingUploadTask, UploadResult, UploadTaskAction};
 
@@ -91,12 +90,12 @@ pub(crate) const DELETION_REQUEST_PINGS_DIRECTORY: &str = "deletion_request";
 static INITIALIZE_CALLED: AtomicBool = AtomicBool::new(false);
 
 /// Keep track of the debug features before Glean is initialized.
-static PRE_INIT_DEBUG_VIEW_TAG: OnceCell<Mutex<String>> = OnceCell::new();
+static PRE_INIT_DEBUG_VIEW_TAG: Mutex<String> = Mutex::new(String::new());
 static PRE_INIT_LOG_PINGS: AtomicBool = AtomicBool::new(false);
-static PRE_INIT_SOURCE_TAGS: OnceCell<Mutex<Vec<String>>> = OnceCell::new();
+static PRE_INIT_SOURCE_TAGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Keep track of pings registered before Glean is initialized.
-static PRE_INIT_PING_REGISTRATION: OnceCell<Mutex<Vec<metrics::PingType>>> = OnceCell::new();
+static PRE_INIT_PING_REGISTRATION: Mutex<Vec<metrics::PingType>> = Mutex::new(Vec::new());
 
 /// Global singleton of the handles of the glean.init threads.
 /// For joining. For tests.
@@ -128,6 +127,25 @@ pub struct InternalConfiguration {
     pub trim_data_to_registered_pings: bool,
     /// The internal logging level.
     pub log_level: Option<LevelFilter>,
+    /// The rate at which pings may be uploaded before they are throttled.
+    pub rate_limit: Option<PingRateLimit>,
+    /// (Experimental) Whether to add a wallclock timestamp to all events.
+    pub enable_event_timestamps: bool,
+    /// An experimentation identifier derived by the application to be sent with all pings, it should
+    /// be noted that this has an underlying StringMetric and so should conform to the limitations that
+    /// StringMetric places on length, etc.
+    pub experimentation_id: Option<String>,
+    /// Whether to enable internal pings. Default: true
+    pub enable_internal_pings: bool,
+}
+
+/// How to specify the rate at which pings may be uploaded before they are throttled.
+#[derive(Debug, Clone)]
+pub struct PingRateLimit {
+    /// Length of time in seconds of a ping uploading interval.
+    pub seconds_per_interval: u64,
+    /// Number of pings that may be uploaded in a ping uploading interval.
+    pub pings_per_interval: u32,
 }
 
 /// Launches a new task on the global dispatch queue with a reference to the Glean singleton.
@@ -178,6 +196,14 @@ fn global_state() -> &'static Mutex<State> {
     STATE.get().unwrap()
 }
 
+/// Attempt to get a reference to the global state object.
+///
+/// If it hasn't been set yet, we return None.
+#[track_caller] // If this fails we're interested in the caller.
+fn maybe_global_state() -> Option<&'static Mutex<State>> {
+    STATE.get()
+}
+
 /// Set or replace the global bindings State object.
 fn setup_state(state: State) {
     // The `OnceCell` type wrapping our state is thread-safe and can only be set once.
@@ -204,6 +230,25 @@ fn setup_state(state: State) {
     }
 }
 
+/// A global singleton that stores listener callbacks registered with Glean
+/// to receive event recording notifications.
+static EVENT_LISTENERS: OnceCell<Mutex<HashMap<String, Box<dyn GleanEventListener>>>> =
+    OnceCell::new();
+
+fn event_listeners() -> &'static Mutex<HashMap<String, Box<dyn GleanEventListener>>> {
+    EVENT_LISTENERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn register_event_listener(tag: String, listener: Box<dyn GleanEventListener>) {
+    let mut lock = event_listeners().lock().unwrap();
+    lock.insert(tag, listener);
+}
+
+fn unregister_event_listener(tag: String) {
+    let mut lock = event_listeners().lock().unwrap();
+    lock.remove(&tag);
+}
+
 /// An error returned from callbacks.
 #[derive(Debug)]
 pub enum CallbackError {
@@ -216,6 +261,8 @@ impl fmt::Display for CallbackError {
         write!(f, "Unexpected error")
     }
 }
+
+impl std::error::Error for CallbackError {}
 
 impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
     fn from(_: uniffi::UnexpectedUniFFICallbackError) -> CallbackError {
@@ -258,6 +305,13 @@ pub trait OnGleanEvents: Send {
     }
 }
 
+/// A callback handler that receives the base identifier of recorded events
+/// The identifier is in the format: <category>.<name>
+pub trait GleanEventListener: Send {
+    /// Called when an event is recorded, indicating the id of the event
+    fn on_event_recorded(&self, id: String);
+}
+
 /// Initializes Glean.
 ///
 /// # Arguments
@@ -272,6 +326,11 @@ pub fn glean_initialize(
     callbacks: Box<dyn OnGleanEvents>,
 ) {
     initialize_inner(cfg, client_info, callbacks);
+}
+
+/// Shuts down Glean in an orderly fashion.
+pub fn glean_shutdown() {
+    shutdown();
 }
 
 /// Creates and initializes a new Glean object for use in a subprocess.
@@ -338,11 +397,9 @@ fn initialize_inner(
             core::with_glean_mut(|glean| {
                 // The debug view tag might have been set before initialize,
                 // get the cached value and set it.
-                if let Some(tag) = PRE_INIT_DEBUG_VIEW_TAG.get() {
-                    let lock = tag.try_lock();
-                    if let Ok(ref debug_tag) = lock {
-                        glean.set_debug_view_tag(debug_tag);
-                    }
+                let debug_tag = PRE_INIT_DEBUG_VIEW_TAG.lock().unwrap();
+                if debug_tag.len() > 0 {
+                    glean.set_debug_view_tag(&debug_tag);
                 }
 
                 // The log pings debug option might have been set before initialize,
@@ -354,11 +411,9 @@ fn initialize_inner(
 
                 // The source tags might have been set before initialize,
                 // get the cached value and set them.
-                if let Some(tags) = PRE_INIT_SOURCE_TAGS.get() {
-                    let lock = tags.try_lock();
-                    if let Ok(ref source_tags) = lock {
-                        glean.set_source_tags(source_tags.to_vec());
-                    }
+                let source_tags = PRE_INIT_SOURCE_TAGS.lock().unwrap();
+                if source_tags.len() > 0 {
+                    glean.set_source_tags(source_tags.to_vec());
                 }
 
                 // Get the current value of the dirty flag so we know whether to
@@ -370,13 +425,9 @@ fn initialize_inner(
 
                 // Perform registration of pings that were attempted to be
                 // registered before init.
-                if let Some(tags) = PRE_INIT_PING_REGISTRATION.get() {
-                    let lock = tags.try_lock();
-                    if let Ok(pings) = lock {
-                        for ping in &*pings {
-                            glean.register_ping_type(ping);
-                        }
-                    }
+                let pings = PRE_INIT_PING_REGISTRATION.lock().unwrap();
+                for ping in pings.iter() {
+                    glean.register_ping_type(ping);
                 }
 
                 // If this is the first time ever the Glean SDK runs, make sure to set
@@ -458,6 +509,10 @@ fn initialize_inner(
             });
 
             // Signal Dispatcher that init is complete
+            // bug 1839433: It is important that this happens after any init tasks
+            // that shutdown() depends on. At time of writing that's only setting up
+            // the global Glean, but it is probably best to flush the preinit queue
+            // as late as possible in the glean.init thread.
             match dispatcher::flush_init() {
                 Ok(task_count) if task_count > 0 => {
                     core::with_glean(|glean| {
@@ -547,19 +602,45 @@ fn uploader_shutdown() {
 
 /// Shuts down Glean in an orderly fashion.
 pub fn shutdown() {
-    // Either init was never called or Glean was not fully initialized
-    // (e.g. due to an error).
-    // There's the potential that Glean is not initialized _yet_,
-    // but in progress. That's fine, we shutdown either way before doing any work.
-    if !was_initialize_called() || core::global_glean().is_none() {
+    // Shutdown might have been called
+    // 1) Before init was called
+    //    * (data loss, oh well. Not enough time to do squat)
+    // 2) After init was called, but before it completed
+    //    * (we're willing to wait a little bit for init to complete)
+    // 3) After init completed
+    //    * (we can shut down immediately)
+
+    // Case 1: "Before init was called"
+    if !was_initialize_called() {
         log::warn!("Shutdown called before Glean is initialized");
         if let Err(e) = dispatcher::kill() {
             log::error!("Can't kill dispatcher thread: {:?}", e);
         }
-
         return;
     }
 
+    // Case 2: "After init was called, but before it completed"
+    if core::global_glean().is_none() {
+        log::warn!("Shutdown called before Glean is initialized. Waiting.");
+        // We can't join on the `glean.init` thread because there's no (easy) way
+        // to do that with a timeout. Instead, we wait for the preinit queue to
+        // empty, which is the last meaningful thing we do on that thread.
+
+        // TODO: Make the timeout configurable?
+        // We don't need the return value, as we're less interested in whether
+        // this times out than we are in whether there's a Global Glean at the end.
+        let _ = dispatcher::block_on_queue_timeout(Duration::from_secs(10));
+    }
+    // We can't shut down Glean if there's no Glean to shut down.
+    if core::global_glean().is_none() {
+        log::warn!("Waiting for Glean initialization timed out. Exiting.");
+        if let Err(e) = dispatcher::kill() {
+            log::error!("Can't kill dispatcher thread: {:?}", e);
+        }
+        return;
+    }
+
+    // Case 3: "After init completed"
     crate::launch_with_glean_mut(|glean| {
         glean.cancel_metrics_ping_scheduler();
         glean.set_dirty_flag(false);
@@ -577,12 +658,9 @@ pub fn shutdown() {
             .shutdown_dispatcher_wait
             .start_sync()
     });
-    if dispatcher::block_on_queue_timeout(Duration::from_secs(10)).is_err() {
-        log::error!(
-            "Timeout while blocking on the dispatcher. No further shutdown cleanup will happen."
-        );
-        return;
-    }
+    let blocked = dispatcher::block_on_queue_timeout(Duration::from_secs(10));
+
+    // Always record the dispatcher wait, regardless of the timeout.
     let stop_time = time::precise_time_ns();
     core::with_glean(|glean| {
         glean
@@ -590,6 +668,12 @@ pub fn shutdown() {
             .shutdown_dispatcher_wait
             .set_stop_and_accumulate(glean, timer_id, stop_time);
     });
+    if blocked.is_err() {
+        log::error!(
+            "Timeout while blocking on the dispatcher. No further shutdown cleanup will happen."
+        );
+        return;
+    }
 
     if let Err(e) = dispatcher::shutdown() {
         log::error!("Can't shutdown dispatcher thread: {:?}", e);
@@ -609,7 +693,7 @@ pub fn shutdown() {
 /// Only has effect when Glean is configured with `delay_ping_lifetime_io: true`.
 /// If Glean hasn't been initialized this will dispatch and return Ok(()),
 /// otherwise it will block until the persist is done and return its Result.
-pub fn persist_ping_lifetime_data() {
+pub fn glean_persist_ping_lifetime_data() {
     // This is async, we can't get the Error back to the caller.
     crate::launch_with_glean(|glean| {
         let _ = glean.persist_ping_lifetime_data();
@@ -770,7 +854,7 @@ pub(crate) fn register_ping_type(ping: &PingType) {
         // if ping registration is attempted before Glean initializes.
         // This state is kept across Glean resets, which should only ever happen in test mode.
         // It's a set and keeping them around forever should not have much of an impact.
-        let m = PRE_INIT_PING_REGISTRATION.get_or_init(Default::default);
+        let m = &PRE_INIT_PING_REGISTRATION;
         let mut lock = m.lock().unwrap();
         lock.push(ping.clone());
     }
@@ -804,14 +888,39 @@ pub fn glean_test_get_experiment_data(experiment_id: String) -> Option<RecordedE
     core::with_glean(|glean| glean.test_get_experiment_data(experiment_id.to_owned()))
 }
 
+/// Set an experimentation identifier dynamically.
+///
+/// Note: it's probably a good idea to unenroll from any experiments when identifiers change.
+pub fn glean_set_experimentation_id(experimentation_id: String) {
+    launch_with_glean(move |glean| {
+        glean
+            .additional_metrics
+            .experimentation_id
+            .set(experimentation_id);
+    });
+}
+
+/// TEST ONLY FUNCTION.
+/// Gets stored experimentation id annotation.
+pub fn glean_test_get_experimentation_id() -> Option<String> {
+    block_on_dispatcher();
+    core::with_glean(|glean| glean.test_get_experimentation_id())
+}
+
 /// Sets a remote configuration to override metrics' default enabled/disabled
 /// state
 ///
-/// See [`core::Glean::set_metrics_enabled_config`].
-pub fn glean_set_metrics_enabled_config(json: String) {
-    match MetricsEnabledConfig::try_from(json) {
+/// See [`core::Glean::apply_server_knobs_config`].
+pub fn glean_apply_server_knobs_config(json: String) {
+    // An empty config means it is not set,
+    // so we avoid logging an error about it.
+    if json.is_empty() {
+        return;
+    }
+
+    match RemoteSettingsConfig::try_from(json) {
         Ok(cfg) => launch_with_glean(|glean| {
-            glean.set_metrics_enabled_config(cfg);
+            glean.apply_server_knobs_config(cfg);
         }),
         Err(e) => {
             log::error!("Error setting metrics feature config: {:?}", e);
@@ -840,7 +949,7 @@ pub fn glean_set_debug_view_tag(tag: String) -> bool {
         true
     } else {
         // Glean has not been initialized yet. Cache the provided tag value.
-        let m = PRE_INIT_DEBUG_VIEW_TAG.get_or_init(Default::default);
+        let m = &PRE_INIT_DEBUG_VIEW_TAG;
         let mut lock = m.lock().unwrap();
         *lock = tag;
         // When setting the debug view tag before initialization,
@@ -868,7 +977,7 @@ pub fn glean_set_source_tags(tags: Vec<String>) -> bool {
         true
     } else {
         // Glean has not been initialized yet. Cache the provided source tags.
-        let m = PRE_INIT_SOURCE_TAGS.get_or_init(Default::default);
+        let m = &PRE_INIT_SOURCE_TAGS;
         let mut lock = m.lock().unwrap();
         *lock = tags;
         // When setting the source tags before initialization,
@@ -976,6 +1085,27 @@ pub fn glean_submit_ping_by_name_sync(ping_name: String, reason: Option<String>)
     core::with_glean(|glean| glean.submit_ping_by_name(&ping_name, reason.as_deref()))
 }
 
+/// EXPERIMENTAL: Register a listener object to recieve notifications of event recordings.
+///
+/// # Arguments
+///
+/// * `tag` - A string identifier used to later unregister the listener
+/// * `listener` - Implements the `GleanEventListener` trait
+pub fn glean_register_event_listener(tag: String, listener: Box<dyn GleanEventListener>) {
+    register_event_listener(tag, listener);
+}
+
+/// Unregister an event listener from recieving notifications.
+///
+/// Does not panic if the listener doesn't exist.
+///
+/// # Arguments
+///
+/// * `tag` - The tag used when registering the listener to be unregistered
+pub fn glean_unregister_event_listener(tag: String) {
+    unregister_event_listener(tag);
+}
+
 /// **TEST-ONLY Method**
 ///
 /// Set test mode
@@ -995,8 +1125,14 @@ pub fn glean_test_destroy_glean(clear_stores: bool, data_path: Option<String>) {
 
         // Only useful if Glean initialization finished successfully
         // and set up the storage.
-        let has_storage =
-            core::with_opt_glean(|glean| glean.storage_opt().is_some()).unwrap_or(false);
+        let has_storage = core::with_opt_glean(|glean| {
+            // We need to flush the ping lifetime data before a full shutdown.
+            glean
+                .storage_opt()
+                .map(|storage| storage.persist_ping_lifetime_data())
+                .is_some()
+        })
+        .unwrap_or(false);
         if has_storage {
             uploader_shutdown();
         }
@@ -1097,6 +1233,20 @@ mod ffi {
 
         fn from_custom(obj: Self) -> Self::Builtin {
             obj.into_owned()
+        }
+    }
+
+    type JsonValue = serde_json::Value;
+
+    impl UniffiCustomTypeConverter for JsonValue {
+        type Builtin = String;
+
+        fn into_custom(val: Self::Builtin) -> uniffi::Result<Self> {
+            Ok(serde_json::from_str(&val)?)
+        }
+
+        fn from_custom(obj: Self) -> Self::Builtin {
+            serde_json::to_string(&obj).unwrap()
         }
     }
 }

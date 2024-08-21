@@ -26,6 +26,7 @@
 #include "test/field_trial.h"
 #include "test/gtest.h"
 #include "test/rtcp_packet_parser.h"
+#include "test/video_test_constants.h"
 #include "video/end_to_end_tests/multi_stream_tester.h"
 
 namespace webrtc {
@@ -69,8 +70,7 @@ TEST(TransportFeedbackMultiStreamTest, AssignsTransportSequenceNumbers) {
     }
     virtual ~RtpExtensionHeaderObserver() {}
 
-    bool SendRtp(const uint8_t* data,
-                 size_t length,
+    bool SendRtp(rtc::ArrayView<const uint8_t> data,
                  const PacketOptions& options) override {
       {
         MutexLock lock(&lock_);
@@ -80,7 +80,7 @@ TEST(TransportFeedbackMultiStreamTest, AssignsTransportSequenceNumbers) {
 
         if (started_) {
           RtpPacket rtp_packet(&extensions_);
-          EXPECT_TRUE(rtp_packet.Parse(data, length));
+          EXPECT_TRUE(rtp_packet.Parse(data));
           bool drop_packet = false;
 
           uint16_t transport_sequence_number = 0;
@@ -130,7 +130,7 @@ TEST(TransportFeedbackMultiStreamTest, AssignsTransportSequenceNumbers) {
         }
       }
 
-      return test::DirectTransport::SendRtp(data, length, options);
+      return test::DirectTransport::SendRtp(data, options);
     }
 
     bool IsDone() {
@@ -210,10 +210,6 @@ TEST(TransportFeedbackMultiStreamTest, AssignsTransportSequenceNumbers) {
         size_t stream_index,
         VideoReceiveStreamInterface::Config* receive_config) override {
       receive_config->rtp.nack.rtp_history_ms = kNackRtpHistoryMs;
-      receive_config->rtp.extensions.clear();
-      receive_config->rtp.extensions.push_back(
-          RtpExtension(RtpExtension::kTransportSequenceNumberUri,
-                       kTransportSequenceNumberExtensionId));
       receive_config->renderer = &fake_renderer_;
     }
 
@@ -255,7 +251,7 @@ class TransportFeedbackEndToEndTest : public test::CallTest {
 class TransportFeedbackTester : public test::EndToEndTest {
  public:
   TransportFeedbackTester(size_t num_video_streams, size_t num_audio_streams)
-      : EndToEndTest(::webrtc::TransportFeedbackEndToEndTest::kDefaultTimeout),
+      : EndToEndTest(test::VideoTestConstants::kDefaultTimeout),
         num_video_streams_(num_video_streams),
         num_audio_streams_(num_audio_streams),
         receiver_call_(nullptr) {
@@ -265,25 +261,26 @@ class TransportFeedbackTester : public test::EndToEndTest {
   }
 
  protected:
-  Action OnSendRtcp(const uint8_t* data, size_t length) override {
-    EXPECT_FALSE(HasTransportFeedback(data, length));
+  Action OnSendRtcp(rtc::ArrayView<const uint8_t> data) override {
+    EXPECT_FALSE(HasTransportFeedback(data));
     return SEND_PACKET;
   }
 
-  Action OnReceiveRtcp(const uint8_t* data, size_t length) override {
-    if (HasTransportFeedback(data, length))
+  Action OnReceiveRtcp(rtc::ArrayView<const uint8_t> data) override {
+    if (HasTransportFeedback(data))
       observation_complete_.Set();
     return SEND_PACKET;
   }
 
-  bool HasTransportFeedback(const uint8_t* data, size_t length) const {
+  bool HasTransportFeedback(rtc::ArrayView<const uint8_t> data) const {
     test::RtcpPacketParser parser;
-    EXPECT_TRUE(parser.Parse(data, length));
+    EXPECT_TRUE(parser.Parse(data));
     return parser.transport_feedback()->num_packets() > 0;
   }
 
   void PerformTest() override {
-    EXPECT_TRUE(observation_complete_.Wait(test::CallTest::kDefaultTimeout));
+    EXPECT_TRUE(
+        observation_complete_.Wait(test::VideoTestConstants::kDefaultTimeout));
   }
 
   void OnCallsCreated(Call* sender_call, Call* receiver_call) override {
@@ -300,8 +297,6 @@ class TransportFeedbackTester : public test::EndToEndTest {
     send_config->rtp.extensions.push_back(
         RtpExtension(RtpExtension::kTransportSequenceNumberUri,
                      kTransportSequenceNumberExtensionId));
-    (*receive_configs)[0].rtp.extensions.clear();
-    (*receive_configs)[0].rtp.extensions = send_config->rtp.extensions;
   }
 
  private:
@@ -332,8 +327,7 @@ TEST_F(TransportFeedbackEndToEndTest,
   class TransportFeedbackTester : public test::EndToEndTest {
    public:
     TransportFeedbackTester(size_t num_video_streams, size_t num_audio_streams)
-        : EndToEndTest(
-              ::webrtc::TransportFeedbackEndToEndTest::kDefaultTimeout),
+        : EndToEndTest(test::VideoTestConstants::kDefaultTimeout),
           num_video_streams_(num_video_streams),
           num_audio_streams_(num_audio_streams),
           media_sent_(0),
@@ -345,9 +339,9 @@ TEST_F(TransportFeedbackEndToEndTest,
     }
 
    protected:
-    Action OnSendRtp(const uint8_t* packet, size_t length) override {
+    Action OnSendRtp(rtc::ArrayView<const uint8_t> packet) override {
       RtpPacket rtp_packet;
-      EXPECT_TRUE(rtp_packet.Parse(packet, length));
+      EXPECT_TRUE(rtp_packet.Parse(packet));
       const bool only_padding = rtp_packet.payload_size() == 0;
       MutexLock lock(&mutex_);
       // Padding is expected in congested state to probe for connectivity when
@@ -368,7 +362,7 @@ TEST_F(TransportFeedbackEndToEndTest,
       return SEND_PACKET;
     }
 
-    Action OnReceiveRtcp(const uint8_t* data, size_t length) override {
+    Action OnReceiveRtcp(rtc::ArrayView<const uint8_t> data) override {
       MutexLock lock(&mutex_);
       // To fill up the congestion window we drop feedback on packets after 20
       // packets have been sent. This means that any packets that has not yet
@@ -379,16 +373,15 @@ TEST_F(TransportFeedbackEndToEndTest,
       // padding packets and when 2 padding packets have been received, feedback
       // will be let trough again. This should cause the pacer to continue
       // sending meadia yet again.
-      if (media_sent_ > 20 && HasTransportFeedback(data, length) &&
-          padding_sent_ < 2) {
+      if (media_sent_ > 20 && HasTransportFeedback(data) && padding_sent_ < 2) {
         return DROP_PACKET;
       }
       return SEND_PACKET;
     }
 
-    bool HasTransportFeedback(const uint8_t* data, size_t length) const {
+    bool HasTransportFeedback(rtc::ArrayView<const uint8_t> data) const {
       test::RtcpPacketParser parser;
-      EXPECT_TRUE(parser.Parse(data, length));
+      EXPECT_TRUE(parser.Parse(data));
       return parser.transport_feedback()->num_packets() > 0;
     }
     void ModifySenderBitrateConfig(
@@ -421,7 +414,7 @@ TEST_F(TransportFeedbackEndToEndTest, TransportSeqNumOnAudioAndVideo) {
   class TransportSequenceNumberTest : public test::EndToEndTest {
    public:
     TransportSequenceNumberTest()
-        : EndToEndTest(kDefaultTimeout),
+        : EndToEndTest(test::VideoTestConstants::kDefaultTimeout),
           video_observed_(false),
           audio_observed_(false) {
       extensions_.Register<TransportSequenceNumber>(
@@ -438,13 +431,11 @@ TEST_F(TransportFeedbackEndToEndTest, TransportSeqNumOnAudioAndVideo) {
       send_config->rtp.extensions.push_back(
           RtpExtension(RtpExtension::kTransportSequenceNumberUri,
                        kTransportSequenceNumberExtensionId));
-      (*receive_configs)[0].rtp.extensions.clear();
-      (*receive_configs)[0].rtp.extensions = send_config->rtp.extensions;
     }
 
-    Action OnSendRtp(const uint8_t* packet, size_t length) override {
+    Action OnSendRtp(rtc::ArrayView<const uint8_t> packet) override {
       RtpPacket rtp_packet(&extensions_);
-      EXPECT_TRUE(rtp_packet.Parse(packet, length));
+      EXPECT_TRUE(rtp_packet.Parse(packet));
       uint16_t transport_sequence_number = 0;
       EXPECT_TRUE(rtp_packet.GetExtension<TransportSequenceNumber>(
           &transport_sequence_number));
@@ -452,9 +443,9 @@ TEST_F(TransportFeedbackEndToEndTest, TransportSeqNumOnAudioAndVideo) {
       int64_t packet_id = unwrapper_.Unwrap(transport_sequence_number);
       EXPECT_TRUE(received_packet_ids_.insert(packet_id).second);
 
-      if (rtp_packet.Ssrc() == kVideoSendSsrcs[0])
+      if (rtp_packet.Ssrc() == test::VideoTestConstants::kVideoSendSsrcs[0])
         video_observed_ = true;
-      if (rtp_packet.Ssrc() == kAudioSendSsrc)
+      if (rtp_packet.Ssrc() == test::VideoTestConstants::kAudioSendSsrc)
         audio_observed_ = true;
       if (audio_observed_ && video_observed_ &&
           received_packet_ids_.size() >= kMinPacketsToWaitFor) {

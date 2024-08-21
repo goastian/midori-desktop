@@ -590,14 +590,10 @@ class LogMessage {
 #endif  // RTC_LOG_ENABLED()
 
   // Enable dumping of AEC inputs and outputs.  Can be changed in mid-call
-  static void set_aec_debug(bool enable) { aec_debug_ = enable; }
-  static void set_aec_debug_size(uint32_t size) { aec_debug_size_ = size; }
+  static void set_aec_debug(bool enable);
   static bool aec_debug() { return aec_debug_; }
-  static uint32_t aec_debug_size() { return aec_debug_size_; }
   static std::string aec_debug_filename();
-  static void set_aec_debug_filename(const char* filename) {
-    aec_filename_base_ = filename;
-  }
+  static void set_aec_debug_filename(const char* filename);
 
  private:
   friend class LogMessageForTesting;
@@ -656,7 +652,6 @@ class LogMessage {
   rtc::StringBuilder print_stream_;
 
   static bool aec_debug_;
-  static uint32_t aec_debug_size_;
   static std::string aec_filename_base_;
 };
 
@@ -669,17 +664,17 @@ class LogMessage {
       ::rtc::webrtc_logging_impl::LogStreamer<>() \
           << ::rtc::webrtc_logging_impl::LogMetadata(file, line, sev)
 
-#define RTC_LOG(sev)                        \
-  !rtc::LogMessage::IsNoop<::rtc::sev>() && \
+#define RTC_LOG(sev)                          \
+  !::rtc::LogMessage::IsNoop<::rtc::sev>() && \
       RTC_LOG_FILE_LINE(::rtc::sev, __FILE__, __LINE__)
 
-#define RTC_LOG_IF(sev, condition)                         \
-  !rtc::LogMessage::IsNoop<::rtc::sev>() && (condition) && \
+#define RTC_LOG_IF(sev, condition)                           \
+  !::rtc::LogMessage::IsNoop<::rtc::sev>() && (condition) && \
       RTC_LOG_FILE_LINE(::rtc::sev, __FILE__, __LINE__)
 
 // The _V version is for when a variable is passed in.
 #define RTC_LOG_V(sev) \
-  !rtc::LogMessage::IsNoop(sev) && RTC_LOG_FILE_LINE(sev, __FILE__, __LINE__)
+  !::rtc::LogMessage::IsNoop(sev) && RTC_LOG_FILE_LINE(sev, __FILE__, __LINE__)
 
 // The _F version prefixes the message with the current function name.
 #if (defined(__GNUC__) && !defined(NDEBUG)) || defined(WANT_PRETTY_LOG_F)
@@ -703,7 +698,7 @@ inline bool LogCheckLevel(LoggingSeverity sev) {
 }
 
 #define RTC_LOG_E(sev, ctx, err)                                 \
-  !rtc::LogMessage::IsNoop<::rtc::sev>() &&                      \
+  !::rtc::LogMessage::IsNoop<::rtc::sev>() &&                    \
       ::rtc::webrtc_logging_impl::LogCall() &                    \
           ::rtc::webrtc_logging_impl::LogStreamer<>()            \
               << ::rtc::webrtc_logging_impl::LogMetadataErr {    \
@@ -741,7 +736,7 @@ inline const char* AdaptString(const std::string& str) {
 }  // namespace webrtc_logging_impl
 
 #define RTC_LOG_TAG(sev, tag)                                 \
-  !rtc::LogMessage::IsNoop(sev) &&                            \
+  !::rtc::LogMessage::IsNoop(sev) &&                          \
       ::rtc::webrtc_logging_impl::LogCall() &                 \
           ::rtc::webrtc_logging_impl::LogStreamer<>()         \
               << ::rtc::webrtc_logging_impl::LogMetadataTag { \

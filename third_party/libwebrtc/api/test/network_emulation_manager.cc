@@ -71,7 +71,7 @@ NetworkEmulationManager::SimulatedNetworkNode::Builder::capacity_Mbps(
 
 NetworkEmulationManager::SimulatedNetworkNode::Builder&
 NetworkEmulationManager::SimulatedNetworkNode::Builder::loss(double loss_rate) {
-  config_.loss_percent = std::round(loss_rate * 100);
+  config_.loss_percent = loss_rate * 100;
   return *this;
 }
 
@@ -79,6 +79,33 @@ NetworkEmulationManager::SimulatedNetworkNode::Builder&
 NetworkEmulationManager::SimulatedNetworkNode::Builder::packet_queue_length(
     int max_queue_length_in_packets) {
   config_.queue_length_packets = max_queue_length_in_packets;
+  return *this;
+}
+
+NetworkEmulationManager::SimulatedNetworkNode::Builder&
+NetworkEmulationManager::SimulatedNetworkNode::Builder::
+    delay_standard_deviation_ms(int delay_standard_deviation_ms) {
+  config_.delay_standard_deviation_ms = delay_standard_deviation_ms;
+  return *this;
+}
+
+NetworkEmulationManager::SimulatedNetworkNode::Builder&
+NetworkEmulationManager::SimulatedNetworkNode::Builder::allow_reordering() {
+  config_.allow_reordering = true;
+  return *this;
+}
+
+NetworkEmulationManager::SimulatedNetworkNode::Builder&
+NetworkEmulationManager::SimulatedNetworkNode::Builder::avg_burst_loss_length(
+    int avg_burst_loss_length) {
+  config_.avg_burst_loss_length = avg_burst_loss_length;
+  return *this;
+}
+
+NetworkEmulationManager::SimulatedNetworkNode::Builder&
+NetworkEmulationManager::SimulatedNetworkNode::Builder::packet_overhead(
+    int packet_overhead) {
+  config_.packet_overhead = packet_overhead;
   return *this;
 }
 

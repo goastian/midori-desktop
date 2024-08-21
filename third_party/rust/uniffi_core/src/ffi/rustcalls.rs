@@ -8,11 +8,10 @@
 //!
 //! It handles:
 //!    - Catching panics
-//!    - Adapting `Result<>` types into either a return value or an error
+//!    - Adapting the result of `Return::lower_return()` into either a return value or an
+//!      exception
 
-use super::FfiDefault;
-use crate::{FfiConverter, RustBuffer, RustBufferFfiConverter};
-use anyhow::Result;
+use crate::{FfiDefault, Lower, RustBuffer, UniFfiTag};
 use std::mem::MaybeUninit;
 use std::panic;
 
@@ -20,13 +19,14 @@ use std::panic;
 ///
 /// ## Usage
 ///
-/// - The consumer code creates a `RustCallStatus` with an empty `RustBuffer` and `CALL_SUCCESS`
-///   (0) as the status code
+/// - The consumer code creates a [RustCallStatus] with an empty [RustBuffer] and
+///   [RustCallStatusCode::Success] (0) as the status code
 /// - A pointer to this object is passed to the rust FFI function.  This is an
 ///   "out parameter" which will be updated with any error that occurred during the function's
 ///   execution.
-/// - After the call, if `code` is `CALL_ERROR` then `error_buf` will be updated to contain
-///   the serialized error object.   The consumer is responsible for freeing `error_buf`.
+/// - After the call, if `code` is [RustCallStatusCode::Error] or [RustCallStatusCode::UnexpectedError]
+///   then `error_buf` will be updated to contain a serialized error object.   See
+///   [RustCallStatusCode] for what gets serialized. The consumer is responsible for freeing `error_buf`.
 ///
 /// ## Layout/fields
 ///
@@ -39,20 +39,9 @@ use std::panic;
 ///     RustBuffer error_buf;
 /// };
 /// ```
-///
-/// #### The `code` field.
-///
-///  - `CALL_SUCCESS` (0) for successful calls
-///  - `CALL_ERROR` (1) for calls that returned an `Err` value
-///  - `CALL_PANIC` (2) for calls that panicked
-///
-/// #### The `error_buf` field.
-///
-/// - For `CALL_ERROR` this is a `RustBuffer` with the serialized error.  The consumer code is
-///   responsible for freeing this `RustBuffer`.
 #[repr(C)]
 pub struct RustCallStatus {
-    pub code: i8,
+    pub code: RustCallStatusCode,
     // code is signed because unsigned types are experimental in Kotlin
     pub error_buf: MaybeUninit<RustBuffer>,
     // error_buf is MaybeUninit to avoid dropping the value that the consumer code sends in:
@@ -66,30 +55,96 @@ pub struct RustCallStatus {
     // leak the first `RustBuffer`.
 }
 
+impl RustCallStatus {
+    pub fn new() -> Self {
+        Self {
+            code: RustCallStatusCode::Success,
+            error_buf: MaybeUninit::new(RustBuffer::new()),
+        }
+    }
+
+    pub fn cancelled() -> Self {
+        Self {
+            code: RustCallStatusCode::Cancelled,
+            error_buf: MaybeUninit::new(RustBuffer::new()),
+        }
+    }
+
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            code: RustCallStatusCode::UnexpectedError,
+            error_buf: MaybeUninit::new(<String as Lower<UniFfiTag>>::lower(message.into())),
+        }
+    }
+}
+
 impl Default for RustCallStatus {
     fn default() -> Self {
         Self {
-            code: 0,
+            code: RustCallStatusCode::Success,
             error_buf: MaybeUninit::uninit(),
         }
     }
 }
 
-#[allow(dead_code)]
-const CALL_SUCCESS: i8 = 0; // CALL_SUCCESS is set by the calling code
-const CALL_ERROR: i8 = 1;
-const CALL_PANIC: i8 = 2;
+/// Result of a FFI call to a Rust function
+#[repr(i8)]
+#[derive(Debug, PartialEq, Eq)]
+pub enum RustCallStatusCode {
+    /// Successful call.
+    Success = 0,
+    /// Expected error, corresponding to the `Result::Err` variant.  [RustCallStatus::error_buf]
+    /// will contain the serialized error.
+    Error = 1,
+    /// Unexpected error.  [RustCallStatus::error_buf] will contain a serialized message string
+    UnexpectedError = 2,
+    /// Async function cancelled.  [RustCallStatus::error_buf] will be empty and does not need to
+    /// be freed.
+    ///
+    /// This is only returned for async functions and only if the bindings code uses the
+    /// [rust_future_cancel] call.
+    Cancelled = 3,
+}
 
-// A trait for errors that can be thrown to the FFI code
-//
-// This gets implemented in uniffi_bindgen/src/scaffolding/templates/ErrorTemplate.rs
-pub trait FfiError: RustBufferFfiConverter {}
-
-// Generalized rust call handling function
-fn make_call<F, R>(out_status: &mut RustCallStatus, callback: F) -> R
+/// Handle a scaffolding calls
+///
+/// `callback` is responsible for making the actual Rust call and returning a special result type:
+///   - For successful calls, return `Ok(value)`
+///   - For errors that should be translated into thrown exceptions in the foreign code, serialize
+///     the error into a `RustBuffer`, then return `Ok(buf)`
+///   - The success type, must implement `FfiDefault`.
+///   - `Return::lower_return` returns `Result<>` types that meet the above criteria>
+/// - If the function returns a `Ok` value it will be unwrapped and returned
+/// - If the function returns a `Err` value:
+///     - `out_status.code` will be set to [RustCallStatusCode::Error].
+///     - `out_status.error_buf` will be set to a newly allocated `RustBuffer` containing the error.  The calling
+///       code is responsible for freeing the `RustBuffer`
+///     - `FfiDefault::ffi_default()` is returned, although foreign code should ignore this value
+/// - If the function panics:
+///     - `out_status.code` will be set to `CALL_PANIC`
+///     - `out_status.error_buf` will be set to a newly allocated `RustBuffer` containing a
+///       serialized error message.  The calling code is responsible for freeing the `RustBuffer`
+///     - `FfiDefault::ffi_default()` is returned, although foreign code should ignore this value
+pub fn rust_call<F, R>(out_status: &mut RustCallStatus, callback: F) -> R
 where
     F: panic::UnwindSafe + FnOnce() -> Result<R, RustBuffer>,
     R: FfiDefault,
+{
+    rust_call_with_out_status(out_status, callback).unwrap_or_else(R::ffi_default)
+}
+
+/// Make a Rust call and update `RustCallStatus` based on the result.
+///
+/// If the call succeeds this returns Some(v) and doesn't touch out_status
+/// If the call fails (including Err results), this returns None and updates out_status
+///
+/// This contains the shared code between `rust_call` and `rustfuture::do_wake`.
+pub(crate) fn rust_call_with_out_status<F, R>(
+    out_status: &mut RustCallStatus,
+    callback: F,
+) -> Option<R>
+where
+    F: panic::UnwindSafe + FnOnce() -> Result<R, RustBuffer>,
 {
     let result = panic::catch_unwind(|| {
         crate::panichook::ensure_setup();
@@ -97,21 +152,21 @@ where
     });
     match result {
         // Happy path.  Note: no need to update out_status in this case because the calling code
-        // initializes it to CALL_SUCCESS
-        Ok(Ok(v)) => v,
+        // initializes it to [RustCallStatusCode::Success]
+        Ok(Ok(v)) => Some(v),
         // Callback returned an Err.
         Ok(Err(buf)) => {
-            out_status.code = CALL_ERROR;
+            out_status.code = RustCallStatusCode::Error;
             unsafe {
                 // Unsafe because we're setting the `MaybeUninit` value, see above for safety
                 // invariants.
                 out_status.error_buf.as_mut_ptr().write(buf);
             }
-            R::ffi_default()
+            None
         }
         // Callback panicked
         Err(cause) => {
-            out_status.code = CALL_PANIC;
+            out_status.code = RustCallStatusCode::UnexpectedError;
             // Try to coerce the cause into a RustBuffer containing a String.  Since this code can
             // panic, we need to use a second catch_unwind().
             let message_result = panic::catch_unwind(panic::AssertUnwindSafe(move || {
@@ -124,7 +179,7 @@ where
                     "Unknown panic!".to_string()
                 };
                 log::error!("Caught a panic calling rust code: {:?}", message);
-                String::lower(message)
+                <String as Lower<UniFfiTag>>::lower(message)
             }));
             if let Ok(buf) = message_result {
                 unsafe {
@@ -136,107 +191,24 @@ where
             // Ignore the error case.  We've done all that we can at this point.  In the bindings
             // code, we handle this by checking if `error_buf` still has an empty `RustBuffer` and
             // using a generic message.
-            R::ffi_default()
+            None
         }
     }
-}
-
-/// Wrap a rust function call and return the result directly
-///
-/// `callback` is responsible for making the call to the Rust function.  It must convert any return
-/// value into a type that implements `IntoFfi` (typically handled with `FfiConverter::lower()`).
-///
-/// - If the function succeeds then the function's return value will be returned to the outer code
-/// - If the function panics:
-///     - `out_status.code` will be set to `CALL_PANIC`
-///     - the return value is undefined
-pub fn call_with_output<F, R>(out_status: &mut RustCallStatus, callback: F) -> R
-where
-    F: panic::UnwindSafe + FnOnce() -> R,
-    R: FfiDefault,
-{
-    make_call(out_status, || Ok(callback()))
-}
-
-/// Wrap a rust function call that returns a `Result<_, RustBuffer>`
-///
-/// `callback` is responsible for making the call to the Rust function.
-///   - `callback` must convert any return value into a type that implements `IntoFfi`
-///   - `callback` must convert any `Error` the into a `RustBuffer` to be returned over the FFI
-///   - (Both of these are typically handled with `FfiConverter::lower()`)
-///
-/// - If the function returns an `Ok` value it will be unwrapped and returned
-/// - If the function returns an `Err`:
-///     - `out_status.code` will be set to `CALL_ERROR`
-///     - `out_status.error_buf` will be set to a newly allocated `RustBuffer` containing the error.  The calling
-///       code is responsible for freeing the `RustBuffer`
-///     - the return value is undefined
-/// - If the function panics:
-///     - `out_status.code` will be set to `CALL_PANIC`
-///     - the return value is undefined
-pub fn call_with_result<F, R>(out_status: &mut RustCallStatus, callback: F) -> R
-where
-    F: panic::UnwindSafe + FnOnce() -> Result<R, RustBuffer>,
-    R: FfiDefault,
-{
-    make_call(out_status, callback)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{FfiConverter, RustBufferFfiConverter};
-
-    fn function(a: u8) -> i8 {
-        match a {
-            0 => 100,
-            x => panic!("Unexpected value: {x}"),
-        }
-    }
+    use crate::{test_util::TestError, Lift, LowerReturn};
 
     fn create_call_status() -> RustCallStatus {
         RustCallStatus {
-            code: 0,
+            code: RustCallStatusCode::Success,
             error_buf: MaybeUninit::new(RustBuffer::new()),
         }
     }
 
-    #[test]
-    fn test_call_with_output() {
-        let mut status = create_call_status();
-        let return_value = call_with_output(&mut status, || function(0));
-        assert_eq!(status.code, CALL_SUCCESS);
-        assert_eq!(return_value, 100);
-
-        call_with_output(&mut status, || function(1));
-        assert_eq!(status.code, CALL_PANIC);
-        unsafe {
-            assert_eq!(
-                String::try_lift(status.error_buf.assume_init()).unwrap(),
-                "Unexpected value: 1"
-            );
-        }
-    }
-
-    #[derive(Debug, PartialEq)]
-    struct TestError(String);
-
-    // Use RustBufferFfiConverter to simplify lifting TestError out of RustBuffer to check it
-    impl RustBufferFfiConverter for TestError {
-        type RustType = Self;
-
-        fn write(obj: Self::RustType, buf: &mut Vec<u8>) {
-            <String as FfiConverter>::write(obj.0, buf);
-        }
-
-        fn try_read(buf: &mut &[u8]) -> Result<Self> {
-            String::try_read(buf).map(TestError)
-        }
-    }
-
-    impl FfiError for TestError {}
-
-    fn function_with_result(a: u8) -> Result<i8, TestError> {
+    fn test_callback(a: u8) -> Result<i8, TestError> {
         match a {
             0 => Ok(100),
             1 => Err(TestError("Error".to_owned())),
@@ -245,33 +217,34 @@ mod test {
     }
 
     #[test]
-    fn test_call_with_result() {
+    fn test_rust_call() {
         let mut status = create_call_status();
-        let return_value = call_with_result(&mut status, || {
-            function_with_result(0).map_err(TestError::lower)
+        let return_value = rust_call(&mut status, || {
+            <Result<i8, TestError> as LowerReturn<UniFfiTag>>::lower_return(test_callback(0))
         });
-        assert_eq!(status.code, CALL_SUCCESS);
+
+        assert_eq!(status.code, RustCallStatusCode::Success);
         assert_eq!(return_value, 100);
 
-        call_with_result(&mut status, || {
-            function_with_result(1).map_err(TestError::lower)
+        rust_call(&mut status, || {
+            <Result<i8, TestError> as LowerReturn<UniFfiTag>>::lower_return(test_callback(1))
         });
-        assert_eq!(status.code, CALL_ERROR);
+        assert_eq!(status.code, RustCallStatusCode::Error);
         unsafe {
             assert_eq!(
-                TestError::try_lift(status.error_buf.assume_init()).unwrap(),
+                <TestError as Lift<UniFfiTag>>::try_lift(status.error_buf.assume_init()).unwrap(),
                 TestError("Error".to_owned())
             );
         }
 
         let mut status = create_call_status();
-        call_with_result(&mut status, || {
-            function_with_result(2).map_err(TestError::lower)
+        rust_call(&mut status, || {
+            <Result<i8, TestError> as LowerReturn<UniFfiTag>>::lower_return(test_callback(2))
         });
-        assert_eq!(status.code, CALL_PANIC);
+        assert_eq!(status.code, RustCallStatusCode::UnexpectedError);
         unsafe {
             assert_eq!(
-                String::try_lift(status.error_buf.assume_init()).unwrap(),
+                <String as Lift<UniFfiTag>>::try_lift(status.error_buf.assume_init()).unwrap(),
                 "Unexpected value: 2"
             );
         }

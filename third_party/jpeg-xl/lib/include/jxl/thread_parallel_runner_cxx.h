@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-/// @addtogroup libjxl_threads
+/// @addtogroup libjxl_cpp
 /// @{
 ///
 /// @file thread_parallel_runner_cxx.h
@@ -15,11 +15,13 @@
 #ifndef JXL_THREAD_PARALLEL_RUNNER_CXX_H_
 #define JXL_THREAD_PARALLEL_RUNNER_CXX_H_
 
+#include <jxl/memory_manager.h>
 #include <jxl/thread_parallel_runner.h>
 
+#include <cstddef>
 #include <memory>
 
-#if !(defined(__cplusplus) || defined(c_plusplus))
+#ifndef __cplusplus
 #error \
     "This a C++ only header. Use jxl/jxl_thread_parallel_runner.h from C" \
     "sources."

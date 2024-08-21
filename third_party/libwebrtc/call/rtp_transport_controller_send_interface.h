@@ -23,7 +23,7 @@
 #include "api/crypto/crypto_options.h"
 #include "api/fec_controller.h"
 #include "api/frame_transformer_interface.h"
-#include "api/rtc_event_log/rtc_event_log.h"
+#include "api/transport/bandwidth_estimation_settings.h"
 #include "api/transport/bitrate_settings.h"
 #include "api/units/timestamp.h"
 #include "call/rtp_config.h"
@@ -37,18 +37,16 @@
 namespace rtc {
 struct SentPacket;
 struct NetworkRoute;
-class TaskQueue;
 }  // namespace rtc
 namespace webrtc {
 
 class FrameEncryptorInterface;
-class MaybeWorkerThread;
 class TargetTransferRateObserver;
 class Transport;
 class PacketRouter;
 class RtpVideoSenderInterface;
-class RtcpBandwidthObserver;
 class RtpPacketSender;
+class RtpRtcpInterface;
 
 struct RtpSenderObservers {
   RtcpRttStats* rtcp_rtt_stats;
@@ -59,7 +57,6 @@ struct RtpSenderObservers {
   BitrateStatisticsObserver* bitrate_observer;
   FrameCountObserver* frame_count_observer;
   RtcpPacketTypeCounterObserver* rtcp_type_observer;
-  SendSideDelayObserver* send_delay_observer;
   SendPacketObserver* send_packet_observer;
 };
 
@@ -94,9 +91,6 @@ struct RtpSenderFrameEncryptionConfig {
 class RtpTransportControllerSendInterface {
  public:
   virtual ~RtpTransportControllerSendInterface() {}
-  // TODO(webrtc:14502): Remove MaybeWorkerThread when experiment has been
-  // evaluated.
-  virtual MaybeWorkerThread* GetWorkerQueue() = 0;
   virtual PacketRouter* packet_router() = 0;
 
   virtual RtpVideoSenderInterface* CreateRtpVideoSender(
@@ -107,12 +101,17 @@ class RtpTransportControllerSendInterface {
       int rtcp_report_interval_ms,
       Transport* send_transport,
       const RtpSenderObservers& observers,
-      RtcEventLog* event_log,
       std::unique_ptr<FecController> fec_controller,
       const RtpSenderFrameEncryptionConfig& frame_encryption_config,
       rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) = 0;
   virtual void DestroyRtpVideoSender(
       RtpVideoSenderInterface* rtp_video_sender) = 0;
+
+  // Register a specific RTP stream as sending. This means that the pacer and
+  // packet router can send packets using this RTP stream.
+  virtual void RegisterSendingRtpStream(RtpRtcpInterface& rtp_module) = 0;
+  // Pacer and PacketRouter stop using this RTP stream.
+  virtual void DeRegisterSendingRtpStream(RtpRtcpInterface& rtp_module) = 0;
 
   virtual NetworkStateEstimateObserver* network_state_estimate_observer() = 0;
   virtual TransportFeedbackObserver* transport_feedback_observer() = 0;
@@ -124,6 +123,9 @@ class RtpTransportControllerSendInterface {
   virtual void SetAllocatedSendBitrateLimits(
       BitrateAllocationLimits limits) = 0;
 
+  virtual void ReconfigureBandwidthEstimation(
+      const BandwidthEstimationSettings& settings) = 0;
+
   virtual void SetPacingFactor(float pacing_factor) = 0;
   virtual void SetQueueTimeLimit(int limit_ms) = 0;
 
@@ -134,7 +136,7 @@ class RtpTransportControllerSendInterface {
       absl::string_view transport_name,
       const rtc::NetworkRoute& network_route) = 0;
   virtual void OnNetworkAvailability(bool network_available) = 0;
-  virtual RtcpBandwidthObserver* GetBandwidthObserver() = 0;
+  virtual NetworkLinkRtcpObserver* GetRtcpObserver() = 0;
   virtual int64_t GetPacerQueuingDelayMs() const = 0;
   virtual absl::optional<Timestamp> GetFirstPacketTime() const = 0;
   virtual void EnablePeriodicAlrProbing(bool enable) = 0;

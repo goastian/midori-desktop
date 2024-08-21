@@ -15,14 +15,14 @@
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
-#include "api/rtc_event_log/rtc_event_log.h"
-#include "api/task_queue/default_task_queue_factory.h"
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
+#include "api/media_types.h"
 #include "api/test/mock_audio_mixer.h"
 #include "api/test/video/function_video_encoder_factory.h"
-#include "api/transport/field_trial_based_config.h"
+#include "api/units/timestamp.h"
 #include "api/video/builtin_video_bitrate_allocator_factory.h"
 #include "audio/audio_receive_stream.h"
 #include "audio/audio_send_stream.h"
@@ -38,47 +38,40 @@
 #include "test/mock_transport.h"
 #include "test/run_loop.h"
 
+namespace webrtc {
 namespace {
 
 using ::testing::_;
 using ::testing::Contains;
+using ::testing::MockFunction;
 using ::testing::NiceMock;
 using ::testing::StrictMock;
+using ::webrtc::test::MockAudioDeviceModule;
+using ::webrtc::test::MockAudioMixer;
+using ::webrtc::test::MockAudioProcessing;
+using ::webrtc::test::RunLoop;
 
 struct CallHelper {
   explicit CallHelper(bool use_null_audio_processing) {
-    task_queue_factory_ = webrtc::CreateDefaultTaskQueueFactory();
-    webrtc::AudioState::Config audio_state_config;
-    audio_state_config.audio_mixer =
-        rtc::make_ref_counted<webrtc::test::MockAudioMixer>();
+    AudioState::Config audio_state_config;
+    audio_state_config.audio_mixer = rtc::make_ref_counted<MockAudioMixer>();
     audio_state_config.audio_processing =
         use_null_audio_processing
             ? nullptr
-            : rtc::make_ref_counted<
-                  NiceMock<webrtc::test::MockAudioProcessing>>();
+            : rtc::make_ref_counted<NiceMock<MockAudioProcessing>>();
     audio_state_config.audio_device_module =
-        rtc::make_ref_counted<webrtc::test::MockAudioDeviceModule>();
-    webrtc::Call::Config config(&event_log_);
-    config.audio_state = webrtc::AudioState::Create(audio_state_config);
-    config.task_queue_factory = task_queue_factory_.get();
-    config.trials = &field_trials_;
-    call_.reset(webrtc::Call::Create(config));
+        rtc::make_ref_counted<MockAudioDeviceModule>();
+    CallConfig config(CreateEnvironment());
+    config.audio_state = AudioState::Create(audio_state_config);
+    call_ = Call::Create(config);
   }
 
-  webrtc::Call* operator->() { return call_.get(); }
+  Call* operator->() { return call_.get(); }
 
  private:
-  webrtc::test::RunLoop loop_;
-  webrtc::RtcEventLogNull event_log_;
-  webrtc::FieldTrialBasedConfig field_trials_;
-  std::unique_ptr<webrtc::TaskQueueFactory> task_queue_factory_;
-  std::unique_ptr<webrtc::Call> call_;
+  RunLoop loop_;
+  std::unique_ptr<Call> call_;
 };
-}  // namespace
-
-namespace webrtc {
-
-namespace {
 
 rtc::scoped_refptr<Resource> FindResourceWhoseNameContains(
     const std::vector<rtc::scoped_refptr<Resource>>& resources,
@@ -323,6 +316,45 @@ TEST(CallTest, MultipleFlexfecReceiveStreamsProtectingSingleVideoStream) {
   }
 }
 
+TEST(CallTest,
+     DeliverRtpPacketOfTypeAudioTriggerOnUndemuxablePacketHandlerIfNotDemuxed) {
+  CallHelper call(/*use_null_audio_processing=*/false);
+  MockFunction<bool(const RtpPacketReceived& parsed_packet)>
+      un_demuxable_packet_handler;
+
+  RtpPacketReceived packet;
+  packet.set_arrival_time(Timestamp::Millis(1));
+  EXPECT_CALL(un_demuxable_packet_handler, Call);
+  call->Receiver()->DeliverRtpPacket(
+      MediaType::AUDIO, packet, un_demuxable_packet_handler.AsStdFunction());
+}
+
+TEST(CallTest,
+     DeliverRtpPacketOfTypeVideoTriggerOnUndemuxablePacketHandlerIfNotDemuxed) {
+  CallHelper call(/*use_null_audio_processing=*/false);
+  MockFunction<bool(const RtpPacketReceived& parsed_packet)>
+      un_demuxable_packet_handler;
+
+  RtpPacketReceived packet;
+  packet.set_arrival_time(Timestamp::Millis(1));
+  EXPECT_CALL(un_demuxable_packet_handler, Call);
+  call->Receiver()->DeliverRtpPacket(
+      MediaType::VIDEO, packet, un_demuxable_packet_handler.AsStdFunction());
+}
+
+TEST(CallTest,
+     DeliverRtpPacketOfTypeAnyDoesNotTriggerOnUndemuxablePacketHandler) {
+  CallHelper call(/*use_null_audio_processing=*/false);
+  MockFunction<bool(const RtpPacketReceived& parsed_packet)>
+      un_demuxable_packet_handler;
+
+  RtpPacketReceived packet;
+  packet.set_arrival_time(Timestamp::Millis(1));
+  EXPECT_CALL(un_demuxable_packet_handler, Call).Times(0);
+  call->Receiver()->DeliverRtpPacket(
+      MediaType::ANY, packet, un_demuxable_packet_handler.AsStdFunction());
+}
+
 TEST(CallTest, RecreatingAudioStreamWithSameSsrcReusesRtpState) {
   constexpr uint32_t kSSRC = 12345;
   for (bool use_null_audio_processing : {false, true}) {
@@ -345,9 +377,8 @@ TEST(CallTest, RecreatingAudioStreamWithSameSsrcReusesRtpState) {
     EXPECT_EQ(rtp_state1.sequence_number, rtp_state2.sequence_number);
     EXPECT_EQ(rtp_state1.start_timestamp, rtp_state2.start_timestamp);
     EXPECT_EQ(rtp_state1.timestamp, rtp_state2.timestamp);
-    EXPECT_EQ(rtp_state1.capture_time_ms, rtp_state2.capture_time_ms);
-    EXPECT_EQ(rtp_state1.last_timestamp_time_ms,
-              rtp_state2.last_timestamp_time_ms);
+    EXPECT_EQ(rtp_state1.capture_time, rtp_state2.capture_time);
+    EXPECT_EQ(rtp_state1.last_timestamp_time, rtp_state2.last_timestamp_time);
   }
 }
 

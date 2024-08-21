@@ -1,10 +1,11 @@
+use std::sync::Arc;
+
 use crate::{
     binding_model::{BindGroup, LateMinBufferBindingSizeMismatch, PipelineLayout},
     device::SHADER_STAGE_COUNT,
-    hub::{HalApi, Storage},
-    id::{BindGroupId, BindGroupLayoutId, PipelineLayoutId, Valid},
+    hal_api::HalApi,
     pipeline::LateSizedBufferGroup,
-    Stored,
+    resource::Resource,
 };
 
 use arrayvec::ArrayVec;
@@ -12,65 +13,172 @@ use arrayvec::ArrayVec;
 type BindGroupMask = u8;
 
 mod compat {
-    use std::ops::Range;
+    use arrayvec::ArrayVec;
 
-    #[derive(Debug)]
-    struct Entry<T> {
-        assigned: Option<T>,
-        expected: Option<T>,
+    use crate::{binding_model::BindGroupLayout, device::bgl, hal_api::HalApi, resource::Resource};
+    use std::{ops::Range, sync::Arc};
+
+    #[derive(Debug, Clone)]
+    struct Entry<A: HalApi> {
+        assigned: Option<Arc<BindGroupLayout<A>>>,
+        expected: Option<Arc<BindGroupLayout<A>>>,
     }
-    impl<T> Default for Entry<T> {
-        fn default() -> Self {
+
+    impl<A: HalApi> Entry<A> {
+        fn empty() -> Self {
             Self {
                 assigned: None,
                 expected: None,
             }
         }
-    }
-    impl<T: Copy + PartialEq> Entry<T> {
         fn is_active(&self) -> bool {
             self.assigned.is_some() && self.expected.is_some()
         }
 
         fn is_valid(&self) -> bool {
-            self.expected.is_none() || self.expected == self.assigned
+            if self.expected.is_none() {
+                return true;
+            }
+            if let Some(expected_bgl) = self.expected.as_ref() {
+                if let Some(assigned_bgl) = self.assigned.as_ref() {
+                    if expected_bgl.is_equal(assigned_bgl) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        fn is_incompatible(&self) -> bool {
+            self.expected.is_none() || !self.is_valid()
+        }
+
+        // Describe how bind group layouts are incompatible, for validation
+        // error message.
+        fn bgl_diff(&self) -> Vec<String> {
+            let mut diff = Vec::new();
+
+            if let Some(expected_bgl) = self.expected.as_ref() {
+                let expected_bgl_type = match expected_bgl.origin {
+                    bgl::Origin::Derived => "implicit",
+                    bgl::Origin::Pool => "explicit",
+                };
+                let expected_label = expected_bgl.label();
+                diff.push(format!(
+                    "Should be compatible an with an {expected_bgl_type} bind group layout {}",
+                    if expected_label.is_empty() {
+                        "without label".to_string()
+                    } else {
+                        format!("with label = `{}`", expected_label)
+                    }
+                ));
+                if let Some(assigned_bgl) = self.assigned.as_ref() {
+                    let assigned_bgl_type = match assigned_bgl.origin {
+                        bgl::Origin::Derived => "implicit",
+                        bgl::Origin::Pool => "explicit",
+                    };
+                    let assigned_label = assigned_bgl.label();
+                    diff.push(format!(
+                        "Assigned {assigned_bgl_type} bind group layout {}",
+                        if assigned_label.is_empty() {
+                            "without label".to_string()
+                        } else {
+                            format!("with label = `{}`", assigned_label)
+                        }
+                    ));
+                    for (id, e_entry) in expected_bgl.entries.iter() {
+                        if let Some(a_entry) = assigned_bgl.entries.get(*id) {
+                            if a_entry.binding != e_entry.binding {
+                                diff.push(format!(
+                                    "Entry {id} binding expected {}, got {}",
+                                    e_entry.binding, a_entry.binding
+                                ));
+                            }
+                            if a_entry.count != e_entry.count {
+                                diff.push(format!(
+                                    "Entry {id} count expected {:?}, got {:?}",
+                                    e_entry.count, a_entry.count
+                                ));
+                            }
+                            if a_entry.ty != e_entry.ty {
+                                diff.push(format!(
+                                    "Entry {id} type expected {:?}, got {:?}",
+                                    e_entry.ty, a_entry.ty
+                                ));
+                            }
+                            if a_entry.visibility != e_entry.visibility {
+                                diff.push(format!(
+                                    "Entry {id} visibility expected {:?}, got {:?}",
+                                    e_entry.visibility, a_entry.visibility
+                                ));
+                            }
+                        } else {
+                            diff.push(format!(
+                                "Entry {id} not found in assigned bind group layout"
+                            ))
+                        }
+                    }
+
+                    assigned_bgl.entries.iter().for_each(|(id, _e_entry)| {
+                        if !expected_bgl.entries.contains_key(*id) {
+                            diff.push(format!(
+                                "Entry {id} not found in expected bind group layout"
+                            ))
+                        }
+                    });
+
+                    if expected_bgl.origin != assigned_bgl.origin {
+                        diff.push(format!("Expected {expected_bgl_type} bind group layout, got {assigned_bgl_type}"))
+                    }
+                } else {
+                    diff.push("Assigned bind group layout not found (internal error)".to_owned());
+                }
+            } else {
+                diff.push("Expected bind group layout not found (internal error)".to_owned());
+            }
+
+            diff
         }
     }
 
-    #[derive(Debug)]
-    pub struct Manager<T> {
-        entries: [Entry<T>; hal::MAX_BIND_GROUPS],
+    #[derive(Debug, Default)]
+    pub(crate) struct BoundBindGroupLayouts<A: HalApi> {
+        entries: ArrayVec<Entry<A>, { hal::MAX_BIND_GROUPS }>,
     }
 
-    impl<T: Copy + PartialEq> Manager<T> {
+    impl<A: HalApi> BoundBindGroupLayouts<A> {
         pub fn new() -> Self {
             Self {
-                entries: Default::default(),
+                entries: (0..hal::MAX_BIND_GROUPS).map(|_| Entry::empty()).collect(),
             }
         }
-
         fn make_range(&self, start_index: usize) -> Range<usize> {
             // find first incompatible entry
             let end = self
                 .entries
                 .iter()
-                .position(|e| e.expected.is_none() || e.assigned != e.expected)
+                .position(|e| e.is_incompatible())
                 .unwrap_or(self.entries.len());
             start_index..end.max(start_index)
         }
 
-        pub fn update_expectations(&mut self, expectations: &[T]) -> Range<usize> {
+        pub fn update_expectations(
+            &mut self,
+            expectations: &[Arc<BindGroupLayout<A>>],
+        ) -> Range<usize> {
             let start_index = self
                 .entries
                 .iter()
                 .zip(expectations)
-                .position(|(e, &expect)| e.expected != Some(expect))
+                .position(|(e, expect)| {
+                    e.expected.is_none() || !e.expected.as_ref().unwrap().is_equal(expect)
+                })
                 .unwrap_or(expectations.len());
-            for (e, &expect) in self.entries[start_index..]
+            for (e, expect) in self.entries[start_index..]
                 .iter_mut()
                 .zip(expectations[start_index..].iter())
             {
-                e.expected = Some(expect);
+                e.expected = Some(expect.clone());
             }
             for e in self.entries[expectations.len()..].iter_mut() {
                 e.expected = None;
@@ -78,7 +186,7 @@ mod compat {
             self.make_range(start_index)
         }
 
-        pub fn assign(&mut self, index: usize, value: T) -> Range<usize> {
+        pub fn assign(&mut self, index: usize, value: Arc<BindGroupLayout<A>>) -> Range<usize> {
             self.entries[index].assigned = Some(value);
             self.make_range(index)
         }
@@ -99,36 +207,15 @@ mod compat {
                 }
             })
         }
-    }
 
-    #[test]
-    fn test_compatibility() {
-        let mut man = Manager::<i32>::new();
-        man.entries[0] = Entry {
-            expected: Some(3),
-            assigned: Some(2),
-        };
-        man.entries[1] = Entry {
-            expected: Some(1),
-            assigned: Some(1),
-        };
-        man.entries[2] = Entry {
-            expected: Some(4),
-            assigned: Some(5),
-        };
-        // check that we rebind [1] after [0] became compatible
-        assert_eq!(man.assign(0, 3), 0..2);
-        // check that nothing is rebound
-        assert_eq!(man.update_expectations(&[3, 2]), 1..1);
-        // check that [1] and [2] are rebound on expectations change
-        assert_eq!(man.update_expectations(&[3, 1, 5]), 1..3);
-        // reset the first two bindings
-        assert_eq!(man.update_expectations(&[4, 6, 5]), 0..0);
-        // check that nothing is rebound, even if there is a match,
-        // since earlier binding is incompatible.
-        assert_eq!(man.assign(1, 6), 1..1);
-        // finally, bind everything
-        assert_eq!(man.assign(0, 4), 0..3);
+        pub fn bgl_diff(&self) -> Vec<String> {
+            for e in &self.entries {
+                if !e.is_valid() {
+                    return e.bgl_diff();
+                }
+            }
+            vec![String::from("No differences detected? (internal error)")]
+        }
     }
 }
 
@@ -138,9 +225,9 @@ struct LateBufferBinding {
     bound_size: wgt::BufferAddress,
 }
 
-#[derive(Debug, Default)]
-pub(super) struct EntryPayload {
-    pub(super) group_id: Option<Stored<BindGroupId>>,
+#[derive(Debug)]
+pub(super) struct EntryPayload<A: HalApi> {
+    pub(super) group: Option<Arc<BindGroup<A>>>,
     pub(super) dynamic_offsets: Vec<wgt::DynamicOffset>,
     late_buffer_bindings: Vec<LateBufferBinding>,
     /// Since `LateBufferBinding` may contain information about the bindings
@@ -148,49 +235,57 @@ pub(super) struct EntryPayload {
     pub(super) late_bindings_effective_count: usize,
 }
 
-impl EntryPayload {
+impl<A: HalApi> Default for EntryPayload<A> {
+    fn default() -> Self {
+        Self {
+            group: None,
+            dynamic_offsets: Default::default(),
+            late_buffer_bindings: Default::default(),
+            late_bindings_effective_count: Default::default(),
+        }
+    }
+}
+
+impl<A: HalApi> EntryPayload<A> {
     fn reset(&mut self) {
-        self.group_id = None;
+        self.group = None;
         self.dynamic_offsets.clear();
         self.late_buffer_bindings.clear();
         self.late_bindings_effective_count = 0;
     }
 }
 
-#[derive(Debug)]
-pub(super) struct Binder {
-    pub(super) pipeline_layout_id: Option<Valid<PipelineLayoutId>>, //TODO: strongly `Stored`
-    manager: compat::Manager<Valid<BindGroupLayoutId>>,
-    payloads: [EntryPayload; hal::MAX_BIND_GROUPS],
+#[derive(Debug, Default)]
+pub(super) struct Binder<A: HalApi> {
+    pub(super) pipeline_layout: Option<Arc<PipelineLayout<A>>>,
+    manager: compat::BoundBindGroupLayouts<A>,
+    payloads: [EntryPayload<A>; hal::MAX_BIND_GROUPS],
 }
 
-impl Binder {
+impl<A: HalApi> Binder<A> {
     pub(super) fn new() -> Self {
         Self {
-            pipeline_layout_id: None,
-            manager: compat::Manager::new(),
+            pipeline_layout: None,
+            manager: compat::BoundBindGroupLayouts::new(),
             payloads: Default::default(),
         }
     }
-
     pub(super) fn reset(&mut self) {
-        self.pipeline_layout_id = None;
-        self.manager = compat::Manager::new();
+        self.pipeline_layout = None;
+        self.manager = compat::BoundBindGroupLayouts::new();
         for payload in self.payloads.iter_mut() {
             payload.reset();
         }
     }
 
-    pub(super) fn change_pipeline_layout<'a, A: HalApi>(
+    pub(super) fn change_pipeline_layout<'a>(
         &'a mut self,
-        guard: &Storage<PipelineLayout<A>, PipelineLayoutId>,
-        new_id: Valid<PipelineLayoutId>,
+        new: &Arc<PipelineLayout<A>>,
         late_sized_buffer_groups: &[LateSizedBufferGroup],
-    ) -> (usize, &'a [EntryPayload]) {
-        let old_id_opt = self.pipeline_layout_id.replace(new_id);
-        let new = &guard[new_id];
+    ) -> (usize, &'a [EntryPayload<A>]) {
+        let old_id_opt = self.pipeline_layout.replace(new.clone());
 
-        let mut bind_range = self.manager.update_expectations(&new.bind_group_layout_ids);
+        let mut bind_range = self.manager.update_expectations(&new.bind_group_layouts);
 
         // Update the buffer binding sizes that are required by shaders.
         for (payload, late_group) in self.payloads.iter_mut().zip(late_sized_buffer_groups) {
@@ -214,8 +309,7 @@ impl Binder {
             }
         }
 
-        if let Some(old_id) = old_id_opt {
-            let old = &guard[old_id];
+        if let Some(old) = old_id_opt {
             // root constants are the base compatibility property
             if old.push_constant_ranges != new.push_constant_ranges {
                 bind_range.start = 0;
@@ -225,21 +319,18 @@ impl Binder {
         (bind_range.start, &self.payloads[bind_range])
     }
 
-    pub(super) fn assign_group<'a, A: HalApi>(
+    pub(super) fn assign_group<'a>(
         &'a mut self,
         index: usize,
-        bind_group_id: Valid<BindGroupId>,
-        bind_group: &BindGroup<A>,
+        bind_group: &Arc<BindGroup<A>>,
         offsets: &[wgt::DynamicOffset],
-    ) -> &'a [EntryPayload] {
+    ) -> &'a [EntryPayload<A>] {
+        let bind_group_id = bind_group.as_info().id();
         log::trace!("\tBinding [{}] = group {:?}", index, bind_group_id);
-        debug_assert_eq!(A::VARIANT, bind_group_id.0.backend());
+        debug_assert_eq!(A::VARIANT, bind_group_id.backend());
 
         let payload = &mut self.payloads[index];
-        payload.group_id = Some(Stored {
-            value: bind_group_id,
-            ref_count: bind_group.life_guard.add_ref(),
-        });
+        payload.group = Some(bind_group.clone());
         payload.dynamic_offsets.clear();
         payload.dynamic_offsets.extend_from_slice(offsets);
 
@@ -263,19 +354,23 @@ impl Binder {
             }
         }
 
-        let bind_range = self.manager.assign(index, bind_group.layout_id);
+        let bind_range = self.manager.assign(index, bind_group.layout.clone());
         &self.payloads[bind_range]
     }
 
-    pub(super) fn list_active(&self) -> impl Iterator<Item = Valid<BindGroupId>> + '_ {
+    pub(super) fn list_active<'a>(&'a self) -> impl Iterator<Item = &'a Arc<BindGroup<A>>> + '_ {
         let payloads = &self.payloads;
         self.manager
             .list_active()
-            .map(move |index| payloads[index].group_id.as_ref().unwrap().value)
+            .map(move |index| payloads[index].group.as_ref().unwrap())
     }
 
     pub(super) fn invalid_mask(&self) -> BindGroupMask {
         self.manager.invalid_mask()
+    }
+
+    pub(super) fn bgl_diff(&self) -> Vec<String> {
+        self.manager.bgl_diff()
     }
 
     /// Scan active buffer bindings corresponding to layouts without `min_binding_size` specified.

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.62"
+rust-version = "1.66"
 name = "glean-core"
-version = "52.7.0"
+version = "60.1.1"
 authors = [
     "Jan-Erik Rediger <jrediger@mozilla.com>",
     "The Glean Team <glean-team@mozilla.com>",
@@ -33,10 +33,9 @@ readme = "README.md"
 keywords = ["telemetry"]
 license = "MPL-2.0"
 repository = "https://github.com/mozilla/glean"
-resolver = "1"
 
 [package.metadata.glean]
-glean-parser = "7.1.0"
+glean-parser = "14.0.1"
 
 [dependencies.bincode]
 version = "1.2.1"
@@ -60,10 +59,10 @@ version = "1.0.19"
 version = "0.4.8"
 
 [dependencies.once_cell]
-version = "1.4.1"
+version = "1.18.0"
 
 [dependencies.rkv]
-version = "0.18.4"
+version = "0.19.0"
 features = ["lmdb"]
 default-features = false
 
@@ -81,7 +80,7 @@ version = "1.0.4"
 version = "0.1.40"
 
 [dependencies.uniffi]
-version = "0.23.0"
+version = "0.27.0"
 default-features = false
 
 [dependencies.uuid]
@@ -92,24 +91,21 @@ features = ["v4"]
 version = "0.1.0"
 
 [dev-dependencies.ctor]
-version = "0.1.12"
+version = "0.2.2"
 
 [dev-dependencies.env_logger]
 version = "0.10.0"
-features = [
-    "auto-color",
-    "humantime",
-]
+features = ["humantime"]
 default-features = false
 
 [dev-dependencies.iso8601]
 version = "0.4"
 
 [dev-dependencies.tempfile]
-version = "3.1.0"
+version = "3.8.0"
 
 [build-dependencies.uniffi]
-version = "0.23.0"
+version = "0.27.0"
 features = ["build"]
 default-features = false
 

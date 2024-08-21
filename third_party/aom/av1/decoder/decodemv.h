@@ -20,10 +20,10 @@
 extern "C" {
 #endif
 
-void av1_read_mode_info(AV1Decoder *const pbi, MACROBLOCKD *xd,
+int av1_neg_deinterleave(int diff, int ref, int max);
 
-                        int mi_row, int mi_col, aom_reader *r, int x_mis,
-                        int y_mis);
+void av1_read_mode_info(AV1Decoder *const pbi, DecoderCodingBlock *dcb,
+                        aom_reader *r, int x_mis, int y_mis);
 
 #ifdef __cplusplus
 }  // extern "C"

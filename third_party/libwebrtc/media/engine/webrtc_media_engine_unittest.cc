@@ -11,9 +11,9 @@
 #include "media/engine/webrtc_media_engine.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "media/engine/webrtc_media_engine_defaults.h"
 #include "test/gtest.h"
 #include "test/scoped_key_value_config.h"
 
@@ -319,18 +319,6 @@ TEST(WebRtcMediaEngineTest, FilterRtpExtensionsRemoveRedundantBwe3) {
       FilterRtpExtensions(extensions, SupportedExtensions2, true, trials);
   EXPECT_EQ(1u, filtered.size());
   EXPECT_EQ(RtpExtension::kTimestampOffsetUri, filtered[0].uri);
-}
-
-TEST(WebRtcMediaEngineTest, Create) {
-  MediaEngineDependencies deps;
-  webrtc::SetMediaEngineDefaults(&deps);
-  webrtc::test::ScopedKeyValueConfig trials;
-  deps.trials = &trials;
-
-  std::unique_ptr<MediaEngineInterface> engine =
-      CreateMediaEngine(std::move(deps));
-
-  EXPECT_TRUE(engine);
 }
 
 }  // namespace cricket

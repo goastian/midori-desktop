@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import functools
 import json
 from collections import namedtuple
 from types import FunctionType
@@ -13,7 +14,6 @@ from taskgraph import create
 from taskgraph.config import load_graph_config
 from taskgraph.parameters import Parameters
 from taskgraph.util import hash, taskcluster, yaml
-from taskgraph.util.memoize import memoize
 from taskgraph.util.python_path import import_sibling_modules
 
 actions = []
@@ -31,13 +31,13 @@ def is_json(data):
     return True
 
 
-@memoize
+@functools.lru_cache(maxsize=None)
 def read_taskcluster_yml(filename):
-    """Load and parse .taskcluster.yml, memoized to save some time"""
+    """Load and parse .taskcluster.yml, cached to save some time"""
     return yaml.load_yaml(filename)
 
 
-@memoize
+@functools.lru_cache(maxsize=None)
 def hash_taskcluster_yml(filename):
     """
     Generate a hash of the given .taskcluster.yml.  This is the first 10 digits
@@ -154,9 +154,7 @@ def register_callback_action(
         ], "register_callback_action must be used as decorator"
         if not cb_name:
             cb_name = name
-        assert cb_name not in callbacks, "callback name {} is not unique".format(
-            cb_name
-        )
+        assert cb_name not in callbacks, f"callback name {cb_name} is not unique"
 
         def action_builder(parameters, graph_config, decision_task_id):
             if not available(parameters):
@@ -165,11 +163,11 @@ def register_callback_action(
             actionPerm = "generic" if generic else cb_name
 
             # gather up the common decision-task-supplied data for this action
-            repo_param = "head_repository"
             repository = {
-                "url": parameters[repo_param],
+                "url": parameters["head_repository"],
                 "project": parameters["project"],
                 "level": parameters["level"],
+                "base_url": parameters["base_repository"],
             }
 
             revision = parameters["head_rev"]
@@ -181,6 +179,9 @@ def register_callback_action(
             branch = parameters.get("head_ref")
             if branch:
                 push["branch"] = branch
+            base_branch = parameters.get("base_ref")
+            if base_branch and branch != base_branch:
+                push["base_branch"] = base_branch
 
             action = {
                 "name": name,
@@ -215,13 +216,16 @@ def register_callback_action(
             if "/" in actionPerm:
                 raise Exception("`/` is not allowed in action names; use `-`")
 
+            if parameters["tasks_for"].startswith("github-pull-request"):
+                hookId = f"in-tree-pr-action-{level}-{actionPerm}/{tcyml_hash}"
+            else:
+                hookId = f"in-tree-action-{level}-{actionPerm}/{tcyml_hash}"
+
             rv.update(
                 {
                     "kind": "hook",
                     "hookGroupId": f"project-{trustDomain}",
-                    "hookId": "in-tree-action-{}-{}/{}".format(
-                        level, actionPerm, tcyml_hash
-                    ),
+                    "hookId": hookId,
                     "hookPayload": {
                         # provide the decision-task parameters as context for triggerHook
                         "decision": {
@@ -297,16 +301,20 @@ def sanity_check_task_scope(callback, parameters, graph_config):
 
     actionPerm = "generic" if action.generic else action.cb_name
 
-    repo_param = "head_repository"
-    raw_url = parameters[repo_param]
+    raw_url = parameters["base_repository"]
     parsed_url = parse(raw_url)
-    expected_scope = f"assume:{parsed_url.taskcluster_role_prefix}:action:{actionPerm}"
+    action_scope = f"assume:{parsed_url.taskcluster_role_prefix}:action:{actionPerm}"
+    pr_action_scope = (
+        f"assume:{parsed_url.taskcluster_role_prefix}:pr-action:{actionPerm}"
+    )
 
     # the scope should appear literally; no need for a satisfaction check. The use of
     # get_current_scopes here calls the auth service through the Taskcluster Proxy, giving
     # the precise scopes available to this task.
-    if expected_scope not in taskcluster.get_current_scopes():
-        raise ValueError(f"Expected task scope {expected_scope} for this action")
+    if not set((action_scope, pr_action_scope)) & set(taskcluster.get_current_scopes()):
+        raise ValueError(
+            f"Expected task scope {action_scope} or {pr_action_scope} for this action"
+        )
 
 
 def trigger_action_callback(

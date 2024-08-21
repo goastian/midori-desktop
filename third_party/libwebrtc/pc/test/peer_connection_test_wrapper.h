@@ -23,10 +23,14 @@
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
+#include "api/rtp_parameters.h"
 #include "api/rtp_receiver_interface.h"
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
+#include "api/video/resolution.h"
 #include "pc/test/fake_audio_capture_module.h"
+#include "pc/test/fake_periodic_video_source.h"
+#include "pc/test/fake_periodic_video_track_source.h"
 #include "pc/test/fake_video_track_renderer.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
@@ -60,6 +64,10 @@ class PeerConnectionTestWrapper
   rtc::scoped_refptr<webrtc::DataChannelInterface> CreateDataChannel(
       const std::string& label,
       const webrtc::DataChannelInit& init);
+
+  absl::optional<webrtc::RtpCodecCapability> FindFirstSendCodecWithName(
+      cricket::MediaType media_type,
+      const std::string& name) const;
 
   void WaitForNegotiation();
 
@@ -106,16 +114,21 @@ class PeerConnectionTestWrapper
   sigslot::signal1<const std::string&> SignalOnSdpReady;
   sigslot::signal1<webrtc::DataChannelInterface*> SignalOnDataChannel;
 
+  rtc::scoped_refptr<webrtc::MediaStreamInterface> GetUserMedia(
+      bool audio,
+      const cricket::AudioOptions& audio_options,
+      bool video,
+      webrtc::Resolution resolution = {
+          .width = webrtc::FakePeriodicVideoSource::kDefaultWidth,
+          .height = webrtc::FakePeriodicVideoSource::kDefaultHeight});
+  void StopFakeVideoSources();
+
  private:
   void SetLocalDescription(webrtc::SdpType type, const std::string& sdp);
   void SetRemoteDescription(webrtc::SdpType type, const std::string& sdp);
   bool CheckForConnection();
   bool CheckForAudio();
   bool CheckForVideo();
-  rtc::scoped_refptr<webrtc::MediaStreamInterface> GetUserMedia(
-      bool audio,
-      const cricket::AudioOptions& audio_options,
-      bool video);
 
   webrtc::test::ScopedKeyValueConfig field_trials_;
   std::string name_;
@@ -130,6 +143,8 @@ class PeerConnectionTestWrapper
   std::unique_ptr<webrtc::FakeVideoTrackRenderer> renderer_;
   int num_get_user_media_calls_ = 0;
   bool pending_negotiation_;
+  std::vector<rtc::scoped_refptr<webrtc::FakePeriodicVideoTrackSource>>
+      fake_video_sources_;
 };
 
 #endif  // PC_TEST_PEER_CONNECTION_TEST_WRAPPER_H_

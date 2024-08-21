@@ -13,6 +13,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,13 @@
 #include "api/video/video_rotation.h"
 #include "api/video/video_timing.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
+
+// This file contains class definitions for reading/writing each RTP header
+// extension. Each class must be defined such that it is compatible with being
+// an argument to the templated RtpPacket::GetExtension and
+// RtpPacketToSend::SetExtension methods. New header extensions must have class
+// names ending with "Extension", for the purpose of avoiding collisions with
+// RTP extension information exposed in the public API of WebRTC.
 
 namespace webrtc {
 
@@ -49,6 +57,11 @@ class AbsoluteSendTime {
     RTC_DCHECK_LT(time6x18, 1 << 24);
     return static_cast<uint32_t>(time6x18);
   }
+
+  static constexpr Timestamp ToTimestamp(uint32_t time_24bits) {
+    RTC_DCHECK_LT(time_24bits, (1 << 24));
+    return Timestamp::Micros((time_24bits* int64_t{1'000'000}) >> 18);
+  }
 };
 
 class AbsoluteCaptureTimeExtension {
@@ -69,7 +82,7 @@ class AbsoluteCaptureTimeExtension {
                     const AbsoluteCaptureTime& extension);
 };
 
-class AudioLevel {
+class AudioLevelExtension {
  public:
   static constexpr RTPExtensionType kId = kRtpExtensionAudioLevel;
   static constexpr uint8_t kValueSizeBytes = 1;
@@ -193,9 +206,9 @@ class PlayoutDelayLimits {
   // Playout delay in milliseconds. A playout delay limit (min or max)
   // has 12 bits allocated. This allows a range of 0-4095 values which
   // translates to a range of 0-40950 in milliseconds.
-  static constexpr int kGranularityMs = 10;
+  static constexpr TimeDelta kGranularity = TimeDelta::Millis(10);
   // Maximum playout delay value in milliseconds.
-  static constexpr int kMaxMs = 0xfff * kGranularityMs;  // 40950.
+  static constexpr TimeDelta kMax = 0xfff * kGranularity;  // 40950.
 
   static bool Parse(rtc::ArrayView<const uint8_t> data,
                     VideoPlayoutDelay* playout_delay);

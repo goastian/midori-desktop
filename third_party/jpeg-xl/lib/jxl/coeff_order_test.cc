@@ -5,9 +5,11 @@
 
 #include "lib/jxl/coeff_order.h"
 
-#include <stdio.h>
+#include <jxl/memory_manager.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdio>
 #include <numeric>  // iota
 #include <utility>
 #include <vector>
@@ -15,9 +17,12 @@
 #include "lib/jxl/base/printf_macros.h"
 #include "lib/jxl/base/random.h"
 #include "lib/jxl/base/span.h"
+#include "lib/jxl/base/status.h"
 #include "lib/jxl/coeff_order_fwd.h"
 #include "lib/jxl/dec_bit_reader.h"
+#include "lib/jxl/enc_bit_writer.h"
 #include "lib/jxl/enc_coeff_order.h"
+#include "lib/jxl/test_memory_manager.h"
 #include "lib/jxl/testing.h"
 
 namespace jxl {
@@ -25,14 +30,15 @@ namespace {
 
 void RoundtripPermutation(coeff_order_t* perm, coeff_order_t* out, size_t len,
                           size_t* size) {
-  BitWriter writer;
+  JxlMemoryManager* memory_manager = jxl::test::MemoryManager();
+  BitWriter writer{memory_manager};
   EncodePermutation(perm, 0, len, &writer, 0, nullptr);
   writer.ZeroPadToByte();
   Status status = true;
   {
     BitReader reader(writer.GetSpan());
     BitReaderScopedCloser closer(&reader, &status);
-    ASSERT_TRUE(DecodePermutation(0, len, out, &reader));
+    ASSERT_TRUE(DecodePermutation(memory_manager, 0, len, out, &reader));
   }
   ASSERT_TRUE(status);
   *size = writer.GetSpan().size();

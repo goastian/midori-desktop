@@ -1,25 +1,26 @@
-use super::{CryptoError, DER_OID_P256_BYTES};
+use super::CryptoError;
 use nss_gk_api::p11::{
     PK11Origin, PK11_CreateContextBySymKey, PK11_Decrypt, PK11_DigestFinal, PK11_DigestOp,
-    PK11_Encrypt, PK11_GenerateKeyPairWithOpFlags, PK11_GenerateRandom, PK11_HashBuf,
-    PK11_ImportSymKey, PK11_PubDeriveWithKDF, PrivateKey, PublicKey,
+    PK11_Encrypt, PK11_ExportDERPrivateKeyInfo, PK11_GenerateKeyPairWithOpFlags,
+    PK11_GenerateRandom, PK11_HashBuf, PK11_ImportDERPrivateKeyInfoAndReturnKey, PK11_ImportSymKey,
+    PK11_PubDeriveWithKDF, PK11_SignWithMechanism, PrivateKey, PublicKey,
     SECKEY_DecodeDERSubjectPublicKeyInfo, SECKEY_ExtractPublicKey, SECOidTag, Slot,
-    SubjectPublicKeyInfo, AES_BLOCK_SIZE, PK11_ATTR_SESSION, SHA256_LENGTH,
+    SubjectPublicKeyInfo, AES_BLOCK_SIZE, PK11_ATTR_EXTRACTABLE, PK11_ATTR_INSENSITIVE,
+    PK11_ATTR_SESSION, SHA256_LENGTH,
 };
-use nss_gk_api::{IntoResult, SECItem, SECItemBorrowed, PR_FALSE};
+use nss_gk_api::{IntoResult, SECItem, SECItemBorrowed, ScopedSECItem, PR_FALSE};
 use pkcs11_bindings::{
     CKA_DERIVE, CKA_ENCRYPT, CKA_SIGN, CKD_NULL, CKF_DERIVE, CKM_AES_CBC, CKM_ECDH1_DERIVE,
-    CKM_EC_KEY_PAIR_GEN, CKM_SHA256_HMAC, CKM_SHA512_HMAC,
+    CKM_ECDSA_SHA256, CKM_EC_KEY_PAIR_GEN, CKM_SHA256_HMAC, CKM_SHA512_HMAC,
 };
 use std::convert::TryFrom;
 use std::os::raw::{c_int, c_uint};
 use std::ptr;
 
-#[cfg(test)]
-use super::DER_OID_EC_PUBLIC_KEY_BYTES;
+use super::der;
 
 #[cfg(test)]
-use nss_gk_api::p11::PK11_ImportDERPrivateKeyInfoAndReturnKey;
+use nss_gk_api::p11::PK11_VerifyWithMechanism;
 
 impl From<nss_gk_api::Error> for CryptoError {
     fn from(e: nss_gk_api::Error) -> Self {
@@ -65,19 +66,12 @@ fn ecdh_nss_raw(client_private: PrivateKey, peer_public: PublicKey) -> Result<Ve
     Ok(ecdh_x_coord_bytes.to_vec())
 }
 
-/// Ephemeral ECDH over P256. Takes a DER SubjectPublicKeyInfo that encodes a public key. Generates
-/// an ephemeral P256 key pair. Returns
-///  1) the x coordinate of the shared point, and
-///  2) the uncompressed SEC 1 encoding of the ephemeral public key.
-pub fn ecdhe_p256_raw(peer_spki: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-    nss_gk_api::init();
-
-    let peer_public = nss_public_key_from_der_spki(peer_spki)?;
-
+fn generate_p256_nss() -> Result<(PrivateKey, PublicKey)> {
     // Hard-coding the P256 OID here is easier than extracting a group name from peer_public and
     // comparing it with P256. We'll fail in `PK11_GenerateKeyPairWithOpFlags` if peer_public is on
     // the wrong curve.
-    let mut oid = SECItemBorrowed::wrap(DER_OID_P256_BYTES);
+    let oid_bytes = der::object_id(der::OID_SECP256R1_BYTES)?;
+    let mut oid = SECItemBorrowed::wrap(&oid_bytes);
     let oid_ptr: *mut SECItem = oid.as_mut();
 
     let slot = Slot::internal()?;
@@ -88,7 +82,7 @@ pub fn ecdhe_p256_raw(peer_spki: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     // `PublicKey::from_ptr` calls here, so I've wrapped them in the same unsafe block as a
     // warning. TODO(jms) Replace this once there is a safer alternative.
     // https://github.com/mozilla/nss-gk-api/issues/1
-    let (client_private, client_public) = unsafe {
+    unsafe {
         let client_private =
             // Type of `param` argument depends on mechanism. For EC keygen it is
             // `SECKEYECParams *` which is a typedef for `SECItem *`.
@@ -97,7 +91,7 @@ pub fn ecdhe_p256_raw(peer_spki: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
                 CKM_EC_KEY_PAIR_GEN,
                 oid_ptr.cast(),
                 &mut client_public_ptr,
-                PK11_ATTR_SESSION,
+                PK11_ATTR_EXTRACTABLE | PK11_ATTR_INSENSITIVE | PK11_ATTR_SESSION,
                 CKF_DERIVE,
                 CKF_DERIVE,
                 ptr::null_mut(),
@@ -106,8 +100,74 @@ pub fn ecdhe_p256_raw(peer_spki: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
 
         let client_public = PublicKey::from_ptr(client_public_ptr)?;
 
-        (client_private, client_public)
+        Ok((client_private, client_public))
+    }
+}
+
+/// This returns a PKCS#8 ECPrivateKey and an uncompressed SEC1 public key.
+pub fn gen_p256() -> Result<(Vec<u8>, Vec<u8>)> {
+    nss_gk_api::init();
+
+    let (client_private, client_public) = generate_p256_nss()?;
+
+    let pkcs8_priv = unsafe {
+        let pkcs8_priv_item: ScopedSECItem =
+            PK11_ExportDERPrivateKeyInfo(*client_private, ptr::null_mut()).into_result()?;
+        pkcs8_priv_item.into_vec()
     };
+
+    let sec1_pub = client_public.key_data()?;
+
+    Ok((pkcs8_priv, sec1_pub))
+}
+
+pub fn ecdsa_p256_sha256_sign_raw(private: &[u8], data: &[u8]) -> Result<Vec<u8>> {
+    nss_gk_api::init();
+
+    let slot = Slot::internal()?;
+
+    let imported_private: PrivateKey = unsafe {
+        let mut imported_private_ptr = ptr::null_mut();
+        PK11_ImportDERPrivateKeyInfoAndReturnKey(
+            *slot,
+            SECItemBorrowed::wrap(private).as_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            PR_FALSE,
+            PR_FALSE,
+            255, /* todo: expose KU_ flags in nss-gk-api */
+            &mut imported_private_ptr,
+            ptr::null_mut(),
+        );
+        imported_private_ptr.into_result()?
+    };
+
+    let signature_buf = vec![0; 64];
+    unsafe {
+        PK11_SignWithMechanism(
+            *imported_private,
+            CKM_ECDSA_SHA256,
+            ptr::null_mut(),
+            SECItemBorrowed::wrap(&signature_buf).as_mut(),
+            SECItemBorrowed::wrap(data).as_mut(),
+        )
+        .into_result()?;
+    }
+
+    let (r, s) = signature_buf.split_at(32);
+    der::sequence(&[&der::integer(r)?, &der::integer(s)?])
+}
+
+/// Ephemeral ECDH over P256. Takes a DER SubjectPublicKeyInfo that encodes a public key. Generates
+/// an ephemeral P256 key pair. Returns
+///  1) the x coordinate of the shared point, and
+///  2) the uncompressed SEC 1 encoding of the ephemeral public key.
+pub fn ecdhe_p256_raw(peer_spki: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+    nss_gk_api::init();
+
+    let peer_public = nss_public_key_from_der_spki(peer_spki)?;
+
+    let (client_private, client_public) = generate_p256_nss()?;
 
     let shared_point = ecdh_nss_raw(client_private, peer_public)?;
 
@@ -300,6 +360,8 @@ pub fn sha256(data: &[u8]) -> Result<Vec<u8>> {
 }
 
 pub fn random_bytes(count: usize) -> Result<Vec<u8>> {
+    nss_gk_api::init();
+
     let count_cint: c_int = match c_int::try_from(count) {
         Ok(c) => c,
         _ => return Err(CryptoError::LibraryFailure),
@@ -321,65 +383,63 @@ pub fn test_ecdh_p256_raw(
 
     let peer_public = nss_public_key_from_der_spki(peer_spki)?;
 
-    /* NSS has no mechanism to import a raw elliptic curve coordinate as a private key.
-     * We need to encode it in a key storage format such as PKCS#8. To avoid a dependency
-     * on an ASN.1 encoder for this test, we'll do it manually. */
-    let pkcs8_private_key_info_version = &[0x02, 0x01, 0x00];
-    let rfc5915_ec_private_key_version = &[0x02, 0x01, 0x01];
+    // NSS has no mechanism to import a raw elliptic curve coordinate as a private key.
+    // We need to encode it in an RFC 5208 PrivateKeyInfo:
+    //
+    //   PrivateKeyInfo ::= SEQUENCE {
+    //     version                   Version,
+    //     privateKeyAlgorithm       PrivateKeyAlgorithmIdentifier,
+    //     privateKey                PrivateKey,
+    //     attributes           [0]  IMPLICIT Attributes OPTIONAL }
+    //
+    //    Version ::= INTEGER
+    //    PrivateKeyAlgorithmIdentifier ::= AlgorithmIdentifier
+    //    PrivateKey ::= OCTET STRING
+    //    Attributes ::= SET OF Attribute
+    //
+    // The privateKey field will contain an RFC 5915 ECPrivateKey:
+    //   ECPrivateKey ::= SEQUENCE {
+    //     version        INTEGER { ecPrivkeyVer1(1) } (ecPrivkeyVer1),
+    //     privateKey     OCTET STRING,
+    //     parameters [0] ECParameters {{ NamedCurve }} OPTIONAL,
+    //     publicKey  [1] BIT STRING OPTIONAL
+    //   }
 
-    let (curve_oid, seq_len, alg_len, attr_len, ecpriv_len, param_len, spk_len) = (
-        DER_OID_P256_BYTES,
-        [0x81, 0x87].as_slice(),
-        [0x13].as_slice(),
-        [0x6d].as_slice(),
-        [0x6b].as_slice(),
-        [0x44].as_slice(),
-        [0x42].as_slice(),
-    );
-
-    let priv_len = client_private.len() as u8; // < 127
-
-    let mut pkcs8_priv: Vec<u8> = vec![];
-    // RFC 5208 PrivateKeyInfo
-    pkcs8_priv.push(0x30);
-    pkcs8_priv.extend_from_slice(seq_len);
-    //      Integer (0)
-    pkcs8_priv.extend_from_slice(pkcs8_private_key_info_version);
-    //      AlgorithmIdentifier
-    pkcs8_priv.push(0x30);
-    pkcs8_priv.extend_from_slice(alg_len);
-    //          ObjectIdentifier
-    pkcs8_priv.extend_from_slice(DER_OID_EC_PUBLIC_KEY_BYTES);
-    //          RFC 5480 ECParameters
-    pkcs8_priv.extend_from_slice(curve_oid);
-    //      Attributes
-    pkcs8_priv.push(0x04);
-    pkcs8_priv.extend_from_slice(attr_len);
-    //      RFC 5915 ECPrivateKey
-    pkcs8_priv.push(0x30);
-    pkcs8_priv.extend_from_slice(ecpriv_len);
-    pkcs8_priv.extend_from_slice(rfc5915_ec_private_key_version);
-    pkcs8_priv.push(0x04);
-    pkcs8_priv.push(priv_len);
-    pkcs8_priv.extend_from_slice(client_private);
-    pkcs8_priv.push(0xa1);
-    pkcs8_priv.extend_from_slice(param_len);
-    pkcs8_priv.push(0x03);
-    pkcs8_priv.extend_from_slice(spk_len);
-    pkcs8_priv.push(0x0);
-    pkcs8_priv.push(0x04); // SEC 1 encoded uncompressed point
-    pkcs8_priv.extend_from_slice(client_public_x);
-    pkcs8_priv.extend_from_slice(client_public_y);
+    // PrivateKeyInfo
+    let priv_key_info = der::sequence(&[
+        // version
+        &der::integer(&[0x00])?,
+        // privateKeyAlgorithm
+        &der::sequence(&[
+            &der::object_id(der::OID_EC_PUBLIC_KEY_BYTES)?,
+            &der::object_id(der::OID_SECP256R1_BYTES)?,
+        ])?,
+        // privateKey
+        &der::octet_string(
+            // ECPrivateKey
+            &der::sequence(&[
+                // version
+                &der::integer(&[0x01])?,
+                // privateKey
+                &der::octet_string(client_private)?,
+                // publicKey
+                &der::context_specific_explicit_tag(
+                    1, // publicKey
+                    &der::bit_string(&[&[0x04], client_public_x, client_public_y].concat())?,
+                )?,
+            ])?,
+        )?,
+    ])?;
 
     // Now we can import the private key.
     let slot = Slot::internal()?;
-    let mut pkcs8_priv_item = SECItemBorrowed::wrap(&pkcs8_priv);
-    let pkcs8_priv_item_ptr: *mut SECItem = pkcs8_priv_item.as_mut();
+    let mut priv_key_info_item = SECItemBorrowed::wrap(&priv_key_info);
+    let priv_key_info_item_ptr: *mut SECItem = priv_key_info_item.as_mut();
     let mut client_private_ptr = ptr::null_mut();
     unsafe {
         PK11_ImportDERPrivateKeyInfoAndReturnKey(
             *slot,
-            pkcs8_priv_item_ptr,
+            priv_key_info_item_ptr,
             ptr::null_mut(),
             ptr::null_mut(),
             PR_FALSE,
@@ -394,4 +454,28 @@ pub fn test_ecdh_p256_raw(
     let shared_point = ecdh_nss_raw(client_private, peer_public)?;
 
     Ok(shared_point)
+}
+
+#[cfg(test)]
+pub fn test_ecdsa_p256_sha256_verify_raw(
+    public: &[u8],
+    signature: &[u8],
+    data: &[u8],
+) -> Result<()> {
+    nss_gk_api::init();
+
+    let signature = der::read_p256_sig(signature)?;
+    let public = nss_public_key_from_der_spki(public)?;
+    unsafe {
+        PK11_VerifyWithMechanism(
+            *public,
+            CKM_ECDSA_SHA256,
+            ptr::null_mut(),
+            SECItemBorrowed::wrap(&signature).as_mut(),
+            SECItemBorrowed::wrap(data).as_mut(),
+            ptr::null_mut(),
+        )
+        .into_result()?
+    }
+    Ok(())
 }

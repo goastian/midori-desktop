@@ -82,7 +82,10 @@ pub type EntryPointResourceMap = std::collections::BTreeMap<String, EntryPointRe
 enum ResolvedBinding {
     BuiltIn(crate::BuiltIn),
     Attribute(u32),
-    Color(u32),
+    Color {
+        location: u32,
+        second_blend_source: bool,
+    },
     User {
         prefix: &'static str,
         index: u32,
@@ -118,16 +121,30 @@ pub enum Error {
     UnsupportedCall(String),
     #[error("feature '{0}' is not implemented yet")]
     FeatureNotImplemented(String),
-    #[error("module is not valid")]
-    Validation,
+    #[error("internal naga error: module should not have validated: {0}")]
+    GenericValidation(String),
     #[error("BuiltIn {0:?} is not supported")]
     UnsupportedBuiltIn(crate::BuiltIn),
     #[error("capability {0:?} is not supported")]
     CapabilityNotSupported(crate::valid::Capabilities),
-    #[error("address space {0:?} is not supported for target MSL version")]
-    UnsupportedAddressSpace(crate::AddressSpace),
     #[error("attribute '{0}' is not supported for target MSL version")]
     UnsupportedAttribute(String),
+    #[error("function '{0}' is not supported for target MSL version")]
+    UnsupportedFunction(String),
+    #[error("can not use writeable storage buffers in fragment stage prior to MSL 1.2")]
+    UnsupportedWriteableStorageBuffer,
+    #[error("can not use writeable storage textures in {0:?} stage prior to MSL 1.2")]
+    UnsupportedWriteableStorageTexture(crate::ShaderStage),
+    #[error("can not use read-write storage textures prior to MSL 1.2")]
+    UnsupportedRWStorageTexture,
+    #[error("array of '{0}' is not supported for target MSL version")]
+    UnsupportedArrayOf(String),
+    #[error("array of type '{0:?}' is not supported")]
+    UnsupportedArrayOfType(Handle<crate::Type>),
+    #[error("ray tracing is not supported prior to MSL 2.3")]
+    UnsupportedRayTracing,
+    #[error("overrides should not be present at this stage")]
+    Override,
 }
 
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
@@ -194,7 +211,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            lang_version: (2, 0),
+            lang_version: (1, 0),
             per_entry_point_map: EntryPointResourceMap::default(),
             inline_samplers: Vec::new(),
             spirv_cross_compatibility: false,
@@ -205,15 +222,136 @@ impl Default for Options {
     }
 }
 
-/// A subset of options that are meant to be changed per pipeline.
+/// Corresponds to [WebGPU `GPUVertexFormat`](
+/// https://gpuweb.github.io/gpuweb/#enumdef-gpuvertexformat).
+#[repr(u32)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+pub enum VertexFormat {
+    /// Two unsigned bytes (u8). `vec2<u32>` in shaders.
+    Uint8x2 = 0,
+    /// Four unsigned bytes (u8). `vec4<u32>` in shaders.
+    Uint8x4 = 1,
+    /// Two signed bytes (i8). `vec2<i32>` in shaders.
+    Sint8x2 = 2,
+    /// Four signed bytes (i8). `vec4<i32>` in shaders.
+    Sint8x4 = 3,
+    /// Two unsigned bytes (u8). [0, 255] converted to float [0, 1] `vec2<f32>` in shaders.
+    Unorm8x2 = 4,
+    /// Four unsigned bytes (u8). [0, 255] converted to float [0, 1] `vec4<f32>` in shaders.
+    Unorm8x4 = 5,
+    /// Two signed bytes (i8). [-127, 127] converted to float [-1, 1] `vec2<f32>` in shaders.
+    Snorm8x2 = 6,
+    /// Four signed bytes (i8). [-127, 127] converted to float [-1, 1] `vec4<f32>` in shaders.
+    Snorm8x4 = 7,
+    /// Two unsigned shorts (u16). `vec2<u32>` in shaders.
+    Uint16x2 = 8,
+    /// Four unsigned shorts (u16). `vec4<u32>` in shaders.
+    Uint16x4 = 9,
+    /// Two signed shorts (i16). `vec2<i32>` in shaders.
+    Sint16x2 = 10,
+    /// Four signed shorts (i16). `vec4<i32>` in shaders.
+    Sint16x4 = 11,
+    /// Two unsigned shorts (u16). [0, 65535] converted to float [0, 1] `vec2<f32>` in shaders.
+    Unorm16x2 = 12,
+    /// Four unsigned shorts (u16). [0, 65535] converted to float [0, 1] `vec4<f32>` in shaders.
+    Unorm16x4 = 13,
+    /// Two signed shorts (i16). [-32767, 32767] converted to float [-1, 1] `vec2<f32>` in shaders.
+    Snorm16x2 = 14,
+    /// Four signed shorts (i16). [-32767, 32767] converted to float [-1, 1] `vec4<f32>` in shaders.
+    Snorm16x4 = 15,
+    /// Two half-precision floats (no Rust equiv). `vec2<f32>` in shaders.
+    Float16x2 = 16,
+    /// Four half-precision floats (no Rust equiv). `vec4<f32>` in shaders.
+    Float16x4 = 17,
+    /// One single-precision float (f32). `f32` in shaders.
+    Float32 = 18,
+    /// Two single-precision floats (f32). `vec2<f32>` in shaders.
+    Float32x2 = 19,
+    /// Three single-precision floats (f32). `vec3<f32>` in shaders.
+    Float32x3 = 20,
+    /// Four single-precision floats (f32). `vec4<f32>` in shaders.
+    Float32x4 = 21,
+    /// One unsigned int (u32). `u32` in shaders.
+    Uint32 = 22,
+    /// Two unsigned ints (u32). `vec2<u32>` in shaders.
+    Uint32x2 = 23,
+    /// Three unsigned ints (u32). `vec3<u32>` in shaders.
+    Uint32x3 = 24,
+    /// Four unsigned ints (u32). `vec4<u32>` in shaders.
+    Uint32x4 = 25,
+    /// One signed int (i32). `i32` in shaders.
+    Sint32 = 26,
+    /// Two signed ints (i32). `vec2<i32>` in shaders.
+    Sint32x2 = 27,
+    /// Three signed ints (i32). `vec3<i32>` in shaders.
+    Sint32x3 = 28,
+    /// Four signed ints (i32). `vec4<i32>` in shaders.
+    Sint32x4 = 29,
+    /// Three unsigned 10-bit integers and one 2-bit integer, packed into a 32-bit integer (u32). [0, 1024] converted to float [0, 1] `vec4<f32>` in shaders.
+    #[cfg_attr(feature = "serde", serde(rename = "unorm10-10-10-2"))]
+    Unorm10_10_10_2 = 34,
+}
+
+/// A mapping of vertex buffers and their attributes to shader
+/// locations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+pub struct AttributeMapping {
+    /// Shader location associated with this attribute
+    pub shader_location: u32,
+    /// Offset in bytes from start of vertex buffer structure
+    pub offset: u32,
+    /// Format code to help us unpack the attribute into the type
+    /// used by the shader. Codes correspond to a 0-based index of
+    /// <https://gpuweb.github.io/gpuweb/#enumdef-gpuvertexformat>.
+    /// The conversion process is described by
+    /// <https://gpuweb.github.io/gpuweb/#vertex-processing>.
+    pub format: VertexFormat,
+}
+
+/// A description of a vertex buffer with all the information we
+/// need to address the attributes within it.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+pub struct VertexBufferMapping {
+    /// Shader location associated with this buffer
+    pub id: u32,
+    /// Size of the structure in bytes
+    pub stride: u32,
+    /// True if the buffer is indexed by vertex, false if indexed
+    /// by instance.
+    pub indexed_by_vertex: bool,
+    /// Vec of the attributes within the structure
+    pub attributes: Vec<AttributeMapping>,
+}
+
+/// A subset of options that are meant to be changed per pipeline.
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
 pub struct PipelineOptions {
-    /// Allow `BuiltIn::PointSize` in the vertex shader.
+    /// Allow `BuiltIn::PointSize` and inject it if doesn't exist.
     ///
-    /// Metal doesn't like this for non-point primitive topologies.
-    pub allow_point_size: bool,
+    /// Metal doesn't like this for non-point primitive topologies and requires it for
+    /// point primitive topologies.
+    ///
+    /// Enable this for vertex shaders with point primitive topologies.
+    pub allow_and_force_point_size: bool,
+
+    /// If set, when generating the Metal vertex shader, transform it
+    /// to receive the vertex buffers, lengths, and vertex id as args,
+    /// and bounds-check the vertex id and use the index into the
+    /// vertex buffers to access attributes, rather than using Metal's
+    /// [[stage-in]] assembled attribute data.
+    pub vertex_pulling_transform: bool,
+
+    /// vertex_buffer_mappings are used during shader translation to
+    /// support vertex pulling.
+    pub vertex_buffer_mappings: Vec<VertexBufferMapping>,
 }
 
 impl Options {
@@ -224,16 +362,30 @@ impl Options {
     ) -> Result<ResolvedBinding, Error> {
         match *binding {
             crate::Binding::BuiltIn(mut built_in) => {
-                if let crate::BuiltIn::Position { ref mut invariant } = built_in {
-                    if *invariant && self.lang_version < (2, 1) {
-                        return Err(Error::UnsupportedAttribute("invariant".to_string()));
-                    }
+                match built_in {
+                    crate::BuiltIn::Position { ref mut invariant } => {
+                        if *invariant && self.lang_version < (2, 1) {
+                            return Err(Error::UnsupportedAttribute("invariant".to_string()));
+                        }
 
-                    // The 'invariant' attribute may only appear on vertex
-                    // shader outputs, not fragment shader inputs.
-                    if !matches!(mode, LocationMode::VertexOutput) {
-                        *invariant = false;
+                        // The 'invariant' attribute may only appear on vertex
+                        // shader outputs, not fragment shader inputs.
+                        if !matches!(mode, LocationMode::VertexOutput) {
+                            *invariant = false;
+                        }
                     }
+                    crate::BuiltIn::BaseInstance if self.lang_version < (1, 2) => {
+                        return Err(Error::UnsupportedAttribute("base_instance".to_string()));
+                    }
+                    crate::BuiltIn::InstanceIndex if self.lang_version < (1, 2) => {
+                        return Err(Error::UnsupportedAttribute("instance_id".to_string()));
+                    }
+                    // macOS: Since Metal 2.2
+                    // iOS: Since Metal 2.3 (check depends on https://github.com/gfx-rs/naga/issues/2164)
+                    crate::BuiltIn::PrimitiveIndex if self.lang_version < (2, 2) => {
+                        return Err(Error::UnsupportedAttribute("primitive_id".to_string()));
+                    }
+                    _ => {}
                 }
 
                 Ok(ResolvedBinding::BuiltIn(built_in))
@@ -242,9 +394,20 @@ impl Options {
                 location,
                 interpolation,
                 sampling,
+                second_blend_source,
             } => match mode {
                 LocationMode::VertexInput => Ok(ResolvedBinding::Attribute(location)),
-                LocationMode::FragmentOutput => Ok(ResolvedBinding::Color(location)),
+                LocationMode::FragmentOutput => {
+                    if second_blend_source && self.lang_version < (1, 2) {
+                        return Err(Error::UnsupportedAttribute(
+                            "second_blend_source".to_string(),
+                        ));
+                    }
+                    Ok(ResolvedBinding::Color {
+                        location,
+                        second_blend_source,
+                    })
+                }
                 LocationMode::VertexOutput | LocationMode::FragmentInput => {
                     Ok(ResolvedBinding::User {
                         prefix: if self.spirv_cross_compatibility {
@@ -263,13 +426,10 @@ impl Options {
                         },
                     })
                 }
-                LocationMode::Uniform => {
-                    log::error!(
-                        "Unexpected Binding::Location({}) for the Uniform mode",
-                        location
-                    );
-                    Err(Error::Validation)
-                }
+                LocationMode::Uniform => Err(Error::GenericValidation(format!(
+                    "Unexpected Binding::Location({}) for the Uniform mode",
+                    location
+                ))),
             },
         }
     }
@@ -394,6 +554,11 @@ impl ResolvedBinding {
                     Bi::WorkGroupId => "threadgroup_position_in_grid",
                     Bi::WorkGroupSize => "dispatch_threads_per_threadgroup",
                     Bi::NumWorkGroups => "threadgroups_per_grid",
+                    // subgroup
+                    Bi::NumSubgroups => "simdgroups_per_threadgroup",
+                    Bi::SubgroupId => "simdgroup_index_in_threadgroup",
+                    Bi::SubgroupSize => "threads_per_simdgroup",
+                    Bi::SubgroupInvocationId => "thread_index_in_simdgroup",
                     Bi::CullDistance | Bi::ViewIndex => {
                         return Err(Error::UnsupportedBuiltIn(built_in))
                     }
@@ -401,7 +566,16 @@ impl ResolvedBinding {
                 write!(out, "{name}")?;
             }
             Self::Attribute(index) => write!(out, "attribute({index})")?,
-            Self::Color(index) => write!(out, "color({index})")?,
+            Self::Color {
+                location,
+                second_blend_source,
+            } => {
+                if second_blend_source {
+                    write!(out, "color({location}) index(1)")?
+                } else {
+                    write!(out, "color({location})")?
+                }
+            }
             Self::User {
                 prefix,
                 index,
@@ -477,7 +651,7 @@ pub fn write_string(
     options: &Options,
     pipeline_options: &PipelineOptions,
 ) -> Result<(String, TranslationInfo), Error> {
-    let mut w = writer::Writer::new(String::new());
+    let mut w = Writer::new(String::new());
     let info = w.write(module, info, options, pipeline_options)?;
     Ok((w.finish(), info))
 }
@@ -486,4 +660,22 @@ pub fn write_string(
 fn test_error_size() {
     use std::mem::size_of;
     assert_eq!(size_of::<Error>(), 32);
+}
+
+impl crate::AtomicFunction {
+    fn to_msl(self) -> Result<&'static str, Error> {
+        Ok(match self {
+            Self::Add => "fetch_add",
+            Self::Subtract => "fetch_sub",
+            Self::And => "fetch_and",
+            Self::InclusiveOr => "fetch_or",
+            Self::ExclusiveOr => "fetch_xor",
+            Self::Min => "fetch_min",
+            Self::Max => "fetch_max",
+            Self::Exchange { compare: None } => "exchange",
+            Self::Exchange { compare: Some(_) } => Err(Error::FeatureNotImplemented(
+                "atomic CompareExchange".to_string(),
+            ))?,
+        })
+    }
 }

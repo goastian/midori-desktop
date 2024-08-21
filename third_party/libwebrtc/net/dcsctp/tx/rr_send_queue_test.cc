@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "net/dcsctp/common/internal_types.h"
 #include "net/dcsctp/packet/data.h"
 #include "net/dcsctp/public/dcsctp_message.h"
 #include "net/dcsctp/public/dcsctp_options.h"
@@ -28,11 +29,12 @@ namespace dcsctp {
 namespace {
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
+using ::webrtc::TimeDelta;
+using ::webrtc::Timestamp;
 
-constexpr TimeMs kNow = TimeMs(0);
+constexpr Timestamp kNow = Timestamp::Zero();
 constexpr StreamID kStreamID(1);
 constexpr PPID kPPID(53);
-constexpr size_t kMaxQueueSize = 1000;
 constexpr StreamPriority kDefaultPriority(10);
 constexpr size_t kBufferedAmountLowThreshold = 500;
 constexpr size_t kOneFragmentPacketSize = 100;
@@ -44,7 +46,7 @@ class RRSendQueueTest : public testing::Test {
   RRSendQueueTest()
       : buf_("log: ",
              &callbacks_,
-             kMaxQueueSize,
+
              kMtu,
              kDefaultPriority,
              kBufferedAmountLowThreshold) {}
@@ -57,14 +59,12 @@ class RRSendQueueTest : public testing::Test {
 TEST_F(RRSendQueueTest, EmptyBuffer) {
   EXPECT_TRUE(buf_.IsEmpty());
   EXPECT_FALSE(buf_.Produce(kNow, kOneFragmentPacketSize).has_value());
-  EXPECT_FALSE(buf_.IsFull());
 }
 
 TEST_F(RRSendQueueTest, AddAndGetSingleChunk) {
   buf_.Add(kNow, DcSctpMessage(kStreamID, kPPID, {1, 2, 4, 5, 6}));
 
   EXPECT_FALSE(buf_.IsEmpty());
-  EXPECT_FALSE(buf_.IsFull());
   absl::optional<SendQueue::DataToSend> chunk_opt =
       buf_.Produce(kNow, kOneFragmentPacketSize);
   ASSERT_TRUE(chunk_opt.has_value());
@@ -121,30 +121,30 @@ TEST_F(RRSendQueueTest, GetChunksFromTwoMessages) {
 
 TEST_F(RRSendQueueTest, BufferBecomesFullAndEmptied) {
   std::vector<uint8_t> payload(600);
-  EXPECT_FALSE(buf_.IsFull());
+  EXPECT_LT(buf_.total_buffered_amount(), 1000u);
   buf_.Add(kNow, DcSctpMessage(kStreamID, kPPID, payload));
-  EXPECT_FALSE(buf_.IsFull());
+  EXPECT_LT(buf_.total_buffered_amount(), 1000u);
   buf_.Add(kNow, DcSctpMessage(StreamID(3), PPID(54), payload));
-  EXPECT_TRUE(buf_.IsFull());
+  EXPECT_GE(buf_.total_buffered_amount(), 1000u);
   // However, it's still possible to add messages. It's a soft limit, and it
   // might be necessary to forcefully add messages due to e.g. external
   // fragmentation.
   buf_.Add(kNow, DcSctpMessage(StreamID(5), PPID(55), payload));
-  EXPECT_TRUE(buf_.IsFull());
+  EXPECT_GE(buf_.total_buffered_amount(), 1000u);
 
   absl::optional<SendQueue::DataToSend> chunk_one = buf_.Produce(kNow, 1000);
   ASSERT_TRUE(chunk_one.has_value());
   EXPECT_EQ(chunk_one->data.stream_id, kStreamID);
   EXPECT_EQ(chunk_one->data.ppid, kPPID);
 
-  EXPECT_TRUE(buf_.IsFull());
+  EXPECT_GE(buf_.total_buffered_amount(), 1000u);
 
   absl::optional<SendQueue::DataToSend> chunk_two = buf_.Produce(kNow, 1000);
   ASSERT_TRUE(chunk_two.has_value());
   EXPECT_EQ(chunk_two->data.stream_id, StreamID(3));
   EXPECT_EQ(chunk_two->data.ppid, PPID(54));
 
-  EXPECT_FALSE(buf_.IsFull());
+  EXPECT_LT(buf_.total_buffered_amount(), 1000u);
   EXPECT_FALSE(buf_.IsEmpty());
 
   absl::optional<SendQueue::DataToSend> chunk_three = buf_.Produce(kNow, 1000);
@@ -152,7 +152,7 @@ TEST_F(RRSendQueueTest, BufferBecomesFullAndEmptied) {
   EXPECT_EQ(chunk_three->data.stream_id, StreamID(5));
   EXPECT_EQ(chunk_three->data.ppid, PPID(55));
 
-  EXPECT_FALSE(buf_.IsFull());
+  EXPECT_LT(buf_.total_buffered_amount(), 1000u);
   EXPECT_TRUE(buf_.IsEmpty());
 }
 
@@ -180,9 +180,9 @@ TEST_F(RRSendQueueTest, ProduceWithLifetimeExpiry) {
   std::vector<uint8_t> payload(20);
 
   // Default is no expiry
-  TimeMs now = kNow;
+  Timestamp now = kNow;
   buf_.Add(now, DcSctpMessage(kStreamID, kPPID, payload));
-  now += DurationMs(1000000);
+  now += TimeDelta::Seconds(1000);
   ASSERT_TRUE(buf_.Produce(now, kOneFragmentPacketSize));
 
   SendOptions expires_2_seconds;
@@ -190,17 +190,17 @@ TEST_F(RRSendQueueTest, ProduceWithLifetimeExpiry) {
 
   // Add and consume within lifetime
   buf_.Add(now, DcSctpMessage(kStreamID, kPPID, payload), expires_2_seconds);
-  now += DurationMs(2000);
+  now += TimeDelta::Millis(2000);
   ASSERT_TRUE(buf_.Produce(now, kOneFragmentPacketSize));
 
   // Add and consume just outside lifetime
   buf_.Add(now, DcSctpMessage(kStreamID, kPPID, payload), expires_2_seconds);
-  now += DurationMs(2001);
+  now += TimeDelta::Millis(2001);
   ASSERT_FALSE(buf_.Produce(now, kOneFragmentPacketSize));
 
   // A long time after expiry
   buf_.Add(now, DcSctpMessage(kStreamID, kPPID, payload), expires_2_seconds);
-  now += DurationMs(1000000);
+  now += TimeDelta::Seconds(1000);
   ASSERT_FALSE(buf_.Produce(now, kOneFragmentPacketSize));
 
   // Expire one message, but produce the second that is not expired.
@@ -210,7 +210,7 @@ TEST_F(RRSendQueueTest, ProduceWithLifetimeExpiry) {
   expires_4_seconds.lifetime = DurationMs(4000);
 
   buf_.Add(now, DcSctpMessage(kStreamID, kPPID, payload), expires_4_seconds);
-  now += DurationMs(2001);
+  now += TimeDelta::Millis(2001);
 
   ASSERT_TRUE(buf_.Produce(now, kOneFragmentPacketSize));
   ASSERT_FALSE(buf_.Produce(now, kOneFragmentPacketSize));
@@ -227,8 +227,7 @@ TEST_F(RRSendQueueTest, DiscardPartialPackets) {
   ASSERT_TRUE(chunk_one.has_value());
   EXPECT_FALSE(chunk_one->data.is_end);
   EXPECT_EQ(chunk_one->data.stream_id, kStreamID);
-  buf_.Discard(IsUnordered(false), chunk_one->data.stream_id,
-               chunk_one->data.message_id);
+  buf_.Discard(chunk_one->data.stream_id, chunk_one->message_id);
 
   absl::optional<SendQueue::DataToSend> chunk_two =
       buf_.Produce(kNow, kOneFragmentPacketSize);
@@ -244,8 +243,7 @@ TEST_F(RRSendQueueTest, DiscardPartialPackets) {
   ASSERT_FALSE(buf_.Produce(kNow, kOneFragmentPacketSize));
 
   // Calling it again shouldn't cause issues.
-  buf_.Discard(IsUnordered(false), chunk_one->data.stream_id,
-               chunk_one->data.message_id);
+  buf_.Discard(chunk_one->data.stream_id, chunk_one->message_id);
   ASSERT_FALSE(buf_.Produce(kNow, kOneFragmentPacketSize));
 }
 
@@ -364,6 +362,32 @@ TEST_F(RRSendQueueTest, CommittingResetsSSN) {
       buf_.Produce(kNow, kOneFragmentPacketSize);
   ASSERT_TRUE(chunk_three.has_value());
   EXPECT_EQ(chunk_three->data.ssn, SSN(0));
+}
+
+TEST_F(RRSendQueueTest, CommittingDoesNotResetMessageId) {
+  std::vector<uint8_t> payload(50);
+
+  buf_.Add(kNow, DcSctpMessage(kStreamID, kPPID, payload));
+  ASSERT_HAS_VALUE_AND_ASSIGN(SendQueue::DataToSend chunk1,
+                              buf_.Produce(kNow, kOneFragmentPacketSize));
+  EXPECT_EQ(chunk1.data.ssn, SSN(0));
+  EXPECT_EQ(chunk1.message_id, OutgoingMessageId(0));
+
+  buf_.Add(kNow, DcSctpMessage(kStreamID, kPPID, payload));
+  ASSERT_HAS_VALUE_AND_ASSIGN(SendQueue::DataToSend chunk2,
+                              buf_.Produce(kNow, kOneFragmentPacketSize));
+  EXPECT_EQ(chunk2.data.ssn, SSN(1));
+  EXPECT_EQ(chunk2.message_id, OutgoingMessageId(1));
+
+  buf_.PrepareResetStream(kStreamID);
+  EXPECT_THAT(buf_.GetStreamsReadyToBeReset(), UnorderedElementsAre(kStreamID));
+  buf_.CommitResetStreams();
+
+  buf_.Add(kNow, DcSctpMessage(kStreamID, kPPID, payload));
+  ASSERT_HAS_VALUE_AND_ASSIGN(SendQueue::DataToSend chunk3,
+                              buf_.Produce(kNow, kOneFragmentPacketSize));
+  EXPECT_EQ(chunk3.data.ssn, SSN(0));
+  EXPECT_EQ(chunk3.message_id, OutgoingMessageId(2));
 }
 
 TEST_F(RRSendQueueTest, CommittingResetsSSNForPausedStreamsOnly) {
@@ -786,7 +810,7 @@ TEST_F(RRSendQueueTest, WillHandoverPriority) {
   DcSctpSocketHandoverState state;
   buf_.AddHandoverState(state);
 
-  RRSendQueue q2("log: ", &callbacks_, kMaxQueueSize, kMtu, kDefaultPriority,
+  RRSendQueue q2("log: ", &callbacks_, kMtu, kDefaultPriority,
                  kBufferedAmountLowThreshold);
   q2.RestoreFromState(state);
   EXPECT_EQ(q2.GetStreamPriority(StreamID(1)), StreamPriority(42));
@@ -821,8 +845,9 @@ TEST_F(RRSendQueueTest, WillSendLifecycleExpireWhenExpiredInSendQueue) {
   EXPECT_CALL(callbacks_, OnLifecycleMessageExpired(LifecycleId(1),
                                                     /*maybe_delivered=*/false));
   EXPECT_CALL(callbacks_, OnLifecycleEnd(LifecycleId(1)));
-  EXPECT_FALSE(buf_.Produce(kNow + DurationMs(1001), kOneFragmentPacketSize)
-                   .has_value());
+  EXPECT_FALSE(
+      buf_.Produce(kNow + TimeDelta::Millis(1001), kOneFragmentPacketSize)
+          .has_value());
 }
 
 TEST_F(RRSendQueueTest, WillSendLifecycleExpireWhenDiscardingDuringPause) {
@@ -859,8 +884,7 @@ TEST_F(RRSendQueueTest, WillSendLifecycleExpireWhenDiscardingExplicitly) {
   EXPECT_CALL(callbacks_, OnLifecycleMessageExpired(LifecycleId(1),
                                                     /*maybe_delivered=*/false));
   EXPECT_CALL(callbacks_, OnLifecycleEnd(LifecycleId(1)));
-  buf_.Discard(IsUnordered(false), chunk_one->data.stream_id,
-               chunk_one->data.message_id);
+  buf_.Discard(chunk_one->data.stream_id, chunk_one->message_id);
 }
 }  // namespace
 }  // namespace dcsctp

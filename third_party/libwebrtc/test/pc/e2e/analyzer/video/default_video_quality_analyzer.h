@@ -18,6 +18,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "api/array_view.h"
@@ -36,6 +37,7 @@
 #include "test/pc/e2e/analyzer/video/default_video_quality_analyzer_internal_shared_objects.h"
 #include "test/pc/e2e/analyzer/video/default_video_quality_analyzer_shared_objects.h"
 #include "test/pc/e2e/analyzer/video/default_video_quality_analyzer_stream_state.h"
+#include "test/pc/e2e/analyzer/video/dvqa/frames_storage.h"
 #include "test/pc/e2e/analyzer/video/names_collection.h"
 
 namespace webrtc {
@@ -80,9 +82,14 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
 
   void RegisterParticipantInCall(absl::string_view peer_name) override;
   void UnregisterParticipantInCall(absl::string_view peer_name) override;
+  void OnPauseAllStreamsFrom(absl::string_view sender_peer_name,
+                             absl::string_view receiver_peer_name) override;
+  void OnResumeAllStreamsFrom(absl::string_view sender_peer_name,
+                              absl::string_view receiver_peer_name) override;
 
   void Stop() override;
   std::string GetStreamLabel(uint16_t frame_id) override;
+  std::string GetSenderPeerName(uint16_t frame_id) const override;
   void OnStatsReports(
       absl::string_view pc_label,
       const rtc::scoped_refptr<const RTCStatsReport>& report) override {}
@@ -100,7 +107,7 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
   // obtained by calling GetKnownVideoStreams()
   std::map<StatsKey, StreamStats> GetStats() const;
   AnalyzerStats GetAnalyzerStats() const;
-  double GetCpuUsagePercent();
+  double GetCpuUsagePercent() const;
 
   // Returns mapping from the stream label to the history of frames that were
   // met in this stream in the order as they were captured.
@@ -118,6 +125,17 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
                                                       size_t peer_index)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  // Processes frames for the peer identified by `peer_index` up to
+  // `rendered_frame_id` (excluded). Sends each dropped frame for comparison and
+  // discards superfluous frames (they were not expected to be received by
+  // `peer_index` and not accounted in the stats).
+  // Returns number of dropped frames.
+  int ProcessNotSeenFramesBeforeRendered(size_t peer_index,
+                                         uint16_t rendered_frame_id,
+                                         const InternalStatsKey& stats_key,
+                                         StreamState& state)
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   // Report results for all metrics for all streams.
   void ReportResults();
   void ReportResults(const InternalStatsKey& key,
@@ -132,6 +150,8 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
   // Returns string representation of stats key for metrics naming. Used for
   // backward compatibility by metrics naming for 2 peers cases.
   std::string ToMetricName(const InternalStatsKey& key) const
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  std::string GetStreamLabelInternal(uint16_t frame_id) const
       RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   static const uint16_t kStartingFrameId = 1;
@@ -150,6 +170,7 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
   // Mapping from stream label to unique size_t value to use in stats and avoid
   // extra string copying.
   NamesCollection streams_ RTC_GUARDED_BY(mutex_);
+  FramesStorage frames_storage_ RTC_GUARDED_BY(mutex_);
   // Frames that were captured by all streams and still aren't rendered on
   // receivers or deemed dropped. Frame with id X can be removed from this map
   // if:
@@ -161,7 +182,7 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
   // 4. There too many frames in flight for current video stream and X is the
   //    oldest frame id in this stream. In such case only the frame content
   //    will be removed, but the map entry will be preserved.
-  std::map<uint16_t, FrameInFlight> captured_frames_in_flight_
+  std::unordered_map<uint16_t, FrameInFlight> captured_frames_in_flight_
       RTC_GUARDED_BY(mutex_);
   // Global frames count for all video streams.
   FrameCounters frame_counters_ RTC_GUARDED_BY(mutex_);
@@ -173,19 +194,19 @@ class DefaultVideoQualityAnalyzer : public VideoQualityAnalyzerInterface {
   std::map<InternalStatsKey, FrameCounters> stream_frame_counters_
       RTC_GUARDED_BY(mutex_);
   // Map from stream index in `streams_` to its StreamState.
-  std::map<size_t, StreamState> stream_states_ RTC_GUARDED_BY(mutex_);
+  std::unordered_map<size_t, StreamState> stream_states_ RTC_GUARDED_BY(mutex_);
   // Map from stream index in `streams_` to sender peer index in `peers_`.
-  std::map<size_t, size_t> stream_to_sender_ RTC_GUARDED_BY(mutex_);
+  std::unordered_map<size_t, size_t> stream_to_sender_ RTC_GUARDED_BY(mutex_);
 
   // Stores history mapping between stream index in `streams_` and frame ids.
   // Updated when frame id overlap. It required to properly return stream label
   // after 1st frame from simulcast streams was already rendered and last is
   // still encoding.
-  std::map<size_t, std::set<uint16_t>> stream_to_frame_id_history_
+  std::unordered_map<size_t, std::set<uint16_t>> stream_to_frame_id_history_
       RTC_GUARDED_BY(mutex_);
   // Map from stream index to the list of frames as they were met in the stream.
-  std::map<size_t, std::vector<uint16_t>> stream_to_frame_id_full_history_
-      RTC_GUARDED_BY(mutex_);
+  std::unordered_map<size_t, std::vector<uint16_t>>
+      stream_to_frame_id_full_history_ RTC_GUARDED_BY(mutex_);
   AnalyzerStats analyzer_stats_ RTC_GUARDED_BY(mutex_);
 
   DefaultVideoQualityAnalyzerCpuMeasurer cpu_measurer_;

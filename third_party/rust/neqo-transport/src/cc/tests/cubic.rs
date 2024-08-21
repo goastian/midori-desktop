@@ -7,38 +7,47 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
 
-use crate::cc::{
-    classic_cc::{ClassicCongestionControl, CWND_INITIAL},
-    cubic::{
-        Cubic, CUBIC_ALPHA, CUBIC_BETA_USIZE_DIVISOR, CUBIC_BETA_USIZE_QUOTIENT, CUBIC_C,
-        CUBIC_FAST_CONVERGENCE,
-    },
-    CongestionControl, MAX_DATAGRAM_SIZE, MAX_DATAGRAM_SIZE_F64,
+use std::{
+    ops::Sub,
+    time::{Duration, Instant},
 };
-use crate::packet::PacketType;
-use crate::tracking::SentPacket;
-use std::convert::TryFrom;
-use std::ops::Sub;
-use std::time::{Duration, Instant};
+
+use neqo_common::IpTosEcn;
 use test_fixture::now;
 
+use crate::{
+    cc::{
+        classic_cc::{ClassicCongestionControl, CWND_INITIAL},
+        cubic::{
+            Cubic, CUBIC_ALPHA, CUBIC_BETA_USIZE_DIVIDEND, CUBIC_BETA_USIZE_DIVISOR, CUBIC_C,
+            CUBIC_FAST_CONVERGENCE,
+        },
+        CongestionControl, MAX_DATAGRAM_SIZE, MAX_DATAGRAM_SIZE_F64,
+    },
+    packet::PacketType,
+    recovery::SentPacket,
+    rtt::RttEstimate,
+};
+
 const RTT: Duration = Duration::from_millis(100);
+const RTT_ESTIMATE: RttEstimate = RttEstimate::from_duration(Duration::from_millis(100));
 const CWND_INITIAL_F64: f64 = 10.0 * MAX_DATAGRAM_SIZE_F64;
 const CWND_INITIAL_10_F64: f64 = 10.0 * CWND_INITIAL_F64;
 const CWND_INITIAL_10: usize = 10 * CWND_INITIAL;
-const CWND_AFTER_LOSS: usize = CWND_INITIAL * CUBIC_BETA_USIZE_QUOTIENT / CUBIC_BETA_USIZE_DIVISOR;
+const CWND_AFTER_LOSS: usize = CWND_INITIAL * CUBIC_BETA_USIZE_DIVIDEND / CUBIC_BETA_USIZE_DIVISOR;
 const CWND_AFTER_LOSS_SLOW_START: usize =
-    (CWND_INITIAL + MAX_DATAGRAM_SIZE) * CUBIC_BETA_USIZE_QUOTIENT / CUBIC_BETA_USIZE_DIVISOR;
+    (CWND_INITIAL + MAX_DATAGRAM_SIZE) * CUBIC_BETA_USIZE_DIVIDEND / CUBIC_BETA_USIZE_DIVISOR;
 
 fn fill_cwnd(cc: &mut ClassicCongestionControl<Cubic>, mut next_pn: u64, now: Instant) -> u64 {
     while cc.bytes_in_flight() < cc.cwnd() {
         let sent = SentPacket::new(
             PacketType::Short,
-            next_pn,           // pn
-            now,               // time sent
-            true,              // ack eliciting
-            Vec::new(),        // tokens
-            MAX_DATAGRAM_SIZE, // size
+            next_pn,
+            IpTosEcn::default(),
+            now,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE,
         );
         cc.on_packet_sent(&sent);
         next_pn += 1;
@@ -49,32 +58,32 @@ fn fill_cwnd(cc: &mut ClassicCongestionControl<Cubic>, mut next_pn: u64, now: In
 fn ack_packet(cc: &mut ClassicCongestionControl<Cubic>, pn: u64, now: Instant) {
     let acked = SentPacket::new(
         PacketType::Short,
-        pn,                // pn
-        now,               // time sent
-        true,              // ack eliciting
-        Vec::new(),        // tokens
-        MAX_DATAGRAM_SIZE, // size
+        pn,
+        IpTosEcn::default(),
+        now,
+        true,
+        Vec::new(),
+        MAX_DATAGRAM_SIZE,
     );
-    cc.on_packets_acked(&[acked], RTT, now);
+    cc.on_packets_acked(&[acked], &RTT_ESTIMATE, now);
 }
 
 fn packet_lost(cc: &mut ClassicCongestionControl<Cubic>, pn: u64) {
     const PTO: Duration = Duration::from_millis(120);
     let p_lost = SentPacket::new(
         PacketType::Short,
-        pn,                // pn
-        now(),             // time sent
-        true,              // ack eliciting
-        Vec::new(),        // tokens
-        MAX_DATAGRAM_SIZE, // size
+        pn,
+        IpTosEcn::default(),
+        now(),
+        true,
+        Vec::new(),
+        MAX_DATAGRAM_SIZE,
     );
     cc.on_packets_lost(None, None, PTO, &[p_lost]);
 }
 
 fn expected_tcp_acks(cwnd_rtt_start: usize) -> u64 {
-    (f64::try_from(i32::try_from(cwnd_rtt_start).unwrap()).unwrap()
-        / MAX_DATAGRAM_SIZE_F64
-        / CUBIC_ALPHA)
+    (f64::from(i32::try_from(cwnd_rtt_start).unwrap()) / MAX_DATAGRAM_SIZE_F64 / CUBIC_ALPHA)
         .round() as u64
 }
 
@@ -105,7 +114,7 @@ fn tcp_phase() {
 
     for _ in 0..num_tcp_increases {
         let cwnd_rtt_start = cubic.cwnd();
-        //Expected acks during a period of RTT / CUBIC_ALPHA.
+        // Expected acks during a period of RTT / CUBIC_ALPHA.
         let acks = expected_tcp_acks(cwnd_rtt_start);
         // The time between acks if they are ideally paced over a RTT.
         let time_increase = RTT / u32::try_from(cwnd_rtt_start / MAX_DATAGRAM_SIZE).unwrap();
@@ -141,9 +150,10 @@ fn tcp_phase() {
     let expected_ack_tcp_increase = expected_tcp_acks(cwnd_rtt_start);
     assert!(num_acks < expected_ack_tcp_increase);
 
-    // This first increase after a TCP phase may be shorter than what it would take by a regular cubic phase,
-    // because of the proper byte counting and the credit it already had before entering this phase. Therefore
-    // We will perform another round and compare it to expected increase using the cubic equation.
+    // This first increase after a TCP phase may be shorter than what it would take by a regular
+    // cubic phase, because of the proper byte counting and the credit it already had before
+    // entering this phase. Therefore We will perform another round and compare it to expected
+    // increase using the cubic equation.
 
     let cwnd_rtt_start_after_tcp = cubic.cwnd();
     let elapsed_time = now - start_time;
@@ -163,12 +173,12 @@ fn tcp_phase() {
     let expected_ack_tcp_increase2 = expected_tcp_acks(cwnd_rtt_start_after_tcp);
     assert!(num_acks2 < expected_ack_tcp_increase2);
 
-    // The time needed to increase cwnd by MAX_DATAGRAM_SIZE using the cubic equation will be calculates from:
-    // W_cubic(elapsed_time + t_to_increase) - W_cubis(elapsed_time) = MAX_DATAGRAM_SIZE =>
-    // CUBIC_C * (elapsed_time + t_to_increase)^3 * MAX_DATAGRAM_SIZE + CWND_INITIAL -
-    //     CUBIC_C * elapsed_time^3 * MAX_DATAGRAM_SIZE + CWND_INITIAL = MAX_DATAGRAM_SIZE =>
-    // t_to_increase = cbrt((1 + CUBIC_C * elapsed_time^3) / CUBIC_C) - elapsed_time
-    // (t_to_increase is in seconds)
+    // The time needed to increase cwnd by MAX_DATAGRAM_SIZE using the cubic equation will be
+    // calculates from: W_cubic(elapsed_time + t_to_increase) - W_cubis(elapsed_time) =
+    // MAX_DATAGRAM_SIZE => CUBIC_C * (elapsed_time + t_to_increase)^3 * MAX_DATAGRAM_SIZE +
+    // CWND_INITIAL -     CUBIC_C * elapsed_time^3 * MAX_DATAGRAM_SIZE + CWND_INITIAL =
+    // MAX_DATAGRAM_SIZE => t_to_increase = cbrt((1 + CUBIC_C * elapsed_time^3) / CUBIC_C) -
+    // elapsed_time (t_to_increase is in seconds)
     // number of ack needed is t_to_increase / time_increase.
     let expected_ack_cubic_increase =
         ((((1.0 + CUBIC_C * (elapsed_time).as_secs_f64().powi(3)) / CUBIC_C).cbrt()
@@ -176,15 +186,16 @@ fn tcp_phase() {
             / time_increase.as_secs_f64())
         .ceil() as u64;
     // num_acks is very close to the calculated value. The exact value is hard to calculate
-    // because the proportional increase(i.e. curr_cwnd_f64 / (target - curr_cwnd_f64) * MAX_DATAGRAM_SIZE_F64)
-    // and the byte counting.
+    // because the proportional increase(i.e. curr_cwnd_f64 / (target - curr_cwnd_f64) *
+    // MAX_DATAGRAM_SIZE_F64) and the byte counting.
     assert_eq!(num_acks2, expected_ack_cubic_increase + 2);
 }
 
 #[test]
 fn cubic_phase() {
     let mut cubic = ClassicCongestionControl::new(Cubic::default());
-    // Set last_max_cwnd to a higher number make sure that cc is the cubic phase (cwnd is calculated by the cubic equation).
+    // Set last_max_cwnd to a higher number make sure that cc is the cubic phase (cwnd is calculated
+    // by the cubic equation).
     cubic.set_last_max_cwnd(CWND_INITIAL_10_F64);
     // Set ssthresh to something small to make sure that cc is in the congection avoidance phase.
     cubic.set_ssthresh(1);
@@ -201,7 +212,7 @@ fn cubic_phase() {
     let num_rtts_w_max = (k / RTT.as_secs_f64()).round() as u64;
     for _ in 0..num_rtts_w_max {
         let cwnd_rtt_start = cubic.cwnd();
-        //Expected acks
+        // Expected acks
         let acks = cwnd_rtt_start / MAX_DATAGRAM_SIZE;
         let time_increase = RTT / u32::try_from(acks).unwrap();
         for _ in 0..acks {
@@ -233,7 +244,7 @@ fn assert_within<T: Sub<Output = T> + PartialOrd + Copy>(value: T, expected: T, 
 fn congestion_event_slow_start() {
     let mut cubic = ClassicCongestionControl::new(Cubic::default());
 
-    let _ = fill_cwnd(&mut cubic, 0, now());
+    _ = fill_cwnd(&mut cubic, 0, now());
     ack_packet(&mut cubic, 0, now());
 
     assert_within(cubic.last_max_cwnd(), 0.0, f64::EPSILON);
@@ -260,10 +271,11 @@ fn congestion_event_congestion_avoidance() {
     // Set ssthresh to something small to make sure that cc is in the congection avoidance phase.
     cubic.set_ssthresh(1);
 
-    // Set last_max_cwnd to something smaller than cwnd so that the fast convergence is not triggered.
+    // Set last_max_cwnd to something smaller than cwnd so that the fast convergence is not
+    // triggered.
     cubic.set_last_max_cwnd(3.0 * MAX_DATAGRAM_SIZE_F64);
 
-    let _ = fill_cwnd(&mut cubic, 0, now());
+    _ = fill_cwnd(&mut cubic, 0, now());
     ack_packet(&mut cubic, 0, now());
 
     assert_eq!(cubic.cwnd(), CWND_INITIAL);
@@ -285,7 +297,7 @@ fn congestion_event_congestion_avoidance_2() {
     // Set last_max_cwnd to something higher than cwnd so that the fast convergence is triggered.
     cubic.set_last_max_cwnd(CWND_INITIAL_10_F64);
 
-    let _ = fill_cwnd(&mut cubic, 0, now());
+    _ = fill_cwnd(&mut cubic, 0, now());
     ack_packet(&mut cubic, 0, now());
 
     assert_within(cubic.last_max_cwnd(), CWND_INITIAL_10_F64, f64::EPSILON);
@@ -313,7 +325,7 @@ fn congestion_event_congestion_avoidance_test_no_overflow() {
     // Set last_max_cwnd to something higher than cwnd so that the fast convergence is triggered.
     cubic.set_last_max_cwnd(CWND_INITIAL_10_F64);
 
-    let _ = fill_cwnd(&mut cubic, 0, now());
+    _ = fill_cwnd(&mut cubic, 0, now());
     ack_packet(&mut cubic, 1, now());
 
     assert_within(cubic.last_max_cwnd(), CWND_INITIAL_10_F64, f64::EPSILON);

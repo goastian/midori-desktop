@@ -14,7 +14,7 @@ use serde_json::{json, Value as JsonValue};
 use crate::common_metric_data::{CommonMetricData, Lifetime};
 use crate::metrics::{CounterMetric, DatetimeMetric, Metric, MetricType, PingType, TimeUnit};
 use crate::storage::{StorageManager, INTERNAL_STORAGE};
-use crate::upload::HeaderMap;
+use crate::upload::{HeaderMap, PingMetadata};
 use crate::util::{get_iso_time_string, local_now_with_offset};
 use crate::{Glean, Result, DELETION_REQUEST_PINGS_DIRECTORY, PENDING_PINGS_DIRECTORY};
 
@@ -30,6 +30,10 @@ pub struct Ping<'a> {
     pub content: JsonValue,
     /// The headers to upload with the payload.
     pub headers: HeaderMap,
+    /// Whether the content contains {client|ping}_info sections.
+    pub includes_info_sections: bool,
+    /// Other pings that should be scheduled when this ping is sent.
+    pub schedules_pings: Vec<String>,
 }
 
 /// Collect a ping's data, assemble it into its full payload and store it on disk.
@@ -89,9 +93,12 @@ impl PingMaker {
     }
 
     /// Gets the formatted start and end times for this ping and update for the next ping.
-    fn get_start_end_times(&self, glean: &Glean, storage_name: &str) -> (String, String) {
-        let time_unit = TimeUnit::Minute;
-
+    fn get_start_end_times(
+        &self,
+        glean: &Glean,
+        storage_name: &str,
+        time_unit: TimeUnit,
+    ) -> (String, String) {
         let start_time = DatetimeMetric::new(
             CommonMetricData {
                 name: format!("{}#start", storage_name),
@@ -119,8 +126,14 @@ impl PingMaker {
         (start_time_data, end_time_data)
     }
 
-    fn get_ping_info(&self, glean: &Glean, storage_name: &str, reason: Option<&str>) -> JsonValue {
-        let (start_time, end_time) = self.get_start_end_times(glean, storage_name);
+    fn get_ping_info(
+        &self,
+        glean: &Glean,
+        storage_name: &str,
+        reason: Option<&str>,
+        precision: TimeUnit,
+    ) -> JsonValue {
+        let (start_time, end_time) = self.get_start_end_times(glean, storage_name, precision);
         let mut map = json!({
             "seq": self.get_ping_seq(glean, storage_name),
             "start_time": start_time,
@@ -222,10 +235,39 @@ impl PingMaker {
     ) -> Option<Ping<'a>> {
         info!("Collecting {}", ping.name());
 
-        let metrics_data = StorageManager.snapshot_as_json(glean.storage(), ping.name(), true);
+        let mut metrics_data = StorageManager.snapshot_as_json(glean.storage(), ping.name(), true);
         let events_data = glean
             .event_storage()
             .snapshot_as_json(glean, ping.name(), true);
+
+        // Due to the way the experimentation identifier could link datasets that are intentionally unlinked,
+        // it will not be included in pings that specifically exclude the Glean client-id, those pings that
+        // should not be sent if empty, or pings that exclude the {client|ping}_info sections wholesale.
+        if (!ping.include_client_id() || !ping.send_if_empty() || !ping.include_info_sections())
+            && glean.test_get_experimentation_id().is_some()
+            && metrics_data.is_some()
+        {
+            // There is a lot of unwrapping here, but that's fine because the `if` conditions above mean that the
+            // experimentation id is present in the metrics.
+            let metrics = metrics_data.as_mut().unwrap().as_object_mut().unwrap();
+            let metrics_count = metrics.len();
+            let strings = metrics.get_mut("string").unwrap().as_object_mut().unwrap();
+            let string_count = strings.len();
+
+            // Handle the send_if_empty case by checking if the experimentation id is the only metric in the data.
+            let empty_payload = events_data.is_none() && metrics_count == 1 && string_count == 1;
+            if !ping.include_client_id() || (!ping.send_if_empty() && empty_payload) {
+                strings.remove("glean.client.annotation.experimentation_id");
+            }
+
+            if strings.is_empty() {
+                metrics.remove("string");
+            }
+
+            if metrics.is_empty() {
+                metrics_data = None;
+            }
+        }
 
         let is_empty = metrics_data.is_none() && events_data.is_none();
         if !ping.send_if_empty() && is_empty {
@@ -241,13 +283,24 @@ impl PingMaker {
             );
         }
 
-        let ping_info = self.get_ping_info(glean, ping.name(), reason);
-        let client_info = self.get_client_info(glean, ping.include_client_id());
+        let precision = if ping.precise_timestamps() {
+            TimeUnit::Millisecond
+        } else {
+            TimeUnit::Minute
+        };
 
-        let mut json = json!({
-            "ping_info": ping_info,
-            "client_info": client_info
-        });
+        let mut json = if ping.include_info_sections() {
+            let ping_info = self.get_ping_info(glean, ping.name(), reason, precision);
+            let client_info = self.get_client_info(glean, ping.include_client_id());
+
+            json!({
+                "ping_info": ping_info,
+                "client_info": client_info
+            })
+        } else {
+            json!({})
+        };
+
         let json_obj = json.as_object_mut()?;
         if let Some(metrics_data) = metrics_data {
             json_obj.insert("metrics".to_string(), metrics_data);
@@ -262,29 +315,9 @@ impl PingMaker {
             doc_id,
             url_path,
             headers: self.get_headers(glean),
+            includes_info_sections: ping.include_info_sections(),
+            schedules_pings: ping.schedules_pings().to_vec(),
         })
-    }
-
-    /// Collects a snapshot for the given ping from storage and attach required meta information.
-    ///
-    /// # Arguments
-    ///
-    /// * `glean` - the [`Glean`] instance to collect data from.
-    /// * `ping` - the ping to collect for.
-    /// * `reason` - an optional reason code to include in the ping.
-    ///
-    /// # Returns
-    ///
-    /// A fully assembled ping payload in a string encoded as JSON.
-    /// If there is no data stored for the ping, `None` is returned.
-    pub fn collect_string(
-        &self,
-        glean: &Glean,
-        ping: &PingType,
-        reason: Option<&str>,
-    ) -> Option<String> {
-        self.collect(glean, ping, reason, "", "")
-            .map(|ping| ::serde_json::to_string_pretty(&ping.content).unwrap())
     }
 
     /// Gets the path to a directory for ping storage.
@@ -294,9 +327,7 @@ impl PingMaker {
     fn get_pings_dir(&self, data_path: &Path, ping_type: Option<&str>) -> std::io::Result<PathBuf> {
         // Use a special directory for deletion-request pings
         let pings_dir = match ping_type {
-            Some(ping_type) if ping_type == "deletion-request" => {
-                data_path.join(DELETION_REQUEST_PINGS_DIRECTORY)
-            }
+            Some("deletion-request") => data_path.join(DELETION_REQUEST_PINGS_DIRECTORY),
             _ => data_path.join(PENDING_PINGS_DIRECTORY),
         };
 
@@ -335,11 +366,17 @@ impl PingMaker {
             file.write_all(ping.url_path.as_bytes())?;
             file.write_all(b"\n")?;
             file.write_all(::serde_json::to_string(&ping.content)?.as_bytes())?;
-            if !ping.headers.is_empty() {
-                file.write_all(b"\n{\"headers\":")?;
-                file.write_all(::serde_json::to_string(&ping.headers)?.as_bytes())?;
-                file.write_all(b"}")?;
-            }
+            file.write_all(b"\n")?;
+            let metadata = PingMetadata {
+                // We don't actually need to clone the headers except to match PingMetadata's ownership.
+                // But since we're going to write a file to disk in a sec,
+                // and HeaderMaps tend to have only like two things in them, tops,
+                // the cost is bearable.
+                headers: Some(ping.headers.clone()),
+                body_has_info_sections: Some(ping.includes_info_sections),
+                ping_name: Some(ping.name.to_string()),
+            };
+            file.write_all(::serde_json::to_string(&metadata)?.as_bytes())?;
         }
 
         if let Err(e) = std::fs::rename(&temp_ping_path, &ping_path) {

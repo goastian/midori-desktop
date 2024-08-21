@@ -4,17 +4,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::decoder_instructions::DecoderInstruction;
-use crate::encoder_instructions::{DecodedEncoderInstruction, EncoderInstructionReader};
-use crate::header_block::{HeaderDecoder, HeaderDecoderResult};
-use crate::qpack_send_buf::QpackData;
-use crate::reader::ReceiverConnWrapper;
-use crate::stats::Stats;
-use crate::table::HeaderTable;
-use crate::{Error, QpackSettings, Res};
 use neqo_common::{qdebug, Header};
 use neqo_transport::{Connection, StreamId};
-use std::convert::TryFrom;
+
+use crate::{
+    decoder_instructions::DecoderInstruction,
+    encoder_instructions::{DecodedEncoderInstruction, EncoderInstructionReader},
+    header_block::{HeaderDecoder, HeaderDecoderResult},
+    qpack_send_buf::QpackData,
+    reader::ReceiverConnWrapper,
+    stats::Stats,
+    table::HeaderTable,
+    Error, QpackSettings, Res,
+};
 
 pub const QPACK_UNI_STREAM_TYPE_DECODER: u64 = 0x3;
 
@@ -28,12 +30,13 @@ pub struct QPackDecoder {
     local_stream_id: Option<StreamId>,
     max_table_size: u64,
     max_blocked_streams: usize,
-    blocked_streams: Vec<(StreamId, u64)>, //stream_id and requested inserts count.
+    blocked_streams: Vec<(StreamId, u64)>, // stream_id and requested inserts count.
     stats: Stats,
 }
 
 impl QPackDecoder {
     /// # Panics
+    ///
     /// If settings include invalid values.
     #[must_use]
     pub fn new(qpack_settings: &QpackSettings) -> Self {
@@ -48,7 +51,7 @@ impl QPackDecoder {
             send_buf,
             local_stream_id: None,
             max_table_size: qpack_settings.max_table_size_decoder,
-            max_blocked_streams: usize::try_from(qpack_settings.max_blocked_streams).unwrap(),
+            max_blocked_streams: usize::from(qpack_settings.max_blocked_streams),
             blocked_streams: Vec::new(),
             stats: Stats::default(),
         }
@@ -65,6 +68,7 @@ impl QPackDecoder {
     }
 
     /// # Panics
+    ///
     /// If the number of blocked streams is too large.
     #[must_use]
     pub fn get_blocked_streams(&self) -> u16 {
@@ -72,7 +76,9 @@ impl QPackDecoder {
     }
 
     /// returns a list of unblocked streams
+    ///
     /// # Errors
+    ///
     /// May return: `ClosedCriticalStream` if stream has been closed or `EncoderStream`
     /// in case of any other transport error.
     pub fn receive(&mut self, conn: &mut Connection, stream_id: StreamId) -> Res<Vec<StreamId>> {
@@ -162,8 +168,11 @@ impl QPackDecoder {
     }
 
     /// # Errors
+    ///
     /// May return an error in case of any transport error. TODO: define transport errors.
+    ///
     /// # Panics
+    ///
     /// Never, but rust doesn't know that.
     #[allow(clippy::map_err_ignore)]
     pub fn send(&mut self, conn: &mut Connection) -> Res<()> {
@@ -184,6 +193,7 @@ impl QPackDecoder {
     }
 
     /// # Errors
+    ///
     /// May return `DecompressionFailed` if header block is incorrect or incomplete.
     pub fn refers_dynamic_table(&self, buf: &[u8]) -> Res<bool> {
         HeaderDecoder::new(buf).refers_dynamic_table(self.max_entries, self.table.base())
@@ -191,9 +201,13 @@ impl QPackDecoder {
 
     /// This function returns None if the stream is blocked waiting for table insertions.
     /// 'buf' must contain the complete header block.
+    ///
     /// # Errors
+    ///
     /// May return `DecompressionFailed` if header block is incorrect or incomplete.
+    ///
     /// # Panics
+    ///
     /// When there is a programming error.
     pub fn decode_header_block(
         &mut self,
@@ -234,6 +248,7 @@ impl QPackDecoder {
     }
 
     /// # Panics
+    ///
     /// When a stream has already been added.
     pub fn add_send_stream(&mut self, stream_id: StreamId) {
         assert!(
@@ -270,13 +285,14 @@ fn map_error(err: &Error) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{Connection, Error, QPackDecoder, Res};
-    use crate::QpackSettings;
+    use std::mem;
+
     use neqo_common::Header;
     use neqo_transport::{StreamId, StreamType};
-    use std::convert::TryFrom;
-    use std::mem;
     use test_fixture::now;
+
+    use super::{Connection, Error, QPackDecoder, Res};
+    use crate::QpackSettings;
 
     const STREAM_0: StreamId = StreamId::new(0);
 
@@ -313,12 +329,12 @@ mod tests {
     }
 
     fn recv_instruction(decoder: &mut TestDecoder, encoder_instruction: &[u8], res: &Res<()>) {
-        let _ = decoder
+        _ = decoder
             .peer_conn
             .stream_send(decoder.recv_stream_id, encoder_instruction)
             .unwrap();
         let out = decoder.peer_conn.process(None, now());
-        mem::drop(decoder.conn.process(out.dgram(), now()));
+        mem::drop(decoder.conn.process(out.as_dgram_ref(), now()));
         assert_eq!(
             decoder
                 .decoder
@@ -330,7 +346,7 @@ mod tests {
     fn send_instructions_and_check(decoder: &mut TestDecoder, decoder_instruction: &[u8]) {
         decoder.decoder.send(&mut decoder.conn).unwrap();
         let out = decoder.conn.process(None, now());
-        mem::drop(decoder.peer_conn.process(out.dgram(), now()));
+        mem::drop(decoder.peer_conn.process(out.as_dgram_ref(), now()));
         let mut buf = [0_u8; 100];
         let (amount, fin) = decoder
             .peer_conn
@@ -433,7 +449,8 @@ mod tests {
         );
     }
 
-    // this test tests header decoding, the header acks command and the insert count increment command.
+    // this test tests header decoding, the header acks command and the insert count increment
+    // command.
     #[test]
     fn test_duplicate() {
         let mut decoder = connect();
@@ -466,8 +483,8 @@ mod tests {
     fn test_encode_incr_encode_header_ack_some() {
         // 1. Decoder receives an instruction (header and value both as literal)
         // 2. Decoder process the instruction and sends an increment instruction.
-        // 3. Decoder receives another two instruction (header and value both as literal) and
-        //    a header block.
+        // 3. Decoder receives another two instruction (header and value both as literal) and a
+        //    header block.
         // 4. Now it sends only a header ack and an increment instruction with increment==1.
         let headers = vec![
             Header::new("my-headera", "my-valuea"),
@@ -503,8 +520,8 @@ mod tests {
     fn test_encode_incr_encode_header_ack_all() {
         // 1. Decoder receives an instruction (header and value both as literal)
         // 2. Decoder process the instruction and sends an increment instruction.
-        // 3. Decoder receives another instruction (header and value both as literal) and
-        //    a header block.
+        // 3. Decoder receives another instruction (header and value both as literal) and a header
+        //    block.
         // 4. Now it sends only a header ack.
         let headers = vec![
             Header::new("my-headera", "my-valuea"),
@@ -603,7 +620,8 @@ mod tests {
                 ],
                 encoder_inst: &[],
             },
-            // test adding a new header and encode_post_base_index, also test fix_header_block_prefix
+            // test adding a new header and encode_post_base_index, also test
+            // fix_header_block_prefix
             TestElement {
                 headers: vec![Header::new("my-header", "my-value")],
                 header_block: &[0x02, 0x80, 0x10],
@@ -682,7 +700,8 @@ mod tests {
                 ],
                 encoder_inst: &[],
             },
-            // test adding a new header and encode_post_base_index, also test fix_header_block_prefix
+            // test adding a new header and encode_post_base_index, also test
+            // fix_header_block_prefix
             TestElement {
                 headers: vec![Header::new("my-header", "my-value")],
                 header_block: &[0x02, 0x80, 0x10],

@@ -1,23 +1,26 @@
-#![allow(clippy::float_cmp, clippy::non_ascii_literal)]
+#![allow(
+    clippy::float_cmp,
+    clippy::non_ascii_literal,
+    clippy::single_match_else,
+    clippy::uninlined_format_args
+)]
 
 #[macro_use]
 mod macros;
 
 use proc_macro2::{Delimiter, Group, Literal, Span, TokenStream, TokenTree};
 use quote::ToTokens;
-use std::iter::FromIterator;
 use std::str::FromStr;
 use syn::{Lit, LitFloat, LitInt, LitStr};
 
 fn lit(s: &str) -> Lit {
-    match TokenStream::from_str(s)
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap()
-    {
-        TokenTree::Literal(lit) => Lit::new(lit),
-        _ => panic!(),
+    let mut tokens = TokenStream::from_str(s).unwrap().into_iter();
+    match tokens.next().unwrap() {
+        TokenTree::Literal(lit) => {
+            assert!(tokens.next().is_none());
+            Lit::new(lit)
+        }
+        wrong => panic!("{:?}", wrong),
     }
 }
 
@@ -49,6 +52,10 @@ fn strings() {
     test_string(
         "\"contains\nnewlines\\\nescaped newlines\"",
         "contains\nnewlinesescaped newlines",
+    );
+    test_string(
+        "\"escaped newline\\\n \x0C unsupported whitespace\"",
+        "escaped newline\x0C unsupported whitespace",
     );
     test_string("r\"raw\nstring\\\nhere\"", "raw\nstring\\\nhere");
     test_string("\"...\"q", "...");

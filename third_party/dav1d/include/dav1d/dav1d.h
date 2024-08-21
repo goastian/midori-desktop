@@ -28,10 +28,6 @@
 #ifndef DAV1D_H
 #define DAV1D_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <errno.h>
 #include <stdarg.h>
 
@@ -39,6 +35,10 @@ extern "C" {
 #include "picture.h"
 #include "data.h"
 #include "version.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct Dav1dContext Dav1dContext;
 typedef struct Dav1dRef Dav1dRef;
@@ -102,6 +102,15 @@ typedef struct Dav1dSettings {
  * Get library version.
  */
 DAV1D_API const char *dav1d_version(void);
+
+/**
+ * Get library API version.
+ *
+ * @return A value in the format 0x00XXYYZZ, where XX is the major version,
+ *         YY the minor version, and ZZ the patch version.
+ * @see DAV1D_API_MAJOR, DAV1D_API_MINOR, DAV1D_API_PATCH
+ */
+DAV1D_API unsigned dav1d_version_api(void);
 
 /**
  * Initialize settings to default values.
@@ -313,8 +322,8 @@ DAV1D_API int dav1d_get_decode_error_data_props(Dav1dContext *c, Dav1dDataProps 
  */
 DAV1D_API int dav1d_get_frame_delay(const Dav1dSettings *s);
 
-# ifdef __cplusplus
-}
-# endif
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* DAV1D_H */

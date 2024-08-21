@@ -5,19 +5,19 @@
 
 #include "lib/jxl/dec_ans.h"
 
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
+#include <cstdint>
 #include <vector>
 
 #include "lib/jxl/ans_common.h"
 #include "lib/jxl/ans_params.h"
 #include "lib/jxl/base/bits.h"
 #include "lib/jxl/base/printf_macros.h"
-#include "lib/jxl/base/profiler.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
 #include "lib/jxl/dec_context_map.h"
 #include "lib/jxl/fields.h"
+#include "lib/jxl/memory_manager_internal.h"
 
 namespace jxl {
 namespace {
@@ -156,7 +156,7 @@ Status ReadHistogram(int precision_bits, std::vector<int32_t>* counts,
         (*counts)[i] = prev;
         numsame--;
       } else {
-        int code = logcounts[i];
+        unsigned int code = logcounts[i];
         // omit_pos may not be negative at this point (checked before).
         if (i == static_cast<size_t>(omit_pos)) {
           continue;
@@ -166,7 +166,7 @@ Status ReadHistogram(int precision_bits, std::vector<int32_t>* counts,
           (*counts)[i] = 1;
         } else {
           int bitcount = GetPopulationCountPrecision(code - 1, shift);
-          (*counts)[i] = (1 << (code - 1)) +
+          (*counts)[i] = (1u << (code - 1)) +
                          (input->ReadBits(bitcount) << (code - 1 - bitcount));
         }
       }
@@ -184,9 +184,11 @@ Status ReadHistogram(int precision_bits, std::vector<int32_t>* counts,
 
 }  // namespace
 
-Status DecodeANSCodes(const size_t num_histograms,
+Status DecodeANSCodes(JxlMemoryManager* memory_manager,
+                      const size_t num_histograms,
                       const size_t max_alphabet_size, BitReader* in,
                       ANSCode* result) {
+  result->memory_manager = memory_manager;
   result->degenerate_symbols.resize(num_histograms, -1);
   if (result->use_prefix_code) {
     JXL_ASSERT(max_alphabet_size <= 1 << PREFIX_MAX_BITS);
@@ -222,11 +224,12 @@ Status DecodeANSCodes(const size_t num_histograms,
     }
   } else {
     JXL_ASSERT(max_alphabet_size <= ANS_MAX_ALPHABET_SIZE);
-    result->alias_tables =
-        AllocateArray(num_histograms * (1 << result->log_alpha_size) *
-                      sizeof(AliasTable::Entry));
+    size_t alloc_size = num_histograms * (1 << result->log_alpha_size) *
+                        sizeof(AliasTable::Entry);
+    JXL_ASSIGN_OR_RETURN(result->alias_tables,
+                         AlignedMemory::Create(memory_manager, alloc_size));
     AliasTable::Entry* alias_tables =
-        reinterpret_cast<AliasTable::Entry*>(result->alias_tables.get());
+        result->alias_tables.address<AliasTable::Entry>();
     for (size_t c = 0; c < num_histograms; ++c) {
       std::vector<int32_t> counts;
       if (!ReadHistogram(ANS_LOG_TAB_SIZE, &counts, in)) {
@@ -262,7 +265,8 @@ Status DecodeUintConfig(size_t log_alpha_size, HybridUintConfig* uint_config,
                         BitReader* br) {
   br->Refill();
   size_t split_exponent = br->ReadBits(CeilLog2Nonzero(log_alpha_size + 1));
-  size_t msb_in_token = 0, lsb_in_token = 0;
+  size_t msb_in_token = 0;
+  size_t lsb_in_token = 0;
   if (split_exponent != log_alpha_size) {
     // otherwise, msb/lsb don't matter.
     size_t nbits = CeilLog2Nonzero(split_exponent + 1);
@@ -286,9 +290,8 @@ Status DecodeUintConfigs(size_t log_alpha_size,
                          std::vector<HybridUintConfig>* uint_config,
                          BitReader* br) {
   // TODO(veluca): RLE?
-  for (size_t i = 0; i < uint_config->size(); i++) {
-    JXL_RETURN_IF_ERROR(
-        DecodeUintConfig(log_alpha_size, &(*uint_config)[i], br));
+  for (auto& cfg : *uint_config) {
+    JXL_RETURN_IF_ERROR(DecodeUintConfig(log_alpha_size, &cfg, br));
   }
   return true;
 }
@@ -327,9 +330,9 @@ void ANSCode::UpdateMaxNumBits(size_t ctx, size_t symbol) {
   max_num_bits = std::max(max_num_bits, total_bits);
 }
 
-Status DecodeHistograms(BitReader* br, size_t num_contexts, ANSCode* code,
+Status DecodeHistograms(JxlMemoryManager* memory_manager, BitReader* br,
+                        size_t num_contexts, ANSCode* code,
                         std::vector<uint8_t>* context_map, bool disallow_lz77) {
-  PROFILER_FUNC;
   JXL_RETURN_IF_ERROR(Bundle::Read(br, &code->lz77));
   if (code->lz77.enabled) {
     num_contexts++;
@@ -342,10 +345,14 @@ Status DecodeHistograms(BitReader* br, size_t num_contexts, ANSCode* code,
   size_t num_histograms = 1;
   context_map->resize(num_contexts);
   if (num_contexts > 1) {
-    JXL_RETURN_IF_ERROR(DecodeContextMap(context_map, &num_histograms, br));
+    JXL_RETURN_IF_ERROR(
+        DecodeContextMap(memory_manager, context_map, &num_histograms, br));
   }
+  JXL_DEBUG_V(
+      4, "Decoded context map of size %" PRIuS " and %" PRIuS " histograms",
+      num_contexts, num_histograms);
   code->lz77.nonserialized_distance_context = context_map->back();
-  code->use_prefix_code = br->ReadFixedBits<1>();
+  code->use_prefix_code = static_cast<bool>(br->ReadFixedBits<1>());
   if (code->use_prefix_code) {
     code->log_alpha_size = PREFIX_MAX_BITS;
   } else {
@@ -355,20 +362,52 @@ Status DecodeHistograms(BitReader* br, size_t num_contexts, ANSCode* code,
   JXL_RETURN_IF_ERROR(
       DecodeUintConfigs(code->log_alpha_size, &code->uint_config, br));
   const size_t max_alphabet_size = 1 << code->log_alpha_size;
-  JXL_RETURN_IF_ERROR(
-      DecodeANSCodes(num_histograms, max_alphabet_size, br, code));
-  // When using LZ77, flat codes might result in valid codestreams with
-  // histograms that potentially allow very large bit counts.
-  // TODO(veluca): in principle, a valid codestream might contain a histogram
-  // that could allow very large numbers of bits that is never used during ANS
-  // decoding. There's no benefit to doing that, though.
-  if (!code->lz77.enabled && code->max_num_bits > 32) {
-    // Just emit a warning as there are many opportunities for false positives.
-    JXL_WARNING("Histogram can represent numbers that are too large: %" PRIuS
-                "\n",
-                code->max_num_bits);
-  }
+  JXL_RETURN_IF_ERROR(DecodeANSCodes(memory_manager, num_histograms,
+                                     max_alphabet_size, br, code));
   return true;
+}
+
+StatusOr<ANSSymbolReader> ANSSymbolReader::Create(const ANSCode* code,
+                                                  BitReader* JXL_RESTRICT br,
+                                                  size_t distance_multiplier) {
+  AlignedMemory lz77_window_storage;
+  if (code->lz77.enabled) {
+    JxlMemoryManager* memory_manager = code->memory_manager;
+    JXL_ASSIGN_OR_RETURN(
+        lz77_window_storage,
+        AlignedMemory::Create(memory_manager, kWindowSize * sizeof(uint32_t)));
+  }
+  return ANSSymbolReader(code, br, distance_multiplier,
+                         std::move(lz77_window_storage));
+}
+
+ANSSymbolReader::ANSSymbolReader(const ANSCode* code,
+                                 BitReader* JXL_RESTRICT br,
+                                 size_t distance_multiplier,
+                                 AlignedMemory&& lz77_window_storage)
+    : alias_tables_(code->alias_tables.address<AliasTable::Entry>()),
+      huffman_data_(code->huffman_data.data()),
+      use_prefix_code_(code->use_prefix_code),
+      configs(code->uint_config.data()),
+      lz77_window_storage_(std::move(lz77_window_storage)) {
+  if (!use_prefix_code_) {
+    state_ = static_cast<uint32_t>(br->ReadFixedBits<32>());
+    log_alpha_size_ = code->log_alpha_size;
+    log_entry_size_ = ANS_LOG_TAB_SIZE - code->log_alpha_size;
+    entry_size_minus_1_ = (1 << log_entry_size_) - 1;
+  } else {
+    state_ = (ANS_SIGNATURE << 16u);
+  }
+  if (!code->lz77.enabled) return;
+  lz77_window_ = lz77_window_storage_.address<uint32_t>();
+  lz77_ctx_ = code->lz77.nonserialized_distance_context;
+  lz77_length_uint_ = code->lz77.length_uint_config;
+  lz77_threshold_ = code->lz77.min_symbol;
+  lz77_min_length_ = code->lz77.min_length;
+  num_special_distances_ = distance_multiplier == 0 ? 0 : kNumSpecialDistances;
+  for (size_t i = 0; i < num_special_distances_; i++) {
+    special_distances_[i] = SpecialDistance(i, distance_multiplier);
+  }
 }
 
 }  // namespace jxl

@@ -1,4 +1,4 @@
-///! Port of C [vtablog](http://www.sqlite.org/cgi/src/finfo?name=ext/misc/vtablog.c)
+//! Port of C [vtablog](http://www.sqlite.org/cgi/src/finfo?name=ext/misc/vtablog.c)
 use std::default::Default;
 use std::marker::PhantomData;
 use std::os::raw::c_int;
@@ -56,8 +56,7 @@ impl VTabLog {
                 "schema" => {
                     if schema.is_some() {
                         return Err(Error::ModuleError(format!(
-                            "more than one '{}' parameter",
-                            param
+                            "more than one '{param}' parameter"
                         )));
                     }
                     schema = Some(value.to_owned())
@@ -65,8 +64,7 @@ impl VTabLog {
                 "rows" => {
                     if n_row.is_some() {
                         return Err(Error::ModuleError(format!(
-                            "more than one '{}' parameter",
-                            param
+                            "more than one '{param}' parameter"
                         )));
                     }
                     if let Ok(n) = i64::from_str(value) {
@@ -75,8 +73,7 @@ impl VTabLog {
                 }
                 _ => {
                     return Err(Error::ModuleError(format!(
-                        "unrecognized parameter '{}'",
-                        param
+                        "unrecognized parameter '{param}'"
                     )));
                 }
             }
@@ -153,7 +150,7 @@ impl<'vtab> CreateVTab<'vtab> for VTabLog {
 
 impl<'vtab> UpdateVTab<'vtab> for VTabLog {
     fn delete(&mut self, arg: ValueRef<'_>) -> Result<()> {
-        println!("VTabLog::delete({}, {:?})", self.i_inst, arg);
+        println!("VTabLog::delete({}, {arg:?})", self.i_inst);
         Ok(())
     }
 
@@ -163,7 +160,7 @@ impl<'vtab> UpdateVTab<'vtab> for VTabLog {
             self.i_inst,
             args.iter().collect::<Vec<ValueRef<'_>>>()
         );
-        Ok(self.n_row as i64)
+        Ok(self.n_row)
     }
 
     fn update(&mut self, args: &Values<'_>) -> Result<()> {
@@ -246,7 +243,7 @@ unsafe impl VTabCursor for VTabLogCursor<'_> {
                 self.row_id
             )
         } else {
-            format!("{}{}", i, self.row_id)
+            format!("{i}{}", self.row_id)
         };
         println!(
             "VTabLogCursor::column(tab={}, cursor={}, i={}): {}",
@@ -286,13 +283,13 @@ mod test {
         let mut stmt = db.prepare("SELECT * FROM log;")?;
         let mut rows = stmt.query([])?;
         while rows.next()?.is_some() {}
-        db.execute("DELETE FROM log WHERE a = ?", ["a1"])?;
+        db.execute("DELETE FROM log WHERE a = ?1", ["a1"])?;
         db.execute(
-            "INSERT INTO log (a, b, c) VALUES (?, ?, ?)",
+            "INSERT INTO log (a, b, c) VALUES (?1, ?2, ?3)",
             ["a", "b", "c"],
         )?;
         db.execute(
-            "UPDATE log SET b = ?, c = ? WHERE a = ?",
+            "UPDATE log SET b = ?1, c = ?2 WHERE a = ?3",
             ["bn", "cn", "a1"],
         )?;
         Ok(())

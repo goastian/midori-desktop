@@ -1,28 +1,88 @@
-From: Michael Froman <mfroman@mozilla.com>
-Date: Thu, 2 Sep 2021 13:22:00 -0500
-Subject: Bug 1654112 - fixes for hybrid build. r=ng
+From: Landry Breuil <landry@openbsd.org>
+Date: Wed, 22 Dec 2021 00:09:00 +0000
+Subject: Bug 1654448 - P2 - readd partial support for BSD to webrtc
+ build;r=mjf
 
-- adds missing includes in several places
-- makes dom/media/webrtc/jsapi unified-only
+only OpenBSD/amd64 is supported for now
 
-Differential Revision: https://phabricator.services.mozilla.com/D124499
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/1965757ee924d49c32eab76d1a3dfa77f9eadcf4
+Depends on D134432
+
+Differential Revision: https://phabricator.services.mozilla.com/D134433
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/0300b32b7de70fb8976dc82d7d3bb3adb9685857
 ---
- audio/channel_receive.h | 1 +
- 1 file changed, 1 insertion(+)
+ BUILD.gn                                       | 3 +++
+ modules/video_capture/BUILD.gn                 | 2 +-
+ modules/video_capture/linux/device_info_v4l2.h | 2 ++
+ rtc_base/platform_thread_types.cc              | 4 +++-
+ webrtc.gni                                     | 2 +-
+ 5 files changed, 10 insertions(+), 3 deletions(-)
 
-diff --git a/audio/channel_receive.h b/audio/channel_receive.h
-index dd3ca1af83..1ad3be781b 100644
---- a/audio/channel_receive.h
-+++ b/audio/channel_receive.h
-@@ -28,6 +28,7 @@
- #include "call/rtp_packet_sink_interface.h"
- #include "call/syncable.h"
- #include "modules/audio_coding/include/audio_coding_module_typedefs.h"
-+#include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
- #include "modules/rtp_rtcp/source/source_tracker.h"
- #include "system_wrappers/include/clock.h"
+diff --git a/BUILD.gn b/BUILD.gn
+index d2ede84941..f595a2951a 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -221,6 +221,9 @@ config("common_inherited_config") {
+   if (is_linux || is_chromeos) {
+     defines += [ "WEBRTC_LINUX" ]
+   }
++  if (is_bsd) {
++    defines += [ "WEBRTC_BSD" ]
++  }
+   if (is_mac) {
+     defines += [ "WEBRTC_MAC" ]
+   }
+diff --git a/modules/video_capture/BUILD.gn b/modules/video_capture/BUILD.gn
+index 7289dbe0a8..58fdf8957b 100644
+--- a/modules/video_capture/BUILD.gn
++++ b/modules/video_capture/BUILD.gn
+@@ -71,7 +71,7 @@ if (!build_with_chromium || is_linux || is_chromeos) {
+       "video_capture_options.h",
+     ]
  
--- 
-2.34.1
-
+-    if (is_linux || is_chromeos) {
++    if (is_linux || is_bsd || is_chromeos) {
+       sources += [
+         "linux/device_info_linux.cc",
+         "linux/device_info_v4l2.cc",
+diff --git a/modules/video_capture/linux/device_info_v4l2.h b/modules/video_capture/linux/device_info_v4l2.h
+index e3c2395f49..119cb07ab8 100644
+--- a/modules/video_capture/linux/device_info_v4l2.h
++++ b/modules/video_capture/linux/device_info_v4l2.h
+@@ -16,7 +16,9 @@
+ #include "modules/video_capture/device_info_impl.h"
+ 
+ #include "rtc_base/platform_thread.h"
++#ifdef WEBRTC_LINUX
+ #include <sys/inotify.h>
++#endif
+ 
+ struct v4l2_capability;
+ 
+diff --git a/rtc_base/platform_thread_types.cc b/rtc_base/platform_thread_types.cc
+index d64ea689bb..c3c6955a7b 100644
+--- a/rtc_base/platform_thread_types.cc
++++ b/rtc_base/platform_thread_types.cc
+@@ -50,7 +50,9 @@ PlatformThreadId CurrentThreadId() {
+   return static_cast<PlatformThreadId>(pthread_self());
+ #else
+   // Default implementation for nacl and solaris.
+-  return reinterpret_cast<PlatformThreadId>(pthread_self());
++  // WEBRTC_BSD: pthread_t is a pointer, so cannot be casted to pid_t
++  //             (aka int32_t) on 64-bit archs. Required on OpenBSD.
++  return reinterpret_cast<long>(pthread_self());
+ #endif
+ #endif  // defined(WEBRTC_POSIX)
+ }
+diff --git a/webrtc.gni b/webrtc.gni
+index ad69bf8f8e..e339ba25fe 100644
+--- a/webrtc.gni
++++ b/webrtc.gni
+@@ -360,7 +360,7 @@ rtc_opus_dir = "//third_party/opus"
+ 
+ # Desktop capturer is supported only on Windows, OSX and Linux.
+ rtc_desktop_capture_supported =
+-    (is_win && current_os != "winuwp") || is_mac ||
++    (is_win && current_os != "winuwp") || is_mac || is_bsd ||
+     ((is_linux || is_chromeos) && (rtc_use_x11_extensions || rtc_use_pipewire))
+ 
+ ###############################################################################

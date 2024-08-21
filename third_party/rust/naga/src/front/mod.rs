@@ -19,52 +19,6 @@ use crate::{
 };
 use std::ops;
 
-/// Helper class to emit expressions
-#[allow(dead_code)]
-#[derive(Default, Debug)]
-struct Emitter {
-    start_len: Option<usize>,
-}
-
-#[allow(dead_code)]
-impl Emitter {
-    fn start(&mut self, arena: &Arena<crate::Expression>) {
-        if self.start_len.is_some() {
-            unreachable!("Emitting has already started!");
-        }
-        self.start_len = Some(arena.len());
-    }
-    #[must_use]
-    fn finish(
-        &mut self,
-        arena: &Arena<crate::Expression>,
-    ) -> Option<(crate::Statement, crate::span::Span)> {
-        let start_len = self.start_len.take().unwrap();
-        if start_len != arena.len() {
-            #[allow(unused_mut)]
-            let mut span = crate::span::Span::default();
-            let range = arena.range_from(start_len);
-            #[cfg(feature = "span")]
-            for handle in range.clone() {
-                span.subsume(arena.get_span(handle))
-            }
-            Some((crate::Statement::Emit(range), span))
-        } else {
-            None
-        }
-    }
-}
-
-#[allow(dead_code)]
-impl super::ConstantInner {
-    const fn boolean(value: bool) -> Self {
-        Self::Scalar {
-            width: super::BOOL_WIDTH,
-            value: super::ScalarValue::Bool(value),
-        }
-    }
-}
-
 /// A table of types for an `Arena<Expression>`.
 ///
 /// A front end can use a `Typifier` to get types for an arena's expressions
@@ -197,7 +151,7 @@ impl ops::Index<Handle<crate::Expression>> for Typifier {
 
 /// Type representing a lexical scope, associating a name to a single variable
 ///
-/// The scope is generic over the variable representation and name representaion
+/// The scope is generic over the variable representation and name representation
 /// in order to allow larger flexibility on the frontends on how they might
 /// represent them.
 type Scope<Name, Var> = FastHashMap<Name, Var>;
@@ -314,10 +268,10 @@ where
     /// the current scope to the root scope, returning `Some` when a variable is
     /// found or `None` if there doesn't exist a variable with `name` in any
     /// scope.
-    pub fn lookup<Q: ?Sized>(&self, name: &Q) -> Option<&Var>
+    pub fn lookup<Q>(&self, name: &Q) -> Option<&Var>
     where
         Name: std::borrow::Borrow<Q>,
-        Q: std::hash::Hash + Eq,
+        Q: std::hash::Hash + Eq + ?Sized,
     {
         // Iterate backwards trough the scopes and try to find the variable
         for scope in self.scopes[..self.cursor].iter().rev() {

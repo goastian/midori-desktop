@@ -1,6 +1,7 @@
+use std::borrow::Cow;
+
 use super::*;
 use wasm_encoder::{ComponentExportKind, ComponentOuterAliasKind, ExportKind};
-use wasmparser::types::KebabStr;
 
 impl Component {
     /// Encode this Wasm component into bytes.
@@ -51,8 +52,8 @@ impl Section {
 impl CustomSection {
     fn encode(&self, component: &mut wasm_encoder::Component) {
         component.section(&wasm_encoder::CustomSection {
-            name: &self.name,
-            data: &self.data,
+            name: (&self.name).into(),
+            data: Cow::Borrowed(&self.data),
         });
     }
 }
@@ -71,7 +72,7 @@ impl ImportSection {
     fn encode(&self, component: &mut wasm_encoder::Component) {
         let mut sec = wasm_encoder::ComponentImportSection::new();
         for imp in &self.imports {
-            sec.import(&imp.name, imp.url.as_deref().unwrap_or(""), imp.ty);
+            sec.import(&imp.name, imp.ty);
         }
         component.section(&sec);
     }
@@ -123,11 +124,14 @@ impl CoreType {
                 let mut enc_mod_ty = wasm_encoder::ModuleType::new();
                 for def in &mod_ty.defs {
                     match def {
-                        ModuleTypeDef::TypeDef(crate::core::Type::Func(func_ty)) => {
+                        ModuleTypeDef::TypeDef(crate::core::CompositeType::Func(func_ty)) => {
                             enc_mod_ty.ty().function(
                                 func_ty.params.iter().copied(),
                                 func_ty.results.iter().copied(),
                             );
+                        }
+                        ModuleTypeDef::TypeDef(_) => {
+                            unimplemented!("non-func types in a component's module type")
                         }
                         ModuleTypeDef::OuterAlias { count, i, kind } => match kind {
                             CoreOuterAliasKind::Type(_) => {
@@ -167,9 +171,10 @@ impl Type {
                     f.result(ty);
                 } else {
                     f.results(
-                        func_ty.results.iter().map(|(name, ty)| {
-                            (name.as_deref().map(KebabStr::as_str).unwrap(), *ty)
-                        }),
+                        func_ty
+                            .results
+                            .iter()
+                            .map(|(name, ty)| (name.as_deref().unwrap(), *ty)),
                     );
                 }
             }
@@ -178,7 +183,7 @@ impl Type {
                 for def in &comp_ty.defs {
                     match def {
                         ComponentTypeDef::Import(imp) => {
-                            enc_comp_ty.import(&imp.name, imp.url.as_deref().unwrap_or(""), imp.ty);
+                            enc_comp_ty.import(&imp.name, imp.ty);
                         }
                         ComponentTypeDef::CoreType(ty) => {
                             ty.encode(enc_comp_ty.core_type());
@@ -186,8 +191,8 @@ impl Type {
                         ComponentTypeDef::Type(ty) => {
                             ty.encode(enc_comp_ty.ty());
                         }
-                        ComponentTypeDef::Export { name, url, ty } => {
-                            enc_comp_ty.export(name, url.as_deref().unwrap_or(""), *ty);
+                        ComponentTypeDef::Export { name, url: _, ty } => {
+                            enc_comp_ty.export(name, *ty);
                         }
                         ComponentTypeDef::Alias(a) => {
                             enc_comp_ty.alias(translate_alias(a));
@@ -206,8 +211,8 @@ impl Type {
                         InstanceTypeDecl::Type(ty) => {
                             ty.encode(enc_inst_ty.ty());
                         }
-                        InstanceTypeDecl::Export { name, url, ty } => {
-                            enc_inst_ty.export(name, url.as_deref().unwrap_or(""), *ty);
+                        InstanceTypeDecl::Export { name, url: _, ty } => {
+                            enc_inst_ty.export(name, *ty);
                         }
                         InstanceTypeDecl::Alias(a) => {
                             enc_inst_ty.alias(translate_alias(a));
@@ -245,9 +250,6 @@ impl DefinedType {
             }
             Self::Enum(ty) => {
                 enc.enum_type(ty.variants.iter().map(|v| v.as_str()));
-            }
-            Self::Union(ty) => {
-                enc.union(ty.variants.iter().copied());
             }
             Self::Option(ty) => {
                 enc.option(ty.inner_ty);

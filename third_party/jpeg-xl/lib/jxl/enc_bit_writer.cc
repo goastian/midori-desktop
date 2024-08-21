@@ -5,11 +5,12 @@
 
 #include "lib/jxl/enc_bit_writer.h"
 
-#include <string.h>  // memcpy
+#include <jxl/types.h>
+
+#include <cstring>  // memcpy
 
 #include "lib/jxl/base/byte_order.h"
 #include "lib/jxl/base/printf_macros.h"
-#include "lib/jxl/dec_bit_reader.h"
 #include "lib/jxl/enc_aux_out.h"
 
 namespace jxl {
@@ -28,7 +29,7 @@ BitWriter::Allotment::Allotment(BitWriter* JXL_RESTRICT writer, size_t max_bits)
 BitWriter::Allotment::~Allotment() {
   if (!called_) {
     // Not calling is a bug - unused storage will not be reclaimed.
-    JXL_ABORT("Did not call Allotment::ReclaimUnused");
+    JXL_UNREACHABLE("Did not call Allotment::ReclaimUnused");
   }
 }
 
@@ -43,10 +44,11 @@ void BitWriter::Allotment::FinishedHistogram(BitWriter* JXL_RESTRICT writer) {
 void BitWriter::Allotment::ReclaimAndCharge(BitWriter* JXL_RESTRICT writer,
                                             size_t layer,
                                             AuxOut* JXL_RESTRICT aux_out) {
-  size_t used_bits, unused_bits;
+  size_t used_bits = 0;
+  size_t unused_bits = 0;
   PrivateReclaim(writer, &used_bits, &unused_bits);
 
-#if 0
+#if JXL_FALSE
   printf("Layer %s bits: max %" PRIuS " used %" PRIuS " unused %" PRIuS "\n",
          LayerName(layer), MaxBits(), used_bits, unused_bits);
 #endif
@@ -77,7 +79,7 @@ void BitWriter::Allotment::PrivateReclaim(BitWriter* JXL_RESTRICT writer,
   writer->storage_.resize(writer->storage_.size() - unused_bytes);
   writer->current_allotment_ = parent_;
   // Ensure we don't also charge the parent for these bits.
-  auto parent = parent_;
+  auto* parent = parent_;
   while (parent != nullptr) {
     parent->prev_bits_written_ += *used_bits;
     parent = parent->parent_;
@@ -103,6 +105,20 @@ void BitWriter::AppendByteAligned(const BitWriter& other) {
   JXL_ASSERT(other.BitsWritten() / kBitsPerByte != 0);
 
   AppendByteAligned(other.GetSpan());
+}
+
+void BitWriter::AppendUnaligned(const BitWriter& other) {
+  Allotment allotment(this, other.BitsWritten());
+  size_t full_bytes = other.BitsWritten() / kBitsPerByte;
+  size_t remaining_bits = other.BitsWritten() % kBitsPerByte;
+  for (size_t i = 0; i < full_bytes; ++i) {
+    Write(8, other.storage_[i]);
+  }
+  if (remaining_bits > 0) {
+    Write(remaining_bits,
+          other.storage_[full_bytes] & ((1u << remaining_bits) - 1));
+  }
+  allotment.ReclaimAndCharge(this, 0, nullptr);
 }
 
 void BitWriter::AppendByteAligned(const std::vector<BitWriter>& others) {

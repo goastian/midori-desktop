@@ -85,9 +85,13 @@ struct DcSctpOptions {
   // buffer is fully utilized.
   size_t max_receiver_window_buffer_size = 5 * 1024 * 1024;
 
-  // Maximum send buffer size. It will not be possible to queue more data than
-  // this before sending it.
+  // Send queue total size limit. It will not be possible to queue more data if
+  // the queue size is larger than this number.
   size_t max_send_buffer_size = 2'000'000;
+
+  // Per stream send queue size limit. Similar to `max_send_buffer_size`, but
+  // limiting the size of individual streams.
+  size_t per_stream_send_queue_limit = 2'000'000;
 
   // A threshold that, when the amount of data in the send buffer goes below
   // this value, will trigger `DcSctpCallbacks::OnTotalBufferedAmountLow`.
@@ -193,8 +197,16 @@ struct DcSctpOptions {
   // If RTO should be added to heartbeat_interval
   bool heartbeat_interval_include_rtt = true;
 
-  // Disables SCTP packet crc32 verification. Useful when running with fuzzers.
+  // Disables SCTP packet crc32 verification. For fuzzers only!
   bool disable_checksum_verification = false;
+
+  // Controls the "zero checksum option" feature, as defined in
+  // https://www.ietf.org/archive/id/draft-ietf-tsvwg-sctp-zero-checksum-06.html.
+  // To have this feature enabled, both peers must be configured to use the
+  // same (defined, not "none") alternate error detection method.
+  ZeroChecksumAlternateErrorDetectionMethod
+      zero_checksum_alternate_error_detection_method =
+          ZeroChecksumAlternateErrorDetectionMethod::None();
 };
 }  // namespace dcsctp
 

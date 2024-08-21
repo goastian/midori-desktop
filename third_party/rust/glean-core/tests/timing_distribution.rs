@@ -169,7 +169,7 @@ fn the_accumulate_samples_api_correctly_stores_timing_values() {
 
     // Accumulate the samples. We intentionally do not report
     // negative values to not trigger error reporting.
-    metric.accumulate_samples_sync(&glean, [1, 2, 3].to_vec());
+    metric.accumulate_samples_sync(&glean, &[1, 2, 3]);
 
     let snapshot = metric
         .get_value(&glean, "store1")
@@ -211,7 +211,7 @@ fn the_accumulate_samples_api_correctly_handles_negative_values() {
     );
 
     // Accumulate the samples.
-    metric.accumulate_samples_sync(&glean, [-1, 1, 2, 3].to_vec());
+    metric.accumulate_samples_sync(&glean, &[-1, 1, 2, 3]);
 
     let snapshot = metric
         .get_value(&glean, "store1")
@@ -255,7 +255,7 @@ fn the_accumulate_samples_api_correctly_handles_overflowing_values() {
     const MAX_SAMPLE_TIME: u64 = 1000 * 1000 * 1000 * 60 * 10;
     let overflowing_val = MAX_SAMPLE_TIME as i64 + 1;
     // Accumulate the samples.
-    metric.accumulate_samples_sync(&glean, [overflowing_val, 1, 2, 3].to_vec());
+    metric.accumulate_samples_sync(&glean, &[overflowing_val, 1, 2, 3]);
 
     let snapshot = metric
         .get_value(&glean, "store1")
@@ -296,7 +296,7 @@ fn large_nanoseconds_values() {
     );
 
     let time = Duration::from_secs(10).as_nanos() as u64;
-    assert!(time > u64::from(u32::max_value()));
+    assert!(time > u64::from(u32::MAX));
 
     let id = 4u64.into();
     metric.set_start(id, 0);

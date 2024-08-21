@@ -6,26 +6,28 @@
 
 // Tracking of received packets and generating acks thereof.
 
-#![deny(clippy::pedantic)]
+use std::{
+    cmp::min,
+    collections::VecDeque,
+    ops::{Index, IndexMut},
+    time::{Duration, Instant},
+};
 
-use std::cmp::min;
-use std::collections::VecDeque;
-use std::convert::TryFrom;
-use std::ops::{Index, IndexMut};
-use std::time::{Duration, Instant};
-
-use neqo_common::{qdebug, qinfo, qtrace, qwarn};
+use enum_map::Enum;
+use neqo_common::{qdebug, qinfo, qtrace, qwarn, IpTosEcn};
 use neqo_crypto::{Epoch, TLS_EPOCH_HANDSHAKE, TLS_EPOCH_INITIAL};
-
-use crate::packet::{PacketBuilder, PacketNumber, PacketType};
-use crate::recovery::RecoveryToken;
-use crate::stats::FrameStats;
-use crate::{Error, Res};
-
 use smallvec::{smallvec, SmallVec};
 
+use crate::{
+    ecn::EcnCount,
+    frame::{FRAME_TYPE_ACK, FRAME_TYPE_ACK_ECN},
+    packet::{PacketBuilder, PacketNumber, PacketType},
+    recovery::RecoveryToken,
+    stats::FrameStats,
+};
+
 // TODO(mt) look at enabling EnumMap for this: https://stackoverflow.com/a/44905797/1375574
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Enum)]
 pub enum PacketNumberSpace {
     Initial,
     Handshake,
@@ -128,114 +130,6 @@ impl std::fmt::Debug for PacketNumberSpaceSet {
             }
         }
         f.write_str(")")
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SentPacket {
-    pub pt: PacketType,
-    pub pn: PacketNumber,
-    ack_eliciting: bool,
-    pub time_sent: Instant,
-    primary_path: bool,
-    pub tokens: Vec<RecoveryToken>,
-
-    time_declared_lost: Option<Instant>,
-    /// After a PTO, this is true when the packet has been released.
-    pto: bool,
-
-    pub size: usize,
-}
-
-impl SentPacket {
-    pub fn new(
-        pt: PacketType,
-        pn: PacketNumber,
-        time_sent: Instant,
-        ack_eliciting: bool,
-        tokens: Vec<RecoveryToken>,
-        size: usize,
-    ) -> Self {
-        Self {
-            pt,
-            pn,
-            time_sent,
-            ack_eliciting,
-            primary_path: true,
-            tokens,
-            time_declared_lost: None,
-            pto: false,
-            size,
-        }
-    }
-
-    /// Returns `true` if the packet will elicit an ACK.
-    pub fn ack_eliciting(&self) -> bool {
-        self.ack_eliciting
-    }
-
-    /// Returns `true` if the packet was sent on the primary path.
-    pub fn on_primary_path(&self) -> bool {
-        self.primary_path
-    }
-
-    /// Clears the flag that had this packet on the primary path.
-    /// Used when migrating to clear out state.
-    pub fn clear_primary_path(&mut self) {
-        self.primary_path = false;
-    }
-
-    /// Whether the packet has been declared lost.
-    pub fn lost(&self) -> bool {
-        self.time_declared_lost.is_some()
-    }
-
-    /// Whether accounting for the loss or acknowledgement in the
-    /// congestion controller is pending.
-    /// Returns `true` if the packet counts as being "in flight",
-    /// and has not previously been declared lost.
-    /// Note that this should count packets that contain only ACK and PADDING,
-    /// but we don't send PADDING, so we don't track that.
-    pub fn cc_outstanding(&self) -> bool {
-        self.ack_eliciting() && self.on_primary_path() && !self.lost()
-    }
-
-    /// Whether the packet should be tracked as in-flight.
-    pub fn cc_in_flight(&self) -> bool {
-        self.ack_eliciting() && self.on_primary_path()
-    }
-
-    /// Declare the packet as lost.  Returns `true` if this is the first time.
-    pub fn declare_lost(&mut self, now: Instant) -> bool {
-        if self.lost() {
-            false
-        } else {
-            self.time_declared_lost = Some(now);
-            true
-        }
-    }
-
-    /// Ask whether this tracked packet has been declared lost for long enough
-    /// that it can be expired and no longer tracked.
-    pub fn expired(&self, now: Instant, expiration_period: Duration) -> bool {
-        self.time_declared_lost
-            .map_or(false, |loss_time| (loss_time + expiration_period) <= now)
-    }
-
-    /// Whether the packet contents were cleared out after a PTO.
-    pub fn pto_fired(&self) -> bool {
-        self.pto
-    }
-
-    /// On PTO, we need to get the recovery tokens so that we can ensure that
-    /// the frames we sent can be sent again in the PTO packet(s).  Do that just once.
-    pub fn pto(&mut self) -> bool {
-        if self.pto || self.lost() {
-            false
-        } else {
-            self.pto = true;
-            true
-        }
     }
 }
 
@@ -362,6 +256,8 @@ pub struct RecvdPackets {
     largest_pn_time: Option<Instant>,
     /// The time that we should be sending an ACK.
     ack_time: Option<Instant>,
+    /// The time we last sent an ACK.
+    last_ack_time: Option<Instant>,
     /// The current ACK frequency sequence number.
     ack_frequency_seqno: u64,
     /// The time to delay after receiving the first packet that is
@@ -376,6 +272,8 @@ pub struct RecvdPackets {
     /// Whether we are ignoring packets that arrive out of order
     /// for the purposes of generating immediate acknowledgment.
     ignore_order: bool,
+    // The counts of different ECN marks that have been received.
+    ecn_count: EcnCount,
 }
 
 impl RecvdPackets {
@@ -387,12 +285,19 @@ impl RecvdPackets {
             min_tracked: 0,
             largest_pn_time: None,
             ack_time: None,
+            last_ack_time: None,
             ack_frequency_seqno: 0,
             ack_delay: DEFAULT_ACK_DELAY,
             unacknowledged_count: 0,
             unacknowledged_tolerance: DEFAULT_ACK_PACKET_TOLERANCE,
             ignore_order: false,
+            ecn_count: EcnCount::default(),
         }
+    }
+
+    /// Get the ECN counts.
+    pub fn ecn_marks(&mut self) -> &mut EcnCount {
+        &mut self.ecn_count
     }
 
     /// Get the time at which the next ACK should be sent.
@@ -420,11 +325,13 @@ impl RecvdPackets {
     }
 
     /// Returns true if an ACK frame should be sent now.
-    fn ack_now(&self, now: Instant) -> bool {
-        match self.ack_time {
-            Some(t) => t <= now,
-            None => false,
-        }
+    fn ack_now(&self, now: Instant, rtt: Duration) -> bool {
+        // If ack_time is Some, then we have something to acknowledge.
+        // In that case, either ack because `now >= ack_time`, or
+        // because it is more than an RTT since the last time we sent an ack.
+        self.ack_time.map_or(false, |next| {
+            next <= now || self.last_ack_time.map_or(false, |last| last + rtt <= now)
+        })
     }
 
     // A simple addition of a packet number to the tracked set.
@@ -541,6 +448,10 @@ impl RecvdPackets {
         }
     }
 
+    /// Length of the worst possible ACK frame, assuming only one range and ECN counts.
+    /// Note that this assumes one byte for the type and count of extra ranges.
+    pub const USEFUL_ACK_LEN: usize = 1 + 8 + 8 + 1 + 8 + 3 * 8;
+
     /// Generate an ACK frame for this packet number space.
     ///
     /// Unlike other frame generators this doesn't modify the underlying instance
@@ -554,16 +465,13 @@ impl RecvdPackets {
     fn write_frame(
         &mut self,
         now: Instant,
+        rtt: Duration,
         builder: &mut PacketBuilder,
         tokens: &mut Vec<RecoveryToken>,
         stats: &mut FrameStats,
     ) {
-        // The worst possible ACK frame, assuming only one range.
-        // Note that this assumes one byte for the type and count of extra ranges.
-        const LONGEST_ACK_HEADER: usize = 1 + 8 + 8 + 1 + 8;
-
         // Check that we aren't delaying ACKs.
-        if !self.ack_now(now) {
+        if !self.ack_now(now, rtt) {
             return;
         }
 
@@ -573,7 +481,10 @@ impl RecvdPackets {
         // When congestion limited, ACK-only packets are 255 bytes at most
         // (`recovery::ACK_ONLY_SIZE_LIMIT - 1`).  This results in limiting the
         // ranges to 13 here.
-        let max_ranges = if let Some(avail) = builder.remaining().checked_sub(LONGEST_ACK_HEADER) {
+        let max_ranges = if let Some(avail) = builder
+            .remaining()
+            .checked_sub(RecvdPackets::USEFUL_ACK_LEN)
+        {
             // Apply a hard maximum to keep plenty of space for other stuff.
             min(1 + (avail / 16), MAX_ACKS_PER_FRAME)
         } else {
@@ -588,12 +499,13 @@ impl RecvdPackets {
             .cloned()
             .collect::<Vec<_>>();
 
-        builder.encode_varint(crate::frame::FRAME_TYPE_ACK);
+        builder.encode_varint(if self.ecn_count.is_some() {
+            FRAME_TYPE_ACK_ECN
+        } else {
+            FRAME_TYPE_ACK
+        });
         let mut iter = ranges.iter();
-        let first = match iter.next() {
-            Some(v) => v,
-            None => return, // Nothing to send.
-        };
+        let Some(first) = iter.next() else { return };
         builder.encode_varint(first.largest);
         stats.largest_acknowledged = first.largest;
         stats.ack += 1;
@@ -615,8 +527,15 @@ impl RecvdPackets {
             last = r.smallest;
         }
 
+        if self.ecn_count.is_some() {
+            builder.encode_varint(self.ecn_count[IpTosEcn::Ect0]);
+            builder.encode_varint(self.ecn_count[IpTosEcn::Ect1]);
+            builder.encode_varint(self.ecn_count[IpTosEcn::Ce]);
+        }
+
         // We've sent an ACK, reset the timer.
         self.ack_time = None;
+        self.last_ack_time = Some(now);
         self.unacknowledged_count = 0;
 
         tokens.push(RecoveryToken::Ack(AckToken {
@@ -713,17 +632,14 @@ impl AckTracker {
         &mut self,
         pn_space: PacketNumberSpace,
         now: Instant,
+        rtt: Duration,
         builder: &mut PacketBuilder,
         tokens: &mut Vec<RecoveryToken>,
         stats: &mut FrameStats,
-    ) -> Res<()> {
+    ) {
         if let Some(space) = self.get_mut(pn_space) {
-            space.write_frame(now, builder, tokens, stats);
-            if builder.len() > builder.limit() {
-                return Err(Error::InternalError(24));
-            }
+            space.write_frame(now, rtt, builder, tokens, stats);
         }
-        Ok(())
     }
 }
 
@@ -741,27 +657,29 @@ impl Default for AckTracker {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use neqo_common::Encoder;
+    use test_fixture::now;
+
     use super::{
         AckTracker, Duration, Instant, PacketNumberSpace, PacketNumberSpaceSet, RecoveryToken,
         RecvdPackets, MAX_TRACKED_RANGES,
     };
-    use crate::frame::Frame;
-    use crate::packet::{PacketBuilder, PacketNumber};
-    use crate::stats::FrameStats;
-    use lazy_static::lazy_static;
-    use neqo_common::Encoder;
-    use std::collections::HashSet;
+    use crate::{
+        frame::Frame,
+        packet::{PacketBuilder, PacketNumber},
+        stats::FrameStats,
+    };
 
-    lazy_static! {
-        static ref NOW: Instant = Instant::now();
-    }
+    const RTT: Duration = Duration::from_millis(100);
 
     fn test_ack_range(pns: &[PacketNumber], nranges: usize) {
         let mut rp = RecvdPackets::new(PacketNumberSpace::Initial); // Any space will do.
         let mut packets = HashSet::new();
 
         for pn in pns {
-            rp.set_received(*NOW, *pn, true);
+            rp.set_received(now(), *pn, true);
             packets.insert(*pn);
         }
 
@@ -816,7 +734,7 @@ mod tests {
 
         // This will add one too many disjoint ranges.
         for i in 0..=MAX_TRACKED_RANGES {
-            rp.set_received(*NOW, (i * 2) as u64, true);
+            rp.set_received(now(), (i * 2) as u64, true);
         }
 
         assert_eq!(rp.ranges.len(), MAX_TRACKED_RANGES);
@@ -835,22 +753,22 @@ mod tests {
         // Only application data packets are delayed.
         let mut rp = RecvdPackets::new(PacketNumberSpace::ApplicationData);
         assert!(rp.ack_time().is_none());
-        assert!(!rp.ack_now(*NOW));
+        assert!(!rp.ack_now(now(), RTT));
 
         rp.ack_freq(0, COUNT, DELAY, false);
 
         // Some packets won't cause an ACK to be needed.
         for i in 0..COUNT {
-            rp.set_received(*NOW, i, true);
-            assert_eq!(Some(*NOW + DELAY), rp.ack_time());
-            assert!(!rp.ack_now(*NOW));
-            assert!(rp.ack_now(*NOW + DELAY));
+            rp.set_received(now(), i, true);
+            assert_eq!(Some(now() + DELAY), rp.ack_time());
+            assert!(!rp.ack_now(now(), RTT));
+            assert!(rp.ack_now(now() + DELAY, RTT));
         }
 
         // Exceeding COUNT will move the ACK time to now.
-        rp.set_received(*NOW, COUNT, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
-        assert!(rp.ack_now(*NOW));
+        rp.set_received(now(), COUNT, true);
+        assert_eq!(Some(now()), rp.ack_time());
+        assert!(rp.ack_now(now(), RTT));
     }
 
     #[test]
@@ -858,12 +776,12 @@ mod tests {
         for space in &[PacketNumberSpace::Initial, PacketNumberSpace::Handshake] {
             let mut rp = RecvdPackets::new(*space);
             assert!(rp.ack_time().is_none());
-            assert!(!rp.ack_now(*NOW));
+            assert!(!rp.ack_now(now(), RTT));
 
             // Any packet in these spaces is acknowledged straight away.
-            rp.set_received(*NOW, 0, true);
-            assert_eq!(Some(*NOW), rp.ack_time());
-            assert!(rp.ack_now(*NOW));
+            rp.set_received(now(), 0, true);
+            assert_eq!(Some(now()), rp.ack_time());
+            assert!(rp.ack_now(now(), RTT));
         }
     }
 
@@ -871,33 +789,55 @@ mod tests {
     fn ooo_no_ack_delay_new() {
         let mut rp = RecvdPackets::new(PacketNumberSpace::ApplicationData);
         assert!(rp.ack_time().is_none());
-        assert!(!rp.ack_now(*NOW));
+        assert!(!rp.ack_now(now(), RTT));
 
         // Anything other than packet 0 is acknowledged immediately.
-        rp.set_received(*NOW, 1, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
-        assert!(rp.ack_now(*NOW));
+        rp.set_received(now(), 1, true);
+        assert_eq!(Some(now()), rp.ack_time());
+        assert!(rp.ack_now(now(), RTT));
     }
 
-    fn write_frame(rp: &mut RecvdPackets) {
+    fn write_frame_at(rp: &mut RecvdPackets, now: Instant) {
         let mut builder = PacketBuilder::short(Encoder::new(), false, []);
         let mut stats = FrameStats::default();
         let mut tokens = Vec::new();
-        rp.write_frame(*NOW, &mut builder, &mut tokens, &mut stats);
+        rp.write_frame(now, RTT, &mut builder, &mut tokens, &mut stats);
         assert!(!tokens.is_empty());
         assert_eq!(stats.ack, 1);
+    }
+
+    fn write_frame(rp: &mut RecvdPackets) {
+        write_frame_at(rp, now());
     }
 
     #[test]
     fn ooo_no_ack_delay_fill() {
         let mut rp = RecvdPackets::new(PacketNumberSpace::ApplicationData);
-        rp.set_received(*NOW, 1, true);
+        rp.set_received(now(), 1, true);
         write_frame(&mut rp);
 
         // Filling in behind the largest acknowledged causes immediate ACK.
-        rp.set_received(*NOW, 0, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
-        assert!(rp.ack_now(*NOW));
+        rp.set_received(now(), 0, true);
+        write_frame(&mut rp);
+
+        // Receiving the next packet won't elicit an ACK.
+        rp.set_received(now(), 2, true);
+        assert!(!rp.ack_now(now(), RTT));
+    }
+
+    #[test]
+    fn immediate_ack_after_rtt() {
+        let mut rp = RecvdPackets::new(PacketNumberSpace::ApplicationData);
+        rp.set_received(now(), 1, true);
+        write_frame(&mut rp);
+
+        // Filling in behind the largest acknowledged causes immediate ACK.
+        rp.set_received(now(), 0, true);
+        write_frame(&mut rp);
+
+        // A new packet ordinarily doesn't result in an ACK, but this time it does.
+        rp.set_received(now() + RTT, 2, true);
+        write_frame_at(&mut rp, now() + RTT);
     }
 
     #[test]
@@ -907,29 +847,29 @@ mod tests {
         // Set tolerance to 2 and then it takes three packets.
         rp.ack_freq(0, 2, Duration::from_millis(10), true);
 
-        rp.set_received(*NOW, 1, true);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 2, true);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 3, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
+        rp.set_received(now(), 1, true);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 2, true);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 3, true);
+        assert_eq!(Some(now()), rp.ack_time());
     }
 
     #[test]
     fn ooo_no_ack_delay_threshold_gap() {
         let mut rp = RecvdPackets::new(PacketNumberSpace::ApplicationData);
-        rp.set_received(*NOW, 1, true);
+        rp.set_received(now(), 1, true);
         write_frame(&mut rp);
 
         // Set tolerance to 2 and then it takes three packets.
         rp.ack_freq(0, 2, Duration::from_millis(10), true);
 
-        rp.set_received(*NOW, 3, true);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 4, true);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 5, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
+        rp.set_received(now(), 3, true);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 4, true);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 5, true);
+        assert_eq!(Some(now()), rp.ack_time());
     }
 
     /// Test that an in-order packet that is not ack-eliciting doesn't
@@ -940,13 +880,13 @@ mod tests {
         rp.ack_freq(0, 1, Duration::from_millis(10), true);
 
         // This should be ignored.
-        rp.set_received(*NOW, 0, false);
-        assert_ne!(Some(*NOW), rp.ack_time());
+        rp.set_received(now(), 0, false);
+        assert_ne!(Some(now()), rp.ack_time());
         // Skip 1 (it has no effect).
-        rp.set_received(*NOW, 2, true);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 3, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
+        rp.set_received(now(), 2, true);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 3, true);
+        assert_eq!(Some(now()), rp.ack_time());
     }
 
     /// If a packet that is not ack-eliciting is reordered, that's fine too.
@@ -956,16 +896,16 @@ mod tests {
         rp.ack_freq(0, 1, Duration::from_millis(10), false);
 
         // These are out of order, but they are not ack-eliciting.
-        rp.set_received(*NOW, 1, false);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 0, false);
-        assert_ne!(Some(*NOW), rp.ack_time());
+        rp.set_received(now(), 1, false);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 0, false);
+        assert_ne!(Some(now()), rp.ack_time());
 
         // These are in order.
-        rp.set_received(*NOW, 2, true);
-        assert_ne!(Some(*NOW), rp.ack_time());
-        rp.set_received(*NOW, 3, true);
-        assert_eq!(Some(*NOW), rp.ack_time());
+        rp.set_received(now(), 2, true);
+        assert_ne!(Some(now()), rp.ack_time());
+        rp.set_received(now(), 3, true);
+        assert_eq!(Some(now()), rp.ack_time());
     }
 
     #[test]
@@ -977,23 +917,23 @@ mod tests {
         tracker
             .get_mut(PacketNumberSpace::Handshake)
             .unwrap()
-            .set_received(*NOW, 0, false);
-        assert_eq!(None, tracker.ack_time(*NOW));
+            .set_received(now(), 0, false);
+        assert_eq!(None, tracker.ack_time(now()));
 
         // This should be delayed.
         tracker
             .get_mut(PacketNumberSpace::ApplicationData)
             .unwrap()
-            .set_received(*NOW, 0, true);
-        assert_eq!(Some(*NOW + DELAY), tracker.ack_time(*NOW));
+            .set_received(now(), 0, true);
+        assert_eq!(Some(now() + DELAY), tracker.ack_time(now()));
 
         // This should move the time forward.
-        let later = *NOW + (DELAY / 2);
+        let later = now() + (DELAY / 2);
         tracker
             .get_mut(PacketNumberSpace::Initial)
             .unwrap()
             .set_received(later, 0, true);
-        assert_eq!(Some(later), tracker.ack_time(*NOW));
+        assert_eq!(Some(later), tracker.ack_time(now()));
     }
 
     #[test]
@@ -1017,32 +957,31 @@ mod tests {
         tracker
             .get_mut(PacketNumberSpace::Initial)
             .unwrap()
-            .set_received(*NOW, 0, true);
+            .set_received(now(), 0, true);
         // The reference time for `ack_time` has to be in the past or we filter out the timer.
         assert!(tracker
-            .ack_time(NOW.checked_sub(Duration::from_millis(1)).unwrap())
+            .ack_time(now().checked_sub(Duration::from_millis(1)).unwrap())
             .is_some());
 
         let mut tokens = Vec::new();
         let mut stats = FrameStats::default();
-        tracker
-            .write_frame(
-                PacketNumberSpace::Initial,
-                *NOW,
-                &mut builder,
-                &mut tokens,
-                &mut stats,
-            )
-            .unwrap();
+        tracker.write_frame(
+            PacketNumberSpace::Initial,
+            now(),
+            RTT,
+            &mut builder,
+            &mut tokens,
+            &mut stats,
+        );
         assert_eq!(stats.ack, 1);
 
         // Mark another packet as received so we have cause to send another ACK in that space.
         tracker
             .get_mut(PacketNumberSpace::Initial)
             .unwrap()
-            .set_received(*NOW, 1, true);
+            .set_received(now(), 1, true);
         assert!(tracker
-            .ack_time(NOW.checked_sub(Duration::from_millis(1)).unwrap())
+            .ack_time(now().checked_sub(Duration::from_millis(1)).unwrap())
             .is_some());
 
         // Now drop that space.
@@ -1050,17 +989,16 @@ mod tests {
 
         assert!(tracker.get_mut(PacketNumberSpace::Initial).is_none());
         assert!(tracker
-            .ack_time(NOW.checked_sub(Duration::from_millis(1)).unwrap())
+            .ack_time(now().checked_sub(Duration::from_millis(1)).unwrap())
             .is_none());
-        tracker
-            .write_frame(
-                PacketNumberSpace::Initial,
-                *NOW,
-                &mut builder,
-                &mut tokens,
-                &mut stats,
-            )
-            .unwrap();
+        tracker.write_frame(
+            PacketNumberSpace::Initial,
+            now(),
+            RTT,
+            &mut builder,
+            &mut tokens,
+            &mut stats,
+        );
         assert_eq!(stats.ack, 1);
         if let RecoveryToken::Ack(tok) = &tokens[0] {
             tracker.acked(tok); // Should be a noop.
@@ -1075,24 +1013,23 @@ mod tests {
         tracker
             .get_mut(PacketNumberSpace::Initial)
             .unwrap()
-            .set_received(*NOW, 0, true);
+            .set_received(now(), 0, true);
         assert!(tracker
-            .ack_time(NOW.checked_sub(Duration::from_millis(1)).unwrap())
+            .ack_time(now().checked_sub(Duration::from_millis(1)).unwrap())
             .is_some());
 
         let mut builder = PacketBuilder::short(Encoder::new(), false, []);
         builder.set_limit(10);
 
         let mut stats = FrameStats::default();
-        tracker
-            .write_frame(
-                PacketNumberSpace::Initial,
-                *NOW,
-                &mut builder,
-                &mut Vec::new(),
-                &mut stats,
-            )
-            .unwrap();
+        tracker.write_frame(
+            PacketNumberSpace::Initial,
+            now(),
+            RTT,
+            &mut builder,
+            &mut Vec::new(),
+            &mut stats,
+        );
         assert_eq!(stats.ack, 0);
         assert_eq!(builder.len(), 1); // Only the short packet header has been added.
     }
@@ -1103,32 +1040,33 @@ mod tests {
         tracker
             .get_mut(PacketNumberSpace::Initial)
             .unwrap()
-            .set_received(*NOW, 0, true);
+            .set_received(now(), 0, true);
         tracker
             .get_mut(PacketNumberSpace::Initial)
             .unwrap()
-            .set_received(*NOW, 2, true);
+            .set_received(now(), 2, true);
         assert!(tracker
-            .ack_time(NOW.checked_sub(Duration::from_millis(1)).unwrap())
+            .ack_time(now().checked_sub(Duration::from_millis(1)).unwrap())
             .is_some());
 
         let mut builder = PacketBuilder::short(Encoder::new(), false, []);
-        builder.set_limit(32);
+        // The code pessimistically assumes that each range needs 16 bytes to express.
+        // So this won't be enough for a second range.
+        builder.set_limit(RecvdPackets::USEFUL_ACK_LEN + 8);
 
         let mut stats = FrameStats::default();
-        tracker
-            .write_frame(
-                PacketNumberSpace::Initial,
-                *NOW,
-                &mut builder,
-                &mut Vec::new(),
-                &mut stats,
-            )
-            .unwrap();
+        tracker.write_frame(
+            PacketNumberSpace::Initial,
+            now(),
+            RTT,
+            &mut builder,
+            &mut Vec::new(),
+            &mut stats,
+        );
         assert_eq!(stats.ack, 1);
 
         let mut dec = builder.as_decoder();
-        let _ = dec.decode_byte().unwrap(); // Skip the short header.
+        _ = dec.decode_byte().unwrap(); // Skip the short header.
         let frame = Frame::decode(&mut dec).unwrap();
         if let Frame::Ack { ack_ranges, .. } = frame {
             assert_eq!(ack_ranges.len(), 0);
@@ -1142,19 +1080,19 @@ mod tests {
         let mut tracker = AckTracker::default();
 
         // While we have multiple PN spaces, we ignore ACK timers from the past.
-        // Send out of order to cause the delayed ack timer to be set to `*NOW`.
+        // Send out of order to cause the delayed ack timer to be set to `now()`.
         tracker
             .get_mut(PacketNumberSpace::ApplicationData)
             .unwrap()
-            .set_received(*NOW, 3, true);
-        assert!(tracker.ack_time(*NOW + Duration::from_millis(1)).is_none());
+            .set_received(now(), 3, true);
+        assert!(tracker.ack_time(now() + Duration::from_millis(1)).is_none());
 
         // When we are reduced to one space, that filter is off.
         tracker.drop_space(PacketNumberSpace::Initial);
         tracker.drop_space(PacketNumberSpace::Handshake);
         assert_eq!(
-            tracker.ack_time(*NOW + Duration::from_millis(1)),
-            Some(*NOW)
+            tracker.ack_time(now() + Duration::from_millis(1)),
+            Some(now())
         );
     }
 

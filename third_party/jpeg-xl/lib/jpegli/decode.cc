@@ -54,6 +54,7 @@ void InitializeImage(j_decompress_ptr cinfo) {
   m->found_soi_ = false;
   m->found_dri_ = false;
   m->found_sof_ = false;
+  m->found_sos_ = false;
   m->found_eoi_ = false;
   m->icc_index_ = 0;
   m->icc_total_ = 0;
@@ -115,8 +116,10 @@ void InitProgressMonitor(j_decompress_ptr cinfo, bool coef_only) {
     cinfo->progress->total_passes = 1;
   } else {
     int input_passes = !cinfo->buffered_image && m->is_multiscan_ ? 1 : 0;
-    bool two_pass_quant = cinfo->quantize_colors && !cinfo->colormap &&
-                          cinfo->two_pass_quantize && cinfo->enable_2pass_quant;
+    bool two_pass_quant = FROM_JXL_BOOL(cinfo->quantize_colors) &&
+                          (cinfo->colormap != nullptr) &&
+                          FROM_JXL_BOOL(cinfo->two_pass_quantize) &&
+                          FROM_JXL_BOOL(cinfo->enable_2pass_quant);
     cinfo->progress->total_passes = input_passes + (two_pass_quant ? 2 : 1);
   }
   cinfo->progress->completed_passes = 0;
@@ -175,7 +178,7 @@ void BuildHuffmanLookupTable(j_decompress_ptr cinfo, JHUFF_TBL* table,
   for (int i = 0; i < total_count; ++i) {
     int value = table->huffval[i];
     if (values_seen[value]) {
-      return JPEGLI_ERROR("Duplicate Huffman code value %d", value);
+      JPEGLI_ERROR("Duplicate Huffman code value %d", value);
     }
     values_seen[value] = 1;
     values[i] = value;
@@ -223,7 +226,7 @@ void PrepareForScan(j_decompress_ptr cinfo) {
       HuffmanTableEntry* huff_lut =
           &m->dc_huff_lut_[dc_tbl_idx * kJpegHuffmanLutSize];
       if (!table) {
-        return JPEGLI_ERROR("DC Huffman table %d not found", dc_tbl_idx);
+        JPEGLI_ERROR("DC Huffman table %d not found", dc_tbl_idx);
       }
       BuildHuffmanLookupTable(cinfo, table, huff_lut);
     }
@@ -233,7 +236,7 @@ void PrepareForScan(j_decompress_ptr cinfo) {
       HuffmanTableEntry* huff_lut =
           &m->ac_huff_lut_[ac_tbl_idx * kJpegHuffmanLutSize];
       if (!table) {
-        return JPEGLI_ERROR("AC Huffman table %d not found", ac_tbl_idx);
+        JPEGLI_ERROR("AC Huffman table %d not found", ac_tbl_idx);
       }
       BuildHuffmanLookupTable(cinfo, table, huff_lut);
     }
@@ -241,10 +244,14 @@ void PrepareForScan(j_decompress_ptr cinfo) {
   // Copy quantization tables into comp_info.
   for (int i = 0; i < cinfo->comps_in_scan; ++i) {
     jpeg_component_info* comp = cinfo->cur_comp_info[i];
+    int quant_tbl_idx = comp->quant_tbl_no;
+    JQUANT_TBL* quant_table = cinfo->quant_tbl_ptrs[quant_tbl_idx];
+    if (!quant_table) {
+      JPEGLI_ERROR("Quantization table with index %d not found", quant_tbl_idx);
+    }
     if (comp->quant_table == nullptr) {
       comp->quant_table = Allocate<JQUANT_TBL>(cinfo, 1, JPOOL_IMAGE);
-      memcpy(comp->quant_table, cinfo->quant_tbl_ptrs[comp->quant_tbl_no],
-             sizeof(JQUANT_TBL));
+      memcpy(comp->quant_table, quant_table, sizeof(JQUANT_TBL));
     }
   }
   if (cinfo->comps_in_scan == 1) {
@@ -484,6 +491,53 @@ void AllocateCoefficientBuffer(j_decompress_ptr cinfo) {
   (*cinfo->mem->realize_virt_arrays)(comptr);
 }
 
+void AllocateOutputBuffers(j_decompress_ptr cinfo) {
+  jpeg_decomp_master* m = cinfo->master;
+  size_t iMCU_width = cinfo->max_h_samp_factor * m->min_scaled_dct_size;
+  size_t output_stride = m->iMCU_cols_ * iMCU_width;
+  m->need_context_rows_ = false;
+  for (int c = 0; c < cinfo->num_components; ++c) {
+    if (cinfo->do_fancy_upsampling && m->v_factor[c] == 2) {
+      m->need_context_rows_ = true;
+    }
+  }
+  for (int c = 0; c < cinfo->num_components; ++c) {
+    const auto& comp = cinfo->comp_info[c];
+    size_t cheight = comp.v_samp_factor * m->scaled_dct_size[c];
+    int downsampled_width = output_stride / m->h_factor[c];
+    m->raw_height_[c] = cinfo->total_iMCU_rows * cheight;
+    if (m->need_context_rows_) {
+      cheight *= 3;
+    }
+    m->raw_output_[c].Allocate(cinfo, cheight, downsampled_width);
+  }
+  int num_all_components =
+      std::max(cinfo->out_color_components, cinfo->num_components);
+  for (int c = 0; c < num_all_components; ++c) {
+    m->render_output_[c].Allocate(cinfo, cinfo->max_v_samp_factor,
+                                  output_stride);
+  }
+  m->idct_scratch_ = Allocate<float>(cinfo, 5 * DCTSIZE2, JPOOL_IMAGE_ALIGNED);
+  // Padding for horizontal chroma upsampling.
+  constexpr size_t kPaddingLeft = 64;
+  constexpr size_t kPaddingRight = 64;
+  m->upsample_scratch_ = Allocate<float>(
+      cinfo, output_stride + kPaddingLeft + kPaddingRight, JPOOL_IMAGE_ALIGNED);
+  size_t bytes_per_sample = jpegli_bytes_per_sample(m->output_data_type_);
+  size_t bytes_per_pixel = cinfo->out_color_components * bytes_per_sample;
+  size_t scratch_stride = RoundUpTo(output_stride, HWY_ALIGNMENT);
+  m->output_scratch_ = Allocate<uint8_t>(
+      cinfo, bytes_per_pixel * scratch_stride, JPOOL_IMAGE_ALIGNED);
+  m->smoothing_scratch_ =
+      Allocate<int16_t>(cinfo, DCTSIZE2, JPOOL_IMAGE_ALIGNED);
+  size_t coeffs_per_block = cinfo->num_components * DCTSIZE2;
+  m->nonzeros_ = Allocate<int>(cinfo, coeffs_per_block, JPOOL_IMAGE_ALIGNED);
+  m->sumabs_ = Allocate<int>(cinfo, coeffs_per_block, JPOOL_IMAGE_ALIGNED);
+  m->biases_ = Allocate<float>(cinfo, coeffs_per_block, JPOOL_IMAGE_ALIGNED);
+  m->dequant_ = Allocate<float>(cinfo, coeffs_per_block, JPOOL_IMAGE_ALIGNED);
+  memset(m->dequant_, 0, coeffs_per_block * sizeof(float));
+}
+
 }  // namespace jpegli
 
 void jpegli_CreateDecompress(j_decompress_ptr cinfo, int version,
@@ -496,8 +550,8 @@ void jpegli_CreateDecompress(j_decompress_ptr cinfo, int version,
   cinfo->is_decompressor = TRUE;
   cinfo->progress = nullptr;
   cinfo->src = nullptr;
-  for (int i = 0; i < NUM_QUANT_TBLS; i++) {
-    cinfo->quant_tbl_ptrs[i] = nullptr;
+  for (auto& quant_tbl_ptr : cinfo->quant_tbl_ptrs) {
+    quant_tbl_ptr = nullptr;
   }
   for (int i = 0; i < NUM_HUFF_TBLS; i++) {
     cinfo->dc_huff_tbl_ptrs[i] = nullptr;
@@ -508,8 +562,8 @@ void jpegli_CreateDecompress(j_decompress_ptr cinfo, int version,
   cinfo->rec_outbuf_height = 1;         // output works with any buffer height
   cinfo->master = new jpeg_decomp_master;
   jpeg_decomp_master* m = cinfo->master;
-  for (int i = 0; i < 16; ++i) {
-    m->app_marker_parsers[i] = nullptr;
+  for (auto& app_marker_parser : m->app_marker_parsers) {
+    app_marker_parser = nullptr;
   }
   m->com_marker_parser = nullptr;
   memset(m->markers_to_save_, 0, sizeof(m->markers_to_save_));
@@ -614,7 +668,7 @@ boolean jpegli_read_icc_profile(j_decompress_ptr cinfo, JOCTET** icc_data_ptr,
     return FALSE;
   }
   *icc_data_len = m->icc_profile_.size();
-  *icc_data_ptr = (JOCTET*)malloc(*icc_data_len);
+  *icc_data_ptr = static_cast<JOCTET*>(malloc(*icc_data_len));
   if (*icc_data_ptr == nullptr) {
     JPEGLI_ERROR("jpegli_read_icc_profile: Out of memory");
   }
@@ -674,16 +728,36 @@ void jpegli_calc_output_dimensions(j_decompress_ptr cinfo) {
       }
     }
   }
-  if (cinfo->out_color_space == JCS_GRAYSCALE) {
-    cinfo->out_color_components = 1;
-  } else if (cinfo->out_color_space == JCS_RGB ||
-             cinfo->out_color_space == JCS_YCbCr) {
-    cinfo->out_color_components = 3;
-  } else if (cinfo->out_color_space == JCS_CMYK ||
-             cinfo->out_color_space == JCS_YCCK) {
-    cinfo->out_color_components = 4;
-  } else {
-    cinfo->out_color_components = cinfo->num_components;
+  switch (cinfo->out_color_space) {
+    case JCS_GRAYSCALE:
+      cinfo->out_color_components = 1;
+      break;
+    case JCS_RGB:
+    case JCS_YCbCr:
+#ifdef JCS_EXTENSIONS
+    case JCS_EXT_RGB:
+    case JCS_EXT_BGR:
+#endif
+      cinfo->out_color_components = 3;
+      break;
+    case JCS_CMYK:
+    case JCS_YCCK:
+#ifdef JCS_EXTENSIONS
+    case JCS_EXT_RGBX:
+    case JCS_EXT_BGRX:
+    case JCS_EXT_XBGR:
+    case JCS_EXT_XRGB:
+#endif
+#ifdef JCS_ALPHA_EXTENSIONS
+    case JCS_EXT_RGBA:
+    case JCS_EXT_BGRA:
+    case JCS_EXT_ABGR:
+    case JCS_EXT_ARGB:
+#endif
+      cinfo->out_color_components = 4;
+      break;
+    default:
+      cinfo->out_color_components = cinfo->num_components;
   }
   cinfo->output_components =
       cinfo->quantize_colors ? 1 : cinfo->out_color_components;
@@ -691,21 +765,26 @@ void jpegli_calc_output_dimensions(j_decompress_ptr cinfo) {
 }
 
 boolean jpegli_has_multiple_scans(j_decompress_ptr cinfo) {
-  if (cinfo->input_scan_number == 0) {
-    JPEGLI_ERROR("No SOS marker found.");
+  if (cinfo->global_state != jpegli::kDecHeaderDone &&
+      cinfo->global_state != jpegli::kDecProcessScan &&
+      cinfo->global_state != jpegli::kDecProcessMarkers) {
+    JPEGLI_ERROR("jpegli_has_multiple_scans: unexpected state %d",
+                 cinfo->global_state);
   }
-  return cinfo->master->is_multiscan_;
+  return TO_JXL_BOOL(cinfo->master->is_multiscan_);
 }
 
 boolean jpegli_input_complete(j_decompress_ptr cinfo) {
-  return cinfo->master->found_eoi_;
+  return TO_JXL_BOOL(cinfo->master->found_eoi_);
 }
 
 boolean jpegli_start_decompress(j_decompress_ptr cinfo) {
   jpeg_decomp_master* m = cinfo->master;
   if (cinfo->global_state == jpegli::kDecHeaderDone) {
-    m->streaming_mode_ = !m->is_multiscan_ && !cinfo->buffered_image &&
-                         (!cinfo->quantize_colors || !cinfo->two_pass_quantize);
+    m->streaming_mode_ = !m->is_multiscan_ &&
+                         !FROM_JXL_BOOL(cinfo->buffered_image) &&
+                         (!FROM_JXL_BOOL(cinfo->quantize_colors) ||
+                          !FROM_JXL_BOOL(cinfo->two_pass_quantize));
     jpegli::AllocateCoefficientBuffer(cinfo);
     jpegli_calc_output_dimensions(cinfo);
     jpegli::PrepareForScan(cinfo);
@@ -720,6 +799,7 @@ boolean jpegli_start_decompress(j_decompress_ptr cinfo) {
       }
     }
     jpegli::InitProgressMonitor(cinfo, /*coef_only=*/false);
+    jpegli::AllocateOutputBuffers(cinfo);
     if (cinfo->buffered_image == TRUE) {
       cinfo->output_scan_number = 0;
       return TRUE;
@@ -766,7 +846,6 @@ boolean jpegli_start_output(j_decompress_ptr cinfo, int scan_number) {
         std::min(cinfo->output_scan_number, cinfo->input_scan_number);
   }
   jpegli::InitProgressMonitorForOutput(cinfo);
-  // TODO(szabadka): Figure out how much we can reuse.
   jpegli::PrepareForOutput(cinfo);
   if (cinfo->quantize_colors) {
     return jpegli::PrepareQuantizedOutput(cinfo);

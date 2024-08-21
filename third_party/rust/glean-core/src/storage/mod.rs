@@ -32,7 +32,7 @@ fn snapshot_labeled_metrics(
     metric: &Metric,
 ) {
     let ping_section = format!("labeled_{}", metric.ping_section());
-    let map = snapshot.entry(ping_section).or_insert_with(HashMap::new);
+    let map = snapshot.entry(ping_section).or_default();
 
     // Safe unwrap, the function is only called when the id does contain a '/'
     let (metric_id, label) = metric_id.split_once('/').unwrap();
@@ -90,9 +90,7 @@ impl StorageManager {
             if metric_id.contains('/') {
                 snapshot_labeled_metrics(&mut snapshot, &metric_id, metric);
             } else {
-                let map = snapshot
-                    .entry(metric.ping_section().into())
-                    .or_insert_with(HashMap::new);
+                let map = snapshot.entry(metric.ping_section().into()).or_default();
                 map.insert(metric_id, metric.as_json());
             }
         };
@@ -100,6 +98,11 @@ impl StorageManager {
         storage.iter_store_from(Lifetime::Ping, store_name, None, &mut snapshotter);
         storage.iter_store_from(Lifetime::Application, store_name, None, &mut snapshotter);
         storage.iter_store_from(Lifetime::User, store_name, None, &mut snapshotter);
+
+        // Add send in all pings client.annotations
+        if store_name != "glean_client_info" {
+            storage.iter_store_from(Lifetime::Application, "all-pings", None, snapshotter);
+        }
 
         if clear_store {
             if let Err(e) = storage.clear_ping_lifetime_storage(store_name) {
@@ -232,7 +235,7 @@ mod test {
     fn test_experiments_json_serialization() {
         let t = tempfile::tempdir().unwrap();
         let name = t.path().display().to_string();
-        let glean = Glean::with_options(&name, "org.mozilla.glean", true);
+        let glean = Glean::with_options(&name, "org.mozilla.glean", true, true);
 
         let extra: HashMap<String, String> = [("test-key".into(), "test-value".into())]
             .iter()
@@ -261,7 +264,7 @@ mod test {
     fn test_experiments_json_serialization_empty() {
         let t = tempfile::tempdir().unwrap();
         let name = t.path().display().to_string();
-        let glean = Glean::with_options(&name, "org.mozilla.glean", true);
+        let glean = Glean::with_options(&name, "org.mozilla.glean", true, true);
 
         let metric = ExperimentMetric::new(&glean, "some-experiment".to_string());
 

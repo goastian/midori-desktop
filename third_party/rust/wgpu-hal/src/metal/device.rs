@@ -59,17 +59,61 @@ fn create_depth_stencil_desc(state: &wgt::DepthStencilState) -> metal::DepthSten
     desc
 }
 
+const fn convert_vertex_format_to_naga(format: wgt::VertexFormat) -> naga::back::msl::VertexFormat {
+    match format {
+        wgt::VertexFormat::Uint8x2 => naga::back::msl::VertexFormat::Uint8x2,
+        wgt::VertexFormat::Uint8x4 => naga::back::msl::VertexFormat::Uint8x4,
+        wgt::VertexFormat::Sint8x2 => naga::back::msl::VertexFormat::Sint8x2,
+        wgt::VertexFormat::Sint8x4 => naga::back::msl::VertexFormat::Sint8x4,
+        wgt::VertexFormat::Unorm8x2 => naga::back::msl::VertexFormat::Unorm8x2,
+        wgt::VertexFormat::Unorm8x4 => naga::back::msl::VertexFormat::Unorm8x4,
+        wgt::VertexFormat::Snorm8x2 => naga::back::msl::VertexFormat::Snorm8x2,
+        wgt::VertexFormat::Snorm8x4 => naga::back::msl::VertexFormat::Snorm8x4,
+        wgt::VertexFormat::Uint16x2 => naga::back::msl::VertexFormat::Uint16x2,
+        wgt::VertexFormat::Uint16x4 => naga::back::msl::VertexFormat::Uint16x4,
+        wgt::VertexFormat::Sint16x2 => naga::back::msl::VertexFormat::Sint16x2,
+        wgt::VertexFormat::Sint16x4 => naga::back::msl::VertexFormat::Sint16x4,
+        wgt::VertexFormat::Unorm16x2 => naga::back::msl::VertexFormat::Unorm16x2,
+        wgt::VertexFormat::Unorm16x4 => naga::back::msl::VertexFormat::Unorm16x4,
+        wgt::VertexFormat::Snorm16x2 => naga::back::msl::VertexFormat::Snorm16x2,
+        wgt::VertexFormat::Snorm16x4 => naga::back::msl::VertexFormat::Snorm16x4,
+        wgt::VertexFormat::Float16x2 => naga::back::msl::VertexFormat::Float16x2,
+        wgt::VertexFormat::Float16x4 => naga::back::msl::VertexFormat::Float16x4,
+        wgt::VertexFormat::Float32 => naga::back::msl::VertexFormat::Float32,
+        wgt::VertexFormat::Float32x2 => naga::back::msl::VertexFormat::Float32x2,
+        wgt::VertexFormat::Float32x3 => naga::back::msl::VertexFormat::Float32x3,
+        wgt::VertexFormat::Float32x4 => naga::back::msl::VertexFormat::Float32x4,
+        wgt::VertexFormat::Uint32 => naga::back::msl::VertexFormat::Uint32,
+        wgt::VertexFormat::Uint32x2 => naga::back::msl::VertexFormat::Uint32x2,
+        wgt::VertexFormat::Uint32x3 => naga::back::msl::VertexFormat::Uint32x3,
+        wgt::VertexFormat::Uint32x4 => naga::back::msl::VertexFormat::Uint32x4,
+        wgt::VertexFormat::Sint32 => naga::back::msl::VertexFormat::Sint32,
+        wgt::VertexFormat::Sint32x2 => naga::back::msl::VertexFormat::Sint32x2,
+        wgt::VertexFormat::Sint32x3 => naga::back::msl::VertexFormat::Sint32x3,
+        wgt::VertexFormat::Sint32x4 => naga::back::msl::VertexFormat::Sint32x4,
+        wgt::VertexFormat::Unorm10_10_10_2 => naga::back::msl::VertexFormat::Unorm10_10_10_2,
+        _ => unimplemented!(),
+    }
+}
+
 impl super::Device {
     fn load_shader(
         &self,
         stage: &crate::ProgrammableStage<super::Api>,
+        vertex_buffer_mappings: &[naga::back::msl::VertexBufferMapping],
         layout: &super::PipelineLayout,
         primitive_class: metal::MTLPrimitiveTopologyClass,
         naga_stage: naga::ShaderStage,
     ) -> Result<CompiledShader, crate::PipelineError> {
         let stage_bit = map_naga_stage(naga_stage);
 
-        let module = &stage.module.naga.module;
+        let (module, module_info) = naga::back::pipeline_constants::process_overrides(
+            &stage.module.naga.module,
+            &stage.module.naga.info,
+            stage.constants,
+        )
+        .map_err(|e| crate::PipelineError::Linkage(stage_bit, format!("MSL: {:?}", e)))?;
+
         let ep_resources = &layout.per_stage_map[naga_stage];
 
         let bounds_check_policy = if stage.module.runtime_checks {
@@ -88,6 +132,8 @@ impl super::Device {
                 metal::MTLLanguageVersion::V2_2 => (2, 2),
                 metal::MTLLanguageVersion::V2_3 => (2, 3),
                 metal::MTLLanguageVersion::V2_4 => (2, 4),
+                metal::MTLLanguageVersion::V3_0 => (3, 0),
+                metal::MTLLanguageVersion::V3_1 => (3, 1),
             },
             inline_samplers: Default::default(),
             spirv_cross_compatibility: false,
@@ -99,27 +145,26 @@ impl super::Device {
             bounds_check_policies: naga::proc::BoundsCheckPolicies {
                 index: bounds_check_policy,
                 buffer: bounds_check_policy,
-                image: bounds_check_policy,
+                image_load: bounds_check_policy,
+                image_store: naga::proc::BoundsCheckPolicy::Unchecked,
                 // TODO: support bounds checks on binding arrays
                 binding_array: naga::proc::BoundsCheckPolicy::Unchecked,
             },
-            zero_initialize_workgroup_memory: true,
+            zero_initialize_workgroup_memory: stage.zero_initialize_workgroup_memory,
         };
 
         let pipeline_options = naga::back::msl::PipelineOptions {
-            allow_point_size: match primitive_class {
+            allow_and_force_point_size: match primitive_class {
                 metal::MTLPrimitiveTopologyClass::Point => true,
                 _ => false,
             },
+            vertex_pulling_transform: stage.vertex_pulling_transform,
+            vertex_buffer_mappings: vertex_buffer_mappings.to_vec(),
         };
 
-        let (source, info) = naga::back::msl::write_string(
-            module,
-            &stage.module.naga.info,
-            &options,
-            &pipeline_options,
-        )
-        .map_err(|e| crate::PipelineError::Linkage(stage_bit, format!("MSL: {:?}", e)))?;
+        let (source, info) =
+            naga::back::msl::write_string(&module, &module_info, &options, &pipeline_options)
+                .map_err(|e| crate::PipelineError::Linkage(stage_bit, format!("MSL: {:?}", e)))?;
 
         log::debug!(
             "Naga generated shader for entry point '{}' and stage {:?}\n{}",
@@ -167,7 +212,7 @@ impl super::Device {
         })?;
 
         // collect sizes indices, immutable buffers, and work group memory sizes
-        let ep_info = &stage.module.naga.info.get_entry_point(ep_index);
+        let ep_info = &module_info.get_entry_point(ep_index);
         let mut wg_memory_sizes = Vec::new();
         let mut sized_bindings = Vec::new();
         let mut immutable_buffer_mask = 0;
@@ -175,7 +220,7 @@ impl super::Device {
             match var.space {
                 naga::AddressSpace::WorkGroup => {
                     if !ep_info[var_handle].is_empty() {
-                        let size = module.types[var.ty].inner.size(&module.constants);
+                        let size = module.types[var.ty].inner.size(module.to_ctx());
                         wg_memory_sizes.push(size);
                     }
                 }
@@ -263,12 +308,18 @@ impl super::Device {
         }
     }
 
+    pub unsafe fn buffer_from_raw(raw: metal::Buffer, size: wgt::BufferAddress) -> super::Buffer {
+        super::Buffer { raw, size }
+    }
+
     pub fn raw_device(&self) -> &Mutex<metal::Device> {
         &self.shared.device
     }
 }
 
-impl crate::Device<super::Api> for super::Device {
+impl crate::Device for super::Device {
+    type A = super::Api;
+
     unsafe fn exit(self, _queue: super::Queue) {}
 
     unsafe fn create_buffer(&self, desc: &crate::BufferDescriptor) -> DeviceResult<super::Buffer> {
@@ -325,7 +376,7 @@ impl crate::Device<super::Api> for super::Device {
         &self,
         desc: &crate::TextureDescriptor,
     ) -> DeviceResult<super::Texture> {
-        use foreign_types::ForeignTypeRef;
+        use metal::foreign_types::ForeignType as _;
 
         let mtl_format = self.shared.private_caps.map_format(desc.format);
 
@@ -391,7 +442,7 @@ impl crate::Device<super::Api> for super::Device {
             conv::map_texture_view_dimension(desc.dimension)
         };
 
-        let aspects = crate::FormatAspects::new(desc.format, desc.range.aspect);
+        let aspects = crate::FormatAspects::new(texture.format, desc.range.aspect);
 
         let raw_format = self
             .shared
@@ -537,7 +588,7 @@ impl crate::Device<super::Api> for super::Device {
             pc_buffer: Option<super::ResourceIndex>,
             pc_limit: u32,
             sizes_buffer: Option<super::ResourceIndex>,
-            sizes_count: u8,
+            need_sizes_buffer: bool,
             resources: naga::back::msl::BindingMap,
         }
 
@@ -547,7 +598,7 @@ impl crate::Device<super::Api> for super::Device {
             pc_buffer: None,
             pc_limit: 0,
             sizes_buffer: None,
-            sizes_count: 0,
+            need_sizes_buffer: false,
             resources: Default::default(),
         });
         let mut bind_group_infos = arrayvec::ArrayVec::new();
@@ -592,7 +643,7 @@ impl crate::Device<super::Api> for super::Device {
                 {
                     for info in stage_data.iter_mut() {
                         if entry.visibility.contains(map_naga_stage(info.stage)) {
-                            info.sizes_count += 1;
+                            info.need_sizes_buffer = true;
                         }
                     }
                 }
@@ -632,6 +683,7 @@ impl crate::Device<super::Api> for super::Device {
                                 wgt::StorageTextureAccess::ReadWrite => true,
                             };
                         }
+                        wgt::BindingType::AccelerationStructure => unimplemented!(),
                     }
 
                     let br = naga::ResourceBinding {
@@ -649,11 +701,13 @@ impl crate::Device<super::Api> for super::Device {
 
         // Finally, make sure we fit the limits
         for info in stage_data.iter_mut() {
-            // handle the sizes buffer assignment and shader overrides
-            if info.sizes_count != 0 {
+            if info.need_sizes_buffer || info.stage == naga::ShaderStage::Vertex {
+                // Set aside space for the sizes_buffer, which is required
+                // for variable-length buffers, or to support vertex pulling.
                 info.sizes_buffer = Some(info.counters.buffers);
                 info.counters.buffers += 1;
             }
+
             if info.counters.buffers > self.shared.private_caps.max_buffers_per_stage
                 || info.counters.textures > self.shared.private_caps.max_textures_per_stage
                 || info.counters.samplers > self.shared.private_caps.max_samplers_per_stage
@@ -700,7 +754,16 @@ impl crate::Device<super::Api> for super::Device {
         for (&stage, counter) in super::NAGA_STAGES.iter().zip(bg.counters.iter_mut()) {
             let stage_bit = map_naga_stage(stage);
             let mut dynamic_offsets_count = 0u32;
-            for (entry, layout) in desc.entries.iter().zip(desc.layout.entries.iter()) {
+            let layout_and_entry_iter = desc.entries.iter().map(|entry| {
+                let layout = desc
+                    .layout
+                    .entries
+                    .iter()
+                    .find(|layout_entry| layout_entry.binding == entry.binding)
+                    .expect("internal error: no layout entry found with binding slot");
+                (entry, layout)
+            });
+            for (entry, layout) in layout_and_entry_iter {
                 let size = layout.count.map_or(1, |c| c.get());
                 if let wgt::BindingType::Buffer {
                     has_dynamic_offset: true,
@@ -763,6 +826,7 @@ impl crate::Device<super::Api> for super::Device {
                         );
                         counter.textures += size;
                     }
+                    wgt::BindingType::AccelerationStructure => unimplemented!(),
                 }
             }
         }
@@ -810,8 +874,38 @@ impl crate::Device<super::Api> for super::Device {
 
             // Vertex shader
             let (vs_lib, vs_info) = {
+                let mut vertex_buffer_mappings = Vec::<naga::back::msl::VertexBufferMapping>::new();
+                for (i, vbl) in desc.vertex_buffers.iter().enumerate() {
+                    let mut attributes = Vec::<naga::back::msl::AttributeMapping>::new();
+                    for attribute in vbl.attributes.iter() {
+                        attributes.push(naga::back::msl::AttributeMapping {
+                            shader_location: attribute.shader_location,
+                            offset: attribute.offset as u32,
+                            format: convert_vertex_format_to_naga(attribute.format),
+                        });
+                    }
+
+                    vertex_buffer_mappings.push(naga::back::msl::VertexBufferMapping {
+                        id: self.shared.private_caps.max_vertex_buffers - 1 - i as u32,
+                        stride: if vbl.array_stride > 0 {
+                            vbl.array_stride.try_into().unwrap()
+                        } else {
+                            vbl.attributes
+                                .iter()
+                                .map(|attribute| attribute.offset + attribute.format.size())
+                                .max()
+                                .unwrap_or(0)
+                                .try_into()
+                                .unwrap()
+                        },
+                        indexed_by_vertex: (vbl.step_mode == wgt::VertexStepMode::Vertex {}),
+                        attributes,
+                    });
+                }
+
                 let vs = self.load_shader(
                     &desc.vertex_stage,
+                    &vertex_buffer_mappings,
                     desc.layout,
                     primitive_class,
                     naga::ShaderStage::Vertex,
@@ -829,6 +923,7 @@ impl crate::Device<super::Api> for super::Device {
                     push_constants: desc.layout.push_constants_infos.vs,
                     sizes_slot: desc.layout.per_stage_map.vs.sizes_buffer,
                     sized_bindings: vs.sized_bindings,
+                    vertex_buffer_mappings,
                 };
 
                 (vs.library, info)
@@ -839,6 +934,7 @@ impl crate::Device<super::Api> for super::Device {
                 Some(ref stage) => {
                     let fs = self.load_shader(
                         stage,
+                        &[],
                         desc.layout,
                         primitive_class,
                         naga::ShaderStage::Fragment,
@@ -856,6 +952,7 @@ impl crate::Device<super::Api> for super::Device {
                         push_constants: desc.layout.push_constants_infos.fs,
                         sizes_slot: desc.layout.per_stage_map.fs.sizes_buffer,
                         sized_bindings: fs.sized_bindings,
+                        vertex_buffer_mappings: vec![],
                     };
 
                     (Some(fs.library), Some(info))
@@ -1031,6 +1128,7 @@ impl crate::Device<super::Api> for super::Device {
 
             let cs = self.load_shader(
                 &desc.stage,
+                &[],
                 desc.layout,
                 metal::MTLPrimitiveTopologyClass::Unspecified,
                 naga::ShaderStage::Compute,
@@ -1048,6 +1146,7 @@ impl crate::Device<super::Api> for super::Device {
                 push_constants: desc.layout.push_constants_infos.cs,
                 sizes_slot: desc.layout.per_stage_map.cs.sizes_buffer,
                 sized_bindings: cs.sized_bindings,
+                vertex_buffer_mappings: vec![],
             };
 
             if let Some(name) = desc.label {
@@ -1077,6 +1176,14 @@ impl crate::Device<super::Api> for super::Device {
     }
     unsafe fn destroy_compute_pipeline(&self, _pipeline: super::ComputePipeline) {}
 
+    unsafe fn create_pipeline_cache(
+        &self,
+        _desc: &crate::PipelineCacheDescriptor<'_>,
+    ) -> Result<(), crate::PipelineCacheError> {
+        Ok(())
+    }
+    unsafe fn destroy_pipeline_cache(&self, (): ()) {}
+
     unsafe fn create_query_set(
         &self,
         desc: &wgt::QuerySetDescriptor<crate::Label>,
@@ -1093,11 +1200,51 @@ impl crate::Device<super::Api> for super::Device {
                     }
                     Ok(super::QuerySet {
                         raw_buffer,
+                        counter_sample_buffer: None,
                         ty: desc.ty,
                     })
                 }
-                wgt::QueryType::Timestamp | wgt::QueryType::PipelineStatistics(_) => {
-                    Err(crate::DeviceError::OutOfMemory)
+                wgt::QueryType::Timestamp => {
+                    let size = desc.count as u64 * crate::QUERY_SIZE;
+                    let device = self.shared.device.lock();
+                    let destination_buffer =
+                        device.new_buffer(size, metal::MTLResourceOptions::empty());
+
+                    let csb_desc = metal::CounterSampleBufferDescriptor::new();
+                    csb_desc.set_storage_mode(metal::MTLStorageMode::Shared);
+                    csb_desc.set_sample_count(desc.count as _);
+                    if let Some(label) = desc.label {
+                        csb_desc.set_label(label);
+                    }
+
+                    let counter_sets = device.counter_sets();
+                    let timestamp_counter =
+                        match counter_sets.iter().find(|cs| cs.name() == "timestamp") {
+                            Some(counter) => counter,
+                            None => {
+                                log::error!("Failed to obtain timestamp counter set.");
+                                return Err(crate::DeviceError::ResourceCreationFailed);
+                            }
+                        };
+                    csb_desc.set_counter_set(timestamp_counter);
+
+                    let counter_sample_buffer =
+                        match device.new_counter_sample_buffer_with_descriptor(&csb_desc) {
+                            Ok(buffer) => buffer,
+                            Err(err) => {
+                                log::error!("Failed to create counter sample buffer: {:?}", err);
+                                return Err(crate::DeviceError::ResourceCreationFailed);
+                            }
+                        };
+
+                    Ok(super::QuerySet {
+                        raw_buffer: destination_buffer,
+                        counter_sample_buffer: Some(counter_sample_buffer),
+                        ty: desc.ty,
+                    })
+                }
+                _ => {
+                    todo!()
                 }
             }
         })
@@ -1172,5 +1319,33 @@ impl crate::Device<super::Api> for super::Device {
             default_capture_scope.end_scope();
         }
         shared_capture_manager.stop_capture();
+    }
+
+    unsafe fn get_acceleration_structure_build_sizes(
+        &self,
+        _desc: &crate::GetAccelerationStructureBuildSizesDescriptor<super::Api>,
+    ) -> crate::AccelerationStructureBuildSizes {
+        unimplemented!()
+    }
+
+    unsafe fn get_acceleration_structure_device_address(
+        &self,
+        _acceleration_structure: &super::AccelerationStructure,
+    ) -> wgt::BufferAddress {
+        unimplemented!()
+    }
+
+    unsafe fn create_acceleration_structure(
+        &self,
+        _desc: &crate::AccelerationStructureDescriptor,
+    ) -> Result<super::AccelerationStructure, crate::DeviceError> {
+        unimplemented!()
+    }
+
+    unsafe fn destroy_acceleration_structure(
+        &self,
+        _acceleration_structure: super::AccelerationStructure,
+    ) {
+        unimplemented!()
     }
 }

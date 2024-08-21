@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::backend::{CodeOracle, CodeType, Literal};
+use super::CodeType;
+use crate::ComponentInterface;
 
+#[derive(Debug)]
 pub struct CustomCodeType {
     name: String,
 }
@@ -15,15 +17,11 @@ impl CustomCodeType {
 }
 
 impl CodeType for CustomCodeType {
-    fn type_label(&self, _oracle: &dyn CodeOracle) -> String {
+    fn type_label(&self, _ci: &ComponentInterface) -> String {
         self.name.clone()
     }
 
-    fn canonical_name(&self, _oracle: &dyn CodeOracle) -> String {
+    fn canonical_name(&self) -> String {
         format!("Type{}", self.name)
-    }
-
-    fn literal(&self, _oracle: &dyn CodeOracle, _literal: &Literal) -> String {
-        unreachable!("Can't have a literal of a custom type");
     }
 }

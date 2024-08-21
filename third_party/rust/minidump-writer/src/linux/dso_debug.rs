@@ -81,12 +81,12 @@ pub fn write_dso_debug_stream(
 ) -> Result<MDRawDirectory> {
     let at_phnum;
     let at_phdr;
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(target_arch = "arm", all(target_os = "android", target_arch = "x86")))]
     {
         at_phdr = 3;
         at_phnum = 5;
     }
-    #[cfg(not(target_arch = "arm"))]
+    #[cfg(not(any(target_arch = "arm", all(target_os = "android", target_arch = "x86"))))]
     {
         at_phdr = libc::AT_PHDR;
         at_phnum = libc::AT_PHNUM;
@@ -161,11 +161,6 @@ pub fn write_dso_debug_stream(
         assert!(head.is_empty(), "Data was not aligned");
         let dyn_struct = &body[0];
 
-        // #ifdef __mips__
-        //       const int32_t debug_tag = DT_MIPS_RLD_MAP;
-        // #else
-        //       const int32_t debug_tag = DT_DEBUG;
-        // #endif
         let debug_tag = goblin::elf::dynamic::DT_DEBUG;
         if dyn_struct.d_tag == debug_tag {
             r_debug = dyn_struct.d_val as usize;

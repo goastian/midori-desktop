@@ -5,9 +5,8 @@
 import copy
 import logging
 import os
-from typing import AnyStr
-
-import attr
+from dataclasses import dataclass
+from typing import Dict
 
 from . import filter_tasks
 from .config import GraphConfig, load_graph_config
@@ -31,19 +30,18 @@ class KindNotFound(Exception):
     """
 
 
-@attr.s(frozen=True)
+@dataclass(frozen=True)
 class Kind:
-
-    name = attr.ib(type=AnyStr)
-    path = attr.ib(type=AnyStr)
-    config = attr.ib(type=dict)
-    graph_config = attr.ib(type=GraphConfig)
+    name: str
+    path: str
+    config: Dict
+    graph_config: GraphConfig
 
     def _get_loader(self):
         try:
             loader = self.config["loader"]
         except KeyError:
-            raise KeyError(f"{self.path!r} does not define `loader`")
+            loader = "taskgraph.loader.default:loader"
         return find_object(loader)
 
     def load_tasks(self, parameters, loaded_tasks, write_artifacts):
@@ -59,6 +57,9 @@ class Kind:
 
         transforms = TransformSequence()
         for xform_path in config["transforms"]:
+            if ":" not in xform_path:
+                xform_path = f"{xform_path}:transforms"
+
             transform = find_object(xform_path)
             transforms.add(transform)
 
@@ -90,7 +91,7 @@ class Kind:
 
     @classmethod
     def load(cls, root_dir, graph_config, kind_name):
-        path = os.path.join(root_dir, kind_name)
+        path = os.path.join(root_dir, "kinds", kind_name)
         kind_yml = os.path.join(path, "kind.yml")
         if not os.path.exists(kind_yml):
             raise KindNotFound(kind_yml)
@@ -124,13 +125,13 @@ class TaskGraphGenerator:
         write_artifacts=False,
     ):
         """
-        @param root_dir: root directory, with subdirectories for each kind
+        @param root_dir: root directory containing the Taskgraph config.yml file
         @param parameters: parameters for this task-graph generation, or callable
             taking a `GraphConfig` and returning parameters
         @type parameters: Union[Parameters, Callable[[GraphConfig], Parameters]]
         """
         if root_dir is None:
-            root_dir = "taskcluster/ci"
+            root_dir = "taskcluster"
         self.root_dir = root_dir
         self._parameters = parameters
         self._decision_task_id = decision_task_id
@@ -227,11 +228,11 @@ class TaskGraphGenerator:
         """
         return self._run_until("graph_config")
 
-    def _load_kinds(self, graph_config, target_kind=None):
-        if target_kind:
+    def _load_kinds(self, graph_config, target_kinds=None):
+        if target_kinds:
             # docker-image is an implicit dependency that never appears in
             # kind-dependencies.
-            queue = [target_kind, "docker-image"]
+            queue = target_kinds + ["docker-image"]
             seen_kinds = set()
             while queue:
                 kind_name = queue.pop()
@@ -242,7 +243,7 @@ class TaskGraphGenerator:
                 yield kind
                 queue.extend(kind.config.get("kind-dependencies", []))
         else:
-            for kind_name in os.listdir(self.root_dir):
+            for kind_name in os.listdir(os.path.join(self.root_dir, "kinds")):
                 try:
                     yield Kind.load(self.root_dir, graph_config, kind_name)
                 except KindNotFound:
@@ -278,16 +279,15 @@ class TaskGraphGenerator:
         logger.info("Loading kinds")
         # put the kinds into a graph and sort topologically so that kinds are loaded
         # in post-order
-        if parameters.get("target-kind"):
-            target_kind = parameters["target-kind"]
+        target_kinds = sorted(parameters.get("target-kinds", []))
+        if target_kinds:
             logger.info(
-                "Limiting kinds to {target_kind} and dependencies".format(
-                    target_kind=target_kind
+                "Limiting kinds to following kinds and dependencies: {}".format(
+                    ", ".join(target_kinds)
                 )
             )
         kinds = {
-            kind.name: kind
-            for kind in self._load_kinds(graph_config, parameters.get("target-kind"))
+            kind.name: kind for kind in self._load_kinds(graph_config, target_kinds)
         }
         verifications("kinds", kinds)
 
@@ -297,8 +297,10 @@ class TaskGraphGenerator:
                 edges.add((kind.name, dep, "kind-dependency"))
         kind_graph = Graph(set(kinds), edges)
 
-        if parameters.get("target-kind"):
-            kind_graph = kind_graph.transitive_closure({target_kind, "docker-image"})
+        if target_kinds:
+            kind_graph = kind_graph.transitive_closure(
+                set(target_kinds) | {"docker-image"}
+            )
 
         logger.info("Generating full task set")
         all_tasks = {}
@@ -326,6 +328,10 @@ class TaskGraphGenerator:
         edges = set()
         for t in full_task_set:
             for depname, dep in t.dependencies.items():
+                if dep not in all_tasks.keys():
+                    raise Exception(
+                        f"Task '{t.label}' lists a dependency that does not exist: '{dep}'"
+                    )
                 edges.add((t.label, dep, depname))
 
         full_task_graph = TaskGraph(all_tasks, Graph(full_task_set.graph.nodes, edges))
@@ -353,18 +359,14 @@ class TaskGraphGenerator:
         yield self.verify("target_task_set", target_task_set, graph_config, parameters)
 
         logger.info("Generating target task graph")
-        # include all docker-image build tasks here, in case they are needed for a graph morph
-        docker_image_tasks = {
-            t.label
-            for t in full_task_graph.tasks.values()
-            if t.attributes["kind"] == "docker-image"
-        }
         # include all tasks with `always_target` set
         if parameters["enable_always_target"]:
             always_target_tasks = {
                 t.label
                 for t in full_task_graph.tasks.values()
                 if t.attributes.get("always_target")
+                if parameters["enable_always_target"] is True
+                or t.kind in parameters["enable_always_target"]
             }
         else:
             always_target_tasks = set()
@@ -372,7 +374,7 @@ class TaskGraphGenerator:
             "Adding %d tasks with `always_target` attribute"
             % (len(always_target_tasks) - len(always_target_tasks & target_tasks))
         )
-        requested_tasks = target_tasks | docker_image_tasks | always_target_tasks
+        requested_tasks = target_tasks | always_target_tasks
         target_graph = full_task_graph.graph.transitive_closure(requested_tasks)
         target_task_graph = TaskGraph(
             {l: all_tasks[l] for l in target_graph.nodes}, target_graph
@@ -439,7 +441,7 @@ def load_tasks_for_kind(parameters, kind, root_dir=None):
     """
     # make parameters read-write
     parameters = dict(parameters)
-    parameters["target-kind"] = kind
+    parameters["target-kinds"] = [kind]
     parameters = parameters_loader(spec=None, strict=False, overrides=parameters)
     tgg = TaskGraphGenerator(root_dir=root_dir, parameters=parameters)
     return {

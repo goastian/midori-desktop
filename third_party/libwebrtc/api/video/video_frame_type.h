@@ -11,6 +11,9 @@
 #ifndef API_VIDEO_VIDEO_FRAME_TYPE_H_
 #define API_VIDEO_VIDEO_FRAME_TYPE_H_
 
+#include "absl/strings/string_view.h"
+#include "rtc_base/checks.h"
+
 namespace webrtc {
 
 enum class VideoFrameType {
@@ -20,6 +23,24 @@ enum class VideoFrameType {
   kVideoFrameKey = 3,
   kVideoFrameDelta = 4,
 };
+
+inline constexpr absl::string_view VideoFrameTypeToString(
+    VideoFrameType frame_type) {
+  switch (frame_type) {
+    case VideoFrameType::kEmptyFrame:
+      return "empty";
+    case VideoFrameType::kVideoFrameKey:
+      return "key";
+    case VideoFrameType::kVideoFrameDelta:
+      return "delta";
+  }
+// Mozilla:
+//   gcc-8 complains about a constexpr function calling a non-constexpr ditto.
+#if defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 9)
+  RTC_CHECK_NOTREACHED();
+#endif
+  return "";
+}
 
 }  // namespace webrtc
 

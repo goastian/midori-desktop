@@ -5,7 +5,7 @@
 
 use crate::sys::HANDLE_QUEUE_LIMIT;
 use bytes::{BufMut, BytesMut};
-use libc::{self, cmsghdr};
+use libc::cmsghdr;
 use std::convert::TryInto;
 use std::os::unix::io::RawFd;
 use std::{mem, slice};
@@ -17,7 +17,7 @@ trait AsBytes {
 impl<'a, T: Sized> AsBytes for &'a [T] {
     fn as_bytes(&self) -> &[u8] {
         // TODO: This should account for the alignment of T
-        let byte_count = self.len() * mem::size_of::<T>();
+        let byte_count = std::mem::size_of_val(*self);
         unsafe { slice::from_raw_parts(self.as_ptr() as *const _, byte_count) }
     }
 }

@@ -26,7 +26,7 @@ namespace xsimd
 
         using namespace types;
         // abs
-        template <class A, class T, class /*=typename std::enable_if<std::is_integral<T>::value, void>::type*/>
+        template <class A, class T, class>
         inline batch<T, A> abs(batch<T, A> const& self, requires_arch<generic>) noexcept
         {
             if (std::is_unsigned<T>::value)
@@ -43,6 +43,63 @@ namespace xsimd
         inline batch<T, A> abs(batch<std::complex<T>, A> const& z, requires_arch<generic>) noexcept
         {
             return hypot(z.real(), z.imag());
+        }
+
+        // avg
+        namespace detail
+        {
+            template <class A, class T>
+            inline batch<T, A> avg(batch<T, A> const& x, batch<T, A> const& y, std::true_type, std::false_type) noexcept
+            {
+                return (x & y) + ((x ^ y) >> 1);
+            }
+
+            template <class A, class T>
+            inline batch<T, A> avg(batch<T, A> const& x, batch<T, A> const& y, std::true_type, std::true_type) noexcept
+            {
+                // Inspired by
+                // https://stackoverflow.com/questions/5697500/take-the-average-of-two-signed-numbers-in-c
+                auto t = (x & y) + ((x ^ y) >> 1);
+                auto t_u = bitwise_cast<typename std::make_unsigned<T>::type>(t);
+                auto avg = t + (bitwise_cast<T>(t_u >> (8 * sizeof(T) - 1)) & (x ^ y));
+                return avg;
+            }
+
+            template <class A, class T>
+            inline batch<T, A> avg(batch<T, A> const& x, batch<T, A> const& y, std::false_type, std::true_type) noexcept
+            {
+                return (x + y) / 2;
+            }
+        }
+
+        template <class A, class T>
+        inline batch<T, A> avg(batch<T, A> const& x, batch<T, A> const& y, requires_arch<generic>) noexcept
+        {
+            return detail::avg(x, y, typename std::is_integral<T>::type {}, typename std::is_signed<T>::type {});
+        }
+
+        // avgr
+        namespace detail
+        {
+            template <class A, class T>
+            inline batch<T, A> avgr(batch<T, A> const& x, batch<T, A> const& y, std::true_type) noexcept
+            {
+                constexpr unsigned shift = 8 * sizeof(T) - 1;
+                auto adj = std::is_signed<T>::value ? ((x ^ y) & 0x1) : (((x ^ y) << shift) >> shift);
+                return ::xsimd::kernel::avg(x, y, A {}) + adj;
+            }
+
+            template <class A, class T>
+            inline batch<T, A> avgr(batch<T, A> const& x, batch<T, A> const& y, std::false_type) noexcept
+            {
+                return ::xsimd::kernel::avg(x, y, A {});
+            }
+        }
+
+        template <class A, class T>
+        inline batch<T, A> avgr(batch<T, A> const& x, batch<T, A> const& y, requires_arch<generic>) noexcept
+        {
+            return detail::avgr(x, y, typename std::is_integral<T>::type {});
         }
 
         // batch_cast
@@ -95,12 +152,12 @@ namespace xsimd
         template <class A>
         inline batch<float, A> bitofsign(batch<float, A> const& self, requires_arch<generic>) noexcept
         {
-            return self & constants::minuszero<batch<float, A>>();
+            return self & constants::signmask<batch<float, A>>();
         }
         template <class A>
         inline batch<double, A> bitofsign(batch<double, A> const& self, requires_arch<generic>) noexcept
         {
-            return self & constants::minuszero<batch<double, A>>();
+            return self & constants::signmask<batch<double, A>>();
         }
 
         // bitwise_cast
@@ -470,16 +527,18 @@ namespace xsimd
             batch_type x = abs(self);
             auto test0 = self < batch_type(0.);
             batch_type r1(0.);
+            auto test1 = 3.f * x < 2.f;
             batch_type z = x / (batch_type(1.) + x);
-            if (any(3.f * x < 2.f))
+            if (any(test1))
             {
                 r1 = detail::erf_kernel<batch_type>::erfc3(z);
+                if (all(test1))
+                    return select(test0, batch_type(2.) - r1, r1);
             }
-            else
-            {
-                z -= batch_type(0.4f);
-                r1 = exp(-x * x) * detail::erf_kernel<batch_type>::erfc2(z);
-            }
+
+            z -= batch_type(0.4f);
+            batch_type r2 = exp(-x * x) * detail::erf_kernel<batch_type>::erfc2(z);
+            r1 = select(test1, r1, r2);
 #ifndef XSIMD_NO_INFINITIES
             r1 = select(x == constants::infinity<batch_type>(), batch_type(0.), r1);
 #endif
@@ -1849,7 +1908,7 @@ namespace xsimd
         {
             using U = as_integer_t<float>;
             return kernel::detail::apply_transform<U>([](float x) noexcept -> U
-                                                      { return std::lroundf(x); },
+                                                      { return std::nearbyintf(x); },
                                                       self);
         }
 
@@ -1859,7 +1918,7 @@ namespace xsimd
         {
             using U = as_integer_t<double>;
             return kernel::detail::apply_transform<U>([](double x) noexcept -> U
-                                                      { return std::llround(x); },
+                                                      { return std::nearbyint(x); },
                                                       self);
         }
 
@@ -1940,14 +1999,13 @@ namespace xsimd
         {
             using batch_type = batch<T, A>;
             const auto zero = batch_type(0.);
-            auto negx = self < zero;
-            auto iszero = self == zero;
-            constexpr T e = static_cast<T>(2.718281828459045);
-            auto adj_self = select(iszero, batch_type(e), abs(self));
+            auto negself = self < zero;
+            auto iszeropowpos = self == zero && other >= zero;
+            auto adj_self = select(iszeropowpos, batch_type(1), abs(self));
             batch_type z = exp(other * log(adj_self));
-            z = select(iszero, zero, z);
-            z = select(is_odd(other) && negx, -z, z);
-            auto invalid = negx && !(is_flint(other) || isinf(other));
+            z = select(iszeropowpos, zero, z);
+            z = select(is_odd(other) && negself, -z, z);
+            auto invalid = negself && !(is_flint(other) || isinf(other));
             return select(invalid, constants::nan<batch_type>(), z);
         }
 
@@ -2006,7 +2064,7 @@ namespace xsimd
             inline T reduce(Op op, batch<T, A> const& self, std::integral_constant<unsigned, Lvl>) noexcept
             {
                 using index_type = as_unsigned_integer_t<T>;
-                batch<T, A> split = swizzle(self, make_batch_constant<batch<index_type, A>, split_high<index_type, Lvl / 2>>());
+                batch<T, A> split = swizzle(self, make_batch_constant<index_type, A, split_high<index_type, Lvl / 2>>());
                 return reduce(op, op(split, self), std::integral_constant<unsigned, Lvl / 2>());
             }
         }

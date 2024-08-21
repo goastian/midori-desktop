@@ -14,7 +14,6 @@
 #include <libdrm/drm_fourcc.h>
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
-#include <sys/mman.h>
 
 #include <vector>
 
@@ -26,6 +25,14 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/sanitizer.h"
 #include "rtc_base/synchronization/mutex.h"
+#include "rtc_base/time_utils.h"
+
+// Wrapper for gfxVars::UseDMABuf() as we can't include gfxVars here.
+// We don't want to use dmabuf of known broken systems.
+// See FEATURE_DMABUF for details.
+namespace mozilla::gfx {
+bool IsDMABufEnabled();
+}
 
 namespace webrtc {
 
@@ -41,33 +48,6 @@ constexpr int CursorMetaSize(int w, int h) {
 constexpr PipeWireVersion kDmaBufModifierMinVersion = {0, 3, 33};
 constexpr PipeWireVersion kDropSingleModifierMinVersion = {0, 3, 40};
 
-class ScopedBuf {
- public:
-  ScopedBuf() {}
-  ScopedBuf(uint8_t* map, int map_size, int fd)
-      : map_(map), map_size_(map_size), fd_(fd) {}
-  ~ScopedBuf() {
-    if (map_ != MAP_FAILED) {
-      munmap(map_, map_size_);
-    }
-  }
-
-  explicit operator bool() { return map_ != MAP_FAILED; }
-
-  void initialize(uint8_t* map, int map_size, int fd) {
-    map_ = map;
-    map_size_ = map_size;
-    fd_ = fd;
-  }
-
-  uint8_t* get() { return map_; }
-
- protected:
-  uint8_t* map_ = static_cast<uint8_t*>(MAP_FAILED);
-  int map_size_;
-  int fd_;
-};
-
 class SharedScreenCastStreamPrivate {
  public:
   SharedScreenCastStreamPrivate();
@@ -77,8 +57,10 @@ class SharedScreenCastStreamPrivate {
                              int fd,
                              uint32_t width = 0,
                              uint32_t height = 0,
-                             bool is_cursor_embedded = false);
+                             bool is_cursor_embedded = false,
+                             DesktopCapturer::Callback* callback = nullptr);
   void UpdateScreenCastStreamResolution(uint32_t width, uint32_t height);
+  void UpdateScreenCastStreamFrameRate(uint32_t frame_rate);
   void SetUseDamageRegion(bool use_damage_region) {
     use_damage_region_ = use_damage_region;
   }
@@ -98,7 +80,7 @@ class SharedScreenCastStreamPrivate {
 
   // Track damage region updates that were reported since the last time
   // frame was captured
-  DesktopRegion damage_region_;
+  DesktopRegion damage_region_ RTC_GUARDED_BY(&latest_frame_lock_);
 
   uint32_t pw_stream_node_id_ = 0;
 
@@ -108,6 +90,9 @@ class SharedScreenCastStreamPrivate {
   webrtc::Mutex queue_lock_;
   ScreenCaptureFrameQueue<SharedDesktopFrame> queue_
       RTC_GUARDED_BY(&queue_lock_);
+  webrtc::Mutex latest_frame_lock_ RTC_ACQUIRED_AFTER(queue_lock_);
+  SharedDesktopFrame* latest_available_frame_
+      RTC_GUARDED_BY(&latest_frame_lock_) = nullptr;
   std::unique_ptr<MouseCursor> mouse_cursor_;
   DesktopVector mouse_cursor_position_ = DesktopVector(-1, -1);
 
@@ -137,9 +122,8 @@ class SharedScreenCastStreamPrivate {
   // Resolution parameters.
   uint32_t width_ = 0;
   uint32_t height_ = 0;
-  webrtc::Mutex resolution_lock_;
-  // Resolution changes are processed during buffer processing.
-  bool pending_resolution_change_ RTC_GUARDED_BY(&resolution_lock_) = false;
+  // Frame rate.
+  uint32_t frame_rate_ = 60;
 
   bool use_damage_region_ = true;
 
@@ -161,6 +145,8 @@ class SharedScreenCastStreamPrivate {
                         DesktopFrame& frame,
                         const DesktopVector& offset);
   void ConvertRGBxToBGRx(uint8_t* frame, uint32_t size);
+  void UpdateFrameUpdatedRegions(const spa_buffer* spa_buffer,
+                                 DesktopFrame& frame);
 
   // PipeWire callbacks
   static void OnCoreError(void* data,
@@ -183,6 +169,8 @@ class SharedScreenCastStreamPrivate {
   // failed to use and try to use a different one or fallback to shared memory
   // buffers.
   static void OnRenegotiateFormat(void* data, uint64_t);
+
+  DesktopCapturer::Callback* callback_;
 };
 
 void SharedScreenCastStreamPrivate::OnCoreError(void* data,
@@ -261,6 +249,12 @@ void SharedScreenCastStreamPrivate::OnStreamParamChanged(
 
   spa_format_video_raw_parse(format, &that->spa_video_format_);
 
+  if (that->observer_ && that->spa_video_format_.max_framerate.denom) {
+    that->observer_->OnFrameRateChanged(
+        that->spa_video_format_.max_framerate.num /
+        that->spa_video_format_.max_framerate.denom);
+  }
+
   auto width = that->spa_video_format_.size.width;
   auto height = that->spa_video_format_.size.height;
   auto stride = SPA_ROUND_UP_N(width * kBytesPerPixel, 4);
@@ -268,7 +262,7 @@ void SharedScreenCastStreamPrivate::OnStreamParamChanged(
 
   that->stream_size_ = DesktopSize(width, height);
 
-  uint8_t buffer[1024] = {};
+  uint8_t buffer[2048] = {};
   auto builder = spa_pod_builder{buffer, sizeof(buffer)};
 
   // Setup buffers and meta header for new format.
@@ -281,10 +275,9 @@ void SharedScreenCastStreamPrivate::OnStreamParamChanged(
   that->modifier_ =
       has_modifier ? that->spa_video_format_.modifier : DRM_FORMAT_MOD_INVALID;
   std::vector<const spa_pod*> params;
-  const int buffer_types =
-      has_modifier
-          ? (1 << SPA_DATA_DmaBuf) | (1 << SPA_DATA_MemFd)
-          : (1 << SPA_DATA_MemFd);
+  const int buffer_types = has_modifier && mozilla::gfx::IsDMABufEnabled()
+                               ? (1 << SPA_DATA_DmaBuf) | (1 << SPA_DATA_MemFd)
+                               : (1 << SPA_DATA_MemFd);
 
   params.push_back(reinterpret_cast<spa_pod*>(spa_pod_builder_add_object(
       &builder, SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
@@ -339,6 +332,19 @@ void SharedScreenCastStreamPrivate::OnStreamProcess(void* data) {
     return;
   }
 
+  struct spa_meta_header* header =
+      static_cast<spa_meta_header*>(spa_buffer_find_meta_data(
+          buffer->buffer, SPA_META_Header, sizeof(*header)));
+  if (header && (header->flags & SPA_META_HEADER_FLAG_CORRUPTED)) {
+    RTC_LOG(LS_INFO) << "Dropping corrupted buffer";
+    if (that->observer_) {
+      that->observer_->OnBufferCorruptedMetadata();
+    }
+    // Queue buffer for reuse; it will not be processed further.
+    pw_stream_queue_buffer(that->pw_stream_, buffer);
+    return;
+  }
+
   that->ProcessBuffer(buffer);
 
   pw_stream_queue_buffer(that->pw_stream_, buffer);
@@ -352,29 +358,29 @@ void SharedScreenCastStreamPrivate::OnRenegotiateFormat(void* data, uint64_t) {
   {
     PipeWireThreadLoopLock thread_loop_lock(that->pw_main_loop_);
 
-    uint8_t buffer[2048] = {};
+    uint8_t buffer[4096] = {};
 
     spa_pod_builder builder = spa_pod_builder{buffer, sizeof(buffer)};
 
     std::vector<const spa_pod*> params;
     struct spa_rectangle resolution =
         SPA_RECTANGLE(that->width_, that->height_);
+    struct spa_fraction frame_rate = SPA_FRACTION(that->frame_rate_, 1);
 
-    webrtc::MutexLock lock(&that->resolution_lock_);
     for (uint32_t format : {SPA_VIDEO_FORMAT_BGRA, SPA_VIDEO_FORMAT_RGBA,
                             SPA_VIDEO_FORMAT_BGRx, SPA_VIDEO_FORMAT_RGBx}) {
       if (!that->modifiers_.empty()) {
-        params.push_back(BuildFormat(
-            &builder, format, that->modifiers_,
-            that->pending_resolution_change_ ? &resolution : nullptr));
+        params.push_back(
+            BuildFormat(&builder, format, that->modifiers_,
+                        that->width_ && that->height_ ? &resolution : nullptr,
+                        &frame_rate));
       }
       params.push_back(BuildFormat(
           &builder, format, /*modifiers=*/{},
-          that->pending_resolution_change_ ? &resolution : nullptr));
+          that->width_ && that->height_ ? &resolution : nullptr, &frame_rate));
     }
 
     pw_stream_update_params(that->pw_stream_, params.data(), params.size());
-    that->pending_resolution_change_ = false;
   }
 }
 
@@ -390,15 +396,19 @@ bool SharedScreenCastStreamPrivate::StartScreenCastStream(
     int fd,
     uint32_t width,
     uint32_t height,
-    bool is_cursor_embedded) {
+    bool is_cursor_embedded,
+    DesktopCapturer::Callback* callback) {
   width_ = width;
   height_ = height;
+  callback_ = callback;
   is_cursor_embedded_ = is_cursor_embedded;
   if (!InitializePipeWire()) {
     RTC_LOG(LS_ERROR) << "Unable to open PipeWire library";
     return false;
   }
-  egl_dmabuf_ = std::make_unique<EglDmaBuf>();
+  if (mozilla::gfx::IsDMABufEnabled()) {
+    egl_dmabuf_ = std::make_unique<EglDmaBuf>();
+  }
 
   pw_stream_node_id_ = stream_node_id;
 
@@ -434,7 +444,7 @@ bool SharedScreenCastStreamPrivate::StartScreenCastStream(
   {
     PipeWireThreadLoopLock thread_loop_lock(pw_main_loop_);
 
-    if (fd >= 0) {
+    if (fd != kInvalidPipeWireFd) {
       pw_core_ = pw_context_connect_fd(
           pw_context_, fcntl(fd, F_DUPFD_CLOEXEC, 0), nullptr, 0);
     } else {
@@ -468,7 +478,7 @@ bool SharedScreenCastStreamPrivate::StartScreenCastStream(
 
     pw_stream_add_listener(pw_stream_, &spa_stream_listener_,
                            &pw_stream_events_, this);
-    uint8_t buffer[2048] = {};
+    uint8_t buffer[4096] = {};
 
     spa_pod_builder builder = spa_pod_builder{buffer, sizeof(buffer)};
 
@@ -483,20 +493,24 @@ bool SharedScreenCastStreamPrivate::StartScreenCastStream(
       resolution = SPA_RECTANGLE(width, height);
       set_resolution = true;
     }
+    struct spa_fraction default_frame_rate = SPA_FRACTION(frame_rate_, 1);
     for (uint32_t format : {SPA_VIDEO_FORMAT_BGRA, SPA_VIDEO_FORMAT_RGBA,
                             SPA_VIDEO_FORMAT_BGRx, SPA_VIDEO_FORMAT_RGBx}) {
       // Modifiers can be used with PipeWire >= 0.3.33
-      if (has_required_pw_client_version && has_required_pw_server_version) {
+      if (egl_dmabuf_ &&
+          has_required_pw_client_version && has_required_pw_server_version) {
         modifiers_ = egl_dmabuf_->QueryDmaBufModifiers(format);
 
         if (!modifiers_.empty()) {
           params.push_back(BuildFormat(&builder, format, modifiers_,
-                                       set_resolution ? &resolution : nullptr));
+                                       set_resolution ? &resolution : nullptr,
+                                       &default_frame_rate));
         }
       }
 
       params.push_back(BuildFormat(&builder, format, /*modifiers=*/{},
-                                   set_resolution ? &resolution : nullptr));
+                                   set_resolution ? &resolution : nullptr,
+                                   &default_frame_rate));
     }
 
     if (pw_stream_connect(pw_stream_, PW_DIRECTION_INPUT, pw_stream_node_id_,
@@ -532,10 +546,24 @@ void SharedScreenCastStreamPrivate::UpdateScreenCastStreamResolution(
   if (width_ != width || height_ != height) {
     width_ = width;
     height_ = height;
-    {
-      webrtc::MutexLock lock(&resolution_lock_);
-      pending_resolution_change_ = true;
-    }
+    pw_loop_signal_event(pw_thread_loop_get_loop(pw_main_loop_), renegotiate_);
+  }
+}
+
+RTC_NO_SANITIZE("cfi-icall")
+void SharedScreenCastStreamPrivate::UpdateScreenCastStreamFrameRate(
+    uint32_t frame_rate) {
+  if (!pw_main_loop_) {
+    RTC_LOG(LS_WARNING) << "No main pipewire loop, ignoring frame rate change";
+    return;
+  }
+  if (!renegotiate_) {
+    RTC_LOG(LS_WARNING) << "Can not renegotiate stream params, ignoring "
+                        << "frame rate change";
+    return;
+  }
+  if (frame_rate_ != frame_rate) {
+    frame_rate_ = frame_rate;
     pw_loop_signal_event(pw_thread_loop_get_loop(pw_main_loop_), renegotiate_);
   }
 }
@@ -587,13 +615,13 @@ void SharedScreenCastStreamPrivate::StopAndCleanupStream() {
 
 std::unique_ptr<SharedDesktopFrame>
 SharedScreenCastStreamPrivate::CaptureFrame() {
-  webrtc::MutexLock lock(&queue_lock_);
+  webrtc::MutexLock latest_frame_lock(&latest_frame_lock_);
 
-  if (!pw_stream_ || !queue_.current_frame()) {
+  if (!pw_stream_ || !latest_available_frame_) {
     return std::unique_ptr<SharedDesktopFrame>{};
   }
 
-  std::unique_ptr<SharedDesktopFrame> frame = queue_.current_frame()->Share();
+  std::unique_ptr<SharedDesktopFrame> frame = latest_available_frame_->Share();
   if (use_damage_region_) {
     frame->mutable_updated_region()->Swap(&damage_region_);
     damage_region_.Clear();
@@ -614,8 +642,46 @@ DesktopVector SharedScreenCastStreamPrivate::CaptureCursorPosition() {
   return mouse_cursor_position_;
 }
 
+void SharedScreenCastStreamPrivate::UpdateFrameUpdatedRegions(
+    const spa_buffer* spa_buffer,
+    DesktopFrame& frame) {
+  latest_frame_lock_.AssertHeld();
+
+  if (!use_damage_region_) {
+    frame.mutable_updated_region()->SetRect(
+        DesktopRect::MakeSize(frame.size()));
+    return;
+  }
+
+  const struct spa_meta* video_damage = static_cast<struct spa_meta*>(
+      spa_buffer_find_meta(spa_buffer, SPA_META_VideoDamage));
+  if (!video_damage) {
+    damage_region_.SetRect(DesktopRect::MakeSize(frame.size()));
+    return;
+  }
+
+  frame.mutable_updated_region()->Clear();
+  spa_meta_region* meta_region;
+  spa_meta_for_each(meta_region, video_damage) {
+    // Skip empty regions
+    if (meta_region->region.size.width == 0 ||
+        meta_region->region.size.height == 0) {
+      continue;
+    }
+
+    damage_region_.AddRect(DesktopRect::MakeXYWH(
+        meta_region->region.position.x, meta_region->region.position.y,
+        meta_region->region.size.width, meta_region->region.size.height));
+  }
+}
+
 RTC_NO_SANITIZE("cfi-icall")
 void SharedScreenCastStreamPrivate::ProcessBuffer(pw_buffer* buffer) {
+  int64_t capture_start_time_nanos = rtc::TimeNanos();
+  if (callback_) {
+    callback_->OnFrameCaptureStart();
+  }
+
   spa_buffer* spa_buffer = buffer->buffer;
 
   // Try to update the mouse cursor first, because it can be the only
@@ -654,7 +720,20 @@ void SharedScreenCastStreamPrivate::ProcessBuffer(pw_buffer* buffer) {
     }
   }
 
-  if (spa_buffer->datas[0].chunk->size == 0) {
+  if (spa_buffer->datas[0].chunk->flags & SPA_CHUNK_FLAG_CORRUPTED) {
+    RTC_LOG(LS_INFO) << "Dropping buffer with corrupted or missing data";
+    if (observer_) {
+      observer_->OnBufferCorruptedData();
+    }
+    return;
+  }
+
+  if (spa_buffer->datas[0].type == SPA_DATA_MemFd &&
+      spa_buffer->datas[0].chunk->size == 0) {
+    RTC_LOG(LS_INFO) << "Dropping buffer with empty data";
+    if (observer_) {
+      observer_->OnEmptyBuffer();
+    }
     return;
   }
 
@@ -761,6 +840,8 @@ void SharedScreenCastStreamPrivate::ProcessBuffer(pw_buffer* buffer) {
     if (observer_) {
       observer_->OnFailedToProcessBuffer();
     }
+    webrtc::MutexLock latest_frame_lock(&latest_frame_lock_);
+    latest_available_frame_ = nullptr;
     return;
   }
 
@@ -779,34 +860,33 @@ void SharedScreenCastStreamPrivate::ProcessBuffer(pw_buffer* buffer) {
     observer_->OnDesktopFrameChanged();
   }
 
-  if (use_damage_region_) {
-    const struct spa_meta* video_damage = static_cast<struct spa_meta*>(
-        spa_buffer_find_meta(spa_buffer, SPA_META_VideoDamage));
-    if (video_damage) {
-      spa_meta_region* meta_region;
+  std::unique_ptr<SharedDesktopFrame> frame;
+  {
+    webrtc::MutexLock latest_frame_lock(&latest_frame_lock_);
 
-      queue_.current_frame()->mutable_updated_region()->Clear();
+    UpdateFrameUpdatedRegions(spa_buffer, *queue_.current_frame());
+    queue_.current_frame()->set_may_contain_cursor(is_cursor_embedded_);
 
-      spa_meta_for_each(meta_region, video_damage) {
-        // Skip empty regions
-        if (meta_region->region.size.width == 0 ||
-            meta_region->region.size.height == 0) {
-          continue;
-        }
+    latest_available_frame_ = queue_.current_frame();
 
-        damage_region_.AddRect(DesktopRect::MakeXYWH(
-            meta_region->region.position.x, meta_region->region.position.y,
-            meta_region->region.size.width, meta_region->region.size.height));
-      }
-    } else {
-      damage_region_.SetRect(
-          DesktopRect::MakeSize(queue_.current_frame()->size()));
+    if (!callback_) {
+      return;
     }
-  } else {
-    queue_.current_frame()->mutable_updated_region()->SetRect(
-        DesktopRect::MakeSize(queue_.current_frame()->size()));
+
+    frame = latest_available_frame_->Share();
+    frame->set_capturer_id(DesktopCapturerId::kWaylandCapturerLinux);
+    frame->set_capture_time_ms((rtc::TimeNanos() - capture_start_time_nanos) /
+                               rtc::kNumNanosecsPerMillisec);
+    if (use_damage_region_) {
+      frame->mutable_updated_region()->Swap(&damage_region_);
+      damage_region_.Clear();
+    }
   }
-  queue_.current_frame()->set_may_contain_cursor(is_cursor_embedded_);
+
+  if (callback_) {
+    callback_->OnCaptureResult(DesktopCapturer::Result::SUCCESS,
+                               std::move(frame));
+  }
 }
 
 RTC_NO_SANITIZE("cfi-icall")
@@ -855,7 +935,7 @@ bool SharedScreenCastStreamPrivate::ProcessDMABuffer(
 
   const uint n_planes = spa_buffer->n_datas;
 
-  if (!n_planes) {
+  if (!n_planes || !egl_dmabuf_) {
     return false;
   }
 
@@ -913,21 +993,28 @@ SharedScreenCastStream::CreateDefault() {
 }
 
 bool SharedScreenCastStream::StartScreenCastStream(uint32_t stream_node_id) {
-  return private_->StartScreenCastStream(stream_node_id, -1);
+  return private_->StartScreenCastStream(stream_node_id, kInvalidPipeWireFd);
 }
 
-bool SharedScreenCastStream::StartScreenCastStream(uint32_t stream_node_id,
-                                                   int fd,
-                                                   uint32_t width,
-                                                   uint32_t height,
-                                                   bool is_cursor_embedded) {
+bool SharedScreenCastStream::StartScreenCastStream(
+    uint32_t stream_node_id,
+    int fd,
+    uint32_t width,
+    uint32_t height,
+    bool is_cursor_embedded,
+    DesktopCapturer::Callback* callback) {
   return private_->StartScreenCastStream(stream_node_id, fd, width, height,
-                                         is_cursor_embedded);
+                                         is_cursor_embedded, callback);
 }
 
 void SharedScreenCastStream::UpdateScreenCastStreamResolution(uint32_t width,
                                                               uint32_t height) {
   private_->UpdateScreenCastStreamResolution(width, height);
+}
+
+void SharedScreenCastStream::UpdateScreenCastStreamFrameRate(
+    uint32_t frame_rate) {
+  private_->UpdateScreenCastStreamFrameRate(frame_rate);
 }
 
 void SharedScreenCastStream::SetUseDamageRegion(bool use_damage_region) {

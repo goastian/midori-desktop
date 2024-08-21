@@ -1,5 +1,5 @@
 use crate::component::*;
-use crate::core;
+use crate::core::{self, ValType};
 use crate::kw;
 use crate::names::Namespace;
 use crate::token::Span;
@@ -170,7 +170,7 @@ impl<'a> Resolver<'a> {
                 }
                 self.export(&mut e.kind)
             }
-            ComponentField::Custom(_) => Ok(()),
+            ComponentField::Custom(_) | ComponentField::Producers(_) => Ok(()),
         }
     }
 
@@ -257,6 +257,7 @@ impl<'a> Resolver<'a> {
             ItemSigKind::Value(t) => self.component_val_type(&mut t.0),
             ItemSigKind::Type(b) => match b {
                 TypeBounds::Eq(i) => self.resolve_ns(i, Ns::Type),
+                TypeBounds::SubResource => Ok(()),
             },
         }
     }
@@ -372,6 +373,11 @@ impl<'a> Resolver<'a> {
                 self.component_item_ref(&mut info.func)?;
                 &mut info.opts
             }
+            CanonicalFuncKind::ResourceNew(info) => return self.resolve_ns(&mut info.ty, Ns::Type),
+            CanonicalFuncKind::ResourceRep(info) => return self.resolve_ns(&mut info.ty, Ns::Type),
+            CanonicalFuncKind::ResourceDrop(info) => {
+                return self.resolve_ns(&mut info.ty, Ns::Type)
+            }
         };
 
         for opt in opts {
@@ -448,11 +454,6 @@ impl<'a> Resolver<'a> {
                     self.component_val_type(field)?;
                 }
             }
-            ComponentDefinedType::Union(t) => {
-                for ty in t.types.iter_mut() {
-                    self.component_val_type(ty)?;
-                }
-            }
             ComponentDefinedType::Option(o) => {
                 self.component_val_type(&mut o.element)?;
             }
@@ -464,6 +465,9 @@ impl<'a> Resolver<'a> {
                 if let Some(ty) = &mut r.err {
                     self.component_val_type(ty)?;
                 }
+            }
+            ComponentDefinedType::Own(t) | ComponentDefinedType::Borrow(t) => {
+                self.resolve_ns(t, Ns::Type)?;
             }
         }
         Ok(())
@@ -512,6 +516,31 @@ impl<'a> Resolver<'a> {
                 self.stack.push(ComponentState::new(field.id));
                 self.instance_type(i)?;
                 self.stack.pop();
+            }
+            TypeDef::Resource(r) => {
+                match &mut r.rep {
+                    ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
+                    ValType::Ref(r) => match &mut r.heap {
+                        core::HeapType::Func
+                        | core::HeapType::Extern
+                        | core::HeapType::Exn
+                        | core::HeapType::Any
+                        | core::HeapType::Eq
+                        | core::HeapType::Array
+                        | core::HeapType::I31
+                        | core::HeapType::Struct
+                        | core::HeapType::None
+                        | core::HeapType::NoFunc
+                        | core::HeapType::NoExtern
+                        | core::HeapType::NoExn => {}
+                        core::HeapType::Concrete(id) => {
+                            self.resolve_ns(id, Ns::Type)?;
+                        }
+                    },
+                }
+                if let Some(dtor) = &mut r.dtor {
+                    self.core_item_ref(dtor)?;
+                }
             }
         }
         Ok(())
@@ -788,7 +817,12 @@ impl<'a> ComponentState<'a> {
             ComponentField::Type(t) => self.types.register(t.id, "type")?,
             ComponentField::CanonicalFunc(f) => match &f.kind {
                 CanonicalFuncKind::Lift { .. } => self.funcs.register(f.id, "func")?,
-                CanonicalFuncKind::Lower(_) => self.core_funcs.register(f.id, "core func")?,
+                CanonicalFuncKind::Lower(_)
+                | CanonicalFuncKind::ResourceNew(_)
+                | CanonicalFuncKind::ResourceRep(_)
+                | CanonicalFuncKind::ResourceDrop(_) => {
+                    self.core_funcs.register(f.id, "core func")?
+                }
             },
             ComponentField::CoreFunc(_) | ComponentField::Func(_) => {
                 unreachable!("should be expanded already")
@@ -810,7 +844,7 @@ impl<'a> ComponentState<'a> {
                 ComponentExportKind::Component(_) => self.components.register(e.id, "component")?,
                 ComponentExportKind::Type(_) => self.types.register(e.id, "type")?,
             },
-            ComponentField::Custom(_) => return Ok(()),
+            ComponentField::Custom(_) | ComponentField::Producers(_) => return Ok(()),
         };
 
         Ok(())

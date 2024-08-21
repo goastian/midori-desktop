@@ -1,12 +1,7 @@
-#[cfg(feature = "validate")]
-use std::ops::Index;
-
-#[cfg(feature = "validate")]
 use super::{
-    compose::validate_compose, validate_atomic_compare_exchange_struct, FunctionInfo, ShaderStages,
-    TypeFlags,
+    compose::validate_compose, validate_atomic_compare_exchange_struct, FunctionInfo, ModuleInfo,
+    ShaderStages, TypeFlags,
 };
-#[cfg(feature = "validate")]
 use crate::arena::UniqueArena;
 
 use crate::{
@@ -25,8 +20,10 @@ pub enum ExpressionError {
     InvalidBaseType(Handle<crate::Expression>),
     #[error("Accessing with index {0:?} can't be done")]
     InvalidIndexType(Handle<crate::Expression>),
-    #[error("Accessing index {1:?} is out of {0:?} bounds")]
-    IndexOutOfBounds(Handle<crate::Expression>, crate::ScalarValue),
+    #[error("Accessing {0:?} via a negative index is invalid")]
+    NegativeIndex(Handle<crate::Expression>),
+    #[error("Accessing index {1} is out of {0:?} bounds")]
+    IndexOutOfBounds(Handle<crate::Expression>, u32),
     #[error("The expression {0:?} may only be indexed by a constant")]
     IndexMustBeConstant(Handle<crate::Expression>),
     #[error("Function argument {0:?} doesn't exist")]
@@ -93,8 +90,10 @@ pub enum ExpressionError {
         sampler: bool,
         has_ref: bool,
     },
+    #[error("Sample offset must be a const-expression")]
+    InvalidSampleOffsetExprType,
     #[error("Sample offset constant {1:?} doesn't match the image dimension {0:?}")]
-    InvalidSampleOffset(crate::ImageDimension, Handle<crate::Constant>),
+    InvalidSampleOffset(crate::ImageDimension, Handle<crate::Expression>),
     #[error("Depth reference {0:?} is not a scalar float")]
     InvalidDepthReference(Handle<crate::Expression>),
     #[error("Depth sample level can only be Auto or Zero")]
@@ -119,19 +118,55 @@ pub enum ExpressionError {
     InvalidArgumentType(crate::MathFunction, u32, Handle<crate::Expression>),
     #[error("Atomic result type can't be {0:?}")]
     InvalidAtomicResultType(Handle<crate::Type>),
+    #[error(
+        "workgroupUniformLoad result type can't be {0:?}. It can only be a constructible type."
+    )]
+    InvalidWorkGroupUniformLoadResultType(Handle<crate::Type>),
     #[error("Shader requires capability {0:?}")]
     MissingCapabilities(super::Capabilities),
+    #[error(transparent)]
+    Literal(#[from] LiteralError),
+    #[error("{0:?} is not supported for Width {2} {1:?} arguments yet, see https://github.com/gfx-rs/wgpu/issues/5276")]
+    UnsupportedWidth(crate::MathFunction, crate::ScalarKind, crate::Bytes),
 }
 
-#[cfg(feature = "validate")]
+#[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum ConstExpressionError {
+    #[error("The expression is not a constant or override expression")]
+    NonConstOrOverride,
+    #[error("The expression is not a fully evaluated constant expression")]
+    NonFullyEvaluatedConst,
+    #[error(transparent)]
+    Compose(#[from] super::ComposeError),
+    #[error("Splatting {0:?} can't be done")]
+    InvalidSplatType(Handle<crate::Expression>),
+    #[error("Type resolution failed")]
+    Type(#[from] ResolveError),
+    #[error(transparent)]
+    Literal(#[from] LiteralError),
+    #[error(transparent)]
+    Width(#[from] super::r#type::WidthError),
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum LiteralError {
+    #[error("Float literal is NaN")]
+    NaN,
+    #[error("Float literal is infinite")]
+    Infinity,
+    #[error(transparent)]
+    Width(#[from] super::r#type::WidthError),
+}
+
 struct ExpressionTypeResolver<'a> {
     root: Handle<crate::Expression>,
     types: &'a UniqueArena<crate::Type>,
     info: &'a FunctionInfo,
 }
 
-#[cfg(feature = "validate")]
-impl<'a> Index<Handle<crate::Expression>> for ExpressionTypeResolver<'a> {
+impl<'a> std::ops::Index<Handle<crate::Expression>> for ExpressionTypeResolver<'a> {
     type Output = crate::TypeInner;
 
     #[allow(clippy::panic)]
@@ -148,8 +183,47 @@ impl<'a> Index<Handle<crate::Expression>> for ExpressionTypeResolver<'a> {
     }
 }
 
-#[cfg(feature = "validate")]
 impl super::Validator {
+    pub(super) fn validate_const_expression(
+        &self,
+        handle: Handle<crate::Expression>,
+        gctx: crate::proc::GlobalCtx,
+        mod_info: &ModuleInfo,
+        global_expr_kind: &crate::proc::ExpressionKindTracker,
+    ) -> Result<(), ConstExpressionError> {
+        use crate::Expression as E;
+
+        if !global_expr_kind.is_const_or_override(handle) {
+            return Err(ConstExpressionError::NonConstOrOverride);
+        }
+
+        match gctx.global_expressions[handle] {
+            E::Literal(literal) => {
+                self.validate_literal(literal)?;
+            }
+            E::Constant(_) | E::ZeroValue(_) => {}
+            E::Compose { ref components, ty } => {
+                validate_compose(
+                    ty,
+                    gctx,
+                    components.iter().map(|&handle| mod_info[handle].clone()),
+                )?;
+            }
+            E::Splat { value, .. } => match *mod_info[value].inner_with(gctx.types) {
+                crate::TypeInner::Scalar { .. } => {}
+                _ => return Err(ConstExpressionError::InvalidSplatType(value)),
+            },
+            _ if global_expr_kind.is_const(handle) || !self.allow_overrides => {
+                return Err(ConstExpressionError::NonFullyEvaluatedConst)
+            }
+            // the constant evaluator will report errors about override-expressions
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn validate_expression(
         &self,
         root: Handle<crate::Expression>,
@@ -157,9 +231,10 @@ impl super::Validator {
         function: &crate::Function,
         module: &crate::Module,
         info: &FunctionInfo,
-        other_infos: &[FunctionInfo],
+        mod_info: &ModuleInfo,
+        global_expr_kind: &crate::proc::ExpressionKindTracker,
     ) -> Result<ShaderStages, ExpressionError> {
-        use crate::{Expression as E, ScalarKind as Sk, TypeInner as Ti};
+        use crate::{Expression as E, Scalar as Sc, ScalarKind as Sk, TypeInner as Ti};
 
         let resolver = ExpressionTypeResolver {
             root,
@@ -184,18 +259,16 @@ impl super::Validator {
                 };
                 match resolver[index] {
                     //TODO: only allow one of these
-                    Ti::Scalar {
+                    Ti::Scalar(Sc {
                         kind: Sk::Sint | Sk::Uint,
-                        width: _,
-                    } => {}
+                        ..
+                    }) => {}
                     ref other => {
                         log::error!("Indexing by {:?}", other);
                         return Err(ExpressionError::InvalidIndexType(index));
                     }
                 }
-                if dynamic_indexing_restricted
-                    && function.expressions[index].is_dynamic_index(module)
-                {
+                if dynamic_indexing_restricted && function.expressions[index].is_dynamic_index() {
                     return Err(ExpressionError::IndexMustBeConstant(base));
                 }
 
@@ -204,27 +277,19 @@ impl super::Validator {
                 if let crate::proc::IndexableLength::Known(known_length) =
                     base_type.indexable_length(module)?
                 {
-                    if let E::Constant(k) = function.expressions[index] {
-                        if let crate::Constant {
-                            // We must treat specializable constants as unknown.
-                            specialization: None,
-                            // Non-scalar indices should have been caught above.
-                            inner: crate::ConstantInner::Scalar { value, .. },
-                            ..
-                        } = module.constants[k]
-                        {
-                            match value {
-                                crate::ScalarValue::Uint(u) if u >= known_length as u64 => {
-                                    return Err(ExpressionError::IndexOutOfBounds(base, value));
-                                }
-                                crate::ScalarValue::Sint(s)
-                                    if s < 0 || s >= known_length as i64 =>
-                                {
-                                    return Err(ExpressionError::IndexOutOfBounds(base, value));
-                                }
-                                _ => (),
+                    match module
+                        .to_ctx()
+                        .eval_expr_to_u32_from(index, &function.expressions)
+                    {
+                        Ok(value) => {
+                            if value >= known_length {
+                                return Err(ExpressionError::IndexOutOfBounds(base, value));
                             }
                         }
+                        Err(crate::proc::U32EvalError::Negative) => {
+                            return Err(ExpressionError::NegativeIndex(base))
+                        }
+                        Err(crate::proc::U32EvalError::NonConst) => {}
                     }
                 }
 
@@ -244,9 +309,9 @@ impl super::Validator {
                         } => size as u32,
                         Ti::Matrix { columns, .. } => columns as u32,
                         Ti::Array {
-                            size: crate::ArraySize::Constant(handle),
+                            size: crate::ArraySize::Constant(len),
                             ..
-                        } => module.constants[handle].to_array_length().unwrap(),
+                        } => len.get(),
                         Ti::Array { .. } | Ti::BindingArray { .. } => u32::MAX, // can't statically know, but need run-time checks
                         Ti::Pointer { base, .. } if top_level => {
                             resolve_index_limit(module, top, &module.types[base].inner, false)?
@@ -262,14 +327,10 @@ impl super::Validator {
 
                 let limit = resolve_index_limit(module, base, &resolver[base], true)?;
                 if index >= limit {
-                    return Err(ExpressionError::IndexOutOfBounds(
-                        base,
-                        crate::ScalarValue::Uint(limit as _),
-                    ));
+                    return Err(ExpressionError::IndexOutOfBounds(base, limit));
                 }
                 ShaderStages::all()
             }
-            E::Constant(_handle) => ShaderStages::all(),
             E::Splat { size: _, value } => match resolver[value] {
                 Ti::Scalar { .. } => ShaderStages::all(),
                 ref other => {
@@ -296,11 +357,15 @@ impl super::Validator {
                 }
                 ShaderStages::all()
             }
+            E::Literal(literal) => {
+                self.validate_literal(literal)?;
+                ShaderStages::all()
+            }
+            E::Constant(_) | E::Override(_) | E::ZeroValue(_) => ShaderStages::all(),
             E::Compose { ref components, ty } => {
                 validate_compose(
                     ty,
-                    &module.constants,
-                    &module.types,
+                    module.to_ctx(),
                     components.iter().map(|&handle| info[handle].ty.clone()),
                 )?;
                 ShaderStages::all()
@@ -358,10 +423,10 @@ impl super::Validator {
                         }
                         if let Some(expr) = array_index {
                             match resolver[expr] {
-                                Ti::Scalar {
+                                Ti::Scalar(Sc {
                                     kind: Sk::Sint | Sk::Uint,
-                                    width: _,
-                                } => {}
+                                    ..
+                                }) => {}
                                 _ => return Err(ExpressionError::InvalidImageArrayIndexType(expr)),
                             }
                         }
@@ -398,47 +463,43 @@ impl super::Validator {
                     crate::ImageDimension::D3 | crate::ImageDimension::Cube => 3,
                 };
                 match resolver[coordinate] {
-                    Ti::Scalar {
+                    Ti::Scalar(Sc {
                         kind: Sk::Float, ..
-                    } if num_components == 1 => {}
+                    }) if num_components == 1 => {}
                     Ti::Vector {
                         size,
-                        kind: Sk::Float,
-                        ..
+                        scalar:
+                            Sc {
+                                kind: Sk::Float, ..
+                            },
                     } if size as u32 == num_components => {}
                     _ => return Err(ExpressionError::InvalidImageCoordinateType(dim, coordinate)),
                 }
 
                 // check constant offset
-                if let Some(const_handle) = offset {
-                    let good = match module.constants[const_handle].inner {
-                        crate::ConstantInner::Scalar {
-                            width: _,
-                            value: crate::ScalarValue::Sint(_),
-                        } => num_components == 1,
-                        crate::ConstantInner::Scalar { .. } => false,
-                        crate::ConstantInner::Composite { ty, .. } => {
-                            match module.types[ty].inner {
-                                Ti::Vector {
-                                    size,
-                                    kind: Sk::Sint,
-                                    ..
-                                } => size as u32 == num_components,
-                                _ => false,
-                            }
+                if let Some(const_expr) = offset {
+                    if !global_expr_kind.is_const(const_expr) {
+                        return Err(ExpressionError::InvalidSampleOffsetExprType);
+                    }
+
+                    match *mod_info[const_expr].inner_with(&module.types) {
+                        Ti::Scalar(Sc { kind: Sk::Sint, .. }) if num_components == 1 => {}
+                        Ti::Vector {
+                            size,
+                            scalar: Sc { kind: Sk::Sint, .. },
+                        } if size as u32 == num_components => {}
+                        _ => {
+                            return Err(ExpressionError::InvalidSampleOffset(dim, const_expr));
                         }
-                    };
-                    if !good {
-                        return Err(ExpressionError::InvalidSampleOffset(dim, const_handle));
                     }
                 }
 
                 // check depth reference type
                 if let Some(expr) = depth_ref {
                     match resolver[expr] {
-                        Ti::Scalar {
+                        Ti::Scalar(Sc {
                             kind: Sk::Float, ..
-                        } => {}
+                        }) => {}
                         _ => return Err(ExpressionError::InvalidDepthReference(expr)),
                     }
                     match level {
@@ -473,44 +534,48 @@ impl super::Validator {
                     crate::SampleLevel::Zero => ShaderStages::all(),
                     crate::SampleLevel::Exact(expr) => {
                         match resolver[expr] {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float, ..
-                            } => {}
+                            }) => {}
                             _ => return Err(ExpressionError::InvalidSampleLevelExactType(expr)),
                         }
                         ShaderStages::all()
                     }
                     crate::SampleLevel::Bias(expr) => {
                         match resolver[expr] {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float, ..
-                            } => {}
+                            }) => {}
                             _ => return Err(ExpressionError::InvalidSampleLevelBiasType(expr)),
                         }
-                        ShaderStages::all()
+                        ShaderStages::FRAGMENT
                     }
                     crate::SampleLevel::Gradient { x, y } => {
                         match resolver[x] {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float, ..
-                            } if num_components == 1 => {}
+                            }) if num_components == 1 => {}
                             Ti::Vector {
                                 size,
-                                kind: Sk::Float,
-                                ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
                             } if size as u32 == num_components => {}
                             _ => {
                                 return Err(ExpressionError::InvalidSampleLevelGradientType(dim, x))
                             }
                         }
                         match resolver[y] {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float, ..
-                            } if num_components == 1 => {}
+                            }) if num_components == 1 => {}
                             Ti::Vector {
                                 size,
-                                kind: Sk::Float,
-                                ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
                             } if size as u32 == num_components => {}
                             _ => {
                                 return Err(ExpressionError::InvalidSampleLevelGradientType(dim, y))
@@ -547,10 +612,10 @@ impl super::Validator {
                         }
                         if let Some(expr) = array_index {
                             match resolver[expr] {
-                                Ti::Scalar {
+                                Ti::Scalar(Sc {
                                     kind: Sk::Sint | Sk::Uint,
                                     width: _,
-                                } => {}
+                                }) => {}
                                 _ => return Err(ExpressionError::InvalidImageArrayIndexType(expr)),
                             }
                         }
@@ -608,10 +673,9 @@ impl super::Validator {
                 use crate::UnaryOperator as Uo;
                 let inner = &resolver[expr];
                 match (op, inner.scalar_kind()) {
-                    (_, Some(Sk::Sint | Sk::Bool))
-                    //TODO: restrict Negate for bools?
-                    | (Uo::Negate, Some(Sk::Float))
-                    | (Uo::Not, Some(Sk::Uint)) => {}
+                    (Uo::Negate, Some(Sk::Float | Sk::Sint))
+                    | (Uo::LogicalNot, Some(Sk::Bool))
+                    | (Uo::BitwiseNot, Some(Sk::Sint | Sk::Uint)) => {}
                     other => {
                         log::error!("Op {:?} kind {:?}", op, other);
                         return Err(ExpressionError::InvalidUnaryOperandType(op, expr));
@@ -625,73 +689,83 @@ impl super::Validator {
                 let right_inner = &resolver[right];
                 let good = match op {
                     Bo::Add | Bo::Subtract => match *left_inner {
-                        Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => match kind {
+                        Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
                             Sk::Uint | Sk::Sint | Sk::Float => left_inner == right_inner,
-                            Sk::Bool => false,
+                            Sk::Bool | Sk::AbstractInt | Sk::AbstractFloat => false,
                         },
                         Ti::Matrix { .. } => left_inner == right_inner,
                         _ => false,
                     },
                     Bo::Divide | Bo::Modulo => match *left_inner {
-                        Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => match kind {
+                        Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
                             Sk::Uint | Sk::Sint | Sk::Float => left_inner == right_inner,
-                            Sk::Bool => false,
+                            Sk::Bool | Sk::AbstractInt | Sk::AbstractFloat => false,
                         },
                         _ => false,
                     },
                     Bo::Multiply => {
                         let kind_allowed = match left_inner.scalar_kind() {
                             Some(Sk::Uint | Sk::Sint | Sk::Float) => true,
-                            Some(Sk::Bool) | None => false,
+                            Some(Sk::Bool | Sk::AbstractInt | Sk::AbstractFloat) | None => false,
                         };
                         let types_match = match (left_inner, right_inner) {
                             // Straight scalar and mixed scalar/vector.
-                            (&Ti::Scalar { kind: kind1, .. }, &Ti::Scalar { kind: kind2, .. })
-                            | (&Ti::Vector { kind: kind1, .. }, &Ti::Scalar { kind: kind2, .. })
-                            | (&Ti::Scalar { kind: kind1, .. }, &Ti::Vector { kind: kind2, .. }) => {
-                                kind1 == kind2
-                            }
+                            (&Ti::Scalar(scalar1), &Ti::Scalar(scalar2))
+                            | (
+                                &Ti::Vector {
+                                    scalar: scalar1, ..
+                                },
+                                &Ti::Scalar(scalar2),
+                            )
+                            | (
+                                &Ti::Scalar(scalar1),
+                                &Ti::Vector {
+                                    scalar: scalar2, ..
+                                },
+                            ) => scalar1 == scalar2,
                             // Scalar/matrix.
                             (
-                                &Ti::Scalar {
+                                &Ti::Scalar(Sc {
                                     kind: Sk::Float, ..
-                                },
+                                }),
                                 &Ti::Matrix { .. },
                             )
                             | (
                                 &Ti::Matrix { .. },
-                                &Ti::Scalar {
+                                &Ti::Scalar(Sc {
                                     kind: Sk::Float, ..
-                                },
+                                }),
                             ) => true,
                             // Vector/vector.
                             (
                                 &Ti::Vector {
-                                    kind: kind1,
                                     size: size1,
-                                    ..
+                                    scalar: scalar1,
                                 },
                                 &Ti::Vector {
-                                    kind: kind2,
                                     size: size2,
-                                    ..
+                                    scalar: scalar2,
                                 },
-                            ) => kind1 == kind2 && size1 == size2,
+                            ) => scalar1 == scalar2 && size1 == size2,
                             // Matrix * vector.
                             (
                                 &Ti::Matrix { columns, .. },
                                 &Ti::Vector {
-                                    kind: Sk::Float,
                                     size,
-                                    ..
+                                    scalar:
+                                        Sc {
+                                            kind: Sk::Float, ..
+                                        },
                                 },
                             ) => columns == size,
                             // Vector * matrix.
                             (
                                 &Ti::Vector {
-                                    kind: Sk::Float,
                                     size,
-                                    ..
+                                    scalar:
+                                        Sc {
+                                            kind: Sk::Float, ..
+                                        },
                                 },
                                 &Ti::Matrix { rows, .. },
                             ) => size == rows,
@@ -700,26 +774,16 @@ impl super::Validator {
                             }
                             _ => false,
                         };
-                        let left_width = match *left_inner {
-                            Ti::Scalar { width, .. }
-                            | Ti::Vector { width, .. }
-                            | Ti::Matrix { width, .. } => width,
-                            _ => 0,
-                        };
-                        let right_width = match *right_inner {
-                            Ti::Scalar { width, .. }
-                            | Ti::Vector { width, .. }
-                            | Ti::Matrix { width, .. } => width,
-                            _ => 0,
-                        };
+                        let left_width = left_inner.scalar_width().unwrap_or(0);
+                        let right_width = right_inner.scalar_width().unwrap_or(0);
                         kind_allowed && types_match && left_width == right_width
                     }
                     Bo::Equal | Bo::NotEqual => left_inner.is_sized() && left_inner == right_inner,
                     Bo::Less | Bo::LessEqual | Bo::Greater | Bo::GreaterEqual => {
                         match *left_inner {
-                            Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => match kind {
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
                                 Sk::Uint | Sk::Sint | Sk::Float => left_inner == right_inner,
-                                Sk::Bool => false,
+                                Sk::Bool | Sk::AbstractInt | Sk::AbstractFloat => false,
                             },
                             ref other => {
                                 log::error!("Op {:?} left type {:?}", op, other);
@@ -728,18 +792,20 @@ impl super::Validator {
                         }
                     }
                     Bo::LogicalAnd | Bo::LogicalOr => match *left_inner {
-                        Ti::Scalar { kind: Sk::Bool, .. } | Ti::Vector { kind: Sk::Bool, .. } => {
-                            left_inner == right_inner
-                        }
+                        Ti::Scalar(Sc { kind: Sk::Bool, .. })
+                        | Ti::Vector {
+                            scalar: Sc { kind: Sk::Bool, .. },
+                            ..
+                        } => left_inner == right_inner,
                         ref other => {
                             log::error!("Op {:?} left type {:?}", op, other);
                             false
                         }
                     },
                     Bo::And | Bo::InclusiveOr => match *left_inner {
-                        Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => match kind {
+                        Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
                             Sk::Bool | Sk::Sint | Sk::Uint => left_inner == right_inner,
-                            Sk::Float => false,
+                            Sk::Float | Sk::AbstractInt | Sk::AbstractFloat => false,
                         },
                         ref other => {
                             log::error!("Op {:?} left type {:?}", op, other);
@@ -747,9 +813,9 @@ impl super::Validator {
                         }
                     },
                     Bo::ExclusiveOr => match *left_inner {
-                        Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => match kind {
+                        Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
                             Sk::Sint | Sk::Uint => left_inner == right_inner,
-                            Sk::Bool | Sk::Float => false,
+                            Sk::Bool | Sk::Float | Sk::AbstractInt | Sk::AbstractFloat => false,
                         },
                         ref other => {
                             log::error!("Op {:?} left type {:?}", op, other);
@@ -757,29 +823,28 @@ impl super::Validator {
                         }
                     },
                     Bo::ShiftLeft | Bo::ShiftRight => {
-                        let (base_size, base_kind) = match *left_inner {
-                            Ti::Scalar { kind, .. } => (Ok(None), kind),
-                            Ti::Vector { size, kind, .. } => (Ok(Some(size)), kind),
+                        let (base_size, base_scalar) = match *left_inner {
+                            Ti::Scalar(scalar) => (Ok(None), scalar),
+                            Ti::Vector { size, scalar } => (Ok(Some(size)), scalar),
                             ref other => {
                                 log::error!("Op {:?} base type {:?}", op, other);
-                                (Err(()), Sk::Bool)
+                                (Err(()), Sc::BOOL)
                             }
                         };
                         let shift_size = match *right_inner {
-                            Ti::Scalar { kind: Sk::Uint, .. } => Ok(None),
+                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => Ok(None),
                             Ti::Vector {
                                 size,
-                                kind: Sk::Uint,
-                                ..
+                                scalar: Sc { kind: Sk::Uint, .. },
                             } => Ok(Some(size)),
                             ref other => {
                                 log::error!("Op {:?} shift type {:?}", op, other);
                                 Err(())
                             }
                         };
-                        match base_kind {
+                        match base_scalar.kind {
                             Sk::Sint | Sk::Uint => base_size.is_ok() && base_size == shift_size,
-                            Sk::Float | Sk::Bool => false,
+                            Sk::Float | Sk::AbstractInt | Sk::AbstractFloat | Sk::Bool => false,
                         }
                     }
                 };
@@ -806,10 +871,10 @@ impl super::Validator {
                 let accept_inner = &resolver[accept];
                 let reject_inner = &resolver[reject];
                 let condition_good = match resolver[condition] {
-                    Ti::Scalar {
+                    Ti::Scalar(Sc {
                         kind: Sk::Bool,
                         width: _,
-                    } => {
+                    }) => {
                         // When `condition` is a single boolean, `accept` and
                         // `reject` can be vectors or scalars.
                         match *accept_inner {
@@ -819,8 +884,11 @@ impl super::Validator {
                     }
                     Ti::Vector {
                         size,
-                        kind: Sk::Bool,
-                        width: _,
+                        scalar:
+                            Sc {
+                                kind: Sk::Bool,
+                                width: _,
+                            },
                     } => match *accept_inner {
                         Ti::Vector {
                             size: other_size, ..
@@ -836,11 +904,15 @@ impl super::Validator {
             }
             E::Derivative { expr, .. } => {
                 match resolver[expr] {
-                    Ti::Scalar {
+                    Ti::Scalar(Sc {
                         kind: Sk::Float, ..
-                    }
+                    })
                     | Ti::Vector {
-                        kind: Sk::Float, ..
+                        scalar:
+                            Sc {
+                                kind: Sk::Float, ..
+                            },
+                        ..
                     } => {}
                     _ => return Err(ExpressionError::InvalidDerivative),
                 }
@@ -851,19 +923,18 @@ impl super::Validator {
                 let argument_inner = &resolver[argument];
                 match fun {
                     Rf::All | Rf::Any => match *argument_inner {
-                        Ti::Vector { kind: Sk::Bool, .. } => {}
+                        Ti::Vector {
+                            scalar: Sc { kind: Sk::Bool, .. },
+                            ..
+                        } => {}
                         ref other => {
                             log::error!("All/Any of type {:?}", other);
                             return Err(ExpressionError::InvalidBooleanVector(argument));
                         }
                     },
-                    Rf::IsNan | Rf::IsInf | Rf::IsFinite | Rf::IsNormal => match *argument_inner {
-                        Ti::Scalar {
-                            kind: Sk::Float, ..
-                        }
-                        | Ti::Vector {
-                            kind: Sk::Float, ..
-                        } => {}
+                    Rf::IsNan | Rf::IsInf => match *argument_inner {
+                        Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
+                            if scalar.kind == Sk::Float => {}
                         ref other => {
                             log::error!("Float test of type {:?}", other);
                             return Err(ExpressionError::InvalidFloatArgument(argument));
@@ -888,11 +959,13 @@ impl super::Validator {
                 let arg3_ty = arg3.map(resolve);
                 match fun {
                     Mf::Abs => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         let good = match *arg_ty {
-                            Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => kind != Sk::Bool,
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
+                                scalar.kind != Sk::Bool
+                            }
                             _ => false,
                         };
                         if !good {
@@ -905,7 +978,9 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         let good = match *arg_ty {
-                            Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => kind != Sk::Bool,
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
+                                scalar.kind != Sk::Bool
+                            }
                             _ => false,
                         };
                         if !good {
@@ -925,7 +1000,9 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         let good = match *arg_ty {
-                            Ti::Scalar { kind, .. } | Ti::Vector { kind, .. } => kind != Sk::Bool,
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
+                                scalar.kind != Sk::Bool
+                            }
                             _ => false,
                         };
                         if !good {
@@ -971,18 +1048,33 @@ impl super::Validator {
                     | Mf::Log
                     | Mf::Log2
                     | Mf::Length
-                    | Mf::Sign
                     | Mf::Sqrt
                     | Mf::InverseSqrt => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
-                            Ti::Scalar {
-                                kind: Sk::Float, ..
-                            }
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
+                                if scalar.kind == Sk::Float => {}
+                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
+                        }
+                    }
+                    Mf::Sign => {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
+                            return Err(ExpressionError::WrongArgumentCount(fun));
+                        }
+                        match *arg_ty {
+                            Ti::Scalar(Sc {
+                                kind: Sk::Float | Sk::Sint,
+                                ..
+                            })
                             | Ti::Vector {
-                                kind: Sk::Float, ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float | Sk::Sint,
+                                        ..
+                                    },
+                                ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
@@ -993,12 +1085,8 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         match *arg_ty {
-                            Ti::Scalar {
-                                kind: Sk::Float, ..
-                            }
-                            | Ti::Vector {
-                                kind: Sk::Float, ..
-                            } => {}
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
+                                if scalar.kind == Sk::Float => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                         if arg1_ty != arg_ty {
@@ -1009,31 +1097,43 @@ impl super::Validator {
                             ));
                         }
                     }
-                    Mf::Modf | Mf::Frexp | Mf::Ldexp => {
+                    Mf::Modf | Mf::Frexp => {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
+                            return Err(ExpressionError::WrongArgumentCount(fun));
+                        }
+                        if !matches!(*arg_ty,
+                                     Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
+                                     if scalar.kind == Sk::Float)
+                        {
+                            return Err(ExpressionError::InvalidArgumentType(fun, 1, arg));
+                        }
+                    }
+                    Mf::Ldexp => {
                         let arg1_ty = match (arg1_ty, arg2_ty, arg3_ty) {
                             (Some(ty1), None, None) => ty1,
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
-                        let (size0, width0) = match *arg_ty {
-                            Ti::Scalar {
-                                kind: Sk::Float,
-                                width,
-                            } => (None, width),
+                        let size0 = match *arg_ty {
+                            Ti::Scalar(Sc {
+                                kind: Sk::Float, ..
+                            }) => None,
                             Ti::Vector {
-                                kind: Sk::Float,
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
                                 size,
-                                width,
-                            } => (Some(size), width),
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
+                            } => Some(size),
+                            _ => {
+                                return Err(ExpressionError::InvalidArgumentType(fun, 0, arg));
+                            }
                         };
                         let good = match *arg1_ty {
-                            Ti::Pointer { base, space: _ } => module.types[base].inner == *arg_ty,
-                            Ti::ValuePointer {
+                            Ti::Scalar(Sc { kind: Sk::Sint, .. }) if size0.is_none() => true,
+                            Ti::Vector {
                                 size,
-                                kind: Sk::Float,
-                                width,
-                                space: _,
-                            } => size == size0 && width == width0,
+                                scalar: Sc { kind: Sk::Sint, .. },
+                            } if Some(size) == size0 => true,
                             _ => false,
                         };
                         if !good {
@@ -1051,7 +1151,11 @@ impl super::Validator {
                         };
                         match *arg_ty {
                             Ti::Vector {
-                                kind: Sk::Float | Sk::Sint | Sk::Uint,
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float | Sk::Sint | Sk::Uint,
+                                        ..
+                                    },
                                 ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
@@ -1071,7 +1175,11 @@ impl super::Validator {
                         };
                         match *arg_ty {
                             Ti::Vector {
-                                kind: Sk::Float, ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
+                                ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
@@ -1091,7 +1199,11 @@ impl super::Validator {
 
                         match *arg_ty {
                             Ti::Vector {
-                                kind: Sk::Float, ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
+                                ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
@@ -1107,13 +1219,17 @@ impl super::Validator {
                         match (arg_ty, arg2_ty) {
                             (
                                 &Ti::Vector {
-                                    width: vector_width,
+                                    scalar:
+                                        Sc {
+                                            width: vector_width,
+                                            ..
+                                        },
                                     ..
                                 },
-                                &Ti::Scalar {
+                                &Ti::Scalar(Sc {
                                     width: scalar_width,
                                     kind: Sk::Float,
-                                },
+                                }),
                             ) if vector_width == scalar_width => {}
                             _ => {
                                 return Err(ExpressionError::InvalidArgumentType(
@@ -1125,12 +1241,16 @@ impl super::Validator {
                         }
                     }
                     Mf::Normalize => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
                             Ti::Vector {
-                                kind: Sk::Float, ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
+                                ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
@@ -1141,11 +1261,15 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         match *arg_ty {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float, ..
-                            }
+                            })
                             | Ti::Vector {
-                                kind: Sk::Float, ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
+                                ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
@@ -1170,13 +1294,16 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         let arg_width = match *arg_ty {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float,
                                 width,
-                            }
+                            })
                             | Ti::Vector {
-                                kind: Sk::Float,
-                                width,
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float,
+                                        width,
+                                    },
                                 ..
                             } => width,
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
@@ -1190,10 +1317,10 @@ impl super::Validator {
                         }
                         // the last argument can always be a scalar
                         match *arg2_ty {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Float,
                                 width,
-                            } if width == arg_width => {}
+                            }) if width == arg_width => {}
                             _ if arg2_ty == arg_ty => {}
                             _ => {
                                 return Err(ExpressionError::InvalidArgumentType(
@@ -1205,7 +1332,7 @@ impl super::Validator {
                         }
                     }
                     Mf::Inverse | Mf::Determinant => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         let good = match *arg_ty {
@@ -1217,7 +1344,7 @@ impl super::Validator {
                         }
                     }
                     Mf::Transpose => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
@@ -1225,24 +1352,29 @@ impl super::Validator {
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                     }
-                    Mf::CountTrailingZeros
-                    | Mf::CountLeadingZeros
+                    // Remove once fixed https://github.com/gfx-rs/wgpu/issues/5276
+                    Mf::CountLeadingZeros
+                    | Mf::CountTrailingZeros
                     | Mf::CountOneBits
                     | Mf::ReverseBits
-                    | Mf::FindLsb
-                    | Mf::FindMsb => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                    | Mf::FindMsb
+                    | Mf::FindLsb => {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
-                            Ti::Scalar {
-                                kind: Sk::Sint | Sk::Uint,
-                                ..
-                            }
-                            | Ti::Vector {
-                                kind: Sk::Sint | Sk::Uint,
-                                ..
-                            } => {}
+                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
+                                Sk::Sint | Sk::Uint => {
+                                    if scalar.width != 4 {
+                                        return Err(ExpressionError::UnsupportedWidth(
+                                            fun,
+                                            scalar.kind,
+                                            scalar.width,
+                                        ));
+                                    }
+                                }
+                                _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
+                            },
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                     }
@@ -1252,12 +1384,16 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         match *arg_ty {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Sint | Sk::Uint,
                                 ..
-                            }
+                            })
                             | Ti::Vector {
-                                kind: Sk::Sint | Sk::Uint,
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Sint | Sk::Uint,
+                                        ..
+                                    },
                                 ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
@@ -1270,7 +1406,7 @@ impl super::Validator {
                             ));
                         }
                         match *arg2_ty {
-                            Ti::Scalar { kind: Sk::Uint, .. } => {}
+                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
                             _ => {
                                 return Err(ExpressionError::InvalidArgumentType(
                                     fun,
@@ -1280,13 +1416,28 @@ impl super::Validator {
                             }
                         }
                         match *arg3_ty {
-                            Ti::Scalar { kind: Sk::Uint, .. } => {}
+                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
                             _ => {
                                 return Err(ExpressionError::InvalidArgumentType(
                                     fun,
                                     2,
                                     arg3.unwrap(),
                                 ))
+                            }
+                        }
+                        // Remove once fixed https://github.com/gfx-rs/wgpu/issues/5276
+                        for &arg in [arg_ty, arg1_ty, arg2_ty, arg3_ty].iter() {
+                            match *arg {
+                                Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
+                                    if scalar.width != 4 {
+                                        return Err(ExpressionError::UnsupportedWidth(
+                                            fun,
+                                            scalar.kind,
+                                            scalar.width,
+                                        ));
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -1296,18 +1447,22 @@ impl super::Validator {
                             _ => return Err(ExpressionError::WrongArgumentCount(fun)),
                         };
                         match *arg_ty {
-                            Ti::Scalar {
+                            Ti::Scalar(Sc {
                                 kind: Sk::Sint | Sk::Uint,
                                 ..
-                            }
+                            })
                             | Ti::Vector {
-                                kind: Sk::Sint | Sk::Uint,
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Sint | Sk::Uint,
+                                        ..
+                                    },
                                 ..
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                         match *arg1_ty {
-                            Ti::Scalar { kind: Sk::Uint, .. } => {}
+                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
                             _ => {
                                 return Err(ExpressionError::InvalidArgumentType(
                                     fun,
@@ -1317,7 +1472,7 @@ impl super::Validator {
                             }
                         }
                         match *arg2_ty {
-                            Ti::Scalar { kind: Sk::Uint, .. } => {}
+                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
                             _ => {
                                 return Err(ExpressionError::InvalidArgumentType(
                                     fun,
@@ -1326,30 +1481,66 @@ impl super::Validator {
                                 ))
                             }
                         }
+                        // Remove once fixed https://github.com/gfx-rs/wgpu/issues/5276
+                        for &arg in [arg_ty, arg1_ty, arg2_ty].iter() {
+                            match *arg {
+                                Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
+                                    if scalar.width != 4 {
+                                        return Err(ExpressionError::UnsupportedWidth(
+                                            fun,
+                                            scalar.kind,
+                                            scalar.width,
+                                        ));
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                     Mf::Pack2x16unorm | Mf::Pack2x16snorm | Mf::Pack2x16float => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
                             Ti::Vector {
                                 size: crate::VectorSize::Bi,
-                                kind: Sk::Float,
-                                ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
                             } => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                     }
                     Mf::Pack4x8snorm | Mf::Pack4x8unorm => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
                             Ti::Vector {
                                 size: crate::VectorSize::Quad,
-                                kind: Sk::Float,
-                                ..
+                                scalar:
+                                    Sc {
+                                        kind: Sk::Float, ..
+                                    },
                             } => {}
+                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
+                        }
+                    }
+                    mf @ (Mf::Pack4xI8 | Mf::Pack4xU8) => {
+                        let scalar_kind = match mf {
+                            Mf::Pack4xI8 => Sk::Sint,
+                            Mf::Pack4xU8 => Sk::Uint,
+                            _ => unreachable!(),
+                        };
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
+                            return Err(ExpressionError::WrongArgumentCount(fun));
+                        }
+                        match *arg_ty {
+                            Ti::Vector {
+                                size: crate::VectorSize::Quad,
+                                scalar: Sc { kind, .. },
+                            } if kind == scalar_kind => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                     }
@@ -1357,12 +1548,14 @@ impl super::Validator {
                     | Mf::Unpack2x16snorm
                     | Mf::Unpack2x16unorm
                     | Mf::Unpack4x8snorm
-                    | Mf::Unpack4x8unorm => {
-                        if arg1_ty.is_some() | arg2_ty.is_some() | arg3_ty.is_some() {
+                    | Mf::Unpack4x8unorm
+                    | Mf::Unpack4xI8
+                    | Mf::Unpack4xU8 => {
+                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
                             return Err(ExpressionError::WrongArgumentCount(fun));
                         }
                         match *arg_ty {
-                            Ti::Scalar { kind: Sk::Uint, .. } => {}
+                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
                             _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
                         }
                     }
@@ -1374,25 +1567,31 @@ impl super::Validator {
                 kind,
                 convert,
             } => {
-                let base_width = match resolver[expr] {
-                    crate::TypeInner::Scalar { width, .. }
-                    | crate::TypeInner::Vector { width, .. }
-                    | crate::TypeInner::Matrix { width, .. } => width,
+                let mut base_scalar = match resolver[expr] {
+                    crate::TypeInner::Scalar(scalar) | crate::TypeInner::Vector { scalar, .. } => {
+                        scalar
+                    }
+                    crate::TypeInner::Matrix { scalar, .. } => scalar,
                     _ => return Err(ExpressionError::InvalidCastArgument),
                 };
-                let width = convert.unwrap_or(base_width);
-                if self.check_width(kind, width).is_err() {
+                base_scalar.kind = kind;
+                if let Some(width) = convert {
+                    base_scalar.width = width;
+                }
+                if self.check_width(base_scalar).is_err() {
                     return Err(ExpressionError::InvalidCastArgument);
                 }
                 ShaderStages::all()
             }
-            E::CallResult(function) => other_infos[function.index()].available_stages,
+            E::CallResult(function) => mod_info.functions[function.index()].available_stages,
             E::AtomicResult { ty, comparison } => {
                 let scalar_predicate = |ty: &crate::TypeInner| match ty {
-                    &crate::TypeInner::Scalar {
-                        kind: kind @ (crate::ScalarKind::Uint | crate::ScalarKind::Sint),
-                        width,
-                    } => self.check_width(kind, width).is_ok(),
+                    &crate::TypeInner::Scalar(
+                        scalar @ Sc {
+                            kind: crate::ScalarKind::Uint | crate::ScalarKind::Sint,
+                            ..
+                        },
+                    ) => self.check_width(scalar).is_ok(),
                     _ => false,
                 };
                 let good = match &module.types[ty].inner {
@@ -1410,6 +1609,18 @@ impl super::Validator {
                     return Err(ExpressionError::InvalidAtomicResultType(ty));
                 }
                 ShaderStages::all()
+            }
+            E::WorkGroupUniformLoadResult { ty } => {
+                if self.types[ty.index()]
+                    .flags
+                    // Sized | Constructible is exactly the types currently supported by
+                    // WorkGroupUniformLoad
+                    .contains(TypeFlags::SIZED | TypeFlags::CONSTRUCTIBLE)
+                {
+                    ShaderStages::COMPUTE
+                } else {
+                    return Err(ExpressionError::InvalidWorkGroupUniformLoadResultType(ty));
+                }
             }
             E::ArrayLength(expr) => match resolver[expr] {
                 Ti::Pointer { base, .. } => {
@@ -1449,6 +1660,7 @@ impl super::Validator {
                     return Err(ExpressionError::InvalidRayQueryType(query));
                 }
             },
+            E::SubgroupBallotResult | E::SubgroupOperationResult { .. } => self.subgroup_stages,
         };
         Ok(stages)
     }
@@ -1479,4 +1691,178 @@ impl super::Validator {
             _ => Err(ExpressionError::ExpectedGlobalVariable),
         }
     }
+
+    pub fn validate_literal(&self, literal: crate::Literal) -> Result<(), LiteralError> {
+        self.check_width(literal.scalar())?;
+        check_literal_value(literal)?;
+
+        Ok(())
+    }
+}
+
+pub fn check_literal_value(literal: crate::Literal) -> Result<(), LiteralError> {
+    let is_nan = match literal {
+        crate::Literal::F64(v) => v.is_nan(),
+        crate::Literal::F32(v) => v.is_nan(),
+        _ => false,
+    };
+    if is_nan {
+        return Err(LiteralError::NaN);
+    }
+
+    let is_infinite = match literal {
+        crate::Literal::F64(v) => v.is_infinite(),
+        crate::Literal::F32(v) => v.is_infinite(),
+        _ => false,
+    };
+    if is_infinite {
+        return Err(LiteralError::Infinity);
+    }
+
+    Ok(())
+}
+
+#[cfg(all(test, feature = "validate"))]
+/// Validate a module containing the given expression, expecting an error.
+fn validate_with_expression(
+    expr: crate::Expression,
+    caps: super::Capabilities,
+) -> Result<ModuleInfo, crate::span::WithSpan<super::ValidationError>> {
+    use crate::span::Span;
+
+    let mut function = crate::Function::default();
+    function.expressions.append(expr, Span::default());
+    function.body.push(
+        crate::Statement::Emit(function.expressions.range_from(0)),
+        Span::default(),
+    );
+
+    let mut module = crate::Module::default();
+    module.functions.append(function, Span::default());
+
+    let mut validator = super::Validator::new(super::ValidationFlags::EXPRESSIONS, caps);
+
+    validator.validate(&module)
+}
+
+#[cfg(all(test, feature = "validate"))]
+/// Validate a module containing the given constant expression, expecting an error.
+fn validate_with_const_expression(
+    expr: crate::Expression,
+    caps: super::Capabilities,
+) -> Result<ModuleInfo, crate::span::WithSpan<super::ValidationError>> {
+    use crate::span::Span;
+
+    let mut module = crate::Module::default();
+    module.global_expressions.append(expr, Span::default());
+
+    let mut validator = super::Validator::new(super::ValidationFlags::CONSTANTS, caps);
+
+    validator.validate(&module)
+}
+
+/// Using F64 in a function's expression arena is forbidden.
+#[cfg(feature = "validate")]
+#[test]
+fn f64_runtime_literals() {
+    let result = validate_with_expression(
+        crate::Expression::Literal(crate::Literal::F64(0.57721_56649)),
+        super::Capabilities::default(),
+    );
+    let error = result.unwrap_err().into_inner();
+    assert!(matches!(
+        error,
+        crate::valid::ValidationError::Function {
+            source: super::FunctionError::Expression {
+                source: super::ExpressionError::Literal(super::LiteralError::Width(
+                    super::r#type::WidthError::MissingCapability {
+                        name: "f64",
+                        flag: "FLOAT64",
+                    }
+                ),),
+                ..
+            },
+            ..
+        }
+    ));
+
+    let result = validate_with_expression(
+        crate::Expression::Literal(crate::Literal::F64(0.57721_56649)),
+        super::Capabilities::default() | super::Capabilities::FLOAT64,
+    );
+    assert!(result.is_ok());
+}
+
+/// Using F64 in a module's constant expression arena is forbidden.
+#[cfg(feature = "validate")]
+#[test]
+fn f64_const_literals() {
+    let result = validate_with_const_expression(
+        crate::Expression::Literal(crate::Literal::F64(0.57721_56649)),
+        super::Capabilities::default(),
+    );
+    let error = result.unwrap_err().into_inner();
+    assert!(matches!(
+        error,
+        crate::valid::ValidationError::ConstExpression {
+            source: super::ConstExpressionError::Literal(super::LiteralError::Width(
+                super::r#type::WidthError::MissingCapability {
+                    name: "f64",
+                    flag: "FLOAT64",
+                }
+            )),
+            ..
+        }
+    ));
+
+    let result = validate_with_const_expression(
+        crate::Expression::Literal(crate::Literal::F64(0.57721_56649)),
+        super::Capabilities::default() | super::Capabilities::FLOAT64,
+    );
+    assert!(result.is_ok());
+}
+
+/// Using I64 in a function's expression arena is forbidden.
+#[cfg(feature = "validate")]
+#[test]
+fn i64_runtime_literals() {
+    let result = validate_with_expression(
+        crate::Expression::Literal(crate::Literal::I64(1729)),
+        // There is no capability that enables this.
+        super::Capabilities::all(),
+    );
+    let error = result.unwrap_err().into_inner();
+    assert!(matches!(
+        error,
+        crate::valid::ValidationError::Function {
+            source: super::FunctionError::Expression {
+                source: super::ExpressionError::Literal(super::LiteralError::Width(
+                    super::r#type::WidthError::Unsupported64Bit
+                ),),
+                ..
+            },
+            ..
+        }
+    ));
+}
+
+/// Using I64 in a module's constant expression arena is forbidden.
+#[cfg(feature = "validate")]
+#[test]
+fn i64_const_literals() {
+    let result = validate_with_const_expression(
+        crate::Expression::Literal(crate::Literal::I64(1729)),
+        // There is no capability that enables this.
+        super::Capabilities::all(),
+    );
+    let error = result.unwrap_err().into_inner();
+    assert!(matches!(
+        error,
+        crate::valid::ValidationError::ConstExpression {
+            source: super::ConstExpressionError::Literal(super::LiteralError::Width(
+                super::r#type::WidthError::Unsupported64Bit,
+            ),),
+            ..
+        }
+    ));
 }

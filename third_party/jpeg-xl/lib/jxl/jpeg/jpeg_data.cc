@@ -5,8 +5,11 @@
 
 #include "lib/jxl/jpeg/jpeg_data.h"
 
+#include <jxl/types.h>
+
 #include "lib/jxl/base/printf_macros.h"
 #include "lib/jxl/base/status.h"
+#include "lib/jxl/common.h"  // kMaxNumPasses, JPEGXL_ENABLE_TRANSCODE_JPEG
 
 namespace jxl {
 namespace jpeg {
@@ -75,8 +78,8 @@ Status JPEGData::VisitFields(Visitor* visitor) {
     if (marker_order.size() > 16384) {
       return JXL_FAILURE("Too many markers: %" PRIuS "\n", marker_order.size());
     }
-    for (size_t i = 0; i < marker_order.size(); i++) {
-      JXL_RETURN_IF_ERROR(VisitMarker(&marker_order[i], visitor, &info));
+    for (uint8_t& marker : marker_order) {
+      JXL_RETURN_IF_ERROR(VisitMarker(&marker, visitor, &info));
     }
     if (!marker_order.empty()) {
       // Last marker should always be EOI marker.
@@ -172,8 +175,8 @@ Status JPEGData::VisitFields(Visitor* visitor) {
     components.resize(num_components);
   }
   if (component_type == JPEGComponentType::kCustom) {
-    for (size_t i = 0; i < components.size(); i++) {
-      JXL_RETURN_IF_ERROR(visitor->Bits(8, 0, &components[i].id));
+    for (auto& component : components) {
+      JXL_RETURN_IF_ERROR(visitor->Bits(8, 0, &component.id));
     }
   } else if (component_type == JPEGComponentType::kGray) {
     components[0].id = 1;
@@ -213,7 +216,7 @@ Status JPEGData::VisitFields(Visitor* visitor) {
     huffman_code.resize(num_huff);
   }
   for (JPEGHuffmanCode& hc : huffman_code) {
-    bool is_ac = hc.slot_id >> 4;
+    bool is_ac = ((hc.slot_id >> 4) != 0);
     uint32_t id = hc.slot_id & 0xF;
     JXL_RETURN_IF_ERROR(visitor->Bool(false, &is_ac));
     JXL_RETURN_IF_ERROR(visitor->Bits(2, 0, &id));
@@ -239,7 +242,8 @@ Status JPEGData::VisitFields(Visitor* visitor) {
       JXL_RETURN_IF_ERROR(visitor->U32(Bits(2), BitsOffset(2, 4),
                                        BitsOffset(4, 8), BitsOffset(8, 1), 0,
                                        &hc.values[i]));
-      value_slots[hc.values[i] >> 6] |= (uint64_t)1 << (hc.values[i] & 0x3F);
+      value_slots[hc.values[i] >> 6] |= static_cast<uint64_t>(1)
+                                        << (hc.values[i] & 0x3F);
     }
     if (hc.values[num_symbols - 1] != kJpegHuffmanAlphabetSize) {
       return JXL_FAILURE("Missing EOI symbol");
@@ -302,16 +306,9 @@ Status JPEGData::VisitFields(Visitor* visitor) {
                                        BitsOffset(5, 9), BitsOffset(28, 41), 0,
                                        &block_idx));
       block_idx += last_block_idx + 1;
-      if (static_cast<int>(block_idx) < last_block_idx + 1) {
-        return JXL_FAILURE("Invalid block ID: %u, last block was %d", block_idx,
-                           last_block_idx);
-      }
-      // TODO(eustas): better upper boundary could be given at this point; also
-      //               it could be applied during reset_points reading.
-      if (block_idx > (1u << 30)) {
-        // At most 8K x 8K x num_channels blocks are expected. That is,
-        // typically, 1.5 * 2^27. 2^30 should be sufficient for any sane
-        // image.
+      if (block_idx >= (3u << 26)) {
+        // At most 8K x 8K x num_channels blocks are possible in a JPEG.
+        // So valid block indices are below 3 * 2^26.
         return JXL_FAILURE("Invalid block ID: %u", block_idx);
       }
       last_block_idx = block_idx;
@@ -325,24 +322,17 @@ Status JPEGData::VisitFields(Visitor* visitor) {
       scan.extra_zero_runs.resize(num_extra_zero_runs);
     }
     last_block_idx = -1;
-    for (size_t i = 0; i < scan.extra_zero_runs.size(); ++i) {
-      uint32_t& block_idx = scan.extra_zero_runs[i].block_idx;
-      JXL_RETURN_IF_ERROR(visitor->U32(
-          Val(1), BitsOffset(2, 2), BitsOffset(4, 5), BitsOffset(8, 20), 1,
-          &scan.extra_zero_runs[i].num_extra_zero_runs));
+    for (auto& extra_zero_run : scan.extra_zero_runs) {
+      uint32_t& block_idx = extra_zero_run.block_idx;
+      JXL_RETURN_IF_ERROR(visitor->U32(Val(1), BitsOffset(2, 2),
+                                       BitsOffset(4, 5), BitsOffset(8, 20), 1,
+                                       &extra_zero_run.num_extra_zero_runs));
       block_idx -= last_block_idx + 1;
       JXL_RETURN_IF_ERROR(visitor->U32(Val(0), BitsOffset(3, 1),
                                        BitsOffset(5, 9), BitsOffset(28, 41), 0,
                                        &block_idx));
       block_idx += last_block_idx + 1;
-      if (static_cast<int>(block_idx) < last_block_idx + 1) {
-        return JXL_FAILURE("Invalid block ID: %u, last block was %d", block_idx,
-                           last_block_idx);
-      }
-      if (block_idx > (1u << 30)) {
-        // At most 8K x 8K x num_channels blocks are expected. That is,
-        // typically, 1.5 * 2^27. 2^30 should be sufficient for any sane
-        // image.
+      if (block_idx > (3u << 26)) {
         return JXL_FAILURE("Invalid block ID: %u", block_idx);
       }
       last_block_idx = block_idx;
@@ -357,7 +347,7 @@ Status JPEGData::VisitFields(Visitor* visitor) {
   }
   uint32_t tail_data_len = tail_data.size();
   if (!visitor->IsReading() && tail_data_len > 4260096) {
-    return JXL_FAILURE("Tail data too large (max size = 4260096, size = %u).",
+    return JXL_FAILURE("Tail data too large (max size = 4260096, size = %u)",
                        tail_data_len);
   }
   JXL_RETURN_IF_ERROR(visitor->U32(Val(0), BitsOffset(8, 1),
@@ -369,17 +359,58 @@ Status JPEGData::VisitFields(Visitor* visitor) {
     uint32_t nbit = padding_bits.size();
     JXL_RETURN_IF_ERROR(visitor->Bits(24, 0, &nbit));
     if (visitor->IsReading()) {
+      JXL_RETURN_IF_ERROR(CheckHasEnoughBits(visitor, nbit));
       padding_bits.reserve(std::min<uint32_t>(1024u, nbit));
       for (uint32_t i = 0; i < nbit; i++) {
         bool bbit = false;
         JXL_RETURN_IF_ERROR(visitor->Bool(false, &bbit));
-        padding_bits.push_back(bbit);
+        padding_bits.push_back(TO_JXL_BOOL(bbit));
       }
     } else {
       for (uint8_t& bit : padding_bits) {
-        bool bbit = bit;
+        bool bbit = FROM_JXL_BOOL(bit);
         JXL_RETURN_IF_ERROR(visitor->Bool(false, &bbit));
-        bit = bbit;
+        bit = TO_JXL_BOOL(bbit);
+      }
+    }
+  }
+
+  {
+    size_t dht_index = 0;
+    size_t scan_index = 0;
+    bool is_progressive = false;
+    bool ac_ok[kMaxHuffmanTables] = {false};
+    bool dc_ok[kMaxHuffmanTables] = {false};
+    for (uint8_t marker : marker_order) {
+      if (marker == 0xC2) {
+        is_progressive = true;
+      } else if (marker == 0xC4) {
+        for (; dht_index < huffman_code.size();) {
+          const JPEGHuffmanCode& huff = huffman_code[dht_index++];
+          size_t index = huff.slot_id;
+          if (index & 0x10) {
+            index -= 0x10;
+            ac_ok[index] = true;
+          } else {
+            dc_ok[index] = true;
+          }
+          if (huff.is_last) break;
+        }
+      } else if (marker == 0xDA) {
+        const JPEGScanInfo& si = scan_info[scan_index++];
+        for (size_t i = 0; i < si.num_components; ++i) {
+          const JPEGComponentScanInfo& csi = si.components[i];
+          size_t dc_tbl_idx = csi.dc_tbl_idx;
+          size_t ac_tbl_idx = csi.ac_tbl_idx;
+          bool want_dc = !is_progressive || (si.Ss == 0);
+          if (want_dc && !dc_ok[dc_tbl_idx]) {
+            return JXL_FAILURE("DC Huffman table used before defined");
+          }
+          bool want_ac = !is_progressive || (si.Ss != 0) || (si.Se != 0);
+          if (want_ac && !ac_ok[ac_tbl_idx]) {
+            return JXL_FAILURE("AC Huffman table used before defined");
+          }
+        }
       }
     }
   }
@@ -422,7 +453,8 @@ void JPEGData::CalculateMcuSize(const JPEGScanInfo& scan, int* MCUs_per_row,
 
 #if JPEGXL_ENABLE_TRANSCODE_JPEG
 
-Status SetJPEGDataFromICC(const PaddedBytes& icc, jpeg::JPEGData* jpeg_data) {
+Status SetJPEGDataFromICC(const std::vector<uint8_t>& icc,
+                          jpeg::JPEGData* jpeg_data) {
   size_t icc_pos = 0;
   for (size_t i = 0; i < jpeg_data->app_data.size(); i++) {
     if (jpeg_data->app_marker_type[i] != jpeg::AppMarkerType::kICC) {

@@ -17,51 +17,87 @@
 #include <algorithm>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/network_constants.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/system/rtc_export.h"
 
+namespace webrtc {
+enum class IceCandidateType : int { kHost, kSrflx, kPrflx, kRelay };
+RTC_EXPORT absl::string_view IceCandidateTypeToString(IceCandidateType);
+}  // namespace webrtc
+
 namespace cricket {
+
+// TODO(tommi): These are temporarily here, moved from `port.h` and will
+// eventually be removed once we use enums instead of strings for these values.
+RTC_EXPORT extern const absl::string_view LOCAL_PORT_TYPE;
+RTC_EXPORT extern const absl::string_view STUN_PORT_TYPE;
+RTC_EXPORT extern const absl::string_view PRFLX_PORT_TYPE;
+RTC_EXPORT extern const absl::string_view RELAY_PORT_TYPE;
 
 // TURN servers are limited to 32 in accordance with
 // https://w3c.github.io/webrtc-pc/#dom-rtcconfiguration-iceservers
 static constexpr size_t kMaxTurnServers = 32;
 
 // Candidate for ICE based connection discovery.
-// TODO(phoglund): remove things in here that are not needed in the public API.
-
 class RTC_EXPORT Candidate {
  public:
   Candidate();
-  // TODO(pthatcher): Match the ordering and param list as per RFC 5245
-  // candidate-attribute syntax. http://tools.ietf.org/html/rfc5245#section-15.1
   Candidate(int component,
             absl::string_view protocol,
             const rtc::SocketAddress& address,
             uint32_t priority,
             absl::string_view username,
             absl::string_view password,
-            absl::string_view type,
+            webrtc::IceCandidateType type,
             uint32_t generation,
             absl::string_view foundation,
             uint16_t network_id = 0,
             uint16_t network_cost = 0);
+  [[deprecated("Use IceCandidateType version")]] Candidate(
+      int component,
+      absl::string_view protocol,
+      const rtc::SocketAddress& address,
+      uint32_t priority,
+      absl::string_view username,
+      absl::string_view password,
+      absl::string_view type ABSL_ATTRIBUTE_LIFETIME_BOUND,
+      uint32_t generation,
+      absl::string_view foundation,
+      uint16_t network_id = 0,
+      uint16_t network_cost = 0);
   Candidate(const Candidate&);
   ~Candidate();
 
+  // 8 character long randomized ID string for logging purposes.
   const std::string& id() const { return id_; }
-  void set_id(absl::string_view id) { Assign(id_, id); }
+  // Generates a new, 8 character long, id.
+  void generate_id();
+  // TODO(tommi): Callers should use generate_id(). Remove.
+  [[deprecated("Use IceCandidateType version")]] void set_id(
+      absl::string_view id) {
+    Assign(id_, id);
+  }
 
   int component() const { return component_; }
   void set_component(int component) { component_ = component; }
 
   const std::string& protocol() const { return protocol_; }
+
+  // Valid protocol values are:
+  // UDP_PROTOCOL_NAME, TCP_PROTOCOL_NAME, SSLTCP_PROTOCOL_NAME,
+  // TLS_PROTOCOL_NAME.
   void set_protocol(absl::string_view protocol) { Assign(protocol_, protocol); }
 
   // The protocol used to talk to relay.
   const std::string& relay_protocol() const { return relay_protocol_; }
+
+  // Valid protocol values are:
+  // UDP_PROTOCOL_NAME, TCP_PROTOCOL_NAME, SSLTCP_PROTOCOL_NAME,
+  // TLS_PROTOCOL_NAME.
   void set_relay_protocol(absl::string_view protocol) {
     Assign(relay_protocol_, protocol);
   }
@@ -72,27 +108,6 @@ class RTC_EXPORT Candidate {
   uint32_t priority() const { return priority_; }
   void set_priority(const uint32_t priority) { priority_ = priority; }
 
-  // TODO(pthatcher): Remove once Chromium's jingle/glue/utils.cc
-  // doesn't use it.
-  // Maps old preference (which was 0.0-1.0) to match priority (which
-  // is 0-2^32-1) to to match RFC 5245, section 4.1.2.1.  Also see
-  // https://docs.google.com/a/google.com/document/d/
-  // 1iNQDiwDKMh0NQOrCqbj3DKKRT0Dn5_5UJYhmZO-t7Uc/edit
-  float preference() const {
-    // The preference value is clamped to two decimal precision.
-    return static_cast<float>(((priority_ >> 24) * 100 / 127) / 100.0);
-  }
-
-  // TODO(pthatcher): Remove once Chromium's jingle/glue/utils.cc
-  // doesn't use it.
-  void set_preference(float preference) {
-    // Limiting priority to UINT_MAX when value exceeds uint32_t max.
-    // This can happen for e.g. when preference = 3.
-    uint64_t prio_val = static_cast<uint64_t>(preference * 127) << 24;
-    priority_ = static_cast<uint32_t>(
-        std::min(prio_val, static_cast<uint64_t>(UINT_MAX)));
-  }
-
   // TODO(honghaiz): Change to usernameFragment or ufrag.
   const std::string& username() const { return username_; }
   void set_username(absl::string_view username) { Assign(username_, username); }
@@ -100,8 +115,46 @@ class RTC_EXPORT Candidate {
   const std::string& password() const { return password_; }
   void set_password(absl::string_view password) { Assign(password_, password); }
 
-  const std::string& type() const { return type_; }
-  void set_type(absl::string_view type) { Assign(type_, type); }
+  webrtc::IceCandidateType type() const { return type_; }
+
+  // Returns the name of the candidate type as specified in
+  // https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
+  absl::string_view type_name() const;
+
+  // Setting the type requires a constant string (e.g.
+  // cricket::LOCAL_PORT_TYPE). The type should really be an enum rather than a
+  // string, but until we make that change the lifetime attribute helps us lock
+  // things down. See also the `Port` class.
+  void set_type(webrtc::IceCandidateType type) { type_ = type; }
+
+  [[deprecated("Use IceCandidateType version")]] void set_type(
+      absl::string_view type ABSL_ATTRIBUTE_LIFETIME_BOUND);
+
+  // Simple checkers for checking the candidate type without dependency on the
+  // IceCandidateType enum. The `is_local()` and `is_stun()` names are legacy
+  // names and should now more accurately be `is_host()` and `is_srflx()`.
+  bool is_local() const;
+  bool is_stun() const;
+  bool is_prflx() const;
+  bool is_relay() const;
+
+  // Returns the type preference, a value between 0-126 inclusive, with 0 being
+  // the lowest preference value, as described in RFC 5245.
+  // https://datatracker.ietf.org/doc/html/rfc5245#section-4.1.2.1
+  int type_preference() const {
+    // From https://datatracker.ietf.org/doc/html/rfc5245#section-4.1.4 :
+    // It is RECOMMENDED that default candidates be chosen based on the
+    // likelihood of those candidates to work with the peer that is being
+    // contacted.
+    // I.e. it is recommended that relayed > reflexive > host.
+    if (is_local())
+      return 1;  // Host.
+    if (is_stun())
+      return 2;  // Reflexive.
+    if (is_relay())
+      return 3;  // Relayed.
+    return 0;    // Unknown, lowest preference.
+  }
 
   const std::string& network_name() const { return network_name_; }
   void set_network_name(absl::string_view network_name) {
@@ -137,7 +190,15 @@ class RTC_EXPORT Candidate {
   uint16_t network_id() const { return network_id_; }
   void set_network_id(uint16_t network_id) { network_id_ = network_id; }
 
+  // From RFC 5245, section-7.2.1.3:
+  // The foundation of the candidate is set to an arbitrary value, different
+  // from the foundation for all other remote candidates.
+  // Note: Use ComputeFoundation to populate this value.
   const std::string& foundation() const { return foundation_; }
+
+  // TODO(tommi): Deprecate in favor of ComputeFoundation.
+  // For situations where serializing/deserializing a candidate is needed,
+  // the constructor can be used to inject a value for the foundation.
   void set_foundation(absl::string_view foundation) {
     Assign(foundation_, foundation);
   }
@@ -173,7 +234,8 @@ class RTC_EXPORT Candidate {
 
   uint32_t GetPriority(uint32_t type_preference,
                        int network_adapter_preference,
-                       int relay_preference) const;
+                       int relay_preference,
+                       bool adjust_local_preference) const;
 
   bool operator==(const Candidate& o) const;
   bool operator!=(const Candidate& o) const;
@@ -187,6 +249,25 @@ class RTC_EXPORT Candidate {
   // candidate.
   Candidate ToSanitizedCopy(bool use_hostname_address,
                             bool filter_related_address) const;
+
+  // Computes and populates the `foundation()` field.
+  // Foundation:  An arbitrary string that is the same for two candidates
+  //   that have the same type, base IP address, protocol (UDP, TCP,
+  //   etc.), and STUN or TURN server.  If any of these are different,
+  //   then the foundation will be different.  Two candidate pairs with
+  //   the same foundation pairs are likely to have similar network
+  //   characteristics. Foundations are used in the frozen algorithm.
+  // A session wide (peerconnection) tie-breaker is applied to the foundation,
+  // adds additional randomness and must be the same for all candidates.
+  void ComputeFoundation(const rtc::SocketAddress& base_address,
+                         uint64_t tie_breaker);
+
+  // https://www.rfc-editor.org/rfc/rfc5245#section-7.2.1.3
+  // Call to populate the foundation field for a new peer reflexive remote
+  // candidate. The type of the candidate must be "prflx".
+  // The foundation of the candidate is set to an arbitrary value, different
+  // from the foundation for all other remote candidates.
+  void ComputePrflxFoundation();
 
  private:
   // TODO(bugs.webrtc.org/13220): With C++17, we get a std::string assignment
@@ -203,7 +284,7 @@ class RTC_EXPORT Candidate {
   uint32_t priority_;
   std::string username_;
   std::string password_;
-  std::string type_;
+  webrtc::IceCandidateType type_ = webrtc::IceCandidateType::kHost;
   std::string network_name_;
   rtc::AdapterType network_type_;
   rtc::AdapterType underlying_type_for_vpn_;

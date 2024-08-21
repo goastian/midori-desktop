@@ -12,11 +12,12 @@
 //! * `dir` - Stuff relating to directory iteration
 //! * `env` - Manipulate environment variables
 //! * `event` - Event-driven APIs, like `kqueue` and `epoll`
+//! * `fanotify` - Linux's `fanotify` filesystem events monitoring API
 //! * `feature` - Query characteristics of the OS at runtime
 //! * `fs` - File system functionality
 //! * `hostname` - Get and set the system's hostname
 //! * `inotify` - Linux's `inotify` file system notification API
-//! * `ioctl` - The `ioctl` syscall, and wrappers for my specific instances
+//! * `ioctl` - The `ioctl` syscall, and wrappers for many specific instances
 //! * `kmod` - Load and unload kernel modules
 //! * `mman` - Stuff relating to memory management
 //! * `mount` - Mount and unmount file systems
@@ -41,19 +42,56 @@
 //! * `zerocopy` - APIs like `sendfile` and `copy_file_range`
 #![crate_name = "nix"]
 #![cfg(unix)]
-#![cfg_attr(docsrs, doc(cfg(all())))]
 #![allow(non_camel_case_types)]
 #![cfg_attr(test, deny(warnings))]
 #![recursion_limit = "500"]
 #![deny(unused)]
 #![allow(unused_macros)]
-#![cfg_attr(not(feature = "default"), allow(unused_imports))]
+#![cfg_attr(
+    not(all(
+        feature = "acct",
+        feature = "aio",
+        feature = "dir",
+        feature = "env",
+        feature = "event",
+        feature = "fanotify",
+        feature = "feature",
+        feature = "fs",
+        feature = "hostname",
+        feature = "inotify",
+        feature = "ioctl",
+        feature = "kmod",
+        feature = "mman",
+        feature = "mount",
+        feature = "mqueue",
+        feature = "net",
+        feature = "personality",
+        feature = "poll",
+        feature = "process",
+        feature = "pthread",
+        feature = "ptrace",
+        feature = "quota",
+        feature = "reboot",
+        feature = "resource",
+        feature = "sched",
+        feature = "socket",
+        feature = "signal",
+        feature = "term",
+        feature = "time",
+        feature = "ucontext",
+        feature = "uio",
+        feature = "user",
+        feature = "zerocopy",
+    )),
+    allow(unused_imports)
+)]
 #![deny(unstable_features)]
 #![deny(missing_copy_implementations)]
 #![deny(missing_debug_implementations)]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(clippy::cast_ptr_alignment)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 // Re-exported external crates
 pub use libc;
@@ -80,42 +118,29 @@ feature! {
     #[deny(missing_docs)]
     pub mod features;
 }
-#[allow(missing_docs)]
 pub mod fcntl;
 feature! {
     #![feature = "net"]
 
-    #[cfg(any(target_os = "android",
-              target_os = "dragonfly",
-              target_os = "freebsd",
-              target_os = "ios",
-              target_os = "linux",
-              target_os = "macos",
-              target_os = "netbsd",
-              target_os = "illumos",
-              target_os = "openbsd"))]
+    #[cfg(any(linux_android,
+              bsd,
+              solarish))]
     #[deny(missing_docs)]
     pub mod ifaddrs;
     #[cfg(not(target_os = "redox"))]
     #[deny(missing_docs)]
     pub mod net;
 }
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(linux_android)]
 feature! {
     #![feature = "kmod"]
-    #[allow(missing_docs)]
     pub mod kmod;
 }
 feature! {
     #![feature = "mount"]
     pub mod mount;
 }
-#[cfg(any(
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "linux",
-    target_os = "netbsd"
-))]
+#[cfg(any(freebsdlike, target_os = "linux", target_os = "netbsd"))]
 feature! {
     #![feature = "mqueue"]
     pub mod mqueue;
@@ -137,22 +162,28 @@ feature! {
 pub mod sys;
 feature! {
     #![feature = "time"]
-    #[allow(missing_docs)]
     pub mod time;
 }
 // This can be implemented for other platforms as soon as libc
 // provides bindings for them.
 #[cfg(all(
     target_os = "linux",
-    any(target_arch = "s390x", target_arch = "x86", target_arch = "x86_64")
+    any(
+        target_arch = "aarch64",
+        target_arch = "s390x",
+        target_arch = "x86",
+        target_arch = "x86_64"
+    )
 ))]
 feature! {
     #![feature = "ucontext"]
     #[allow(missing_docs)]
     pub mod ucontext;
 }
-#[allow(missing_docs)]
 pub mod unistd;
+
+#[cfg(any(feature = "poll", feature = "event"))]
+mod poll_timeout;
 
 use std::ffi::{CStr, CString, OsStr};
 use std::mem::MaybeUninit;
@@ -270,7 +301,7 @@ impl NixPath for [u8] {
         }
 
         let mut buf = MaybeUninit::<[u8; MAX_STACK_ALLOCATION]>::uninit();
-        let buf_ptr = buf.as_mut_ptr() as *mut u8;
+        let buf_ptr = buf.as_mut_ptr().cast();
 
         unsafe {
             ptr::copy_nonoverlapping(self.as_ptr(), buf_ptr, self.len());

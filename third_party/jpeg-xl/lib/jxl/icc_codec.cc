@@ -5,17 +5,15 @@
 
 #include "lib/jxl/icc_codec.h"
 
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
-#include <map>
-#include <string>
-#include <vector>
+#include <cstdint>
 
-#include "lib/jxl/base/byte_order.h"
-#include "lib/jxl/common.h"
+#include "lib/jxl/base/status.h"
 #include "lib/jxl/dec_ans.h"
 #include "lib/jxl/fields.h"
 #include "lib/jxl/icc_codec_common.h"
+#include "lib/jxl/padded_bytes.h"
 
 namespace jxl {
 namespace {
@@ -29,11 +27,13 @@ namespace {
 // scanline order but with missing elements skipped (which may occur in multiple
 // locations), the output is the result matrix in scanline order (with
 // no need to skip missing elements as they are past the end of the data).
-void Shuffle(uint8_t* data, size_t size, size_t width) {
+void Shuffle(JxlMemoryManager* memory_manager, uint8_t* data, size_t size,
+             size_t width) {
   size_t height = (size + width - 1) / width;  // amount of rows of output
-  PaddedBytes result(size);
+  PaddedBytes result(memory_manager, size);
   // i = output index, j input index
-  size_t s = 0, j = 0;
+  size_t s = 0;
+  size_t j = 0;
   for (size_t i = 0; i < size; i++) {
     result[i] = data[j];
     j += height;
@@ -50,6 +50,20 @@ void Shuffle(uint8_t* data, size_t size, size_t width) {
 //               11 bytes as used even if only 10 are used (and 9 is enough for
 //               63-bit values).
 constexpr const size_t kPreambleSize = 22;  // enough for reading 2 VarInts
+
+uint64_t DecodeVarInt(const uint8_t* input, size_t inputSize, size_t* pos) {
+  size_t i;
+  uint64_t ret = 0;
+  for (i = 0; *pos + i < inputSize && i < 10; ++i) {
+    ret |= static_cast<uint64_t>(input[*pos + i] & 127)
+           << static_cast<uint64_t>(7 * i);
+    // If the next-byte flag is not set, stop
+    if ((input[*pos + i] & 128) == 0) break;
+  }
+  // TODO(user): Return a decoding error if i == 10.
+  *pos += i + 1;
+  return ret;
+}
 
 }  // namespace
 
@@ -77,6 +91,7 @@ Status CheckPreamble(const PaddedBytes& data, size_t enc_size,
 // Decodes the result of PredictICC back to a valid ICC profile.
 Status UnpredictICC(const uint8_t* enc, size_t size, PaddedBytes* result) {
   if (!result->empty()) return JXL_FAILURE("result must be empty initially");
+  JxlMemoryManager* memory_manager = result->memory_manager();
   size_t pos = 0;
   // TODO(lode): technically speaking we need to check that the entire varint
   // decoding never goes out of bounds, not just the first byte. This requires
@@ -96,7 +111,8 @@ Status UnpredictICC(const uint8_t* enc, size_t size, PaddedBytes* result) {
   pos = commands_end;  // pos in data stream
 
   // Header
-  PaddedBytes header = ICCInitialHeaderPrediction();
+  PaddedBytes header{memory_manager};
+  header.append(ICCInitialHeaderPrediction());
   EncodeUint32(0, osize, &header);
   for (size_t i = 0; i <= kICCHeaderSize; i++) {
     if (result->size() == osize) {
@@ -209,14 +225,14 @@ Status UnpredictICC(const uint8_t* enc, size_t size, PaddedBytes* result) {
       if (cpos >= commands_end) return JXL_FAILURE("Out of bounds");
       uint64_t num = DecodeVarInt(enc, size, &cpos);
       JXL_RETURN_IF_ERROR(CheckOutOfBounds(pos, num, size));
-      PaddedBytes shuffled(num);
+      PaddedBytes shuffled(memory_manager, num);
       for (size_t i = 0; i < num; i++) {
         shuffled[i] = enc[pos + i];
       }
       if (command == kCommandShuffle2) {
-        Shuffle(shuffled.data(), num, 2);
+        Shuffle(memory_manager, shuffled.data(), num, 2);
       } else if (command == kCommandShuffle4) {
-        Shuffle(shuffled.data(), num, 4);
+        Shuffle(memory_manager, shuffled.data(), num, 4);
       }
       for (size_t i = 0; i < num; i++) {
         result->push_back(shuffled[i]);
@@ -253,11 +269,11 @@ Status UnpredictICC(const uint8_t* enc, size_t size, PaddedBytes* result) {
       uint64_t num = DecodeVarInt(enc, size, &cpos);  // in bytes
       JXL_RETURN_IF_ERROR(CheckOutOfBounds(pos, num, size));
 
-      PaddedBytes shuffled(num);
+      PaddedBytes shuffled(memory_manager, num);
       for (size_t i = 0; i < num; i++) {
         shuffled[i] = enc[pos + i];
       }
-      if (width > 1) Shuffle(shuffled.data(), num, width);
+      if (width > 1) Shuffle(memory_manager, shuffled.data(), num, width);
 
       size_t start = result->size();
       for (size_t i = 0; i < num; i++) {
@@ -292,6 +308,7 @@ Status UnpredictICC(const uint8_t* enc, size_t size, PaddedBytes* result) {
 
 Status ICCReader::Init(BitReader* reader, size_t output_limit) {
   JXL_RETURN_IF_ERROR(CheckEOI(reader));
+  JxlMemoryManager* memory_manager = decompressed_.memory_manager();
   used_bits_base_ = reader->TotalBitsConsumed();
   if (bits_to_skip_ == 0) {
     enc_size_ = U64Coder::Read(reader);
@@ -299,9 +316,9 @@ Status ICCReader::Init(BitReader* reader, size_t output_limit) {
       // Avoid too large memory allocation for invalid file.
       return JXL_FAILURE("Too large encoded profile");
     }
-    JXL_RETURN_IF_ERROR(
-        DecodeHistograms(reader, kNumICCContexts, &code_, &context_map_));
-    ans_reader_ = ANSSymbolReader(&code_, reader);
+    JXL_RETURN_IF_ERROR(DecodeHistograms(
+        memory_manager, reader, kNumICCContexts, &code_, &context_map_));
+    JXL_ASSIGN_OR_RETURN(ans_reader_, ANSSymbolReader::Create(&code_, reader));
     i_ = 0;
     decompressed_.resize(std::min<size_t>(i_ + 0x400, enc_size_));
     for (; i_ < std::min<size_t>(2, enc_size_); i_++) {
@@ -376,14 +393,6 @@ Status ICCReader::CheckEOI(BitReader* reader) {
   if (reader->AllReadsWithinBounds()) return true;
   return JXL_STATUS(StatusCode::kNotEnoughBytes,
                     "Not enough bytes for reading ICC profile");
-}
-
-Status ReadICC(BitReader* JXL_RESTRICT reader, PaddedBytes* JXL_RESTRICT icc,
-               size_t output_limit) {
-  ICCReader icc_reader;
-  JXL_RETURN_IF_ERROR(icc_reader.Init(reader, output_limit));
-  JXL_RETURN_IF_ERROR(icc_reader.Process(reader, icc));
-  return true;
 }
 
 }  // namespace jxl

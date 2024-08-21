@@ -32,6 +32,16 @@ The [`temp_access_chain`] field is a member of [`Writer`] solely to
 allow re-use of the `Vec`'s dynamic allocation. Its value is no longer
 needed once HLSL for the access has been generated.
 
+Note about DXC and Load/Store functions:
+
+DXC's HLSL has a generic [`Load` and `Store`] function for [`ByteAddressBuffer`] and
+[`RWByteAddressBuffer`]. This is not available in FXC's HLSL, so we use
+it only for types that are only available in DXC. Notably 64 and 16 bit types.
+
+FXC's HLSL has functions Load, Load2, Load3, and Load4 and Store, Store2, Store3, Store4.
+This loads/stores a vector of length 1, 2, 3, or 4. We use that for 32bit types, bitcasting to the
+correct type if necessary.
+
 [`Storage`]: crate::AddressSpace::Storage
 [`ByteAddressBuffer`]: https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/sm5-object-byteaddressbuffer
 [`RWByteAddressBuffer`]: https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/sm5-object-rwbyteaddressbuffer
@@ -42,6 +52,7 @@ needed once HLSL for the access has been generated.
 [`Writer::temp_access_chain`]: super::Writer::temp_access_chain
 [`temp_access_chain`]: super::Writer::temp_access_chain
 [`Writer`]: super::Writer
+[`Load` and `Store`]: https://github.com/microsoft/DirectXShaderCompiler/wiki/ByteAddressBuffer-Load-Store-Additions
 */
 
 use super::{super::FunctionCtx, BackendResult, Error};
@@ -157,51 +168,62 @@ impl<W: fmt::Write> super::Writer<'_, W> {
         func_ctx: &FunctionCtx,
     ) -> BackendResult {
         match *result_ty.inner_with(&module.types) {
-            crate::TypeInner::Scalar { kind, width: _ } => {
+            crate::TypeInner::Scalar(scalar) => {
                 // working around the borrow checker in `self.write_expr`
                 let chain = mem::take(&mut self.temp_access_chain);
                 let var_name = &self.names[&NameKey::GlobalVariable(var_handle)];
-                let cast = kind.to_hlsl_cast();
-                write!(self.out, "{cast}({var_name}.Load(")?;
+                // See note about DXC and Load/Store in the module's documentation.
+                if scalar.width == 4 {
+                    let cast = scalar.kind.to_hlsl_cast();
+                    write!(self.out, "{cast}({var_name}.Load(")?;
+                } else {
+                    let ty = scalar.to_hlsl_str()?;
+                    write!(self.out, "{var_name}.Load<{ty}>(")?;
+                };
                 self.write_storage_address(module, &chain, func_ctx)?;
-                write!(self.out, "))")?;
+                write!(self.out, ")")?;
+                if scalar.width == 4 {
+                    write!(self.out, ")")?;
+                }
                 self.temp_access_chain = chain;
             }
-            crate::TypeInner::Vector {
-                size,
-                kind,
-                width: _,
-            } => {
+            crate::TypeInner::Vector { size, scalar } => {
                 // working around the borrow checker in `self.write_expr`
                 let chain = mem::take(&mut self.temp_access_chain);
                 let var_name = &self.names[&NameKey::GlobalVariable(var_handle)];
-                let cast = kind.to_hlsl_cast();
-                write!(self.out, "{}({}.Load{}(", cast, var_name, size as u8)?;
+                let size = size as u8;
+                // See note about DXC and Load/Store in the module's documentation.
+                if scalar.width == 4 {
+                    let cast = scalar.kind.to_hlsl_cast();
+                    write!(self.out, "{cast}({var_name}.Load{size}(")?;
+                } else {
+                    let ty = scalar.to_hlsl_str()?;
+                    write!(self.out, "{var_name}.Load<{ty}{size}>(")?;
+                };
                 self.write_storage_address(module, &chain, func_ctx)?;
-                write!(self.out, "))")?;
+                write!(self.out, ")")?;
+                if scalar.width == 4 {
+                    write!(self.out, ")")?;
+                }
                 self.temp_access_chain = chain;
             }
             crate::TypeInner::Matrix {
                 columns,
                 rows,
-                width,
+                scalar,
             } => {
                 write!(
                     self.out,
                     "{}{}x{}(",
-                    crate::ScalarKind::Float.to_hlsl_str(width)?,
+                    scalar.to_hlsl_str()?,
                     columns as u8,
                     rows as u8,
                 )?;
 
                 // Note: Matrices containing vec3s, due to padding, act like they contain vec4s.
-                let row_stride = Alignment::from(rows) * width as u32;
+                let row_stride = Alignment::from(rows) * scalar.width as u32;
                 let iter = (0..columns as u32).map(|i| {
-                    let ty_inner = crate::TypeInner::Vector {
-                        size: rows,
-                        kind: crate::ScalarKind::Float,
-                        width,
-                    };
+                    let ty_inner = crate::TypeInner::Vector { size: rows, scalar };
                     (TypeResolution::Value(ty_inner), i * row_stride)
                 });
                 self.write_storage_load_sequence(module, var_handle, iter, func_ctx)?;
@@ -209,17 +231,15 @@ impl<W: fmt::Write> super::Writer<'_, W> {
             }
             crate::TypeInner::Array {
                 base,
-                size: crate::ArraySize::Constant(const_handle),
-                ..
+                size: crate::ArraySize::Constant(size),
+                stride,
             } => {
                 let constructor = super::help::WrappedConstructor {
                     ty: result_ty.handle().unwrap(),
                 };
                 self.write_wrapped_constructor_function_name(module, constructor)?;
                 write!(self.out, "(")?;
-                let count = module.constants[const_handle].to_array_length().unwrap();
-                let stride = module.types[base].inner.size(&module.constants);
-                let iter = (0..count).map(|i| (TypeResolution::Handle(base), stride * i));
+                let iter = (0..size.get()).map(|i| (TypeResolution::Handle(base), stride * i));
                 self.write_storage_load_sequence(module, var_handle, iter, func_ctx)?;
                 write!(self.out, ")")?;
             }
@@ -298,32 +318,50 @@ impl<W: fmt::Write> super::Writer<'_, W> {
             }
         };
         match *ty_resolution.inner_with(&module.types) {
-            crate::TypeInner::Scalar { .. } => {
+            crate::TypeInner::Scalar(scalar) => {
                 // working around the borrow checker in `self.write_expr`
                 let chain = mem::take(&mut self.temp_access_chain);
                 let var_name = &self.names[&NameKey::GlobalVariable(var_handle)];
-                write!(self.out, "{level}{var_name}.Store(")?;
-                self.write_storage_address(module, &chain, func_ctx)?;
-                write!(self.out, ", asuint(")?;
-                self.write_store_value(module, &value, func_ctx)?;
-                writeln!(self.out, "));")?;
+                // See note about DXC and Load/Store in the module's documentation.
+                if scalar.width == 4 {
+                    write!(self.out, "{level}{var_name}.Store(")?;
+                    self.write_storage_address(module, &chain, func_ctx)?;
+                    write!(self.out, ", asuint(")?;
+                    self.write_store_value(module, &value, func_ctx)?;
+                    writeln!(self.out, "));")?;
+                } else {
+                    write!(self.out, "{level}{var_name}.Store(")?;
+                    self.write_storage_address(module, &chain, func_ctx)?;
+                    write!(self.out, ", ")?;
+                    self.write_store_value(module, &value, func_ctx)?;
+                    writeln!(self.out, ");")?;
+                }
                 self.temp_access_chain = chain;
             }
-            crate::TypeInner::Vector { size, .. } => {
+            crate::TypeInner::Vector { size, scalar } => {
                 // working around the borrow checker in `self.write_expr`
                 let chain = mem::take(&mut self.temp_access_chain);
                 let var_name = &self.names[&NameKey::GlobalVariable(var_handle)];
-                write!(self.out, "{}{}.Store{}(", level, var_name, size as u8)?;
-                self.write_storage_address(module, &chain, func_ctx)?;
-                write!(self.out, ", asuint(")?;
-                self.write_store_value(module, &value, func_ctx)?;
-                writeln!(self.out, "));")?;
+                // See note about DXC and Load/Store in the module's documentation.
+                if scalar.width == 4 {
+                    write!(self.out, "{}{}.Store{}(", level, var_name, size as u8)?;
+                    self.write_storage_address(module, &chain, func_ctx)?;
+                    write!(self.out, ", asuint(")?;
+                    self.write_store_value(module, &value, func_ctx)?;
+                    writeln!(self.out, "));")?;
+                } else {
+                    write!(self.out, "{}{}.Store(", level, var_name)?;
+                    self.write_storage_address(module, &chain, func_ctx)?;
+                    write!(self.out, ", ")?;
+                    self.write_store_value(module, &value, func_ctx)?;
+                    writeln!(self.out, ");")?;
+                }
                 self.temp_access_chain = chain;
             }
             crate::TypeInner::Matrix {
                 columns,
                 rows,
-                width,
+                scalar,
             } => {
                 // first, assign the value to a temporary
                 writeln!(self.out, "{level}{{")?;
@@ -332,7 +370,7 @@ impl<W: fmt::Write> super::Writer<'_, W> {
                     self.out,
                     "{}{}{}x{} {}{} = ",
                     level.next(),
-                    crate::ScalarKind::Float.to_hlsl_str(width)?,
+                    scalar.to_hlsl_str()?,
                     columns as u8,
                     rows as u8,
                     STORE_TEMP_NAME,
@@ -342,17 +380,13 @@ impl<W: fmt::Write> super::Writer<'_, W> {
                 writeln!(self.out, ";")?;
 
                 // Note: Matrices containing vec3s, due to padding, act like they contain vec4s.
-                let row_stride = Alignment::from(rows) * width as u32;
+                let row_stride = Alignment::from(rows) * scalar.width as u32;
 
                 // then iterate the stores
                 for i in 0..columns as u32 {
                     self.temp_access_chain
                         .push(SubAccess::Offset(i * row_stride));
-                    let ty_inner = crate::TypeInner::Vector {
-                        size: rows,
-                        kind: crate::ScalarKind::Float,
-                        width,
-                    };
+                    let ty_inner = crate::TypeInner::Vector { size: rows, scalar };
                     let sv = StoreValue::TempIndex {
                         depth,
                         index: i,
@@ -366,8 +400,8 @@ impl<W: fmt::Write> super::Writer<'_, W> {
             }
             crate::TypeInner::Array {
                 base,
-                size: crate::ArraySize::Constant(const_handle),
-                ..
+                size: crate::ArraySize::Constant(size),
+                stride,
             } => {
                 // first, assign the value to a temporary
                 writeln!(self.out, "{level}{{")?;
@@ -375,14 +409,12 @@ impl<W: fmt::Write> super::Writer<'_, W> {
                 self.write_value_type(module, &module.types[base].inner)?;
                 let depth = level.next().0;
                 write!(self.out, " {STORE_TEMP_NAME}{depth}")?;
-                self.write_array_size(module, base, crate::ArraySize::Constant(const_handle))?;
+                self.write_array_size(module, base, crate::ArraySize::Constant(size))?;
                 write!(self.out, " = ")?;
                 self.write_store_value(module, &value, func_ctx)?;
                 writeln!(self.out, ";")?;
                 // then iterate the stores
-                let count = module.constants[const_handle].to_array_length().unwrap();
-                let stride = module.types[base].inner.size(&module.constants);
-                for i in 0..count {
+                for i in 0..size.get() {
                     self.temp_access_chain.push(SubAccess::Offset(i * stride));
                     let sv = StoreValue::TempIndex {
                         depth,
@@ -470,22 +502,22 @@ impl<W: fmt::Write> super::Writer<'_, W> {
                 }
             };
 
-            let parent = match *func_ctx.info[next_expr].ty.inner_with(&module.types) {
+            let parent = match *func_ctx.resolve_type(next_expr, &module.types) {
                 crate::TypeInner::Pointer { base, .. } => match module.types[base].inner {
                     crate::TypeInner::Struct { ref members, .. } => Parent::Struct(members),
                     crate::TypeInner::Array { stride, .. } => Parent::Array { stride },
-                    crate::TypeInner::Vector { width, .. } => Parent::Array {
-                        stride: width as u32,
+                    crate::TypeInner::Vector { scalar, .. } => Parent::Array {
+                        stride: scalar.width as u32,
                     },
-                    crate::TypeInner::Matrix { rows, width, .. } => Parent::Array {
+                    crate::TypeInner::Matrix { rows, scalar, .. } => Parent::Array {
                         // The stride between matrices is the count of rows as this is how
                         // long each column is.
-                        stride: Alignment::from(rows) * width as u32,
+                        stride: Alignment::from(rows) * scalar.width as u32,
                     },
                     _ => unreachable!(),
                 },
-                crate::TypeInner::ValuePointer { width, .. } => Parent::Array {
-                    stride: width as u32,
+                crate::TypeInner::ValuePointer { scalar, .. } => Parent::Array {
+                    stride: scalar.width as u32,
                 },
                 _ => unreachable!(),
             };

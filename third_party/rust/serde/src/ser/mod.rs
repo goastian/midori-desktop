@@ -61,8 +61,8 @@
 //!    - RefCell\<T\>
 //!    - Mutex\<T\>
 //!    - RwLock\<T\>
-//!    - Rc\<T\>&emsp;*(if* features = ["rc"] *is enabled)*
-//!    - Arc\<T\>&emsp;*(if* features = ["rc"] *is enabled)*
+//!    - Rc\<T\>&emsp;*(if* features = \["rc"\] *is enabled)*
+//!    - Arc\<T\>&emsp;*(if* features = \["rc"\] *is enabled)*
 //!  - **Collection types**:
 //!    - BTreeMap\<K, V\>
 //!    - BTreeSet\<T\>
@@ -107,7 +107,7 @@
 //! [derive section of the manual]: https://serde.rs/derive.html
 //! [data formats]: https://serde.rs/#data-formats
 
-use lib::*;
+use crate::lib::*;
 
 mod fmt;
 mod impls;
@@ -115,15 +115,15 @@ mod impossible;
 
 pub use self::impossible::Impossible;
 
+#[cfg(not(any(feature = "std", feature = "unstable")))]
+#[doc(no_inline)]
+pub use crate::std_error::Error as StdError;
 #[cfg(all(feature = "unstable", not(feature = "std")))]
-#[doc(inline)]
+#[doc(no_inline)]
 pub use core::error::Error as StdError;
 #[cfg(feature = "std")]
 #[doc(no_inline)]
 pub use std::error::Error as StdError;
-#[cfg(not(any(feature = "std", feature = "unstable")))]
-#[doc(no_inline)]
-pub use std_error::Error as StdError;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -149,7 +149,7 @@ macro_rules! declare_error_trait {
             /// For example, a filesystem [`Path`] may refuse to serialize
             /// itself if it contains invalid UTF-8 data.
             ///
-            /// ```edition2018
+            /// ```edition2021
             /// # struct Path;
             /// #
             /// # impl Path {
@@ -221,7 +221,7 @@ pub trait Serialize {
     /// See the [Implementing `Serialize`] section of the manual for more
     /// information about how to implement this method.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::ser::{Serialize, SerializeStruct, Serializer};
     ///
     /// struct Person {
@@ -388,7 +388,7 @@ pub trait Serializer: Sized {
 
     /// Serialize a `bool` value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -410,7 +410,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `i64` and
     /// forward to `serialize_i64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -432,7 +432,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `i64` and
     /// forward to `serialize_i64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -454,7 +454,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `i64` and
     /// forward to `serialize_i64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -472,7 +472,7 @@ pub trait Serializer: Sized {
 
     /// Serialize an `i64` value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -488,30 +488,27 @@ pub trait Serializer: Sized {
     /// ```
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error>;
 
-    serde_if_integer128! {
-        /// Serialize an `i128` value.
-        ///
-        /// ```edition2018
-        /// # use serde::Serializer;
-        /// #
-        /// # serde::__private_serialize!();
-        /// #
-        /// impl Serialize for i128 {
-        ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        ///     where
-        ///         S: Serializer,
-        ///     {
-        ///         serializer.serialize_i128(*self)
-        ///     }
-        /// }
-        /// ```
-        ///
-        /// This method is available only on Rust compiler versions >=1.26. The
-        /// default behavior unconditionally returns an error.
-        fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
-            let _ = v;
-            Err(Error::custom("i128 is not supported"))
-        }
+    /// Serialize an `i128` value.
+    ///
+    /// ```edition2021
+    /// # use serde::Serializer;
+    /// #
+    /// # serde::__private_serialize!();
+    /// #
+    /// impl Serialize for i128 {
+    ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    ///     where
+    ///         S: Serializer,
+    ///     {
+    ///         serializer.serialize_i128(*self)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// The default behavior unconditionally returns an error.
+    fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
+        let _ = v;
+        Err(Error::custom("i128 is not supported"))
     }
 
     /// Serialize a `u8` value.
@@ -520,7 +517,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `u64` and
     /// forward to `serialize_u64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -542,7 +539,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `u64` and
     /// forward to `serialize_u64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -564,7 +561,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `u64` and
     /// forward to `serialize_u64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -582,7 +579,7 @@ pub trait Serializer: Sized {
 
     /// Serialize a `u64` value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -598,30 +595,27 @@ pub trait Serializer: Sized {
     /// ```
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error>;
 
-    serde_if_integer128! {
-        /// Serialize a `u128` value.
-        ///
-        /// ```edition2018
-        /// # use serde::Serializer;
-        /// #
-        /// # serde::__private_serialize!();
-        /// #
-        /// impl Serialize for u128 {
-        ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        ///     where
-        ///         S: Serializer,
-        ///     {
-        ///         serializer.serialize_u128(*self)
-        ///     }
-        /// }
-        /// ```
-        ///
-        /// This method is available only on Rust compiler versions >=1.26. The
-        /// default behavior unconditionally returns an error.
-        fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
-            let _ = v;
-            Err(Error::custom("u128 is not supported"))
-        }
+    /// Serialize a `u128` value.
+    ///
+    /// ```edition2021
+    /// # use serde::Serializer;
+    /// #
+    /// # serde::__private_serialize!();
+    /// #
+    /// impl Serialize for u128 {
+    ///     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    ///     where
+    ///         S: Serializer,
+    ///     {
+    ///         serializer.serialize_u128(*self)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// The default behavior unconditionally returns an error.
+    fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
+        let _ = v;
+        Err(Error::custom("u128 is not supported"))
     }
 
     /// Serialize an `f32` value.
@@ -630,7 +624,7 @@ pub trait Serializer: Sized {
     /// reasonable implementation would be to cast the value to `f64` and
     /// forward to `serialize_f64`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -648,7 +642,7 @@ pub trait Serializer: Sized {
 
     /// Serialize an `f64` value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -669,7 +663,7 @@ pub trait Serializer: Sized {
     /// If the format does not support characters, it is reasonable to serialize
     /// it as a single element `str` or a `u32`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -687,7 +681,7 @@ pub trait Serializer: Sized {
 
     /// Serialize a `&str`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -711,7 +705,7 @@ pub trait Serializer: Sized {
     /// `serialize_seq`. If forwarded, the implementation looks usually just
     /// like this:
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::ser::{Serializer, SerializeSeq};
     /// # use serde::__private::doc::Error;
     /// #
@@ -740,7 +734,7 @@ pub trait Serializer: Sized {
 
     /// Serialize a [`None`] value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::{Serialize, Serializer};
     /// #
     /// # enum Option<T> {
@@ -773,7 +767,7 @@ pub trait Serializer: Sized {
 
     /// Serialize a [`Some(T)`] value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::{Serialize, Serializer};
     /// #
     /// # enum Option<T> {
@@ -802,13 +796,13 @@ pub trait Serializer: Sized {
     /// ```
     ///
     /// [`Some(T)`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.Some
-    fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Serialize a `()` value.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use serde::Serializer;
     /// #
     /// # serde::__private_serialize!();
@@ -828,7 +822,7 @@ pub trait Serializer: Sized {
     ///
     /// A reasonable implementation would be to forward to `serialize_unit`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::{Serialize, Serializer};
     ///
     /// struct Nothing;
@@ -850,7 +844,7 @@ pub trait Serializer: Sized {
     /// this variant within the enum, and the `variant` is the name of the
     /// variant.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::{Serialize, Serializer};
     ///
     /// enum E {
@@ -883,7 +877,7 @@ pub trait Serializer: Sized {
     /// wrappers around the data they contain. A reasonable implementation would
     /// be to forward to `value.serialize(self)`.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::{Serialize, Serializer};
     ///
     /// struct Millimeters(u8);
@@ -897,13 +891,13 @@ pub trait Serializer: Sized {
     ///     }
     /// }
     /// ```
-    fn serialize_newtype_struct<T: ?Sized>(
+    fn serialize_newtype_struct<T>(
         self,
         name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Serialize a newtype variant like `E::N` in `enum E { N(u8) }`.
     ///
@@ -911,7 +905,7 @@ pub trait Serializer: Sized {
     /// this variant within the enum, and the `variant` is the name of the
     /// variant. The `value` is the data contained within this newtype variant.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::{Serialize, Serializer};
     ///
     /// enum E {
@@ -931,7 +925,7 @@ pub trait Serializer: Sized {
     ///     }
     /// }
     /// ```
-    fn serialize_newtype_variant<T: ?Sized>(
+    fn serialize_newtype_variant<T>(
         self,
         name: &'static str,
         variant_index: u32,
@@ -939,7 +933,7 @@ pub trait Serializer: Sized {
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Begin to serialize a variably sized sequence. This call must be
     /// followed by zero or more calls to `serialize_element`, then a call to
@@ -949,7 +943,7 @@ pub trait Serializer: Sized {
     /// not be computable before the sequence is iterated. Some serializers only
     /// support sequences whose length is known up front.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use std::marker::PhantomData;
     /// #
     /// # struct Vec<T>(PhantomData<T>);
@@ -962,14 +956,14 @@ pub trait Serializer: Sized {
     /// #
     /// # impl<'a, T> IntoIterator for &'a Vec<T> {
     /// #     type Item = &'a T;
-    /// #     type IntoIter = Box<Iterator<Item = &'a T>>;
+    /// #     type IntoIter = Box<dyn Iterator<Item = &'a T>>;
     /// #
     /// #     fn into_iter(self) -> Self::IntoIter {
     /// #         unimplemented!()
     /// #     }
     /// # }
     /// #
-    /// use serde::ser::{Serialize, Serializer, SerializeSeq};
+    /// use serde::ser::{Serialize, SerializeSeq, Serializer};
     ///
     /// impl<T> Serialize for Vec<T>
     /// where
@@ -994,8 +988,8 @@ pub trait Serializer: Sized {
     /// This call must be followed by zero or more calls to `serialize_element`,
     /// then a call to `end`.
     ///
-    /// ```edition2018
-    /// use serde::ser::{Serialize, Serializer, SerializeTuple};
+    /// ```edition2021
+    /// use serde::ser::{Serialize, SerializeTuple, Serializer};
     ///
     /// # mod fool {
     /// #     trait Serialize {}
@@ -1024,7 +1018,7 @@ pub trait Serializer: Sized {
     /// }
     /// ```
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::ser::{Serialize, SerializeTuple, Serializer};
     ///
     /// const VRAM_SIZE: usize = 386;
@@ -1052,7 +1046,7 @@ pub trait Serializer: Sized {
     /// The `name` is the name of the tuple struct and the `len` is the number
     /// of data fields that will be serialized.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::ser::{Serialize, SerializeTupleStruct, Serializer};
     ///
     /// struct Rgb(u8, u8, u8);
@@ -1084,7 +1078,7 @@ pub trait Serializer: Sized {
     /// this variant within the enum, the `variant` is the name of the variant,
     /// and the `len` is the number of data fields that will be serialized.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::ser::{Serialize, SerializeTupleVariant, Serializer};
     ///
     /// enum E {
@@ -1130,7 +1124,7 @@ pub trait Serializer: Sized {
     /// be computable before the map is iterated. Some serializers only support
     /// maps whose length is known up front.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use std::marker::PhantomData;
     /// #
     /// # struct HashMap<K, V>(PhantomData<K>, PhantomData<V>);
@@ -1143,14 +1137,14 @@ pub trait Serializer: Sized {
     /// #
     /// # impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
     /// #     type Item = (&'a K, &'a V);
-    /// #     type IntoIter = Box<Iterator<Item = (&'a K, &'a V)>>;
+    /// #     type IntoIter = Box<dyn Iterator<Item = (&'a K, &'a V)>>;
     /// #
     /// #     fn into_iter(self) -> Self::IntoIter {
     /// #         unimplemented!()
     /// #     }
     /// # }
     /// #
-    /// use serde::ser::{Serialize, Serializer, SerializeMap};
+    /// use serde::ser::{Serialize, SerializeMap, Serializer};
     ///
     /// impl<K, V> Serialize for HashMap<K, V>
     /// where
@@ -1176,9 +1170,10 @@ pub trait Serializer: Sized {
     /// then a call to `end`.
     ///
     /// The `name` is the name of the struct and the `len` is the number of
-    /// data fields that will be serialized.
+    /// data fields that will be serialized. `len` does not include fields
+    /// which are skipped with [`SerializeStruct::skip_field`].
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::ser::{Serialize, SerializeStruct, Serializer};
     ///
     /// struct Rgb {
@@ -1213,8 +1208,10 @@ pub trait Serializer: Sized {
     /// The `name` is the name of the enum, the `variant_index` is the index of
     /// this variant within the enum, the `variant` is the name of the variant,
     /// and the `len` is the number of data fields that will be serialized.
+    /// `len` does not include fields which are skipped with
+    /// [`SerializeStructVariant::skip_field`].
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::ser::{Serialize, SerializeStructVariant, Serializer};
     ///
     /// enum E {
@@ -1256,7 +1253,7 @@ pub trait Serializer: Sized {
     /// using [`serialize_seq`]. Implementors should not need to override this
     /// method.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::{Serialize, Serializer};
     ///
     /// struct SecretlyOneHigher {
@@ -1279,22 +1276,9 @@ pub trait Serializer: Sized {
         I: IntoIterator,
         <I as IntoIterator>::Item: Serialize,
     {
-        let iter = iter.into_iter();
-        let mut serializer = try!(self.serialize_seq(iterator_len_hint(&iter)));
-
-        #[cfg(not(no_iterator_try_fold))]
-        {
-            let mut iter = iter;
-            try!(iter.try_for_each(|item| serializer.serialize_element(&item)));
-        }
-
-        #[cfg(no_iterator_try_fold)]
-        {
-            for item in iter {
-                try!(serializer.serialize_element(&item));
-            }
-        }
-
+        let mut iter = iter.into_iter();
+        let mut serializer = tri!(self.serialize_seq(iterator_len_hint(&iter)));
+        tri!(iter.try_for_each(|item| serializer.serialize_element(&item)));
         serializer.end()
     }
 
@@ -1304,7 +1288,7 @@ pub trait Serializer: Sized {
     /// using [`serialize_map`]. Implementors should not need to override this
     /// method.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// use serde::{Serialize, Serializer};
     /// use std::collections::BTreeSet;
     ///
@@ -1330,22 +1314,9 @@ pub trait Serializer: Sized {
         V: Serialize,
         I: IntoIterator<Item = (K, V)>,
     {
-        let iter = iter.into_iter();
-        let mut serializer = try!(self.serialize_map(iterator_len_hint(&iter)));
-
-        #[cfg(not(no_iterator_try_fold))]
-        {
-            let mut iter = iter;
-            try!(iter.try_for_each(|(key, value)| serializer.serialize_entry(&key, &value)));
-        }
-
-        #[cfg(no_iterator_try_fold)]
-        {
-            for (key, value) in iter {
-                try!(serializer.serialize_entry(&key, &value));
-            }
-        }
-
+        let mut iter = iter.into_iter();
+        let mut serializer = tri!(self.serialize_map(iterator_len_hint(&iter)));
+        tri!(iter.try_for_each(|(key, value)| serializer.serialize_entry(&key, &value)));
         serializer.end()
     }
 
@@ -1355,7 +1326,7 @@ pub trait Serializer: Sized {
     /// delegates to [`serialize_str`]. Serializers are encouraged to provide a
     /// more efficient implementation if possible.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # struct DateTime;
     /// #
     /// # impl DateTime {
@@ -1370,9 +1341,7 @@ pub trait Serializer: Sized {
     ///     where
     ///         S: Serializer,
     ///     {
-    ///         serializer.collect_str(&format_args!("{:?}{:?}",
-    ///                                              self.naive_local(),
-    ///                                              self.offset()))
+    ///         serializer.collect_str(&format_args!("{:?}{:?}", self.naive_local(), self.offset()))
     ///     }
     /// }
     /// ```
@@ -1380,9 +1349,9 @@ pub trait Serializer: Sized {
     /// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
     /// [`serialize_str`]: #tymethod.serialize_str
     #[cfg(any(feature = "std", feature = "alloc"))]
-    fn collect_str<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn collect_str<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: Display,
+        T: ?Sized + Display,
     {
         self.serialize_str(&value.to_string())
     }
@@ -1393,7 +1362,7 @@ pub trait Serializer: Sized {
     /// of this method. If no more sensible behavior is possible, the
     /// implementation is expected to return an error.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # struct DateTime;
     /// #
     /// # impl DateTime {
@@ -1408,16 +1377,14 @@ pub trait Serializer: Sized {
     ///     where
     ///         S: Serializer,
     ///     {
-    ///         serializer.collect_str(&format_args!("{:?}{:?}",
-    ///                                              self.naive_local(),
-    ///                                              self.offset()))
+    ///         serializer.collect_str(&format_args!("{:?}{:?}", self.naive_local(), self.offset()))
     ///     }
     /// }
     /// ```
     #[cfg(not(any(feature = "std", feature = "alloc")))]
-    fn collect_str<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn collect_str<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: Display;
+        T: ?Sized + Display;
 
     /// Determine whether `Serialize` implementations should serialize in
     /// human-readable form.
@@ -1428,7 +1395,7 @@ pub trait Serializer: Sized {
     /// human-readable one and binary formats like Postcard will prefer the
     /// compact one.
     ///
-    /// ```edition2018
+    /// ```edition2021
     /// # use std::fmt::{self, Display};
     /// #
     /// # struct Timestamp;
@@ -1477,7 +1444,7 @@ pub trait Serializer: Sized {
 ///
 /// # Example use
 ///
-/// ```edition2018
+/// ```edition2021
 /// # use std::marker::PhantomData;
 /// #
 /// # struct Vec<T>(PhantomData<T>);
@@ -1490,13 +1457,13 @@ pub trait Serializer: Sized {
 /// #
 /// # impl<'a, T> IntoIterator for &'a Vec<T> {
 /// #     type Item = &'a T;
-/// #     type IntoIter = Box<Iterator<Item = &'a T>>;
+/// #     type IntoIter = Box<dyn Iterator<Item = &'a T>>;
 /// #     fn into_iter(self) -> Self::IntoIter {
 /// #         unimplemented!()
 /// #     }
 /// # }
 /// #
-/// use serde::ser::{Serialize, Serializer, SerializeSeq};
+/// use serde::ser::{Serialize, SerializeSeq, Serializer};
 ///
 /// impl<T> Serialize for Vec<T>
 /// where
@@ -1529,9 +1496,9 @@ pub trait SerializeSeq {
     type Error: Error;
 
     /// Serialize a sequence element.
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Finish serializing a sequence.
     fn end(self) -> Result<Self::Ok, Self::Error>;
@@ -1541,8 +1508,8 @@ pub trait SerializeSeq {
 ///
 /// # Example use
 ///
-/// ```edition2018
-/// use serde::ser::{Serialize, Serializer, SerializeTuple};
+/// ```edition2021
+/// use serde::ser::{Serialize, SerializeTuple, Serializer};
 ///
 /// # mod fool {
 /// #     trait Serialize {}
@@ -1571,7 +1538,7 @@ pub trait SerializeSeq {
 /// }
 /// ```
 ///
-/// ```edition2018
+/// ```edition2021
 /// # use std::marker::PhantomData;
 /// #
 /// # struct Array<T>(PhantomData<T>);
@@ -1584,13 +1551,13 @@ pub trait SerializeSeq {
 /// #
 /// # impl<'a, T> IntoIterator for &'a Array<T> {
 /// #     type Item = &'a T;
-/// #     type IntoIter = Box<Iterator<Item = &'a T>>;
+/// #     type IntoIter = Box<dyn Iterator<Item = &'a T>>;
 /// #     fn into_iter(self) -> Self::IntoIter {
 /// #         unimplemented!()
 /// #     }
 /// # }
 /// #
-/// use serde::ser::{Serialize, Serializer, SerializeTuple};
+/// use serde::ser::{Serialize, SerializeTuple, Serializer};
 ///
 /// # mod fool {
 /// #     trait Serialize {}
@@ -1629,9 +1596,9 @@ pub trait SerializeTuple {
     type Error: Error;
 
     /// Serialize a tuple element.
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Finish serializing a tuple.
     fn end(self) -> Result<Self::Ok, Self::Error>;
@@ -1641,7 +1608,7 @@ pub trait SerializeTuple {
 ///
 /// # Example use
 ///
-/// ```edition2018
+/// ```edition2021
 /// use serde::ser::{Serialize, SerializeTupleStruct, Serializer};
 ///
 /// struct Rgb(u8, u8, u8);
@@ -1674,9 +1641,9 @@ pub trait SerializeTupleStruct {
     type Error: Error;
 
     /// Serialize a tuple struct field.
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Finish serializing a tuple struct.
     fn end(self) -> Result<Self::Ok, Self::Error>;
@@ -1686,7 +1653,7 @@ pub trait SerializeTupleStruct {
 ///
 /// # Example use
 ///
-/// ```edition2018
+/// ```edition2021
 /// use serde::ser::{Serialize, SerializeTupleVariant, Serializer};
 ///
 /// enum E {
@@ -1732,9 +1699,9 @@ pub trait SerializeTupleVariant {
     type Error: Error;
 
     /// Serialize a tuple variant field.
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Finish serializing a tuple variant.
     fn end(self) -> Result<Self::Ok, Self::Error>;
@@ -1744,7 +1711,7 @@ pub trait SerializeTupleVariant {
 ///
 /// # Example use
 ///
-/// ```edition2018
+/// ```edition2021
 /// # use std::marker::PhantomData;
 /// #
 /// # struct HashMap<K, V>(PhantomData<K>, PhantomData<V>);
@@ -1757,14 +1724,14 @@ pub trait SerializeTupleVariant {
 /// #
 /// # impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
 /// #     type Item = (&'a K, &'a V);
-/// #     type IntoIter = Box<Iterator<Item = (&'a K, &'a V)>>;
+/// #     type IntoIter = Box<dyn Iterator<Item = (&'a K, &'a V)>>;
 /// #
 /// #     fn into_iter(self) -> Self::IntoIter {
 /// #         unimplemented!()
 /// #     }
 /// # }
 /// #
-/// use serde::ser::{Serialize, Serializer, SerializeMap};
+/// use serde::ser::{Serialize, SerializeMap, Serializer};
 ///
 /// impl<K, V> Serialize for HashMap<K, V>
 /// where
@@ -1803,9 +1770,9 @@ pub trait SerializeMap {
     /// `serialize_entry` instead as it may be implemented more efficiently in
     /// some formats compared to a pair of calls to `serialize_key` and
     /// `serialize_value`.
-    fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<(), Self::Error>
+    fn serialize_key<T>(&mut self, key: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Serialize a map value.
     ///
@@ -1813,9 +1780,9 @@ pub trait SerializeMap {
     ///
     /// Calling `serialize_value` before `serialize_key` is incorrect and is
     /// allowed to panic or produce bogus results.
-    fn serialize_value<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_value<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Serialize a map entry consisting of a key and a value.
     ///
@@ -1834,16 +1801,12 @@ pub trait SerializeMap {
     /// [`Serialize`]: ../trait.Serialize.html
     /// [`serialize_key`]: #tymethod.serialize_key
     /// [`serialize_value`]: #tymethod.serialize_value
-    fn serialize_entry<K: ?Sized, V: ?Sized>(
-        &mut self,
-        key: &K,
-        value: &V,
-    ) -> Result<(), Self::Error>
+    fn serialize_entry<K, V>(&mut self, key: &K, value: &V) -> Result<(), Self::Error>
     where
-        K: Serialize,
-        V: Serialize,
+        K: ?Sized + Serialize,
+        V: ?Sized + Serialize,
     {
-        try!(self.serialize_key(key));
+        tri!(self.serialize_key(key));
         self.serialize_value(value)
     }
 
@@ -1855,7 +1818,7 @@ pub trait SerializeMap {
 ///
 /// # Example use
 ///
-/// ```edition2018
+/// ```edition2021
 /// use serde::ser::{Serialize, SerializeStruct, Serializer};
 ///
 /// struct Rgb {
@@ -1892,15 +1855,13 @@ pub trait SerializeStruct {
     type Error: Error;
 
     /// Serialize a struct field.
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Indicate that a struct field has been skipped.
+    ///
+    /// The default implementation does nothing.
     #[inline]
     fn skip_field(&mut self, key: &'static str) -> Result<(), Self::Error> {
         let _ = key;
@@ -1915,7 +1876,7 @@ pub trait SerializeStruct {
 ///
 /// # Example use
 ///
-/// ```edition2018
+/// ```edition2021
 /// use serde::ser::{Serialize, SerializeStructVariant, Serializer};
 ///
 /// enum E {
@@ -1958,15 +1919,13 @@ pub trait SerializeStructVariant {
     type Error: Error;
 
     /// Serialize a struct variant field.
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize;
+        T: ?Sized + Serialize;
 
     /// Indicate that a struct variant field has been skipped.
+    ///
+    /// The default implementation does nothing.
     #[inline]
     fn skip_field(&mut self, key: &'static str) -> Result<(), Self::Error> {
         let _ = key;

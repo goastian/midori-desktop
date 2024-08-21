@@ -1161,6 +1161,7 @@ pub enum VideoCodecSpecific {
     AV1Config(AV1ConfigBox),
     ESDSConfig(TryVec<u8>),
     H263Config(TryVec<u8>),
+    HEVCConfig(TryVec<u8>),
 }
 
 #[derive(Debug)]
@@ -1888,135 +1889,6 @@ impl DataBox {
     }
 }
 
-#[cfg(test)]
-mod media_data_box_tests {
-    use super::*;
-
-    impl DataBox {
-        fn at_offset(file_offset: u64, data: std::vec::Vec<u8>) -> Self {
-            DataBox {
-                metadata: DataBoxMetadata::Mdat { file_offset },
-                data: data.into(),
-            }
-        }
-    }
-
-    #[test]
-    fn extent_with_length_before_mdat_returns_none() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::WithLength { offset: 0, len: 2 };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    #[test]
-    fn extent_to_end_before_mdat_returns_none() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::ToEnd { offset: 0 };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    #[test]
-    fn extent_with_length_crossing_front_mdat_boundary_returns_none() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::WithLength { offset: 99, len: 3 };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    #[test]
-    fn extent_with_length_which_is_subset_of_mdat() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::WithLength {
-            offset: 101,
-            len: 2,
-        };
-
-        assert_eq!(mdat.get(&extent), Some(&[1, 1][..]));
-    }
-
-    #[test]
-    fn extent_to_end_which_is_subset_of_mdat() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::ToEnd { offset: 101 };
-
-        assert_eq!(mdat.get(&extent), Some(&[1, 1, 1, 1][..]));
-    }
-
-    #[test]
-    fn extent_with_length_which_is_all_of_mdat() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::WithLength {
-            offset: 100,
-            len: 5,
-        };
-
-        assert_eq!(mdat.get(&extent), Some(mdat.data.as_slice()));
-    }
-
-    #[test]
-    fn extent_to_end_which_is_all_of_mdat() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::ToEnd { offset: 100 };
-
-        assert_eq!(mdat.get(&extent), Some(mdat.data.as_slice()));
-    }
-
-    #[test]
-    fn extent_with_length_crossing_back_mdat_boundary_returns_none() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::WithLength {
-            offset: 103,
-            len: 3,
-        };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    #[test]
-    fn extent_with_length_after_mdat_returns_none() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::WithLength {
-            offset: 200,
-            len: 2,
-        };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    #[test]
-    fn extent_to_end_after_mdat_returns_none() {
-        let mdat = DataBox::at_offset(100, vec![1; 5]);
-        let extent = Extent::ToEnd { offset: 200 };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    #[test]
-    fn extent_with_length_which_overflows_usize() {
-        let mdat = DataBox::at_offset(std::u64::MAX - 1, vec![1; 5]);
-        let extent = Extent::WithLength {
-            offset: std::u64::MAX,
-            len: std::usize::MAX,
-        };
-
-        assert!(mdat.get(&extent).is_none());
-    }
-
-    // The end of the range would overflow `usize` if it were calculated, but
-    // because the range end is unbounded, we don't calculate it.
-    #[test]
-    fn extent_to_end_which_overflows_usize() {
-        let mdat = DataBox::at_offset(std::u64::MAX - 1, vec![1; 5]);
-        let extent = Extent::ToEnd {
-            offset: std::u64::MAX,
-        };
-
-        assert_eq!(mdat.get(&extent), Some(&[1, 1, 1, 1][..]));
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct PropertyIndex(u16);
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
@@ -2189,6 +2061,7 @@ pub enum CodecType {
     LPCM, // QT
     ALAC,
     H263,
+    HEVC, // 23008-2
     #[cfg(feature = "3gpp")]
     AMRNB,
     #[cfg(feature = "3gpp")]
@@ -4457,7 +4330,7 @@ fn read_edts<T: Read>(f: &mut BMFFBox<T>, track: &mut Track) -> Result<()> {
 #[allow(clippy::type_complexity)] // Allow the complex return, maybe rework in future
 fn parse_mdhd<T: Read>(
     f: &mut BMFFBox<T>,
-    track: &mut Track,
+    track: &Track,
 ) -> Result<(
     MediaHeaderBox,
     Option<TrackScaledTime<u64>>,
@@ -4644,8 +4517,11 @@ fn read_mvhd<T: Read>(src: &mut BMFFBox<T>) -> Result<MovieHeaderBox> {
         }
         _ => unreachable!("Should have returned Status::MvhdBadVersion"),
     };
-    // Skip remaining fields.
+    // Skip remaining valid fields.
     skip(src, 80)?;
+
+    // Padding could be added in some contents.
+    skip_box_remain(src)?;
     Ok(MovieHeaderBox {
         timescale,
         duration,
@@ -5149,7 +5025,7 @@ fn read_ds_descriptor(data: &[u8], esds: &mut ES_Descriptor) -> Result<()> {
     }
 
     // We are in an Audio esda Box.
-    let frequency_table = vec![
+    let frequency_table = [
         (0x0, 96000),
         (0x1, 88200),
         (0x2, 64000),
@@ -5585,6 +5461,7 @@ fn read_video_sample_entry<T: Read>(src: &mut BMFFBox<T>) -> Result<SampleEntry>
         BoxType::AV1SampleEntry => CodecType::AV1,
         BoxType::ProtectedVisualSampleEntry => CodecType::EncryptedVideo,
         BoxType::H263SampleEntry => CodecType::H263,
+        BoxType::HEV1SampleEntry | BoxType::HVC1SampleEntry => CodecType::HEVC,
         _ => {
             debug!("Unsupported video codec, box {:?} found", name);
             CodecType::Unknown
@@ -5695,6 +5572,23 @@ fn read_video_sample_entry<T: Read>(src: &mut BMFFBox<T>) -> Result<SampleEntry>
                 let sinf = read_sinf(&mut b)?;
                 debug!("{:?} (sinf)", sinf);
                 protection_info.push(sinf)?;
+            }
+            BoxType::HEVCConfigurationBox => {
+                if (name != BoxType::HEV1SampleEntry
+                    && name != BoxType::HVC1SampleEntry
+                    && name != BoxType::ProtectedVisualSampleEntry)
+                    || codec_specific.is_some()
+                {
+                    return Status::StsdBadVideoSampleEntry.into();
+                }
+                let hvcc_size = b
+                    .head
+                    .size
+                    .checked_sub(b.head.offset)
+                    .expect("offset invalid");
+                let hvcc = read_buf(&mut b.content, hvcc_size)?;
+                debug!("{:?} (hvcc)", hvcc);
+                codec_specific = Some(VideoCodecSpecific::HEVCConfig(hvcc));
             }
             _ => {
                 debug!("Unsupported video codec, box {:?} found", b.head.name);
@@ -5896,7 +5790,7 @@ fn read_audio_sample_entry<T: Read>(src: &mut BMFFBox<T>) -> Result<SampleEntry>
 /// Parse a stsd box.
 /// See ISOBMFF (ISO 14496-12:2020) § 8.5.2
 /// See MP4 (ISO 14496-14:2020) § 6.7.2
-fn read_stsd<T: Read>(src: &mut BMFFBox<T>, track: &mut Track) -> Result<SampleDescriptionBox> {
+fn read_stsd<T: Read>(src: &mut BMFFBox<T>, track: &Track) -> Result<SampleDescriptionBox> {
     let (_, flags) = read_fullbox_extra(src)?;
 
     if flags != 0 {
@@ -6288,4 +6182,133 @@ fn be_u64<T: ReadBytesExt>(src: &mut T) -> Result<u64> {
 fn write_be_u32<T: WriteBytesExt>(des: &mut T, num: u32) -> Result<()> {
     des.write_u32::<byteorder::BigEndian>(num)
         .map_err(From::from)
+}
+
+#[cfg(test)]
+mod media_data_box_tests {
+    use super::*;
+
+    impl DataBox {
+        fn at_offset(file_offset: u64, data: std::vec::Vec<u8>) -> Self {
+            DataBox {
+                metadata: DataBoxMetadata::Mdat { file_offset },
+                data: data.into(),
+            }
+        }
+    }
+
+    #[test]
+    fn extent_with_length_before_mdat_returns_none() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::WithLength { offset: 0, len: 2 };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    #[test]
+    fn extent_to_end_before_mdat_returns_none() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::ToEnd { offset: 0 };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    #[test]
+    fn extent_with_length_crossing_front_mdat_boundary_returns_none() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::WithLength { offset: 99, len: 3 };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    #[test]
+    fn extent_with_length_which_is_subset_of_mdat() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::WithLength {
+            offset: 101,
+            len: 2,
+        };
+
+        assert_eq!(mdat.get(&extent), Some(&[1, 1][..]));
+    }
+
+    #[test]
+    fn extent_to_end_which_is_subset_of_mdat() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::ToEnd { offset: 101 };
+
+        assert_eq!(mdat.get(&extent), Some(&[1, 1, 1, 1][..]));
+    }
+
+    #[test]
+    fn extent_with_length_which_is_all_of_mdat() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::WithLength {
+            offset: 100,
+            len: 5,
+        };
+
+        assert_eq!(mdat.get(&extent), Some(mdat.data.as_slice()));
+    }
+
+    #[test]
+    fn extent_to_end_which_is_all_of_mdat() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::ToEnd { offset: 100 };
+
+        assert_eq!(mdat.get(&extent), Some(mdat.data.as_slice()));
+    }
+
+    #[test]
+    fn extent_with_length_crossing_back_mdat_boundary_returns_none() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::WithLength {
+            offset: 103,
+            len: 3,
+        };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    #[test]
+    fn extent_with_length_after_mdat_returns_none() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::WithLength {
+            offset: 200,
+            len: 2,
+        };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    #[test]
+    fn extent_to_end_after_mdat_returns_none() {
+        let mdat = DataBox::at_offset(100, vec![1; 5]);
+        let extent = Extent::ToEnd { offset: 200 };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    #[test]
+    fn extent_with_length_which_overflows_usize() {
+        let mdat = DataBox::at_offset(std::u64::MAX - 1, vec![1; 5]);
+        let extent = Extent::WithLength {
+            offset: std::u64::MAX,
+            len: std::usize::MAX,
+        };
+
+        assert!(mdat.get(&extent).is_none());
+    }
+
+    // The end of the range would overflow `usize` if it were calculated, but
+    // because the range end is unbounded, we don't calculate it.
+    #[test]
+    fn extent_to_end_which_overflows_usize() {
+        let mdat = DataBox::at_offset(std::u64::MAX - 1, vec![1; 5]);
+        let extent = Extent::ToEnd {
+            offset: std::u64::MAX,
+        };
+
+        assert_eq!(mdat.get(&extent), Some(&[1, 1, 1, 1][..]));
+    }
 }

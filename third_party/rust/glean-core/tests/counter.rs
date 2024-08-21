@@ -120,9 +120,9 @@ fn counters_must_not_increment_when_passed_zero_or_negative() {
     // Check that nothing was recorded
     assert_eq!(1, metric.get_value(&glean, Some("store1")).unwrap());
 
-    // Make sure that the errors have been recorded
+    // Make sure that the error has been recorded
     assert_eq!(
-        Ok(2),
+        Ok(1),
         test_get_num_recorded_errors(&glean, metric.meta(), ErrorType::InvalidValue)
     );
 }
@@ -168,10 +168,7 @@ fn saturates_at_boundary() {
     });
 
     counter.add_sync(&glean, 2);
-    counter.add_sync(&glean, i32::max_value());
+    counter.add_sync(&glean, i32::MAX);
 
-    assert_eq!(
-        i32::max_value(),
-        counter.get_value(&glean, Some("store1")).unwrap()
-    );
+    assert_eq!(i32::MAX, counter.get_value(&glean, Some("store1")).unwrap());
 }

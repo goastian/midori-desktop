@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::ffi::{call_with_output, ForeignBytes, RustCallStatus};
+use crate::ffi::{rust_call, ForeignBytes, RustCallStatus};
 
 /// Support for passing an allocated-by-Rust buffer of bytes over the FFI.
 ///
@@ -49,16 +49,22 @@ use crate::ffi::{call_with_output, ForeignBytes, RustCallStatus};
 /// This struct is based on `ByteBuffer` from the `ffi-support` crate, but modified
 /// to retain unallocated capacity rather than truncating to the occupied length.
 #[repr(C)]
+#[derive(Debug)]
 pub struct RustBuffer {
     /// The allocated capacity of the underlying `Vec<u8>`.
-    /// In Rust this is a `usize`, but we use an `i32` for compatibility with JNA.
-    capacity: i32,
+    /// In Rust this is a `usize`, but we use an `u64` to keep the foreign binding code simple.
+    capacity: u64,
     /// The occupied length of the underlying `Vec<u8>`.
-    /// In Rust this is a `usize`, but we use an `i32` for compatibility with JNA.
-    len: i32,
+    /// In Rust this is a `usize`, but we use an `u64` to keep the foreign binding code simple.
+    len: u64,
     /// The pointer to the allocated buffer of the `Vec<u8>`.
     data: *mut u8,
 }
+
+// Mark `RustBuffer` as safe to send between threads, despite the `u8` pointer.  The only mutable
+// use of that pointer is in `destroy_into_vec()` which requires a &mut on the `RustBuffer`.  This
+// is required to send `RustBuffer` inside a `RustFuture`
+unsafe impl Send for RustBuffer {}
 
 impl RustBuffer {
     /// Creates an empty `RustBuffer`.
@@ -78,7 +84,7 @@ impl RustBuffer {
     /// # Safety
     ///
     /// You must ensure that the raw parts uphold the documented invariants of this class.
-    pub unsafe fn from_raw_parts(data: *mut u8, len: i32, capacity: i32) -> Self {
+    pub unsafe fn from_raw_parts(data: *mut u8, len: u64, capacity: u64) -> Self {
         Self {
             capacity,
             len,
@@ -101,6 +107,11 @@ impl RustBuffer {
             .expect("buffer length negative or overflowed")
     }
 
+    /// Get a pointer to the data
+    pub fn data_pointer(&self) -> *const u8 {
+        self.data
+    }
+
     /// Returns true if the length of the buffer is 0.
     pub fn is_empty(&self) -> bool {
         self.len == 0
@@ -115,12 +126,8 @@ impl RustBuffer {
     ///
     /// Panics if the requested size is too large to fit in an `i32`, and
     /// hence would risk incompatibility with some foreign-language code.
-    pub fn new_with_size(size: usize) -> Self {
-        assert!(
-            size < i32::MAX as usize,
-            "RustBuffer requested size too large"
-        );
-        Self::from_vec(vec![0u8; size])
+    pub fn new_with_size(size: u64) -> Self {
+        Self::from_vec(vec![0u8; size as usize])
     }
 
     /// Consumes a `Vec<u8>` and returns its raw parts as a `RustBuffer`.
@@ -133,8 +140,8 @@ impl RustBuffer {
     /// Panics if the vector's length or capacity are too large to fit in an `i32`,
     /// and hence would risk incompatibility with some foreign-language code.
     pub fn from_vec(v: Vec<u8>) -> Self {
-        let capacity = i32::try_from(v.capacity()).expect("buffer capacity cannot fit into a i32.");
-        let len = i32::try_from(v.len()).expect("buffer length cannot fit into a i32.");
+        let capacity = u64::try_from(v.capacity()).expect("buffer capacity cannot fit into a u64.");
+        let len = u64::try_from(v.len()).expect("buffer length cannot fit into a u64.");
         let mut v = std::mem::ManuallyDrop::new(v);
         unsafe { Self::from_raw_parts(v.as_mut_ptr(), len, capacity) }
     }
@@ -187,29 +194,18 @@ impl Default for RustBuffer {
     }
 }
 
-// extern "C" functions for the RustBuffer functionality.
+// Functions for the RustBuffer functionality.
 //
-// These are used in two ways:
-//   1. Code that statically links to UniFFI can use these directly to handle RustBuffer
-//      allocation/destruction. The plan is to use this for the Firefox desktop JS bindings.
-//
-//   2. The scaffolding code re-exports these functions, prefixed with the component name and UDL
-//      hash  This creates a separate set of functions for each UniFFIed component, which is needed
-//      in the case where we create multiple dylib artifacts since each dylib will have its own
-//      allocator.
+// The scaffolding code re-exports these functions, prefixed with the component name and UDL hash
+// This creates a separate set of functions for each UniFFIed component, which is needed in the
+// case where we create multiple dylib artifacts since each dylib will have its own allocator.
 
 /// This helper allocates a new byte buffer owned by the Rust code, and returns it
 /// to the foreign-language code as a `RustBuffer` struct. Callers must eventually
 /// free the resulting buffer, either by explicitly calling [`uniffi_rustbuffer_free`] defined
 /// below, or by passing ownership of the buffer back into Rust code.
-#[no_mangle]
-pub extern "C" fn uniffi_rustbuffer_alloc(
-    size: i32,
-    call_status: &mut RustCallStatus,
-) -> RustBuffer {
-    call_with_output(call_status, || {
-        RustBuffer::new_with_size(size.max(0) as usize)
-    })
+pub fn uniffi_rustbuffer_alloc(size: u64, call_status: &mut RustCallStatus) -> RustBuffer {
+    rust_call(call_status, || Ok(RustBuffer::new_with_size(size)))
 }
 
 /// This helper copies bytes owned by the foreign-language code into a new byte buffer owned
@@ -220,14 +216,13 @@ pub extern "C" fn uniffi_rustbuffer_alloc(
 /// # Safety
 /// This function will dereference a provided pointer in order to copy bytes from it, so
 /// make sure the `ForeignBytes` struct contains a valid pointer and length.
-#[no_mangle]
-pub unsafe extern "C" fn uniffi_rustbuffer_from_bytes(
+pub fn uniffi_rustbuffer_from_bytes(
     bytes: ForeignBytes,
     call_status: &mut RustCallStatus,
 ) -> RustBuffer {
-    call_with_output(call_status, || {
+    rust_call(call_status, || {
         let bytes = bytes.as_slice();
-        RustBuffer::from_vec(bytes.to_vec())
+        Ok(RustBuffer::from_vec(bytes.to_vec()))
     })
 }
 
@@ -237,9 +232,11 @@ pub unsafe extern "C" fn uniffi_rustbuffer_from_bytes(
 /// The argument *must* be a uniquely-owned `RustBuffer` previously obtained from a call
 /// into the Rust code that returned a buffer, or you'll risk freeing unowned memory or
 /// corrupting the allocator state.
-#[no_mangle]
-pub unsafe extern "C" fn uniffi_rustbuffer_free(buf: RustBuffer, call_status: &mut RustCallStatus) {
-    call_with_output(call_status, || RustBuffer::destroy(buf))
+pub fn uniffi_rustbuffer_free(buf: RustBuffer, call_status: &mut RustCallStatus) {
+    rust_call(call_status, || {
+        RustBuffer::destroy(buf);
+        Ok(())
+    })
 }
 
 /// Reserve additional capacity in a byte buffer that had previously been passed to the
@@ -257,19 +254,18 @@ pub unsafe extern "C" fn uniffi_rustbuffer_free(buf: RustBuffer, call_status: &m
 /// The first argument *must* be a uniquely-owned `RustBuffer` previously obtained from a call
 /// into the Rust code that returned a buffer, or you'll risk freeing unowned memory or
 /// corrupting the allocator state.
-#[no_mangle]
-pub unsafe extern "C" fn uniffi_rustbuffer_reserve(
+pub fn uniffi_rustbuffer_reserve(
     buf: RustBuffer,
-    additional: i32,
+    additional: u64,
     call_status: &mut RustCallStatus,
 ) -> RustBuffer {
-    call_with_output(call_status, || {
+    rust_call(call_status, || {
         let additional: usize = additional
             .try_into()
             .expect("additional buffer length negative or overflowed");
         let mut v = buf.destroy_into_vec();
         v.reserve(additional);
-        RustBuffer::from_vec(v)
+        Ok(RustBuffer::from_vec(v))
     })
 }
 
@@ -321,24 +317,6 @@ mod test {
     fn test_rustbuffer_null_must_have_zero_length() {
         // We guard against foreign-language code providing this kind of invalid struct.
         let rbuf = unsafe { RustBuffer::from_raw_parts(std::ptr::null_mut(), 12, 0) };
-        rbuf.destroy_into_vec();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_rustbuffer_provided_capacity_must_be_non_negative() {
-        // We guard against foreign-language code providing this kind of invalid struct.
-        let mut v = vec![0u8, 1, 2];
-        let rbuf = unsafe { RustBuffer::from_raw_parts(v.as_mut_ptr(), 3, -7) };
-        rbuf.destroy_into_vec();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_rustbuffer_provided_len_must_be_non_negative() {
-        // We guard against foreign-language code providing this kind of invalid struct.
-        let mut v = vec![0u8, 1, 2];
-        let rbuf = unsafe { RustBuffer::from_raw_parts(v.as_mut_ptr(), -1, 3) };
         rbuf.destroy_into_vec();
     }
 

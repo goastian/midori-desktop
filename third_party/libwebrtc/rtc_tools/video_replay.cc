@@ -16,10 +16,11 @@
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
 #include "api/field_trials.h"
 #include "api/media_types.h"
-#include "api/rtc_event_log/rtc_event_log.h"
-#include "api/task_queue/default_task_queue_factory.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/test/video/function_video_decoder_factory.h"
 #include "api/transport/field_trial_based_config.h"
 #include "api/units/timestamp.h"
@@ -36,11 +37,9 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/string_to_number.h"
 #include "rtc_base/strings/json.h"
-#include "rtc_base/time_utils.h"
 #include "system_wrappers/include/clock.h"
 #include "system_wrappers/include/sleep.h"
 #include "test/call_config_utils.h"
-#include "test/call_test.h"
 #include "test/encoder_settings.h"
 #include "test/fake_decoder.h"
 #include "test/gtest.h"
@@ -52,54 +51,55 @@
 #include "test/testsupport/frame_writer.h"
 #include "test/time_controller/simulated_time_controller.h"
 #include "test/video_renderer.h"
+#include "test/video_test_constants.h"
 
 // Flag for payload type.
 ABSL_FLAG(int,
           media_payload_type,
-          webrtc::test::CallTest::kPayloadTypeVP8,
+          webrtc::test::VideoTestConstants::kPayloadTypeVP8,
           "Media payload type");
 
 // Flag for RED payload type.
 ABSL_FLAG(int,
           red_payload_type,
-          webrtc::test::CallTest::kRedPayloadType,
+          webrtc::test::VideoTestConstants::kRedPayloadType,
           "RED payload type");
 
 // Flag for ULPFEC payload type.
 ABSL_FLAG(int,
           ulpfec_payload_type,
-          webrtc::test::CallTest::kUlpfecPayloadType,
+          webrtc::test::VideoTestConstants::kUlpfecPayloadType,
           "ULPFEC payload type");
 
 // Flag for FLEXFEC payload type.
 ABSL_FLAG(int,
           flexfec_payload_type,
-          webrtc::test::CallTest::kFlexfecPayloadType,
+          webrtc::test::VideoTestConstants::kFlexfecPayloadType,
           "FLEXFEC payload type");
 
 ABSL_FLAG(int,
           media_payload_type_rtx,
-          webrtc::test::CallTest::kSendRtxPayloadType,
+          webrtc::test::VideoTestConstants::kSendRtxPayloadType,
           "Media over RTX payload type");
 
 ABSL_FLAG(int,
           red_payload_type_rtx,
-          webrtc::test::CallTest::kRtxRedPayloadType,
+          webrtc::test::VideoTestConstants::kRtxRedPayloadType,
           "RED over RTX payload type");
 
 // Flag for SSRC and RTX SSRC.
 ABSL_FLAG(uint32_t,
           ssrc,
-          webrtc::test::CallTest::kVideoSendSsrcs[0],
+          webrtc::test::VideoTestConstants::kVideoSendSsrcs[0],
           "Incoming SSRC");
 ABSL_FLAG(uint32_t,
           ssrc_rtx,
-          webrtc::test::CallTest::kSendRtxSsrcs[0],
+          webrtc::test::VideoTestConstants::kSendRtxSsrcs[0],
           "Incoming RTX SSRC");
 
 ABSL_FLAG(uint32_t,
           ssrc_flexfec,
-          webrtc::test::CallTest::kFlexfecSendSsrc,
+          webrtc::test::VideoTestConstants::kFlexfecSendSsrc,
           "Incoming FLEXFEC SSRC");
 
 // Flag for abs-send-time id.
@@ -218,7 +218,7 @@ class FileRenderPassthrough : public rtc::VideoSinkInterface<VideoFrame> {
       return;
 
     std::stringstream filename;
-    filename << basename_ << count_++ << "_" << video_frame.timestamp()
+    filename << basename_ << count_++ << "_" << video_frame.rtp_timestamp()
              << ".jpg";
 
     test::JpegFrameWriter frame_writer(filename.str());
@@ -240,7 +240,6 @@ class DecoderBitstreamFileWriter : public test::FakeDecoder {
   ~DecoderBitstreamFileWriter() override { fclose(file_); }
 
   int32_t Decode(const EncodedImage& encoded_frame,
-                 bool /* missing_frames */,
                  int64_t /* render_time_ms */) override {
     if (fwrite(encoded_frame.data(), 1, encoded_frame.size(), file_) <
         encoded_frame.size()) {
@@ -268,6 +267,8 @@ class DecoderIvfFileWriter : public test::FakeDecoder {
       video_codec_type_ = VideoCodecType::kVideoCodecH264;
     } else if (codec == "AV1") {
       video_codec_type_ = VideoCodecType::kVideoCodecAV1;
+    } else if (codec == "H265") {
+      video_codec_type_ = VideoCodecType::kVideoCodecH265;
     } else {
       RTC_LOG(LS_ERROR) << "Unsupported video codec " << codec;
       RTC_DCHECK_NOTREACHED();
@@ -276,7 +277,6 @@ class DecoderIvfFileWriter : public test::FakeDecoder {
   ~DecoderIvfFileWriter() override { file_writer_->Close(); }
 
   int32_t Decode(const EncodedImage& encoded_frame,
-                 bool /* missing_frames */,
                  int64_t render_time_ms) override {
     if (!file_writer_->WriteFrame(encoded_frame, video_codec_type_)) {
       return WEBRTC_VIDEO_CODEC_ERROR;
@@ -478,26 +478,20 @@ class RtpReplayer final {
               bool simulated_time)
       : replay_config_path_(replay_config_path),
         rtp_dump_path_(rtp_dump_path),
-        field_trials_(std::move(field_trials)),
+        time_sim_(simulated_time
+                      ? std::make_unique<GlobalSimulatedTimeController>(
+                            Timestamp::Millis(1 << 30))
+                      : nullptr),
+        env_(CreateEnvironment(
+            std::move(field_trials),
+            time_sim_ ? time_sim_->GetTaskQueueFactory() : nullptr,
+            time_sim_ ? time_sim_->GetClock() : nullptr)),
         rtp_reader_(CreateRtpReader(rtp_dump_path_)) {
-    TaskQueueFactory* task_queue_factory;
-    if (simulated_time) {
-      time_sim_ = std::make_unique<GlobalSimulatedTimeController>(
-          Timestamp::Millis(1 << 30));
-      task_queue_factory = time_sim_->GetTaskQueueFactory();
-    } else {
-      task_queue_factory_ = CreateDefaultTaskQueueFactory(field_trials_.get()),
-      task_queue_factory = task_queue_factory_.get();
-    }
-    worker_thread_ =
-        std::make_unique<rtc::TaskQueue>(task_queue_factory->CreateTaskQueue(
-            "worker_thread", TaskQueueFactory::Priority::NORMAL));
+    worker_thread_ = env_.task_queue_factory().CreateTaskQueue(
+        "worker_thread", TaskQueueFactory::Priority::NORMAL);
     rtc::Event event;
     worker_thread_->PostTask([&]() {
-      Call::Config call_config(&event_log_);
-      call_config.trials = field_trials_.get();
-      call_config.task_queue_factory = task_queue_factory;
-      call_.reset(Call::Create(call_config));
+      call_ = Call::Create(CallConfig(env_));
 
       // Creation of the streams must happen inside a task queue because it is
       // resued as a worker thread.
@@ -655,10 +649,7 @@ class RtpReplayer final {
     }
   }
 
-  int64_t CurrentTimeMs() {
-    return time_sim_ ? time_sim_->GetClock()->TimeInMilliseconds()
-                     : rtc::TimeMillis();
-  }
+  int64_t CurrentTimeMs() { return env_.clock().CurrentTime().ms(); }
 
   void SleepOrAdvanceTime(int64_t duration_ms) {
     if (time_sim_) {
@@ -670,11 +661,9 @@ class RtpReplayer final {
 
   const std::string replay_config_path_;
   const std::string rtp_dump_path_;
-  RtcEventLogNull event_log_;
-  std::unique_ptr<FieldTrialsView> field_trials_;
   std::unique_ptr<GlobalSimulatedTimeController> time_sim_;
-  std::unique_ptr<TaskQueueFactory> task_queue_factory_;
-  std::unique_ptr<rtc::TaskQueue> worker_thread_;
+  Environment env_;
+  std::unique_ptr<TaskQueueBase, TaskQueueDeleter> worker_thread_;
   std::unique_ptr<Call> call_;
   std::unique_ptr<test::RtpFileReader> rtp_reader_;
   std::unique_ptr<StreamState> stream_state_;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! Implementation of the generic Fully Linear Proof (FLP) system specified in
-//! [[draft-irtf-cfrg-vdaf-03]]. This is the main building block of [`Prio3`](crate::vdaf::prio3).
+//! [[draft-irtf-cfrg-vdaf-08]]. This is the main building block of [`Prio3`](crate::vdaf::prio3).
 //!
 //! The FLP is derived for any implementation of the [`Type`] trait. Such an implementation
 //! specifies a validity circuit that defines the set of valid measurements, as well as the finite
@@ -24,7 +24,7 @@
 //!
 //! // The prover chooses a measurement.
 //! let count = Count::new();
-//! let input: Vec<Field64> = count.encode_measurement(&0).unwrap();
+//! let input: Vec<Field64> = count.encode_measurement(&false).unwrap();
 //!
 //! // The prover and verifier agree on "joint randomness" used to generate and
 //! // check the proof. The application needs to ensure that the prover
@@ -44,10 +44,12 @@
 //! assert!(count.decide(&verifier).unwrap());
 //! ```
 //!
-//! [draft-irtf-cfrg-vdaf-03]: https://datatracker.ietf.org/doc/draft-irtf-cfrg-vdaf/03/
+//! [draft-irtf-cfrg-vdaf-08]: https://datatracker.ietf.org/doc/draft-irtf-cfrg-vdaf/08/
 
+#[cfg(feature = "experimental")]
+use crate::dp::DifferentialPrivacyStrategy;
 use crate::fft::{discrete_fourier_transform, discrete_fourier_transform_inv_finish, FftError};
-use crate::field::{FieldElement, FieldError};
+use crate::field::{FftFriendlyFieldElement, FieldElement, FieldElementWithInteger, FieldError};
 use crate::fp::log2;
 use crate::polynomial::poly_eval;
 use std::any::Any;
@@ -59,6 +61,7 @@ pub mod types;
 
 /// Errors propagated by methods in this module.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum FlpError {
     /// Calling [`Type::prove`] returned an error.
     #[error("prove error: {0}")]
@@ -92,6 +95,10 @@ pub enum FlpError {
     #[error("truncate error: {0}")]
     Truncate(String),
 
+    /// Generic invalid parameter. This may be returned when an FLP type cannot be constructed.
+    #[error("invalid paramter: {0}")]
+    InvalidParameter(String),
+
     /// Returned if an FFT operation propagates an error.
     #[error("FFT error: {0}")]
     Fft(#[from] FftError),
@@ -100,19 +107,16 @@ pub enum FlpError {
     #[error("Field error: {0}")]
     Field(#[from] FieldError),
 
-    /// Unit test error.
-    #[cfg(test)]
-    #[error("test failed: {0}")]
-    Test(String),
+    #[cfg(feature = "experimental")]
+    /// An error happened during noising.
+    #[error("differential privacy error: {0}")]
+    DifferentialPrivacy(#[from] crate::dp::DpError),
 }
 
 /// A type. Implementations of this trait specify how a particular kind of measurement is encoded
 /// as a vector of field elements and how validity of the encoded measurement is determined.
 /// Validity is determined via an arithmetic circuit evaluated over the encoded measurement.
 pub trait Type: Sized + Eq + Clone + Debug {
-    /// The Prio3 VDAF identifier corresponding to this type.
-    const ID: u32;
-
     /// The type of raw measurement to be encoded.
     type Measurement: Clone + Debug;
 
@@ -120,7 +124,7 @@ pub trait Type: Sized + Eq + Clone + Debug {
     type AggregateResult: Clone + Debug;
 
     /// The finite field used for this type.
-    type Field: FieldElement;
+    type Field: FftFriendlyFieldElement;
 
     /// Encodes a measurement as a vector of [`Self::input_len`] field elements.
     fn encode_measurement(
@@ -167,7 +171,7 @@ pub trait Type: Sized + Eq + Clone + Debug {
     /// use prio::field::{random_vector, FieldElement, Field64};
     ///
     /// let count = Count::new();
-    /// let input: Vec<Field64> = count.encode_measurement(&1).unwrap();
+    /// let input: Vec<Field64> = count.encode_measurement(&true).unwrap();
     /// let joint_rand = random_vector(count.joint_rand_len()).unwrap();
     /// let v = count.valid(&mut count.gadget(), &input, &joint_rand, 1).unwrap();
     /// assert_eq!(v, Field64::zero());
@@ -216,7 +220,6 @@ pub trait Type: Sized + Eq + Clone + Debug {
     /// * `input` is the input.
     /// * `prove_rand` is the prover' randomness.
     /// * `joint_rand` is the randomness shared by the prover and verifier.
-    #[allow(clippy::needless_range_loop)]
     fn prove(
         &self,
         input: &[Self::Field],
@@ -248,16 +251,16 @@ pub trait Type: Sized + Eq + Clone + Debug {
         }
 
         let mut prove_rand_len = 0;
-        let mut shim = self
+        let mut shims = self
             .gadget()
             .into_iter()
             .map(|inner| {
                 let inner_arity = inner.arity();
                 if prove_rand_len + inner_arity > prove_rand.len() {
                     return Err(FlpError::Prove(format!(
-                        "short prove randomness: got {}; want {}",
+                        "short prove randomness: got {}; want at least {}",
                         prove_rand.len(),
-                        self.prove_rand_len()
+                        prove_rand_len + inner_arity
                     )));
                 }
 
@@ -274,10 +277,10 @@ pub trait Type: Sized + Eq + Clone + Debug {
 
         // Create a buffer for storing the proof. The buffer is longer than the proof itself; the extra
         // length is to accommodate the computation of each gadget polynomial.
-        let data_len = (0..shim.len())
-            .map(|idx| {
-                let gadget_poly_len =
-                    gadget_poly_len(shim[idx].degree(), wire_poly_len(shim[idx].calls()));
+        let data_len = shims
+            .iter()
+            .map(|shim| {
+                let gadget_poly_len = gadget_poly_len(shim.degree(), wire_poly_len(shim.calls()));
 
                 // Computing the gadget polynomial using FFT requires an amount of memory that is a
                 // power of 2. Thus we choose the smallest power of 2 that is at least as large as
@@ -285,7 +288,7 @@ pub trait Type: Sized + Eq + Clone + Debug {
                 // include the arity of the gadget to ensure there is always enough room at the end
                 // of the buffer to compute the next gadget polynomial. It's likely that the
                 // memory footprint here can be reduced, with a bit of care.
-                shim[idx].arity() + gadget_poly_len.next_power_of_two()
+                shim.arity() + gadget_poly_len.next_power_of_two()
             })
             .sum();
         let mut proof = vec![Self::Field::zero(); data_len];
@@ -293,12 +296,12 @@ pub trait Type: Sized + Eq + Clone + Debug {
         // Run the validity circuit with a sequence of "shim" gadgets that record the value of each
         // input wire of each gadget evaluation. These values are used to construct the wire
         // polynomials for each gadget in the next step.
-        let _ = self.valid(&mut shim, input, joint_rand, 1)?;
+        let _ = self.valid(&mut shims, input, joint_rand, 1)?;
 
         // Construct the proof.
         let mut proof_len = 0;
-        for idx in 0..shim.len() {
-            let gadget = shim[idx]
+        for shim in shims.iter_mut() {
+            let gadget = shim
                 .as_any()
                 .downcast_mut::<ProveShimGadget<Self::Field>>()
                 .unwrap();
@@ -306,18 +309,23 @@ pub trait Type: Sized + Eq + Clone + Debug {
             // Interpolate the wire polynomials `f[0], ..., f[g_arity-1]` from the input wires of each
             // evaluation of the gadget.
             let m = wire_poly_len(gadget.calls());
-            let m_inv =
-                Self::Field::from(<Self::Field as FieldElement>::Integer::try_from(m).unwrap())
-                    .inv();
+            let m_inv = Self::Field::from(
+                <Self::Field as FieldElementWithInteger>::Integer::try_from(m).unwrap(),
+            )
+            .inv();
             let mut f = vec![vec![Self::Field::zero(); m]; gadget.arity()];
-            for wire in 0..gadget.arity() {
-                discrete_fourier_transform(&mut f[wire], &gadget.f_vals[wire], m)?;
-                discrete_fourier_transform_inv_finish(&mut f[wire], m, m_inv);
+            for ((coefficients, values), proof_val) in f[..gadget.arity()]
+                .iter_mut()
+                .zip(gadget.f_vals[..gadget.arity()].iter())
+                .zip(proof[proof_len..proof_len + gadget.arity()].iter_mut())
+            {
+                discrete_fourier_transform(coefficients, values, m)?;
+                discrete_fourier_transform_inv_finish(coefficients, m, m_inv);
 
                 // The first point on each wire polynomial is a random value chosen by the prover. This
                 // point is stored in the proof so that the verifier can reconstruct the wire
                 // polynomials.
-                proof[proof_len + wire] = gadget.f_vals[wire][0];
+                *proof_val = values[0];
             }
 
             // Construct the gadget polynomial `G(f[0], ..., f[g_arity-1])` and append it to `proof`.
@@ -385,7 +393,7 @@ pub trait Type: Sized + Eq + Clone + Debug {
         }
 
         let mut proof_len = 0;
-        let mut shim = self
+        let mut shims = self
             .gadget()
             .into_iter()
             .enumerate()
@@ -398,12 +406,11 @@ pub trait Type: Sized + Eq + Clone + Debug {
                 // Make sure the query randomness isn't a root of unity. Evaluating the gadget
                 // polynomial at any of these points would be a privacy violation, since these points
                 // were used by the prover to construct the wire polynomials.
-                if r.pow(<Self::Field as FieldElement>::Integer::try_from(m).unwrap())
+                if r.pow(<Self::Field as FieldElementWithInteger>::Integer::try_from(m).unwrap())
                     == Self::Field::one()
                 {
                     return Err(FlpError::Query(format!(
-                        "invalid query randomness: encountered 2^{}-th root of unity",
-                        m
+                        "invalid query randomness: encountered 2^{m}-th root of unity"
                     )));
                 }
 
@@ -420,10 +427,7 @@ pub trait Type: Sized + Eq + Clone + Debug {
         // Create a buffer for the verifier data. This includes the output of the validity circuit and,
         // for each gadget `shim[idx].inner`, the wire polynomials evaluated at the query randomness
         // `query_rand[idx]` and the gadget polynomial evaluated at `query_rand[idx]`.
-        let data_len = 1
-            + (0..shim.len())
-                .map(|idx| shim[idx].arity() + 1)
-                .sum::<usize>();
+        let data_len = 1 + shims.iter().map(|shim| shim.arity() + 1).sum::<usize>();
         let mut verifier = Vec::with_capacity(data_len);
 
         // Run the validity circuit with a sequence of "shim" gadgets that record the inputs to each
@@ -434,31 +438,31 @@ pub trait Type: Sized + Eq + Clone + Debug {
         // equal to the output of the last gadget evaluation. Here we relax this assumption. This
         // should be OK, since it's possible to transform any circuit into one for which this is true.
         // (Needs security analysis.)
-        let validity = self.valid(&mut shim, input, joint_rand, num_shares)?;
+        let validity = self.valid(&mut shims, input, joint_rand, num_shares)?;
         verifier.push(validity);
 
         // Fill the buffer with the verifier message.
-        for idx in 0..shim.len() {
-            let r = query_rand[idx];
-            let gadget = shim[idx]
+        for (query_rand_val, shim) in query_rand[..shims.len()].iter().zip(shims.iter_mut()) {
+            let gadget = shim
                 .as_any()
                 .downcast_ref::<QueryShimGadget<Self::Field>>()
                 .unwrap();
 
             // Reconstruct the wire polynomials `f[0], ..., f[g_arity-1]` and evaluate each wire
-            // polynomial at query randomness `r`.
+            // polynomial at query randomness value.
             let m = (1 + gadget.calls()).next_power_of_two();
-            let m_inv =
-                Self::Field::from(<Self::Field as FieldElement>::Integer::try_from(m).unwrap())
-                    .inv();
+            let m_inv = Self::Field::from(
+                <Self::Field as FieldElementWithInteger>::Integer::try_from(m).unwrap(),
+            )
+            .inv();
             let mut f = vec![Self::Field::zero(); m];
             for wire in 0..gadget.arity() {
                 discrete_fourier_transform(&mut f, &gadget.f_vals[wire], m)?;
                 discrete_fourier_transform_inv_finish(&mut f, m, m_inv);
-                verifier.push(poly_eval(&f, r));
+                verifier.push(poly_eval(&f, *query_rand_val));
             }
 
-            // Add the value of the gadget polynomial evaluated at `r`.
+            // Add the value of the gadget polynomial evaluated at the query randomness value.
             verifier.push(gadget.p_at_r);
         }
 
@@ -467,7 +471,6 @@ pub trait Type: Sized + Eq + Clone + Debug {
     }
 
     /// Returns true if the verifier message indicates that the input from which it was generated is valid.
-    #[allow(clippy::needless_range_loop)]
     fn decide(&self, verifier: &[Self::Field]) -> Result<bool, FlpError> {
         if verifier.len() != self.verifier_len() {
             return Err(FlpError::Decide(format!(
@@ -485,10 +488,10 @@ pub trait Type: Sized + Eq + Clone + Debug {
         // Check that each of the proof polynomials are well-formed.
         let mut gadgets = self.gadget();
         let mut verifier_len = 1;
-        for idx in 0..gadgets.len() {
-            let next_len = 1 + gadgets[idx].arity();
+        for gadget in gadgets.iter_mut() {
+            let next_len = 1 + gadget.arity();
 
-            let e = gadgets[idx].call(&verifier[verifier_len..verifier_len + next_len - 1])?;
+            let e = gadget.call(&verifier[verifier_len..verifier_len + next_len - 1])?;
             if e != verifier[verifier_len + next_len - 1] {
                 return Ok(false);
             }
@@ -540,8 +543,24 @@ pub trait Type: Sized + Eq + Clone + Debug {
     }
 }
 
+/// A type which supports adding noise to aggregate shares for Server Differential Privacy.
+#[cfg(feature = "experimental")]
+#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
+pub trait TypeWithNoise<S>: Type
+where
+    S: DifferentialPrivacyStrategy,
+{
+    /// Add noise to the aggregate share to obtain differential privacy.
+    fn add_noise_to_result(
+        &self,
+        dp_strategy: &S,
+        agg_result: &mut [Self::Field],
+        num_measurements: usize,
+    ) -> Result<(), FlpError>;
+}
+
 /// A gadget, a non-affine arithmetic circuit that is called when evaluating a validity circuit.
-pub trait Gadget<F: FieldElement>: Debug {
+pub trait Gadget<F: FftFriendlyFieldElement>: Debug {
     /// Evaluates the gadget on input `inp` and returns the output.
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError>;
 
@@ -566,7 +585,7 @@ pub trait Gadget<F: FieldElement>: Debug {
 // A "shim" gadget used during proof generation to record the input wires each time a gadget is
 // evaluated.
 #[derive(Debug)]
-struct ProveShimGadget<F: FieldElement> {
+struct ProveShimGadget<F: FftFriendlyFieldElement> {
     inner: Box<dyn Gadget<F>>,
 
     /// Points at which the wire polynomials are interpolated.
@@ -576,14 +595,15 @@ struct ProveShimGadget<F: FieldElement> {
     ct: usize,
 }
 
-impl<F: FieldElement> ProveShimGadget<F> {
+impl<F: FftFriendlyFieldElement> ProveShimGadget<F> {
     fn new(inner: Box<dyn Gadget<F>>, prove_rand: &[F]) -> Result<Self, FlpError> {
         let mut f_vals = vec![vec![F::zero(); 1 + inner.calls()]; inner.arity()];
 
-        #[allow(clippy::needless_range_loop)]
-        for wire in 0..f_vals.len() {
+        for (prove_rand_val, wire_poly_vals) in
+            prove_rand[..f_vals.len()].iter().zip(f_vals.iter_mut())
+        {
             // Choose a random field element as the first point on the wire polynomial.
-            f_vals[wire][0] = prove_rand[wire];
+            wire_poly_vals[0] = *prove_rand_val;
         }
 
         Ok(Self {
@@ -594,11 +614,10 @@ impl<F: FieldElement> ProveShimGadget<F> {
     }
 }
 
-impl<F: FieldElement> Gadget<F> for ProveShimGadget<F> {
+impl<F: FftFriendlyFieldElement> Gadget<F> for ProveShimGadget<F> {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
-        #[allow(clippy::needless_range_loop)]
-        for wire in 0..inp.len() {
-            self.f_vals[wire][self.ct] = inp[wire];
+        for (wire_poly_vals, inp_val) in self.f_vals[..inp.len()].iter_mut().zip(inp.iter()) {
+            wire_poly_vals[self.ct] = *inp_val;
         }
         self.ct += 1;
         self.inner.call(inp)
@@ -628,7 +647,7 @@ impl<F: FieldElement> Gadget<F> for ProveShimGadget<F> {
 // A "shim" gadget used during proof verification to record the points at which the intermediate
 // proof polynomials are evaluated.
 #[derive(Debug)]
-struct QueryShimGadget<F: FieldElement> {
+struct QueryShimGadget<F: FftFriendlyFieldElement> {
     inner: Box<dyn Gadget<F>>,
 
     /// Points at which intermediate proof polynomials are interpolated.
@@ -647,7 +666,7 @@ struct QueryShimGadget<F: FieldElement> {
     ct: usize,
 }
 
-impl<F: FieldElement> QueryShimGadget<F> {
+impl<F: FftFriendlyFieldElement> QueryShimGadget<F> {
     fn new(inner: Box<dyn Gadget<F>>, r: F, proof_data: &[F]) -> Result<Self, FlpError> {
         let gadget_degree = inner.degree();
         let gadget_arity = inner.arity();
@@ -685,11 +704,10 @@ impl<F: FieldElement> QueryShimGadget<F> {
     }
 }
 
-impl<F: FieldElement> Gadget<F> for QueryShimGadget<F> {
+impl<F: FftFriendlyFieldElement> Gadget<F> for QueryShimGadget<F> {
     fn call(&mut self, inp: &[F]) -> Result<F, FlpError> {
-        #[allow(clippy::needless_range_loop)]
-        for wire in 0..inp.len() {
-            self.f_vals[wire][self.ct] = inp[wire];
+        for (wire_poly_vals, inp_val) in self.f_vals[..inp.len()].iter_mut().zip(inp.iter()) {
+            wire_poly_vals[self.ct] = *inp_val;
         }
         let outp = self.p_vals[self.ct * self.step];
         self.ct += 1;
@@ -728,6 +746,227 @@ pub(crate) fn wire_poly_len(num_calls: usize) -> usize {
 #[inline]
 pub(crate) fn gadget_poly_len(gadget_degree: usize, wire_poly_len: usize) -> usize {
     gadget_degree * (wire_poly_len - 1) + 1
+}
+
+/// Utilities for testing FLPs.
+#[cfg(feature = "test-util")]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-util")))]
+pub mod test_utils {
+    use super::*;
+    use crate::field::{random_vector, FieldElement, FieldElementWithInteger};
+
+    /// Various tests for an FLP.
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-util")))]
+    pub struct FlpTest<'a, T: Type> {
+        /// The FLP.
+        pub flp: &'a T,
+
+        /// Optional test name.
+        pub name: Option<&'a str>,
+
+        /// The input to use for the tests.
+        pub input: &'a [T::Field],
+
+        /// If set, the expected result of truncating the input.
+        pub expected_output: Option<&'a [T::Field]>,
+
+        /// Whether the input is expected to be valid.
+        pub expect_valid: bool,
+    }
+
+    impl<T: Type> FlpTest<'_, T> {
+        /// Construct a test and run it. Expect the input to be valid and compare the truncated
+        /// output to the provided value.
+        pub fn expect_valid<const SHARES: usize>(
+            flp: &T,
+            input: &[T::Field],
+            expected_output: &[T::Field],
+        ) {
+            FlpTest {
+                flp,
+                name: None,
+                input,
+                expected_output: Some(expected_output),
+                expect_valid: true,
+            }
+            .run::<SHARES>()
+        }
+
+        /// Construct a test and run it. Expect the input to be invalid.
+        pub fn expect_invalid<const SHARES: usize>(flp: &T, input: &[T::Field]) {
+            FlpTest {
+                flp,
+                name: None,
+                input,
+                expect_valid: false,
+                expected_output: None,
+            }
+            .run::<SHARES>()
+        }
+
+        /// Construct a test and run it. Expect the input to be valid.
+        pub fn expect_valid_no_output<const SHARES: usize>(flp: &T, input: &[T::Field]) {
+            FlpTest {
+                flp,
+                name: None,
+                input,
+                expect_valid: true,
+                expected_output: None,
+            }
+            .run::<SHARES>()
+        }
+
+        /// Run the tests.
+        pub fn run<const SHARES: usize>(&self) {
+            let name = self.name.unwrap_or("unnamed test");
+
+            assert_eq!(
+                self.input.len(),
+                self.flp.input_len(),
+                "{name}: unexpected input length"
+            );
+
+            let mut gadgets = self.flp.gadget();
+            let joint_rand = random_vector(self.flp.joint_rand_len()).unwrap();
+            let prove_rand = random_vector(self.flp.prove_rand_len()).unwrap();
+            let query_rand = random_vector(self.flp.query_rand_len()).unwrap();
+            assert_eq!(
+                self.flp.query_rand_len(),
+                gadgets.len(),
+                "{name}: unexpected number of gadgets"
+            );
+            assert_eq!(
+                self.flp.joint_rand_len(),
+                joint_rand.len(),
+                "{name}: unexpected joint rand length"
+            );
+            assert_eq!(
+                self.flp.prove_rand_len(),
+                prove_rand.len(),
+                "{name}: unexpected prove rand length",
+            );
+            assert_eq!(
+                self.flp.query_rand_len(),
+                query_rand.len(),
+                "{name}: unexpected query rand length",
+            );
+
+            // Run the validity circuit.
+            let v = self
+                .flp
+                .valid(&mut gadgets, self.input, &joint_rand, 1)
+                .unwrap();
+            assert_eq!(
+                v == T::Field::zero(),
+                self.expect_valid,
+                "{name}: unexpected output of valid() returned {v}",
+            );
+
+            // Generate the proof.
+            let proof = self
+                .flp
+                .prove(self.input, &prove_rand, &joint_rand)
+                .unwrap();
+            assert_eq!(
+                proof.len(),
+                self.flp.proof_len(),
+                "{name}: unexpected proof length"
+            );
+
+            // Query the proof.
+            let verifier = self
+                .flp
+                .query(self.input, &proof, &query_rand, &joint_rand, 1)
+                .unwrap();
+            assert_eq!(
+                verifier.len(),
+                self.flp.verifier_len(),
+                "{name}: unexpected verifier length"
+            );
+
+            // Decide if the input is valid.
+            let res = self.flp.decide(&verifier).unwrap();
+            assert_eq!(res, self.expect_valid, "{name}: unexpected decision");
+
+            // Run distributed FLP.
+            let input_shares = split_vector::<_, SHARES>(self.input);
+            let proof_shares = split_vector::<_, SHARES>(&proof);
+            let verifier: Vec<T::Field> = (0..SHARES)
+                .map(|i| {
+                    self.flp
+                        .query(
+                            &input_shares[i],
+                            &proof_shares[i],
+                            &query_rand,
+                            &joint_rand,
+                            SHARES,
+                        )
+                        .unwrap()
+                })
+                .reduce(|mut left, right| {
+                    for (x, y) in left.iter_mut().zip(right.iter()) {
+                        *x += *y;
+                    }
+                    left
+                })
+                .unwrap();
+
+            let res = self.flp.decide(&verifier).unwrap();
+            assert_eq!(
+                res, self.expect_valid,
+                "{name}: unexpected distributed decision"
+            );
+
+            // Try verifying various proof mutants.
+            for i in 0..std::cmp::min(proof.len(), 10) {
+                let mut mutated_proof = proof.clone();
+                mutated_proof[i] *= T::Field::from(
+                    <T::Field as FieldElementWithInteger>::Integer::try_from(23).unwrap(),
+                );
+                let verifier = self
+                    .flp
+                    .query(self.input, &mutated_proof, &query_rand, &joint_rand, 1)
+                    .unwrap();
+                assert!(
+                    !self.flp.decide(&verifier).unwrap(),
+                    "{name}: proof mutant {} deemed valid",
+                    i
+                );
+            }
+
+            // Try truncating the input.
+            if let Some(ref expected_output) = self.expected_output {
+                let output = self.flp.truncate(self.input.to_vec()).unwrap();
+
+                assert_eq!(
+                    output.len(),
+                    self.flp.output_len(),
+                    "{name}: unexpected output length of truncate()"
+                );
+
+                assert_eq!(
+                    &output, expected_output,
+                    "{name}: unexpected output of truncate()"
+                );
+            }
+        }
+    }
+
+    fn split_vector<F: FieldElement, const SHARES: usize>(inp: &[F]) -> [Vec<F>; SHARES] {
+        let mut outp = Vec::with_capacity(SHARES);
+        outp.push(inp.to_vec());
+
+        for _ in 1..SHARES {
+            let share: Vec<F> =
+                random_vector(inp.len()).expect("failed to generate a random vector");
+            for (x, y) in outp[0].iter_mut().zip(&share) {
+                *x -= *y;
+            }
+            outp.push(share);
+        }
+
+        outp.try_into().unwrap()
+    }
 }
 
 #[cfg(test)]
@@ -800,8 +1039,7 @@ mod tests {
         }
     }
 
-    impl<F: FieldElement> Type for TestType<F> {
-        const ID: u32 = 0xFFFF0000;
+    impl<F: FftFriendlyFieldElement> Type for TestType<F> {
         type Measurement = F::Integer;
         type AggregateResult = F::Integer;
         type Field = F;
@@ -935,8 +1173,7 @@ mod tests {
         }
     }
 
-    impl<F: FieldElement> Type for Issue254Type<F> {
-        const ID: u32 = 0xFFFF0000;
+    impl<F: FftFriendlyFieldElement> Type for Issue254Type<F> {
         type Measurement = F::Integer;
         type AggregateResult = F::Integer;
         type Field = F;

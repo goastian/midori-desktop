@@ -15,13 +15,14 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <memory>
 
 #include "api/sequence_checker.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "modules/audio_device/include/audio_device_defines.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/synchronization/mutex.h"
-#include "rtc_base/task_queue.h"
 #include "rtc_base/thread_annotations.h"
 #include "rtc_base/timestamp_aligner.h"
 
@@ -78,7 +79,11 @@ class AudioDeviceBuffer {
     int16_t max_play_level = 0;
   };
 
-  explicit AudioDeviceBuffer(TaskQueueFactory* task_queue_factory);
+  // If `create_detached` is true, the created buffer can be used on another
+  // thread compared to the one on which it was created. It's useful for
+  // testing.
+  explicit AudioDeviceBuffer(TaskQueueFactory* task_queue_factory,
+                             bool create_detached = false);
   virtual ~AudioDeviceBuffer();
 
   int32_t RegisterAudioCallback(AudioTransport* audio_callback);
@@ -154,7 +159,7 @@ class AudioDeviceBuffer {
   // Task queue used to invoke LogStats() periodically. Tasks are executed on a
   // worker thread but it does not necessarily have to be the same thread for
   // each task.
-  rtc::TaskQueue task_queue_;
+  std::unique_ptr<TaskQueueBase, TaskQueueDeleter> task_queue_;
 
   // Raw pointer to AudioTransport instance. Supplied to RegisterAudioCallback()
   // and it must outlive this object. It is not possible to change this member
@@ -196,6 +201,10 @@ class AudioDeviceBuffer {
 
   // Capture timestamp.
   absl::optional<int64_t> capture_timestamp_ns_;
+  // The last time the Timestamp Aligner was used to estimate clock offset
+  // between system clock and capture time from audio.
+  // This is used to prevent estimating the clock offset too often.
+  absl::optional<int64_t> align_offsync_estimation_time_;
 
   // Counts number of times LogStats() has been called.
   size_t num_stat_reports_ RTC_GUARDED_BY(task_queue_);

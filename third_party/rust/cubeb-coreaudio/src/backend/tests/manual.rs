@@ -152,21 +152,84 @@ fn test_device_collection_change() {
     let _ = std::io::stdin().read_line(&mut input);
 }
 
+struct StreamData {
+    stream_ptr: *mut ffi::cubeb_stream,
+    enable_loopback: AtomicBool,
+}
+
+impl StreamData {
+    fn new() -> Self {
+        Self {
+            stream_ptr: ptr::null_mut(),
+            enable_loopback: AtomicBool::new(false),
+        }
+    }
+}
+
+struct StreamsData {
+    streams: Vec<StreamData>,
+    current_idx: Option<usize>,
+}
+
+impl StreamsData {
+    fn new() -> Self {
+        Self {
+            streams: Vec::new(),
+            current_idx: None,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.streams.len()
+    }
+
+    fn current_mut(&mut self) -> &mut StreamData {
+        &mut self.streams[self.current_idx.unwrap()]
+    }
+
+    fn current(&self) -> &StreamData {
+        &self.streams[self.current_idx.unwrap()]
+    }
+
+    fn select(&mut self, idx: usize) {
+        assert!(idx < self.len());
+        self.current_idx = Some(idx);
+    }
+
+    fn push(&mut self, stream: StreamData) {
+        self.streams.push(stream)
+    }
+}
+
 #[ignore]
 #[test]
 fn test_stream_tester() {
     test_ops_context_operation("context: stream tester", |context_ptr| {
-        let mut stream_ptr: *mut ffi::cubeb_stream = ptr::null_mut();
+        let mut input_prefs = StreamPrefs::NONE;
+        let mut output_prefs = StreamPrefs::NONE;
+        let mut streams = StreamsData::new();
         loop {
             println!(
-                "commands:\n\
+                "Current stream: {} (of {}). Commands:\n\
                  \t'q': quit\n\
+                 \t'b': change current stream\n\
+                 \t'i': set input stream prefs to be used for creating streams\n\
+                 \t'o': set output stream prefs to be used for creating streams\n\
                  \t'c': create a stream\n\
-                 \t'd': destroy a stream\n\
-                 \t's': start the created stream\n\
-                 \t't': stop the created stream\n\
+                 Commands on the current stream:\n\
+                 \t'd': destroy\n\
+                 \t's': start\n\
+                 \t't': stop\n\
                  \t'r': register a device changed callback\n\
-                 \t'v': set volume"
+                 \t'l': set loopback (DUPLEX-only)\n\
+                 \t'v': set volume\n\
+                 \t'm': set input mute\n\
+                 \t'p': set input processing",
+                streams
+                    .current_idx
+                    .map(|i| format!("{}", i + 1 as usize))
+                    .unwrap_or(String::from("N/A")),
+                streams.len(),
             );
 
             let mut command = String::new();
@@ -176,90 +239,339 @@ fn test_stream_tester() {
             match command.as_str() {
                 "q" => {
                     println!("Quit.");
-                    destroy_stream(&mut stream_ptr);
+                    for mut stream in streams.streams {
+                        if !stream.stream_ptr.is_null() {
+                            destroy_stream(&mut stream);
+                        }
+                    }
                     break;
                 }
-                "c" => create_stream(&mut stream_ptr, context_ptr),
-                "d" => destroy_stream(&mut stream_ptr),
-                "s" => start_stream(stream_ptr),
-                "t" => stop_stream(stream_ptr),
-                "r" => register_device_change_callback(stream_ptr),
-                "v" => set_volume(stream_ptr),
-                x => println!("Unknown command: {}", x),
+                "i" => set_prefs(&mut input_prefs),
+                "o" => set_prefs(&mut output_prefs),
+                "c" => create_stream(context_ptr, &mut streams, input_prefs, output_prefs),
+                _ if streams.current_idx.is_none() => {
+                    println!("There are no streams! Create a stream first.")
+                }
+                cmd => match cmd {
+                    "b" => select_stream(&mut streams),
+                    "d" => destroy_stream(streams.current_mut()),
+                    "s" => start_stream(streams.current()),
+                    "t" => stop_stream(streams.current()),
+                    "r" => register_device_change_callback(streams.current()),
+                    "l" => set_loopback(streams.current()),
+                    "v" => set_volume(streams.current()),
+                    "m" => set_input_mute(streams.current()),
+                    "p" => set_input_processing(streams.current()),
+                    x => println!("Unknown command: {}", x),
+                },
             }
         }
     });
 
-    fn start_stream(stream_ptr: *mut ffi::cubeb_stream) {
-        if stream_ptr.is_null() {
+    fn set_prefs(prefs: &mut StreamPrefs) {
+        let mut done = false;
+        while !done {
+            println!(
+                "Current prefs: {:?}\nSelect action:\n\
+                 \t1) Set None\n\
+                 \t2) Toggle Loopback\n\
+                 \t3) Toggle Disable Device Switching\n\
+                 \t4) Toggle Voice\n\
+                 \t5) Set All\n\
+                 \t0) Done",
+                prefs
+            );
+            let mut input = String::new();
+            let _ = io::stdin().read_line(&mut input);
+            assert_eq!(input.pop().unwrap(), '\n');
+            match input.as_str() {
+                "1" => *prefs = StreamPrefs::NONE,
+                "2" => prefs.toggle(StreamPrefs::LOOPBACK),
+                "3" => prefs.toggle(StreamPrefs::DISABLE_DEVICE_SWITCHING),
+                "4" => prefs.toggle(StreamPrefs::VOICE),
+                "5" => *prefs = StreamPrefs::all(),
+                "0" => done = true,
+                _ => println!("Invalid action. Select again.\n"),
+            }
+        }
+    }
+
+    fn select_stream(streams: &mut StreamsData) {
+        let num_streams = streams.len();
+        let current_idx = streams.current_idx.unwrap();
+        println!(
+            "Current stream is {}. Select stream 1 to {} on which to apply commands:",
+            current_idx + 1 as usize,
+            num_streams
+        );
+        let mut selection: Option<usize> = None;
+        while selection.is_none() {
+            let mut input = String::new();
+            let _ = io::stdin().read_line(&mut input);
+            assert_eq!(input.pop().unwrap(), '\n');
+            selection = match input.parse::<usize>() {
+                Ok(i) if (1..=num_streams).contains((&i).into()) => Some(i),
+                _ => {
+                    println!("Invalid stream. Select again.\n");
+                    None
+                }
+            }
+        }
+        streams.select(selection.unwrap() - 1)
+    }
+
+    fn start_stream(stream: &StreamData) {
+        if stream.stream_ptr.is_null() {
             println!("No stream can start.");
             return;
         }
         assert_eq!(
-            unsafe { OPS.stream_start.unwrap()(stream_ptr) },
+            unsafe { OPS.stream_start.unwrap()(stream.stream_ptr) },
             ffi::CUBEB_OK
         );
-        println!("Stream {:p} started.", stream_ptr);
+        println!("Stream {:p} started.", stream.stream_ptr);
     }
 
-    fn stop_stream(stream_ptr: *mut ffi::cubeb_stream) {
-        if stream_ptr.is_null() {
+    fn stop_stream(stream: &StreamData) {
+        if stream.stream_ptr.is_null() {
             println!("No stream can stop.");
             return;
         }
         assert_eq!(
-            unsafe { OPS.stream_stop.unwrap()(stream_ptr) },
+            unsafe { OPS.stream_stop.unwrap()(stream.stream_ptr) },
             ffi::CUBEB_OK
         );
-        println!("Stream {:p} stopped.", stream_ptr);
+        println!("Stream {:p} stopped.", stream.stream_ptr);
     }
 
-    fn set_volume(stream_ptr: *mut ffi::cubeb_stream) {
-        if stream_ptr.is_null() {
+    fn set_volume(stream: &StreamData) {
+        if stream.stream_ptr.is_null() {
             println!("No stream can set volume.");
             return;
         }
         const VOL: f32 = 0.5;
         assert_eq!(
-            unsafe { OPS.stream_set_volume.unwrap()(stream_ptr, VOL) },
+            unsafe { OPS.stream_set_volume.unwrap()(stream.stream_ptr, VOL) },
             ffi::CUBEB_OK
         );
-        println!("Set stream {:p} volume to {}", stream_ptr, VOL);
+        println!("Set stream {:p} volume to {}", stream.stream_ptr, VOL);
     }
 
-    fn register_device_change_callback(stream_ptr: *mut ffi::cubeb_stream) {
+    fn set_loopback(stream: &StreamData) {
+        if stream.stream_ptr.is_null() {
+            println!("No stream can set loopback.");
+            return;
+        }
+        let stm = unsafe { &mut *(stream.stream_ptr as *mut AudioUnitStream) };
+        if !stm.core_stream_data.has_input() || !stm.core_stream_data.has_output() {
+            println!("Duplex stream needed to set loopback");
+            return;
+        }
+        let mut loopback: Option<bool> = None;
+        while loopback.is_none() {
+            println!("Select action:\n1) Enable loopback, 2) Disable loopback");
+            let mut input = String::new();
+            let _ = io::stdin().read_line(&mut input);
+            assert_eq!(input.pop().unwrap(), '\n');
+            loopback = match input.as_str() {
+                "1" => Some(true),
+                "2" => Some(false),
+                _ => {
+                    println!("Invalid action. Select again.\n");
+                    None
+                }
+            }
+        }
+        let loopback = loopback.unwrap();
+        stream.enable_loopback.store(loopback, Ordering::SeqCst);
+        println!(
+            "Loopback {} for stream {:p}",
+            if loopback { "enabled" } else { "disabled" },
+            stream.stream_ptr
+        );
+    }
+
+    fn set_input_mute(stream: &StreamData) {
+        if stream.stream_ptr.is_null() {
+            println!("No stream can set input mute.");
+            return;
+        }
+        let stm = unsafe { &mut *(stream.stream_ptr as *mut AudioUnitStream) };
+        if !stm.core_stream_data.has_input() {
+            println!("Input stream needed to set loopback");
+            return;
+        }
+        let mut mute: Option<bool> = None;
+        while mute.is_none() {
+            println!("Select action:\n1) Mute, 2) Unmute");
+            let mut input = String::new();
+            let _ = io::stdin().read_line(&mut input);
+            assert_eq!(input.pop().unwrap(), '\n');
+            mute = match input.as_str() {
+                "1" => Some(true),
+                "2" => Some(false),
+                _ => {
+                    println!("Invalid action. Select again.\n");
+                    None
+                }
+            }
+        }
+        let mute = mute.unwrap();
+        let res = unsafe { OPS.stream_set_input_mute.unwrap()(stream.stream_ptr, mute.into()) };
+        println!(
+            "{} set stream {:p} input {}",
+            if res == ffi::CUBEB_OK {
+                "Successfully"
+            } else {
+                "Failed to"
+            },
+            stream.stream_ptr,
+            if mute { "mute" } else { "unmute" }
+        );
+    }
+
+    fn set_input_processing(stream: &StreamData) {
+        if stream.stream_ptr.is_null() {
+            println!("No stream can set input processing.");
+            return;
+        }
+        let stm = unsafe { &mut *(stream.stream_ptr as *mut AudioUnitStream) };
+        if !stm.core_stream_data.using_voice_processing_unit() {
+            println!("Duplex stream with voice processing needed to set input processing params");
+            return;
+        }
+        let mut params = InputProcessingParams::NONE;
+        run_serially(|| {
+            let mut bypass = u32::from(true);
+            let mut size: usize = mem::size_of::<u32>();
+            assert_eq!(
+                audio_unit_get_property(
+                    stm.core_stream_data.input_unit,
+                    kAudioUnitProperty_BypassEffect,
+                    kAudioUnitScope_Global,
+                    AU_IN_BUS,
+                    &mut bypass,
+                    &mut size,
+                ),
+                NO_ERR
+            );
+            assert_eq!(size, mem::size_of::<u32>());
+            if bypass == 0 {
+                params.set(InputProcessingParams::ECHO_CANCELLATION, true);
+                params.set(InputProcessingParams::NOISE_SUPPRESSION, true);
+            }
+            let mut agc = u32::from(false);
+            let mut size: usize = mem::size_of::<u32>();
+            assert_eq!(
+                audio_unit_get_property(
+                    stm.core_stream_data.input_unit,
+                    kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                    kAudioUnitScope_Global,
+                    AU_IN_BUS,
+                    &mut agc,
+                    &mut size,
+                ),
+                NO_ERR
+            );
+            assert_eq!(size, mem::size_of::<u32>());
+            if agc == 1 {
+                params.set(InputProcessingParams::AUTOMATIC_GAIN_CONTROL, true);
+            }
+        });
+        let mut done = false;
+        while !done {
+            println!(
+                "Supported params: {:?}\nCurrent params: {:?}\nSelect action:\n\
+                 \t1) Set None\n\
+                 \t2) Toggle Echo Cancellation\n\
+                 \t3) Toggle Noise Suppression\n\
+                 \t4) Toggle Automatic Gain Control\n\
+                 \t5) Toggle Voice Isolation\n\
+                 \t6) Set All\n\
+                 \t0) Done",
+                stm.context.supported_input_processing_params().unwrap(),
+                params
+            );
+            let mut input = String::new();
+            let _ = io::stdin().read_line(&mut input);
+            assert_eq!(input.pop().unwrap(), '\n');
+            match input.as_str() {
+                "1" => params = InputProcessingParams::NONE,
+                "2" => params.toggle(InputProcessingParams::ECHO_CANCELLATION),
+                "3" => params.toggle(InputProcessingParams::NOISE_SUPPRESSION),
+                "4" => params.toggle(InputProcessingParams::AUTOMATIC_GAIN_CONTROL),
+                "5" => params.toggle(InputProcessingParams::VOICE_ISOLATION),
+                "6" => params = InputProcessingParams::all(),
+                "0" => done = true,
+                _ => println!("Invalid action. Select again.\n"),
+            }
+        }
+        let res = unsafe {
+            OPS.stream_set_input_processing_params.unwrap()(stream.stream_ptr, params.bits())
+        };
+        println!(
+            "{} set stream {:p} input processing params to {:?}",
+            if res == ffi::CUBEB_OK {
+                "Successfully"
+            } else {
+                "Failed to"
+            },
+            stream.stream_ptr,
+            params,
+        );
+    }
+
+    fn register_device_change_callback(stream: &StreamData) {
         extern "C" fn callback(user_ptr: *mut c_void) {
             println!("user pointer @ {:p}", user_ptr);
             assert!(user_ptr.is_null());
         }
 
-        if stream_ptr.is_null() {
+        if stream.stream_ptr.is_null() {
             println!("No stream for registering the callback.");
             return;
         }
         assert_eq!(
             unsafe {
-                OPS.stream_register_device_changed_callback.unwrap()(stream_ptr, Some(callback))
+                OPS.stream_register_device_changed_callback.unwrap()(
+                    stream.stream_ptr,
+                    Some(callback),
+                )
             },
             ffi::CUBEB_OK
         );
-        println!("Stream {:p} now has a device change callback.", stream_ptr);
+        println!(
+            "Stream {:p} now has a device change callback.",
+            stream.stream_ptr
+        );
     }
 
-    fn destroy_stream(stream_ptr: &mut *mut ffi::cubeb_stream) {
-        if stream_ptr.is_null() {
+    fn destroy_stream(stream: &mut StreamData) {
+        if stream.stream_ptr.is_null() {
             println!("No need to destroy stream.");
             return;
         }
         unsafe {
-            OPS.stream_destroy.unwrap()(*stream_ptr);
+            OPS.stream_destroy.unwrap()((*stream).stream_ptr);
         }
-        println!("Stream {:p} destroyed.", *stream_ptr);
-        *stream_ptr = ptr::null_mut();
+        println!("Stream {:p} destroyed.", stream.stream_ptr);
+        stream.stream_ptr = ptr::null_mut();
     }
 
-    fn create_stream(stream_ptr: &mut *mut ffi::cubeb_stream, context_ptr: *mut ffi::cubeb) {
-        if !stream_ptr.is_null() {
+    fn create_stream(
+        context_ptr: *mut ffi::cubeb,
+        streams: &mut StreamsData,
+        input_prefs: StreamPrefs,
+        output_prefs: StreamPrefs,
+    ) {
+        if streams.len() == 0 || !streams.current().stream_ptr.is_null() {
+            println!("Allocating stream {}.", streams.len() + 1);
+            streams.push(StreamData::new());
+            streams.select(streams.len() - 1);
+        }
+
+        let stream = streams.current_mut();
+        if !stream.stream_ptr.is_null() {
             println!("Stream has been created.");
             return;
         }
@@ -328,8 +640,8 @@ fn test_stream_tester() {
             }
         };
 
-        let mut input_params = get_dummy_stream_params(Scope::Input);
-        let mut output_params = get_dummy_stream_params(Scope::Output);
+        let mut input_params = get_dummy_stream_params(Scope::Input, input_prefs);
+        let mut output_params = get_dummy_stream_params(Scope::Output, output_prefs);
 
         let (input_device, input_stream_params) = if stream_type.contains(StreamType::INPUT) {
             (
@@ -361,7 +673,7 @@ fn test_stream_tester() {
             unsafe {
                 OPS.stream_init.unwrap()(
                     context_ptr,
-                    stream_ptr,
+                    &mut stream.stream_ptr,
                     stream_name.as_ptr(),
                     input_device as ffi::cubeb_devid,
                     input_stream_params,
@@ -370,13 +682,13 @@ fn test_stream_tester() {
                     4096, // latency
                     Some(data_callback),
                     Some(state_callback),
-                    ptr::null_mut(), // user pointer
+                    &stream.enable_loopback as *const AtomicBool as *mut c_void, // user pointer
                 )
             },
             ffi::CUBEB_OK
         );
-        assert!(!stream_ptr.is_null());
-        println!("Stream {:p} created.", *stream_ptr);
+        assert!(!stream.stream_ptr.is_null());
+        println!("Stream {:p} created.", stream.stream_ptr);
 
         extern "C" fn state_callback(
             stream: *mut ffi::cubeb_stream,
@@ -390,15 +702,37 @@ fn test_stream_tester() {
 
         extern "C" fn data_callback(
             stream: *mut ffi::cubeb_stream,
-            _user_ptr: *mut c_void,
-            _input_buffer: *const c_void,
+            user_ptr: *mut c_void,
+            input_buffer: *const c_void,
             output_buffer: *mut c_void,
             nframes: i64,
         ) -> i64 {
             assert!(!stream.is_null());
 
-            // Feed silence data to output buffer
-            if !output_buffer.is_null() {
+            let enable_loopback = unsafe { &mut *(user_ptr as *mut AtomicBool) };
+            let loopback = enable_loopback.load(Ordering::SeqCst);
+            if loopback && !input_buffer.is_null() && !output_buffer.is_null() {
+                // Dupe the mono input to stereo
+                let stm = unsafe { &mut *(stream as *mut AudioUnitStream) };
+                assert_eq!(stm.core_stream_data.input_stream_params.channels(), 1);
+                let channels = stm.core_stream_data.output_stream_params.channels() as usize;
+                let sample_size =
+                    cubeb_sample_size(stm.core_stream_data.output_stream_params.format());
+                for f in 0..(nframes as usize) {
+                    let input_offset = f * sample_size;
+                    let output_offset = input_offset * channels;
+                    for c in 0..channels {
+                        unsafe {
+                            ptr::copy(
+                                input_buffer.add(input_offset) as *const u8,
+                                output_buffer.add(output_offset + (sample_size * c)) as *mut u8,
+                                sample_size,
+                            )
+                        };
+                    }
+                }
+            } else if !output_buffer.is_null() {
+                // Feed silence data to output buffer
                 let stm = unsafe { &mut *(stream as *mut AudioUnitStream) };
                 let channels = stm.core_stream_data.output_stream_params.channels();
                 let samples = nframes as usize * channels as usize;
@@ -412,14 +746,14 @@ fn test_stream_tester() {
             nframes
         }
 
-        fn get_dummy_stream_params(scope: Scope) -> ffi::cubeb_stream_params {
+        fn get_dummy_stream_params(scope: Scope, prefs: StreamPrefs) -> ffi::cubeb_stream_params {
             // The stream format for input and output must be same.
             const STREAM_FORMAT: u32 = ffi::CUBEB_SAMPLE_FLOAT32NE;
 
             // Make sure the parameters meet the requirements of AudioUnitContext::stream_init
             // (in the comments).
             let mut stream_params = ffi::cubeb_stream_params::default();
-            stream_params.prefs = ffi::CUBEB_STREAM_PREF_NONE;
+            stream_params.prefs = prefs.bits();
             let (format, rate, channels, layout) = match scope {
                 Scope::Input => (STREAM_FORMAT, 48000, 1, ffi::CUBEB_LAYOUT_MONO),
                 Scope::Output => (STREAM_FORMAT, 44100, 2, ffi::CUBEB_LAYOUT_STEREO),
@@ -431,4 +765,131 @@ fn test_stream_tester() {
             stream_params
         }
     }
+}
+
+// Simple stereo tone test
+#[ignore]
+#[test]
+fn test_tone() {
+    let devices = test_get_devices_in_scope(Scope::Output);
+    for (_, device) in devices.iter().enumerate() {
+        let info = TestDeviceInfo::new(*device, Scope::Output);
+        let mut pa = AudioObjectPropertyAddress::default();
+        pa.mSelector = kAudioDevicePropertyPreferredChannelsForStereo;
+        pa.mScope = kAudioDevicePropertyScopeOutput;
+        pa.mElement = kAudioObjectPropertyElementMaster;
+        get_serial_queue_singleton().run_sync(|| {
+            let mut ssize: usize = 8;
+            let mut value = [0 as u32; 2];
+            let r = audio_object_get_property_data(*device, &pa, &mut ssize, &mut value);
+            if r != 0 {
+                eprintln!("Error getting prop data");
+            }
+            println!(
+                "{}: Channels for the stereo pair are [{}, {}]",
+                info.label, value[0], value[1]
+            );
+        });
+    }
+    fn test_impl(ch_count: usize) {
+        use std::f32::consts::PI;
+        use std::thread;
+        use std::time::Duration;
+
+        const SAMPLE_FREQUENCY: u32 = 48000;
+
+        // Make sure the parameters meet the requirements of AudioUnitContext::stream_init
+        // (in the comments).
+        let mut output_params = ffi::cubeb_stream_params::default();
+        output_params.format = ffi::CUBEB_SAMPLE_FLOAT32NE;
+        output_params.rate = SAMPLE_FREQUENCY;
+        output_params.channels = ch_count as u32;
+        output_params.layout = if ch_count == 1 {
+            ffi::CUBEB_LAYOUT_MONO
+        } else {
+            ffi::CUBEB_LAYOUT_STEREO
+        };
+        output_params.prefs = ffi::CUBEB_STREAM_PREF_NONE;
+
+        struct Closure {
+            phase: i64,
+            channel_count: usize,
+        }
+        let mut closure = Closure {
+            phase: 0,
+            channel_count: ch_count,
+        };
+        let closure_ptr = &mut closure as *mut Closure as *mut c_void;
+
+        test_ops_stream_operation(
+            "tone",
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut output_params,
+            4096, // TODO: Get latency by get_min_latency instead ?
+            Some(data_callback),
+            Some(state_callback),
+            closure_ptr,
+            |stream| {
+                assert_eq!(unsafe { OPS.stream_start.unwrap()(stream) }, ffi::CUBEB_OK);
+                thread::sleep(Duration::from_millis(1000));
+                assert_eq!(unsafe { OPS.stream_stop.unwrap()(stream) }, ffi::CUBEB_OK);
+            },
+        );
+
+        extern "C" fn state_callback(
+            stream: *mut ffi::cubeb_stream,
+            user_ptr: *mut c_void,
+            state: ffi::cubeb_state,
+        ) {
+            assert!(!stream.is_null());
+            assert!(!user_ptr.is_null());
+            assert_ne!(state, ffi::CUBEB_STATE_ERROR);
+        }
+
+        extern "C" fn data_callback(
+            stream: *mut ffi::cubeb_stream,
+            user_ptr: *mut c_void,
+            _input_buffer: *const c_void,
+            output_buffer: *mut c_void,
+            nframes: i64,
+        ) -> i64 {
+            assert!(!stream.is_null());
+            assert!(!user_ptr.is_null());
+            assert!(!output_buffer.is_null());
+
+            let closure = unsafe { &mut *(user_ptr as *mut Closure) };
+
+            let buffer = unsafe {
+                let ptr = output_buffer as *mut f32;
+                let len = closure.channel_count * nframes as usize;
+                slice::from_raw_parts_mut(ptr, len)
+            };
+
+            for (i, e) in buffer.iter_mut().enumerate() {
+                // If stereo, L is 220Hz, R is 440Hz. If mono, 220Hz
+                let tone = (2.0
+                    * PI
+                    * (if i % closure.channel_count == 0 {
+                        220.0
+                    } else {
+                        440.0
+                    })
+                    * (closure.phase) as f32
+                    / SAMPLE_FREQUENCY as f32)
+                    .sin();
+                *e = tone;
+                if closure.channel_count > 1 {
+                    closure.phase += (i % closure.channel_count) as i64;
+                } else {
+                    closure.phase += 1;
+                }
+            }
+
+            nframes
+        }
+    }
+    test_impl(2);
+    test_impl(1);
 }

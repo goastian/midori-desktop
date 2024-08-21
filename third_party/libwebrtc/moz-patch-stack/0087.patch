@@ -1,34 +1,38 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Mon, 27 Feb 2023 16:22:00 +0000
-Subject: Bug 1817024 - (fix-fdcfefa708) In PhysicalSocket avoid a non-trivial
- designated initializer. r=mjf,webrtc-reviewers
+From: stransky <stransky@redhat.com>
+Date: Tue, 29 Aug 2023 12:43:00 +0000
+Subject: Bug 1821629 [DMABuf] Don't use DMABuf if it's disabled by Firefox gfx
+ config r=ng,webrtc-reviewers
 
-This fixes a build failure in the base-toolchain job with GCC 7.5.0:
-  In file included from Unified_cpp_threading_gn0.cpp:38:0:
-  .../third_party/libwebrtc/rtc_base/physical_socket_server.cc: In member function 'int rtc::PhysicalSocket::DoReadFromSocket(void*, size_t, rtc::SocketAddress*, int64_t*)':
-  .../third_party/libwebrtc/rtc_base/physical_socket_server.cc:463:51: sorry, unimplemented: non-trivial designated initializers not supported
-       msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
-                                                   ^
-
-Differential Revision: https://phabricator.services.mozilla.com/D171057
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/a3447f709befd84a282ca40f29b7a5ea76d5b68d
+Differential Revision: https://phabricator.services.mozilla.com/D172224
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/158a888cad8869a2f0026fa7cfaaa13ecbfcf2ed
 ---
- rtc_base/physical_socket_server.cc | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ .../linux/wayland/shared_screencast_stream.cc            | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
 
-diff --git a/rtc_base/physical_socket_server.cc b/rtc_base/physical_socket_server.cc
-index 60d024c769..3b112e6188 100644
---- a/rtc_base/physical_socket_server.cc
-+++ b/rtc_base/physical_socket_server.cc
-@@ -460,7 +460,7 @@ int PhysicalSocket::DoReadFromSocket(void* buffer,
-   int received = 0;
-   if (read_scm_timestamp_experiment_) {
-     iovec iov = {.iov_base = buffer, .iov_len = length};
--    msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
-+    msghdr msg = {.msg_name = nullptr, .msg_namelen = 0, .msg_iov = &iov, .msg_iovlen = 1};
-     if (out_addr) {
-       out_addr->Clear();
-       msg.msg_name = addr;
--- 
-2.34.1
-
+diff --git a/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc b/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc
+index 6998d655c2..1065adbc60 100644
+--- a/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc
++++ b/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc
+@@ -27,6 +27,13 @@
+ #include "rtc_base/synchronization/mutex.h"
+ #include "rtc_base/time_utils.h"
+ 
++// Wrapper for gfxVars::UseDMABuf() as we can't include gfxVars here.
++// We don't want to use dmabuf of known broken systems.
++// See FEATURE_DMABUF for details.
++namespace mozilla::gfx {
++bool IsDMABufEnabled();
++}
++
+ namespace webrtc {
+ 
+ const int kBytesPerPixel = 4;
+@@ -266,7 +273,7 @@ void SharedScreenCastStreamPrivate::OnStreamParamChanged(
+   that->modifier_ =
+       has_modifier ? that->spa_video_format_.modifier : DRM_FORMAT_MOD_INVALID;
+   std::vector<const spa_pod*> params;
+-  const int buffer_types = has_modifier
++  const int buffer_types = has_modifier && mozilla::gfx::IsDMABufEnabled()
+                                ? (1 << SPA_DATA_DmaBuf) | (1 << SPA_DATA_MemFd)
+                                : (1 << SPA_DATA_MemFd);
+ 

@@ -34,22 +34,21 @@ enum NT_Elf {
     //NT_PRPSINFO = 3,
     //NT_TASKSTRUCT = 4,
     //NT_AUXV = 6,
-}
-
-#[inline]
-pub fn to_u128(slice: &[u32]) -> &[u128] {
-    unsafe { std::slice::from_raw_parts(slice.as_ptr().cast(), slice.len().saturating_div(4)) }
-}
-
-#[inline]
-pub fn copy_registers(dst: &mut [u128], src: &[u128]) {
-    let to_copy = std::cmp::min(dst.len(), src.len());
-    dst[..to_copy].copy_from_slice(&src[..to_copy]);
+    NT_ARM_VFP = 0x400, // ARM VFP/NEON registers
 }
 
 #[inline]
 pub fn copy_u32_registers(dst: &mut [u128], src: &[u32]) {
-    copy_registers(dst, to_u128(src));
+    // SAFETY: We are copying a block of memory from ptrace as u32s to the u128
+    // format of minidump-common
+    unsafe {
+        let dst: &mut [u8] =
+            std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast(), dst.len() * 16);
+        let src: &[u8] = std::slice::from_raw_parts(src.as_ptr().cast(), src.len() * 4);
+
+        let to_copy = std::cmp::min(dst.len(), src.len());
+        dst[..to_copy].copy_from_slice(&src[..to_copy]);
+    }
 }
 
 trait CommonThreadInfo {
@@ -96,14 +95,14 @@ trait CommonThreadInfo {
     /// and therefore use the data field to return values. This function handles these
     /// requests.
     fn ptrace_get_data<T>(
-        request: ptrace::Request,
+        request: ptrace::RequestType,
         flag: Option<NT_Elf>,
         pid: nix::unistd::Pid,
     ) -> Result<T> {
         let mut data = std::mem::MaybeUninit::uninit();
         let res = unsafe {
             libc::ptrace(
-                request as ptrace::RequestType,
+                request,
                 libc::pid_t::from(pid),
                 flag.unwrap_or(NT_Elf::NT_NONE),
                 data.as_mut_ptr(),
@@ -119,7 +118,7 @@ trait CommonThreadInfo {
     /// and therefore use the data field to return values. This function handles these
     /// requests.
     fn ptrace_get_data_via_io<T>(
-        request: ptrace::Request,
+        request: ptrace::RequestType,
         flag: Option<NT_Elf>,
         pid: nix::unistd::Pid,
     ) -> Result<T> {
@@ -130,7 +129,7 @@ trait CommonThreadInfo {
         };
         let res = unsafe {
             libc::ptrace(
-                request as ptrace::RequestType,
+                request,
                 libc::pid_t::from(pid),
                 flag.unwrap_or(NT_Elf::NT_NONE),
                 &io as *const _,
@@ -142,19 +141,14 @@ trait CommonThreadInfo {
 
     /// COPY FROM CRATE nix BECAUSE ITS NOT PUBLIC
     fn ptrace_peek(
-        request: ptrace::Request,
+        request: ptrace::RequestType,
         pid: unistd::Pid,
         addr: ptrace::AddressType,
         data: *mut libc::c_void,
     ) -> nix::Result<libc::c_long> {
         let ret = unsafe {
             Errno::clear();
-            libc::ptrace(
-                request as ptrace::RequestType,
-                libc::pid_t::from(pid),
-                addr,
-                data,
-            )
+            libc::ptrace(request, libc::pid_t::from(pid), addr, data)
         };
         match Errno::result(ret) {
             Ok(..) | Err(Errno::UnknownErrno) => Ok(ret),

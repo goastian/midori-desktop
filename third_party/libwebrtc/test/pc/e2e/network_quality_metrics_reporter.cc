@@ -27,11 +27,6 @@ using ::webrtc::test::Unit;
 
 constexpr TimeDelta kStatsWaitTimeout = TimeDelta::Seconds(1);
 
-// Field trial which controls whether to report standard-compliant bytes
-// sent/received per stream.  If enabled, padding and headers are not included
-// in bytes sent or received.
-constexpr char kUseStandardBytesStats[] = "WebRTC-UseStandardBytesStats";
-
 }  // namespace
 
 NetworkQualityMetricsReporter::NetworkQualityMetricsReporter(
@@ -42,6 +37,19 @@ NetworkQualityMetricsReporter::NetworkQualityMetricsReporter(
       bob_network_(bob_network),
       metrics_logger_(metrics_logger) {
   RTC_CHECK(metrics_logger_);
+}
+
+NetworkQualityMetricsReporter::NetworkQualityMetricsReporter(
+    absl::string_view alice_network_label,
+    EmulatedNetworkManagerInterface* alice_network,
+    absl::string_view bob_network_label,
+    EmulatedNetworkManagerInterface* bob_network,
+    test::MetricsLogger* metrics_logger)
+    : NetworkQualityMetricsReporter(alice_network,
+                                    bob_network,
+                                    metrics_logger) {
+  alice_network_label_ = std::string(alice_network_label);
+  bob_network_label_ = std::string(bob_network_label);
 }
 
 void NetworkQualityMetricsReporter::Start(
@@ -63,18 +71,17 @@ void NetworkQualityMetricsReporter::OnStatsReports(
   DataSize payload_received = DataSize::Zero();
   DataSize payload_sent = DataSize::Zero();
 
-  auto inbound_stats = report->GetStatsOfType<RTCInboundRTPStreamStats>();
+  auto inbound_stats = report->GetStatsOfType<RTCInboundRtpStreamStats>();
   for (const auto& stat : inbound_stats) {
     payload_received +=
-        DataSize::Bytes(stat->bytes_received.ValueOrDefault(0ul) +
-                        stat->header_bytes_received.ValueOrDefault(0ul));
+        DataSize::Bytes(stat->bytes_received.value_or(0ul) +
+                        stat->header_bytes_received.value_or(0ul));
   }
 
-  auto outbound_stats = report->GetStatsOfType<RTCOutboundRTPStreamStats>();
+  auto outbound_stats = report->GetStatsOfType<RTCOutboundRtpStreamStats>();
   for (const auto& stat : outbound_stats) {
-    payload_sent +=
-        DataSize::Bytes(stat->bytes_sent.ValueOrDefault(0ul) +
-                        stat->header_bytes_sent.ValueOrDefault(0ul));
+    payload_sent += DataSize::Bytes(stat->bytes_sent.value_or(0ul) +
+                                    stat->header_bytes_sent.value_or(0ul));
   }
 
   MutexLock lock(&lock_);
@@ -92,13 +99,8 @@ void NetworkQualityMetricsReporter::StopAndReportResults() {
   int64_t bob_packets_loss =
       bob_stats.overall_outgoing_stats.packets_sent -
       alice_stats.overall_incoming_stats.packets_received;
-  ReportStats("alice", alice_stats, alice_packets_loss);
-  ReportStats("bob", bob_stats, bob_packets_loss);
-
-  if (!webrtc::field_trial::IsEnabled(kUseStandardBytesStats)) {
-    RTC_LOG(LS_ERROR)
-        << "Non-standard GetStats; \"payload\" counts include RTP headers";
-  }
+  ReportStats(alice_network_label_, alice_stats, alice_packets_loss);
+  ReportStats(bob_network_label_, bob_stats, bob_packets_loss);
 
   MutexLock lock(&lock_);
   for (const auto& pair : pc_stats_) {

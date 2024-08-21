@@ -11,6 +11,7 @@ import("../webrtc.gni")
 if (is_android) {
   import("//build/config/android/config.gni")
   import("//build/config/android/rules.gni")
+  import("//third_party/jni_zero/jni_zero.gni")
 } else if (is_mac) {
   import("//build/config/mac/rules.gni")
 } else if (is_ios) {
@@ -28,7 +29,9 @@ group("examples") {
     deps += [
       ":AppRTCMobile",
       ":AppRTCMobile_test_apk",
-      ":libwebrtc_unity",
+
+      #TODO(https://bugs.webrtc.org/15095) - Fix or remove this target.
+      #":libwebrtc_unity",
       "androidvoip",
     ]
 
@@ -56,10 +59,6 @@ group("examples") {
     if (current_os != "winuwp") {
       deps += [ ":peerconnection_client" ]
     }
-  }
-
-  if (is_android || is_win) {
-    deps += [ ":webrtc_unity_plugin" ]
   }
 }
 
@@ -221,7 +220,7 @@ if (is_android) {
       "../sdk/android:peerconnection_java",
       "../sdk/android:video_api_java",
       "../sdk/android:video_java",
-      "//third_party/android_support_test_runner:runner_java",
+      "//third_party/androidx:androidx_test_monitor_java",
       "//third_party/androidx:androidx_test_runner_java",
       "//third_party/junit",
     ]
@@ -350,7 +349,7 @@ if (is_ios || (is_mac && target_cpu != "x86")) {
         "../sdk:videocapture_objc",
         "../sdk:videocodec_objc",
       ]
-      if (rtc_ios_macos_use_opengl_rendering) {
+      if (rtc_ios_use_opengl_rendering) {
         deps += [ "../sdk:opengl_ui_objc" ]
       }
 
@@ -486,6 +485,7 @@ if (is_ios || (is_mac && target_cpu != "x86")) {
       ]
 
       deps = [
+        "../api:enable_media",
         "../api:libjingle_peerconnection_api",
         "../api:scoped_refptr",
         "../api:sequence_checker",
@@ -493,7 +493,6 @@ if (is_ios || (is_mac && target_cpu != "x86")) {
         "../api/audio_codecs:builtin_audio_encoder_factory",
         "../api/rtc_event_log:rtc_event_log_factory",
         "../api/task_queue:default_task_queue_factory",
-        "../media:rtc_audio_video",
         "../modules/audio_processing",
         "../modules/audio_processing:api",
         "../pc:libjingle_peerconnection",
@@ -507,7 +506,7 @@ if (is_ios || (is_mac && target_cpu != "x86")) {
         "../sdk:videotoolbox_objc",
       ]
 
-      if (rtc_ios_macos_use_opengl_rendering) {
+      if (rtc_ios_use_opengl_rendering) {
         deps += [ "../sdk:opengl_ui_objc" ]
       }
     }
@@ -546,7 +545,6 @@ if (is_ios || (is_mac && target_cpu != "x86")) {
         "../sdk:helpers_objc",
         "../sdk:mediaconstraints_objc",
         "../sdk:metal_objc",
-        "../sdk:opengl_ui_objc",
         "../sdk:peerconnectionfactory_base_objc",
         "../sdk:peerconnectionfactory_base_objc",
         "../sdk:videocapture_objc",
@@ -684,6 +682,7 @@ if (is_linux || is_chromeos || is_win) {
     ]
 
     deps = [
+      "../api:async_dns_resolver",
       "../api:audio_options_api",
       "../api:create_peerconnection_factory",
       "../api:libjingle_peerconnection_api",
@@ -698,9 +697,12 @@ if (is_linux || is_chromeos || is_win) {
       "../api/video:video_rtp_headers",
       "../api/video_codecs:video_codecs_api",
       "../media:media_channel",
-      "../media:rtc_media_base",
+      "../media:video_common",
+      "../p2p:connection",
+      "../p2p:port_allocator",
       "../p2p:rtc_p2p",
       "../pc:video_track_source",
+      "../rtc_base:async_dns_resolver",
       "../rtc_base:checks",
       "../rtc_base:logging",
       "../rtc_base:macromagic",
@@ -727,7 +729,6 @@ if (is_linux || is_chromeos || is_win) {
       ]
       configs += [ "//build/config/win:windowed" ]
       deps += [
-        "../media:rtc_media_base",
         "../rtc_base:win32",
         "../rtc_base:win32_socket_init",
       ]
@@ -754,8 +755,16 @@ if (is_linux || is_chromeos || is_win) {
       "../api/audio_codecs:builtin_audio_encoder_factory",
       "../api/video:video_frame",
       "../api/video:video_rtp_headers",
-      "../api/video_codecs:builtin_video_decoder_factory",
-      "../api/video_codecs:builtin_video_encoder_factory",
+      "../api/video_codecs:video_decoder_factory_template",
+      "../api/video_codecs:video_decoder_factory_template_dav1d_adapter",
+      "../api/video_codecs:video_decoder_factory_template_libvpx_vp8_adapter",
+      "../api/video_codecs:video_decoder_factory_template_libvpx_vp9_adapter",
+      "../api/video_codecs:video_decoder_factory_template_open_h264_adapter",
+      "../api/video_codecs:video_encoder_factory_template",
+      "../api/video_codecs:video_encoder_factory_template_libaom_av1_adapter",
+      "../api/video_codecs:video_encoder_factory_template_libvpx_vp8_adapter",
+      "../api/video_codecs:video_encoder_factory_template_libvpx_vp9_adapter",
+      "../api/video_codecs:video_encoder_factory_template_open_h264_adapter",
       "../media:rtc_audio_video",
       "../modules/audio_device",
       "../modules/audio_processing",
@@ -796,7 +805,9 @@ if (is_linux || is_chromeos || is_win) {
     sources = [ "turnserver/turnserver_main.cc" ]
     deps = [
       ":read_auth_file",
+      "../p2p:basic_packet_socket_factory",
       "../p2p:p2p_server_utils",
+      "../p2p:port_interface",
       "../p2p:rtc_p2p",
       "../pc:rtc_pc",
       "../rtc_base:async_udp_socket",
@@ -822,93 +833,7 @@ if (is_linux || is_chromeos || is_win) {
   }
 }
 
-if (is_win || is_android) {
-  rtc_shared_library("webrtc_unity_plugin") {
-    testonly = true
-    sources = [
-      "unityplugin/simple_peer_connection.cc",
-      "unityplugin/simple_peer_connection.h",
-      "unityplugin/unity_plugin_apis.cc",
-      "unityplugin/unity_plugin_apis.h",
-      "unityplugin/video_observer.cc",
-      "unityplugin/video_observer.h",
-    ]
-
-    if (is_android) {
-      sources += [
-        "unityplugin/class_reference_holder.cc",
-        "unityplugin/class_reference_holder.h",
-        "unityplugin/jni_onload.cc",
-      ]
-      suppressed_configs += [ "//build/config/android:hide_all_but_jni_onload" ]
-    }
-
-    if (is_win) {
-      configs += [ "//build/config/win:windowed" ]
-    }
-    deps = [
-      "../api:create_peerconnection_factory",
-      "../api:libjingle_peerconnection_api",
-      "../api:media_stream_interface",
-      "../api/audio_codecs:builtin_audio_decoder_factory",
-      "../api/audio_codecs:builtin_audio_encoder_factory",
-      "../api/video:video_frame",
-      "../api/video:video_rtp_headers",
-      "../media:rtc_audio_video",
-      "../media:rtc_internal_video_codecs",
-      "../media:rtc_media",
-      "../media:rtc_media_base",
-      "../modules/audio_device",
-      "../modules/audio_processing",
-      "../modules/audio_processing:api",
-      "../modules/video_capture:video_capture_module",
-      "../pc:libjingle_peerconnection",
-      "../pc:video_track_source",
-      "../rtc_base:ssl",
-      "../test:platform_video_capturer",
-      "../test:video_test_common",
-      "//third_party/abseil-cpp/absl/memory",
-    ]
-    if (is_android) {
-      deps += [
-        "../modules/utility",
-        "../sdk/android:libjingle_peerconnection_jni",
-        "../sdk/android:native_api_jni",
-      ]
-    }
-  }
-}
-
 if (is_android) {
-  rtc_android_library("webrtc_unity_java") {
-    sources = [ "unityplugin/java/src/org/webrtc/UnityUtility.java" ]
-    deps = [
-      "../rtc_base:base_java",
-      "../sdk/android:camera_java",
-      "../sdk/android:libjingle_peerconnection_java",
-      "../sdk/android:peerconnection_java",
-      "../sdk/android:video_api_java",
-      "../sdk/android:video_java",
-      "//third_party/androidx:androidx_annotation_annotation_java",
-    ]
-  }
-
-  dist_jar("libwebrtc_unity") {
-    _target_dir_name = get_label_info(":$target_name", "dir")
-    output = "${root_out_dir}/lib.java${_target_dir_name}/${target_name}.jar"
-    direct_deps_only = false
-    use_interface_jars = false
-    use_unprocessed_jars = false
-    requires_android = true
-    deps = [
-      ":webrtc_unity_java",
-      "../rtc_base:base_java",
-      "../sdk/android:libjingle_peerconnection_java",
-      "../sdk/android:libjingle_peerconnection_metrics_default_java",
-      "//third_party/androidx:androidx_annotation_annotation_java",
-    ]
-  }
-
   robolectric_binary("android_examples_junit_tests") {
     sources = [
       "androidjunit/src/org/appspot/apprtc/BluetoothManagerTest.java",
@@ -936,6 +861,7 @@ if (!build_with_chromium) {
     testonly = true
     sources = [ "stunprober/main.cc" ]
     deps = [
+      "../p2p:basic_packet_socket_factory",
       "../p2p:libstunprober",
       "../p2p:rtc_p2p",
       "../rtc_base:checks",

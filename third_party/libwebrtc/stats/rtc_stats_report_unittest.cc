@@ -10,6 +10,8 @@
 
 #include "api/stats/rtc_stats_report.h"
 
+#include "absl/types/optional.h"
+#include "api/stats/attribute.h"
 #include "api/stats/rtc_stats.h"
 #include "rtc_base/checks.h"
 #include "test/gtest.h"
@@ -21,41 +23,49 @@ class RTCTestStats1 : public RTCStats {
   WEBRTC_RTCSTATS_DECL();
 
   RTCTestStats1(const std::string& id, Timestamp timestamp)
-      : RTCStats(id, timestamp), integer("integer") {}
+      : RTCStats(id, timestamp) {}
 
-  RTCStatsMember<int32_t> integer;
+  absl::optional<int32_t> integer;
 };
 
-WEBRTC_RTCSTATS_IMPL(RTCTestStats1, RTCStats, "test-stats-1", &integer)
+WEBRTC_RTCSTATS_IMPL(RTCTestStats1,
+                     RTCStats,
+                     "test-stats-1",
+                     AttributeInit("integer", &integer))
 
 class RTCTestStats2 : public RTCStats {
  public:
   WEBRTC_RTCSTATS_DECL();
 
   RTCTestStats2(const std::string& id, Timestamp timestamp)
-      : RTCStats(id, timestamp), number("number") {}
+      : RTCStats(id, timestamp) {}
 
-  RTCStatsMember<double> number;
+  absl::optional<double> number;
 };
 
-WEBRTC_RTCSTATS_IMPL(RTCTestStats2, RTCStats, "test-stats-2", &number)
+WEBRTC_RTCSTATS_IMPL(RTCTestStats2,
+                     RTCStats,
+                     "test-stats-2",
+                     AttributeInit("number", &number))
 
 class RTCTestStats3 : public RTCStats {
  public:
   WEBRTC_RTCSTATS_DECL();
 
   RTCTestStats3(const std::string& id, Timestamp timestamp)
-      : RTCStats(id, timestamp), string("string") {}
+      : RTCStats(id, timestamp) {}
 
-  RTCStatsMember<std::string> string;
+  absl::optional<std::string> string;
 };
 
-WEBRTC_RTCSTATS_IMPL(RTCTestStats3, RTCStats, "test-stats-3", &string)
+WEBRTC_RTCSTATS_IMPL(RTCTestStats3,
+                     RTCStats,
+                     "test-stats-3",
+                     AttributeInit("string", &string))
 
 TEST(RTCStatsReport, AddAndGetStats) {
   rtc::scoped_refptr<RTCStatsReport> report =
       RTCStatsReport::Create(Timestamp::Micros(1337));
-  EXPECT_EQ(report->timestamp_us(), 1337u);
   EXPECT_EQ(report->timestamp().us_or(-1), 1337u);
   EXPECT_EQ(report->size(), static_cast<size_t>(0));
   report->AddStats(
@@ -140,7 +150,6 @@ TEST(RTCStatsReport, Take) {
 TEST(RTCStatsReport, TakeMembersFrom) {
   rtc::scoped_refptr<RTCStatsReport> a =
       RTCStatsReport::Create(Timestamp::Micros(1337));
-  EXPECT_EQ(a->timestamp().us(), 1337u);
   EXPECT_EQ(a->timestamp().us_or(-1), 1337u);
   a->AddStats(
       std::unique_ptr<RTCStats>(new RTCTestStats1("B", Timestamp::Micros(1))));
@@ -150,7 +159,6 @@ TEST(RTCStatsReport, TakeMembersFrom) {
       std::unique_ptr<RTCStats>(new RTCTestStats1("E", Timestamp::Micros(4))));
   rtc::scoped_refptr<RTCStatsReport> b =
       RTCStatsReport::Create(Timestamp::Micros(1338));
-  EXPECT_EQ(b->timestamp_us(), 1338u);
   EXPECT_EQ(b->timestamp().us_or(-1), 1338u);
   b->AddStats(
       std::unique_ptr<RTCStats>(new RTCTestStats1("A", Timestamp::Micros(0))));

@@ -5,13 +5,15 @@
 
 #include "lib/jxl/dec_external_image.h"
 
-#include <string.h>
+#include <jxl/memory_manager.h>
+#include <jxl/types.h>
 
 #include <algorithm>
-#include <array>
-#include <functional>
+#include <cstring>
 #include <utility>
 #include <vector>
+
+#include "lib/jxl/base/status.h"
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/dec_external_image.cc"
@@ -20,13 +22,10 @@
 
 #include "lib/jxl/alpha.h"
 #include "lib/jxl/base/byte_order.h"
-#include "lib/jxl/base/cache_aligned.h"
+#include "lib/jxl/base/common.h"
 #include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/printf_macros.h"
-#include "lib/jxl/color_management.h"
-#include "lib/jxl/common.h"
-#include "lib/jxl/sanitizers.h"
-#include "lib/jxl/transfer_functions-inl.h"
+#include "lib/jxl/base/sanitizers.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -34,6 +33,7 @@ namespace HWY_NAMESPACE {
 
 // These templates are not found via ADL.
 using hwy::HWY_NAMESPACE::Clamp;
+using hwy::HWY_NAMESPACE::Mul;
 using hwy::HWY_NAMESPACE::NearestInt;
 
 // TODO(jon): check if this can be replaced by a FloatToU16 function
@@ -43,8 +43,8 @@ void FloatToU32(const float* in, uint32_t* out, size_t num, float mul,
   const hwy::HWY_NAMESPACE::Rebind<uint32_t, decltype(d)> du;
 
   // Unpoison accessing partially-uninitialized vectors with memory sanitizer.
-  // This is because we run NearestInt() on the vector, which triggers msan even
-  // it it safe to do so since the values are not mixed between lanes.
+  // This is because we run NearestInt() on the vector, which triggers MSAN even
+  // it is safe to do so since the values are not mixed between lanes.
   const size_t num_round_up = RoundUpTo(num, Lanes(d));
   msan::UnpoisonMemory(in + num, sizeof(in[0]) * (num_round_up - num));
 
@@ -112,9 +112,10 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
                        Plane<T>& out, jxl::ThreadPool* pool) {
   const size_t xsize = image.xsize();
   const size_t ysize = image.ysize();
+  JxlMemoryManager* memory_manager = image.memory_manager();
 
   if (undo_orientation == Orientation::kFlipHorizontal) {
-    out = Plane<T>(xsize, ysize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, xsize, ysize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -127,7 +128,7 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
         },
         "UndoOrientation"));
   } else if (undo_orientation == Orientation::kRotate180) {
-    out = Plane<T>(xsize, ysize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, xsize, ysize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -140,7 +141,7 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
         },
         "UndoOrientation"));
   } else if (undo_orientation == Orientation::kFlipVertical) {
-    out = Plane<T>(xsize, ysize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, xsize, ysize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -153,7 +154,7 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
         },
         "UndoOrientation"));
   } else if (undo_orientation == Orientation::kTranspose) {
-    out = Plane<T>(ysize, xsize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, ysize, xsize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -165,7 +166,7 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
         },
         "UndoOrientation"));
   } else if (undo_orientation == Orientation::kRotate90) {
-    out = Plane<T>(ysize, xsize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, ysize, xsize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -177,7 +178,7 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
         },
         "UndoOrientation"));
   } else if (undo_orientation == Orientation::kAntiTranspose) {
-    out = Plane<T>(ysize, xsize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, ysize, xsize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -189,7 +190,7 @@ Status UndoOrientation(jxl::Orientation undo_orientation, const Plane<T>& image,
         },
         "UndoOrientation"));
   } else if (undo_orientation == Orientation::kRotate270) {
-    out = Plane<T>(ysize, xsize);
+    JXL_ASSIGN_OR_RETURN(out, Plane<T>::Create(memory_manager, ysize, xsize));
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize), ThreadPool::NoInit,
         [&](const uint32_t task, size_t /*thread*/) {
@@ -235,33 +236,27 @@ void StoreFloatRow(const float* JXL_RESTRICT* rows_in, size_t num_channels,
 
 void JXL_INLINE Store8(uint32_t value, uint8_t* dest) { *dest = value & 0xff; }
 
-// Maximum number of channels for the ConvertChannelsToExternal function.
-const size_t kConvertMaxChannels = 4;
+}  // namespace
 
-// Converts a list of channels to an interleaved image, applying transformations
-// when needed.
-// The input channels are given as a (non-const!) array of channel pointers and
-// interleaved in that order.
-//
-// Note: if a pointer in channels[] is nullptr, a 1.0 value will be used
-// instead. This is useful for handling when a user requests an alpha channel
-// from an image that doesn't have one. The first channel in the list may not
-// be nullptr, since it is used to determine the image size.
-Status ConvertChannelsToExternal(const ImageF* channels[], size_t num_channels,
-                                 size_t bits_per_sample, bool float_out,
-                                 JxlEndianness endianness, size_t stride,
-                                 jxl::ThreadPool* pool, void* out_image,
-                                 size_t out_size,
+Status ConvertChannelsToExternal(const ImageF* in_channels[],
+                                 size_t num_channels, size_t bits_per_sample,
+                                 bool float_out, JxlEndianness endianness,
+                                 size_t stride, jxl::ThreadPool* pool,
+                                 void* out_image, size_t out_size,
                                  const PixelCallback& out_callback,
                                  jxl::Orientation undo_orientation) {
   JXL_DASSERT(num_channels != 0 && num_channels <= kConvertMaxChannels);
-  JXL_DASSERT(channels[0] != nullptr);
+  JXL_DASSERT(in_channels[0] != nullptr);
+  JxlMemoryManager* memory_manager = in_channels[0]->memory_manager();
   JXL_CHECK(float_out ? bits_per_sample == 16 || bits_per_sample == 32
                       : bits_per_sample > 0 && bits_per_sample <= 16);
-  if (!!out_image == out_callback.IsPresent()) {
+  const bool has_out_image = (out_image != nullptr);
+  if (has_out_image == out_callback.IsPresent()) {
     return JXL_FAILURE(
         "Must provide either an out_image or an out_callback, but not both.");
   }
+  std::vector<const ImageF*> channels;
+  channels.assign(in_channels, in_channels + num_channels);
 
   const size_t bytes_per_channel = DivCeil(bits_per_sample, jxl::kBitsPerByte);
   const size_t bytes_per_pixel = num_channels * bytes_per_channel;
@@ -318,7 +313,7 @@ Status ConvertChannelsToExternal(const ImageF* channels[], size_t num_channels,
   ImageF ones;
   for (size_t c = 0; c < num_channels; ++c) {
     if (!channels[c]) {
-      ones = ImageF(xsize, 1);
+      JXL_ASSIGN_OR_RETURN(ones, ImageF::Create(memory_manager, xsize, 1));
       FillImage(1.0f, &ones);
       break;
     }
@@ -331,9 +326,12 @@ Status ConvertChannelsToExternal(const ImageF* channels[], size_t num_channels,
       JXL_RETURN_IF_ERROR(RunOnPool(
           pool, 0, static_cast<uint32_t>(ysize),
           [&](size_t num_threads) {
-            f16_cache =
-                Plane<hwy::float16_t>(xsize, num_channels * num_threads);
-            return InitOutCallback(num_threads);
+            StatusOr<Plane<hwy::float16_t>> f16_cache_or =
+                Plane<hwy::float16_t>::Create(memory_manager, xsize,
+                                              num_channels * num_threads);
+            if (!f16_cache_or.ok()) return false;
+            f16_cache = std::move(f16_cache_or).value();
+            return !!InitOutCallback(num_threads);
           },
           [&](const uint32_t task, const size_t thread) {
             const int64_t y = task;
@@ -407,8 +405,11 @@ Status ConvertChannelsToExternal(const ImageF* channels[], size_t num_channels,
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, static_cast<uint32_t>(ysize),
         [&](size_t num_threads) {
-          u32_cache = Plane<uint32_t>(xsize, num_channels * num_threads);
-          return InitOutCallback(num_threads);
+          StatusOr<Plane<uint32_t>> u32_cache_or = Plane<uint32_t>::Create(
+              memory_manager, xsize, num_channels * num_threads);
+          if (!u32_cache_or.ok()) return false;
+          u32_cache = std::move(u32_cache_or).value();
+          return !!InitOutCallback(num_threads);
         },
         [&](const uint32_t task, const size_t thread) {
           const int64_t y = task;
@@ -448,8 +449,6 @@ Status ConvertChannelsToExternal(const ImageF* channels[], size_t num_channels,
   return true;
 }
 
-}  // namespace
-
 Status ConvertToExternal(const jxl::ImageBundle& ib, size_t bits_per_sample,
                          bool float_out, size_t num_channels,
                          JxlEndianness endianness, size_t stride,
@@ -461,10 +460,13 @@ Status ConvertToExternal(const jxl::ImageBundle& ib, size_t bits_per_sample,
   size_t color_channels = num_channels <= 2 ? 1 : 3;
 
   const Image3F* color = &ib.color();
+  JxlMemoryManager* memory_manager = color->memory_manager();
   // Undo premultiplied alpha.
   Image3F unpremul;
   if (ib.AlphaIsPremultiplied() && ib.HasAlpha() && unpremul_alpha) {
-    unpremul = Image3F(color->xsize(), color->ysize());
+    JXL_ASSIGN_OR_RETURN(
+        unpremul,
+        Image3F::Create(memory_manager, color->xsize(), color->ysize()));
     CopyImageTo(*color, &unpremul);
     for (size_t y = 0; y < unpremul.ysize(); y++) {
       UnpremultiplyAlpha(unpremul.PlaneRow(0, y), unpremul.PlaneRow(1, y),

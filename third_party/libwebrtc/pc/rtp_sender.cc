@@ -20,6 +20,7 @@
 #include "api/audio_options.h"
 #include "api/media_stream_interface.h"
 #include "api/priority.h"
+#include "api/rtc_error.h"
 #include "media/base/media_engine.h"
 #include "pc/legacy_stats_collector_interface.h"
 #include "rtc_base/checks.h"
@@ -114,13 +115,13 @@ class SignalingThreadCallback {
     if (!signaling_thread_->IsCurrent()) {
       signaling_thread_->PostTask(
           [callback = std::move(callback_), error]() mutable {
-            webrtc::InvokeSetParametersCallback(callback, error);
+            InvokeSetParametersCallback(callback, error);
           });
       callback_ = nullptr;
       return;
     }
 
-    webrtc::InvokeSetParametersCallback(callback_, error);
+    InvokeSetParametersCallback(callback_, error);
     callback_ = nullptr;
   }
 
@@ -242,16 +243,16 @@ void RtpSenderBase::SetParametersInternal(const RtpParameters& parameters,
         "Attempted to set an unimplemented parameter of RtpParameters.");
     RTC_LOG(LS_ERROR) << error.message() << " ("
                       << ::webrtc::ToString(error.type()) << ")";
-    webrtc::InvokeSetParametersCallback(callback, error);
+    InvokeSetParametersCallback(callback, error);
     return;
   }
   if (!media_channel_ || !ssrc_) {
     auto result = cricket::CheckRtpParametersInvalidModificationAndValues(
-        init_parameters_, parameters, video_codec_preferences_);
+        init_parameters_, parameters, send_codecs_, absl::nullopt);
     if (result.ok()) {
       init_parameters_ = parameters;
     }
-    webrtc::InvokeSetParametersCallback(callback, result);
+    InvokeSetParametersCallback(callback, result);
     return;
   }
   auto task = [&, callback = std::move(callback),
@@ -267,13 +268,13 @@ void RtpSenderBase::SetParametersInternal(const RtpParameters& parameters,
     RTCError result = cricket::CheckRtpParametersInvalidModificationAndValues(
         old_parameters, rtp_parameters);
     if (!result.ok()) {
-      webrtc::InvokeSetParametersCallback(callback, result);
+      InvokeSetParametersCallback(callback, result);
       return;
     }
 
-    result = CheckSVCParameters(rtp_parameters);
+    result = CheckCodecParameters(rtp_parameters);
     if (!result.ok()) {
-      webrtc::InvokeSetParametersCallback(callback, result);
+      InvokeSetParametersCallback(callback, result);
       return;
     }
 
@@ -298,7 +299,7 @@ RTCError RtpSenderBase::SetParametersInternalWithAllLayers(
   }
   if (!media_channel_ || !ssrc_) {
     auto result = cricket::CheckRtpParametersInvalidModificationAndValues(
-        init_parameters_, parameters, video_codec_preferences_);
+        init_parameters_, parameters, send_codecs_, absl::nullopt);
     if (result.ok()) {
       init_parameters_ = parameters;
     }
@@ -337,6 +338,24 @@ RTCError RtpSenderBase::CheckSetParameters(const RtpParameters& parameters) {
   return RTCError::OK();
 }
 
+RTCError RtpSenderBase::CheckCodecParameters(const RtpParameters& parameters) {
+  absl::optional<cricket::Codec> send_codec = media_channel_->GetSendCodec();
+
+  // Match the currently used codec against the codec preferences to gather
+  // the SVC capabilities.
+  absl::optional<cricket::Codec> send_codec_with_svc_info;
+  if (send_codec && send_codec->type == cricket::Codec::Type::kVideo) {
+    auto codec_match = absl::c_find_if(
+        send_codecs_, [&](auto& codec) { return send_codec->Matches(codec); });
+    if (codec_match != send_codecs_.end()) {
+      send_codec_with_svc_info = *codec_match;
+    }
+  }
+
+  return cricket::CheckScalabilityModeValues(parameters, send_codecs_,
+                                             send_codec_with_svc_info);
+}
+
 RTCError RtpSenderBase::SetParameters(const RtpParameters& parameters) {
   RTC_DCHECK_RUN_ON(signaling_thread_);
   TRACE_EVENT0("webrtc", "RtpSenderBase::SetParameters");
@@ -368,7 +387,7 @@ void RtpSenderBase::SetParametersAsync(const RtpParameters& parameters,
   TRACE_EVENT0("webrtc", "RtpSenderBase::SetParametersAsync");
   RTCError result = CheckSetParameters(parameters);
   if (!result.ok()) {
-    webrtc::InvokeSetParametersCallback(callback, result);
+    InvokeSetParametersCallback(callback, result);
     return;
   }
 
@@ -378,7 +397,7 @@ void RtpSenderBase::SetParametersAsync(const RtpParameters& parameters,
           signaling_thread_,
           [this, callback = std::move(callback)](RTCError error) mutable {
             last_transaction_id_.reset();
-            webrtc::InvokeSetParametersCallback(callback, error);
+            InvokeSetParametersCallback(callback, error);
           }),
       false);
 }
@@ -873,22 +892,6 @@ void VideoRtpSender::ClearSend() {
   // deleted.
   worker_thread_->BlockingCall(
       [&] { video_media_channel()->SetVideoSend(ssrc_, nullptr, nullptr); });
-}
-
-RTCError VideoRtpSender::CheckSVCParameters(const RtpParameters& parameters) {
-  cricket::VideoCodec codec;
-  video_media_channel()->GetSendCodec(&codec);
-
-  // Match the currently used codec against the codec preferences to gather
-  // the SVC capabilities.
-  std::vector<cricket::VideoCodec> codecs;
-  for (const auto& codec_preference : video_codec_preferences_) {
-    if (codec.Matches(codec_preference)) {
-      codecs.push_back(codec_preference);
-    }
-  }
-
-  return cricket::CheckScalabilityModeValues(parameters, codecs);
 }
 
 }  // namespace webrtc

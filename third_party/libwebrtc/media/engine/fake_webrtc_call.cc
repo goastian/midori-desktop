@@ -130,16 +130,6 @@ void FakeAudioReceiveStream::SetFrameDecryptor(
   config_.frame_decryptor = std::move(frame_decryptor);
 }
 
-void FakeAudioReceiveStream::SetRtpExtensions(
-    std::vector<webrtc::RtpExtension> extensions) {
-  config_.rtp.extensions = std::move(extensions);
-}
-
-webrtc::RtpHeaderExtensionMap FakeAudioReceiveStream::GetRtpExtensionMap()
-    const {
-  return webrtc::RtpHeaderExtensionMap(config_.rtp.extensions);
-}
-
 webrtc::AudioReceiveStreamInterface::Stats FakeAudioReceiveStream::GetStats(
     bool get_and_clear_legacy_stats) const {
   return stats_;
@@ -218,6 +208,16 @@ bool FakeVideoSendStream::GetH264Settings(
   }
 
   *settings = codec_specific_settings_.h264;
+  return true;
+}
+
+bool FakeVideoSendStream::GetAv1Settings(
+    webrtc::VideoCodecAV1* settings) const {
+  if (!codec_settings_set_) {
+    return false;
+  }
+
+  *settings = codec_specific_settings_.av1;
   return true;
 }
 
@@ -325,6 +325,9 @@ void FakeVideoSendStream::ReconfigureVideoEncoder(
     } else if (config_.rtp.payload_name == "H264") {
       codec_specific_settings_.h264.numberOfTemporalLayers =
           num_temporal_layers;
+    } else if (config_.rtp.payload_name == "AV1") {
+      config.encoder_specific_settings->FillVideoCodecAv1(
+          &codec_specific_settings_.av1);
     } else {
       ADD_FAILURE() << "Unsupported encoder payload: "
                     << config_.rtp.payload_name;
@@ -334,17 +337,6 @@ void FakeVideoSendStream::ReconfigureVideoEncoder(
   encoder_config_ = std::move(config);
   ++num_encoder_reconfigurations_;
   webrtc::InvokeSetParametersCallback(callback, webrtc::RTCError::OK());
-}
-
-void FakeVideoSendStream::StartPerRtpStream(
-    const std::vector<bool> active_layers) {
-  sending_ = false;
-  for (const bool active_layer : active_layers) {
-    if (active_layer) {
-      sending_ = true;
-      break;
-    }
-  }
 }
 
 void FakeVideoSendStream::Start() {
@@ -393,6 +385,11 @@ void FakeVideoSendStream::SetSource(
                                       : rtc::VideoSinkWants());
 }
 
+void FakeVideoSendStream::GenerateKeyFrame(
+    const std::vector<std::string>& rids) {
+  keyframes_requested_by_rid_ = rids;
+}
+
 void FakeVideoSendStream::InjectVideoSinkWants(
     const rtc::VideoSinkWants& wants) {
   sink_wants_ = wants;
@@ -421,16 +418,6 @@ webrtc::VideoReceiveStreamInterface::Stats FakeVideoReceiveStream::GetStats()
   return stats_;
 }
 
-void FakeVideoReceiveStream::SetRtpExtensions(
-    std::vector<webrtc::RtpExtension> extensions) {
-  config_.rtp.extensions = std::move(extensions);
-}
-
-webrtc::RtpHeaderExtensionMap FakeVideoReceiveStream::GetRtpExtensionMap()
-    const {
-  return webrtc::RtpHeaderExtensionMap(config_.rtp.extensions);
-}
-
 void FakeVideoReceiveStream::Start() {
   receiving_ = true;
 }
@@ -447,16 +434,6 @@ void FakeVideoReceiveStream::SetStats(
 FakeFlexfecReceiveStream::FakeFlexfecReceiveStream(
     const webrtc::FlexfecReceiveStream::Config config)
     : config_(std::move(config)) {}
-
-void FakeFlexfecReceiveStream::SetRtpExtensions(
-    std::vector<webrtc::RtpExtension> extensions) {
-  config_.rtp.extensions = std::move(extensions);
-}
-
-webrtc::RtpHeaderExtensionMap FakeFlexfecReceiveStream::GetRtpExtensionMap()
-    const {
-  return webrtc::RtpHeaderExtensionMap(config_.rtp.extensions);
-}
 
 const webrtc::FlexfecReceiveStream::Config&
 FakeFlexfecReceiveStream::GetConfig() const {
@@ -690,7 +667,8 @@ bool FakeCall::DeliverPacketInternal(webrtc::MediaType media_type,
 
   if (media_type == webrtc::MediaType::VIDEO) {
     for (auto receiver : video_receive_streams_) {
-      if (receiver->GetConfig().rtp.remote_ssrc == ssrc) {
+      if (receiver->GetConfig().rtp.remote_ssrc == ssrc ||
+          receiver->GetConfig().rtp.rtx_ssrc == ssrc) {
         ++delivered_packets_by_ssrc_[ssrc];
         return true;
       }

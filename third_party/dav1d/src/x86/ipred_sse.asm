@@ -670,10 +670,7 @@ ALIGN function_align
     RET
 ALIGN function_align
 .w32:
-%if WIN64
-    movaps         [rsp+24], xmm7
-    %define xmm_regs_used 8
-%endif
+    WIN64_PUSH_XMM        8, 7
     mova                 m7, m5
 .w32_loop_init:
     mov                 r3d, 2
@@ -705,10 +702,7 @@ ALIGN function_align
     RET
 ALIGN function_align
 .w64:
-%if WIN64
-    movaps         [rsp+24], xmm7
-    %define xmm_regs_used 8
-%endif
+    WIN64_PUSH_XMM        8, 7
     mova                 m7, m5
 .w64_loop_init:
     mov                 r3d, 4
@@ -1579,10 +1573,10 @@ cglobal ipred_z1_8bpc, 3, 7, 8, -16*13, dst, _, tl, w, h, angle, dx
     pshufb               m0, m1
     pshufb               m2, m1
     movq                 m3, [base+z_filter_t_w16+angleq*4]
-    pcmpeqb              m1, m0, [base+z_filter_wh16]
-    pand                 m1, m2
-    pcmpgtb              m1, m3
-    pmovmskb            r5d, m1
+    pcmpeqb              m0, [base+z_filter_wh16]
+    pand                 m0, m2
+    pcmpgtb              m0, m3
+    pmovmskb            r5d, m0
     test                r5d, r5d
     jz .w16_main ; filter_strength == 0
     movd                 m4, [tlq-1]
@@ -2007,7 +2001,6 @@ cglobal ipred_z2_8bpc, 4, 7, 8, -16*20, dst, _, tl, w, h, angle, dx
     %define             m10  [base+pw_512]
     %define             m11  [rsp+16*16]
     %define             m12  [rsp+16*17]
-    %define              r8  [rsp+16*6+4*1]
     %define             r9b  byte [rsp+16*18+4*0]
     %define             r9d  dword [rsp+16*18+4*0]
     %define            r10d  dword [rsp+16*18+4*1]
@@ -2203,19 +2196,14 @@ cglobal ipred_z2_8bpc, 4, 7, 8, -16*20, dst, _, tl, w, h, angle, dx
     pmullw               m4, m5
     pshuflw              m3, m3, q1111
     paddw                m6, m0
+    mov                 r2d, r10d
     pshuflw              m0, m4, q3333
     psubw                m4, [rsp+16*15]
     movq     [rsp+16*6+8*1], m3
     movq          [rsp+8*1], m0 ; dy*4
-%if ARCH_X86_64
-    mov                  r8, dstq
-%endif
+    mov                  r5, dstq
 .w4_loop0:
-%if ARCH_X86_32
-    mov                  r8, dstq
-%endif
     mova        [rsp+16*12], m6
-    mov                 r2d, r10d
     movq          [rsp+8*0], m4
     pand                 m0, m4, m8
     psraw                m4, 6
@@ -2302,14 +2290,14 @@ cglobal ipred_z2_8bpc, 4, 7, 8, -16*20, dst, _, tl, w, h, angle, dx
     jge .w4_loop
     movddup              m5, [rsp+8*3]
 .w4_leftonly_loop:
-    movzx               r3d, byte [rsp+8*2+0] ; base_y0
-    movq                 m1, [rsp+r3]
-    movzx               r3d, byte [rsp+8*2+2] ; base_y1
-    movhps               m1, [rsp+r3]
-    movzx               r3d, byte [rsp+8*2+4] ; base_y2
-    movq                 m2, [rsp+r3]
-    movzx               r3d, byte [rsp+8*2+6] ; base_y3
-    movhps               m2, [rsp+r3]
+    movzx               r2d, byte [rsp+8*2+0] ; base_y0
+    movq                 m1, [rsp+r2]
+    movzx               r2d, byte [rsp+8*2+2] ; base_y1
+    movhps               m1, [rsp+r2]
+    movzx               r2d, byte [rsp+8*2+4] ; base_y2
+    movq                 m2, [rsp+r2]
+    movzx               r2d, byte [rsp+8*2+6] ; base_y3
+    movhps               m2, [rsp+r2]
     psubw                m4, m3
     pshufb               m1, m12
     pshufb               m2, m12
@@ -2318,7 +2306,6 @@ cglobal ipred_z2_8bpc, 4, 7, 8, -16*20, dst, _, tl, w, h, angle, dx
     punpckhdq            m1, m2
     pmaddubsw            m0, m5
     pmaddubsw            m1, m5
-    movifnidn       strideq, stridemp
     pmulhrsw             m0, m10
     pmulhrsw             m1, m10
     packuswb             m0, m1
@@ -2337,18 +2324,14 @@ cglobal ipred_z2_8bpc, 4, 7, 8, -16*20, dst, _, tl, w, h, angle, dx
     sub                 r9d, 1<<8
     jl .w4_ret
     movq                 m4, [rsp+8*1]
-%if ARCH_X86_64
-    add                  r8, 4
-    mov                dstq, r8
-%else
-    mov                dstq, r8
-    add                dstq, 4
-%endif
+    add                  r5, 4
+    mov                dstq, r5
     paddw                m4, [rsp+8*0] ; base_y += 4*dy
-    movzx               r3d, word [rsp+16*15+8*1]
-    add                r10d, r3d
+    movzx               r2d, word [rsp+16*15+8*1]
     movddup              m6, [rsp+16*15+8*1]
     paddw                m6, [rsp+16*12] ; base_x += (4 << upsample_above)
+    add                 r2d, r10d
+    mov                r10d, r2d
     jmp .w4_loop0
 .w4_ret:
     RET
@@ -3490,26 +3473,28 @@ cglobal ipred_z3_8bpc, 4, 7, 8, -16*10, dst, stride, tl, w, h, angle, dy
     jg .end_transpose_loop
     RET
 
-;---------------------------------------------------------------------------------------
-;int dav1d_pal_pred_ssse3(pixel *dst, const ptrdiff_t stride, const uint16_t *const pal,
-;                                         const uint8_t *idx, const int w, const int h);
-;---------------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
+;int dav1d_pal_pred_ssse3(pixel *dst, ptrdiff_t stride, const pixel *pal,
+;                         const uint8_t *idx, int w, int h);
+;-------------------------------------------------------------------------------
 cglobal pal_pred_8bpc, 4, 6, 5, dst, stride, pal, idx, w, h
-    mova                 m4, [palq]
+    movq                 m4, [palq]
     LEA                  r2, pal_pred_ssse3_table
     tzcnt                wd, wm
     movifnidn            hd, hm
     movsxd               wq, [r2+wq*4]
-    packuswb             m4, m4
     add                  wq, r2
     lea                  r2, [strideq*3]
     jmp                  wq
 .w4:
-    pshufb               m0, m4, [idxq]
-    add                idxq, 16
-    movd   [dstq          ], m0
+    movq                 m1, [idxq]
+    add                idxq, 8
+    psrlw                m0, m1, 4
+    punpcklbw            m1, m0
+    pshufb               m0, m4, m1
+    movd   [dstq+strideq*0], m0
     pshuflw              m1, m0, q1032
-    movd   [dstq+strideq  ], m1
+    movd   [dstq+strideq*1], m1
     punpckhqdq           m0, m0
     movd   [dstq+strideq*2], m0
     psrlq                m0, 32
@@ -3518,60 +3503,68 @@ cglobal pal_pred_8bpc, 4, 6, 5, dst, stride, pal, idx, w, h
     sub                  hd, 4
     jg .w4
     RET
-ALIGN function_align
 .w8:
-    pshufb               m0, m4, [idxq]
-    pshufb               m1, m4, [idxq+16]
-    add                idxq, 32
-    movq   [dstq          ], m0
-    movhps [dstq+strideq  ], m0
+    movu                 m0, [idxq]
+    add                idxq, 16
+    pshufb               m1, m4, m0
+    psrlw                m0, 4
+    pshufb               m2, m4, m0
+    punpcklbw            m0, m1, m2
+    punpckhbw            m1, m2
+    movq   [dstq+strideq*0], m0
+    movhps [dstq+strideq*1], m0
     movq   [dstq+strideq*2], m1
     movhps [dstq+r2       ], m1
     lea                dstq, [dstq+strideq*4]
     sub                  hd, 4
     jg .w8
     RET
-ALIGN function_align
 .w16:
-    pshufb               m0, m4, [idxq]
-    pshufb               m1, m4, [idxq+16]
-    pshufb               m2, m4, [idxq+32]
-    pshufb               m3, m4, [idxq+48]
-    add                idxq, 64
-    mova   [dstq          ], m0
-    mova   [dstq+strideq  ], m1
-    mova   [dstq+strideq*2], m2
-    mova   [dstq+r2       ], m3
-    lea                dstq, [dstq+strideq*4]
-    sub                  hd, 4
-    jg .w16
-    RET
-ALIGN function_align
-.w32:
-    pshufb               m0, m4, [idxq]
-    pshufb               m1, m4, [idxq+16]
-    pshufb               m2, m4, [idxq+32]
-    pshufb               m3, m4, [idxq+48]
-    add                idxq, 64
-    mova  [dstq           ], m0
-    mova  [dstq+16        ], m1
-    mova  [dstq+strideq   ], m2
-    mova  [dstq+strideq+16], m3
+    movu                 m0, [idxq]
+    add                idxq, 16
+    pshufb               m1, m4, m0
+    psrlw                m0, 4
+    pshufb               m2, m4, m0
+    punpcklbw            m0, m1, m2
+    punpckhbw            m1, m2
+    mova   [dstq+strideq*0], m0
+    mova   [dstq+strideq*1], m1
     lea                dstq, [dstq+strideq*2]
     sub                  hd, 2
+    jg .w16
+    RET
+.w32:
+    movu                 m0, [idxq]
+    add                idxq, 16
+    pshufb               m1, m4, m0
+    psrlw                m0, 4
+    pshufb               m2, m4, m0
+    punpcklbw            m0, m1, m2
+    punpckhbw            m1, m2
+    mova        [dstq+16*0], m0
+    mova        [dstq+16*1], m1
+    add                dstq, strideq
+    dec                  hd
     jg .w32
     RET
-ALIGN function_align
 .w64:
-    pshufb               m0, m4, [idxq]
-    pshufb               m1, m4, [idxq+16]
-    pshufb               m2, m4, [idxq+32]
-    pshufb               m3, m4, [idxq+48]
-    add                idxq, 64
-    mova          [dstq   ], m0
-    mova          [dstq+16], m1
-    mova          [dstq+32], m2
-    mova          [dstq+48], m3
+    movu                 m0, [idxq+16*0]
+    movu                 m2, [idxq+16*1]
+    add                idxq, 32
+    pshufb               m1, m4, m0
+    psrlw                m0, 4
+    pshufb               m3, m4, m0
+    punpcklbw            m0, m1, m3
+    punpckhbw            m1, m3
+    mova        [dstq+16*0], m0
+    mova        [dstq+16*1], m1
+    pshufb               m1, m4, m2
+    psrlw                m2, 4
+    pshufb               m3, m4, m2
+    punpcklbw            m0, m1, m3
+    punpckhbw            m1, m3
+    mova        [dstq+16*2], m0
+    mova        [dstq+16*3], m1
     add                dstq, strideq
     sub                  hd, 1
     jg .w64

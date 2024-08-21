@@ -1,4 +1,4 @@
-use super::helpers;
+use super::{block::DebugInfoInner, helpers};
 use spirv::{Op, Word};
 
 pub(super) enum Signedness {
@@ -21,11 +21,62 @@ impl super::Instruction {
     //  Debug Instructions
     //
 
-    pub(super) fn source(source_language: spirv::SourceLanguage, version: u32) -> Self {
+    pub(super) fn string(name: &str, id: Word) -> Self {
+        let mut instruction = Self::new(Op::String);
+        instruction.set_result(id);
+        instruction.add_operands(helpers::string_to_words(name));
+        instruction
+    }
+
+    pub(super) fn source(
+        source_language: spirv::SourceLanguage,
+        version: u32,
+        source: &Option<DebugInfoInner>,
+    ) -> Self {
         let mut instruction = Self::new(Op::Source);
         instruction.add_operand(source_language as u32);
         instruction.add_operands(helpers::bytes_to_words(&version.to_le_bytes()));
+        if let Some(source) = source.as_ref() {
+            instruction.add_operand(source.source_file_id);
+            instruction.add_operands(helpers::string_to_words(source.source_code));
+        }
         instruction
+    }
+
+    pub(super) fn source_continued(source: &[u8]) -> Self {
+        let mut instruction = Self::new(Op::SourceContinued);
+        instruction.add_operands(helpers::str_bytes_to_words(source));
+        instruction
+    }
+
+    pub(super) fn source_auto_continued(
+        source_language: spirv::SourceLanguage,
+        version: u32,
+        source: &Option<DebugInfoInner>,
+    ) -> Vec<Self> {
+        let mut instructions = vec![];
+
+        let with_continue = source.as_ref().and_then(|debug_info| {
+            (debug_info.source_code.len() > u16::MAX as usize).then_some(debug_info)
+        });
+        if let Some(debug_info) = with_continue {
+            let mut instruction = Self::new(Op::Source);
+            instruction.add_operand(source_language as u32);
+            instruction.add_operands(helpers::bytes_to_words(&version.to_le_bytes()));
+
+            let words = helpers::string_to_byte_chunks(debug_info.source_code, u16::MAX as usize);
+            instruction.add_operand(debug_info.source_file_id);
+            instruction.add_operands(helpers::str_bytes_to_words(words[0]));
+            instructions.push(instruction);
+            for word_bytes in words[1..].iter() {
+                let instruction_continue = Self::source_continued(word_bytes);
+                instructions.push(instruction_continue);
+            }
+        } else {
+            let instruction = Self::source(source_language, version, source);
+            instructions.push(instruction);
+        }
+        instructions
     }
 
     pub(super) fn name(target_id: Word, name: &str) -> Self {
@@ -41,6 +92,18 @@ impl super::Instruction {
         instruction.add_operand(member);
         instruction.add_operands(helpers::string_to_words(name));
         instruction
+    }
+
+    pub(super) fn line(file: Word, line: Word, column: Word) -> Self {
+        let mut instruction = Self::new(Op::Line);
+        instruction.add_operand(file);
+        instruction.add_operand(line);
+        instruction.add_operand(column);
+        instruction
+    }
+
+    pub(super) const fn no_line() -> Self {
+        Self::new(Op::NoLine)
     }
 
     //
@@ -341,6 +404,14 @@ impl super::Instruction {
         instruction.set_type(result_type_id);
         instruction.set_result(id);
         instruction
+    }
+
+    pub(super) fn constant_32bit(result_type_id: Word, id: Word, value: Word) -> Self {
+        Self::constant(result_type_id, id, &[value])
+    }
+
+    pub(super) fn constant_64bit(result_type_id: Word, id: Word, low: Word, high: Word) -> Self {
+        Self::constant(result_type_id, id, &[low, high])
     }
 
     pub(super) fn constant(result_type_id: Word, id: Word, values: &[Word]) -> Self {
@@ -1002,6 +1073,73 @@ impl super::Instruction {
         instruction.add_operand(semantics_id);
         instruction
     }
+
+    // Group Instructions
+
+    pub(super) fn group_non_uniform_ballot(
+        result_type_id: Word,
+        id: Word,
+        exec_scope_id: Word,
+        predicate: Word,
+    ) -> Self {
+        let mut instruction = Self::new(Op::GroupNonUniformBallot);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(exec_scope_id);
+        instruction.add_operand(predicate);
+
+        instruction
+    }
+    pub(super) fn group_non_uniform_broadcast_first(
+        result_type_id: Word,
+        id: Word,
+        exec_scope_id: Word,
+        value: Word,
+    ) -> Self {
+        let mut instruction = Self::new(Op::GroupNonUniformBroadcastFirst);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(exec_scope_id);
+        instruction.add_operand(value);
+
+        instruction
+    }
+    pub(super) fn group_non_uniform_gather(
+        op: Op,
+        result_type_id: Word,
+        id: Word,
+        exec_scope_id: Word,
+        value: Word,
+        index: Word,
+    ) -> Self {
+        let mut instruction = Self::new(op);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(exec_scope_id);
+        instruction.add_operand(value);
+        instruction.add_operand(index);
+
+        instruction
+    }
+    pub(super) fn group_non_uniform_arithmetic(
+        op: Op,
+        result_type_id: Word,
+        id: Word,
+        exec_scope_id: Word,
+        group_op: Option<spirv::GroupOperation>,
+        value: Word,
+    ) -> Self {
+        let mut instruction = Self::new(op);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(exec_scope_id);
+        if let Some(group_op) = group_op {
+            instruction.add_operand(group_op as u32);
+        }
+        instruction.add_operand(value);
+
+        instruction
+    }
 }
 
 impl From<crate::StorageFormat> for spirv::ImageFormat {
@@ -1029,7 +1167,9 @@ impl From<crate::StorageFormat> for spirv::ImageFormat {
             Sf::Rgba8Snorm => Self::Rgba8Snorm,
             Sf::Rgba8Uint => Self::Rgba8ui,
             Sf::Rgba8Sint => Self::Rgba8i,
-            Sf::Rgb10a2Unorm => Self::Rgb10a2ui,
+            Sf::Bgra8Unorm => Self::Unknown,
+            Sf::Rgb10a2Uint => Self::Rgb10a2ui,
+            Sf::Rgb10a2Unorm => Self::Rgb10A2,
             Sf::Rg11b10Float => Self::R11fG11fB10f,
             Sf::Rg32Uint => Self::Rg32ui,
             Sf::Rg32Sint => Self::Rg32i,

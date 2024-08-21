@@ -16,7 +16,7 @@
 #include "absl/strings/string_view.h"
 #include "api/sequence_checker.h"
 #include "modules/rtp_rtcp/source/rtp_util.h"
-#include "rtc_base/event.h"
+#include "rtc_base/thread.h"
 
 namespace webrtc {
 
@@ -31,18 +31,17 @@ DegradedCall::FakeNetworkPipeOnTaskQueue::FakeNetworkPipeOnTaskQueue(
       pipe_(clock, std::move(network_behavior)) {}
 
 void DegradedCall::FakeNetworkPipeOnTaskQueue::SendRtp(
-    const uint8_t* packet,
-    size_t length,
+    rtc::ArrayView<const uint8_t> packet,
     const PacketOptions& options,
     Transport* transport) {
-  pipe_.SendRtp(packet, length, options, transport);
+  pipe_.SendRtp(packet, options, transport);
   Process();
 }
 
-void DegradedCall::FakeNetworkPipeOnTaskQueue::SendRtcp(const uint8_t* packet,
-                                                        size_t length,
-                                                        Transport* transport) {
-  pipe_.SendRtcp(packet, length, transport);
+void DegradedCall::FakeNetworkPipeOnTaskQueue::SendRtcp(
+    rtc::ArrayView<const uint8_t> packet,
+    Transport* transport) {
+  pipe_.SendRtcp(packet, transport);
   Process();
 }
 
@@ -102,20 +101,19 @@ DegradedCall::FakeNetworkPipeTransportAdapter::
 }
 
 bool DegradedCall::FakeNetworkPipeTransportAdapter::SendRtp(
-    const uint8_t* packet,
-    size_t length,
+    rtc::ArrayView<const uint8_t> packet,
     const PacketOptions& options) {
   // A call here comes from the RTP stack (probably pacer). We intercept it and
   // put it in the fake network pipe instead, but report to Call that is has
   // been sent, so that the bandwidth estimator sees the delay we add.
-  network_pipe_->SendRtp(packet, length, options, real_transport_);
+  network_pipe_->SendRtp(packet, options, real_transport_);
   if (options.packet_id != -1) {
     rtc::SentPacket sent_packet;
     sent_packet.packet_id = options.packet_id;
     sent_packet.send_time_ms = clock_->TimeInMilliseconds();
     sent_packet.info.included_in_feedback = options.included_in_feedback;
     sent_packet.info.included_in_allocation = options.included_in_allocation;
-    sent_packet.info.packet_size_bytes = length;
+    sent_packet.info.packet_size_bytes = packet.size();
     sent_packet.info.packet_type = rtc::PacketType::kData;
     call_->OnSentPacket(sent_packet);
   }
@@ -123,9 +121,8 @@ bool DegradedCall::FakeNetworkPipeTransportAdapter::SendRtp(
 }
 
 bool DegradedCall::FakeNetworkPipeTransportAdapter::SendRtcp(
-    const uint8_t* packet,
-    size_t length) {
-  network_pipe_->SendRtcp(packet, length, real_transport_);
+    rtc::ArrayView<const uint8_t> packet) {
+  network_pipe_->SendRtcp(packet, real_transport_);
   return true;
 }
 
@@ -174,13 +171,10 @@ DegradedCall::~DegradedCall() {
   // Otherwise, when the `DegradedCall` object is destroyed but
   // `SetNotAlive` has not yet been called,
   // another Closure guarded by `call_alive_` may be called.
-  rtc::Event event;
-  call_->network_thread()->PostTask(
-      [flag = std::move(call_alive_), &event]() mutable {
-        flag->SetNotAlive();
-        event.Set();
-      });
-  event.Wait(rtc::Event::kForever);
+  // TODO(https://crbug.com/webrtc/12649): Remove this block-invoke.
+  static_cast<rtc::Thread*>(call_->network_thread())
+      ->BlockingCall(
+          [flag = std::move(call_alive_)]() mutable { flag->SetNotAlive(); });
 }
 
 AudioSendStream* DegradedCall::CreateAudioSendStream(

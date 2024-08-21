@@ -40,10 +40,9 @@ use function::*;
 use crate::{
     arena::{Arena, Handle, UniqueArena},
     proc::{Alignment, Layouter},
-    FastHashMap, FastHashSet,
+    FastHashMap, FastHashSet, FastIndexMap,
 };
 
-use num_traits::cast::FromPrimitive;
 use petgraph::graphmap::GraphMap;
 use std::{convert::TryInto, mem, num::NonZeroU32, path::PathBuf};
 
@@ -54,17 +53,13 @@ pub const SUPPORTED_CAPABILITIES: &[spirv::Capability] = &[
     spirv::Capability::CullDistance,
     spirv::Capability::SampleRateShading,
     spirv::Capability::DerivativeControl,
-    spirv::Capability::InterpolationFunction,
     spirv::Capability::Matrix,
     spirv::Capability::ImageQuery,
     spirv::Capability::Sampled1D,
     spirv::Capability::Image1D,
     spirv::Capability::SampledCubeArray,
     spirv::Capability::ImageCubeArray,
-    spirv::Capability::ImageMSArray,
     spirv::Capability::StorageImageExtendedFormats,
-    spirv::Capability::Sampled1D,
-    spirv::Capability::SampledCubeArray,
     spirv::Capability::Int8,
     spirv::Capability::Int16,
     spirv::Capability::Int64,
@@ -168,7 +163,7 @@ impl crate::ImageDimension {
 type MemberIndex = u32;
 
 bitflags::bitflags! {
-    #[derive(Default)]
+    #[derive(Clone, Copy, Debug, Default)]
     struct DecorationFlags: u32 {
         const NON_READABLE = 0x1;
         const NON_WRITABLE = 0x2;
@@ -201,7 +196,7 @@ struct Decoration {
     location: Option<spirv::Word>,
     desc_set: Option<spirv::Word>,
     desc_index: Option<spirv::Word>,
-    specialization: Option<spirv::Word>,
+    specialization_constant_id: Option<spirv::Word>,
     storage_buffer: bool,
     offset: Option<spirv::Word>,
     array_stride: Option<NonZeroU32>,
@@ -250,6 +245,7 @@ impl Decoration {
                 location,
                 interpolation,
                 sampling,
+                second_blend_source: false,
             }),
             _ => Err(Error::MissingDecoration(spirv::Decoration::Location)),
         }
@@ -283,8 +279,23 @@ struct LookupType {
 }
 
 #[derive(Debug)]
+enum Constant {
+    Constant(Handle<crate::Constant>),
+    Override(Handle<crate::Override>),
+}
+
+impl Constant {
+    const fn to_expr(&self) -> crate::Expression {
+        match *self {
+            Self::Constant(c) => crate::Expression::Constant(c),
+            Self::Override(o) => crate::Expression::Override(o),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct LookupConstant {
-    handle: Handle<crate::Constant>,
+    inner: Constant,
     type_id: spirv::Word,
 }
 
@@ -302,14 +313,14 @@ struct LookupVariable {
     type_id: spirv::Word,
 }
 
-/// Information about SPIR-V result ids, stored in `Parser::lookup_expression`.
+/// Information about SPIR-V result ids, stored in `Frontend::lookup_expression`.
 #[derive(Clone, Debug)]
 struct LookupExpression {
     /// The `Expression` constructed for this result.
     ///
     /// Note that, while a SPIR-V result id can be used in any block dominated
     /// by its definition, a Naga `Expression` is only in scope for the rest of
-    /// its subtree. `Parser::get_expr_handle` takes care of spilling the result
+    /// its subtree. `Frontend::get_expr_handle` takes care of spilling the result
     /// to a `LocalVariable` which can then be used anywhere.
     handle: Handle<crate::Expression>,
 
@@ -386,8 +397,18 @@ enum BodyFragment {
         reject: BodyIndex,
     },
     Loop {
+        /// The body of the loop. Its [`Body::parent`] is the block containing
+        /// this `Loop` fragment.
         body: BodyIndex,
+
+        /// The loop's continuing block. This is a grandchild: its
+        /// [`Body::parent`] is the loop body block, whose index is above.
         continuing: BodyIndex,
+
+        /// If the SPIR-V loop's back-edge branch is conditional, this is the
+        /// expression that must be `false` for the back-edge to be taken, with
+        /// `true` being for the "loop merge" (which breaks out of the loop).
+        break_if: Option<Handle<crate::Expression>>,
     },
     Switch {
         selector: Handle<crate::Expression>,
@@ -429,7 +450,7 @@ struct PhiExpression {
     expressions: Vec<(spirv::Word, spirv::Word)>,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum MergeBlockInformation {
     LoopMerge,
     LoopContinue,
@@ -440,8 +461,16 @@ enum MergeBlockInformation {
 /// Fragments of Naga IR, to be assembled into `Statements` once data flow is
 /// resolved.
 ///
-/// We can't build a Naga `Statement` tree directly from SPIR-V blocks for two
+/// We can't build a Naga `Statement` tree directly from SPIR-V blocks for three
 /// main reasons:
+///
+/// - We parse a function's SPIR-V blocks in the order they appear in the file.
+///   Within a function, SPIR-V requires that a block must precede any blocks it
+///   structurally dominates, but doesn't say much else about the order in which
+///   they must appear. So while we know we'll see control flow header blocks
+///   before their child constructs and merge blocks, those children and the
+///   merge blocks may appear in any order - perhaps even intermingled with
+///   children of other constructs.
 ///
 /// - A SPIR-V expression can be used in any SPIR-V block dominated by its
 ///   definition, whereas Naga expressions are scoped to the rest of their
@@ -452,7 +481,7 @@ enum MergeBlockInformation {
 /// - We translate SPIR-V OpPhi expressions as Naga local variables in which we
 ///   store the appropriate value before jumping to the OpPhi's block.
 ///
-/// Both cases require us to go back and amend previously generated Naga IR
+/// All these cases require us to go back and amend previously generated Naga IR
 /// based on things we discover later. But modifying old blocks in arbitrary
 /// spots in a `Statement` tree is awkward.
 ///
@@ -477,18 +506,37 @@ struct BlockContext<'function> {
 
     /// Fragments of control-flow-free Naga IR.
     ///
-    /// These will be stitched together into a proper `Statement` tree according
+    /// These will be stitched together into a proper [`Statement`] tree according
     /// to `bodies`, once parsing is complete.
+    ///
+    /// [`Statement`]: crate::Statement
     blocks: FastHashMap<spirv::Word, crate::Block>,
 
-    /// Map from block label ids to the index of the corresponding `Body` in
-    /// `bodies`.
+    /// Map from each SPIR-V block's label id to the index of the [`Body`] in
+    /// [`bodies`] the block should append its contents to.
+    ///
+    /// Since each statement in a Naga [`Block`] dominates the next, we are sure
+    /// to encounter their SPIR-V blocks in order. Thus, by having this table
+    /// map a SPIR-V structured control flow construct's merge block to the same
+    /// body index as its header block, when we encounter the merge block, we
+    /// will simply pick up building the [`Body`] where the header left off.
+    ///
+    /// A function's first block is special: it is the only block we encounter
+    /// without having seen its label mentioned in advance. (It's simply the
+    /// first `OpLabel` after the `OpFunction`.) We thus assume that any block
+    /// missing an entry here must be the first block, which always has body
+    /// index zero.
+    ///
+    /// [`bodies`]: BlockContext::bodies
+    /// [`Block`]: crate::Block
     body_for_label: FastHashMap<spirv::Word, BodyIndex>,
 
     /// SPIR-V metadata about merge/continue blocks.
     mergers: FastHashMap<spirv::Word, MergeBlockInformation>,
 
     /// A table of `Body` values, each representing a block in the final IR.
+    ///
+    /// The first element is always the function's top-level block.
     bodies: Vec<Body>,
 
     /// Id of the function currently being processed
@@ -499,6 +547,8 @@ struct BlockContext<'function> {
     local_arena: &'function mut Arena<crate::LocalVariable>,
     /// Constants arena of the module being processed
     const_arena: &'function mut Arena<crate::Constant>,
+    overrides: &'function mut Arena<crate::Override>,
+    global_expressions: &'function mut Arena<crate::Expression>,
     /// Type arena of the module being processed
     type_arena: &'function UniqueArena<crate::Type>,
     /// Global arena of the module being processed
@@ -514,6 +564,20 @@ enum SignAnchor {
     Operand,
 }
 
+enum AtomicOpInst {
+    AtomicIIncrement,
+}
+
+#[allow(dead_code)]
+struct AtomicOp {
+    instruction: AtomicOpInst,
+    result_type_id: spirv::Word,
+    result_id: spirv::Word,
+    pointer_id: spirv::Word,
+    scope_id: spirv::Word,
+    memory_semantics_id: spirv::Word,
+}
+
 pub struct Frontend<I> {
     data: I,
     data_offset: usize,
@@ -525,10 +589,11 @@ pub struct Frontend<I> {
     future_member_decor: FastHashMap<(spirv::Word, MemberIndex), Decoration>,
     lookup_member: FastHashMap<(Handle<crate::Type>, MemberIndex), LookupMember>,
     handle_sampling: FastHashMap<Handle<crate::GlobalVariable>, image::SamplingFlags>,
+    // Used to upgrade types used in atomic ops to atomic types, keyed by pointer id
+    lookup_atomic: FastHashMap<spirv::Word, AtomicOp>,
     lookup_type: FastHashMap<spirv::Word, LookupType>,
     lookup_void_type: Option<spirv::Word>,
     lookup_storage_buffer_types: FastHashMap<Handle<crate::Type>, crate::StorageAccess>,
-    // Lookup for samplers and sampled images, storing flags on how they are used.
     lookup_constant: FastHashMap<spirv::Word, LookupConstant>,
     lookup_variable: FastHashMap<spirv::Word, LookupVariable>,
     lookup_expression: FastHashMap<spirv::Word, LookupExpression>,
@@ -538,6 +603,9 @@ pub struct Frontend<I> {
     lookup_function_type: FastHashMap<spirv::Word, LookupFunctionType>,
     lookup_function: FastHashMap<spirv::Word, LookupFunction>,
     lookup_entry_point: FastHashMap<spirv::Word, EntryPoint>,
+    // When parsing functions, each entry point function gets an entry here so that additional
+    // processing for them can be performed after all function parsing.
+    deferred_entry_points: Vec<(EntryPoint, spirv::Word)>,
     //Note: each `OpFunctionCall` gets a single entry here, indexed by the
     // dummy `Handle<crate::Function>` of the call site.
     deferred_function_calls: Vec<spirv::Word>,
@@ -547,18 +615,12 @@ pub struct Frontend<I> {
     // so that in the IR any called function is already known.
     function_call_graph: GraphMap<spirv::Word, (), petgraph::Directed>,
     options: Options,
-    index_constants: Vec<Handle<crate::Constant>>,
-    index_constant_expressions: Vec<Handle<crate::Expression>>,
 
     /// Maps for a switch from a case target to the respective body and associated literals that
     /// use that target block id.
     ///
     /// Used to preserve allocations between instruction parsing.
-    switch_cases: indexmap::IndexMap<
-        spirv::Word,
-        (BodyIndex, Vec<i32>),
-        std::hash::BuildHasherDefault<rustc_hash::FxHasher>,
-    >,
+    switch_cases: FastIndexMap<spirv::Word, (BodyIndex, Vec<i32>)>,
 
     /// Tracks access to gl_PerVertex's builtins, it is used to cull unused builtins since initializing those can
     /// affect performance and the mere presence of some of these builtins might cause backends to error since they
@@ -584,6 +646,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             future_member_decor: FastHashMap::default(),
             handle_sampling: FastHashMap::default(),
             lookup_member: FastHashMap::default(),
+            lookup_atomic: FastHashMap::default(),
             lookup_type: FastHashMap::default(),
             lookup_void_type: None,
             lookup_storage_buffer_types: FastHashMap::default(),
@@ -595,13 +658,12 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             lookup_function_type: FastHashMap::default(),
             lookup_function: FastHashMap::default(),
             lookup_entry_point: FastHashMap::default(),
+            deferred_entry_points: Vec::default(),
             deferred_function_calls: Vec::default(),
             dummy_functions: Arena::new(),
             function_call_graph: GraphMap::new(),
             options: options.clone(),
-            index_constants: Vec::new(),
-            index_constant_expressions: Vec::new(),
-            switch_cases: indexmap::IndexMap::default(),
+            switch_cases: FastIndexMap::default(),
             gl_per_vertex_builtin_access: FastHashSet::default(),
         }
     }
@@ -629,7 +691,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         if wc == 0 {
             return Err(Error::InvalidWordCount);
         }
-        let op = spirv::Op::from_u16(opcode).ok_or(Error::UnknownInstruction(opcode))?;
+        let op = spirv::Op::from_u32(opcode as u32).ok_or(Error::UnknownInstruction(opcode))?;
 
         Ok(Instruction { op, wc })
     }
@@ -722,7 +784,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 dec.matrix_major = Some(Majority::Row);
             }
             spirv::Decoration::SpecId => {
-                dec.specialization = Some(self.next()?);
+                dec.specialization_constant_id = Some(self.next()?);
             }
             other => {
                 log::warn!("Unknown decoration {:?}", other);
@@ -753,7 +815,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         id: spirv::Word,
         lookup: &LookupExpression,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         body_idx: BodyIndex,
     ) -> Handle<crate::Expression> {
@@ -815,7 +877,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_unary_op(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -844,7 +906,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_binary_op(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -878,7 +940,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_unary_op_sign_adjusted(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -933,7 +995,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_binary_op_sign_adjusted(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -1011,7 +1073,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_int_comparison(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -1082,7 +1144,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_shift_op(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -1125,7 +1187,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     fn parse_expr_derivative(
         &mut self,
         ctx: &mut BlockContext,
-        emitter: &mut super::Emitter,
+        emitter: &mut crate::proc::Emitter,
         block: &mut crate::Block,
         block_id: spirv::Word,
         body_idx: usize,
@@ -1164,7 +1226,6 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         selections: &[spirv::Word],
         type_arena: &UniqueArena<crate::Type>,
         expressions: &mut Arena<crate::Expression>,
-        constants: &Arena<crate::Constant>,
         span: crate::Span,
     ) -> Result<Handle<crate::Expression>, Error> {
         let selection = match selections.first() {
@@ -1173,6 +1234,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         };
         let root_span = expressions.get_span(root_expr);
         let root_lookup = self.lookup_type.lookup(root_type_id)?;
+
         let (count, child_type_id) = match type_arena[root_lookup.handle].inner {
             crate::TypeInner::Struct { ref members, .. } => {
                 let child_member = self
@@ -1183,15 +1245,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             }
             crate::TypeInner::Array { size, .. } => {
                 let size = match size {
-                    crate::ArraySize::Constant(handle) => match constants[handle] {
-                        crate::Constant {
-                            specialization: Some(_),
-                            ..
-                        } => return Err(Error::UnsupportedType(root_lookup.handle)),
-                        ref unspecialized => unspecialized
-                            .to_array_length()
-                            .ok_or(Error::InvalidArraySize(handle))?,
-                    },
+                    crate::ArraySize::Constant(size) => size.get(),
                     // A runtime sized array is not a composite type
                     crate::ArraySize::Dynamic => {
                         return Err(Error::InvalidAccessType(root_type_id))
@@ -1232,7 +1286,6 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             &selections[1..],
             type_arena,
             expressions,
-            constants,
             span,
         )?;
 
@@ -1265,13 +1318,29 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             })
         }
 
-        let mut emitter = super::Emitter::default();
+        let mut emitter = crate::proc::Emitter::default();
         emitter.start(ctx.expressions);
 
-        // Find the `Body` that this block belongs to. Index zero is the
-        // function's root `Body`, corresponding to `Function::body`.
+        // Find the `Body` to which this block contributes.
+        //
+        // If this is some SPIR-V structured control flow construct's merge
+        // block, then `body_idx` will refer to the same `Body` as the header,
+        // so that we simply pick up accumulating the `Body` where the header
+        // left off. Each of the statements in a block dominates the next, so
+        // we're sure to encounter their SPIR-V blocks in order, ensuring that
+        // the `Body` will be assembled in the proper order.
+        //
+        // Note that, unlike every other kind of SPIR-V block, we don't know the
+        // function's first block's label in advance. Thus, we assume that if
+        // this block has no entry in `ctx.body_for_label`, it must be the
+        // function's first block. This always has body index zero.
         let mut body_idx = *ctx.body_for_label.entry(block_id).or_default();
+
+        // The Naga IR block this call builds. This will end up as
+        // `ctx.blocks[&block_id]`, and `ctx.bodies[body_idx]` will refer to it
+        // via a `BodyFragment::BlockId`.
         let mut block = crate::Block::new();
+
         // Stores the merge block as defined by a `OpSelectionMerge` otherwise is `None`
         //
         // This is used in `OpSwitch` to promote the `MergeBlockInformation` from
@@ -1324,14 +1393,17 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 Op::NoLine => inst.expect(1)?,
                 Op::Undef => {
                     inst.expect(3)?;
-                    let (type_id, id, handle) =
-                        self.parse_null_constant(inst, ctx.type_arena, ctx.const_arena)?;
+                    let type_id = self.next()?;
+                    let id = self.next()?;
+                    let type_lookup = self.lookup_type.lookup(type_id)?;
+                    let ty = type_lookup.handle;
+
                     self.lookup_expression.insert(
                         id,
                         LookupExpression {
                             handle: ctx
                                 .expressions
-                                .append(crate::Expression::Constant(handle), span),
+                                .append(crate::Expression::ZeroValue(ty), span),
                             type_id,
                             block_id,
                         },
@@ -1348,7 +1420,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         inst.expect(5)?;
                         let init_id = self.next()?;
                         let lconst = self.lookup_constant.lookup(init_id)?;
-                        Some(lconst.handle)
+                        Some(ctx.expressions.append(lconst.inner.to_expr(), span))
                     } else {
                         None
                     };
@@ -1484,11 +1556,15 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         let index_expr_handle = get_expr_handle!(access_id, &index_expr);
                         let index_expr_data = &ctx.expressions[index_expr.handle];
                         let index_maybe = match *index_expr_data {
-                            crate::Expression::Constant(const_handle) => {
-                                Some(ctx.const_arena[const_handle].to_array_length().ok_or(
-                                    Error::InvalidAccess(crate::Expression::Constant(const_handle)),
-                                )?)
-                            }
+                            crate::Expression::Constant(const_handle) => Some(
+                                ctx.gctx()
+                                    .eval_expr_to_u32(ctx.const_arena[const_handle].init)
+                                    .map_err(|_| {
+                                        Error::InvalidAccess(crate::Expression::Constant(
+                                            const_handle,
+                                        ))
+                                    })?,
+                            ),
                             _ => None,
                         };
 
@@ -1513,12 +1589,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                                     span,
                                 );
 
-                                if ty.name.as_deref() == Some("gl_PerVertex") {
-                                    if let Some(crate::Binding::BuiltIn(built_in)) =
-                                        members[index as usize].binding
-                                    {
-                                        self.gl_per_vertex_builtin_access.insert(built_in);
-                                    }
+                                if let Some(crate::Binding::BuiltIn(built_in)) =
+                                    members[index as usize].binding
+                                {
+                                    self.gl_per_vertex_builtin_access.insert(built_in);
                                 }
 
                                 AccessExpression {
@@ -1675,20 +1749,35 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     let root_type_lookup = self.lookup_type.lookup(root_lexp.type_id)?;
                     let index_lexp = self.lookup_expression.lookup(index_id)?;
                     let index_handle = get_expr_handle!(index_id, index_lexp);
+                    let index_type = self.lookup_type.lookup(index_lexp.type_id)?.handle;
 
                     let num_components = match ctx.type_arena[root_type_lookup.handle].inner {
-                        crate::TypeInner::Vector { size, .. } => size as usize,
+                        crate::TypeInner::Vector { size, .. } => size as u32,
                         _ => return Err(Error::InvalidVectorType(root_type_lookup.handle)),
                     };
 
+                    let mut make_index = |ctx: &mut BlockContext, index: u32| {
+                        make_index_literal(
+                            ctx,
+                            index,
+                            &mut block,
+                            &mut emitter,
+                            index_type,
+                            index_lexp.type_id,
+                            span,
+                        )
+                    };
+
+                    let index_expr = make_index(ctx, 0)?;
                     let mut handle = ctx.expressions.append(
                         crate::Expression::Access {
                             base: root_handle,
-                            index: self.index_constant_expressions[0],
+                            index: index_expr,
                         },
                         span,
                     );
-                    for &index_expr in self.index_constant_expressions[1..num_components].iter() {
+                    for index in 1..num_components {
+                        let index_expr = make_index(ctx, index)?;
                         let access_expr = ctx.expressions.append(
                             crate::Expression::Access {
                                 base: root_handle,
@@ -1738,31 +1827,25 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     let root_handle = get_expr_handle!(composite_id, root_lexp);
                     let root_type_lookup = self.lookup_type.lookup(root_lexp.type_id)?;
                     let index_lexp = self.lookup_expression.lookup(index_id)?;
-                    let mut index_handle = get_expr_handle!(index_id, index_lexp);
+                    let index_handle = get_expr_handle!(index_id, index_lexp);
                     let index_type = self.lookup_type.lookup(index_lexp.type_id)?.handle;
 
-                    // SPIR-V allows signed and unsigned indices but naga's is strict about
-                    // types and since the `index_constants` are all signed integers, we need
-                    // to cast the index to a signed integer if it's unsigned.
-                    if let Some(crate::ScalarKind::Uint) =
-                        ctx.type_arena[index_type].inner.scalar_kind()
-                    {
-                        index_handle = ctx.expressions.append(
-                            crate::Expression::As {
-                                expr: index_handle,
-                                kind: crate::ScalarKind::Sint,
-                                convert: None,
-                            },
-                            span,
-                        )
-                    }
-
                     let num_components = match ctx.type_arena[root_type_lookup.handle].inner {
-                        crate::TypeInner::Vector { size, .. } => size as usize,
+                        crate::TypeInner::Vector { size, .. } => size as u32,
                         _ => return Err(Error::InvalidVectorType(root_type_lookup.handle)),
                     };
-                    let mut components = Vec::with_capacity(num_components);
-                    for &index_expr in self.index_constant_expressions[..num_components].iter() {
+
+                    let mut components = Vec::with_capacity(num_components as usize);
+                    for index in 0..num_components {
+                        let index_expr = make_index_literal(
+                            ctx,
+                            index,
+                            &mut block,
+                            &mut emitter,
+                            index_type,
+                            index_lexp.type_id,
+                            span,
+                        )?;
                         let access_expr = ctx.expressions.append(
                             crate::Expression::Access {
                                 base: root_handle,
@@ -1880,7 +1963,6 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         &selections,
                         ctx.type_arena,
                         ctx.expressions,
-                        ctx.const_arena,
                         span,
                     )?;
 
@@ -2089,7 +2171,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     let result_ty = self.lookup_type.lookup(result_type_id)?;
                     let inner = &ctx.type_arena[result_ty.handle].inner;
                     let kind = inner.scalar_kind().unwrap();
-                    let size = inner.size(ctx.const_arena) as u8;
+                    let size = inner.size(ctx.gctx()) as u8;
 
                     let left_cast = ctx.expressions.append(
                         crate::Expression::As {
@@ -2498,12 +2580,12 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         &mut block,
                         block_id,
                         body_idx,
-                        crate::UnaryOperator::Not,
+                        crate::UnaryOperator::BitwiseNot,
                     )?;
                 }
                 Op::ShiftRightLogical => {
                     inst.expect(5)?;
-                    //TODO: convert input and result to usigned
+                    //TODO: convert input and result to unsigned
                     parse_expr_op!(crate::BinaryOperator::ShiftRight, SHIFT)?;
                 }
                 Op::ShiftRightArithmetic => {
@@ -2631,19 +2713,11 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 }
                 Op::ImageQueryLevels => {
                     inst.expect(4)?;
-                    self.parse_image_query_other(
-                        crate::ImageQuery::NumLevels,
-                        ctx.expressions,
-                        block_id,
-                    )?;
+                    self.parse_image_query_other(crate::ImageQuery::NumLevels, ctx, block_id)?;
                 }
                 Op::ImageQuerySamples => {
                     inst.expect(4)?;
-                    self.parse_image_query_other(
-                        crate::ImageQuery::NumSamples,
-                        ctx.expressions,
-                        block_id,
-                    )?;
+                    self.parse_image_query_other(crate::ImageQuery::NumSamples, ctx, block_id)?;
                 }
                 // other ops
                 Op::Select => {
@@ -2780,22 +2854,22 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
 
                     let value_lexp = self.lookup_expression.lookup(value_id)?;
                     let ty_lookup = self.lookup_type.lookup(result_type_id)?;
-                    let (kind, width) = match ctx.type_arena[ty_lookup.handle].inner {
-                        crate::TypeInner::Scalar { kind, width }
-                        | crate::TypeInner::Vector { kind, width, .. } => (kind, width),
-                        crate::TypeInner::Matrix { width, .. } => (crate::ScalarKind::Float, width),
+                    let scalar = match ctx.type_arena[ty_lookup.handle].inner {
+                        crate::TypeInner::Scalar(scalar)
+                        | crate::TypeInner::Vector { scalar, .. }
+                        | crate::TypeInner::Matrix { scalar, .. } => scalar,
                         _ => return Err(Error::InvalidAsType(ty_lookup.handle)),
                     };
 
                     let expr = crate::Expression::As {
                         expr: get_expr_handle!(value_id, value_lexp),
-                        kind,
-                        convert: if kind == crate::ScalarKind::Bool {
+                        kind: scalar.kind,
+                        convert: if scalar.kind == crate::ScalarKind::Bool {
                             Some(crate::BOOL_WIDTH)
                         } else if inst.op == Op::Bitcast {
                             None
                         } else {
-                            Some(width)
+                            Some(scalar.width)
                         },
                     };
                     self.lookup_expression.insert(
@@ -2900,7 +2974,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         Glo::InverseSqrt => Mf::InverseSqrt,
                         Glo::MatrixInverse => Mf::Inverse,
                         Glo::Determinant => Mf::Determinant,
-                        Glo::Modf => Mf::Modf,
+                        Glo::ModfStruct => Mf::Modf,
                         Glo::FMin | Glo::UMin | Glo::SMin | Glo::NMin => Mf::Min,
                         Glo::FMax | Glo::UMax | Glo::SMax | Glo::NMax => Mf::Max,
                         Glo::FClamp | Glo::UClamp | Glo::SClamp | Glo::NClamp => Mf::Clamp,
@@ -2908,7 +2982,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         Glo::Step => Mf::Step,
                         Glo::SmoothStep => Mf::SmoothStep,
                         Glo::Fma => Mf::Fma,
-                        Glo::Frexp => Mf::Frexp, //TODO: FrexpStruct?
+                        Glo::FrexpStruct => Mf::Frexp,
                         Glo::Ldexp => Mf::Ldexp,
                         Glo::Length => Mf::Length,
                         Glo::Distance => Mf::Distance,
@@ -2929,7 +3003,16 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         Glo::UnpackSnorm2x16 => Mf::Unpack2x16snorm,
                         Glo::FindILsb => Mf::FindLsb,
                         Glo::FindUMsb | Glo::FindSMsb => Mf::FindMsb,
-                        _ => return Err(Error::UnsupportedExtInst(inst_id)),
+                        // TODO: https://github.com/gfx-rs/naga/issues/2526
+                        Glo::Modf | Glo::Frexp => return Err(Error::UnsupportedExtInst(inst_id)),
+                        Glo::IMix
+                        | Glo::PackDouble2x32
+                        | Glo::UnpackDouble2x32
+                        | Glo::InterpolateAtCentroid
+                        | Glo::InterpolateAtSample
+                        | Glo::InterpolateAtOffset => {
+                            return Err(Error::UnsupportedExtInst(inst_id))
+                        }
                     };
 
                     let arg_count = fun.argument_count();
@@ -2980,7 +3063,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 // Relational and Logical Instructions
                 Op::LogicalNot => {
                     inst.expect(4)?;
-                    parse_expr_op!(crate::UnaryOperator::Not, UNARY)?;
+                    parse_expr_op!(crate::UnaryOperator::LogicalNot, UNARY)?;
                 }
                 Op::LogicalOr => {
                     inst.expect(5)?;
@@ -3079,8 +3162,14 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     inst.expect(2)?;
                     let target_id = self.next()?;
 
-                    // If this is a branch to a merge or continue block,
-                    // then that ends the current body.
+                    // If this is a branch to a merge or continue block, then
+                    // that ends the current body.
+                    //
+                    // Why can we count on finding an entry here when it's
+                    // needed? SPIR-V requires dominators to appear before
+                    // blocks they dominate, so we will have visited a
+                    // structured control construct's header block before
+                    // anything that could exit it.
                     if let Some(info) = ctx.mergers.get(&target_id) {
                         block.extend(emitter.finish(ctx.expressions));
                         ctx.blocks.insert(block_id, block);
@@ -3092,15 +3181,22 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         return Ok(());
                     }
 
-                    // Since the target of the branch has no merge information,
-                    // this must be the only branch to that block. This means
-                    // we can treat it as an extension of the current `Body`.
+                    // If `target_id` has no entry in `ctx.body_for_label`, then
+                    // this must be the only branch to it:
                     //
-                    // NOTE: it's possible that another branch was already made to this block
-                    // setting the body index in which case it SHOULD NOT be overridden.
-                    // For example a switch with falltrough, the OpSwitch will set the body to
-                    // the respective case and the case may branch to another case in which case
-                    // the body index shouldn't be changed
+                    // - We've already established that it's not anybody's merge
+                    //   block.
+                    //
+                    // - It can't be a switch case. Only switch header blocks
+                    //   and other switch cases can branch to a switch case.
+                    //   Switch header blocks must dominate all their cases, so
+                    //   they must appear in the file before them, and when we
+                    //   see `Op::Switch` we populate `ctx.body_for_label` for
+                    //   every switch case.
+                    //
+                    // Thus, `target_id` must be a simple extension of the
+                    // current block, which we dominate, so we know we'll
+                    // encounter it later in the file.
                     ctx.body_for_label.entry(target_id).or_insert(body_idx);
 
                     break None;
@@ -3114,35 +3210,121 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         get_expr_handle!(condition_id, lexp)
                     };
 
+                    // HACK(eddyb) Naga doesn't seem to have this helper,
+                    // so it's declared on the fly here for convenience.
+                    #[derive(Copy, Clone)]
+                    struct BranchTarget {
+                        label_id: spirv::Word,
+                        merge_info: Option<MergeBlockInformation>,
+                    }
+                    let branch_target = |label_id| BranchTarget {
+                        label_id,
+                        merge_info: ctx.mergers.get(&label_id).copied(),
+                    };
+
+                    let true_target = branch_target(self.next()?);
+                    let false_target = branch_target(self.next()?);
+
+                    // Consume branch weights
+                    for _ in 4..inst.wc {
+                        let _ = self.next()?;
+                    }
+
+                    // Handle `OpBranchConditional`s used at the end of a loop
+                    // body's "continuing" section as a "conditional backedge",
+                    // i.e. a `do`-`while` condition, or `break if` in WGSL.
+
+                    // HACK(eddyb) this has to go to the parent *twice*, because
+                    // `OpLoopMerge` left the "continuing" section nested in the
+                    // loop body in terms of `parent`, but not `BodyFragment`.
+                    let parent_body_idx = ctx.bodies[body_idx].parent;
+                    let parent_parent_body_idx = ctx.bodies[parent_body_idx].parent;
+                    match ctx.bodies[parent_parent_body_idx].data[..] {
+                        // The `OpLoopMerge`'s `continuing` block and the loop's
+                        // backedge block may not be the same, but they'll both
+                        // belong to the same body.
+                        [.., BodyFragment::Loop {
+                            body: loop_body_idx,
+                            continuing: loop_continuing_idx,
+                            break_if: ref mut break_if_slot @ None,
+                        }] if body_idx == loop_continuing_idx => {
+                            // Try both orderings of break-vs-backedge, because
+                            // SPIR-V is symmetrical here, unlike WGSL `break if`.
+                            let break_if_cond = [true, false].into_iter().find_map(|true_breaks| {
+                                let (break_candidate, backedge_candidate) = if true_breaks {
+                                    (true_target, false_target)
+                                } else {
+                                    (false_target, true_target)
+                                };
+
+                                if break_candidate.merge_info
+                                    != Some(MergeBlockInformation::LoopMerge)
+                                {
+                                    return None;
+                                }
+
+                                // HACK(eddyb) since Naga doesn't explicitly track
+                                // backedges, this is checking for the outcome of
+                                // `OpLoopMerge` below (even if it looks weird).
+                                let backedge_candidate_is_backedge =
+                                    backedge_candidate.merge_info.is_none()
+                                        && ctx.body_for_label.get(&backedge_candidate.label_id)
+                                            == Some(&loop_body_idx);
+                                if !backedge_candidate_is_backedge {
+                                    return None;
+                                }
+
+                                Some(if true_breaks {
+                                    condition
+                                } else {
+                                    ctx.expressions.append(
+                                        crate::Expression::Unary {
+                                            op: crate::UnaryOperator::LogicalNot,
+                                            expr: condition,
+                                        },
+                                        span,
+                                    )
+                                })
+                            });
+
+                            if let Some(break_if_cond) = break_if_cond {
+                                *break_if_slot = Some(break_if_cond);
+
+                                // This `OpBranchConditional` ends the "continuing"
+                                // section of the loop body as normal, with the
+                                // `break if` condition having been stashed above.
+                                break None;
+                            }
+                        }
+                        _ => {}
+                    }
+
                     block.extend(emitter.finish(ctx.expressions));
                     ctx.blocks.insert(block_id, block);
                     let body = &mut ctx.bodies[body_idx];
                     body.data.push(BodyFragment::BlockId(block_id));
 
-                    let true_id = self.next()?;
-                    let false_id = self.next()?;
-
-                    let same_target = true_id == false_id;
+                    let same_target = true_target.label_id == false_target.label_id;
 
                     // Start a body block for the `accept` branch.
                     let accept = ctx.bodies.len();
                     let mut accept_block = Body::with_parent(body_idx);
 
-                    // If the `OpBranchConditional`target is somebody else's
+                    // If the `OpBranchConditional` target is somebody else's
                     // merge or continue block, then put a `Break` or `Continue`
                     // statement in this new body block.
-                    if let Some(info) = ctx.mergers.get(&true_id) {
+                    if let Some(info) = true_target.merge_info {
                         merger(
                             match same_target {
                                 true => &mut ctx.bodies[body_idx],
                                 false => &mut accept_block,
                             },
-                            info,
+                            &info,
                         )
                     } else {
                         // Note the body index for the block we're branching to.
                         let prev = ctx.body_for_label.insert(
-                            true_id,
+                            true_target.label_id,
                             match same_target {
                                 true => body_idx,
                                 false => accept,
@@ -3161,10 +3343,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     let reject = ctx.bodies.len();
                     let mut reject_block = Body::with_parent(body_idx);
 
-                    if let Some(info) = ctx.mergers.get(&false_id) {
-                        merger(&mut reject_block, info)
+                    if let Some(info) = false_target.merge_info {
+                        merger(&mut reject_block, &info)
                     } else {
-                        let prev = ctx.body_for_label.insert(false_id, reject);
+                        let prev = ctx.body_for_label.insert(false_target.label_id, reject);
                         debug_assert!(prev.is_none());
                     }
 
@@ -3176,11 +3358,6 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         accept,
                         reject,
                     });
-
-                    // Consume branch weights
-                    for _ in 4..inst.wc {
-                        let _ = self.next()?;
-                    }
 
                     return Ok(());
                 }
@@ -3204,10 +3381,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     let selector_lty = self.lookup_type.lookup(selector_lexp.type_id)?;
                     let selector_handle = get_expr_handle!(selector, selector_lexp);
                     let selector = match ctx.type_arena[selector_lty.handle].inner {
-                        crate::TypeInner::Scalar {
+                        crate::TypeInner::Scalar(crate::Scalar {
                             kind: crate::ScalarKind::Uint,
                             width: _,
-                        } => {
+                        }) => {
                             // IR expects a signed integer, so do a bitcast
                             ctx.expressions.append(
                                 crate::Expression::As {
@@ -3218,10 +3395,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                                 span,
                             )
                         }
-                        crate::TypeInner::Scalar {
+                        crate::TypeInner::Scalar(crate::Scalar {
                             kind: crate::ScalarKind::Sint,
                             width: _,
-                        } => selector_handle,
+                        }) => selector_handle,
                         ref other => unimplemented!("Unexpected selector {:?}", other),
                     };
 
@@ -3236,7 +3413,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
 
                         // Check if any previous case already used this target block id, if so
                         // group them together to reorder them later so that no weird
-                        // falltrough cases happen.
+                        // fallthrough cases happen.
                         if let Some(&mut (_, ref mut literals)) = self.switch_cases.get_mut(&target)
                         {
                             literals.push(literal as i32);
@@ -3260,11 +3437,11 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
 
                     // Loop trough the collected target blocks creating a new case for each
                     // literal pointing to it, only one case will have the true body and all the
-                    // others will be empty falltrough so that they all execute the same body
+                    // others will be empty fallthrough so that they all execute the same body
                     // without duplicating code.
                     //
                     // Since `switch_cases` is an indexmap the order of insertion is preserved
-                    // this is needed because spir-v defines falltrough order in the switch
+                    // this is needed because spir-v defines fallthrough order in the switch
                     // instruction.
                     let mut cases = Vec::with_capacity((inst.wc as usize - 3) / 2);
                     for &(case_body_idx, ref literals) in self.switch_cases.values() {
@@ -3351,6 +3528,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     parent_body.data.push(BodyFragment::Loop {
                         body: loop_body_idx,
                         continuing: continue_idx,
+                        break_if: None,
                     });
                     body_idx = loop_body_idx;
                 }
@@ -3495,20 +3673,12 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     let semantics_id = self.next()?;
                     let exec_scope_const = self.lookup_constant.lookup(exec_scope_id)?;
                     let semantics_const = self.lookup_constant.lookup(semantics_id)?;
-                    let exec_scope = match ctx.const_arena[exec_scope_const.handle].inner {
-                        crate::ConstantInner::Scalar {
-                            value: crate::ScalarValue::Uint(raw),
-                            width: _,
-                        } => raw as u32,
-                        _ => return Err(Error::InvalidBarrierScope(exec_scope_id)),
-                    };
-                    let semantics = match ctx.const_arena[semantics_const.handle].inner {
-                        crate::ConstantInner::Scalar {
-                            value: crate::ScalarValue::Uint(raw),
-                            width: _,
-                        } => raw as u32,
-                        _ => return Err(Error::InvalidBarrierMemorySemantics(semantics_id)),
-                    };
+
+                    let exec_scope = resolve_constant(ctx.gctx(), &exec_scope_const.inner)
+                        .ok_or(Error::InvalidBarrierScope(exec_scope_id))?;
+                    let semantics = resolve_constant(ctx.gctx(), &semantics_const.inner)
+                        .ok_or(Error::InvalidBarrierMemorySemantics(semantics_id))?;
+
                     if exec_scope == spirv::Scope::Workgroup as u32 {
                         let mut flags = crate::Barrier::empty();
                         flags.set(
@@ -3546,7 +3716,325 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         },
                     );
                 }
-                _ => return Err(Error::UnsupportedInstruction(self.state, inst.op)),
+                Op::GroupNonUniformBallot => {
+                    inst.expect(5)?;
+                    block.extend(emitter.finish(ctx.expressions));
+                    let result_type_id = self.next()?;
+                    let result_id = self.next()?;
+                    let exec_scope_id = self.next()?;
+                    let predicate_id = self.next()?;
+
+                    let exec_scope_const = self.lookup_constant.lookup(exec_scope_id)?;
+                    let _exec_scope = resolve_constant(ctx.gctx(), &exec_scope_const.inner)
+                        .filter(|exec_scope| *exec_scope == spirv::Scope::Subgroup as u32)
+                        .ok_or(Error::InvalidBarrierScope(exec_scope_id))?;
+
+                    let predicate = if self
+                        .lookup_constant
+                        .lookup(predicate_id)
+                        .ok()
+                        .filter(|predicate_const| match predicate_const.inner {
+                            Constant::Constant(constant) => matches!(
+                                ctx.gctx().global_expressions[ctx.gctx().constants[constant].init],
+                                crate::Expression::Literal(crate::Literal::Bool(true)),
+                            ),
+                            Constant::Override(_) => false,
+                        })
+                        .is_some()
+                    {
+                        None
+                    } else {
+                        let predicate_lookup = self.lookup_expression.lookup(predicate_id)?;
+                        let predicate_handle = get_expr_handle!(predicate_id, predicate_lookup);
+                        Some(predicate_handle)
+                    };
+
+                    let result_handle = ctx
+                        .expressions
+                        .append(crate::Expression::SubgroupBallotResult, span);
+                    self.lookup_expression.insert(
+                        result_id,
+                        LookupExpression {
+                            handle: result_handle,
+                            type_id: result_type_id,
+                            block_id,
+                        },
+                    );
+
+                    block.push(
+                        crate::Statement::SubgroupBallot {
+                            result: result_handle,
+                            predicate,
+                        },
+                        span,
+                    );
+                    emitter.start(ctx.expressions);
+                }
+                Op::GroupNonUniformAll
+                | Op::GroupNonUniformAny
+                | Op::GroupNonUniformIAdd
+                | Op::GroupNonUniformFAdd
+                | Op::GroupNonUniformIMul
+                | Op::GroupNonUniformFMul
+                | Op::GroupNonUniformSMax
+                | Op::GroupNonUniformUMax
+                | Op::GroupNonUniformFMax
+                | Op::GroupNonUniformSMin
+                | Op::GroupNonUniformUMin
+                | Op::GroupNonUniformFMin
+                | Op::GroupNonUniformBitwiseAnd
+                | Op::GroupNonUniformBitwiseOr
+                | Op::GroupNonUniformBitwiseXor
+                | Op::GroupNonUniformLogicalAnd
+                | Op::GroupNonUniformLogicalOr
+                | Op::GroupNonUniformLogicalXor => {
+                    block.extend(emitter.finish(ctx.expressions));
+                    inst.expect(
+                        if matches!(inst.op, Op::GroupNonUniformAll | Op::GroupNonUniformAny) {
+                            5
+                        } else {
+                            6
+                        },
+                    )?;
+                    let result_type_id = self.next()?;
+                    let result_id = self.next()?;
+                    let exec_scope_id = self.next()?;
+                    let collective_op_id = match inst.op {
+                        Op::GroupNonUniformAll | Op::GroupNonUniformAny => {
+                            crate::CollectiveOperation::Reduce
+                        }
+                        _ => {
+                            let group_op_id = self.next()?;
+                            match spirv::GroupOperation::from_u32(group_op_id) {
+                                Some(spirv::GroupOperation::Reduce) => {
+                                    crate::CollectiveOperation::Reduce
+                                }
+                                Some(spirv::GroupOperation::InclusiveScan) => {
+                                    crate::CollectiveOperation::InclusiveScan
+                                }
+                                Some(spirv::GroupOperation::ExclusiveScan) => {
+                                    crate::CollectiveOperation::ExclusiveScan
+                                }
+                                _ => return Err(Error::UnsupportedGroupOperation(group_op_id)),
+                            }
+                        }
+                    };
+                    let argument_id = self.next()?;
+
+                    let argument_lookup = self.lookup_expression.lookup(argument_id)?;
+                    let argument_handle = get_expr_handle!(argument_id, argument_lookup);
+
+                    let exec_scope_const = self.lookup_constant.lookup(exec_scope_id)?;
+                    let _exec_scope = resolve_constant(ctx.gctx(), &exec_scope_const.inner)
+                        .filter(|exec_scope| *exec_scope == spirv::Scope::Subgroup as u32)
+                        .ok_or(Error::InvalidBarrierScope(exec_scope_id))?;
+
+                    let op_id = match inst.op {
+                        Op::GroupNonUniformAll => crate::SubgroupOperation::All,
+                        Op::GroupNonUniformAny => crate::SubgroupOperation::Any,
+                        Op::GroupNonUniformIAdd | Op::GroupNonUniformFAdd => {
+                            crate::SubgroupOperation::Add
+                        }
+                        Op::GroupNonUniformIMul | Op::GroupNonUniformFMul => {
+                            crate::SubgroupOperation::Mul
+                        }
+                        Op::GroupNonUniformSMax
+                        | Op::GroupNonUniformUMax
+                        | Op::GroupNonUniformFMax => crate::SubgroupOperation::Max,
+                        Op::GroupNonUniformSMin
+                        | Op::GroupNonUniformUMin
+                        | Op::GroupNonUniformFMin => crate::SubgroupOperation::Min,
+                        Op::GroupNonUniformBitwiseAnd | Op::GroupNonUniformLogicalAnd => {
+                            crate::SubgroupOperation::And
+                        }
+                        Op::GroupNonUniformBitwiseOr | Op::GroupNonUniformLogicalOr => {
+                            crate::SubgroupOperation::Or
+                        }
+                        Op::GroupNonUniformBitwiseXor | Op::GroupNonUniformLogicalXor => {
+                            crate::SubgroupOperation::Xor
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    let result_type = self.lookup_type.lookup(result_type_id)?;
+
+                    let result_handle = ctx.expressions.append(
+                        crate::Expression::SubgroupOperationResult {
+                            ty: result_type.handle,
+                        },
+                        span,
+                    );
+                    self.lookup_expression.insert(
+                        result_id,
+                        LookupExpression {
+                            handle: result_handle,
+                            type_id: result_type_id,
+                            block_id,
+                        },
+                    );
+
+                    block.push(
+                        crate::Statement::SubgroupCollectiveOperation {
+                            result: result_handle,
+                            op: op_id,
+                            collective_op: collective_op_id,
+                            argument: argument_handle,
+                        },
+                        span,
+                    );
+                    emitter.start(ctx.expressions);
+                }
+                Op::GroupNonUniformBroadcastFirst
+                | Op::GroupNonUniformBroadcast
+                | Op::GroupNonUniformShuffle
+                | Op::GroupNonUniformShuffleDown
+                | Op::GroupNonUniformShuffleUp
+                | Op::GroupNonUniformShuffleXor => {
+                    inst.expect(if matches!(inst.op, Op::GroupNonUniformBroadcastFirst) {
+                        5
+                    } else {
+                        6
+                    })?;
+                    block.extend(emitter.finish(ctx.expressions));
+                    let result_type_id = self.next()?;
+                    let result_id = self.next()?;
+                    let exec_scope_id = self.next()?;
+                    let argument_id = self.next()?;
+
+                    let argument_lookup = self.lookup_expression.lookup(argument_id)?;
+                    let argument_handle = get_expr_handle!(argument_id, argument_lookup);
+
+                    let exec_scope_const = self.lookup_constant.lookup(exec_scope_id)?;
+                    let _exec_scope = resolve_constant(ctx.gctx(), &exec_scope_const.inner)
+                        .filter(|exec_scope| *exec_scope == spirv::Scope::Subgroup as u32)
+                        .ok_or(Error::InvalidBarrierScope(exec_scope_id))?;
+
+                    let mode = if matches!(inst.op, Op::GroupNonUniformBroadcastFirst) {
+                        crate::GatherMode::BroadcastFirst
+                    } else {
+                        let index_id = self.next()?;
+                        let index_lookup = self.lookup_expression.lookup(index_id)?;
+                        let index_handle = get_expr_handle!(index_id, index_lookup);
+                        match inst.op {
+                            Op::GroupNonUniformBroadcast => {
+                                crate::GatherMode::Broadcast(index_handle)
+                            }
+                            Op::GroupNonUniformShuffle => crate::GatherMode::Shuffle(index_handle),
+                            Op::GroupNonUniformShuffleDown => {
+                                crate::GatherMode::ShuffleDown(index_handle)
+                            }
+                            Op::GroupNonUniformShuffleUp => {
+                                crate::GatherMode::ShuffleUp(index_handle)
+                            }
+                            Op::GroupNonUniformShuffleXor => {
+                                crate::GatherMode::ShuffleXor(index_handle)
+                            }
+                            _ => unreachable!(),
+                        }
+                    };
+
+                    let result_type = self.lookup_type.lookup(result_type_id)?;
+
+                    let result_handle = ctx.expressions.append(
+                        crate::Expression::SubgroupOperationResult {
+                            ty: result_type.handle,
+                        },
+                        span,
+                    );
+                    self.lookup_expression.insert(
+                        result_id,
+                        LookupExpression {
+                            handle: result_handle,
+                            type_id: result_type_id,
+                            block_id,
+                        },
+                    );
+
+                    block.push(
+                        crate::Statement::SubgroupGather {
+                            result: result_handle,
+                            mode,
+                            argument: argument_handle,
+                        },
+                        span,
+                    );
+                    emitter.start(ctx.expressions);
+                }
+                Op::AtomicIIncrement => {
+                    inst.expect(6)?;
+                    let start = self.data_offset;
+                    let span = self.span_from_with_op(start);
+                    let result_type_id = self.next()?;
+                    let result_id = self.next()?;
+                    let pointer_id = self.next()?;
+                    let scope_id = self.next()?;
+                    let memory_semantics_id = self.next()?;
+                    // Store the op for a later pass where we "upgrade" the pointer type
+                    let atomic = AtomicOp {
+                        instruction: AtomicOpInst::AtomicIIncrement,
+                        result_type_id,
+                        result_id,
+                        pointer_id,
+                        scope_id,
+                        memory_semantics_id,
+                    };
+                    self.lookup_atomic.insert(pointer_id, atomic);
+
+                    log::trace!("\t\t\tlooking up expr {:?}", pointer_id);
+
+                    let (p_lexp_handle, p_lexp_ty_id) = {
+                        let lexp = self.lookup_expression.lookup(pointer_id)?;
+                        let handle = get_expr_handle!(pointer_id, &lexp);
+                        (handle, lexp.type_id)
+                    };
+                    log::trace!("\t\t\tlooking up type {pointer_id:?}");
+                    let p_ty = self.lookup_type.lookup(p_lexp_ty_id)?;
+                    let p_ty_base_id =
+                        p_ty.base_id.ok_or(Error::InvalidAccessType(p_lexp_ty_id))?;
+                    log::trace!("\t\t\tlooking up base type {p_ty_base_id:?} of {p_ty:?}");
+                    let p_base_ty = self.lookup_type.lookup(p_ty_base_id)?;
+
+                    // Create an expression for our result
+                    let r_lexp_handle = {
+                        let expr = crate::Expression::AtomicResult {
+                            ty: p_base_ty.handle,
+                            comparison: false,
+                        };
+                        let handle = ctx.expressions.append(expr, span);
+                        self.lookup_expression.insert(
+                            result_id,
+                            LookupExpression {
+                                handle,
+                                type_id: result_type_id,
+                                block_id,
+                            },
+                        );
+                        handle
+                    };
+
+                    // Create a literal "1" since WGSL lacks an increment operation
+                    let one_lexp_handle = make_index_literal(
+                        ctx,
+                        1,
+                        &mut block,
+                        &mut emitter,
+                        p_base_ty.handle,
+                        p_lexp_ty_id,
+                        span,
+                    )?;
+
+                    // Create a statement for the op itself
+                    let stmt = crate::Statement::Atomic {
+                        pointer: p_lexp_handle,
+                        fun: crate::AtomicFunction::Add,
+                        value: one_lexp_handle,
+                        result: r_lexp_handle,
+                    };
+                    block.push(stmt, span);
+                }
+                _ => {
+                    return Err(Error::UnsupportedInstruction(self.state, inst.op));
+                }
             }
         };
 
@@ -3567,6 +4055,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         &mut self,
         globals: &Arena<crate::GlobalVariable>,
         constants: &Arena<crate::Constant>,
+        overrides: &Arena<crate::Override>,
     ) -> Arena<crate::Expression> {
         let mut expressions = Arena::new();
         #[allow(clippy::panic)]
@@ -3589,17 +4078,13 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 },
             );
         }
-        // register special constants
-        self.index_constant_expressions.clear();
-        for &con_handle in self.index_constants.iter() {
-            let span = constants.get_span(con_handle);
-            let handle = expressions.append(crate::Expression::Constant(con_handle), span);
-            self.index_constant_expressions.push(handle);
-        }
         // register constants
         for (&id, con) in self.lookup_constant.iter() {
-            let span = constants.get_span(con.handle);
-            let handle = expressions.append(crate::Expression::Constant(con.handle), span);
+            let (expr, span) = match con.inner {
+                Constant::Constant(c) => (crate::Expression::Constant(c), constants.get_span(c)),
+                Constant::Override(o) => (crate::Expression::Override(o), overrides.get_span(o)),
+            };
+            let handle = expressions.append(expr, span);
             self.lookup_expression.insert(
                 id,
                 LookupExpression {
@@ -3673,7 +4158,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 | S::Store { .. }
                 | S::ImageStore { .. }
                 | S::Atomic { .. }
-                | S::RayQuery { .. } => {}
+                | S::RayQuery { .. }
+                | S::SubgroupBallot { .. }
+                | S::SubgroupCollectiveOperation { .. }
+                | S::SubgroupGather { .. } => {}
                 S::Call {
                     function: ref mut callee,
                     ref arguments,
@@ -3703,6 +4191,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         }
                     }
                 }
+                S::WorkGroupUniformLoad { .. } => unreachable!(),
             }
             i += 1;
         }
@@ -3759,23 +4248,6 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             crate::Module::default()
         };
 
-        // register indexing constants
-        self.index_constants.clear();
-        for i in 0..4 {
-            let handle = module.constants.append(
-                crate::Constant {
-                    name: None,
-                    specialization: None,
-                    inner: crate::ConstantInner::Scalar {
-                        width: 4,
-                        value: crate::ScalarValue::Sint(i),
-                    },
-                },
-                Default::default(),
-            );
-            self.index_constants.push(handle);
-        }
-
         self.layouter.clear();
         self.dummy_functions = Arena::new();
         self.lookup_function.clear();
@@ -3821,12 +4293,16 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 Op::TypeSampledImage => self.parse_type_sampled_image(inst),
                 Op::TypeSampler => self.parse_type_sampler(inst, &mut module),
                 Op::Constant | Op::SpecConstant => self.parse_constant(inst, &mut module),
-                Op::ConstantComposite => self.parse_composite_constant(inst, &mut module),
-                Op::ConstantNull | Op::Undef => self
-                    .parse_null_constant(inst, &module.types, &mut module.constants)
-                    .map(|_| ()),
-                Op::ConstantTrue => self.parse_bool_constant(inst, true, &mut module),
-                Op::ConstantFalse => self.parse_bool_constant(inst, false, &mut module),
+                Op::ConstantComposite | Op::SpecConstantComposite => {
+                    self.parse_composite_constant(inst, &mut module)
+                }
+                Op::ConstantNull | Op::Undef => self.parse_null_constant(inst, &mut module),
+                Op::ConstantTrue | Op::SpecConstantTrue => {
+                    self.parse_bool_constant(inst, true, &mut module)
+                }
+                Op::ConstantFalse | Op::SpecConstantFalse => {
+                    self.parse_bool_constant(inst, false, &mut module)
+                }
                 Op::Variable => self.parse_global_variable(inst, &mut module),
                 Op::Function => {
                     self.switch(ModuleState::Function, inst.op)?;
@@ -3835,6 +4311,12 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                 }
                 _ => Err(Error::UnsupportedInstruction(self.state, inst.op)), //TODO
             }?;
+        }
+
+        // Do entry point specific processing after all functions are parsed so that we can
+        // cull unused problematic builtins of gl_PerVertex.
+        for (ep, fun_id) in mem::take(&mut self.deferred_entry_points) {
+            self.process_entry_point(&mut module, ep, fun_id)?;
         }
 
         log::info!("Patching...");
@@ -3978,8 +4460,8 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             .lookup_entry_point
             .get_mut(&ep_id)
             .ok_or(Error::InvalidId(ep_id))?;
-        let mode = spirv::ExecutionMode::from_u32(mode_id)
-            .ok_or(Error::UnsupportedExecutionMode(mode_id))?;
+        let mode =
+            ExecutionMode::from_u32(mode_id).ok_or(Error::UnsupportedExecutionMode(mode_id))?;
 
         match mode {
             ExecutionMode::EarlyFragmentTests => {
@@ -4124,10 +4606,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         self.switch(ModuleState::Type, inst.op)?;
         inst.expect(2)?;
         let id = self.next()?;
-        let inner = crate::TypeInner::Scalar {
-            kind: crate::ScalarKind::Bool,
-            width: crate::BOOL_WIDTH,
-        };
+        let inner = crate::TypeInner::Scalar(crate::Scalar::BOOL);
         self.lookup_type.insert(
             id,
             LookupType {
@@ -4155,14 +4634,14 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let id = self.next()?;
         let width = self.next()?;
         let sign = self.next()?;
-        let inner = crate::TypeInner::Scalar {
+        let inner = crate::TypeInner::Scalar(crate::Scalar {
             kind: match sign {
                 0 => crate::ScalarKind::Uint,
                 1 => crate::ScalarKind::Sint,
                 _ => return Err(Error::InvalidSign(sign)),
             },
             width: map_width(width)?,
-        };
+        });
         self.lookup_type.insert(
             id,
             LookupType {
@@ -4189,10 +4668,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         inst.expect(3)?;
         let id = self.next()?;
         let width = self.next()?;
-        let inner = crate::TypeInner::Scalar {
-            kind: crate::ScalarKind::Float,
-            width: map_width(width)?,
-        };
+        let inner = crate::TypeInner::Scalar(crate::Scalar::float(map_width(width)?));
         self.lookup_type.insert(
             id,
             LookupType {
@@ -4220,15 +4696,14 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let id = self.next()?;
         let type_id = self.next()?;
         let type_lookup = self.lookup_type.lookup(type_id)?;
-        let (kind, width) = match module.types[type_lookup.handle].inner {
-            crate::TypeInner::Scalar { kind, width } => (kind, width),
+        let scalar = match module.types[type_lookup.handle].inner {
+            crate::TypeInner::Scalar(scalar) => scalar,
             _ => return Err(Error::InvalidInnerType(type_id)),
         };
         let component_count = self.next()?;
         let inner = crate::TypeInner::Vector {
             size: map_vector_size(component_count)?,
-            kind,
-            width,
+            scalar,
         };
         self.lookup_type.insert(
             id,
@@ -4261,10 +4736,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
 
         let vector_type_lookup = self.lookup_type.lookup(vector_type_id)?;
         let inner = match module.types[vector_type_lookup.handle].inner {
-            crate::TypeInner::Vector { size, width, .. } => crate::TypeInner::Matrix {
+            crate::TypeInner::Vector { size, scalar } => crate::TypeInner::Matrix {
                 columns: map_vector_size(num_columns)?,
                 rows: size,
-                width,
+                scalar,
             },
             _ => return Err(Error::InvalidInnerType(vector_type_id)),
         };
@@ -4384,12 +4859,14 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let length_id = self.next()?;
         let length_const = self.lookup_constant.lookup(length_id)?;
 
+        let size = resolve_constant(module.to_ctx(), &length_const.inner)
+            .and_then(NonZeroU32::new)
+            .ok_or(Error::InvalidArraySize(length_id))?;
+
         let decor = self.future_decor.remove(&id).unwrap_or_default();
         let base = self.lookup_type.lookup(type_id)?.handle;
 
-        self.layouter
-            .update(&module.types, &module.constants)
-            .unwrap();
+        self.layouter.update(module.to_ctx()).unwrap();
 
         // HACK if the underlying type is an image or a sampler, let's assume
         //      that we're dealing with a binding-array
@@ -4427,12 +4904,12 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         {
             crate::TypeInner::BindingArray {
                 base,
-                size: crate::ArraySize::Constant(length_const.handle),
+                size: crate::ArraySize::Constant(size),
             }
         } else {
             crate::TypeInner::Array {
                 base,
-                size: crate::ArraySize::Constant(length_const.handle),
+                size: crate::ArraySize::Constant(size),
                 stride: match decor.array_stride {
                     Some(stride) => stride.get(),
                     None => self.layouter[base].to_stride(),
@@ -4470,9 +4947,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let decor = self.future_decor.remove(&id).unwrap_or_default();
         let base = self.lookup_type.lookup(type_id)?.handle;
 
-        self.layouter
-            .update(&module.types, &module.constants)
-            .unwrap();
+        self.layouter.update(module.to_ctx()).unwrap();
 
         // HACK same case as in `parse_type_array()`
         let inner = if let crate::TypeInner::Image { .. } | crate::TypeInner::Sampler { .. } =
@@ -4523,9 +4998,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             .as_ref()
             .map_or(false, |decor| decor.storage_buffer);
 
-        self.layouter
-            .update(&module.types, &module.constants)
-            .unwrap();
+        self.layouter.update(module.to_ctx()).unwrap();
 
         let mut members = Vec::<crate::StructMember>::with_capacity(inst.wc as usize - 2);
         let mut member_lookups = Vec::with_capacity(members.capacity());
@@ -4563,17 +5036,17 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             if let crate::TypeInner::Matrix {
                 columns,
                 rows,
-                width,
+                scalar,
             } = *inner
             {
                 if let Some(stride) = decor.matrix_stride {
-                    let expected_stride = Alignment::from(rows) * width as u32;
+                    let expected_stride = Alignment::from(rows) * scalar.width as u32;
                     if stride.get() != expected_stride {
                         return Err(Error::UnsupportedMatrixStride {
                             stride: stride.get(),
                             columns: columns as u8,
                             rows: rows as u8,
-                            width,
+                            width: scalar.width,
                         });
                     }
                 }
@@ -4629,7 +5102,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let id = self.next()?;
         let sample_type_id = self.next()?;
         let dim = self.next()?;
-        let _is_depth = self.next()?;
+        let is_depth = self.next()?;
         let is_array = self.next()? != 0;
         let is_msaa = self.next()? != 0;
         let _is_sampled = self.next()?;
@@ -4643,11 +5116,10 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             crate::Type {
                 name: None,
                 inner: {
-                    let kind = crate::ScalarKind::Float;
-                    let width = 4;
+                    let scalar = crate::Scalar::F32;
                     match dim.required_coordinate_size() {
-                        None => crate::TypeInner::Scalar { kind, width },
-                        Some(size) => crate::TypeInner::Vector { size, kind, width },
+                        None => crate::TypeInner::Scalar(scalar),
+                        Some(size) => crate::TypeInner::Vector { size, scalar },
                     }
                 },
             },
@@ -4661,7 +5133,9 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             .ok_or(Error::InvalidImageBaseType(base_handle))?;
 
         let inner = crate::TypeInner::Image {
-            class: if format != 0 {
+            class: if is_depth == 1 {
+                crate::ImageClass::Depth { multi: is_msaa }
+            } else if format != 0 {
                 crate::ImageClass::Storage {
                     format: map_image_format(format)?,
                     access: crate::StorageAccess::default(),
@@ -4749,80 +5223,64 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let type_lookup = self.lookup_type.lookup(type_id)?;
         let ty = type_lookup.handle;
 
-        let inner = match module.types[ty].inner {
-            crate::TypeInner::Scalar {
+        let literal = match module.types[ty].inner {
+            crate::TypeInner::Scalar(crate::Scalar {
                 kind: crate::ScalarKind::Uint,
                 width,
-            } => {
+            }) => {
                 let low = self.next()?;
-                let high = if width > 4 {
-                    inst.expect(5)?;
-                    self.next()?
-                } else {
-                    0
-                };
-                crate::ConstantInner::Scalar {
-                    width,
-                    value: crate::ScalarValue::Uint((u64::from(high) << 32) | u64::from(low)),
-                }
-            }
-            crate::TypeInner::Scalar {
-                kind: crate::ScalarKind::Sint,
-                width,
-            } => {
-                let low = self.next()?;
-                let high = if width > 4 {
-                    inst.expect(5)?;
-                    self.next()?
-                } else {
-                    0
-                };
-                crate::ConstantInner::Scalar {
-                    width,
-                    value: crate::ScalarValue::Sint(
-                        (i64::from(high as i32) << 32) | ((i64::from(low as i32) << 32) >> 32),
-                    ),
-                }
-            }
-            crate::TypeInner::Scalar {
-                kind: crate::ScalarKind::Float,
-                width,
-            } => {
-                let low = self.next()?;
-                let extended = match width {
-                    4 => f64::from(f32::from_bits(low)),
+                match width {
+                    4 => crate::Literal::U32(low),
                     8 => {
                         inst.expect(5)?;
                         let high = self.next()?;
-                        f64::from_bits((u64::from(high) << 32) | u64::from(low))
+                        crate::Literal::U64(u64::from(high) << 32 | u64::from(low))
                     }
                     _ => return Err(Error::InvalidTypeWidth(width as u32)),
-                };
-                crate::ConstantInner::Scalar {
-                    width,
-                    value: crate::ScalarValue::Float(extended),
+                }
+            }
+            crate::TypeInner::Scalar(crate::Scalar {
+                kind: crate::ScalarKind::Sint,
+                width,
+            }) => {
+                let low = self.next()?;
+                match width {
+                    4 => crate::Literal::I32(low as i32),
+                    8 => {
+                        inst.expect(5)?;
+                        let high = self.next()?;
+                        crate::Literal::I64((u64::from(high) << 32 | u64::from(low)) as i64)
+                    }
+                    _ => return Err(Error::InvalidTypeWidth(width as u32)),
+                }
+            }
+            crate::TypeInner::Scalar(crate::Scalar {
+                kind: crate::ScalarKind::Float,
+                width,
+            }) => {
+                let low = self.next()?;
+                match width {
+                    4 => crate::Literal::F32(f32::from_bits(low)),
+                    8 => {
+                        inst.expect(5)?;
+                        let high = self.next()?;
+                        crate::Literal::F64(f64::from_bits(
+                            (u64::from(high) << 32) | u64::from(low),
+                        ))
+                    }
+                    _ => return Err(Error::InvalidTypeWidth(width as u32)),
                 }
             }
             _ => return Err(Error::UnsupportedType(type_lookup.handle)),
         };
 
-        let decor = self.future_decor.remove(&id).unwrap_or_default();
+        let span = self.span_from_with_op(start);
 
-        self.lookup_constant.insert(
-            id,
-            LookupConstant {
-                handle: module.constants.append(
-                    crate::Constant {
-                        specialization: decor.specialization,
-                        name: decor.name,
-                        inner,
-                    },
-                    self.span_from_with_op(start),
-                ),
-                type_id,
-            },
-        );
-        Ok(())
+        let init = module
+            .global_expressions
+            .append(crate::Expression::Literal(literal), span);
+
+        self.insert_parsed_constant(module, id, type_id, ty, init, span)
     }
 
     fn parse_composite_constant(
@@ -4834,61 +5292,52 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         self.switch(ModuleState::Type, inst.op)?;
         inst.expect_at_least(3)?;
         let type_id = self.next()?;
+        let id = self.next()?;
+
         let type_lookup = self.lookup_type.lookup(type_id)?;
         let ty = type_lookup.handle;
-        let id = self.next()?;
 
         let mut components = Vec::with_capacity(inst.wc as usize - 3);
         for _ in 0..components.capacity() {
+            let start = self.data_offset;
             let component_id = self.next()?;
+            let span = self.span_from_with_op(start);
             let constant = self.lookup_constant.lookup(component_id)?;
-            components.push(constant.handle);
+            let expr = module
+                .global_expressions
+                .append(constant.inner.to_expr(), span);
+            components.push(expr);
         }
 
-        self.lookup_constant.insert(
-            id,
-            LookupConstant {
-                handle: module.constants.append(
-                    crate::Constant {
-                        name: self.future_decor.remove(&id).and_then(|dec| dec.name),
-                        specialization: None,
-                        inner: crate::ConstantInner::Composite { ty, components },
-                    },
-                    self.span_from_with_op(start),
-                ),
-                type_id,
-            },
-        );
-        Ok(())
+        let span = self.span_from_with_op(start);
+
+        let init = module
+            .global_expressions
+            .append(crate::Expression::Compose { ty, components }, span);
+
+        self.insert_parsed_constant(module, id, type_id, ty, init, span)
     }
 
     fn parse_null_constant(
         &mut self,
         inst: Instruction,
-        types: &UniqueArena<crate::Type>,
-        constants: &mut Arena<crate::Constant>,
-    ) -> Result<(u32, u32, Handle<crate::Constant>), Error> {
+        module: &mut crate::Module,
+    ) -> Result<(), Error> {
         let start = self.data_offset;
         self.switch(ModuleState::Type, inst.op)?;
         inst.expect(3)?;
         let type_id = self.next()?;
         let id = self.next()?;
         let span = self.span_from_with_op(start);
+
         let type_lookup = self.lookup_type.lookup(type_id)?;
         let ty = type_lookup.handle;
 
-        let inner = null::generate_null_constant(ty, types, constants, span)?;
-        let handle = constants.append(
-            crate::Constant {
-                name: self.future_decor.remove(&id).and_then(|dec| dec.name),
-                specialization: None, //TODO
-                inner,
-            },
-            span,
-        );
-        self.lookup_constant
-            .insert(id, LookupConstant { handle, type_id });
-        Ok((type_id, id, handle))
+        let init = module
+            .global_expressions
+            .append(crate::Expression::ZeroValue(ty), span);
+
+        self.insert_parsed_constant(module, id, type_id, ty, init, span)
     }
 
     fn parse_bool_constant(
@@ -4902,21 +5351,49 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         inst.expect(3)?;
         let type_id = self.next()?;
         let id = self.next()?;
+        let span = self.span_from_with_op(start);
 
-        self.lookup_constant.insert(
-            id,
-            LookupConstant {
-                handle: module.constants.append(
-                    crate::Constant {
-                        name: self.future_decor.remove(&id).and_then(|dec| dec.name),
-                        specialization: None, //TODO
-                        inner: crate::ConstantInner::boolean(value),
-                    },
-                    self.span_from_with_op(start),
-                ),
-                type_id,
-            },
+        let type_lookup = self.lookup_type.lookup(type_id)?;
+        let ty = type_lookup.handle;
+
+        let init = module.global_expressions.append(
+            crate::Expression::Literal(crate::Literal::Bool(value)),
+            span,
         );
+
+        self.insert_parsed_constant(module, id, type_id, ty, init, span)
+    }
+
+    fn insert_parsed_constant(
+        &mut self,
+        module: &mut crate::Module,
+        id: u32,
+        type_id: u32,
+        ty: Handle<crate::Type>,
+        init: Handle<crate::Expression>,
+        span: crate::Span,
+    ) -> Result<(), Error> {
+        let decor = self.future_decor.remove(&id).unwrap_or_default();
+
+        let inner = if let Some(id) = decor.specialization_constant_id {
+            let o = crate::Override {
+                name: decor.name,
+                id: Some(id.try_into().map_err(|_| Error::SpecIdTooHigh(id))?),
+                ty,
+                init: Some(init),
+            };
+            Constant::Override(module.overrides.append(o, span))
+        } else {
+            let c = crate::Constant {
+                name: decor.name,
+                ty,
+                init,
+            };
+            Constant::Constant(module.constants.append(c, span))
+        };
+
+        self.lookup_constant
+            .insert(id, LookupConstant { inner, type_id });
         Ok(())
     }
 
@@ -4933,14 +5410,19 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
         let storage_class = self.next()?;
         let init = if inst.wc > 4 {
             inst.expect(5)?;
+            let start = self.data_offset;
             let init_id = self.next()?;
+            let span = self.span_from_with_op(start);
             let lconst = self.lookup_constant.lookup(init_id)?;
-            Some(lconst.handle)
+            let expr = module
+                .global_expressions
+                .append(lconst.inner.to_expr(), span);
+            Some(expr)
         } else {
             None
         };
         let span = self.span_from_with_op(start);
-        let mut dec = self.future_decor.remove(&id).unwrap_or_default();
+        let dec = self.future_decor.remove(&id).unwrap_or_default();
 
         let original_ty = self.lookup_type.lookup(type_id)?.handle;
         let mut ty = original_ty;
@@ -4986,17 +5468,6 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
             None => map_storage_class(storage_class)?,
         };
 
-        // Fix empty name for gl_PerVertex struct generated by glslang
-        if let crate::TypeInner::Pointer { .. } = module.types[original_ty].inner {
-            if ext_class == ExtendedClass::Input || ext_class == ExtendedClass::Output {
-                if let Some(ref dec_name) = dec.name {
-                    if dec_name.is_empty() {
-                        dec.name = Some("perVertexStruct".to_string())
-                    }
-                }
-            }
-        }
-
         let (inner, var) = match ext_class {
             ExtendedClass::Global(mut space) => {
                 if let crate::AddressSpace::Storage { ref mut access } = space {
@@ -5022,17 +5493,15 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         | crate::BuiltIn::SampleIndex
                         | crate::BuiltIn::VertexIndex
                         | crate::BuiltIn::PrimitiveIndex
-                        | crate::BuiltIn::LocalInvocationIndex => Some(crate::TypeInner::Scalar {
-                            kind: crate::ScalarKind::Uint,
-                            width: 4,
-                        }),
+                        | crate::BuiltIn::LocalInvocationIndex => {
+                            Some(crate::TypeInner::Scalar(crate::Scalar::U32))
+                        }
                         crate::BuiltIn::GlobalInvocationId
                         | crate::BuiltIn::LocalInvocationId
                         | crate::BuiltIn::WorkGroupId
                         | crate::BuiltIn::WorkGroupSize => Some(crate::TypeInner::Vector {
                             size: crate::VectorSize::Tri,
-                            kind: crate::ScalarKind::Uint,
-                            width: 4,
+                            scalar: crate::Scalar::U32,
                         }),
                         _ => None,
                     };
@@ -5068,8 +5537,7 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                         match null::generate_default_built_in(
                             Some(built_in),
                             ty,
-                            &module.types,
-                            &mut module.constants,
+                            &mut module.global_expressions,
                             span,
                         ) {
                             Ok(handle) => Some(handle),
@@ -5082,37 +5550,25 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
                     Some(crate::Binding::Location { .. }) => None,
                     None => match module.types[ty].inner {
                         crate::TypeInner::Struct { ref members, .. } => {
-                            // A temporary to avoid borrowing `module.types`
-                            let pairs = members
-                                .iter()
-                                .map(|member| {
-                                    let built_in = match member.binding {
-                                        Some(crate::Binding::BuiltIn(built_in)) => Some(built_in),
-                                        _ => None,
-                                    };
-                                    (built_in, member.ty)
-                                })
-                                .collect::<Vec<_>>();
-
                             let mut components = Vec::with_capacity(members.len());
-                            for (built_in, member_ty) in pairs {
+                            for member in members.iter() {
+                                let built_in = match member.binding {
+                                    Some(crate::Binding::BuiltIn(built_in)) => Some(built_in),
+                                    _ => None,
+                                };
                                 let handle = null::generate_default_built_in(
                                     built_in,
-                                    member_ty,
-                                    &module.types,
-                                    &mut module.constants,
+                                    member.ty,
+                                    &mut module.global_expressions,
                                     span,
                                 )?;
                                 components.push(handle);
                             }
-                            Some(module.constants.append(
-                                crate::Constant {
-                                    name: None,
-                                    specialization: None,
-                                    inner: crate::ConstantInner::Composite { ty, components },
-                                },
-                                span,
-                            ))
+                            Some(
+                                module
+                                    .global_expressions
+                                    .append(crate::Expression::Compose { ty, components }, span),
+                            )
                         }
                         _ => None,
                     },
@@ -5151,6 +5607,42 @@ impl<I: Iterator<Item = u32>> Frontend<I> {
     }
 }
 
+fn make_index_literal(
+    ctx: &mut BlockContext,
+    index: u32,
+    block: &mut crate::Block,
+    emitter: &mut crate::proc::Emitter,
+    index_type: Handle<crate::Type>,
+    index_type_id: spirv::Word,
+    span: crate::Span,
+) -> Result<Handle<crate::Expression>, Error> {
+    block.extend(emitter.finish(ctx.expressions));
+
+    let literal = match ctx.type_arena[index_type].inner.scalar_kind() {
+        Some(crate::ScalarKind::Uint) => crate::Literal::U32(index),
+        Some(crate::ScalarKind::Sint) => crate::Literal::I32(index as i32),
+        _ => return Err(Error::InvalidIndexType(index_type_id)),
+    };
+    let expr = ctx
+        .expressions
+        .append(crate::Expression::Literal(literal), span);
+
+    emitter.start(ctx.expressions);
+    Ok(expr)
+}
+
+fn resolve_constant(gctx: crate::proc::GlobalCtx, constant: &Constant) -> Option<u32> {
+    let constant = match *constant {
+        Constant::Constant(constant) => constant,
+        Constant::Override(_) => return None,
+    };
+    match gctx.global_expressions[gctx.constants[constant].init] {
+        crate::Expression::Literal(crate::Literal::U32(id)) => Some(id),
+        crate::Expression::Literal(crate::Literal::I32(id)) => Some(id as u32),
+        _ => None,
+    }
+}
+
 pub fn parse_u8_slice(data: &[u8], options: &Options) -> Result<crate::Module, Error> {
     if data.len() % 4 != 0 {
         return Err(Error::IncompleteData);
@@ -5160,6 +5652,21 @@ pub fn parse_u8_slice(data: &[u8], options: &Options) -> Result<crate::Module, E
         .chunks(4)
         .map(|c| u32::from_le_bytes(c.try_into().unwrap()));
     Frontend::new(words, options).parse()
+}
+
+/// Helper function to check if `child` is in the scope of `parent`
+fn is_parent(mut child: usize, parent: usize, block_ctx: &BlockContext) -> bool {
+    loop {
+        if child == parent {
+            // The child is in the scope parent
+            break true;
+        } else if child == 0 {
+            // Searched finished at the root the child isn't in the parent's body
+            break false;
+        }
+
+        child = block_ctx.bodies[child].parent;
+    }
 }
 
 #[cfg(test)]
@@ -5177,19 +5684,38 @@ mod test {
         ];
         let _ = super::parse_u8_slice(&bin, &Default::default()).unwrap();
     }
-}
 
-/// Helper function to check if `child` is in the scope of `parent`
-fn is_parent(mut child: usize, parent: usize, block_ctx: &BlockContext) -> bool {
-    loop {
-        if child == parent {
-            // The child is in the scope parent
-            break true;
-        } else if child == 0 {
-            // Searched finished at the root the child isn't in the parent's body
-            break false;
+    #[test]
+    fn atomic_i_inc() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Trace)
+            .try_init();
+        let bytes = include_bytes!("../../../tests/in/spv/atomic_i_increment.spv");
+        let m = super::parse_u8_slice(bytes, &Default::default()).unwrap();
+        let mut validator = crate::valid::Validator::new(
+            crate::valid::ValidationFlags::empty(),
+            Default::default(),
+        );
+        let info = validator.validate(&m).unwrap();
+        let wgsl =
+            crate::back::wgsl::write_string(&m, &info, crate::back::wgsl::WriterFlags::empty())
+                .unwrap();
+        log::info!("atomic_i_increment:\n{wgsl}");
+
+        let m = match crate::front::wgsl::parse_str(&wgsl) {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("{}", e.emit_to_string(&wgsl));
+                // at this point we know atomics create invalid modules
+                // so simply bail
+                return;
+            }
+        };
+        let mut validator =
+            crate::valid::Validator::new(crate::valid::ValidationFlags::all(), Default::default());
+        if let Err(e) = validator.validate(&m) {
+            log::error!("{}", e.emit_to_string(&wgsl));
         }
-
-        child = block_ctx.bodies[child].parent;
     }
 }

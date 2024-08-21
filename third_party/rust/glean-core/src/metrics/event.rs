@@ -12,6 +12,8 @@ use crate::util::truncate_string_at_boundary_with_error;
 use crate::CommonMetricData;
 use crate::Glean;
 
+use chrono::Utc;
+
 const MAX_LENGTH_EXTRA_KEY_VALUE: usize = 500;
 
 /// An event metric.
@@ -68,14 +70,27 @@ impl EventMetric {
     ///             If any key is not allowed, an error is reported and no event is recorded.
     pub fn record_with_time(&self, timestamp: u64, extra: HashMap<String, String>) {
         let metric = self.clone();
+
+        // Precise timestamp based on wallclock. Will be used if `enable_event_timestamps` is true.
+        let now = Utc::now();
+        let precise_timestamp = now.timestamp_millis() as u64;
+
         crate::launch_with_glean(move |glean| {
-            let sent = metric.record_sync(glean, timestamp, extra);
+            let sent = metric.record_sync(glean, timestamp, extra, precise_timestamp);
             if sent {
                 let state = crate::global_state().lock().unwrap();
                 if let Err(e) = state.callbacks.trigger_upload() {
                     log::error!("Triggering upload failed. Error: {}", e);
                 }
             }
+        });
+
+        let id = self.meta().base_identifier();
+        crate::launch_with_glean(move |_| {
+            let event_listeners = crate::event_listeners().lock().unwrap();
+            event_listeners
+                .iter()
+                .for_each(|(_, listener)| listener.on_event_recorded(id.clone()));
         });
     }
 
@@ -123,15 +138,24 @@ impl EventMetric {
         glean: &Glean,
         timestamp: u64,
         extra: HashMap<String, String>,
+        precise_timestamp: u64,
     ) -> bool {
         if !self.should_record(glean) {
             return false;
         }
 
-        let extra_strings = match self.validate_extra(glean, extra) {
+        let mut extra_strings = match self.validate_extra(glean, extra) {
             Ok(extra) => extra,
             Err(()) => return false,
         };
+
+        if glean.with_timestamps() {
+            if extra_strings.is_none() {
+                extra_strings.replace(Default::default());
+            }
+            let map = extra_strings.get_or_insert(Default::default());
+            map.insert("glean_timestamp".to_string(), precise_timestamp.to_string());
+        }
 
         glean
             .event_storage()
@@ -151,9 +175,21 @@ impl EventMetric {
             .into()
             .unwrap_or_else(|| &self.meta().inner.send_in_pings[0]);
 
-        glean
+        let events = glean
             .event_storage()
-            .test_get_value(&self.meta, queried_ping_name)
+            .test_get_value(&self.meta, queried_ping_name);
+
+        events.map(|mut evts| {
+            for ev in &mut evts {
+                let Some(extra) = &mut ev.extra else { continue };
+                extra.remove("glean_timestamp");
+                if extra.is_empty() {
+                    ev.extra = None;
+                }
+            }
+
+            evts
+        })
     }
 
     /// **Test-only API (exported for FFI purposes).**
@@ -161,6 +197,11 @@ impl EventMetric {
     /// Get the vector of currently stored events for this event metric.
     ///
     /// This doesn't clear the stored value.
+    ///
+    /// # Arguments
+    ///
+    /// * `ping_name` - the optional name of the ping to retrieve the metric
+    ///                 for. Defaults to the first value in `send_in_pings`.
     pub fn test_get_value(&self, ping_name: Option<String>) -> Option<Vec<RecordedEvent>> {
         crate::block_on_dispatcher();
         crate::core::with_glean(|glean| self.get_value(glean, ping_name.as_deref()))
@@ -173,8 +214,6 @@ impl EventMetric {
     /// # Arguments
     ///
     /// * `error` - The type of error
-    /// * `ping_name` - represents the optional name of the ping to retrieve the
-    ///   metric for. inner to the first value in `send_in_pings`.
     ///
     /// # Returns
     ///

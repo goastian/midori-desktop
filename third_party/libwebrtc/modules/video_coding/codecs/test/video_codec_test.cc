@@ -8,34 +8,67 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "api/video_codecs/video_codec.h"
-
-#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/flags/flag.h"
 #include "absl/functional/any_invocable.h"
-#include "api/test/create_video_codec_tester.h"
-#include "api/test/videocodec_test_stats.h"
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
+#include "api/test/metrics/global_metrics_logger_and_exporter.h"
 #include "api/units/data_rate.h"
 #include "api/units/frequency.h"
-#include "api/video/i420_buffer.h"
 #include "api/video/resolution.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
-#include "api/video_codecs/scalability_mode.h"
-#include "api/video_codecs/video_decoder.h"
-#include "api/video_codecs/video_encoder.h"
-#include "common_video/libyuv/include/webrtc_libyuv.h"
-#include "media/base/media_constants.h"
-#include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
-#include "modules/video_coding/include/video_error_codes.h"
+#if defined(WEBRTC_ANDROID)
+#include "modules/video_coding/codecs/test/android_codec_factory_helper.h"
+#endif
 #include "modules/video_coding/svc/scalability_mode_util.h"
+#include "rtc_base/logging.h"
 #include "rtc_base/strings/string_builder.h"
+#include "test/explicit_key_value_config.h"
+#include "test/field_trial.h"
 #include "test/gtest.h"
+#include "test/test_flags.h"
 #include "test/testsupport/file_utils.h"
-#include "test/testsupport/frame_reader.h"
+#include "test/video_codec_tester.h"
+
+ABSL_FLAG(std::string,
+          video_name,
+          "FourPeople_1280x720_30",
+          "Name of input video sequence.");
+ABSL_FLAG(std::string,
+          encoder,
+          "libaom-av1",
+          "Encoder: libaom-av1, libvpx-vp9, libvpx-vp8, openh264, hw-vp8, "
+          "hw-vp9, hw-av1, hw-h264, hw-h265");
+ABSL_FLAG(std::string,
+          decoder,
+          "dav1d",
+          "Decoder: dav1d, libvpx-vp9, libvpx-vp8, ffmpeg-h264, hw-vp8, "
+          "hw-vp9, hw-av1, hw-h264, hw-h265");
+ABSL_FLAG(std::string, scalability_mode, "L1T1", "Scalability mode.");
+ABSL_FLAG(int, width, 1280, "Width.");
+ABSL_FLAG(int, height, 720, "Height.");
+ABSL_FLAG(std::vector<std::string>,
+          bitrate_kbps,
+          {"1024"},
+          "Encode target bitrate per layer (l0t0,l0t1,...l1t0,l1t1 and so on) "
+          "in kbps.");
+ABSL_FLAG(double,
+          framerate_fps,
+          30.0,
+          "Encode target frame rate of the top temporal layer in fps.");
+ABSL_FLAG(int, num_frames, 300, "Number of frames to encode and/or decode.");
+ABSL_FLAG(std::string, field_trials, "", "Field trials to apply.");
+ABSL_FLAG(std::string, test_name, "", "Test name.");
+ABSL_FLAG(bool, dump_decoder_input, false, "Dump decoder input.");
+ABSL_FLAG(bool, dump_decoder_output, false, "Dump decoder output.");
+ABSL_FLAG(bool, dump_encoder_input, false, "Dump encoder input.");
+ABSL_FLAG(bool, dump_encoder_output, false, "Dump encoder output.");
+ABSL_FLAG(bool, write_csv, false, "Write metrics to a CSV file.");
 
 namespace webrtc {
 namespace test {
@@ -43,414 +76,526 @@ namespace test {
 namespace {
 using ::testing::Combine;
 using ::testing::Values;
-using Layer = std::pair<int, int>;
+using VideoSourceSettings = VideoCodecTester::VideoSourceSettings;
+using EncodingSettings = VideoCodecTester::EncodingSettings;
+using VideoCodecStats = VideoCodecTester::VideoCodecStats;
+using Filter = VideoCodecStats::Filter;
+using PacingMode = VideoCodecTester::PacingSettings::PacingMode;
 
 struct VideoInfo {
   std::string name;
   Resolution resolution;
-};
-
-struct CodecInfo {
-  std::string type;
-  std::string encoder;
-  std::string decoder;
-};
-
-struct EncodingSettings {
-  ScalabilityMode scalability_mode;
-  // Spatial layer resolution.
-  std::map<int, Resolution> resolution;
-  // Top temporal layer frame rate.
   Frequency framerate;
-  // Bitrate of spatial and temporal layers.
-  std::map<Layer, DataRate> bitrate;
 };
 
-struct EncodingTestSettings {
-  std::string name;
-  int num_frames = 1;
-  std::map<int, EncodingSettings> frame_settings;
-};
+const std::map<std::string, VideoInfo> kRawVideos = {
+    {"FourPeople_1280x720_30",
+     {.name = "FourPeople_1280x720_30",
+      .resolution = {.width = 1280, .height = 720},
+      .framerate = Frequency::Hertz(30)}},
+    {"vidyo1_1280x720_30",
+     {.name = "vidyo1_1280x720_30",
+      .resolution = {.width = 1280, .height = 720},
+      .framerate = Frequency::Hertz(30)}},
+    {"vidyo4_1280x720_30",
+     {.name = "vidyo4_1280x720_30",
+      .resolution = {.width = 1280, .height = 720},
+      .framerate = Frequency::Hertz(30)}},
+    {"KristenAndSara_1280x720_30",
+     {.name = "KristenAndSara_1280x720_30",
+      .resolution = {.width = 1280, .height = 720},
+      .framerate = Frequency::Hertz(30)}},
+    {"Johnny_1280x720_30",
+     {.name = "Johnny_1280x720_30",
+      .resolution = {.width = 1280, .height = 720},
+      .framerate = Frequency::Hertz(30)}}};
 
-struct DecodingTestSettings {
-  std::string name;
-};
+static constexpr Frequency k90kHz = Frequency::Hertz(90000);
 
-struct QualityExpectations {
-  double min_apsnr_y;
-};
-
-struct EncodeDecodeTestParams {
-  CodecInfo codec;
-  VideoInfo video;
-  VideoCodecTester::EncoderSettings encoder_settings;
-  VideoCodecTester::DecoderSettings decoder_settings;
-  EncodingTestSettings encoding_settings;
-  DecodingTestSettings decoding_settings;
-  QualityExpectations quality_expectations;
-};
-
-const EncodingSettings kQvga64Kbps30Fps = {
-    .scalability_mode = ScalabilityMode::kL1T1,
-    .resolution = {{0, {.width = 320, .height = 180}}},
-    .framerate = Frequency::Hertz(30),
-    .bitrate = {{Layer(0, 0), DataRate::KilobitsPerSec(64)}}};
-
-const EncodingTestSettings kConstantRateQvga64Kbps30Fps = {
-    .name = "ConstantRateQvga64Kbps30Fps",
-    .num_frames = 300,
-    .frame_settings = {{/*frame_num=*/0, kQvga64Kbps30Fps}}};
-
-const QualityExpectations kLowQuality = {.min_apsnr_y = 30};
-
-const VideoInfo kFourPeople_1280x720_30 = {
-    .name = "FourPeople_1280x720_30",
-    .resolution = {.width = 1280, .height = 720}};
-
-const CodecInfo kLibvpxVp8 = {.type = "VP8",
-                              .encoder = "libvpx",
-                              .decoder = "libvpx"};
-
-const CodecInfo kLibvpxVp9 = {.type = "VP9",
-                              .encoder = "libvpx",
-                              .decoder = "libvpx"};
-
-const CodecInfo kOpenH264 = {.type = "H264",
-                             .encoder = "openh264",
-                             .decoder = "ffmpeg"};
-
-class TestRawVideoSource : public VideoCodecTester::RawVideoSource {
- public:
-  static constexpr Frequency k90kHz = Frequency::Hertz(90000);
-
-  TestRawVideoSource(std::unique_ptr<FrameReader> frame_reader,
-                     const EncodingTestSettings& test_settings)
-      : frame_reader_(std::move(frame_reader)),
-        test_settings_(test_settings),
-        frame_num_(0),
-        timestamp_rtp_(0) {
-    // Ensure settings for the first frame are provided.
-    RTC_CHECK_GT(test_settings_.frame_settings.size(), 0u);
-    RTC_CHECK_EQ(test_settings_.frame_settings.begin()->first, 0);
+std::string CodecNameToCodecType(std::string name) {
+  if (name.find("av1") != std::string::npos) {
+    return "AV1";
   }
-
-  // Pulls next frame. Frame RTP timestamp is set accordingly to
-  // `EncodingSettings::framerate`.
-  absl::optional<VideoFrame> PullFrame() override {
-    if (frame_num_ >= test_settings_.num_frames) {
-      // End of stream.
-      return absl::nullopt;
-    }
-
-    EncodingSettings frame_settings =
-        std::prev(test_settings_.frame_settings.upper_bound(frame_num_))
-            ->second;
-
-    int pulled_frame;
-    auto buffer = frame_reader_->PullFrame(
-        &pulled_frame, frame_settings.resolution.rbegin()->second,
-        {.num = 30, .den = static_cast<int>(frame_settings.framerate.hertz())});
-    RTC_CHECK(buffer) << "Cannot pull frame " << frame_num_;
-
-    auto frame = VideoFrame::Builder()
-                     .set_video_frame_buffer(buffer)
-                     .set_timestamp_rtp(timestamp_rtp_)
-                     .build();
-
-    pulled_frames_[timestamp_rtp_] = pulled_frame;
-    timestamp_rtp_ += k90kHz / frame_settings.framerate;
-    ++frame_num_;
-
-    return frame;
+  if (name.find("vp9") != std::string::npos) {
+    return "VP9";
   }
-
-  // Reads frame specified by `timestamp_rtp`, scales it to `resolution` and
-  // returns. Frame with the given `timestamp_rtp` is expected to be pulled
-  // before.
-  VideoFrame GetFrame(uint32_t timestamp_rtp, Resolution resolution) override {
-    RTC_CHECK(pulled_frames_.find(timestamp_rtp) != pulled_frames_.end())
-        << "Frame with RTP timestamp " << timestamp_rtp
-        << " was not pulled before";
-    auto buffer =
-        frame_reader_->ReadFrame(pulled_frames_[timestamp_rtp], resolution);
-    return VideoFrame::Builder()
-        .set_video_frame_buffer(buffer)
-        .set_timestamp_rtp(timestamp_rtp)
-        .build();
+  if (name.find("vp8") != std::string::npos) {
+    return "VP8";
   }
-
- protected:
-  std::unique_ptr<FrameReader> frame_reader_;
-  const EncodingTestSettings& test_settings_;
-  int frame_num_;
-  uint32_t timestamp_rtp_;
-  std::map<uint32_t, int> pulled_frames_;
-};
-
-class TestEncoder : public VideoCodecTester::Encoder,
-                    public EncodedImageCallback {
- public:
-  TestEncoder(std::unique_ptr<VideoEncoder> encoder,
-              const CodecInfo& codec_info,
-              const std::map<int, EncodingSettings>& frame_settings)
-      : encoder_(std::move(encoder)),
-        codec_info_(codec_info),
-        frame_settings_(frame_settings),
-        frame_num_(0) {
-    // Ensure settings for the first frame is provided.
-    RTC_CHECK_GT(frame_settings_.size(), 0u);
-    RTC_CHECK_EQ(frame_settings_.begin()->first, 0);
-
-    encoder_->RegisterEncodeCompleteCallback(this);
+  if (name.find("h264") != std::string::npos) {
+    return "H264";
   }
-
-  void Encode(const VideoFrame& frame, EncodeCallback callback) override {
-    callbacks_[frame.timestamp()] = std::move(callback);
-
-    if (auto fs = frame_settings_.find(frame_num_);
-        fs != frame_settings_.end()) {
-      if (fs == frame_settings_.begin() ||
-          ConfigChanged(fs->second, std::prev(fs)->second)) {
-        Configure(fs->second);
-      }
-      if (fs == frame_settings_.begin() ||
-          RateChanged(fs->second, std::prev(fs)->second)) {
-        SetRates(fs->second);
-      }
-    }
-
-    int result = encoder_->Encode(frame, nullptr);
-    RTC_CHECK_EQ(result, WEBRTC_VIDEO_CODEC_OK);
-    ++frame_num_;
+  if (name.find("h265") != std::string::npos) {
+    return "H265";
   }
-
- protected:
-  Result OnEncodedImage(const EncodedImage& encoded_image,
-                        const CodecSpecificInfo* codec_specific_info) override {
-    auto cb = callbacks_.find(encoded_image.Timestamp());
-    RTC_CHECK(cb != callbacks_.end());
-    cb->second(encoded_image);
-
-    callbacks_.erase(callbacks_.begin(), cb);
-    return Result(Result::Error::OK);
-  }
-
-  void Configure(const EncodingSettings& es) {
-    VideoCodec vc;
-    const Resolution& resolution = es.resolution.rbegin()->second;
-    vc.width = resolution.width;
-    vc.height = resolution.height;
-    const DataRate& bitrate = es.bitrate.rbegin()->second;
-    vc.startBitrate = bitrate.kbps();
-    vc.maxBitrate = bitrate.kbps();
-    vc.minBitrate = 0;
-    vc.maxFramerate = static_cast<uint32_t>(es.framerate.hertz());
-    vc.active = true;
-    vc.qpMax = 0;
-    vc.numberOfSimulcastStreams = 0;
-    vc.mode = webrtc::VideoCodecMode::kRealtimeVideo;
-    vc.SetFrameDropEnabled(true);
-
-    vc.codecType = PayloadStringToCodecType(codec_info_.type);
-    if (vc.codecType == kVideoCodecVP8) {
-      *(vc.VP8()) = VideoEncoder::GetDefaultVp8Settings();
-    } else if (vc.codecType == kVideoCodecVP9) {
-      *(vc.VP9()) = VideoEncoder::GetDefaultVp9Settings();
-    } else if (vc.codecType == kVideoCodecH264) {
-      *(vc.H264()) = VideoEncoder::GetDefaultH264Settings();
-    }
-
-    VideoEncoder::Settings ves(
-        VideoEncoder::Capabilities(/*loss_notification=*/false),
-        /*number_of_cores=*/1,
-        /*max_payload_size=*/1440);
-
-    int result = encoder_->InitEncode(&vc, ves);
-    RTC_CHECK_EQ(result, WEBRTC_VIDEO_CODEC_OK);
-  }
-
-  void SetRates(const EncodingSettings& es) {
-    VideoEncoder::RateControlParameters rc;
-    int num_spatial_layers =
-        ScalabilityModeToNumSpatialLayers(es.scalability_mode);
-    int num_temporal_layers =
-        ScalabilityModeToNumSpatialLayers(es.scalability_mode);
-    for (int sidx = 0; sidx < num_spatial_layers; ++sidx) {
-      for (int tidx = 0; tidx < num_temporal_layers; ++tidx) {
-        RTC_CHECK(es.bitrate.find(Layer(sidx, tidx)) != es.bitrate.end())
-            << "Bitrate for layer S=" << sidx << " T=" << tidx << " is not set";
-        rc.bitrate.SetBitrate(sidx, tidx,
-                              es.bitrate.at(Layer(sidx, tidx)).bps());
-      }
-    }
-
-    rc.framerate_fps = es.framerate.millihertz() / 1000.0;
-    encoder_->SetRates(rc);
-  }
-
-  bool ConfigChanged(const EncodingSettings& es,
-                     const EncodingSettings& prev_es) const {
-    return es.scalability_mode != prev_es.scalability_mode ||
-           es.resolution != prev_es.resolution;
-  }
-
-  bool RateChanged(const EncodingSettings& es,
-                   const EncodingSettings& prev_es) const {
-    return es.bitrate != prev_es.bitrate || es.framerate != prev_es.framerate;
-  }
-
-  std::unique_ptr<VideoEncoder> encoder_;
-  const CodecInfo& codec_info_;
-  const std::map<int, EncodingSettings>& frame_settings_;
-  int frame_num_;
-  std::map<uint32_t, EncodeCallback> callbacks_;
-};
-
-class TestDecoder : public VideoCodecTester::Decoder,
-                    public DecodedImageCallback {
- public:
-  TestDecoder(std::unique_ptr<VideoDecoder> decoder,
-              const CodecInfo& codec_info)
-      : decoder_(std::move(decoder)), codec_info_(codec_info), frame_num_(0) {
-    decoder_->RegisterDecodeCompleteCallback(this);
-  }
-  void Decode(const EncodedImage& frame, DecodeCallback callback) override {
-    callbacks_[frame.Timestamp()] = std::move(callback);
-
-    if (frame_num_ == 0) {
-      Configure();
-    }
-
-    decoder_->Decode(frame, /*missing_frames=*/false,
-                     /*render_time_ms=*/0);
-    ++frame_num_;
-  }
-
-  void Configure() {
-    VideoDecoder::Settings ds;
-    ds.set_codec_type(PayloadStringToCodecType(codec_info_.type));
-    ds.set_number_of_cores(1);
-
-    bool result = decoder_->Configure(ds);
-    RTC_CHECK(result);
-  }
-
- protected:
-  int Decoded(VideoFrame& decoded_frame) override {
-    auto cb = callbacks_.find(decoded_frame.timestamp());
-    RTC_CHECK(cb != callbacks_.end());
-    cb->second(decoded_frame);
-
-    callbacks_.erase(callbacks_.begin(), cb);
-    return WEBRTC_VIDEO_CODEC_OK;
-  }
-
-  std::unique_ptr<VideoDecoder> decoder_;
-  const CodecInfo& codec_info_;
-  int frame_num_;
-  std::map<uint32_t, DecodeCallback> callbacks_;
-};
-
-std::unique_ptr<VideoCodecTester::Encoder> CreateEncoder(
-    const CodecInfo& codec_info,
-    const std::map<int, EncodingSettings>& frame_settings) {
-  auto factory = CreateBuiltinVideoEncoderFactory();
-  auto encoder = factory->CreateVideoEncoder(SdpVideoFormat(codec_info.type));
-  return std::make_unique<TestEncoder>(std::move(encoder), codec_info,
-                                       frame_settings);
+  RTC_CHECK_NOTREACHED();
 }
 
-std::unique_ptr<VideoCodecTester::Decoder> CreateDecoder(
-    const CodecInfo& codec_info) {
-  auto factory = CreateBuiltinVideoDecoderFactory();
-  auto decoder = factory->CreateVideoDecoder(SdpVideoFormat(codec_info.type));
-  return std::make_unique<TestDecoder>(std::move(decoder), codec_info);
+// TODO(webrtc:14852): Make Create[Encoder,Decoder]Factory to work with codec
+// name directly.
+std::string CodecNameToCodecImpl(std::string name) {
+  if (name.find("hw") != std::string::npos) {
+    return "mediacodec";
+  }
+  return "builtin";
 }
 
+std::unique_ptr<VideoEncoderFactory> CreateEncoderFactory(std::string impl) {
+  if (impl == "builtin") {
+    return CreateBuiltinVideoEncoderFactory();
+  }
+#if defined(WEBRTC_ANDROID)
+  InitializeAndroidObjects();
+  return CreateAndroidEncoderFactory();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<VideoDecoderFactory> CreateDecoderFactory(std::string impl) {
+  if (impl == "builtin") {
+    return CreateBuiltinVideoDecoderFactory();
+  }
+#if defined(WEBRTC_ANDROID)
+  InitializeAndroidObjects();
+  return CreateAndroidDecoderFactory();
+#else
+  return nullptr;
+#endif
+}
+
+std::string TestName() {
+  std::string test_name = absl::GetFlag(FLAGS_test_name);
+  if (!test_name.empty()) {
+    return test_name;
+  }
+  return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+}
+
+std::string TestOutputPath() {
+  std::string output_path =
+      (rtc::StringBuilder() << OutputPath() << TestName()).str();
+  std::string output_dir = DirName(output_path);
+  bool result = CreateDir(output_dir);
+  RTC_CHECK(result) << "Cannot create " << output_dir;
+  return output_path;
+}
 }  // namespace
 
-class EncodeDecodeTest
-    : public ::testing::TestWithParam<EncodeDecodeTestParams> {
- public:
-  EncodeDecodeTest() : test_params_(GetParam()) {}
+std::unique_ptr<VideoCodecStats> RunEncodeDecodeTest(
+    const Environment& env,
+    std::string encoder_impl,
+    std::string decoder_impl,
+    const VideoInfo& video_info,
+    const std::map<uint32_t, EncodingSettings>& encoding_settings) {
+  VideoSourceSettings source_settings{
+      .file_path = ResourcePath(video_info.name, "yuv"),
+      .resolution = video_info.resolution,
+      .framerate = video_info.framerate};
 
-  void SetUp() override {
-    std::unique_ptr<FrameReader> frame_reader =
-        CreateYuvFrameReader(ResourcePath(test_params_.video.name, "yuv"),
-                             test_params_.video.resolution,
-                             YuvFrameReaderImpl::RepeatMode::kPingPong);
-    video_source_ = std::make_unique<TestRawVideoSource>(
-        std::move(frame_reader), test_params_.encoding_settings);
+  const SdpVideoFormat& sdp_video_format =
+      encoding_settings.begin()->second.sdp_video_format;
 
-    encoder_ = CreateEncoder(test_params_.codec,
-                             test_params_.encoding_settings.frame_settings);
-    decoder_ = CreateDecoder(test_params_.codec);
-
-    tester_ = CreateVideoCodecTester();
+  std::unique_ptr<VideoEncoderFactory> encoder_factory =
+      CreateEncoderFactory(encoder_impl);
+  if (!encoder_factory
+           ->QueryCodecSupport(sdp_video_format,
+                               /*scalability_mode=*/absl::nullopt)
+           .is_supported) {
+    RTC_LOG(LS_WARNING) << "No " << encoder_impl << " encoder for video format "
+                        << sdp_video_format.ToString();
+    return nullptr;
   }
 
-  static std::string TestParametersToStr(
-      const ::testing::TestParamInfo<EncodeDecodeTest::ParamType>& info) {
-    return std::string(info.param.encoding_settings.name +
-                       info.param.codec.type + info.param.codec.encoder +
-                       info.param.codec.decoder);
-  }
-
- protected:
-  EncodeDecodeTestParams test_params_;
-  std::unique_ptr<TestRawVideoSource> video_source_;
-  std::unique_ptr<VideoCodecTester::Encoder> encoder_;
-  std::unique_ptr<VideoCodecTester::Decoder> decoder_;
-  std::unique_ptr<VideoCodecTester> tester_;
-};
-
-TEST_P(EncodeDecodeTest, DISABLED_TestEncodeDecode) {
-  std::unique_ptr<VideoCodecTestStats> stats = tester_->RunEncodeDecodeTest(
-      std::move(video_source_), std::move(encoder_), std::move(decoder_),
-      test_params_.encoder_settings, test_params_.decoder_settings);
-
-  const auto& frame_settings = test_params_.encoding_settings.frame_settings;
-  for (auto fs = frame_settings.begin(); fs != frame_settings.end(); ++fs) {
-    int first_frame = fs->first;
-    int last_frame = std::next(fs) != frame_settings.end()
-                         ? std::next(fs)->first - 1
-                         : test_params_.encoding_settings.num_frames - 1;
-
-    const EncodingSettings& encoding_settings = fs->second;
-    auto metrics = stats->CalcVideoStatistic(
-        first_frame, last_frame, encoding_settings.bitrate.rbegin()->second,
-        encoding_settings.framerate);
-
-    EXPECT_GE(metrics.avg_psnr_y,
-              test_params_.quality_expectations.min_apsnr_y);
-  }
-}
-
-std::list<EncodeDecodeTestParams> ConstantRateTestParameters() {
-  std::list<EncodeDecodeTestParams> test_params;
-  std::vector<CodecInfo> codecs = {kLibvpxVp8};
-  std::vector<VideoInfo> videos = {kFourPeople_1280x720_30};
-  std::vector<std::pair<EncodingTestSettings, QualityExpectations>>
-      encoding_settings = {{kConstantRateQvga64Kbps30Fps, kLowQuality}};
-  for (const CodecInfo& codec : codecs) {
-    for (const VideoInfo& video : videos) {
-      for (const auto& es : encoding_settings) {
-        EncodeDecodeTestParams p;
-        p.codec = codec;
-        p.video = video;
-        p.encoding_settings = es.first;
-        p.quality_expectations = es.second;
-        test_params.push_back(p);
-      }
+  std::unique_ptr<VideoDecoderFactory> decoder_factory =
+      CreateDecoderFactory(decoder_impl);
+  if (!decoder_factory
+           ->QueryCodecSupport(sdp_video_format,
+                               /*reference_scaling=*/false)
+           .is_supported) {
+    RTC_LOG(LS_WARNING) << "No " << decoder_impl << " decoder for video format "
+                        << sdp_video_format.ToString()
+                        << ". Trying built-in decoder.";
+    // TODO(ssilkin): No H264 support in ffmpeg on ARM. Consider trying HW
+    // decoder.
+    decoder_factory = CreateDecoderFactory("builtin");
+    if (!decoder_factory
+             ->QueryCodecSupport(sdp_video_format,
+                                 /*reference_scaling=*/false)
+             .is_supported) {
+      RTC_LOG(LS_WARNING) << "No " << decoder_impl
+                          << " decoder for video format "
+                          << sdp_video_format.ToString();
+      return nullptr;
     }
   }
-  return test_params;
+
+  std::string output_path = TestOutputPath();
+
+  VideoCodecTester::EncoderSettings encoder_settings;
+  encoder_settings.pacing_settings.mode =
+      encoder_impl == "builtin" ? PacingMode::kNoPacing : PacingMode::kRealTime;
+  if (absl::GetFlag(FLAGS_dump_encoder_input)) {
+    encoder_settings.encoder_input_base_path = output_path + "_enc_input";
+  }
+  if (absl::GetFlag(FLAGS_dump_encoder_output)) {
+    encoder_settings.encoder_output_base_path = output_path + "_enc_output";
+  }
+
+  VideoCodecTester::DecoderSettings decoder_settings;
+  decoder_settings.pacing_settings.mode =
+      decoder_impl == "builtin" ? PacingMode::kNoPacing : PacingMode::kRealTime;
+  if (absl::GetFlag(FLAGS_dump_decoder_input)) {
+    decoder_settings.decoder_input_base_path = output_path + "_dec_input";
+  }
+  if (absl::GetFlag(FLAGS_dump_decoder_output)) {
+    decoder_settings.decoder_output_base_path = output_path + "_dec_output";
+  }
+
+  return VideoCodecTester::RunEncodeDecodeTest(
+      env, source_settings, encoder_factory.get(), decoder_factory.get(),
+      encoder_settings, decoder_settings, encoding_settings);
 }
 
-INSTANTIATE_TEST_SUITE_P(ConstantRate,
-                         EncodeDecodeTest,
-                         ::testing::ValuesIn(ConstantRateTestParameters()),
-                         EncodeDecodeTest::TestParametersToStr);
+std::unique_ptr<VideoCodecStats> RunEncodeTest(
+    const Environment& env,
+    std::string codec_type,
+    std::string codec_impl,
+    const VideoInfo& video_info,
+    const std::map<uint32_t, EncodingSettings>& encoding_settings) {
+  VideoSourceSettings source_settings{
+      .file_path = ResourcePath(video_info.name, "yuv"),
+      .resolution = video_info.resolution,
+      .framerate = video_info.framerate};
+
+  const SdpVideoFormat& sdp_video_format =
+      encoding_settings.begin()->second.sdp_video_format;
+
+  std::unique_ptr<VideoEncoderFactory> encoder_factory =
+      CreateEncoderFactory(codec_impl);
+  if (!encoder_factory
+           ->QueryCodecSupport(sdp_video_format,
+                               /*scalability_mode=*/absl::nullopt)
+           .is_supported) {
+    RTC_LOG(LS_WARNING) << "No encoder for video format "
+                        << sdp_video_format.ToString();
+    return nullptr;
+  }
+
+  std::string output_path = TestOutputPath();
+  VideoCodecTester::EncoderSettings encoder_settings;
+  encoder_settings.pacing_settings.mode =
+      codec_impl == "builtin" ? PacingMode::kNoPacing : PacingMode::kRealTime;
+  if (absl::GetFlag(FLAGS_dump_encoder_input)) {
+    encoder_settings.encoder_input_base_path = output_path + "_enc_input";
+  }
+  if (absl::GetFlag(FLAGS_dump_encoder_output)) {
+    encoder_settings.encoder_output_base_path = output_path + "_enc_output";
+  }
+
+  return VideoCodecTester::RunEncodeTest(env, source_settings,
+                                         encoder_factory.get(),
+                                         encoder_settings, encoding_settings);
+}
+
+class SpatialQualityTest : public ::testing::TestWithParam<std::tuple<
+                               /*codec_type=*/std::string,
+                               /*codec_impl=*/std::string,
+                               VideoInfo,
+                               std::tuple</*width=*/int,
+                                          /*height=*/int,
+                                          /*framerate_fps=*/double,
+                                          /*bitrate_kbps=*/int,
+                                          /*expected_min_psnr=*/double>>> {
+ public:
+  static std::string TestParamsToString(
+      const ::testing::TestParamInfo<SpatialQualityTest::ParamType>& info) {
+    auto [codec_type, codec_impl, video_info, coding_settings] = info.param;
+    auto [width, height, framerate_fps, bitrate_kbps, psnr] = coding_settings;
+    return std::string(codec_type + codec_impl + video_info.name +
+                       std::to_string(width) + "x" + std::to_string(height) +
+                       "p" +
+                       std::to_string(static_cast<int>(1000 * framerate_fps)) +
+                       "mhz" + std::to_string(bitrate_kbps) + "kbps");
+  }
+};
+
+TEST_P(SpatialQualityTest, SpatialQuality) {
+  const Environment env = CreateEnvironment();
+  auto [codec_type, codec_impl, video_info, coding_settings] = GetParam();
+  auto [width, height, framerate_fps, bitrate_kbps, expected_min_psnr] =
+      coding_settings;
+  int duration_s = 10;
+  int num_frames = duration_s * framerate_fps;
+
+  std::map<uint32_t, EncodingSettings> frames_settings =
+      VideoCodecTester::CreateEncodingSettings(
+          codec_type, /*scalability_mode=*/"L1T1", width, height,
+          {bitrate_kbps}, framerate_fps, num_frames);
+
+  std::unique_ptr<VideoCodecStats> stats = RunEncodeDecodeTest(
+      env, codec_impl, codec_impl, video_info, frames_settings);
+
+  VideoCodecStats::Stream stream;
+  if (stats != nullptr) {
+    stream = stats->Aggregate(Filter{});
+    if (absl::GetFlag(FLAGS_webrtc_quick_perf_test)) {
+      EXPECT_GE(stream.psnr.y.GetAverage(), expected_min_psnr);
+    }
+  }
+
+  stream.LogMetrics(
+      GetGlobalMetricsLogger(),
+      ::testing::UnitTest::GetInstance()->current_test_info()->name(),
+      /*prefix=*/"",
+      /*metadata=*/
+      {{"video_name", video_info.name},
+       {"codec_type", codec_type},
+       {"codec_impl", codec_impl}});
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    SpatialQualityTest,
+    Combine(Values("AV1", "VP9", "VP8", "H264", "H265"),
+#if defined(WEBRTC_ANDROID)
+            Values("builtin", "mediacodec"),
+#else
+            Values("builtin"),
+#endif
+            Values(kRawVideos.at("FourPeople_1280x720_30")),
+            Values(std::make_tuple(320, 180, 30, 32, 26),
+                   std::make_tuple(320, 180, 30, 64, 29),
+                   std::make_tuple(320, 180, 30, 128, 32),
+                   std::make_tuple(320, 180, 30, 256, 36),
+                   std::make_tuple(640, 360, 30, 128, 29),
+                   std::make_tuple(640, 360, 30, 256, 33),
+                   std::make_tuple(640, 360, 30, 384, 35),
+                   std::make_tuple(640, 360, 30, 512, 36),
+                   std::make_tuple(1280, 720, 30, 256, 30),
+                   std::make_tuple(1280, 720, 30, 512, 34),
+                   std::make_tuple(1280, 720, 30, 1024, 37),
+                   std::make_tuple(1280, 720, 30, 2048, 39))),
+    SpatialQualityTest::TestParamsToString);
+
+class BitrateAdaptationTest
+    : public ::testing::TestWithParam<
+          std::tuple</*codec_type=*/std::string,
+                     /*codec_impl=*/std::string,
+                     VideoInfo,
+                     std::pair</*bitrate_kbps=*/int, /*bitrate_kbps=*/int>>> {
+ public:
+  static std::string TestParamsToString(
+      const ::testing::TestParamInfo<BitrateAdaptationTest::ParamType>& info) {
+    auto [codec_type, codec_impl, video_info, bitrate_kbps] = info.param;
+    return std::string(codec_type + codec_impl + video_info.name +
+                       std::to_string(bitrate_kbps.first) + "kbps" +
+                       std::to_string(bitrate_kbps.second) + "kbps");
+  }
+};
+
+TEST_P(BitrateAdaptationTest, BitrateAdaptation) {
+  auto [codec_type, codec_impl, video_info, bitrate_kbps] = GetParam();
+  const Environment env = CreateEnvironment();
+
+  int duration_s = 10;  // Duration of fixed rate interval.
+  int num_frames =
+      static_cast<int>(duration_s * video_info.framerate.hertz<double>());
+
+  std::map<uint32_t, EncodingSettings> encoding_settings =
+      VideoCodecTester::CreateEncodingSettings(
+          codec_type, /*scalability_mode=*/"L1T1",
+          /*width=*/640, /*height=*/360, {bitrate_kbps.first},
+          /*framerate_fps=*/30, num_frames);
+
+  uint32_t initial_timestamp_rtp =
+      encoding_settings.rbegin()->first + k90kHz / Frequency::Hertz(30);
+
+  std::map<uint32_t, EncodingSettings> encoding_settings2 =
+      VideoCodecTester::CreateEncodingSettings(
+          codec_type, /*scalability_mode=*/"L1T1",
+          /*width=*/640, /*height=*/360, {bitrate_kbps.second},
+          /*framerate_fps=*/30, num_frames, initial_timestamp_rtp);
+
+  encoding_settings.merge(encoding_settings2);
+
+  std::unique_ptr<VideoCodecStats> stats =
+      RunEncodeTest(env, codec_type, codec_impl, video_info, encoding_settings);
+
+  VideoCodecStats::Stream stream;
+  if (stats != nullptr) {
+    stream = stats->Aggregate({.min_timestamp_rtp = initial_timestamp_rtp});
+    if (absl::GetFlag(FLAGS_webrtc_quick_perf_test)) {
+      EXPECT_NEAR(stream.bitrate_mismatch_pct.GetAverage(), 0, 10);
+      EXPECT_NEAR(stream.framerate_mismatch_pct.GetAverage(), 0, 10);
+    }
+  }
+
+  stream.LogMetrics(
+      GetGlobalMetricsLogger(),
+      ::testing::UnitTest::GetInstance()->current_test_info()->name(),
+      /*prefix=*/"",
+      /*metadata=*/
+      {{"codec_type", codec_type},
+       {"codec_impl", codec_impl},
+       {"video_name", video_info.name},
+       {"rate_profile", std::to_string(bitrate_kbps.first) + "," +
+                            std::to_string(bitrate_kbps.second)}});
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    BitrateAdaptationTest,
+    Combine(Values("AV1", "VP9", "VP8", "H264", "H265"),
+#if defined(WEBRTC_ANDROID)
+            Values("builtin", "mediacodec"),
+#else
+            Values("builtin"),
+#endif
+            Values(kRawVideos.at("FourPeople_1280x720_30")),
+            Values(std::pair(1024, 512), std::pair(512, 1024))),
+    BitrateAdaptationTest::TestParamsToString);
+
+class FramerateAdaptationTest
+    : public ::testing::TestWithParam<std::tuple</*codec_type=*/std::string,
+                                                 /*codec_impl=*/std::string,
+                                                 VideoInfo,
+                                                 std::pair<double, double>>> {
+ public:
+  static std::string TestParamsToString(
+      const ::testing::TestParamInfo<FramerateAdaptationTest::ParamType>&
+          info) {
+    auto [codec_type, codec_impl, video_info, framerate_fps] = info.param;
+    return std::string(
+        codec_type + codec_impl + video_info.name +
+        std::to_string(static_cast<int>(1000 * framerate_fps.first)) + "mhz" +
+        std::to_string(static_cast<int>(1000 * framerate_fps.second)) + "mhz");
+  }
+};
+
+TEST_P(FramerateAdaptationTest, FramerateAdaptation) {
+  auto [codec_type, codec_impl, video_info, framerate_fps] = GetParam();
+  const Environment env = CreateEnvironment();
+
+  int duration_s = 10;  // Duration of fixed rate interval.
+
+  std::map<uint32_t, EncodingSettings> encoding_settings =
+      VideoCodecTester::CreateEncodingSettings(
+          codec_type, /*scalability_mode=*/"L1T1",
+          /*width=*/640, /*height=*/360,
+          /*layer_bitrates_kbps=*/{512}, framerate_fps.first,
+          static_cast<int>(duration_s * framerate_fps.first));
+
+  uint32_t initial_timestamp_rtp =
+      encoding_settings.rbegin()->first +
+      k90kHz / Frequency::Hertz(framerate_fps.first);
+
+  std::map<uint32_t, EncodingSettings> encoding_settings2 =
+      VideoCodecTester::CreateEncodingSettings(
+          codec_type, /*scalability_mode=*/"L1T1", /*width=*/640,
+          /*height=*/360,
+          /*layer_bitrates_kbps=*/{512}, framerate_fps.second,
+          static_cast<int>(duration_s * framerate_fps.second),
+          initial_timestamp_rtp);
+
+  encoding_settings.merge(encoding_settings2);
+
+  std::unique_ptr<VideoCodecStats> stats =
+      RunEncodeTest(env, codec_type, codec_impl, video_info, encoding_settings);
+
+  VideoCodecStats::Stream stream;
+  if (stats != nullptr) {
+    stream = stats->Aggregate({.min_timestamp_rtp = initial_timestamp_rtp});
+    if (absl::GetFlag(FLAGS_webrtc_quick_perf_test)) {
+      EXPECT_NEAR(stream.bitrate_mismatch_pct.GetAverage(), 0, 10);
+      EXPECT_NEAR(stream.framerate_mismatch_pct.GetAverage(), 0, 10);
+    }
+  }
+
+  stream.LogMetrics(
+      GetGlobalMetricsLogger(),
+      ::testing::UnitTest::GetInstance()->current_test_info()->name(),
+      /*prefix=*/"",
+      /*metadata=*/
+      {{"codec_type", codec_type},
+       {"codec_impl", codec_impl},
+       {"video_name", video_info.name},
+       {"rate_profile", std::to_string(framerate_fps.first) + "," +
+                            std::to_string(framerate_fps.second)}});
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    FramerateAdaptationTest,
+    Combine(Values("AV1", "VP9", "VP8", "H264", "H265"),
+#if defined(WEBRTC_ANDROID)
+            Values("builtin", "mediacodec"),
+#else
+            Values("builtin"),
+#endif
+            Values(kRawVideos.at("FourPeople_1280x720_30")),
+            Values(std::pair(30, 15), std::pair(15, 30))),
+    FramerateAdaptationTest::TestParamsToString);
+
+TEST(VideoCodecTest, DISABLED_EncodeDecode) {
+  ScopedFieldTrials field_trials(absl::GetFlag(FLAGS_field_trials));
+  const Environment env =
+      CreateEnvironment(std::make_unique<ExplicitKeyValueConfig>(
+          absl::GetFlag(FLAGS_field_trials)));
+
+  std::vector<std::string> bitrate_str = absl::GetFlag(FLAGS_bitrate_kbps);
+  std::vector<int> bitrate_kbps;
+  std::transform(bitrate_str.begin(), bitrate_str.end(),
+                 std::back_inserter(bitrate_kbps),
+                 [](const std::string& str) { return std::stoi(str); });
+
+  std::map<uint32_t, EncodingSettings> frames_settings =
+      VideoCodecTester::CreateEncodingSettings(
+          CodecNameToCodecType(absl::GetFlag(FLAGS_encoder)),
+          absl::GetFlag(FLAGS_scalability_mode), absl::GetFlag(FLAGS_width),
+          absl::GetFlag(FLAGS_height), {bitrate_kbps},
+          absl::GetFlag(FLAGS_framerate_fps), absl::GetFlag(FLAGS_num_frames));
+
+  // TODO(webrtc:14852): Pass encoder and decoder names directly, and update
+  // logged test name (implies lossing history in the chromeperf dashboard).
+  // Sync with changes in Stream::LogMetrics (see TODOs there).
+  std::unique_ptr<VideoCodecStats> stats = RunEncodeDecodeTest(
+      env, CodecNameToCodecImpl(absl::GetFlag(FLAGS_encoder)),
+      CodecNameToCodecImpl(absl::GetFlag(FLAGS_decoder)),
+      kRawVideos.at(absl::GetFlag(FLAGS_video_name)), frames_settings);
+  ASSERT_NE(nullptr, stats);
+
+  // Log unsliced metrics.
+  VideoCodecStats::Stream stream = stats->Aggregate(Filter{});
+  stream.LogMetrics(GetGlobalMetricsLogger(), TestName(), /*prefix=*/"",
+                    /*metadata=*/{});
+
+  // Log metrics sliced on spatial and temporal layer.
+  ScalabilityMode scalability_mode =
+      *ScalabilityModeFromString(absl::GetFlag(FLAGS_scalability_mode));
+  int num_spatial_layers = ScalabilityModeToNumSpatialLayers(scalability_mode);
+  int num_temporal_layers =
+      ScalabilityModeToNumTemporalLayers(scalability_mode);
+  for (int sidx = 0; sidx < num_spatial_layers; ++sidx) {
+    for (int tidx = 0; tidx < num_temporal_layers; ++tidx) {
+      std::string metric_name_prefix =
+          (rtc::StringBuilder() << "s" << sidx << "t" << tidx << "_").str();
+      stream = stats->Aggregate(
+          {.layer_id = {{.spatial_idx = sidx, .temporal_idx = tidx}}});
+      stream.LogMetrics(GetGlobalMetricsLogger(), TestName(),
+                        metric_name_prefix,
+                        /*metadata=*/{});
+    }
+  }
+
+  if (absl::GetFlag(FLAGS_write_csv)) {
+    stats->LogMetrics(
+        (rtc::StringBuilder() << TestOutputPath() << ".csv").str(),
+        stats->Slice(Filter{}, /*merge=*/false), /*metadata=*/
+        {{"test_name", TestName()}});
+  }
+}
+
 }  // namespace test
 
 }  // namespace webrtc

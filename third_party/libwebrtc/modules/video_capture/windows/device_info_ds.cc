@@ -173,7 +173,8 @@ int32_t DeviceInfoDS::GetDeviceName(uint32_t deviceNumber,
                                     uint32_t deviceUniqueIdUTF8Length,
                                     char* productUniqueIdUTF8,
                                     uint32_t productUniqueIdUTF8Length,
-                                    pid_t* pid) {
+                                    pid_t* pid,
+                                    bool* deviceIsPlaceholder) {
   MutexLock lock(&_apiLock);
   const int32_t result = GetDeviceInfo(
       deviceNumber, deviceNameUTF8, deviceNameLength, deviceUniqueIdUTF8,
@@ -324,12 +325,11 @@ IBaseFilter* DeviceInfoDS::GetDeviceFilter(const char* deviceUniqueIdUTF8,
             deviceFound = true;
             hr =
                 pM->BindToObject(0, 0, IID_IBaseFilter, (void**)&captureFilter);
-            if
-              FAILED(hr) {
-                RTC_LOG(LS_ERROR) << "Failed to bind to the selected "
-                                     "capture device "
-                                  << hr;
-              }
+            if FAILED (hr) {
+              RTC_LOG(LS_ERROR) << "Failed to bind to the selected "
+                                   "capture device "
+                                << hr;
+            }
 
             if (productUniqueIdUTF8 &&
                 productUniqueIdUTF8Length > 0)  // Get the device name

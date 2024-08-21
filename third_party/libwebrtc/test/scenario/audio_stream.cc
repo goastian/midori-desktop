@@ -11,15 +11,14 @@
 
 #include "absl/memory/memory.h"
 #include "test/call_test.h"
+#include "test/video_test_constants.h"
 
 #if WEBRTC_ENABLE_PROTOBUF
-RTC_PUSH_IGNORING_WUNDEF()
 #ifdef WEBRTC_ANDROID_PLATFORM_BUILD
 #include "external/webrtc/webrtc/modules/audio_coding/audio_network_adaptor/config.pb.h"
 #else
 #include "modules/audio_coding/audio_network_adaptor/config.pb.h"
 #endif
-RTC_POP_IGNORING_WUNDEF()
 #endif
 
 namespace webrtc {
@@ -90,7 +89,7 @@ SendAudioStream::SendAudioStream(
   AudioSendStream::Config send_config(send_transport);
   ssrc_ = sender->GetNextAudioSsrc();
   send_config.rtp.ssrc = ssrc_;
-  SdpAudioFormat::Parameters sdp_params;
+  CodecParameterMap sdp_params;
   if (config.source.channels == 2)
     sdp_params["stereo"] = "1";
   if (config.encoder.initial_frame_length != TimeDelta::Millis(20))
@@ -103,7 +102,8 @@ SendAudioStream::SendAudioStream(
   // stereo, but the actual channel count used is based on the "stereo"
   // parameter.
   send_config.send_codec_spec = AudioSendStream::Config::SendCodecSpec(
-      CallTest::kAudioSendPayloadType, {"opus", 48000, 2, sdp_params});
+      VideoTestConstants::kAudioSendPayloadType,
+      {"opus", 48000, 2, sdp_params});
   RTC_DCHECK_LE(config.source.channels, 2);
   send_config.encoder_factory = encoder_factory;
 
@@ -188,10 +188,9 @@ ReceiveAudioStream::ReceiveAudioStream(
   recv_config.rtcp_send_transport = feedback_transport;
   recv_config.rtp.remote_ssrc = send_stream->ssrc_;
   receiver->ssrc_media_types_[recv_config.rtp.remote_ssrc] = MediaType::AUDIO;
-  recv_config.rtp.extensions = GetAudioRtpExtensions(config);
   recv_config.decoder_factory = decoder_factory;
   recv_config.decoder_map = {
-      {CallTest::kAudioSendPayloadType, {"opus", 48000, 2}}};
+      {VideoTestConstants::kAudioSendPayloadType, {"opus", 48000, 2}}};
   recv_config.sync_group = config.render.sync_group;
   receiver_->SendTask([&] {
     receive_stream_ = receiver_->call_->CreateAudioReceiveStream(recv_config);

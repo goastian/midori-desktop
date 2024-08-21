@@ -1,25 +1,30 @@
-From: Byron Campen <docfaraday@gmail.com>
-Date: Tue, 4 Apr 2023 16:34:00 -0500
-Subject: Bug 1822194 - (fix-3b51cd328e) - Add missing designated initializer
- that gcc is sad about.
+From: Michael Froman <mfroman@mozilla.com>
+Date: Thu, 5 Oct 2023 14:21:00 +0000
+Subject: Bug 1857037 - pt1 - add shim gni files to limit BUILD.gn changes.
+ r=ng,webrtc-reviewers
 
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/108046c7cbb21c6cf19320c0804e9aee1a3eb4bf
+Differential Revision: https://phabricator.services.mozilla.com/D190104
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/a84d39db037cbe34aa19588b0d18335eb5e2d79b
 ---
- modules/audio_processing/audio_processing_impl.cc | 1 +
- 1 file changed, 1 insertion(+)
+ testing/libfuzzer/fuzzer_test.gni | 2 ++
+ testing/test.gni                  | 2 ++
+ 2 files changed, 4 insertions(+)
+ create mode 100644 testing/libfuzzer/fuzzer_test.gni
+ create mode 100644 testing/test.gni
 
-diff --git a/modules/audio_processing/audio_processing_impl.cc b/modules/audio_processing/audio_processing_impl.cc
-index c80cc76a3d..c304453388 100644
---- a/modules/audio_processing/audio_processing_impl.cc
-+++ b/modules/audio_processing/audio_processing_impl.cc
-@@ -450,6 +450,7 @@ AudioProcessingImpl::GetGainController2ExperimentParams() {
-                   },
-               .adaptive_digital_controller =
-                   {
-+                      .enabled = false,
-                       .headroom_db = static_cast<float>(headroom_db.Get()),
-                       .max_gain_db = static_cast<float>(max_gain_db.Get()),
-                       .initial_gain_db =
--- 
-2.34.1
-
+diff --git a/testing/libfuzzer/fuzzer_test.gni b/testing/libfuzzer/fuzzer_test.gni
+new file mode 100644
+index 0000000000..8fdf3cdad2
+--- /dev/null
++++ b/testing/libfuzzer/fuzzer_test.gni
+@@ -0,0 +1,2 @@
++# "empty" file in place of importing new testing/libfuzzer
++# to allow BUILD.gn imports to succeed.
+diff --git a/testing/test.gni b/testing/test.gni
+new file mode 100644
+index 0000000000..f46fa82778
+--- /dev/null
++++ b/testing/test.gni
+@@ -0,0 +1,2 @@
++# "empty" file in place of importing new testing/test.gni
++# to allow BUILD.gn imports to succeed.

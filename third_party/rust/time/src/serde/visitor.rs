@@ -167,14 +167,21 @@ impl<'a> de::Visitor<'a> for Visitor<UtcOffset> {
 
     fn visit_seq<A: de::SeqAccess<'a>>(self, mut seq: A) -> Result<UtcOffset, A::Error> {
         let hours = item!(seq, "offset hours")?;
-        let minutes = item!(seq, "offset minutes")?;
-        let seconds = item!(seq, "offset seconds")?;
+        let mut minutes = 0;
+        let mut seconds = 0;
+
+        if let Ok(Some(min)) = seq.next_element() {
+            minutes = min;
+            if let Ok(Some(sec)) = seq.next_element() {
+                seconds = sec;
+            }
+        };
 
         UtcOffset::from_hms(hours, minutes, seconds).map_err(ComponentRange::into_de_error)
     }
 }
 
-impl<'a> de::Visitor<'a> for Visitor<Weekday> {
+impl de::Visitor<'_> for Visitor<Weekday> {
     type Value = Weekday;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -211,7 +218,7 @@ impl<'a> de::Visitor<'a> for Visitor<Weekday> {
     }
 }
 
-impl<'a> de::Visitor<'a> for Visitor<Month> {
+impl de::Visitor<'_> for Visitor<Month> {
     type Value = Month;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -262,7 +269,7 @@ impl<'a> de::Visitor<'a> for Visitor<Month> {
 macro_rules! well_known {
     ($article:literal, $name:literal, $($ty:tt)+) => {
         #[cfg(feature = "parsing")]
-        impl<'a> de::Visitor<'a> for Visitor<$($ty)+> {
+        impl de::Visitor<'_> for Visitor<$($ty)+> {
             type Value = OffsetDateTime;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

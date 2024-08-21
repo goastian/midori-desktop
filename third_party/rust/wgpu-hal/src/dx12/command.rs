@@ -20,7 +20,7 @@ impl crate::BufferTextureCopy {
         &self,
         format: wgt::TextureFormat,
     ) -> d3d12_ty::D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
-        let (block_width, block_height) = format.block_dimensions();
+        let (block_width, _) = format.block_dimensions();
         d3d12_ty::D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
             Offset: self.buffer_layout.offset,
             Footprint: d3d12_ty::D3D12_SUBRESOURCE_FOOTPRINT {
@@ -30,16 +30,13 @@ impl crate::BufferTextureCopy {
                 )
                 .unwrap(),
                 Width: self.size.width,
-                Height: self
-                    .buffer_layout
-                    .rows_per_image
-                    .map_or(self.size.height, |count| count * block_height),
+                Height: self.size.height,
                 Depth: self.size.depth,
                 RowPitch: {
                     let actual = self.buffer_layout.bytes_per_row.unwrap_or_else(|| {
                         // this may happen for single-line updates
                         let block_size = format
-                            .block_size(Some(self.texture_base.aspect.map()))
+                            .block_copy_size(Some(self.texture_base.aspect.map()))
                             .unwrap();
                         (self.size.width / block_width) * block_size
                     });
@@ -59,9 +56,16 @@ impl super::Temp {
     }
 }
 
+impl Drop for super::CommandEncoder {
+    fn drop(&mut self) {
+        use crate::CommandEncoder;
+        unsafe { self.discard_encoding() }
+    }
+}
+
 impl super::CommandEncoder {
     unsafe fn begin_pass(&mut self, kind: super::PassKind, label: crate::Label) {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         self.pass.kind = kind;
         if let Some(label) = label {
             let (wide_label, size) = self.temp.prepare_marker(label);
@@ -70,11 +74,14 @@ impl super::CommandEncoder {
         }
         self.pass.dirty_root_elements = 0;
         self.pass.dirty_vertex_buffers = 0;
-        list.set_descriptor_heaps(&[self.shared.heap_views.raw, self.shared.heap_samplers.raw]);
+        list.set_descriptor_heaps(&[
+            self.shared.heap_views.raw.clone(),
+            self.shared.heap_samplers.raw.clone(),
+        ]);
     }
 
     unsafe fn end_pass(&mut self) {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         list.set_descriptor_heaps(&[]);
         if self.pass.has_label {
             unsafe { list.EndEvent() };
@@ -82,9 +89,9 @@ impl super::CommandEncoder {
         self.pass.clear();
     }
 
-    unsafe fn prepare_draw(&mut self, base_vertex: i32, base_instance: u32) {
+    unsafe fn prepare_draw(&mut self, first_vertex: i32, first_instance: u32) {
         while self.pass.dirty_vertex_buffers != 0 {
-            let list = self.list.unwrap();
+            let list = self.list.as_ref().unwrap();
             let index = self.pass.dirty_vertex_buffers.trailing_zeros();
             self.pass.dirty_vertex_buffers ^= 1 << index;
             unsafe {
@@ -98,18 +105,18 @@ impl super::CommandEncoder {
         if let Some(root_index) = self.pass.layout.special_constants_root_index {
             let needs_update = match self.pass.root_elements[root_index as usize] {
                 super::RootElement::SpecialConstantBuffer {
-                    base_vertex: other_vertex,
-                    base_instance: other_instance,
+                    first_vertex: other_vertex,
+                    first_instance: other_instance,
                     other: _,
-                } => base_vertex != other_vertex || base_instance != other_instance,
+                } => first_vertex != other_vertex || first_instance != other_instance,
                 _ => true,
             };
             if needs_update {
                 self.pass.dirty_root_elements |= 1 << root_index;
                 self.pass.root_elements[root_index as usize] =
                     super::RootElement::SpecialConstantBuffer {
-                        base_vertex,
-                        base_instance,
+                        first_vertex,
+                        first_instance,
                         other: 0,
                     };
             }
@@ -121,18 +128,18 @@ impl super::CommandEncoder {
         if let Some(root_index) = self.pass.layout.special_constants_root_index {
             let needs_update = match self.pass.root_elements[root_index as usize] {
                 super::RootElement::SpecialConstantBuffer {
-                    base_vertex,
-                    base_instance,
+                    first_vertex,
+                    first_instance,
                     other,
-                } => [base_vertex as u32, base_instance, other] != count,
+                } => [first_vertex as u32, first_instance, other] != count,
                 _ => true,
             };
             if needs_update {
                 self.pass.dirty_root_elements |= 1 << root_index;
                 self.pass.root_elements[root_index as usize] =
                     super::RootElement::SpecialConstantBuffer {
-                        base_vertex: count[0] as i32,
-                        base_instance: count[1],
+                        first_vertex: count[0] as i32,
+                        first_instance: count[1],
                         other: count[2],
                     };
             }
@@ -146,7 +153,7 @@ impl super::CommandEncoder {
         use super::{BufferViewKind as Bvk, PassKind as Pk};
 
         while self.pass.dirty_root_elements != 0 {
-            let list = self.list.unwrap();
+            let list = self.list.as_ref().unwrap();
             let index = self.pass.dirty_root_elements.trailing_zeros();
             self.pass.dirty_root_elements ^= 1 << index;
 
@@ -165,17 +172,17 @@ impl super::CommandEncoder {
                     }
                 }
                 super::RootElement::SpecialConstantBuffer {
-                    base_vertex,
-                    base_instance,
+                    first_vertex,
+                    first_instance,
                     other,
                 } => match self.pass.kind {
                     Pk::Render => {
-                        list.set_graphics_root_constant(index, base_vertex as u32, 0);
-                        list.set_graphics_root_constant(index, base_instance, 1);
+                        list.set_graphics_root_constant(index, first_vertex as u32, 0);
+                        list.set_graphics_root_constant(index, first_instance, 1);
                     }
                     Pk::Compute => {
-                        list.set_compute_root_constant(index, base_vertex as u32, 0);
-                        list.set_compute_root_constant(index, base_instance, 1);
+                        list.set_compute_root_constant(index, first_vertex as u32, 0);
+                        list.set_compute_root_constant(index, first_instance, 1);
                         list.set_compute_root_constant(index, other, 2);
                     }
                     Pk::Transfer => (),
@@ -217,29 +224,42 @@ impl super::CommandEncoder {
         if let Some(root_index) = layout.special_constants_root_index {
             self.pass.root_elements[root_index as usize] =
                 super::RootElement::SpecialConstantBuffer {
-                    base_vertex: 0,
-                    base_instance: 0,
+                    first_vertex: 0,
+                    first_instance: 0,
                     other: 0,
                 };
         }
         self.pass.layout = layout.clone();
         self.pass.dirty_root_elements = (1 << layout.total_root_elements) - 1;
     }
+
+    fn write_pass_end_timestamp_if_requested(&mut self) {
+        if let Some((query_set_raw, index)) = self.end_of_pass_timer_query.take() {
+            use crate::CommandEncoder as _;
+            unsafe {
+                self.write_timestamp(
+                    &crate::dx12::QuerySet {
+                        raw: query_set_raw,
+                        raw_ty: d3d12_ty::D3D12_QUERY_TYPE_TIMESTAMP,
+                    },
+                    index,
+                );
+            }
+        }
+    }
 }
 
-impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
+impl crate::CommandEncoder for super::CommandEncoder {
+    type A = super::Api;
+
     unsafe fn begin_encoding(&mut self, label: crate::Label) -> Result<(), crate::DeviceError> {
         let list = loop {
             if let Some(list) = self.free_lists.pop() {
                 let reset_result = list
-                    .reset(self.allocator, d3d12::PipelineState::null())
+                    .reset(&self.allocator, d3d12::PipelineState::null())
                     .into_result();
                 if reset_result.is_ok() {
                     break Some(list);
-                } else {
-                    unsafe {
-                        list.destroy();
-                    }
                 }
             } else {
                 break None;
@@ -252,7 +272,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             self.device
                 .create_graphics_command_list(
                     d3d12::CmdListType::Direct,
-                    self.allocator,
+                    &self.allocator,
                     d3d12::PipelineState::null(),
                     0,
                 )
@@ -273,27 +293,18 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         if let Some(list) = self.list.take() {
             if list.close().into_result().is_ok() {
                 self.free_lists.push(list);
-            } else {
-                unsafe {
-                    list.destroy();
-                }
             }
         }
     }
     unsafe fn end_encoding(&mut self) -> Result<super::CommandBuffer, crate::DeviceError> {
         let raw = self.list.take().unwrap();
-        let closed = raw.close().into_result().is_ok();
-        Ok(super::CommandBuffer { raw, closed })
+        raw.close()
+            .into_device_result("GraphicsCommandList::close")?;
+        Ok(super::CommandBuffer { raw })
     }
     unsafe fn reset_all<I: Iterator<Item = super::CommandBuffer>>(&mut self, command_buffers: I) {
         for cmd_buf in command_buffers {
-            if cmd_buf.closed {
-                self.free_lists.push(cmd_buf.raw);
-            } else {
-                unsafe {
-                    cmd_buf.raw.destroy();
-                }
-            }
+            self.free_lists.push(cmd_buf.raw);
         }
         self.allocator.reset();
     }
@@ -304,7 +315,10 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     {
         self.temp.barriers.clear();
 
-        log::trace!("List {:p} buffer transitions", self.list.unwrap().as_ptr());
+        log::trace!(
+            "List {:p} buffer transitions",
+            self.list.as_ref().unwrap().as_ptr()
+        );
         for barrier in barriers {
             log::trace!(
                 "\t{:p}: usage {:?}..{:?}",
@@ -347,6 +361,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         if !self.temp.barriers.is_empty() {
             unsafe {
                 self.list
+                    .as_ref()
                     .unwrap()
                     .ResourceBarrier(self.temp.barriers.len() as u32, self.temp.barriers.as_ptr())
             };
@@ -359,7 +374,10 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     {
         self.temp.barriers.clear();
 
-        log::trace!("List {:p} texture transitions", self.list.unwrap().as_ptr());
+        log::trace!(
+            "List {:p} texture transitions",
+            self.list.as_ref().unwrap().as_ptr()
+        );
         for barrier in barriers {
             log::trace!(
                 "\t{:p}: usage {:?}..{:?}, range {:?}",
@@ -402,6 +420,15 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                             wgt::TextureAspect::All => 0..2,
                             wgt::TextureAspect::DepthOnly => 0..1,
                             wgt::TextureAspect::StencilOnly => 1..2,
+                            _ => unreachable!(),
+                        }
+                    } else if let Some(planes) = barrier.texture.format.planes() {
+                        match barrier.range.aspect {
+                            wgt::TextureAspect::All => 0..planes,
+                            wgt::TextureAspect::Plane0 => 0..1,
+                            wgt::TextureAspect::Plane1 => 1..2,
+                            wgt::TextureAspect::Plane2 => 2..3,
+                            _ => unreachable!(),
                         }
                     } else {
                         match barrier.texture.format {
@@ -442,6 +469,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         if !self.temp.barriers.is_empty() {
             unsafe {
                 self.list
+                    .as_ref()
                     .unwrap()
                     .ResourceBarrier(self.temp.barriers.len() as u32, self.temp.barriers.as_ptr())
             };
@@ -449,7 +477,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     }
 
     unsafe fn clear_buffer(&mut self, buffer: &super::Buffer, range: crate::MemoryRange) {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         let mut offset = range.start;
         while offset < range.end {
             let size = super::ZERO_BUFFER_SIZE.min(range.end - offset);
@@ -474,7 +502,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) where
         T: Iterator<Item = crate::BufferCopy>,
     {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         for r in regions {
             unsafe {
                 list.CopyBufferRegion(
@@ -497,7 +525,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) where
         T: Iterator<Item = crate::TextureCopy>,
     {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         let mut src_location = d3d12_ty::D3D12_TEXTURE_COPY_LOCATION {
             pResource: src.resource.as_mut_ptr(),
             Type: d3d12_ty::D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
@@ -539,7 +567,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) where
         T: Iterator<Item = crate::BufferTextureCopy>,
     {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         let mut src_location = d3d12_ty::D3D12_TEXTURE_COPY_LOCATION {
             pResource: src.resource.as_mut_ptr(),
             Type: d3d12_ty::D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
@@ -581,7 +609,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) where
         T: Iterator<Item = crate::BufferTextureCopy>,
     {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         let mut src_location = d3d12_ty::D3D12_TEXTURE_COPY_LOCATION {
             pResource: src.resource.as_mut_ptr(),
             Type: d3d12_ty::D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
@@ -608,6 +636,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     unsafe fn begin_query(&mut self, set: &super::QuerySet, index: u32) {
         unsafe {
             self.list
+                .as_ref()
                 .unwrap()
                 .BeginQuery(set.raw.as_mut_ptr(), set.raw_ty, index)
         };
@@ -615,13 +644,14 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     unsafe fn end_query(&mut self, set: &super::QuerySet, index: u32) {
         unsafe {
             self.list
+                .as_ref()
                 .unwrap()
                 .EndQuery(set.raw.as_mut_ptr(), set.raw_ty, index)
         };
     }
     unsafe fn write_timestamp(&mut self, set: &super::QuerySet, index: u32) {
         unsafe {
-            self.list.unwrap().EndQuery(
+            self.list.as_ref().unwrap().EndQuery(
                 set.raw.as_mut_ptr(),
                 d3d12_ty::D3D12_QUERY_TYPE_TIMESTAMP,
                 index,
@@ -640,7 +670,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         _stride: wgt::BufferSize,
     ) {
         unsafe {
-            self.list.unwrap().ResolveQueryData(
+            self.list.as_ref().unwrap().ResolveQueryData(
                 set.raw.as_mut_ptr(),
                 set.raw_ty,
                 range.start,
@@ -655,6 +685,19 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
 
     unsafe fn begin_render_pass(&mut self, desc: &crate::RenderPassDescriptor<super::Api>) {
         unsafe { self.begin_pass(super::PassKind::Render, desc.label) };
+
+        // Start timestamp if any (before all other commands but after debug marker)
+        if let Some(timestamp_writes) = desc.timestamp_writes.as_ref() {
+            if let Some(index) = timestamp_writes.beginning_of_pass_write_index {
+                unsafe {
+                    self.write_timestamp(timestamp_writes.query_set, index);
+                }
+            }
+            self.end_of_pass_timer_query = timestamp_writes
+                .end_of_pass_write_index
+                .map(|index| (timestamp_writes.query_set.raw.clone(), index));
+        }
+
         let mut color_views = [d3d12::CpuDescriptor { ptr: 0 }; crate::MAX_COLOR_ATTACHMENTS];
         for (rtv, cat) in color_views.iter_mut().zip(desc.color_attachments.iter()) {
             if let Some(cat) = cat.as_ref() {
@@ -675,7 +718,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             }
         };
 
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap();
         unsafe {
             list.OMSetRenderTargets(
                 desc.color_attachments.len() as u32,
@@ -699,8 +742,8 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                 }
                 if let Some(ref target) = cat.resolve_target {
                     self.pass.resolves.push(super::PassResolve {
-                        src: cat.target.view.target_base,
-                        dst: target.view.target_base,
+                        src: cat.target.view.target_base.clone(),
+                        dst: target.view.target_base.clone(),
                         format: target.view.raw_format,
                     });
                 }
@@ -752,7 +795,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
 
     unsafe fn end_render_pass(&mut self) {
         if !self.pass.resolves.is_empty() {
-            let list = self.list.unwrap();
+            let list = self.list.as_ref().unwrap();
             self.temp.barriers.clear();
 
             // All the targets are expected to be in `COLOR_TARGET` state,
@@ -824,6 +867,8 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             }
         }
 
+        self.write_pass_end_timestamp_if_requested();
+
         unsafe { self.end_pass() };
     }
 
@@ -880,15 +925,16 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         &mut self,
         layout: &super::PipelineLayout,
         _stages: wgt::ShaderStages,
-        offset: u32,
+        offset_bytes: u32,
         data: &[u32],
     ) {
+        let offset_words = offset_bytes as usize / 4;
+
         let info = layout.shared.root_constant_info.as_ref().unwrap();
 
         self.pass.root_elements[info.root_index as usize] = super::RootElement::Constant;
 
-        self.pass.constant_data[(offset as usize)..(offset as usize + data.len())]
-            .copy_from_slice(data);
+        self.pass.constant_data[offset_words..(offset_words + data.len())].copy_from_slice(data);
 
         if self.pass.layout.signature == layout.shared.signature {
             self.pass.dirty_root_elements |= 1 << info.root_index;
@@ -902,6 +948,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         let (wide_label, size) = self.temp.prepare_marker(label);
         unsafe {
             self.list
+                .as_ref()
                 .unwrap()
                 .SetMarker(0, wide_label.as_ptr() as *const _, size)
         };
@@ -910,24 +957,25 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         let (wide_label, size) = self.temp.prepare_marker(group_label);
         unsafe {
             self.list
+                .as_ref()
                 .unwrap()
                 .BeginEvent(0, wide_label.as_ptr() as *const _, size)
         };
     }
     unsafe fn end_debug_marker(&mut self) {
-        unsafe { self.list.unwrap().EndEvent() }
+        unsafe { self.list.as_ref().unwrap().EndEvent() }
     }
 
     unsafe fn set_render_pipeline(&mut self, pipeline: &super::RenderPipeline) {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap().clone();
 
         if self.pass.layout.signature != pipeline.layout.signature {
             // D3D12 requires full reset on signature change
-            list.set_graphics_root_signature(pipeline.layout.signature);
+            list.set_graphics_root_signature(&pipeline.layout.signature);
             self.reset_signature(&pipeline.layout);
         };
 
-        list.set_pipeline_state(pipeline.raw);
+        list.set_pipeline_state(&pipeline.raw);
         unsafe { list.IASetPrimitiveTopology(pipeline.topology) };
 
         for (index, (vb, &stride)) in self
@@ -951,7 +999,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         binding: crate::BufferBinding<'a, super::Api>,
         format: wgt::IndexFormat,
     ) {
-        self.list.unwrap().set_index_buffer(
+        self.list.as_ref().unwrap().set_index_buffer(
             binding.resolve_address(),
             binding.resolve_size() as u32,
             auxil::dxgi::conv::map_index_format(format),
@@ -977,7 +1025,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             MinDepth: depth_range.start,
             MaxDepth: depth_range.end,
         };
-        unsafe { self.list.unwrap().RSSetViewports(1, &raw_vp) };
+        unsafe { self.list.as_ref().unwrap().RSSetViewports(1, &raw_vp) };
     }
     unsafe fn set_scissor_rect(&mut self, rect: &crate::Rect<u32>) {
         let raw_rect = d3d12_ty::D3D12_RECT {
@@ -986,42 +1034,45 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             right: (rect.x + rect.w) as i32,
             bottom: (rect.y + rect.h) as i32,
         };
-        unsafe { self.list.unwrap().RSSetScissorRects(1, &raw_rect) };
+        unsafe { self.list.as_ref().unwrap().RSSetScissorRects(1, &raw_rect) };
     }
     unsafe fn set_stencil_reference(&mut self, value: u32) {
-        self.list.unwrap().set_stencil_reference(value);
+        self.list.as_ref().unwrap().set_stencil_reference(value);
     }
     unsafe fn set_blend_constants(&mut self, color: &[f32; 4]) {
-        self.list.unwrap().set_blend_factor(*color);
+        self.list.as_ref().unwrap().set_blend_factor(*color);
     }
 
     unsafe fn draw(
         &mut self,
-        start_vertex: u32,
+        first_vertex: u32,
         vertex_count: u32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     ) {
-        unsafe { self.prepare_draw(start_vertex as i32, start_instance) };
-        self.list
-            .unwrap()
-            .draw(vertex_count, instance_count, start_vertex, start_instance);
+        unsafe { self.prepare_draw(first_vertex as i32, first_instance) };
+        self.list.as_ref().unwrap().draw(
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        );
     }
     unsafe fn draw_indexed(
         &mut self,
-        start_index: u32,
+        first_index: u32,
         index_count: u32,
         base_vertex: i32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     ) {
-        unsafe { self.prepare_draw(base_vertex, start_instance) };
-        self.list.unwrap().draw_indexed(
+        unsafe { self.prepare_draw(base_vertex, first_instance) };
+        self.list.as_ref().unwrap().draw_indexed(
             index_count,
             instance_count,
-            start_index,
+            first_index,
             base_vertex,
-            start_instance,
+            first_instance,
         );
     }
     unsafe fn draw_indirect(
@@ -1032,7 +1083,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) {
         unsafe { self.prepare_draw(0, 0) };
         unsafe {
-            self.list.unwrap().ExecuteIndirect(
+            self.list.as_ref().unwrap().ExecuteIndirect(
                 self.shared.cmd_signatures.draw.as_mut_ptr(),
                 draw_count,
                 buffer.resource.as_mut_ptr(),
@@ -1050,7 +1101,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) {
         unsafe { self.prepare_draw(0, 0) };
         unsafe {
-            self.list.unwrap().ExecuteIndirect(
+            self.list.as_ref().unwrap().ExecuteIndirect(
                 self.shared.cmd_signatures.draw_indexed.as_mut_ptr(),
                 draw_count,
                 buffer.resource.as_mut_ptr(),
@@ -1070,7 +1121,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) {
         unsafe { self.prepare_draw(0, 0) };
         unsafe {
-            self.list.unwrap().ExecuteIndirect(
+            self.list.as_ref().unwrap().ExecuteIndirect(
                 self.shared.cmd_signatures.draw.as_mut_ptr(),
                 max_count,
                 buffer.resource.as_mut_ptr(),
@@ -1090,7 +1141,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     ) {
         unsafe { self.prepare_draw(0, 0) };
         unsafe {
-            self.list.unwrap().ExecuteIndirect(
+            self.list.as_ref().unwrap().ExecuteIndirect(
                 self.shared.cmd_signatures.draw_indexed.as_mut_ptr(),
                 max_count,
                 buffer.resource.as_mut_ptr(),
@@ -1103,34 +1154,49 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
 
     // compute
 
-    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor) {
+    unsafe fn begin_compute_pass<'a>(
+        &mut self,
+        desc: &crate::ComputePassDescriptor<'a, super::Api>,
+    ) {
         unsafe { self.begin_pass(super::PassKind::Compute, desc.label) };
+
+        if let Some(timestamp_writes) = desc.timestamp_writes.as_ref() {
+            if let Some(index) = timestamp_writes.beginning_of_pass_write_index {
+                unsafe {
+                    self.write_timestamp(timestamp_writes.query_set, index);
+                }
+            }
+            self.end_of_pass_timer_query = timestamp_writes
+                .end_of_pass_write_index
+                .map(|index| (timestamp_writes.query_set.raw.clone(), index));
+        }
     }
     unsafe fn end_compute_pass(&mut self) {
+        self.write_pass_end_timestamp_if_requested();
         unsafe { self.end_pass() };
     }
 
     unsafe fn set_compute_pipeline(&mut self, pipeline: &super::ComputePipeline) {
-        let list = self.list.unwrap();
+        let list = self.list.as_ref().unwrap().clone();
 
         if self.pass.layout.signature != pipeline.layout.signature {
             // D3D12 requires full reset on signature change
-            list.set_compute_root_signature(pipeline.layout.signature);
+            list.set_compute_root_signature(&pipeline.layout.signature);
             self.reset_signature(&pipeline.layout);
         };
 
-        list.set_pipeline_state(pipeline.raw);
+        list.set_pipeline_state(&pipeline.raw);
     }
 
     unsafe fn dispatch(&mut self, count: [u32; 3]) {
         self.prepare_dispatch(count);
-        self.list.unwrap().dispatch(count);
+        self.list.as_ref().unwrap().dispatch(count);
     }
     unsafe fn dispatch_indirect(&mut self, buffer: &super::Buffer, offset: wgt::BufferAddress) {
         self.prepare_dispatch([0; 3]);
         //TODO: update special constants indirectly
         unsafe {
-            self.list.unwrap().ExecuteIndirect(
+            self.list.as_ref().unwrap().ExecuteIndirect(
                 self.shared.cmd_signatures.dispatch.as_mut_ptr(),
                 1,
                 buffer.resource.as_mut_ptr(),
@@ -1139,5 +1205,25 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                 0,
             )
         };
+    }
+
+    unsafe fn build_acceleration_structures<'a, T>(
+        &mut self,
+        _descriptor_count: u32,
+        _descriptors: T,
+    ) where
+        super::Api: 'a,
+        T: IntoIterator<Item = crate::BuildAccelerationStructureDescriptor<'a, super::Api>>,
+    {
+        // Implement using `BuildRaytracingAccelerationStructure`:
+        // https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#buildraytracingaccelerationstructure
+        todo!()
+    }
+
+    unsafe fn place_acceleration_structure_barrier(
+        &mut self,
+        _barriers: crate::AccelerationStructureBarrier,
+    ) {
+        todo!()
     }
 }

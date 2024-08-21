@@ -9,7 +9,8 @@ use std::sync::atomic::Ordering;
 
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::json;
+pub use serde_json::Value as JsonValue;
 
 mod boolean;
 mod counter;
@@ -21,12 +22,13 @@ mod experiment;
 pub(crate) mod labeled;
 mod memory_distribution;
 mod memory_unit;
-mod metrics_enabled_config;
 mod numerator;
+mod object;
 mod ping;
 mod quantity;
 mod rate;
 mod recorded_experiment;
+mod remote_settings_config;
 mod string;
 mod string_list;
 mod text;
@@ -54,6 +56,7 @@ pub use self::labeled::{LabeledBoolean, LabeledCounter, LabeledMetric, LabeledSt
 pub use self::memory_distribution::MemoryDistributionMetric;
 pub use self::memory_unit::MemoryUnit;
 pub use self::numerator::NumeratorMetric;
+pub use self::object::ObjectMetric;
 pub use self::ping::PingType;
 pub use self::quantity::QuantityMetric;
 pub use self::rate::{Rate, RateMetric};
@@ -69,7 +72,7 @@ pub use self::uuid::UuidMetric;
 pub use crate::histogram::HistogramType;
 pub use recorded_experiment::RecordedExperiment;
 
-pub use self::metrics_enabled_config::MetricsEnabledConfig;
+pub use self::remote_settings_config::RemoteSettingsConfig;
 
 /// A snapshot of all buckets and the accumulated sum of a distribution.
 //
@@ -141,6 +144,8 @@ pub enum Metric {
     Url(String),
     /// A Text metric. See [`TextMetric`] for more information.
     Text(String),
+    /// An Object metric. See [`ObjectMetric`] for more information.
+    Object(String),
 }
 
 /// A [`MetricType`] describes common behavior across all metrics.
@@ -175,7 +180,7 @@ pub trait MetricType {
 
         // Technically nothing prevents multiple calls to should_record() to run in parallel,
         // meaning both are reading self.meta().disabled and later writing it. In between it can
-        // also read remote_settings_metrics_config, which also could be modified in between those 2 reads.
+        // also read remote_settings_config, which also could be modified in between those 2 reads.
         // This means we could write the wrong remote_settings_epoch | current_disabled value. All in all
         // at worst we would see that metric enabled/disabled wrongly once.
         // But since everything is tunneled through the dispatcher, this should never ever happen.
@@ -195,11 +200,7 @@ pub trait MetricType {
         }
         // The epoch's didn't match so we need to look up the disabled flag
         // by the base_identifier from the in-memory HashMap
-        let metrics_enabled = &glean
-            .remote_settings_metrics_config
-            .lock()
-            .unwrap()
-            .metrics_enabled;
+        let remote_settings_config = &glean.remote_settings_config.lock().unwrap();
         // Get the value from the remote configuration if it is there, otherwise return the default value.
         let current_disabled = {
             let base_id = self.meta().base_identifier();
@@ -210,8 +211,13 @@ pub trait MetricType {
             // NOTE: The `!` preceding the `*is_enabled` is important for inverting the logic since the
             // underlying property in the metrics.yaml is `disabled` and the outward API is treating it as
             // if it were `enabled` to make it easier to understand.
-            if let Some(is_enabled) = metrics_enabled.get(identifier) {
-                u8::from(!*is_enabled)
+
+            if !remote_settings_config.metrics_enabled.is_empty() {
+                if let Some(is_enabled) = remote_settings_config.metrics_enabled.get(identifier) {
+                    u8::from(!*is_enabled)
+                } else {
+                    u8::from(self.meta().inner.disabled)
+                }
             } else {
                 u8::from(self.meta().inner.disabled)
             }
@@ -251,6 +257,7 @@ impl Metric {
             Metric::MemoryDistribution(_) => "memory_distribution",
             Metric::Jwe(_) => "jwe",
             Metric::Text(_) => "text",
+            Metric::Object(_) => "object",
         }
     }
 
@@ -280,6 +287,9 @@ impl Metric {
             Metric::MemoryDistribution(hist) => json!(memory_distribution::snapshot(hist)),
             Metric::Jwe(s) => json!(s),
             Metric::Text(s) => json!(s),
+            Metric::Object(s) => {
+                serde_json::from_str(s).expect("object storage should have been json")
+            }
         }
     }
 }

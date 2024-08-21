@@ -6,10 +6,7 @@
 #ifndef LIB_JPEGLI_COLOR_QUANTIZE_H_
 #define LIB_JPEGLI_COLOR_QUANTIZE_H_
 
-/* clang-format off */
-#include <stdio.h>
-#include <jpeglib.h>
-/* clang-format on */
+#include "lib/jpegli/common.h"
 
 namespace jpegli {
 
@@ -23,7 +20,7 @@ void CreateOrderedDitherTables(j_decompress_ptr cinfo);
 
 void InitFSDitherState(j_decompress_ptr cinfo);
 
-int LookupColorIndex(j_decompress_ptr cinfo, JSAMPLE* pixel);
+int LookupColorIndex(j_decompress_ptr cinfo, const JSAMPLE* pixel);
 
 }  // namespace jpegli
 

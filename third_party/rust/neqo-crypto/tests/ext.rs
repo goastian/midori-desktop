@@ -1,11 +1,16 @@
-#![cfg_attr(feature = "deny-warnings", deny(warnings))]
-#![warn(clippy::pedantic)]
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
-use neqo_crypto::constants::{HandshakeMessage, TLS_HS_CLIENT_HELLO, TLS_HS_ENCRYPTED_EXTENSIONS};
-use neqo_crypto::ext::{ExtensionHandler, ExtensionHandlerResult, ExtensionWriterResult};
-use neqo_crypto::{Client, Server};
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+
+use neqo_crypto::{
+    constants::{HandshakeMessage, TLS_HS_CLIENT_HELLO, TLS_HS_ENCRYPTED_EXTENSIONS},
+    ext::{ExtensionHandler, ExtensionHandlerResult, ExtensionWriterResult},
+    Client, Server,
+};
 use test_fixture::fixture_init;
 
 mod handshake;
@@ -18,7 +23,7 @@ impl ExtensionHandler for NoopExtensionHandler {}
 #[test]
 fn noop_extension_handler() {
     fixture_init();
-    let mut client = Client::new("server.example").expect("should create client");
+    let mut client = Client::new("server.example", true).expect("should create client");
     let mut server = Server::new(&["key"]).expect("should create server");
 
     client
@@ -76,7 +81,7 @@ impl ExtensionHandler for SimpleExtensionHandler {
 #[test]
 fn simple_extension() {
     fixture_init();
-    let mut client = Client::new("server.example").expect("should create client");
+    let mut client = Client::new("server.example", true).expect("should create client");
     let mut server = Server::new(&["key"]).expect("should create server");
 
     let client_handler = Rc::new(RefCell::new(SimpleExtensionHandler::default()));

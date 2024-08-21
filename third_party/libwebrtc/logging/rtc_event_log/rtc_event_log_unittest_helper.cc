@@ -35,6 +35,7 @@
 #include "modules/rtp_rtcp/source/rtcp_packet/dlrr.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/rrtr.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/target_bitrate.h"
+#include "modules/rtp_rtcp/source/rtp_dependency_descriptor_extension.h"
 #include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "modules/rtp_rtcp/source/rtp_packet_received.h"
 #include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
@@ -42,6 +43,7 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/time_utils.h"
 #include "system_wrappers/include/ntp_time.h"
+#include "test/gmock.h"
 #include "test/gtest.h"
 
 namespace webrtc {
@@ -49,6 +51,9 @@ namespace webrtc {
 namespace test {
 
 namespace {
+
+using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 
 struct ExtensionPair {
   RTPExtensionType type;
@@ -58,8 +63,8 @@ struct ExtensionPair {
 constexpr int kMaxCsrcs = 3;
 
 // Maximum serialized size of a header extension, including 1 byte ID.
-constexpr int kMaxExtensionSizeBytes = 4;
-constexpr int kMaxNumExtensions = 5;
+constexpr int kMaxExtensionSizeBytes = 10;
+constexpr int kMaxNumExtensions = 6;
 
 constexpr ExtensionPair kExtensions[kMaxNumExtensions] = {
     {RTPExtensionType::kRtpExtensionTransmissionTimeOffset,
@@ -70,7 +75,9 @@ constexpr ExtensionPair kExtensions[kMaxNumExtensions] = {
      RtpExtension::kTransportSequenceNumberUri},
     {RTPExtensionType::kRtpExtensionAudioLevel, RtpExtension::kAudioLevelUri},
     {RTPExtensionType::kRtpExtensionVideoRotation,
-     RtpExtension::kVideoRotationUri}};
+     RtpExtension::kVideoRotationUri},
+    {RTPExtensionType::kRtpExtensionDependencyDescriptor,
+     RtpExtension::kDependencyDescriptorUri}};
 
 template <typename T>
 void ShuffleInPlace(Random* prng, rtc::ArrayView<T> array) {
@@ -165,11 +172,11 @@ std::unique_ptr<RtcEventFrameDecoded> EventGenerator::NewFrameDecodedEvent(
   constexpr int kMaxHeight = 8640;
   constexpr int kMinWidth = 16;
   constexpr int kMinHeight = 16;
-  constexpr int kNumCodecTypes = 5;
+  constexpr int kNumCodecTypes = 6;
 
   constexpr VideoCodecType kCodecList[kNumCodecTypes] = {
-      kVideoCodecGeneric, kVideoCodecVP8, kVideoCodecVP9, kVideoCodecAV1,
-      kVideoCodecH264};
+      kVideoCodecGeneric, kVideoCodecVP8,  kVideoCodecVP9,
+      kVideoCodecAV1,     kVideoCodecH264, kVideoCodecH265};
   const int64_t render_time_ms =
       rtc::TimeMillis() + prng_.Rand(kMinRenderDelayMs, kMaxRenderDelayMs);
   const int width = prng_.Rand(kMinWidth, kMaxWidth);
@@ -213,10 +220,27 @@ EventGenerator::NewProbeResultSuccess() {
   return std::make_unique<RtcEventProbeResultSuccess>(id, bitrate_bps);
 }
 
+constexpr uint32_t CandidateTypeCount() {
+  // This switch statement only exists to catch changes to the IceCandidateType
+  // enumeration. If you get an error here, please update the switch statement
+  // and the return value.
+  IceCandidateType type = IceCandidateType::kHost;
+  switch (type) {
+    case IceCandidateType::kHost:
+    case IceCandidateType::kSrflx:
+    case IceCandidateType::kPrflx:
+    case IceCandidateType::kRelay:
+      break;
+  }
+  return 4u;
+}
+
 std::unique_ptr<RtcEventIceCandidatePairConfig>
 EventGenerator::NewIceCandidatePairConfig() {
-  IceCandidateType local_candidate_type = static_cast<IceCandidateType>(
-      prng_.Rand(static_cast<uint32_t>(IceCandidateType::kNumValues) - 1));
+  static_assert(static_cast<int>(IceCandidateType::kHost) == 0,
+                "Expect kLocal to be the first enum value, equal to 0");
+  IceCandidateType local_candidate_type =
+      static_cast<IceCandidateType>(prng_.Rand(CandidateTypeCount() - 1));
   IceCandidateNetworkType local_network_type =
       static_cast<IceCandidateNetworkType>(prng_.Rand(
           static_cast<uint32_t>(IceCandidateNetworkType::kNumValues) - 1));
@@ -224,8 +248,8 @@ EventGenerator::NewIceCandidatePairConfig() {
       static_cast<IceCandidatePairAddressFamily>(prng_.Rand(
           static_cast<uint32_t>(IceCandidatePairAddressFamily::kNumValues) -
           1));
-  IceCandidateType remote_candidate_type = static_cast<IceCandidateType>(
-      prng_.Rand(static_cast<uint32_t>(IceCandidateType::kNumValues) - 1));
+  IceCandidateType remote_candidate_type =
+      static_cast<IceCandidateType>(prng_.Rand(CandidateTypeCount() - 1));
   IceCandidatePairAddressFamily remote_address_family =
       static_cast<IceCandidatePairAddressFamily>(prng_.Rand(
           static_cast<uint32_t>(IceCandidatePairAddressFamily::kNumValues) -
@@ -234,12 +258,10 @@ EventGenerator::NewIceCandidatePairConfig() {
       static_cast<IceCandidatePairProtocol>(prng_.Rand(
           static_cast<uint32_t>(IceCandidatePairProtocol::kNumValues) - 1));
 
-  IceCandidatePairDescription desc;
-  desc.local_candidate_type = local_candidate_type;
+  IceCandidatePairDescription desc(local_candidate_type, remote_candidate_type);
   desc.local_relay_protocol = protocol_type;
   desc.local_network_type = local_network_type;
   desc.local_address_family = local_address_family;
-  desc.remote_candidate_type = remote_candidate_type;
   desc.remote_address_family = remote_address_family;
   desc.candidate_pair_protocol = protocol_type;
 
@@ -594,9 +616,10 @@ void EventGenerator::RandomizeRtpPacket(
     rtp_packet->SetExtension<TransmissionOffset>(prng_.Rand(0x00ffffff));
   }
 
-  if (extension_map.IsRegistered(AudioLevel::kId) &&
+  if (extension_map.IsRegistered(AudioLevelExtension::kId) &&
       (all_configured_exts || prng_.Rand<bool>())) {
-    rtp_packet->SetExtension<AudioLevel>(prng_.Rand<bool>(), prng_.Rand(127));
+    rtp_packet->SetExtension<AudioLevelExtension>(prng_.Rand<bool>(),
+                                                  prng_.Rand(127));
   }
 
   if (extension_map.IsRegistered(AbsoluteSendTime::kId) &&
@@ -612,6 +635,15 @@ void EventGenerator::RandomizeRtpPacket(
   if (extension_map.IsRegistered(TransportSequenceNumber::kId) &&
       (all_configured_exts || prng_.Rand<bool>())) {
     rtp_packet->SetExtension<TransportSequenceNumber>(prng_.Rand<uint16_t>());
+  }
+
+  if (extension_map.IsRegistered(RtpDependencyDescriptorExtension::kId) &&
+      (all_configured_exts || prng_.Rand<bool>())) {
+    std::vector<uint8_t> raw_data(3 + prng_.Rand(6));
+    for (uint8_t& d : raw_data) {
+      d = prng_.Rand<uint8_t>();
+    }
+    rtp_packet->SetRawExtension<RtpDependencyDescriptorExtension>(raw_data);
   }
 
   RTC_CHECK_LE(rtp_packet->headers_size() + payload_size, IP_PACKET_SIZE);
@@ -675,8 +707,7 @@ std::unique_ptr<RtcEventRtpPacketOutgoing> EventGenerator::NewRtpPacketOutgoing(
                                                               1 - padding_size -
                                                               kMaxHeaderSize));
 
-  RtpPacketToSend rtp_packet(&extension_map,
-                             kMaxHeaderSize + payload_size + padding_size);
+  RtpPacketToSend rtp_packet(&extension_map);
   RandomizeRtpPacket(payload_size, padding_size, ssrc, extension_map,
                      &rtp_packet, all_configured_exts);
 
@@ -686,27 +717,41 @@ std::unique_ptr<RtcEventRtpPacketOutgoing> EventGenerator::NewRtpPacketOutgoing(
 }
 
 RtpHeaderExtensionMap EventGenerator::NewRtpHeaderExtensionMap(
-    bool configure_all) {
+    bool configure_all,
+    const std::vector<RTPExtensionType>& excluded_extensions) {
   RtpHeaderExtensionMap extension_map;
   std::vector<int> id(RtpExtension::kOneByteHeaderExtensionMaxId -
                       RtpExtension::kMinId + 1);
   std::iota(id.begin(), id.end(), RtpExtension::kMinId);
   ShuffleInPlace(&prng_, rtc::ArrayView<int>(id));
 
-  if (configure_all || prng_.Rand<bool>()) {
-    extension_map.Register<AudioLevel>(id[0]);
+  auto not_excluded = [&](RTPExtensionType type) -> bool {
+    return !absl::c_linear_search(excluded_extensions, type);
+  };
+
+  if (not_excluded(AudioLevelExtension::kId) &&
+      (configure_all || prng_.Rand<bool>())) {
+    extension_map.Register<AudioLevelExtension>(id[0]);
   }
-  if (configure_all || prng_.Rand<bool>()) {
+  if (not_excluded(TransmissionOffset::kId) &&
+      (configure_all || prng_.Rand<bool>())) {
     extension_map.Register<TransmissionOffset>(id[1]);
   }
-  if (configure_all || prng_.Rand<bool>()) {
+  if (not_excluded(AbsoluteSendTime::kId) &&
+      (configure_all || prng_.Rand<bool>())) {
     extension_map.Register<AbsoluteSendTime>(id[2]);
   }
-  if (configure_all || prng_.Rand<bool>()) {
+  if (not_excluded(VideoOrientation::kId) &&
+      (configure_all || prng_.Rand<bool>())) {
     extension_map.Register<VideoOrientation>(id[3]);
   }
-  if (configure_all || prng_.Rand<bool>()) {
+  if (not_excluded(TransportSequenceNumber::kId) &&
+      (configure_all || prng_.Rand<bool>())) {
     extension_map.Register<TransportSequenceNumber>(id[4]);
+  }
+  if (not_excluded(RtpDependencyDescriptorExtension::kId) &&
+      (configure_all || prng_.Rand<bool>())) {
+    extension_map.Register<RtpDependencyDescriptorExtension>(id[5]);
   }
 
   return extension_map;
@@ -983,12 +1028,12 @@ void VerifyLoggedRtpHeader(const Event& original_header,
   }
 
   // AudioLevel header extension.
-  ASSERT_EQ(original_header.template HasExtension<AudioLevel>(),
+  ASSERT_EQ(original_header.template HasExtension<AudioLevelExtension>(),
             logged_header.extension.hasAudioLevel);
   if (logged_header.extension.hasAudioLevel) {
     bool voice_activity;
     uint8_t audio_level;
-    ASSERT_TRUE(original_header.template GetExtension<AudioLevel>(
+    ASSERT_TRUE(original_header.template GetExtension<AudioLevelExtension>(
         &voice_activity, &audio_level));
     EXPECT_EQ(voice_activity, logged_header.extension.voiceActivity);
     EXPECT_EQ(audio_level, logged_header.extension.audioLevel);
@@ -1003,6 +1048,19 @@ void VerifyLoggedRtpHeader(const Event& original_header,
         original_header.template GetExtension<VideoOrientation>(&rotation));
     EXPECT_EQ(ConvertCVOByteToVideoRotation(rotation),
               logged_header.extension.videoRotation);
+  }
+}
+
+template <typename Event>
+void EventVerifier::VerifyLoggedDependencyDescriptor(
+    const Event& packet,
+    const std::vector<uint8_t>& logged_dd) const {
+  if (expect_dependency_descriptor_rtp_header_extension_is_set_) {
+    rtc::ArrayView<const uint8_t> original =
+        packet.template GetRawExtension<RtpDependencyDescriptorExtension>();
+    EXPECT_THAT(logged_dd, ElementsAreArray(original));
+  } else {
+    EXPECT_THAT(logged_dd, IsEmpty());
   }
 }
 
@@ -1039,6 +1097,8 @@ void EventVerifier::VerifyLoggedRtpPacketIncoming(
             logged_event.rtp.header.paddingLength);
 
   VerifyLoggedRtpHeader(original_event, logged_event.rtp.header);
+  VerifyLoggedDependencyDescriptor(
+      original_event, logged_event.rtp.dependency_descriptor_wire_format);
 }
 
 void EventVerifier::VerifyLoggedRtpPacketOutgoing(
@@ -1059,6 +1119,8 @@ void EventVerifier::VerifyLoggedRtpPacketOutgoing(
   // someone has a strong reason to keep it, it'll be removed.
 
   VerifyLoggedRtpHeader(original_event, logged_event.rtp.header);
+  VerifyLoggedDependencyDescriptor(
+      original_event, logged_event.rtp.dependency_descriptor_wire_format);
 }
 
 void EventVerifier::VerifyLoggedGenericPacketSent(
@@ -1122,8 +1184,8 @@ void EventVerifier::VerifyReportBlock(
             logged_report_block.source_ssrc());
   EXPECT_EQ(original_report_block.fraction_lost(),
             logged_report_block.fraction_lost());
-  EXPECT_EQ(original_report_block.cumulative_lost_signed(),
-            logged_report_block.cumulative_lost_signed());
+  EXPECT_EQ(original_report_block.cumulative_lost(),
+            logged_report_block.cumulative_lost());
   EXPECT_EQ(original_report_block.extended_high_seq_num(),
             logged_report_block.extended_high_seq_num());
   EXPECT_EQ(original_report_block.jitter(), logged_report_block.jitter());

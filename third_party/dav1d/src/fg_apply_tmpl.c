@@ -37,7 +37,6 @@
 #include "common/bitdepth.h"
 
 #include "src/fg_apply.h"
-#include "src/ref.h"
 
 static void generate_scaling(const int bitdepth,
                              const uint8_t points[][2], const int num,
@@ -126,32 +125,35 @@ void bitfn(dav1d_prep_grain)(const Dav1dFilmGrainDSPContext *const dsp,
     if (data->num_uv_points[1])
         generate_scaling(in->p.bpc, data->uv_points[1], data->num_uv_points[1], scaling[2]);
 
-    // Create new references for the non-modified planes
+    // Copy over the non-modified planes
     assert(out->stride[0] == in->stride[0]);
     if (!data->num_y_points) {
-        struct Dav1dRef **out_plane_ref = out->ref->user_data;
-        struct Dav1dRef **in_plane_ref = in->ref->user_data;
-        dav1d_ref_dec(&out_plane_ref[0]);
-        out_plane_ref[0] = in_plane_ref[0];
-        dav1d_ref_inc(out_plane_ref[0]);
-        out->data[0] = in->data[0];
+        const ptrdiff_t stride = out->stride[0];
+        const ptrdiff_t sz = out->p.h * stride;
+        if (sz < 0)
+            memcpy((uint8_t*) out->data[0] + sz - stride,
+                   (uint8_t*) in->data[0] + sz - stride, -sz);
+        else
+            memcpy(out->data[0], in->data[0], sz);
     }
 
     if (in->p.layout != DAV1D_PIXEL_LAYOUT_I400 && !data->chroma_scaling_from_luma) {
         assert(out->stride[1] == in->stride[1]);
-        struct Dav1dRef **out_plane_ref = out->ref->user_data;
-        struct Dav1dRef **in_plane_ref = in->ref->user_data;
-        if (!data->num_uv_points[0]) {
-            dav1d_ref_dec(&out_plane_ref[1]);
-            out_plane_ref[1] = in_plane_ref[1];
-            dav1d_ref_inc(out_plane_ref[1]);
-            out->data[1] = in->data[1];
-        }
-        if (!data->num_uv_points[1]) {
-            dav1d_ref_dec(&out_plane_ref[2]);
-            out_plane_ref[2] = in_plane_ref[2];
-            dav1d_ref_inc(out_plane_ref[2]);
-            out->data[2] = in->data[2];
+        const int ss_ver = in->p.layout == DAV1D_PIXEL_LAYOUT_I420;
+        const ptrdiff_t stride = out->stride[1];
+        const ptrdiff_t sz = ((out->p.h + ss_ver) >> ss_ver) * stride;
+        if (sz < 0) {
+            if (!data->num_uv_points[0])
+                memcpy((uint8_t*) out->data[1] + sz - stride,
+                       (uint8_t*) in->data[1] + sz - stride, -sz);
+            if (!data->num_uv_points[1])
+                memcpy((uint8_t*) out->data[2] + sz - stride,
+                       (uint8_t*) in->data[2] + sz - stride, -sz);
+        } else {
+            if (!data->num_uv_points[0])
+                memcpy(out->data[1], in->data[1], sz);
+            if (!data->num_uv_points[1])
+                memcpy(out->data[2], in->data[2], sz);
         }
     }
 }
@@ -170,14 +172,14 @@ void bitfn(dav1d_apply_grain_row)(const Dav1dFilmGrainDSPContext *const dsp,
     const int cpw = (out->p.w + ss_x) >> ss_x;
     const int is_id = out->seq_hdr->mtrx == DAV1D_MC_IDENTITY;
     pixel *const luma_src =
-        ((pixel *) in->data[0]) + row * BLOCK_SIZE * PXSTRIDE(in->stride[0]);
+        ((pixel *) in->data[0]) + row * FG_BLOCK_SIZE * PXSTRIDE(in->stride[0]);
 #if BITDEPTH != 8
     const int bitdepth_max = (1 << out->p.bpc) - 1;
 #endif
 
     if (data->num_y_points) {
-        const int bh = imin(out->p.h - row * BLOCK_SIZE, BLOCK_SIZE);
-        dsp->fgy_32x32xn(((pixel *) out->data[0]) + row * BLOCK_SIZE * PXSTRIDE(out->stride[0]),
+        const int bh = imin(out->p.h - row * FG_BLOCK_SIZE, FG_BLOCK_SIZE);
+        dsp->fgy_32x32xn(((pixel *) out->data[0]) + row * FG_BLOCK_SIZE * PXSTRIDE(out->stride[0]),
                          luma_src, out->stride[0], data,
                          out->p.w, scaling[0], grain_lut[0], bh, row HIGHBD_TAIL_SUFFIX);
     }
@@ -188,7 +190,7 @@ void bitfn(dav1d_apply_grain_row)(const Dav1dFilmGrainDSPContext *const dsp,
         return;
     }
 
-    const int bh = (imin(out->p.h - row * BLOCK_SIZE, BLOCK_SIZE) + ss_y) >> ss_y;
+    const int bh = (imin(out->p.h - row * FG_BLOCK_SIZE, FG_BLOCK_SIZE) + ss_y) >> ss_y;
 
     // extend padding pixels
     if (out->p.w & ss_x) {
@@ -199,7 +201,7 @@ void bitfn(dav1d_apply_grain_row)(const Dav1dFilmGrainDSPContext *const dsp,
         }
     }
 
-    const ptrdiff_t uv_off = row * BLOCK_SIZE * PXSTRIDE(out->stride[1]) >> ss_y;
+    const ptrdiff_t uv_off = row * FG_BLOCK_SIZE * PXSTRIDE(out->stride[1]) >> ss_y;
     if (data->chroma_scaling_from_luma) {
         for (int pl = 0; pl < 2; pl++)
             dsp->fguv_32x32xn[in->p.layout - 1](((pixel *) out->data[1 + pl]) + uv_off,
@@ -230,7 +232,7 @@ void bitfn(dav1d_apply_grain)(const Dav1dFilmGrainDSPContext *const dsp,
 #else
     uint8_t scaling[3][SCALING_SIZE];
 #endif
-    const int rows = (out->p.h + 31) >> 5;
+    const int rows = (out->p.h + FG_BLOCK_SIZE - 1) / FG_BLOCK_SIZE;
 
     bitfn(dav1d_prep_grain)(dsp, out, in, scaling, grain_lut);
     for (int row = 0; row < rows; row++)

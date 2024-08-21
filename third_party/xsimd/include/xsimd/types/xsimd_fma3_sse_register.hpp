@@ -20,7 +20,7 @@ namespace xsimd
     struct fma3;
 
     /**
-     * @ingroup arch
+     * @ingroup architectures
      *
      * SSE4.2 + FMA instructions
      */
@@ -29,7 +29,6 @@ namespace xsimd
     {
         static constexpr bool supported() noexcept { return XSIMD_WITH_FMA3_SSE; }
         static constexpr bool available() noexcept { return true; }
-        static constexpr unsigned version() noexcept { return generic::version(1, 4, 3); }
         static constexpr char const* name() noexcept { return "fma3+sse4.2"; }
     };
 

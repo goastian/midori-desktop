@@ -1,19 +1,19 @@
 //! Generation of Wasm
 //! [components](https://github.com/WebAssembly/component-model).
 
-#![allow(unused_variables, dead_code)] // TODO FITZGEN
+// FIXME(#1000): component support in `wasm-smith` is a work in progress.
+#![allow(unused_variables, dead_code)]
 
-use crate::{arbitrary_loop, Config, DefaultConfig};
+use crate::{arbitrary_loop, Config};
 use arbitrary::{Arbitrary, Result, Unstructured};
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use std::{
     collections::{HashMap, HashSet},
-    marker,
     rc::Rc,
 };
-use wasm_encoder::{ComponentTypeRef, ComponentValType, PrimitiveValType, TypeBounds, ValType};
-use wasmparser::types::KebabString;
+use wasm_encoder::{
+    ComponentTypeRef, ComponentValType, HeapType, PrimitiveValType, RefType, TypeBounds, ValType,
+};
 
 mod encode;
 
@@ -26,11 +26,10 @@ mod encode;
 ///
 /// ## Configured Generated Components
 ///
-/// This uses the [`DefaultConfig`][crate::DefaultConfig] configuration. If you
-/// want to customize the shape of generated components, define your own
-/// configuration type, implement the [`Config`][crate::Config] trait for it,
-/// and use [`ConfiguredComponent<YourConfigType>`][crate::ConfiguredComponent]
-/// instead of plain `Component`.
+/// The `Arbitrary` implementation uses the [`Config::default()`][crate::Config]
+/// configuration. If you want to customize the shape of generated components,
+/// create your own [`Config`][crate::Config] instance and pass it to
+/// [`Component::new`][crate::Component::new].
 #[derive(Debug)]
 pub struct Component {
     sections: Vec<Section>,
@@ -47,7 +46,7 @@ pub struct Component {
 /// bytes.
 #[derive(Debug)]
 struct ComponentBuilder {
-    config: Rc<dyn Config>,
+    config: Config,
 
     // The set of core `valtype`s that we are configured to generate.
     core_valtypes: Vec<ValType>,
@@ -123,10 +122,10 @@ struct ComponentContext {
     num_imports: usize,
 
     // The set of names of imports we've generated thus far.
-    import_names: HashSet<KebabString>,
+    import_names: HashSet<String>,
 
     // The set of URLs of imports we've generated thus far.
-    import_urls: HashSet<KebabString>,
+    import_urls: HashSet<String>,
 
     // This component's function index space.
     funcs: Vec<ComponentOrCoreFuncType>,
@@ -310,35 +309,7 @@ impl TypesScope {
 
 impl<'a> Arbitrary<'a> for Component {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-        Ok(ConfiguredComponent::<DefaultConfig>::arbitrary(u)?.component)
-    }
-}
-
-/// A pseudo-random generated Wasm component with custom configuration.
-///
-/// If you don't care about custom configuration, use
-/// [`Component`][crate::Component] instead.
-///
-/// For details on configuring, see the [`Config`][crate::Config] trait.
-#[derive(Debug)]
-pub struct ConfiguredComponent<C> {
-    /// The generated component, controlled by the configuration of `C` in the
-    /// `Arbitrary` implementation.
-    pub component: Component,
-    _marker: marker::PhantomData<C>,
-}
-
-impl<'a, C> Arbitrary<'a> for ConfiguredComponent<C>
-where
-    C: Config + Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-        let config = C::arbitrary(u)?;
-        let component = Component::new(config, u)?;
-        Ok(ConfiguredComponent {
-            component,
-            _marker: marker::PhantomData,
-        })
+        Component::new(Config::default(), u)
     }
 }
 
@@ -353,8 +324,8 @@ struct EntityCounts {
 
 impl Component {
     /// Construct a new `Component` using the given configuration.
-    pub fn new(config: impl Config, u: &mut Unstructured) -> Result<Self> {
-        let mut builder = ComponentBuilder::new(Rc::new(config));
+    pub fn new(config: Config, u: &mut Unstructured) -> Result<Self> {
+        let mut builder = ComponentBuilder::new(config);
         builder.build(u)
     }
 
@@ -381,7 +352,7 @@ impl Step {
 }
 
 impl ComponentBuilder {
-    fn new(config: Rc<dyn Config>) -> Self {
+    fn new(config: Config) -> Self {
         ComponentBuilder {
             config,
             core_valtypes: vec![],
@@ -396,7 +367,7 @@ impl ComponentBuilder {
     }
 
     fn build(&mut self, u: &mut Unstructured) -> Result<Component> {
-        self.core_valtypes = crate::core::configured_valtypes(&*self.config);
+        self.core_valtypes = crate::core::configured_valtypes(&self.config);
 
         let mut choices: Vec<fn(&mut ComponentBuilder, &mut Unstructured) -> Result<Step>> = vec![];
 
@@ -417,17 +388,17 @@ impl ComponentBuilder {
                 choices.push(Self::arbitrary_import_section);
                 choices.push(Self::arbitrary_canonical_section);
 
-                if self.total_modules < self.config.max_modules() {
+                if self.total_modules < self.config.max_modules {
                     choices.push(Self::arbitrary_core_module_section);
                 }
 
-                if self.components.len() < self.config.max_nesting_depth()
-                    && self.total_components < self.config.max_components()
+                if self.components.len() < self.config.max_nesting_depth
+                    && self.total_components < self.config.max_components
                 {
                     choices.push(Self::arbitrary_component_section);
                 }
 
-                // TODO FITZGEN
+                // FIXME(#1000)
                 //
                 // choices.push(Self::arbitrary_instance_section);
                 // choices.push(Self::arbitrary_export_section);
@@ -455,13 +426,13 @@ impl ComponentBuilder {
         // Ensure we've generated all of our minimums.
         self.fill_minimums = true;
         {
-            if self.current_type_scope().types.len() < self.config.min_types() {
+            if self.current_type_scope().types.len() < self.config.min_types {
                 self.arbitrary_type_section(u)?.unwrap_still_building();
             }
-            if self.component().num_imports < self.config.min_imports() {
+            if self.component().num_imports < self.config.min_imports {
                 self.arbitrary_import_section(u)?.unwrap_still_building();
             }
-            if self.component().funcs.len() < self.config.min_funcs() {
+            if self.component().funcs.len() < self.config.min_funcs {
                 self.arbitrary_canonical_section(u)?.unwrap_still_building();
             }
         }
@@ -471,10 +442,6 @@ impl ComponentBuilder {
             .pop()
             .expect("should have a types scope for the component we are finishing");
         Ok(Step::Finished(self.components.pop().unwrap().component))
-    }
-
-    fn config(&self) -> &dyn Config {
-        &*self.config
     }
 
     fn component(&self) -> &ComponentContext {
@@ -545,16 +512,16 @@ impl ComponentBuilder {
 
         let min = if self.fill_minimums {
             self.config
-                .min_types()
+                .min_types
                 .saturating_sub(self.current_type_scope().types.len())
         } else {
             0
         };
 
-        let max = self.config.max_types() - self.current_type_scope().types.len();
+        let max = self.config.max_types - self.current_type_scope().types.len();
 
         arbitrary_loop(u, min, max, |u| {
-            let mut type_fuel = self.config.max_type_size();
+            let mut type_fuel = self.config.max_type_size;
             let ty = self.arbitrary_core_type(u, &mut type_fuel)?;
             self.push_core_type(ty);
             Ok(true)
@@ -574,14 +541,16 @@ impl ComponentBuilder {
         }
 
         let ty = match u.int_in_range::<u8>(0..=1)? {
-            0 => CoreType::Func(crate::core::arbitrary_func_type(
+            0 => CoreType::Func(arbitrary_func_type(
                 u,
+                &self.config,
                 &self.core_valtypes,
-                if self.config.multi_value_enabled() {
+                if self.config.multi_value_enabled {
                     None
                 } else {
                     Some(1)
                 },
+                0,
             )?),
             1 => CoreType::Module(self.arbitrary_module_type(u, type_fuel)?),
             _ => unreachable!(),
@@ -594,16 +563,16 @@ impl ComponentBuilder {
 
         let min = if self.fill_minimums {
             self.config
-                .min_types()
+                .min_types
                 .saturating_sub(self.current_type_scope().types.len())
         } else {
             0
         };
 
-        let max = self.config.max_types() - self.current_type_scope().types.len();
+        let max = self.config.max_types - self.current_type_scope().types.len();
 
         arbitrary_loop(u, min, max, |u| {
-            let mut type_fuel = self.config.max_type_size();
+            let mut type_fuel = self.config.max_type_size;
             let ty = self.arbitrary_type(u, &mut type_fuel)?;
             self.push_type(ty);
             Ok(true)
@@ -622,7 +591,7 @@ impl ComponentBuilder {
         let scope = self.current_type_scope();
 
         if !scope.module_types.is_empty()
-            && (for_type_def || !for_import || self.total_modules < self.config.max_modules())
+            && (for_type_def || !for_import || self.total_modules < self.config.max_modules)
         {
             choices.push(|me, u| {
                 Ok(ComponentTypeRef::Module(
@@ -634,15 +603,12 @@ impl ComponentBuilder {
         // Types cannot be imported currently
         if !for_import
             && !scope.types.is_empty()
-            && (for_type_def || scope.types.len() < self.config.max_types())
+            && (for_type_def || scope.types.len() < self.config.max_types)
         {
             choices.push(|me, u| {
-                Ok(ComponentTypeRef::Type(
-                    TypeBounds::Eq,
-                    u.int_in_range(
-                        0..=u32::try_from(me.current_type_scope().types.len() - 1).unwrap(),
-                    )?,
-                ))
+                Ok(ComponentTypeRef::Type(TypeBounds::Eq(u.int_in_range(
+                    0..=u32::try_from(me.current_type_scope().types.len() - 1).unwrap(),
+                )?)))
             });
         }
 
@@ -653,9 +619,7 @@ impl ComponentBuilder {
         // }
 
         if !scope.func_types.is_empty()
-            && (for_type_def
-                || !for_import
-                || self.component().num_funcs() < self.config.max_funcs())
+            && (for_type_def || !for_import || self.component().num_funcs() < self.config.max_funcs)
         {
             choices.push(|me, u| {
                 Ok(ComponentTypeRef::Func(
@@ -665,7 +629,7 @@ impl ComponentBuilder {
         }
 
         if !scope.component_types.is_empty()
-            && (for_type_def || !for_import || self.total_components < self.config.max_components())
+            && (for_type_def || !for_import || self.total_components < self.config.max_components)
         {
             choices.push(|me, u| {
                 Ok(ComponentTypeRef::Component(
@@ -675,7 +639,7 @@ impl ComponentBuilder {
         }
 
         if !scope.instance_types.is_empty()
-            && (for_type_def || !for_import || self.total_instances < self.config.max_instances())
+            && (for_type_def || !for_import || self.total_instances < self.config.max_instances)
         {
             choices.push(|me, u| {
                 Ok(ComponentTypeRef::Instance(
@@ -729,7 +693,7 @@ impl ComponentBuilder {
         // randomly generating them is extremely unlikely.
 
         // `memory`
-        if counts.memories < self.config.max_memories() && u.ratio::<u8>(99, 100)? {
+        if counts.memories < self.config.max_memories && u.ratio::<u8>(99, 100)? {
             defs.push(ModuleTypeDef::Export(
                 "memory".into(),
                 crate::core::EntityType::Memory(self.arbitrary_core_memory_type(u)?),
@@ -740,8 +704,8 @@ impl ComponentBuilder {
         }
 
         // `canonical_abi_realloc`
-        if counts.funcs < self.config.max_funcs()
-            && types.len() < self.config.max_types()
+        if counts.funcs < self.config.max_funcs
+            && types.len() < self.config.max_types
             && u.ratio::<u8>(99, 100)?
         {
             let realloc_ty = Rc::new(crate::core::FuncType {
@@ -750,7 +714,7 @@ impl ComponentBuilder {
             });
             let ty_idx = u32::try_from(types.len()).unwrap();
             types.push(realloc_ty.clone());
-            defs.push(ModuleTypeDef::TypeDef(crate::core::Type::Func(
+            defs.push(ModuleTypeDef::TypeDef(crate::core::CompositeType::Func(
                 realloc_ty.clone(),
             )));
             defs.push(ModuleTypeDef::Export(
@@ -763,8 +727,8 @@ impl ComponentBuilder {
         }
 
         // `canonical_abi_free`
-        if counts.funcs < self.config.max_funcs()
-            && types.len() < self.config.max_types()
+        if counts.funcs < self.config.max_funcs
+            && types.len() < self.config.max_types
             && u.ratio::<u8>(99, 100)?
         {
             let free_ty = Rc::new(crate::core::FuncType {
@@ -773,7 +737,7 @@ impl ComponentBuilder {
             });
             let ty_idx = u32::try_from(types.len()).unwrap();
             types.push(free_ty.clone());
-            defs.push(ModuleTypeDef::TypeDef(crate::core::Type::Func(
+            defs.push(ModuleTypeDef::TypeDef(crate::core::CompositeType::Func(
                 free_ty.clone(),
             )));
             defs.push(ModuleTypeDef::Export(
@@ -800,7 +764,7 @@ impl ComponentBuilder {
                 return Ok(false);
             }
 
-            let max_choice = if types.len() < self.config.max_types() {
+            let max_choice = if types.len() < self.config.max_types {
                 // Check if the parent scope has core function types to alias
                 if !types.is_empty()
                     || (!self.types.is_empty()
@@ -856,17 +820,19 @@ impl ComponentBuilder {
 
                 // Type definition.
                 2 => {
-                    let ty = crate::core::arbitrary_func_type(
+                    let ty = arbitrary_func_type(
                         u,
+                        &self.config,
                         &self.core_valtypes,
-                        if self.config.multi_value_enabled() {
+                        if self.config.multi_value_enabled {
                             None
                         } else {
                             Some(1)
                         },
+                        0,
                     )?;
                     types.push(ty.clone());
-                    defs.push(ModuleTypeDef::TypeDef(crate::core::Type::Func(ty)));
+                    defs.push(ModuleTypeDef::TypeDef(crate::core::CompositeType::Func(ty)));
                 }
 
                 // Alias
@@ -913,7 +879,7 @@ impl ComponentBuilder {
     ) -> Result<Option<crate::core::EntityType>> {
         choices.clear();
 
-        if counts.globals < self.config.max_globals() {
+        if counts.globals < self.config.max_globals {
             choices.push(|c, u, counts, _types| {
                 counts.globals += 1;
                 Ok(crate::core::EntityType::Global(
@@ -922,7 +888,7 @@ impl ComponentBuilder {
             });
         }
 
-        if counts.tables < self.config.max_tables() {
+        if counts.tables < self.config.max_tables {
             choices.push(|c, u, counts, _types| {
                 counts.tables += 1;
                 Ok(crate::core::EntityType::Table(
@@ -931,7 +897,7 @@ impl ComponentBuilder {
             });
         }
 
-        if counts.memories < self.config.max_memories() {
+        if counts.memories < self.config.max_memories {
             choices.push(|c, u, counts, _types| {
                 counts.memories += 1;
                 Ok(crate::core::EntityType::Memory(
@@ -941,8 +907,8 @@ impl ComponentBuilder {
         }
 
         if types.iter().any(|ty| ty.results.is_empty())
-            && self.config.exceptions_enabled()
-            && counts.tags < self.config.max_tags()
+            && self.config.exceptions_enabled
+            && counts.tags < self.config.max_tags
         {
             choices.push(|c, u, counts, types| {
                 counts.tags += 1;
@@ -960,7 +926,7 @@ impl ComponentBuilder {
             });
         }
 
-        if !types.is_empty() && counts.funcs < self.config.max_funcs() {
+        if !types.is_empty() && counts.funcs < self.config.max_funcs {
             choices.push(|c, u, counts, types| {
                 counts.funcs += 1;
                 let ty_idx = u.int_in_range(0..=u32::try_from(types.len() - 1).unwrap())?;
@@ -986,15 +952,16 @@ impl ComponentBuilder {
         Ok(crate::core::GlobalType {
             val_type: self.arbitrary_core_valtype(u)?,
             mutable: u.arbitrary()?,
+            shared: false,
         })
     }
 
     fn arbitrary_core_table_type(&self, u: &mut Unstructured) -> Result<crate::core::TableType> {
-        crate::core::arbitrary_table_type(u, self.config())
+        crate::core::arbitrary_table_type(u, &self.config, None)
     }
 
     fn arbitrary_core_memory_type(&self, u: &mut Unstructured) -> Result<crate::core::MemoryType> {
-        crate::core::arbitrary_memtype(u, self.config())
+        crate::core::arbitrary_memtype(u, &self.config)
     }
 
     fn with_types_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
@@ -1097,15 +1064,15 @@ impl ComponentBuilder {
     fn arbitrary_instance_type_def(
         &mut self,
         u: &mut Unstructured,
-        exports: &mut HashSet<KebabString>,
-        export_urls: &mut HashSet<KebabString>,
+        exports: &mut HashSet<String>,
+        export_urls: &mut HashSet<String>,
         type_fuel: &mut u32,
     ) -> Result<InstanceTypeDecl> {
         let mut choices: Vec<
             fn(
                 &mut ComponentBuilder,
-                &mut HashSet<KebabString>,
-                &mut HashSet<KebabString>,
+                &mut HashSet<String>,
+                &mut HashSet<String>,
                 &mut Unstructured,
                 &mut u32,
             ) -> Result<InstanceTypeDecl>,
@@ -1115,7 +1082,7 @@ impl ComponentBuilder {
         if self.current_type_scope().can_ref_type() {
             choices.push(|me, exports, export_urls, u, _type_fuel| {
                 let ty = me.arbitrary_type_ref(u, false, true)?.unwrap();
-                if let ComponentTypeRef::Type(_, idx) = ty {
+                if let ComponentTypeRef::Type(TypeBounds::Eq(idx)) = ty {
                     let ty = me.current_type_scope().get(idx).clone();
                     me.current_type_scope_mut().push(ty);
                 }
@@ -1162,7 +1129,7 @@ impl ComponentBuilder {
         });
 
         // Type definition.
-        if self.types.len() < self.config.max_nesting_depth() {
+        if self.types.len() < self.config.max_nesting_depth {
             choices.push(|me, _exports, _export_urls, u, type_fuel| {
                 let ty = me.arbitrary_type(u, type_fuel)?;
                 me.current_type_scope_mut().push(ty.clone());
@@ -1342,8 +1309,8 @@ impl ComponentBuilder {
             6 => Ok(PrimitiveValType::U32),
             7 => Ok(PrimitiveValType::S64),
             8 => Ok(PrimitiveValType::U64),
-            9 => Ok(PrimitiveValType::Float32),
-            10 => Ok(PrimitiveValType::Float64),
+            9 => Ok(PrimitiveValType::F32),
+            10 => Ok(PrimitiveValType::F64),
             11 => Ok(PrimitiveValType::Char),
             12 => Ok(PrimitiveValType::String),
             _ => unreachable!(),
@@ -1456,20 +1423,6 @@ impl ComponentBuilder {
         Ok(EnumType { variants })
     }
 
-    fn arbitrary_union_type(&self, u: &mut Unstructured, type_fuel: &mut u32) -> Result<UnionType> {
-        let mut variants = vec![];
-        arbitrary_loop(u, 1, 100, |u| {
-            *type_fuel = type_fuel.saturating_sub(1);
-            if *type_fuel == 0 {
-                return Ok(false);
-            }
-
-            variants.push(self.arbitrary_component_val_type(u)?);
-            Ok(true)
-        })?;
-        Ok(UnionType { variants })
-    }
-
     fn arbitrary_option_type(&self, u: &mut Unstructured) -> Result<OptionType> {
         Ok(OptionType {
             inner_ty: self.arbitrary_component_val_type(u)?,
@@ -1494,7 +1447,7 @@ impl ComponentBuilder {
         u: &mut Unstructured,
         type_fuel: &mut u32,
     ) -> Result<DefinedType> {
-        match u.int_in_range(0..=9)? {
+        match u.int_in_range(0..=8)? {
             0 => Ok(DefinedType::Primitive(
                 self.arbitrary_primitive_val_type(u)?,
             )),
@@ -1508,14 +1461,13 @@ impl ComponentBuilder {
             4 => Ok(DefinedType::Tuple(self.arbitrary_tuple_type(u, type_fuel)?)),
             5 => Ok(DefinedType::Flags(self.arbitrary_flags_type(u, type_fuel)?)),
             6 => Ok(DefinedType::Enum(self.arbitrary_enum_type(u, type_fuel)?)),
-            7 => Ok(DefinedType::Union(self.arbitrary_union_type(u, type_fuel)?)),
-            8 => Ok(DefinedType::Option(self.arbitrary_option_type(u)?)),
-            9 => Ok(DefinedType::Result(self.arbitrary_result_type(u)?)),
+            7 => Ok(DefinedType::Option(self.arbitrary_option_type(u)?)),
+            8 => Ok(DefinedType::Result(self.arbitrary_result_type(u)?)),
             _ => unreachable!(),
         }
     }
 
-    fn push_import(&mut self, name: KebabString, url: Option<String>, ty: ComponentTypeRef) {
+    fn push_import(&mut self, name: String, url: Option<String>, ty: ComponentTypeRef) {
         let nth = match self.ensure_section(
             |sec| matches!(sec, Section::Import(_)),
             || Section::Import(ImportSection { imports: vec![] }),
@@ -1555,9 +1507,12 @@ impl ComponentBuilder {
                 self.total_values += 1;
                 self.component_mut().values.push(ty);
             }
-            ComponentTypeRef::Type(TypeBounds::Eq, ty_index) => {
+            ComponentTypeRef::Type(TypeBounds::Eq(ty_index)) => {
                 let ty = self.current_type_scope().get(ty_index).clone();
                 self.current_type_scope_mut().push(ty);
+            }
+            ComponentTypeRef::Type(TypeBounds::SubResource) => {
+                unimplemented!()
             }
             ComponentTypeRef::Instance(ty_index) => {
                 let instance_ty = match self.current_type_scope().get(ty_index).as_ref() {
@@ -1633,14 +1588,14 @@ impl ComponentBuilder {
 
         let min = if self.fill_minimums {
             self.config
-                .min_imports()
+                .min_imports
                 .saturating_sub(self.component().num_imports)
         } else {
             // Allow generating empty sections. We can always fill in the required
             // minimum later.
             0
         };
-        let max = self.config.max_imports() - self.component().num_imports;
+        let max = self.config.max_imports - self.component().num_imports;
 
         crate::arbitrary_loop(u, min, max, |u| {
             match self.arbitrary_type_ref(u, true, false)? {
@@ -1671,14 +1626,14 @@ impl ComponentBuilder {
 
         let min = if self.fill_minimums {
             self.config
-                .min_funcs()
+                .min_funcs
                 .saturating_sub(self.component().funcs.len())
         } else {
             // Allow generating empty sections. We can always fill in the
             // required minimum later.
             0
         };
-        let max = self.config.max_funcs() - self.component().funcs.len();
+        let max = self.config.max_funcs - self.component().funcs.len();
 
         let mut choices: Vec<fn(&mut Unstructured, &mut ComponentBuilder) -> Result<Option<Func>>> =
             Vec::with_capacity(2);
@@ -1737,7 +1692,7 @@ impl ComponentBuilder {
                         // definitions arbitrarily.
                         debug_assert!(!indices.is_empty());
                         *u.choose(indices)?
-                    } else if c.current_type_scope().types.len() < c.config.max_types() {
+                    } else if c.current_type_scope().types.len() < c.config.max_types {
                         // If we haven't already defined this component function
                         // type, and we haven't defined the configured maximum
                         // amount of types yet, then just define this type.
@@ -1773,9 +1728,8 @@ impl ComponentBuilder {
     }
 
     fn arbitrary_core_module_section(&mut self, u: &mut Unstructured) -> Result<Step> {
-        let config: Rc<dyn Config> = Rc::clone(&self.config);
         let module = crate::core::Module::new_internal(
-            config,
+            self.config.clone(),
             u,
             crate::core::DuplicateImportsBehavior::Disallowed,
         )?;
@@ -1820,8 +1774,8 @@ fn canonical_abi_for(func_ty: &FuncType) -> Rc<crate::core::FuncType> {
             | PrimitiveValType::S32
             | PrimitiveValType::U32 => ValType::I32,
             PrimitiveValType::S64 | PrimitiveValType::U64 => ValType::I64,
-            PrimitiveValType::Float32 => ValType::F32,
-            PrimitiveValType::Float64 => ValType::F64,
+            PrimitiveValType::F32 => ValType::F32,
+            PrimitiveValType::F64 => ValType::F64,
             PrimitiveValType::String => {
                 unimplemented!("non-scalar types are not supported yet")
             }
@@ -1866,8 +1820,8 @@ fn inverse_scalar_canonical_abi_for(
                 ComponentValType::Primitive(PrimitiveValType::U64),
             ])
             .cloned(),
-        ValType::F32 => Ok(ComponentValType::Primitive(PrimitiveValType::Float32)),
-        ValType::F64 => Ok(ComponentValType::Primitive(PrimitiveValType::Float64)),
+        ValType::F32 => Ok(ComponentValType::Primitive(PrimitiveValType::F32)),
+        ValType::F64 => Ok(ComponentValType::Primitive(PrimitiveValType::F64)),
         ValType::V128 | ValType::Ref(_) => {
             unreachable!("not used in canonical ABI")
         }
@@ -1952,7 +1906,7 @@ struct ModuleType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum ModuleTypeDef {
-    TypeDef(crate::core::Type),
+    TypeDef(crate::core::CompositeType),
     Import(crate::core::Import),
     OuterAlias {
         count: u32,
@@ -2032,7 +1986,7 @@ enum ComponentTypeDef {
     Alias(Alias),
     Import(Import),
     Export {
-        name: KebabString,
+        name: String,
         url: Option<String>,
         ty: ComponentTypeRef,
     },
@@ -2060,7 +2014,7 @@ enum InstanceTypeDecl {
     Type(Rc<Type>),
     Alias(Alias),
     Export {
-        name: KebabString,
+        name: String,
         url: Option<String>,
         ty: ComponentTypeRef,
     },
@@ -2068,8 +2022,8 @@ enum InstanceTypeDecl {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct FuncType {
-    params: Vec<(KebabString, ComponentValType)>,
-    results: Vec<(Option<KebabString>, ComponentValType)>,
+    params: Vec<(String, ComponentValType)>,
+    results: Vec<(Option<String>, ComponentValType)>,
 }
 
 impl FuncType {
@@ -2102,8 +2056,8 @@ fn is_scalar(ty: &ComponentValType) -> bool {
             | PrimitiveValType::U32
             | PrimitiveValType::S64
             | PrimitiveValType::U64
-            | PrimitiveValType::Float32
-            | PrimitiveValType::Float64
+            | PrimitiveValType::F32
+            | PrimitiveValType::F64
             | PrimitiveValType::Char => true,
             PrimitiveValType::String => false,
         },
@@ -2120,19 +2074,18 @@ enum DefinedType {
     Tuple(TupleType),
     Flags(FlagsType),
     Enum(EnumType),
-    Union(UnionType),
     Option(OptionType),
     Result(ResultType),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct RecordType {
-    fields: Vec<(KebabString, ComponentValType)>,
+    fields: Vec<(String, ComponentValType)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct VariantType {
-    cases: Vec<(KebabString, Option<ComponentValType>, Option<u32>)>,
+    cases: Vec<(String, Option<ComponentValType>, Option<u32>)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -2147,17 +2100,12 @@ struct TupleType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct FlagsType {
-    fields: Vec<KebabString>,
+    fields: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct EnumType {
-    variants: Vec<KebabString>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct UnionType {
-    variants: Vec<ComponentValType>,
+    variants: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -2178,7 +2126,7 @@ struct ImportSection {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Import {
-    name: KebabString,
+    name: String,
     url: Option<String>,
     ty: ComponentTypeRef,
 }
@@ -2229,4 +2177,46 @@ struct CoreInstanceSection {}
 #[derive(Debug)]
 struct CoreTypeSection {
     types: Vec<Rc<CoreType>>,
+}
+
+fn arbitrary_func_type(
+    u: &mut Unstructured,
+    config: &Config,
+    valtypes: &[ValType],
+    max_results: Option<usize>,
+    type_ref_limit: u32,
+) -> Result<Rc<crate::core::FuncType>> {
+    let mut params = vec![];
+    let mut results = vec![];
+    arbitrary_loop(u, 0, 20, |u| {
+        params.push(arbitrary_valtype(u, config, valtypes, type_ref_limit)?);
+        Ok(true)
+    })?;
+    arbitrary_loop(u, 0, max_results.unwrap_or(20), |u| {
+        results.push(arbitrary_valtype(u, config, valtypes, type_ref_limit)?);
+        Ok(true)
+    })?;
+    Ok(Rc::new(crate::core::FuncType { params, results }))
+}
+
+fn arbitrary_valtype(
+    u: &mut Unstructured,
+    config: &Config,
+    valtypes: &[ValType],
+    type_ref_limit: u32,
+) -> Result<ValType> {
+    if config.gc_enabled && type_ref_limit > 0 && u.ratio(1, 20)? {
+        Ok(ValType::Ref(RefType {
+            // TODO: For now, only create allow nullable reference
+            // types. Eventually we should support non-nullable reference types,
+            // but this means that we will also need to recognize when it is
+            // impossible to create an instance of the reference (eg `(ref
+            // nofunc)` has no instances, and self-referential types that
+            // contain a non-null self-reference are also impossible to create).
+            nullable: true,
+            heap_type: HeapType::Concrete(u.int_in_range(0..=type_ref_limit - 1)?),
+        }))
+    } else {
+        Ok(*u.choose(valtypes)?)
+    }
 }

@@ -25,6 +25,7 @@
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/task_queue_for_test.h"
 #include "test/call_test.h"
+#include "test/video_test_constants.h"
 
 namespace webrtc {
 namespace {
@@ -43,7 +44,7 @@ const size_t kNumTemporalLayers[] = {1, 2, 3};
 class PictureIdObserver : public test::RtpRtcpObserver {
  public:
   explicit PictureIdObserver(VideoCodecType codec_type)
-      : test::RtpRtcpObserver(test::CallTest::kDefaultTimeout),
+      : test::RtpRtcpObserver(test::VideoTestConstants::kDefaultTimeout),
         depacketizer_(CreateVideoRtpDepacketizer(codec_type)),
         max_expected_picture_id_gap_(0),
         max_expected_tl0_idx_gap_(0),
@@ -84,9 +85,10 @@ class PictureIdObserver : public test::RtpRtcpObserver {
                     ParsedPacket* parsed) const {
     RtpPacket rtp_packet;
     EXPECT_TRUE(rtp_packet.Parse(packet, length));
-    EXPECT_TRUE(rtp_packet.Ssrc() == test::CallTest::kVideoSendSsrcs[0] ||
-                rtp_packet.Ssrc() == test::CallTest::kVideoSendSsrcs[1] ||
-                rtp_packet.Ssrc() == test::CallTest::kVideoSendSsrcs[2])
+    EXPECT_TRUE(
+        rtp_packet.Ssrc() == test::VideoTestConstants::kVideoSendSsrcs[0] ||
+        rtp_packet.Ssrc() == test::VideoTestConstants::kVideoSendSsrcs[1] ||
+        rtp_packet.Ssrc() == test::VideoTestConstants::kVideoSendSsrcs[2])
         << "Unknown SSRC sent.";
 
     if (rtp_packet.payload_size() == 0) {
@@ -173,11 +175,11 @@ class PictureIdObserver : public test::RtpRtcpObserver {
     }
   }
 
-  Action OnSendRtp(const uint8_t* packet, size_t length) override {
+  Action OnSendRtp(rtc::ArrayView<const uint8_t> packet) override {
     MutexLock lock(&mutex_);
 
     ParsedPacket parsed;
-    if (!ParsePayload(packet, length, &parsed))
+    if (!ParsePayload(packet.data(), packet.size(), &parsed))
       return SEND_PACKET;
 
     uint32_t ssrc = parsed.ssrc;
@@ -253,18 +255,17 @@ void PictureIdTest::SetupEncoder(VideoEncoderFactory* encoder_factory,
   observer_.reset(
       new PictureIdObserver(PayloadStringToCodecType(payload_name)));
 
-  SendTask(
-      task_queue(), [this, encoder_factory, payload_name]() {
-        CreateCalls();
-        CreateSendTransport(BuiltInNetworkBehaviorConfig(), observer_.get());
-        CreateSendConfig(kNumSimulcastStreams, 0, 0, send_transport_.get());
-        GetVideoSendConfig()->encoder_settings.encoder_factory =
-            encoder_factory;
-        GetVideoSendConfig()->rtp.payload_name = payload_name;
-        GetVideoEncoderConfig()->codec_type =
-            PayloadStringToCodecType(payload_name);
-        SetVideoEncoderConfig(/* number_of_streams */ 1);
-      });
+  SendTask(task_queue(), [this, encoder_factory, payload_name]() {
+    CreateCalls();
+    CreateSendTransport(BuiltInNetworkBehaviorConfig(), observer_.get());
+    CreateSendConfig(test::VideoTestConstants::kNumSimulcastStreams, 0, 0,
+                     send_transport_.get());
+    GetVideoSendConfig()->encoder_settings.encoder_factory = encoder_factory;
+    GetVideoSendConfig()->rtp.payload_name = payload_name;
+    GetVideoEncoderConfig()->codec_type =
+        PayloadStringToCodecType(payload_name);
+    SetVideoEncoderConfig(/* number_of_streams */ 1);
+  });
 }
 
 void PictureIdTest::SetVideoEncoderConfig(int num_streams) {
@@ -367,7 +368,8 @@ TEST_P(PictureIdTest, ContinuousAfterReconfigureVp8) {
   TestPictureIdContinuousAfterReconfigure({1, 3, 3, 1, 1});
 }
 
-TEST_P(PictureIdTest, IncreasingAfterRecreateStreamVp8) {
+// TODO(bugs.webrtc.org/14985): Investigate and reenable.
+TEST_P(PictureIdTest, DISABLED_IncreasingAfterRecreateStreamVp8) {
   test::FunctionVideoEncoderFactory encoder_factory(
       []() { return VP8Encoder::Create(); });
   SetupEncoder(&encoder_factory, "VP8");
@@ -386,20 +388,24 @@ TEST_P(PictureIdTest, ContinuousAfterStreamCountChangeVp8) {
 TEST_P(PictureIdTest, ContinuousAfterReconfigureSimulcastEncoderAdapter) {
   InternalEncoderFactory internal_encoder_factory;
   test::FunctionVideoEncoderFactory encoder_factory(
-      [&internal_encoder_factory]() {
+      [&internal_encoder_factory](const Environment& env,
+                                  const SdpVideoFormat& format) {
         return std::make_unique<SimulcastEncoderAdapter>(
-            &internal_encoder_factory, SdpVideoFormat("VP8"));
+            env, &internal_encoder_factory, nullptr, SdpVideoFormat::VP8());
       });
   SetupEncoder(&encoder_factory, "VP8");
   TestPictureIdContinuousAfterReconfigure({1, 3, 3, 1, 1});
 }
 
-TEST_P(PictureIdTest, IncreasingAfterRecreateStreamSimulcastEncoderAdapter) {
+// TODO(bugs.webrtc.org/14985): Investigate and reenable.
+TEST_P(PictureIdTest,
+       DISABLED_IncreasingAfterRecreateStreamSimulcastEncoderAdapter) {
   InternalEncoderFactory internal_encoder_factory;
   test::FunctionVideoEncoderFactory encoder_factory(
-      [&internal_encoder_factory]() {
+      [&internal_encoder_factory](const Environment& env,
+                                  const SdpVideoFormat& format) {
         return std::make_unique<SimulcastEncoderAdapter>(
-            &internal_encoder_factory, SdpVideoFormat("VP8"));
+            env, &internal_encoder_factory, nullptr, SdpVideoFormat::VP8());
       });
   SetupEncoder(&encoder_factory, "VP8");
   TestPictureIdIncreaseAfterRecreateStreams({1, 3, 3, 1, 1});
@@ -408,9 +414,10 @@ TEST_P(PictureIdTest, IncreasingAfterRecreateStreamSimulcastEncoderAdapter) {
 TEST_P(PictureIdTest, ContinuousAfterStreamCountChangeSimulcastEncoderAdapter) {
   InternalEncoderFactory internal_encoder_factory;
   test::FunctionVideoEncoderFactory encoder_factory(
-      [&internal_encoder_factory]() {
+      [&internal_encoder_factory](const Environment& env,
+                                  const SdpVideoFormat& format) {
         return std::make_unique<SimulcastEncoderAdapter>(
-            &internal_encoder_factory, SdpVideoFormat("VP8"));
+            env, &internal_encoder_factory, nullptr, SdpVideoFormat::VP8());
       });
   // Make sure that the picture id is not reset if the stream count goes
   // down and then up.
@@ -418,7 +425,8 @@ TEST_P(PictureIdTest, ContinuousAfterStreamCountChangeSimulcastEncoderAdapter) {
   TestPictureIdContinuousAfterReconfigure({3, 1, 3});
 }
 
-TEST_P(PictureIdTest, IncreasingAfterRecreateStreamVp9) {
+// TODO(bugs.webrtc.org/14985): Investigate and reenable.
+TEST_P(PictureIdTest, DISABLED_IncreasingAfterRecreateStreamVp9) {
   test::FunctionVideoEncoderFactory encoder_factory(
       []() { return VP9Encoder::Create(); });
   SetupEncoder(&encoder_factory, "VP9");

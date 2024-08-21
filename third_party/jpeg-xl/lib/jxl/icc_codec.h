@@ -8,18 +8,23 @@
 
 // Compressed representation of ICC profiles.
 
-#include <stddef.h>
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
-#include "lib/jxl/base/compiler_specific.h"
-#include "lib/jxl/base/padded_bytes.h"
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/dec_ans.h"
 #include "lib/jxl/dec_bit_reader.h"
+#include "lib/jxl/padded_bytes.h"
 
 namespace jxl {
 
 struct ICCReader {
+  explicit ICCReader(JxlMemoryManager* memory_manager)
+      : decompressed_(memory_manager) {}
+
   Status Init(BitReader* reader, size_t output_limit);
   Status Process(BitReader* reader, PaddedBytes* icc);
   void Reset() {
@@ -28,7 +33,7 @@ struct ICCReader {
   }
 
  private:
-  Status CheckEOI(BitReader* reader);
+  static Status CheckEOI(BitReader* reader);
   size_t i_ = 0;
   size_t bits_to_skip_ = 0;
   size_t used_bits_base_ = 0;
@@ -38,19 +43,6 @@ struct ICCReader {
   ANSSymbolReader ans_reader_;
   PaddedBytes decompressed_;
 };
-
-// `icc` may be empty afterwards - if so, call CreateProfile. Does not append,
-// clears any original data that was in icc.
-// If `output_limit` is not 0, then returns error if resulting profile would be
-// longer than `output_limit`
-Status ReadICC(BitReader* JXL_RESTRICT reader, PaddedBytes* JXL_RESTRICT icc,
-               size_t output_limit = 0);
-
-// Exposed only for testing
-Status PredictICC(const uint8_t* icc, size_t size, PaddedBytes* result);
-
-// Exposed only for testing
-Status UnpredictICC(const uint8_t* enc, size_t size, PaddedBytes* result);
 
 }  // namespace jxl
 

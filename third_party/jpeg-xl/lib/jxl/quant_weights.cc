@@ -4,28 +4,24 @@
 // license that can be found in the LICENSE file.
 #include "lib/jxl/quant_weights.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <jxl/memory_manager.h>
 
-#include <algorithm>
 #include <cmath>
-#include <limits>
-#include <utility>
+#include <cstdio>
+#include <cstdlib>
 
-#include "lib/jxl/base/bits.h"
+#include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
 #include "lib/jxl/dct_scales.h"
 #include "lib/jxl/dec_modular.h"
 #include "lib/jxl/fields.h"
-#include "lib/jxl/image.h"
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/quant_weights.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
-#include "lib/jxl/fast_math-inl.h"
+#include "lib/jxl/base/fast_math-inl.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -161,8 +157,8 @@ Status ComputeQuantTable(const QuantEncoding& encoding,
                          float* JXL_RESTRICT inv_table, size_t table_num,
                          DequantMatrices::QuantTable kind, size_t* pos) {
   constexpr size_t N = kBlockDim;
-  size_t wrows = 8 * DequantMatrices::required_size_x[kind],
-         wcols = 8 * DequantMatrices::required_size_y[kind];
+  size_t wrows = 8 * DequantMatrices::required_size_x[kind];
+  size_t wcols = 8 * DequantMatrices::required_size_y[kind];
   size_t num = wrows * wcols;
 
   std::vector<float> weights(3 * num);
@@ -362,7 +358,7 @@ namespace {
 
 HWY_EXPORT(ComputeQuantTable);
 
-static constexpr const float kAlmostZero = 1e-8f;
+constexpr const float kAlmostZero = 1e-8f;
 
 Status DecodeDctParams(BitReader* br, DctQuantWeightParams* params) {
   params->num_distance_bands =
@@ -379,7 +375,8 @@ Status DecodeDctParams(BitReader* br, DctQuantWeightParams* params) {
   return true;
 }
 
-Status Decode(BitReader* br, QuantEncoding* encoding, size_t required_size_x,
+Status Decode(JxlMemoryManager* memory_manager, BitReader* br,
+              QuantEncoding* encoding, size_t required_size_x,
               size_t required_size_y, size_t idx,
               ModularFrameDecoder* modular_frame_decoder) {
   size_t required_size = required_size_x * required_size_y;
@@ -468,42 +465,43 @@ Status Decode(BitReader* br, QuantEncoding* encoding, size_t required_size_x,
       // Set mode early, to avoid mem-leak.
       encoding->mode = QuantEncoding::kQuantModeRAW;
       JXL_RETURN_IF_ERROR(ModularFrameDecoder::DecodeQuantTable(
-          required_size_x, required_size_y, br, encoding, idx,
+          memory_manager, required_size_x, required_size_y, br, encoding, idx,
           modular_frame_decoder));
       break;
     }
     default:
       return JXL_FAILURE("Invalid quantization table encoding");
   }
-  encoding->mode = QuantEncoding::Mode(mode);
+  encoding->mode = static_cast<QuantEncoding::Mode>(mode);
   return true;
 }
 
 }  // namespace
 
-// These definitions are needed before C++17.
-constexpr size_t DequantMatrices::required_size_[];
-constexpr size_t DequantMatrices::required_size_x[];
-constexpr size_t DequantMatrices::required_size_y[];
+#if JXL_CXX_LANG < JXL_CXX_17
+constexpr const std::array<int, 17> DequantMatrices::required_size_x;
+constexpr const std::array<int, 17> DequantMatrices::required_size_y;
+constexpr const size_t DequantMatrices::kSumRequiredXy;
 constexpr DequantMatrices::QuantTable DequantMatrices::kQuantTable[];
+#endif
 
-Status DequantMatrices::Decode(BitReader* br,
+Status DequantMatrices::Decode(JxlMemoryManager* memory_manager, BitReader* br,
                                ModularFrameDecoder* modular_frame_decoder) {
   size_t all_default = br->ReadBits(1);
   size_t num_tables = all_default ? 0 : static_cast<size_t>(kNum);
   encodings_.clear();
   encodings_.resize(kNum, QuantEncoding::Library(0));
   for (size_t i = 0; i < num_tables; i++) {
-    JXL_RETURN_IF_ERROR(
-        jxl::Decode(br, &encodings_[i], required_size_x[i % kNum],
-                    required_size_y[i % kNum], i, modular_frame_decoder));
+    JXL_RETURN_IF_ERROR(jxl::Decode(
+        memory_manager, br, &encodings_[i], required_size_x[i % kNum],
+        required_size_y[i % kNum], i, modular_frame_decoder));
   }
   computed_mask_ = 0;
   return true;
 }
 
 Status DequantMatrices::DecodeDC(BitReader* br) {
-  bool all_default = br->ReadBits(1);
+  bool all_default = static_cast<bool>(br->ReadBits(1));
   if (!br->AllReadsWithinBounds()) return JXL_FAILURE("EOS during DecodeDC");
   if (!all_default) {
     for (size_t c = 0; c < 3; c++) {
@@ -1163,11 +1161,12 @@ const QuantEncoding* DequantMatrices::Library() {
 }
 
 DequantMatrices::DequantMatrices() {
-  encodings_.resize(size_t(QuantTable::kNum), QuantEncoding::Library(0));
+  encodings_.resize(static_cast<size_t>(QuantTable::kNum),
+                    QuantEncoding::Library(0));
   size_t pos = 0;
   size_t offsets[kNum * 3];
-  for (size_t i = 0; i < size_t(QuantTable::kNum); i++) {
-    size_t num = required_size_[i] * kDCTBlockSize;
+  for (size_t i = 0; i < static_cast<size_t>(QuantTable::kNum); i++) {
+    size_t num = required_size_x[i] * required_size_y[i] * kDCTBlockSize;
     for (size_t c = 0; c < 3; c++) {
       offsets[3 * i + c] = pos + c * num;
     }
@@ -1192,7 +1191,7 @@ Status DequantMatrices::EnsureComputed(uint32_t acs_mask) {
   size_t offsets[kNum * 3 + 1];
   size_t pos = 0;
   for (size_t i = 0; i < kNum; i++) {
-    size_t num = required_size_[i] * kDCTBlockSize;
+    size_t num = required_size_x[i] * required_size_y[i] * kDCTBlockSize;
     for (size_t c = 0; c < 3; c++) {
       offsets[3 * i + c] = pos + c * num;
     }

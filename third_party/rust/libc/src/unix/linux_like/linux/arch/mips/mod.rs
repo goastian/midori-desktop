@@ -103,6 +103,9 @@ pub const SO_TIMESTAMPING: ::c_int = 37;
 // pub const SO_PREFER_BUSY_POLL: ::c_int = 69;
 // pub const SO_BUSY_POLL_BUDGET: ::c_int = 70;
 
+pub const FICLONE: ::c_ulong = 0x80049409;
+pub const FICLONERANGE: ::c_ulong = 0x8020940D;
+
 // Defined in unix/linux_like/mod.rs
 // pub const SCM_TIMESTAMP: ::c_int = SO_TIMESTAMP;
 pub const SCM_TIMESTAMPNS: ::c_int = SO_TIMESTAMPNS;
@@ -191,6 +194,34 @@ pub const BLKSSZGET: ::Ioctl = 0x20001268;
 pub const BLKPBSZGET: ::Ioctl = 0x2000127B;
 
 cfg_if! {
+    // Those type are constructed using the _IOC macro
+    // DD-SS_SSSS_SSSS_SSSS-TTTT_TTTT-NNNN_NNNN
+    // where D stands for direction (either None (00), Read (01) or Write (11))
+    // where S stands for size (int, long, struct...)
+    // where T stands for type ('f','v','X'...)
+    // where N stands for NR (NumbeR)
+    if #[cfg(target_arch = "mips")] {
+        pub const FS_IOC_GETFLAGS: ::Ioctl = 0x40046601;
+        pub const FS_IOC_SETFLAGS: ::Ioctl = 0x80046602;
+        pub const FS_IOC_GETVERSION: ::Ioctl = 0x40047601;
+        pub const FS_IOC_SETVERSION: ::Ioctl = 0x80047602;
+        pub const FS_IOC32_GETFLAGS: ::Ioctl = 0x40046601;
+        pub const FS_IOC32_SETFLAGS: ::Ioctl = 0x80046602;
+        pub const FS_IOC32_GETVERSION: ::Ioctl = 0x40047601;
+        pub const FS_IOC32_SETVERSION: ::Ioctl = 0x80047602;
+    } else if #[cfg(target_arch = "mips64")] {
+        pub const FS_IOC_GETFLAGS: ::Ioctl = 0x40086601;
+        pub const FS_IOC_SETFLAGS: ::Ioctl = 0x80086602;
+        pub const FS_IOC_GETVERSION: ::Ioctl = 0x40087601;
+        pub const FS_IOC_SETVERSION: ::Ioctl = 0x80087602;
+        pub const FS_IOC32_GETFLAGS: ::Ioctl = 0x40046601;
+        pub const FS_IOC32_SETFLAGS: ::Ioctl = 0x80046602;
+        pub const FS_IOC32_GETVERSION: ::Ioctl = 0x40047601;
+        pub const FS_IOC32_SETVERSION: ::Ioctl = 0x80047602;
+    }
+}
+
+cfg_if! {
     if #[cfg(target_env = "musl")] {
         pub const TIOCGRS485: ::Ioctl = 0x4020542e;
         pub const TIOCSRS485: ::Ioctl = 0xc020542f;
@@ -234,6 +265,8 @@ cfg_if! {
         pub const RLIMIT_NICE: ::__rlimit_resource_t = 13;
         pub const RLIMIT_RTPRIO: ::__rlimit_resource_t = 14;
         pub const RLIMIT_RTTIME: ::__rlimit_resource_t = 15;
+        #[allow(deprecated)]
+        #[deprecated(since = "0.2.64", note = "Not stable across OS versions")]
         pub const RLIMIT_NLIMITS: ::__rlimit_resource_t = RLIM_NLIMITS;
 
     } else if #[cfg(target_env = "musl")] {
@@ -254,7 +287,10 @@ cfg_if! {
         pub const RLIMIT_NICE: ::c_int = 13;
         pub const RLIMIT_RTPRIO: ::c_int = 14;
         pub const RLIMIT_RTTIME: ::c_int = 15;
+        #[deprecated(since = "0.2.64", note = "Not stable across OS versions")]
         pub const RLIM_NLIMITS: ::c_int = 15;
+        #[allow(deprecated)]
+        #[deprecated(since = "0.2.64", note = "Not stable across OS versions")]
         pub const RLIMIT_NLIMITS: ::c_int = RLIM_NLIMITS;
         pub const RLIM_INFINITY: ::rlim_t = !0;
     }
@@ -262,14 +298,16 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(target_env = "gnu")] {
+        #[deprecated(since = "0.2.64", note = "Not stable across OS versions")]
         pub const RLIM_NLIMITS: ::__rlimit_resource_t = 16;
     } else if #[cfg(target_env = "uclibc")] {
+        #[deprecated(since = "0.2.64", note = "Not stable across OS versions")]
         pub const RLIM_NLIMITS: ::__rlimit_resource_t = 15;
     }
 }
 
 cfg_if! {
-    if #[cfg(target_arch = "mips64",
+    if #[cfg(any(target_arch = "mips64", target_arch = "mips64r6"),
          any(target_env = "gnu",
              target_env = "uclibc"))] {
         pub const RLIM_INFINITY: ::rlim_t = !0;
@@ -277,7 +315,7 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(target_arch = "mips",
+    if #[cfg(any(target_arch = "mips", target_arch = "mips32r6"),
          any(target_env = "gnu",
              target_env = "uclibc"))] {
         pub const RLIM_INFINITY: ::rlim_t = 0x7fffffff;

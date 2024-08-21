@@ -13,7 +13,7 @@ use crate::auxil::dxgi::result::HResult;
 
 pub(super) fn compile_fxc(
     device: &super::Device,
-    source: &String,
+    source: &str,
     source_name: &str,
     raw_ep: &std::ffi::CString,
     stage_bit: wgt::ShaderStages,
@@ -28,7 +28,7 @@ pub(super) fn compile_fxc(
     if device
         .private_caps
         .instance_flags
-        .contains(crate::InstanceFlags::DEBUG)
+        .contains(wgt::InstanceFlags::DEBUG)
     {
         compile_flags |= d3dcompiler::D3DCOMPILE_DEBUG | d3dcompiler::D3DCOMPILE_SKIP_OPTIMIZATION;
     }
@@ -66,9 +66,6 @@ pub(super) fn compile_fxc(
                     )
                 };
                 let _ = write!(full_msg, ": {}", String::from_utf8_lossy(message));
-                unsafe {
-                    error.destroy();
-                }
             }
             (
                 Err(crate::PipelineError::Linkage(stage_bit, full_msg)),
@@ -102,7 +99,7 @@ mod dxc {
         let dxil = match hassle_rs::Dxil::new(dxil_path) {
             Ok(dxil) => dxil,
             Err(e) => {
-                log::warn!("Failed to load dxil.dll. Defaulting to Fxc instead: {}", e);
+                log::warn!("Failed to load dxil.dll. Defaulting to FXC instead: {}", e);
                 return Ok(None);
             }
         };
@@ -114,7 +111,7 @@ mod dxc {
             Ok(dxc) => dxc,
             Err(e) => {
                 log::warn!(
-                    "Failed to load dxcompiler.dll. Defaulting to Fxc instead: {}",
+                    "Failed to load dxcompiler.dll. Defaulting to FXC instead: {}",
                     e
                 );
                 return Ok(None);
@@ -145,13 +142,16 @@ mod dxc {
         log::Level,
     ) {
         profiling::scope!("compile_dxc");
-        let mut compile_flags = arrayvec::ArrayVec::<&str, 4>::new_const();
+        let mut compile_flags = arrayvec::ArrayVec::<&str, 6>::new_const();
         compile_flags.push("-Ges"); // d3dcompiler::D3DCOMPILE_ENABLE_STRICTNESS
         compile_flags.push("-Vd"); // Disable implicit validation to work around bugs when dxil.dll isn't in the local directory.
+        compile_flags.push("-HV"); // Use HLSL 2018, Naga doesn't supported 2021 yet.
+        compile_flags.push("2018");
+
         if device
             .private_caps
             .instance_flags
-            .contains(crate::InstanceFlags::DEBUG)
+            .contains(wgt::InstanceFlags::DEBUG)
         {
             compile_flags.push("-Zi"); // d3dcompiler::D3DCOMPILE_SKIP_OPTIMIZATION
             compile_flags.push("-Od"); // d3dcompiler::D3DCOMPILE_DEBUG
@@ -211,7 +211,7 @@ mod dxc {
                 Err(crate::PipelineError::Linkage(
                     stage_bit,
                     format!(
-                        "DXC compile error: {:?}",
+                        "DXC compile error: {}",
                         get_error_string_from_dxc_result(&dxc_container.library, &e.0)
                             .unwrap_or_default()
                     ),

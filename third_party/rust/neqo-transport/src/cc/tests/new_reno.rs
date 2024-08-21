@@ -5,17 +5,25 @@
 // except according to those terms.
 
 // Congestion control
-#![deny(clippy::pedantic)]
 
-use crate::cc::new_reno::NewReno;
-use crate::cc::{ClassicCongestionControl, CongestionControl, CWND_INITIAL, MAX_DATAGRAM_SIZE};
-use crate::packet::PacketType;
-use crate::tracking::SentPacket;
 use std::time::Duration;
+
+use neqo_common::IpTosEcn;
 use test_fixture::now;
+
+use crate::{
+    cc::{
+        new_reno::NewReno, ClassicCongestionControl, CongestionControl, CWND_INITIAL,
+        MAX_DATAGRAM_SIZE,
+    },
+    packet::PacketType,
+    recovery::SentPacket,
+    rtt::RttEstimate,
+};
 
 const PTO: Duration = Duration::from_millis(100);
 const RTT: Duration = Duration::from_millis(98);
+const RTT_ESTIMATE: RttEstimate = RttEstimate::from_duration(Duration::from_millis(98));
 
 fn cwnd_is_default(cc: &ClassicCongestionControl<NewReno>) {
     assert_eq!(cc.cwnd(), CWND_INITIAL);
@@ -37,59 +45,66 @@ fn issue_876() {
     let sent_packets = &[
         SentPacket::new(
             PacketType::Short,
-            1,                     // pn
-            time_before,           // time sent
-            true,                  // ack eliciting
-            Vec::new(),            // tokens
-            MAX_DATAGRAM_SIZE - 1, // size
+            1,
+            IpTosEcn::default(),
+            time_before,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE - 1,
         ),
         SentPacket::new(
             PacketType::Short,
-            2,                     // pn
-            time_before,           // time sent
-            true,                  // ack eliciting
-            Vec::new(),            // tokens
-            MAX_DATAGRAM_SIZE - 2, // size
+            2,
+            IpTosEcn::default(),
+            time_before,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE - 2,
         ),
         SentPacket::new(
             PacketType::Short,
-            3,                 // pn
-            time_before,       // time sent
-            true,              // ack eliciting
-            Vec::new(),        // tokens
-            MAX_DATAGRAM_SIZE, // size
+            3,
+            IpTosEcn::default(),
+            time_before,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE,
         ),
         SentPacket::new(
             PacketType::Short,
-            4,                 // pn
-            time_before,       // time sent
-            true,              // ack eliciting
-            Vec::new(),        // tokens
-            MAX_DATAGRAM_SIZE, // size
+            4,
+            IpTosEcn::default(),
+            time_before,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE,
         ),
         SentPacket::new(
             PacketType::Short,
-            5,                 // pn
-            time_before,       // time sent
-            true,              // ack eliciting
-            Vec::new(),        // tokens
-            MAX_DATAGRAM_SIZE, // size
+            5,
+            IpTosEcn::default(),
+            time_before,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE,
         ),
         SentPacket::new(
             PacketType::Short,
-            6,                 // pn
-            time_before,       // time sent
-            true,              // ack eliciting
-            Vec::new(),        // tokens
-            MAX_DATAGRAM_SIZE, // size
+            6,
+            IpTosEcn::default(),
+            time_before,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE,
         ),
         SentPacket::new(
             PacketType::Short,
-            7,                     // pn
-            time_after,            // time sent
-            true,                  // ack eliciting
-            Vec::new(),            // tokens
-            MAX_DATAGRAM_SIZE - 3, // size
+            7,
+            IpTosEcn::default(),
+            time_after,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE - 3,
         ),
     ];
 
@@ -117,15 +132,96 @@ fn issue_876() {
     assert_eq!(cc.bytes_in_flight(), 6 * MAX_DATAGRAM_SIZE - 5);
 
     // and ack it. cwnd increases slightly
-    cc.on_packets_acked(&sent_packets[6..], RTT, time_now);
-    assert_eq!(cc.acked_bytes(), sent_packets[6].size);
+    cc.on_packets_acked(&sent_packets[6..], &RTT_ESTIMATE, time_now);
+    assert_eq!(cc.acked_bytes(), sent_packets[6].len());
     cwnd_is_halved(&cc);
     assert_eq!(cc.bytes_in_flight(), 5 * MAX_DATAGRAM_SIZE - 2);
 
     // Packet from before is lost. Should not hurt cwnd.
     cc.on_packets_lost(Some(time_now), None, PTO, &sent_packets[1..2]);
     assert!(!cc.recovery_packet());
-    assert_eq!(cc.acked_bytes(), sent_packets[6].size);
+    assert_eq!(cc.acked_bytes(), sent_packets[6].len());
     cwnd_is_halved(&cc);
     assert_eq!(cc.bytes_in_flight(), 4 * MAX_DATAGRAM_SIZE);
+}
+
+#[test]
+// https://github.com/mozilla/neqo/pull/1465
+fn issue_1465() {
+    let mut cc = ClassicCongestionControl::new(NewReno::default());
+    let mut pn = 0;
+    let mut now = now();
+    let mut next_packet = |now| {
+        let p = SentPacket::new(
+            PacketType::Short,
+            pn,
+            IpTosEcn::default(),
+            now,
+            true,
+            Vec::new(),
+            MAX_DATAGRAM_SIZE,
+        );
+        pn += 1;
+        p
+    };
+    let mut send_next = |cc: &mut ClassicCongestionControl<NewReno>, now| {
+        let p = next_packet(now);
+        cc.on_packet_sent(&p);
+        p
+    };
+
+    let p1 = send_next(&mut cc, now);
+    let p2 = send_next(&mut cc, now);
+    let p3 = send_next(&mut cc, now);
+
+    assert_eq!(cc.acked_bytes(), 0);
+    cwnd_is_default(&cc);
+    assert_eq!(cc.bytes_in_flight(), 3 * MAX_DATAGRAM_SIZE);
+
+    // advance one rtt to detect lost packet there this simplifies the timers, because
+    // on_packet_loss would only be called after RTO, but that is not relevant to the problem
+    now += RTT;
+    cc.on_packets_lost(Some(now), None, PTO, &[p1]);
+
+    // We are now in recovery
+    assert!(cc.recovery_packet());
+    assert_eq!(cc.acked_bytes(), 0);
+    cwnd_is_halved(&cc);
+    assert_eq!(cc.bytes_in_flight(), 2 * MAX_DATAGRAM_SIZE);
+
+    // Don't reduce the cwnd again on second packet loss
+    cc.on_packets_lost(Some(now), None, PTO, &[p3]);
+    assert_eq!(cc.acked_bytes(), 0);
+    cwnd_is_halved(&cc); // still the same as after first packet loss
+    assert_eq!(cc.bytes_in_flight(), MAX_DATAGRAM_SIZE);
+
+    // the acked packets before on_packet_sent were the cause of
+    // https://github.com/mozilla/neqo/pull/1465
+    cc.on_packets_acked(&[p2], &RTT_ESTIMATE, now);
+
+    assert_eq!(cc.bytes_in_flight(), 0);
+
+    // send out recovery packet and get it acked to get out of recovery state
+    let p4 = send_next(&mut cc, now);
+    cc.on_packet_sent(&p4);
+    now += RTT;
+    cc.on_packets_acked(&[p4], &RTT_ESTIMATE, now);
+
+    // do the same as in the first rtt but now the bug appears
+    let p5 = send_next(&mut cc, now);
+    let p6 = send_next(&mut cc, now);
+    now += RTT;
+
+    let cur_cwnd = cc.cwnd();
+    cc.on_packets_lost(Some(now), None, PTO, &[p5]);
+
+    // go back into recovery
+    assert!(cc.recovery_packet());
+    assert_eq!(cc.cwnd(), cur_cwnd / 2);
+    assert_eq!(cc.acked_bytes(), 0);
+    assert_eq!(cc.bytes_in_flight(), 2 * MAX_DATAGRAM_SIZE);
+
+    // this shouldn't introduce further cwnd reduction, but it did before https://github.com/mozilla/neqo/pull/1465
+    cc.on_packets_lost(Some(now), None, PTO, &[p6]);
+    assert_eq!(cc.cwnd(), cur_cwnd / 2);
 }

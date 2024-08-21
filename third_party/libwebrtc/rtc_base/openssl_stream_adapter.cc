@@ -278,24 +278,11 @@ static long stream_ctrl(BIO* b, int cmd, long num, void* ptr) {
 // OpenSSLStreamAdapter
 /////////////////////////////////////////////////////////////////////////////
 
-static std::atomic<bool> g_use_legacy_tls_protocols_override(false);
-static std::atomic<bool> g_allow_legacy_tls_protocols(false);
-
-void SetAllowLegacyTLSProtocols(const absl::optional<bool>& allow) {
-  g_use_legacy_tls_protocols_override.store(allow.has_value());
-  if (allow.has_value())
-    g_allow_legacy_tls_protocols.store(allow.value());
-}
-
-bool ShouldAllowLegacyTLSProtocols() {
-  return g_use_legacy_tls_protocols_override.load()
-             ? g_allow_legacy_tls_protocols.load()
-             : webrtc::field_trial::IsEnabled("WebRTC-LegacyTlsProtocols");
-}
-
 OpenSSLStreamAdapter::OpenSSLStreamAdapter(
-    std::unique_ptr<StreamInterface> stream)
+    std::unique_ptr<StreamInterface> stream,
+    absl::AnyInvocable<void(SSLHandshakeError)> handshake_error)
     : stream_(std::move(stream)),
+      handshake_error_(std::move(handshake_error)),
       owner_(rtc::Thread::Current()),
       state_(SSL_NONE),
       role_(SSL_CLIENT),
@@ -304,10 +291,7 @@ OpenSSLStreamAdapter::OpenSSLStreamAdapter(
       ssl_(nullptr),
       ssl_ctx_(nullptr),
       ssl_mode_(SSL_MODE_TLS),
-      ssl_max_version_(SSL_PROTOCOL_TLS_12),
-      // Default is to support legacy TLS protocols.
-      // This will be changed to default non-support in M82 or M83.
-      support_legacy_tls_protocols_flag_(ShouldAllowLegacyTLSProtocols()) {
+      ssl_max_version_(SSL_PROTOCOL_TLS_12) {
   stream_->SignalEvent.connect(this, &OpenSSLStreamAdapter::OnEvent);
 }
 
@@ -465,6 +449,17 @@ bool OpenSSLStreamAdapter::ExportKeyingMaterial(absl::string_view label,
     return false;
   }
   return true;
+}
+
+uint16_t OpenSSLStreamAdapter::GetPeerSignatureAlgorithm() const {
+  if (state_ != SSL_CONNECTED) {
+    return 0;
+  }
+#ifdef OPENSSL_IS_BORINGSSL
+  return SSL_get_peer_signature_algorithm(ssl_);
+#else
+  return kSslSignatureAlgorithmUnknown;
+#endif
 }
 
 bool OpenSSLStreamAdapter::SetDtlsSrtpCryptoSuites(
@@ -938,7 +933,9 @@ int OpenSSLStreamAdapter::ContinueSSL() {
       }
       RTC_DLOG(LS_VERBOSE) << " -- error " << code << ", " << err_code << ", "
                            << ERR_GET_REASON(err_code);
-      SignalSSLHandshakeError(ssl_handshake_err);
+      if (handshake_error_) {
+        handshake_error_(ssl_handshake_err);
+      }
       return (ssl_error != 0) ? ssl_error : -1;
   }
 
@@ -1016,33 +1013,10 @@ SSL_CTX* OpenSSLStreamAdapter::SetupSSLContext() {
     return nullptr;
   }
 
-  if (support_legacy_tls_protocols_flag_) {
-    // TODO(https://bugs.webrtc.org/10261): Completely remove this branch in
-    // M84.
-    SSL_CTX_set_min_proto_version(
-        ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_VERSION : TLS1_VERSION);
-    switch (ssl_max_version_) {
-      case SSL_PROTOCOL_TLS_10:
-        SSL_CTX_set_max_proto_version(
-            ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_VERSION : TLS1_VERSION);
-        break;
-      case SSL_PROTOCOL_TLS_11:
-        SSL_CTX_set_max_proto_version(
-            ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_VERSION : TLS1_1_VERSION);
-        break;
-      case SSL_PROTOCOL_TLS_12:
-      default:
-        SSL_CTX_set_max_proto_version(
-            ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
-        break;
-    }
-  } else {
-    // TODO(https://bugs.webrtc.org/10261): Make this the default in M84.
-    SSL_CTX_set_min_proto_version(
-        ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
-    SSL_CTX_set_max_proto_version(
-        ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
-  }
+  SSL_CTX_set_min_proto_version(
+      ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
+  SSL_CTX_set_max_proto_version(
+      ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
 
 #ifdef OPENSSL_IS_BORINGSSL
   // SSL_CTX_set_current_time_cb is only supported in BoringSSL.
@@ -1057,9 +1031,7 @@ SSL_CTX* OpenSSLStreamAdapter::SetupSSLContext() {
     return nullptr;
   }
 
-#if !defined(NDEBUG)
   SSL_CTX_set_info_callback(ctx, OpenSSLAdapter::SSLInfoCallback);
-#endif
 
   int mode = SSL_VERIFY_PEER;
   if (GetClientAuthEnabled()) {
@@ -1095,6 +1067,11 @@ SSL_CTX* OpenSSLStreamAdapter::SetupSSLContext() {
       return nullptr;
     }
   }
+
+#ifdef OPENSSL_IS_BORINGSSL
+  SSL_CTX_set_permute_extensions(
+      ctx, webrtc::field_trial::IsEnabled("WebRTC-PermuteTlsClientHello"));
+#endif
 
   return ctx;
 }

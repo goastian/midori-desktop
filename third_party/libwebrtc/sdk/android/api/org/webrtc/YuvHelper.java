@@ -36,8 +36,8 @@ public class YuvHelper {
     final int dstStartU = dstStartY + dstStrideY * dstSliceHeightY;
     final int dstEndU = dstStartU + dstStrideU * chromaHeight;
     final int dstStartV = dstStartU + dstStrideU * dstSliceHeightU;
-    // The last line doesn't need any padding, so  use chromaWidth
-    // to calculate the exact end position.
+    // The last line doesn't need any padding, so  use chromaWidth to calculate the exact end
+    // position.
     final int dstEndV = dstStartV + dstStrideU * (chromaHeight - 1) + chromaWidth;
     if (dst.capacity() < dstEndV) {
       throw new IllegalArgumentException("Expected destination buffer capacity to be at least "
@@ -63,6 +63,14 @@ public class YuvHelper {
       ByteBuffer srcV, int srcStrideV, ByteBuffer dst, int dstWidth, int dstHeight) {
     I420Copy(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dst, dstWidth, dstHeight,
         dstWidth, dstHeight, (dstWidth + 1) / 2, (dstHeight + 1) / 2);
+  }
+
+  /** Helper method for copying I420 to buffer with the given stride and slice height. */
+  public static void I420Copy(ByteBuffer srcY, int srcStrideY, ByteBuffer srcU, int srcStrideU,
+      ByteBuffer srcV, int srcStrideV, ByteBuffer dst, int dstWidth, int dstHeight, int dstStride,
+      int dstSliceHeight) {
+    I420Copy(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dst, dstWidth, dstHeight,
+        dstStride, dstSliceHeight, (dstStride + 1) / 2, (dstSliceHeight + 1) / 2);
   }
 
   /**
@@ -107,6 +115,10 @@ public class YuvHelper {
   public static void I420Rotate(ByteBuffer srcY, int srcStrideY, ByteBuffer srcU, int srcStrideU,
       ByteBuffer srcV, int srcStrideV, ByteBuffer dst, int srcWidth, int srcHeight,
       int rotationMode) {
+    checkNotNull(srcY, "srcY");
+    checkNotNull(srcU, "srcU");
+    checkNotNull(srcV, "srcV");
+    checkNotNull(dst, "dst");
     final int dstWidth = rotationMode % 180 == 0 ? srcWidth : srcHeight;
     final int dstHeight = rotationMode % 180 == 0 ? srcHeight : srcWidth;
 
@@ -137,14 +149,16 @@ public class YuvHelper {
   /** Helper method for copying a single colour plane. */
   public static void copyPlane(
       ByteBuffer src, int srcStride, ByteBuffer dst, int dstStride, int width, int height) {
-    nativeCopyPlane(src, srcStride, dst, dstStride, width, height);
+    nativeCopyPlane(
+        checkNotNull(src, "src"), srcStride, checkNotNull(dst, "dst"), dstStride, width, height);
   }
 
   /** Converts ABGR little endian (rgba in memory) to I420. */
   public static void ABGRToI420(ByteBuffer src, int srcStride, ByteBuffer dstY, int dstStrideY,
       ByteBuffer dstU, int dstStrideU, ByteBuffer dstV, int dstStrideV, int width, int height) {
-    nativeABGRToI420(
-        src, srcStride, dstY, dstStrideY, dstU, dstStrideU, dstV, dstStrideV, width, height);
+    nativeABGRToI420(checkNotNull(src, "src"), srcStride, checkNotNull(dstY, "dstY"), dstStrideY,
+        checkNotNull(dstU, "dstU"), dstStrideU, checkNotNull(dstV, "dstV"), dstStrideV, width,
+        height);
   }
 
   /**
@@ -155,9 +169,14 @@ public class YuvHelper {
   public static void I420Copy(ByteBuffer srcY, int srcStrideY, ByteBuffer srcU, int srcStrideU,
       ByteBuffer srcV, int srcStrideV, ByteBuffer dstY, int dstStrideY, ByteBuffer dstU,
       int dstStrideU, ByteBuffer dstV, int dstStrideV, int width, int height) {
-    if (srcY == null || srcU == null || srcV == null || dstY == null || dstU == null || dstV == null
-        || width <= 0 || height <= 0) {
-      throw new IllegalArgumentException("Invalid I420Copy input arguments");
+    checkNotNull(srcY, "srcY");
+    checkNotNull(srcU, "srcU");
+    checkNotNull(srcV, "srcV");
+    checkNotNull(dstY, "dstY");
+    checkNotNull(dstU, "dstU");
+    checkNotNull(dstV, "dstV");
+    if (width <= 0 || height <= 0) {
+      throw new IllegalArgumentException("I420Copy: width and height should not be negative");
     }
     nativeI420Copy(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dstY, dstStrideY, dstU,
         dstStrideU, dstV, dstStrideV, width, height);
@@ -166,9 +185,13 @@ public class YuvHelper {
   public static void I420ToNV12(ByteBuffer srcY, int srcStrideY, ByteBuffer srcU, int srcStrideU,
       ByteBuffer srcV, int srcStrideV, ByteBuffer dstY, int dstStrideY, ByteBuffer dstUV,
       int dstStrideUV, int width, int height) {
-    if (srcY == null || srcU == null || srcV == null || dstY == null || dstUV == null || width <= 0
-        || height <= 0) {
-      throw new IllegalArgumentException("Invalid I420ToNV12 input arguments");
+    checkNotNull(srcY, "srcY");
+    checkNotNull(srcU, "srcU");
+    checkNotNull(srcV, "srcV");
+    checkNotNull(dstY, "dstY");
+    checkNotNull(dstUV, "dstUV");
+    if (width <= 0 || height <= 0) {
+      throw new IllegalArgumentException("I420ToNV12: width and height should not be negative");
     }
     nativeI420ToNV12(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dstY, dstStrideY, dstUV,
         dstStrideUV, width, height);
@@ -178,8 +201,21 @@ public class YuvHelper {
       ByteBuffer srcV, int srcStrideV, ByteBuffer dstY, int dstStrideY, ByteBuffer dstU,
       int dstStrideU, ByteBuffer dstV, int dstStrideV, int srcWidth, int srcHeight,
       int rotationMode) {
+    checkNotNull(srcY, "srcY");
+    checkNotNull(srcU, "srcU");
+    checkNotNull(srcV, "srcV");
+    checkNotNull(dstY, "dstY");
+    checkNotNull(dstU, "dstU");
+    checkNotNull(dstV, "dstV");
     nativeI420Rotate(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dstY, dstStrideY, dstU,
         dstStrideU, dstV, dstStrideV, srcWidth, srcHeight, rotationMode);
+  }
+
+  private static <T> T checkNotNull(T obj, String description) {
+    if (obj == null) {
+      throw new NullPointerException(description + " should not be null");
+    }
+    return obj;
   }
 
   private static native void nativeCopyPlane(

@@ -5,14 +5,21 @@
 
 #![cfg_attr(not(syn_only), feature(rustc_private))]
 #![recursion_limit = "1024"]
-#![allow(clippy::cast_lossless, clippy::unnecessary_wraps)]
+#![allow(
+    clippy::arc_with_non_send_sync,
+    clippy::cast_lossless,
+    clippy::let_underscore_untyped,
+    clippy::manual_let_else,
+    clippy::match_like_matches_macro,
+    clippy::uninlined_format_args,
+    clippy::unnecessary_wraps
+)]
 
 #[macro_use]
 #[path = "../tests/macros/mod.rs"]
 mod macros;
 
-#[path = "../tests/common/mod.rs"]
-mod common;
+#[allow(dead_code)]
 #[path = "../tests/repo/mod.rs"]
 mod repo;
 
@@ -38,6 +45,7 @@ mod syn_parse {
 #[cfg(not(syn_only))]
 mod librustc_parse {
     extern crate rustc_data_structures;
+    extern crate rustc_driver;
     extern crate rustc_error_messages;
     extern crate rustc_errors;
     extern crate rustc_parse;
@@ -46,7 +54,7 @@ mod librustc_parse {
 
     use rustc_data_structures::sync::Lrc;
     use rustc_error_messages::FluentBundle;
-    use rustc_errors::{emitter::Emitter, translation::Translate, Diagnostic, Handler};
+    use rustc_errors::{emitter::Emitter, translation::Translate, DiagCtxt, Diagnostic};
     use rustc_session::parse::ParseSess;
     use rustc_span::source_map::{FilePathMapping, SourceMap};
     use rustc_span::{edition::Edition, FileName};
@@ -71,10 +79,10 @@ mod librustc_parse {
         }
 
         rustc_span::create_session_if_not_set_then(Edition::Edition2018, |_| {
-            let cm = Lrc::new(SourceMap::new(FilePathMapping::empty()));
+            let source_map = Lrc::new(SourceMap::new(FilePathMapping::empty()));
             let emitter = Box::new(SilentEmitter);
-            let handler = Handler::with_emitter(false, None, emitter);
-            let sess = ParseSess::with_span_handler(handler, cm);
+            let handler = DiagCtxt::with_emitter(emitter);
+            let sess = ParseSess::with_dcx(handler, source_map);
             if let Err(diagnostic) = rustc_parse::parse_crate_from_source_str(
                 FileName::Custom("bench".to_owned()),
                 content.to_owned(),
@@ -91,7 +99,7 @@ mod librustc_parse {
 #[cfg(not(syn_only))]
 mod read_from_disk {
     pub fn bench(content: &str) -> Result<(), ()> {
-        _ = content;
+        let _ = content;
         Ok(())
     }
 }
@@ -101,9 +109,13 @@ fn exec(mut codepath: impl FnMut(&str) -> Result<(), ()>) -> Duration {
     let mut success = 0;
     let mut total = 0;
 
-    walkdir::WalkDir::new("tests/rust/src")
-        .into_iter()
-        .filter_entry(repo::base_dir_filter)
+    ["tests/rust/compiler", "tests/rust/library"]
+        .iter()
+        .flat_map(|dir| {
+            walkdir::WalkDir::new(dir)
+                .into_iter()
+                .filter_entry(repo::base_dir_filter)
+        })
         .for_each(|entry| {
             let entry = entry.unwrap();
             let path = entry.path();

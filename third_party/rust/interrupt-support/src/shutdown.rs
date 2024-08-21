@@ -12,13 +12,14 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 ///
 /// Here's how add shutdown support to a component:
 ///
-///   - Use `SqlInterruptScope::new_with_shutdown_check()` to create a new
-///     `SqlInterruptScope`
 ///   - Database connections need to be wrapped in a type that:
 ///      - Implements `AsRef<SqlInterruptHandle>`.
 ///      - Gets wrapped in an `Arc<>`.  This is needed so the shutdown code can get a weak reference to
 ///        the instance.
 ///      - Calls `register_interrupt()` on creation
+///   - Use `SqlInterruptScope::begin_interrupt_scope()` before each operation.
+///     This will return an error if shutdown mode is in effect.
+///     The interrupt scope should be periodically checked to handle the operation being interrupted/shutdown after it started.
 ///
 ///  See `PlacesDb::begin_interrupt_scope()` and `PlacesApi::new_connection()` for an example of
 ///  how this works.
@@ -30,7 +31,7 @@ use std::sync::Weak;
 use crate::SqlInterruptHandle;
 
 // Bool that tracks if we're in shutdown mode or not.  We use Ordering::Relaxed to read/write to
-// variable.  It's just a flag so we don't need stronger synchronization guarentees.
+// variable.  It's just a flag so we don't need stronger synchronization guarantees.
 static IN_SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 // `SqlInterruptHandle` instances to interrupt when we shutdown

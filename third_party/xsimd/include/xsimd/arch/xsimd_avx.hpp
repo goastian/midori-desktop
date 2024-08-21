@@ -516,37 +516,17 @@ namespace xsimd
             }
 
             template <class A>
-            inline batch<float, A> fast_cast(batch<uint32_t, A> const& v, batch<float, A> const&, requires_arch<avx>) noexcept
-            {
-                // see https://stackoverflow.com/questions/34066228/how-to-perform-uint32-float-conversion-with-sse
-                // adapted to avx
-                __m256i msk_lo = _mm256_set1_epi32(0xFFFF);
-                __m256 cnst65536f = _mm256_set1_ps(65536.0f);
-
-                __m256i v_lo = bitwise_and(batch<uint32_t, A>(v), batch<uint32_t, A>(msk_lo)); /* extract the 16 lowest significant bits of self                             */
-                __m256i v_hi = bitwise_rshift(batch<uint32_t, A>(v), 16, avx {}); /* 16 most significant bits of v                                                 */
-                __m256 v_lo_flt = _mm256_cvtepi32_ps(v_lo); /* No rounding                                                                   */
-                __m256 v_hi_flt = _mm256_cvtepi32_ps(v_hi); /* No rounding                                                                   */
-                v_hi_flt = _mm256_mul_ps(cnst65536f, v_hi_flt); /* No rounding                                                                   */
-                return _mm256_add_ps(v_hi_flt, v_lo_flt); /* Rounding may occur here, mul and add may fuse to fma for haswell and newer    */
-            }
-
-            template <class A>
             inline batch<int32_t, A> fast_cast(batch<float, A> const& self, batch<int32_t, A> const&, requires_arch<avx>) noexcept
             {
                 return _mm256_cvttps_epi32(self);
             }
+        }
 
-            template <class A>
-            inline batch<uint32_t, A> fast_cast(batch<float, A> const& self, batch<uint32_t, A> const&, requires_arch<avx>) noexcept
-            {
-                return _mm256_castps_si256(
-                    _mm256_blendv_ps(_mm256_castsi256_ps(_mm256_cvttps_epi32(self)),
-                                     _mm256_xor_ps(
-                                         _mm256_castsi256_ps(_mm256_cvttps_epi32(_mm256_sub_ps(self, _mm256_set1_ps(1u << 31)))),
-                                         _mm256_castsi256_ps(_mm256_set1_epi32(1u << 31))),
-                                     _mm256_cmp_ps(self, _mm256_set1_ps(1u << 31), _CMP_GE_OQ)));
-            }
+        // decr_if
+        template <class A, class T, class = typename std::enable_if<std::is_integral<T>::value, void>::type>
+        inline batch<T, A> decr_if(batch<T, A> const& self, batch_bool<T, A> const& mask, requires_arch<avx>) noexcept
+        {
+            return self + batch<T, A>(mask.data);
         }
 
         // div
@@ -747,6 +727,13 @@ namespace xsimd
             // tmp1 = (a2+a3, b2+b3, c2+c3, d2+d3)
             tmp1 = _mm256_permute2f128_pd(tmp0, tmp1, 0x21);
             return _mm256_add_pd(tmp1, tmp2);
+        }
+
+        // incr_if
+        template <class A, class T, class = typename std::enable_if<std::is_integral<T>::value, void>::type>
+        inline batch<T, A> incr_if(batch<T, A> const& self, batch_bool<T, A> const& mask, requires_arch<avx>) noexcept
+        {
+            return self - batch<T, A>(mask.data);
         }
 
         // insert
@@ -1174,22 +1161,22 @@ namespace xsimd
             return detail::merge_sse(res_low, res_hi);
         }
         template <class A, class T, bool... Values, class = typename std::enable_if<std::is_integral<T>::value, void>::type>
-        inline batch<T, A> select(batch_bool_constant<batch<T, A>, Values...> const&, batch<T, A> const& true_br, batch<T, A> const& false_br, requires_arch<avx>) noexcept
+        inline batch<T, A> select(batch_bool_constant<T, A, Values...> const&, batch<T, A> const& true_br, batch<T, A> const& false_br, requires_arch<avx>) noexcept
         {
             return select(batch_bool<T, A> { Values... }, true_br, false_br, avx2 {});
         }
 
         template <class A, bool... Values>
-        inline batch<float, A> select(batch_bool_constant<batch<float, A>, Values...> const&, batch<float, A> const& true_br, batch<float, A> const& false_br, requires_arch<avx>) noexcept
+        inline batch<float, A> select(batch_bool_constant<float, A, Values...> const&, batch<float, A> const& true_br, batch<float, A> const& false_br, requires_arch<avx>) noexcept
         {
-            constexpr auto mask = batch_bool_constant<batch<float, A>, Values...>::mask();
+            constexpr auto mask = batch_bool_constant<float, A, Values...>::mask();
             return _mm256_blend_ps(false_br, true_br, mask);
         }
 
         template <class A, bool... Values>
-        inline batch<double, A> select(batch_bool_constant<batch<double, A>, Values...> const&, batch<double, A> const& true_br, batch<double, A> const& false_br, requires_arch<avx>) noexcept
+        inline batch<double, A> select(batch_bool_constant<double, A, Values...> const&, batch<double, A> const& true_br, batch<double, A> const& false_br, requires_arch<avx>) noexcept
         {
-            constexpr auto mask = batch_bool_constant<batch<double, A>, Values...>::mask();
+            constexpr auto mask = batch_bool_constant<double, A, Values...>::mask();
             return _mm256_blend_pd(false_br, true_br, mask);
         }
 
@@ -1247,6 +1234,37 @@ namespace xsimd
         {
             static_assert(sizeof...(Values) == batch_bool<double, A>::size, "consistent init");
             return _mm256_castsi256_pd(set(batch<int64_t, A>(), A {}, static_cast<int64_t>(values ? -1LL : 0LL)...).data);
+        }
+
+        // shuffle
+        template <class A, class ITy, ITy I0, ITy I1, ITy I2, ITy I3, ITy I4, ITy I5, ITy I6, ITy I7>
+        inline batch<float, A> shuffle(batch<float, A> const& x, batch<float, A> const& y, batch_constant<ITy, A, I0, I1, I2, I3, I4, I5, I6, I7> mask, requires_arch<avx>) noexcept
+        {
+            constexpr uint32_t smask = detail::mod_shuffle(I0, I1, I2, I3);
+            // shuffle within lane
+            if (I4 == (I0 + 4) && I5 == (I1 + 4) && I6 == (I2 + 4) && I7 == (I3 + 4) && I0 < 4 && I1 < 4 && I2 >= 8 && I2 < 12 && I3 >= 8 && I3 < 12)
+                return _mm256_shuffle_ps(x, y, smask);
+
+            // shuffle within opposite lane
+            if (I4 == (I0 + 4) && I5 == (I1 + 4) && I6 == (I2 + 4) && I7 == (I3 + 4) && I2 < 4 && I3 < 4 && I0 >= 8 && I0 < 12 && I1 >= 8 && I1 < 12)
+                return _mm256_shuffle_ps(y, x, smask);
+
+            return shuffle(x, y, mask, generic {});
+        }
+
+        template <class A, class ITy, ITy I0, ITy I1, ITy I2, ITy I3>
+        inline batch<double, A> shuffle(batch<double, A> const& x, batch<double, A> const& y, batch_constant<ITy, A, I0, I1, I2, I3> mask, requires_arch<avx>) noexcept
+        {
+            constexpr uint32_t smask = (I0 & 0x1) | ((I1 & 0x1) << 1) | ((I2 & 0x1) << 2) | ((I3 & 0x1) << 3);
+            // shuffle within lane
+            if (I0 < 2 && I1 >= 4 && I1 < 6 && I2 >= 2 && I2 < 4 && I3 >= 6)
+                return _mm256_shuffle_pd(x, y, smask);
+
+            // shuffle within opposite lane
+            if (I1 < 2 && I0 >= 4 && I0 < 6 && I3 >= 2 && I3 < 4 && I2 >= 6)
+                return _mm256_shuffle_pd(y, x, smask);
+
+            return shuffle(x, y, mask, generic {});
         }
 
         // slide_left
@@ -1420,9 +1438,9 @@ namespace xsimd
             return _mm256_sub_pd(self, other);
         }
 
-        // swizzle
-        template <class A, uint32_t V0, uint32_t V1, uint32_t V2, uint32_t V3, uint32_t V4, uint32_t V5, uint32_t V6, uint32_t V7>
-        inline batch<float, A> swizzle(batch<float, A> const& self, batch_constant<batch<uint32_t, A>, V0, V1, V2, V3, V4, V5, V6, V7>, requires_arch<avx>) noexcept
+        // swizzle (dynamic mask)
+        template <class A>
+        inline batch<float, A> swizzle(batch<float, A> const& self, batch<uint32_t, A> mask, requires_arch<avx>) noexcept
         {
             // duplicate low and high part of input
             __m256 hi = _mm256_castps128_ps256(_mm256_extractf128_ps(self, 1));
@@ -1432,22 +1450,21 @@ namespace xsimd
             __m256 low_low = _mm256_insertf128_ps(self, _mm256_castps256_ps128(low), 1);
 
             // normalize mask
-            batch_constant<batch<uint32_t, A>, (V0 % 4), (V1 % 4), (V2 % 4), (V3 % 4), (V4 % 4), (V5 % 4), (V6 % 4), (V7 % 4)> half_mask;
+            batch<uint32_t, A> half_mask = mask % 4;
 
             // permute within each lane
-            __m256 r0 = _mm256_permutevar_ps(low_low, (batch<uint32_t, A>)half_mask);
-            __m256 r1 = _mm256_permutevar_ps(hi_hi, (batch<uint32_t, A>)half_mask);
+            __m256 r0 = _mm256_permutevar_ps(low_low, half_mask);
+            __m256 r1 = _mm256_permutevar_ps(hi_hi, half_mask);
 
             // mask to choose the right lane
-            batch_bool_constant<batch<uint32_t, A>, (V0 >= 4), (V1 >= 4), (V2 >= 4), (V3 >= 4), (V4 >= 4), (V5 >= 4), (V6 >= 4), (V7 >= 4)> blend_mask;
+            batch_bool<uint32_t, A> blend_mask = mask >= 4;
 
             // blend the two permutes
-            constexpr auto mask = blend_mask.mask();
-            return _mm256_blend_ps(r0, r1, mask);
+            return _mm256_blendv_ps(r0, r1, batch_bool_cast<float>(blend_mask));
         }
 
-        template <class A, uint64_t V0, uint64_t V1, uint64_t V2, uint64_t V3>
-        inline batch<double, A> swizzle(batch<double, A> const& self, batch_constant<batch<uint64_t, A>, V0, V1, V2, V3>, requires_arch<avx>) noexcept
+        template <class A>
+        inline batch<double, A> swizzle(batch<double, A> const& self, batch<uint64_t, A> mask, requires_arch<avx>) noexcept
         {
             // duplicate low and high part of input
             __m256d hi = _mm256_castpd128_pd256(_mm256_extractf128_pd(self, 1));
@@ -1457,14 +1474,79 @@ namespace xsimd
             __m256d low_low = _mm256_insertf128_pd(self, _mm256_castpd256_pd128(low), 1);
 
             // normalize mask
-            batch_constant<batch<uint64_t, A>, (V0 % 2) * -1, (V1 % 2) * -1, (V2 % 2) * -1, (V3 % 2) * -1> half_mask;
+            batch<uint64_t, A> half_mask = -(mask & 1);
 
             // permute within each lane
-            __m256d r0 = _mm256_permutevar_pd(low_low, (batch<uint64_t, A>)half_mask);
-            __m256d r1 = _mm256_permutevar_pd(hi_hi, (batch<uint64_t, A>)half_mask);
+            __m256d r0 = _mm256_permutevar_pd(low_low, half_mask);
+            __m256d r1 = _mm256_permutevar_pd(hi_hi, half_mask);
 
             // mask to choose the right lane
-            batch_bool_constant<batch<uint64_t, A>, (V0 >= 2), (V1 >= 2), (V2 >= 2), (V3 >= 2)> blend_mask;
+            batch_bool<uint64_t, A> blend_mask = mask >= 2;
+
+            // blend the two permutes
+            return _mm256_blendv_pd(r0, r1, batch_bool_cast<double>(blend_mask));
+        }
+
+        template <class A, typename T, detail::enable_sized_integral_t<T, 4> = 0>
+        inline batch<T, A> swizzle(batch<T, A> const& self, batch<uint32_t, A> const& mask, requires_arch<avx>) noexcept
+        {
+            return bitwise_cast<T>(
+                swizzle(bitwise_cast<float>(self), mask));
+        }
+
+        template <class A, typename T, detail::enable_sized_integral_t<T, 8> = 0>
+        inline batch<T, A>
+        swizzle(batch<T, A> const& self, batch<uint64_t, A> const& mask, requires_arch<avx>) noexcept
+        {
+            return bitwise_cast<T>(
+                swizzle(bitwise_cast<double>(self), mask));
+        }
+
+        // swizzle (constant mask)
+        template <class A, uint32_t V0, uint32_t V1, uint32_t V2, uint32_t V3, uint32_t V4, uint32_t V5, uint32_t V6, uint32_t V7>
+        inline batch<float, A> swizzle(batch<float, A> const& self, batch_constant<uint32_t, A, V0, V1, V2, V3, V4, V5, V6, V7>, requires_arch<avx>) noexcept
+        {
+            // duplicate low and high part of input
+            __m256 hi = _mm256_castps128_ps256(_mm256_extractf128_ps(self, 1));
+            __m256 hi_hi = _mm256_insertf128_ps(self, _mm256_castps256_ps128(hi), 0);
+
+            __m256 low = _mm256_castps128_ps256(_mm256_castps256_ps128(self));
+            __m256 low_low = _mm256_insertf128_ps(self, _mm256_castps256_ps128(low), 1);
+
+            // normalize mask
+            batch_constant<uint32_t, A, (V0 % 4), (V1 % 4), (V2 % 4), (V3 % 4), (V4 % 4), (V5 % 4), (V6 % 4), (V7 % 4)> half_mask;
+
+            // permute within each lane
+            __m256 r0 = _mm256_permutevar_ps(low_low, half_mask.as_batch());
+            __m256 r1 = _mm256_permutevar_ps(hi_hi, half_mask.as_batch());
+
+            // mask to choose the right lane
+            batch_bool_constant<uint32_t, A, (V0 >= 4), (V1 >= 4), (V2 >= 4), (V3 >= 4), (V4 >= 4), (V5 >= 4), (V6 >= 4), (V7 >= 4)> blend_mask;
+
+            // blend the two permutes
+            constexpr auto mask = blend_mask.mask();
+            return _mm256_blend_ps(r0, r1, mask);
+        }
+
+        template <class A, uint64_t V0, uint64_t V1, uint64_t V2, uint64_t V3>
+        inline batch<double, A> swizzle(batch<double, A> const& self, batch_constant<uint64_t, A, V0, V1, V2, V3>, requires_arch<avx>) noexcept
+        {
+            // duplicate low and high part of input
+            __m256d hi = _mm256_castpd128_pd256(_mm256_extractf128_pd(self, 1));
+            __m256d hi_hi = _mm256_insertf128_pd(self, _mm256_castpd256_pd128(hi), 0);
+
+            __m256d low = _mm256_castpd128_pd256(_mm256_castpd256_pd128(self));
+            __m256d low_low = _mm256_insertf128_pd(self, _mm256_castpd256_pd128(low), 1);
+
+            // normalize mask
+            batch_constant<uint64_t, A, (V0 % 2) * -1, (V1 % 2) * -1, (V2 % 2) * -1, (V3 % 2) * -1> half_mask;
+
+            // permute within each lane
+            __m256d r0 = _mm256_permutevar_pd(low_low, half_mask.as_batch());
+            __m256d r1 = _mm256_permutevar_pd(hi_hi, half_mask.as_batch());
+
+            // mask to choose the right lane
+            batch_bool_constant<uint64_t, A, (V0 >= 2), (V1 >= 2), (V2 >= 2), (V3 >= 2)> blend_mask;
 
             // blend the two permutes
             constexpr auto mask = blend_mask.mask();
@@ -1482,7 +1564,7 @@ namespace xsimd
                   uint32_t V7,
                   detail::enable_sized_integral_t<T, 4> = 0>
         inline batch<T, A> swizzle(batch<T, A> const& self,
-                                   batch_constant<batch<uint32_t, A>,
+                                   batch_constant<uint32_t, A,
                                                   V0,
                                                   V1,
                                                   V2,
@@ -1506,7 +1588,7 @@ namespace xsimd
                   detail::enable_sized_integral_t<T, 8> = 0>
         inline batch<T, A>
         swizzle(batch<T, A> const& self,
-                batch_constant<batch<uint64_t, A>, V0, V1, V2, V3> const& mask,
+                batch_constant<uint64_t, A, V0, V1, V2, V3> const& mask,
                 requires_arch<avx>) noexcept
         {
             return bitwise_cast<T>(

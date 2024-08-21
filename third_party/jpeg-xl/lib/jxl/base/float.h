@@ -12,20 +12,22 @@
 #include <string.h>
 
 #include "lib/jxl/base/byte_order.h"
+#include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/status.h"
 
 namespace jxl {
 
-namespace {
+namespace detail {
 // Based on highway scalar implementation, for testing
-float LoadFloat16(uint16_t bits16) {
+static JXL_INLINE float LoadFloat16(uint16_t bits16) {
   const uint32_t sign = bits16 >> 15;
   const uint32_t biased_exp = (bits16 >> 10) & 0x1F;
   const uint32_t mantissa = bits16 & 0x3FF;
 
   // Subnormal or zero
   if (biased_exp == 0) {
-    const float subnormal = (1.0f / 16384) * (mantissa * (1.0f / 1024));
+    const float subnormal =
+        (1.0f / 16384) * (static_cast<float>(mantissa) * (1.0f / 1024));
     return sign ? -subnormal : subnormal;
   }
 
@@ -38,7 +40,7 @@ float LoadFloat16(uint16_t bits16) {
   memcpy(&result, &bits32, 4);
   return result;
 }
-}  // namespace
+}  // namespace detail
 
 template <typename SaveFloatAtFn>
 static Status JXL_INLINE LoadFloatRow(const uint8_t* src, size_t count,
@@ -60,7 +62,9 @@ static Status JXL_INLINE LoadFloatRow(const uint8_t* src, size_t count,
 
     case JXL_TYPE_UINT8:
       for (size_t i = 0; i < count; ++i) {
-        callback(i, src[stride * i] * scale);
+        // Integer multiply uint8 value before scaling so that the UINT8 value
+        // and the corresponding UINT16 value convert to the same float
+        callback(i, (src[stride * i] * 257) * scale);
       }
       return true;
 
@@ -79,11 +83,11 @@ static Status JXL_INLINE LoadFloatRow(const uint8_t* src, size_t count,
     case JXL_TYPE_FLOAT16:
       if (little_endian) {
         for (size_t i = 0; i < count; ++i) {
-          callback(i, LoadFloat16(LoadLE16(src + stride * i)));
+          callback(i, detail::LoadFloat16(LoadLE16(src + stride * i)));
         }
       } else {
         for (size_t i = 0; i < count; ++i) {
-          callback(i, LoadFloat16(LoadBE16(src + stride * i)));
+          callback(i, detail::LoadFloat16(LoadBE16(src + stride * i)));
         }
       }
       return true;

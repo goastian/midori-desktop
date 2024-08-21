@@ -1,5 +1,6 @@
 use crate::error;
 use alloc::string::ToString;
+use alloc::vec::Vec;
 use scroll::Pread;
 
 use super::options;
@@ -89,6 +90,9 @@ pub fn find_offset(
     opts: &options::ParseOptions,
 ) -> Option<usize> {
     if opts.resolve_rva {
+        if file_alignment == 0 || file_alignment & (file_alignment - 1) != 0 {
+            return None;
+        }
         for (i, section) in sections.iter().enumerate() {
             debug!(
                 "Checking {} for {:#x} ∈ {:#x}..{:#x}",
@@ -174,4 +178,19 @@ where
         .ok_or_else(|| error::Error::Malformed(directory.virtual_address.to_string()))?;
     let result: T = bytes.pread_with(offset, scroll::LE)?;
     Ok(result)
+}
+
+pub(crate) fn pad(length: usize, alignment: Option<usize>) -> Option<Vec<u8>> {
+    match alignment {
+        Some(alignment) => {
+            let overhang = length % alignment;
+            if overhang != 0 {
+                let repeat = alignment - overhang;
+                Some(vec![0u8; repeat])
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
 }

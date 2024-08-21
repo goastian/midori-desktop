@@ -3,10 +3,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 //
-// This file conatins the C API of the decoder part of the libjpegli library,
+// This file contains the C API of the decoder part of the libjpegli library,
 // which is based on the C API of libjpeg, with the function names changed from
-// jpeg_* to jpegli_*, while dempressor object definitions are included directly
-// from jpeglib.h
+// jpeg_* to jpegli_*, while decompressor object definitions are included
+// directly from jpeglib.h
 //
 // Applications can use the libjpegli library in one of the following ways:
 //
@@ -20,14 +20,10 @@
 #ifndef LIB_JPEGLI_DECODE_H_
 #define LIB_JPEGLI_DECODE_H_
 
-/* clang-format off */
-#include <stdio.h>
-#include <jpeglib.h>
-/* clang-format on */
-
 #include "lib/jpegli/common.h"
+#include "lib/jpegli/types.h"
 
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -41,7 +37,7 @@ void jpegli_CreateDecompress(j_decompress_ptr cinfo, int version,
 void jpegli_stdio_src(j_decompress_ptr cinfo, FILE *infile);
 
 void jpegli_mem_src(j_decompress_ptr cinfo, const unsigned char *inbuffer,
-                    unsigned long insize);
+                    unsigned long insize /* NOLINT */);
 
 int jpegli_read_header(j_decompress_ptr cinfo, boolean require_image);
 
@@ -104,7 +100,7 @@ void jpegli_new_colormap(j_decompress_ptr cinfo);
 void jpegli_set_output_format(j_decompress_ptr cinfo, JpegliDataType data_type,
                               JpegliEndianness endianness);
 
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 }  // extern "C"
 #endif
 

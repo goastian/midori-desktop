@@ -182,9 +182,7 @@ TEST(PCGenericDescriptorTest,
 }
 
 // VP9 2nd profile isn't supported on android arm and arm 64.
-#if (defined(WEBRTC_ANDROID) &&                                   \
-     (defined(WEBRTC_ARCH_ARM64) || defined(WEBRTC_ARCH_ARM))) || \
-    (defined(WEBRTC_IOS) && defined(WEBRTC_ARCH_ARM64))
+#if defined(WEBRTC_ARCH_ARM64) || defined(WEBRTC_ARCH_ARM)
 #define MAYBE_Pc_Generator_Net_Delay_0_0_Plr_0_VP9Profile2 \
   DISABLED_Pc_Generator_Net_Delay_0_0_Plr_0_VP9Profile2
 #else
@@ -219,36 +217,6 @@ TEST(PCFullStackTest, MAYBE_Pc_Generator_Net_Delay_0_0_Plr_0_VP9Profile2) {
   fixture->Run(RunParams(TimeDelta::Seconds(kTestDurationSec)));
 }
 
-/*
-// TODO(bugs.webrtc.org/10639) migrate commented out test, when required
-// functionality will be supported in PeerConnection level framework.
-TEST(PCFullStackTest, ForemanCifWithoutPacketLossMultiplexI420Frame) {
-  auto fixture = CreateVideoQualityTestFixture();
-  ParamsWithLogging foreman_cif;
-  foreman_cif.call.send_side_bwe = true;
-  foreman_cif.video[0] = {
-      true,        352,    288,    30,
-      700000,      700000, 700000, false,
-      "multiplex", 1,      0,      0,
-      false,       false,  false,  ClipNameToClipPath("foreman_cif")};
-  foreman_cif.analyzer = {"foreman_cif_net_delay_0_0_plr_0_Multiplex", 0.0, 0.0,
-                          kTestDurationSec};
-  fixture->RunWithAnalyzer(foreman_cif);
-}
-
-TEST(PCFullStackTest, GeneratorWithoutPacketLossMultiplexI420AFrame) {
-  auto fixture = CreateVideoQualityTestFixture();
-
-  ParamsWithLogging generator;
-  generator.call.send_side_bwe = true;
-  generator.video[0] = {
-      true,        352, 288, 30, 700000, 700000, 700000, false,
-      "multiplex", 1,   0,   0,  false,  false,  false,  "GeneratorI420A"};
-  generator.analyzer = {"generator_net_delay_0_0_plr_0_Multiplex", 0.0, 0.0,
-                        kTestDurationSec};
-  fixture->RunWithAnalyzer(generator);
-}
-*/
 #endif  // defined(RTC_ENABLE_VP9)
 
 TEST(PCFullStackTest, Pc_Net_Delay_0_0_Plr_0) {

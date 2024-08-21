@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "wast"
-version = "56.0.0"
+version = "205.0.0"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 description = """
 Customizable Rust parsers for the WebAssembly Text formats WAT and WAST
@@ -27,6 +27,9 @@ repository = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wa
 name = "parse-fail"
 harness = false
 
+[dependencies.bumpalo]
+version = "3.14.0"
+
 [dependencies.leb128]
 version = "0.2.4"
 
@@ -37,14 +40,20 @@ version = "2.4.1"
 version = "0.1.9"
 
 [dependencies.wasm-encoder]
-version = "0.25.0"
+version = "0.205.0"
 
 [dev-dependencies.anyhow]
 version = "1.0.58"
 
-[dev-dependencies.rayon]
-version = "1.3"
+[dev-dependencies.libtest-mimic]
+version = "0.7.0"
 
 [features]
 default = ["wasm-module"]
 wasm-module = []
+
+[lints.clippy]
+all = "allow"
+
+[lints.rust]
+unsafe_code = "deny"

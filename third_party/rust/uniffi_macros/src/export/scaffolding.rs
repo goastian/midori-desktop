@@ -2,198 +2,304 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use proc_macro2::{Ident, Span, TokenStream};
-use quote::{format_ident, quote, ToTokens};
-use syn::{parse_quote, FnArg, Pat};
+use proc_macro2::{Ident, TokenStream};
+use quote::quote;
+use std::iter;
 
-use super::{FunctionReturn, Signature};
+use super::attributes::AsyncRuntime;
+use crate::fnsig::{FnKind, FnSignature};
 
 pub(super) fn gen_fn_scaffolding(
-    sig: &Signature,
-    mod_path: &[String],
-    checksum: u16,
-) -> TokenStream {
-    let name = &sig.ident;
-    let name_s = name.to_string();
-
-    let ffi_ident = Ident::new(
-        &uniffi_meta::fn_ffi_symbol_name(mod_path, &name_s, checksum),
-        Span::call_site(),
-    );
-
-    const ERROR_MSG: &str =
-        "uniffi::export must be used on the impl block, not its containing fn's";
-    let (params, args): (Vec<_>, Vec<_>) = collect_params(&sig.inputs, ERROR_MSG).unzip();
-
-    let fn_call = quote! {
-        #name(#(#args),*)
-    };
-
-    gen_ffi_function(sig, ffi_ident, &params, fn_call)
-}
-
-pub(super) fn gen_method_scaffolding(
-    sig: &Signature,
-    mod_path: &[String],
-    checksum: u16,
-    self_ident: &Ident,
-) -> TokenStream {
-    let name = &sig.ident;
-    let name_s = name.to_string();
-
-    let ffi_name = format!("impl_{self_ident}_{name_s}");
-    let ffi_ident = Ident::new(
-        &uniffi_meta::fn_ffi_symbol_name(mod_path, &ffi_name, checksum),
-        Span::call_site(),
-    );
-
-    let mut params_args = (Vec::new(), Vec::new());
-
-    const RECEIVER_ERROR: &str = "unreachable: only first parameter can be method receiver";
-    let mut assoc_fn_error = None;
-    let fn_call_prefix = match sig.inputs.first() {
-        Some(arg) if is_receiver(arg) => {
-            let ffi_converter = quote! {
-                <::std::sync::Arc<#self_ident> as ::uniffi::FfiConverter>
-            };
-
-            params_args.0.push(quote! { this: #ffi_converter::FfiType });
-
-            let remaining_args = sig.inputs.iter().skip(1);
-            params_args.extend(collect_params(remaining_args, RECEIVER_ERROR));
-
-            quote! {
-                #ffi_converter::try_lift(this).unwrap_or_else(|err| {
-                    ::std::panic!("Failed to convert arg 'self': {}", err)
-                }).
-            }
-        }
-        _ => {
-            assoc_fn_error = Some(
-                syn::Error::new_spanned(
-                    &sig.ident,
-                    "associated functions are not currently supported",
-                )
-                .into_compile_error(),
-            );
-            params_args.extend(collect_params(&sig.inputs, RECEIVER_ERROR));
-            quote! { #self_ident:: }
-        }
-    };
-
-    let (params, args) = params_args;
-
-    let fn_call = quote! {
-        #assoc_fn_error
-        #fn_call_prefix #name(#(#args),*)
-    };
-
-    gen_ffi_function(sig, ffi_ident, &params, fn_call)
-}
-
-fn is_receiver(fn_arg: &FnArg) -> bool {
-    match fn_arg {
-        FnArg::Receiver(_) => true,
-        FnArg::Typed(pat_ty) => matches!(&*pat_ty.pat, Pat::Ident(i) if i.ident == "self"),
+    sig: FnSignature,
+    ar: &Option<AsyncRuntime>,
+    udl_mode: bool,
+) -> syn::Result<TokenStream> {
+    if sig.receiver.is_some() {
+        return Err(syn::Error::new(
+            sig.span,
+            "Unexpected self param (Note: uniffi::export must be used on the impl block, not its containing fn's)"
+        ));
     }
-}
-
-fn collect_params<'a>(
-    inputs: impl IntoIterator<Item = &'a FnArg> + 'a,
-    receiver_error_msg: &'static str,
-) -> impl Iterator<Item = (TokenStream, TokenStream)> + 'a {
-    fn receiver_error(
-        receiver: impl ToTokens,
-        receiver_error_msg: &str,
-    ) -> (TokenStream, TokenStream) {
-        let param = quote! { &self };
-        let arg = syn::Error::new_spanned(receiver, receiver_error_msg).into_compile_error();
-        (param, arg)
+    if !sig.is_async {
+        if let Some(async_runtime) = ar {
+            return Err(syn::Error::new_spanned(
+                async_runtime,
+                "this attribute is only allowed on async functions",
+            ));
+        }
     }
-
-    inputs.into_iter().enumerate().map(|(i, arg)| {
-        let (ty, name) = match arg {
-            FnArg::Receiver(r) => {
-                return receiver_error(r, receiver_error_msg);
-            }
-            FnArg::Typed(pat_ty) => {
-                let name = match &*pat_ty.pat {
-                    Pat::Ident(i) if i.ident == "self" => {
-                        return receiver_error(i, receiver_error_msg);
-                    }
-                    Pat::Ident(i) => Some(i.ident.to_string()),
-                    _ => None,
-                };
-
-                (&pat_ty.ty, name)
-            }
-        };
-
-        let arg_n = format_ident!("arg{i}");
-        let param = quote! { #arg_n: <#ty as ::uniffi::FfiConverter>::FfiType };
-
-        // FIXME: With UDL, fallible functions use uniffi::lower_anyhow_error_or_panic instead of
-        // panicking unconditionally. This seems cleaner though.
-        let panic_fmt = match name {
-            Some(name) => format!("Failed to convert arg '{name}': {{}}"),
-            None => format!("Failed to convert arg #{i}: {{}}"),
-        };
-        let arg = quote! {
-            <#ty as ::uniffi::FfiConverter>::try_lift(#arg_n).unwrap_or_else(|err| {
-                ::std::panic!(#panic_fmt, err)
-            })
-        };
-
-        (param, arg)
+    let metadata_items = (!udl_mode).then(|| {
+        sig.metadata_items()
+            .unwrap_or_else(syn::Error::into_compile_error)
+    });
+    let scaffolding_func = gen_ffi_function(&sig, ar, udl_mode)?;
+    Ok(quote! {
+        #scaffolding_func
+        #metadata_items
     })
 }
 
-fn gen_ffi_function(
-    sig: &Signature,
-    ffi_ident: Ident,
-    params: &[TokenStream],
-    rust_fn_call: TokenStream,
-) -> TokenStream {
-    let name = &sig.ident;
-    let name_s = name.to_string();
+pub(super) fn gen_constructor_scaffolding(
+    sig: FnSignature,
+    ar: &Option<AsyncRuntime>,
+    udl_mode: bool,
+) -> syn::Result<TokenStream> {
+    if sig.receiver.is_some() {
+        return Err(syn::Error::new(
+            sig.span,
+            "constructors must not have a self parameter",
+        ));
+    }
+    let metadata_items = (!udl_mode).then(|| {
+        sig.metadata_items()
+            .unwrap_or_else(syn::Error::into_compile_error)
+    });
+    let scaffolding_func = gen_ffi_function(&sig, ar, udl_mode)?;
+    Ok(quote! {
+        #scaffolding_func
+        #metadata_items
+    })
+}
 
-    let unit_slot;
-    let (ty, throws) = match &sig.output {
-        Some(FunctionReturn { ty, throws }) => (ty, throws),
-        None => {
-            unit_slot = parse_quote! { () };
-            (&unit_slot, &None)
-        }
-    };
-
-    let return_expr = if let Some(error_ident) = throws {
-        quote! {
-            ::uniffi::call_with_result(call_status, || {
-                let val = #rust_fn_call.map_err(|e| {
-                    <#error_ident as ::uniffi::FfiConverter>::lower(
-                        ::std::convert::Into::into(e),
-                    )
-                })?;
-                Ok(<#ty as ::uniffi::FfiReturn>::lower(val))
-            })
-        }
+pub(super) fn gen_method_scaffolding(
+    sig: FnSignature,
+    ar: &Option<AsyncRuntime>,
+    udl_mode: bool,
+) -> syn::Result<TokenStream> {
+    let scaffolding_func = if sig.receiver.is_none() {
+        return Err(syn::Error::new(
+            sig.span,
+            "associated functions are not currently supported",
+        ));
     } else {
-        quote! {
-            ::uniffi::call_with_output(call_status, || {
-                <#ty as ::uniffi::FfiReturn>::lower(#rust_fn_call)
-            })
-        }
+        gen_ffi_function(&sig, ar, udl_mode)?
     };
 
-    quote! {
-        #[doc(hidden)]
-        #[no_mangle]
-        pub extern "C" fn #ffi_ident(
-            #(#params,)*
-            call_status: &mut ::uniffi::RustCallStatus,
-        ) -> <#ty as ::uniffi::FfiReturn>::FfiType {
-            ::uniffi::deps::log::debug!(#name_s);
-            #return_expr
+    let metadata_items = (!udl_mode).then(|| {
+        sig.metadata_items()
+            .unwrap_or_else(syn::Error::into_compile_error)
+    });
+    Ok(quote! {
+        #scaffolding_func
+        #metadata_items
+    })
+}
+
+// Pieces of code for the scaffolding function
+struct ScaffoldingBits {
+    /// Parameter names for the scaffolding function
+    param_names: Vec<TokenStream>,
+    /// Parameter types for the scaffolding function
+    param_types: Vec<TokenStream>,
+    /// Lift closure.  See `FnSignature::lift_closure` for an explanation of this.
+    lift_closure: TokenStream,
+    /// Expression to call the Rust function after a successful lift.
+    rust_fn_call: TokenStream,
+    /// Convert the result of `rust_fn_call`, stored in a variable named `uniffi_result` into its final value.
+    /// This is used to do things like error conversion / Arc wrapping
+    convert_result: TokenStream,
+}
+
+impl ScaffoldingBits {
+    fn new_for_function(sig: &FnSignature, udl_mode: bool) -> Self {
+        let ident = &sig.ident;
+        let call_params = sig.rust_call_params(false);
+        let rust_fn_call = quote! { #ident(#call_params) };
+        // UDL mode adds an extra conversion (#1749)
+        let convert_result = if udl_mode && sig.looks_like_result {
+            quote! { uniffi_result.map_err(::std::convert::Into::into) }
+        } else {
+            quote! { uniffi_result }
+        };
+
+        Self {
+            param_names: sig.scaffolding_param_names().collect(),
+            param_types: sig.scaffolding_param_types().collect(),
+            lift_closure: sig.lift_closure(None),
+            rust_fn_call,
+            convert_result,
         }
     }
+
+    fn new_for_method(
+        sig: &FnSignature,
+        self_ident: &Ident,
+        is_trait: bool,
+        udl_mode: bool,
+    ) -> Self {
+        let ident = &sig.ident;
+        let lift_impl = if is_trait {
+            quote! {
+                <::std::sync::Arc<dyn #self_ident> as ::uniffi::Lift<crate::UniFfiTag>>
+            }
+        } else {
+            quote! {
+                <::std::sync::Arc<#self_ident> as ::uniffi::Lift<crate::UniFfiTag>>
+            }
+        };
+        let try_lift_self = if is_trait {
+            // For trait interfaces we need to special case this.  Trait interfaces normally lift
+            // foreign trait impl pointers.  However, for a method call, we want to lift a Rust
+            // pointer.
+            quote! {
+                {
+                    let boxed_foreign_arc = unsafe { Box::from_raw(uniffi_self_lowered as *mut ::std::sync::Arc<dyn #self_ident>) };
+                    // Take a clone for our own use.
+                    Ok(*boxed_foreign_arc)
+                }
+            }
+        } else {
+            quote! { #lift_impl::try_lift(uniffi_self_lowered) }
+        };
+
+        let lift_closure = sig.lift_closure(Some(quote! {
+            match #try_lift_self {
+                Ok(v) => v,
+                Err(e) => return Err(("self", e))
+            }
+        }));
+        let call_params = sig.rust_call_params(true);
+        let rust_fn_call = quote! { uniffi_args.0.#ident(#call_params) };
+        // UDL mode adds an extra conversion (#1749)
+        let convert_result = if udl_mode && sig.looks_like_result {
+            quote! { uniffi_result .map_err(::std::convert::Into::into) }
+        } else {
+            quote! { uniffi_result }
+        };
+
+        Self {
+            param_names: iter::once(quote! { uniffi_self_lowered })
+                .chain(sig.scaffolding_param_names())
+                .collect(),
+            param_types: iter::once(quote! { #lift_impl::FfiType })
+                .chain(sig.scaffolding_param_types())
+                .collect(),
+            lift_closure,
+            rust_fn_call,
+            convert_result,
+        }
+    }
+
+    fn new_for_constructor(sig: &FnSignature, self_ident: &Ident, udl_mode: bool) -> Self {
+        let ident = &sig.ident;
+        let call_params = sig.rust_call_params(false);
+        let rust_fn_call = quote! { #self_ident::#ident(#call_params) };
+        // UDL mode adds extra conversions (#1749)
+        let convert_result = match (udl_mode, sig.looks_like_result) {
+            // For UDL
+            (true, false) => quote! { ::std::sync::Arc::new(uniffi_result) },
+            (true, true) => {
+                quote! { uniffi_result.map(::std::sync::Arc::new).map_err(::std::convert::Into::into) }
+            }
+            (false, _) => quote! { uniffi_result },
+        };
+
+        Self {
+            param_names: sig.scaffolding_param_names().collect(),
+            param_types: sig.scaffolding_param_types().collect(),
+            lift_closure: sig.lift_closure(None),
+            rust_fn_call,
+            convert_result,
+        }
+    }
+}
+
+/// Generate a scaffolding function
+///
+/// `pre_fn_call` is the statements that we should execute before the rust call
+/// `rust_fn` is the Rust function to call.
+pub(super) fn gen_ffi_function(
+    sig: &FnSignature,
+    ar: &Option<AsyncRuntime>,
+    udl_mode: bool,
+) -> syn::Result<TokenStream> {
+    let ScaffoldingBits {
+        param_names,
+        param_types,
+        lift_closure,
+        rust_fn_call,
+        convert_result,
+    } = match &sig.kind {
+        FnKind::Function => ScaffoldingBits::new_for_function(sig, udl_mode),
+        FnKind::Method { self_ident } => {
+            ScaffoldingBits::new_for_method(sig, self_ident, false, udl_mode)
+        }
+        FnKind::TraitMethod { self_ident, .. } => {
+            ScaffoldingBits::new_for_method(sig, self_ident, true, udl_mode)
+        }
+        FnKind::Constructor { self_ident } => {
+            ScaffoldingBits::new_for_constructor(sig, self_ident, udl_mode)
+        }
+    };
+    // Scaffolding functions are logically `pub`, but we don't use that in UDL mode since UDL has
+    // historically not required types to be `pub`
+    let vis = match udl_mode {
+        false => quote! { pub },
+        true => quote! {},
+    };
+
+    let ffi_ident = sig.scaffolding_fn_ident()?;
+    let name = &sig.name;
+    let return_ty = &sig.return_ty;
+    let return_impl = &sig.lower_return_impl();
+
+    Ok(if !sig.is_async {
+        quote! {
+            #[doc(hidden)]
+            #[no_mangle]
+            #vis extern "C" fn #ffi_ident(
+                #(#param_names: #param_types,)*
+                call_status: &mut ::uniffi::RustCallStatus,
+            ) -> #return_impl::ReturnType {
+                ::uniffi::deps::log::debug!(#name);
+                let uniffi_lift_args = #lift_closure;
+                ::uniffi::rust_call(call_status, || {
+                    #return_impl::lower_return(
+                        match uniffi_lift_args() {
+                            Ok(uniffi_args) => {
+                                let uniffi_result = #rust_fn_call;
+                                #convert_result
+                            }
+                            Err((arg_name, anyhow_error)) => {
+                                #return_impl::handle_failed_lift(arg_name, anyhow_error)
+                            },
+                        }
+                    )
+                })
+            }
+        }
+    } else {
+        let mut future_expr = rust_fn_call;
+        if matches!(ar, Some(AsyncRuntime::Tokio(_))) {
+            future_expr = quote! { ::uniffi::deps::async_compat::Compat::new(#future_expr) }
+        }
+
+        quote! {
+            #[doc(hidden)]
+            #[no_mangle]
+            pub extern "C" fn #ffi_ident(#(#param_names: #param_types,)*) -> ::uniffi::Handle {
+                ::uniffi::deps::log::debug!(#name);
+                let uniffi_lift_args = #lift_closure;
+                match uniffi_lift_args() {
+                    Ok(uniffi_args) => {
+                        ::uniffi::rust_future_new::<_, #return_ty, _>(
+                            async move {
+                                let uniffi_result = #future_expr.await;
+                                #convert_result
+                            },
+                            crate::UniFfiTag
+                        )
+                    },
+                    Err((arg_name, anyhow_error)) => {
+                        ::uniffi::rust_future_new::<_, #return_ty, _>(
+                            async move {
+                                #return_impl::handle_failed_lift(arg_name, anyhow_error)
+                            },
+                            crate::UniFfiTag,
+                        )
+                    },
+                }
+            }
+        }
+    })
 }

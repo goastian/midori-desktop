@@ -2,17 +2,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-
-import attr
+import functools
+from dataclasses import dataclass
 
 from .keyed_by import evaluate_keyed_by
-from .memoize import memoize
 
 
-@attr.s
+@dataclass
 class _BuiltinWorkerType:
-    provisioner = attr.ib(str)
-    worker_type = attr.ib(str)
+    provisioner: str
+    worker_type: str
 
     @property
     def implementation(self):
@@ -30,7 +29,7 @@ _BUILTIN_TYPES = {
 }
 
 
-@memoize
+@functools.lru_cache(maxsize=None)
 def worker_type_implementation(graph_config, worker_type):
     """Get the worker implementation and OS for the given workerType, where the
     OS represents the host system, not the target OS, in the case of
@@ -47,7 +46,7 @@ def worker_type_implementation(graph_config, worker_type):
     return worker_config["implementation"], worker_config.get("os")
 
 
-@memoize
+@functools.lru_cache(maxsize=None)
 def get_worker_type(graph_config, alias, level):
     """
     Get the worker type based, evaluating aliases from the graph config.
@@ -66,10 +65,14 @@ def get_worker_type(graph_config, alias, level):
         worker_config["provisioner"],
         alias,
         {"level": level},
-    ).format(level=level)
+    ).format(
+        **{"alias": alias, "level": level, "trust-domain": graph_config["trust-domain"]}
+    )
     worker_type = evaluate_keyed_by(
         worker_config["worker-type"],
         alias,
         {"level": level},
-    ).format(level=level, alias=alias)
+    ).format(
+        **{"alias": alias, "level": level, "trust-domain": graph_config["trust-domain"]}
+    )
     return provisioner, worker_type

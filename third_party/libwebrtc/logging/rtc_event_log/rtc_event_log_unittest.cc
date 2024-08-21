@@ -19,8 +19,9 @@
 #include <utility>
 #include <vector>
 
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
-#include "api/task_queue/default_task_queue_factory.h"
 #include "logging/rtc_event_log/events/rtc_event_audio_network_adaptation.h"
 #include "logging/rtc_event_log/events/rtc_event_audio_playout.h"
 #include "logging/rtc_event_log/events/rtc_event_audio_receive_stream_config.h"
@@ -45,10 +46,12 @@
 #include "logging/rtc_event_log/rtc_event_log_unittest_helper.h"
 #include "logging/rtc_event_log/rtc_stream_config.h"
 #include "modules/rtp_rtcp/include/rtp_header_extension_map.h"
+#include "modules/rtp_rtcp/source/rtp_dependency_descriptor_extension.h"
 #include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/fake_clock.h"
 #include "rtc_base/random.h"
+#include "test/explicit_key_value_config.h"
 #include "test/gtest.h"
 #include "test/logging/memory_log_writer.h"
 #include "test/testsupport/file_utils.h"
@@ -56,6 +59,8 @@
 namespace webrtc {
 
 namespace {
+
+using test::ExplicitKeyValueConfig;
 
 struct EventCounts {
   size_t audio_send_streams = 0;
@@ -103,6 +108,21 @@ struct EventCounts {
     return total_nonconfig_events() + total_config_events();
   }
 };
+
+std::unique_ptr<FieldTrialsView> CreateFieldTrialsFor(
+    RtcEventLog::EncodingType encoding_type) {
+  switch (encoding_type) {
+    case RtcEventLog::EncodingType::Legacy:
+      return std::make_unique<ExplicitKeyValueConfig>(
+          "WebRTC-RtcEventLogNewFormat/Disabled/");
+    case RtcEventLog::EncodingType::NewFormat:
+      return std::make_unique<ExplicitKeyValueConfig>(
+          "WebRTC-RtcEventLogNewFormat/Enabled/");
+    case RtcEventLog::EncodingType::ProtoFree:
+      RTC_CHECK(false);
+      return nullptr;
+  }
+}
 
 class RtcEventLogSession
     : public ::testing::TestWithParam<
@@ -228,7 +248,9 @@ void RtcEventLogSession::WriteAudioRecvConfigs(size_t audio_recv_streams,
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, incoming_extensions_));
-    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap();
+    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap(
+        /*configure_all=*/false,
+        /*excluded_extensions=*/{RtpDependencyDescriptorExtension::kId});
     incoming_extensions_.emplace_back(ssrc, extensions);
     auto event = gen_.NewAudioReceiveStreamConfig(ssrc, extensions);
     event_log->Log(event->Copy());
@@ -245,7 +267,9 @@ void RtcEventLogSession::WriteAudioSendConfigs(size_t audio_send_streams,
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, outgoing_extensions_));
-    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap();
+    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap(
+        /*configure_all=*/false,
+        /*excluded_extensions=*/{RtpDependencyDescriptorExtension::kId});
     outgoing_extensions_.emplace_back(ssrc, extensions);
     auto event = gen_.NewAudioSendStreamConfig(ssrc, extensions);
     event_log->Log(event->Copy());
@@ -263,6 +287,10 @@ void RtcEventLogSession::WriteVideoRecvConfigs(size_t video_recv_streams,
   RtpHeaderExtensionMap all_extensions =
       ParsedRtcEventLog::GetDefaultHeaderExtensionMap();
 
+  if (std::get<2>(GetParam()) == RtcEventLog::EncodingType::Legacy) {
+    all_extensions.Deregister(RtpDependencyDescriptorExtension::Uri());
+  }
+
   clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
   uint32_t ssrc = prng_.Rand<uint32_t>();
   incoming_extensions_.emplace_back(ssrc, all_extensions);
@@ -274,7 +302,12 @@ void RtcEventLogSession::WriteVideoRecvConfigs(size_t video_recv_streams,
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, incoming_extensions_));
-    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap();
+    std::vector<RTPExtensionType> excluded_extensions;
+    if (std::get<2>(GetParam()) == RtcEventLog::EncodingType::Legacy) {
+      excluded_extensions.push_back(RtpDependencyDescriptorExtension::kId);
+    }
+    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap(
+        /*configure_all=*/false, excluded_extensions);
     incoming_extensions_.emplace_back(ssrc, extensions);
     auto new_event = gen_.NewVideoReceiveStreamConfig(ssrc, extensions);
     event_log->Log(new_event->Copy());
@@ -292,6 +325,10 @@ void RtcEventLogSession::WriteVideoSendConfigs(size_t video_send_streams,
   RtpHeaderExtensionMap all_extensions =
       ParsedRtcEventLog::GetDefaultHeaderExtensionMap();
 
+  if (std::get<2>(GetParam()) == RtcEventLog::EncodingType::Legacy) {
+    all_extensions.Deregister(RtpDependencyDescriptorExtension::Uri());
+  }
+
   clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
   uint32_t ssrc = prng_.Rand<uint32_t>();
   outgoing_extensions_.emplace_back(ssrc, all_extensions);
@@ -303,7 +340,12 @@ void RtcEventLogSession::WriteVideoSendConfigs(size_t video_send_streams,
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, outgoing_extensions_));
-    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap();
+    std::vector<RTPExtensionType> excluded_extensions;
+    if (std::get<2>(GetParam()) == RtcEventLog::EncodingType::Legacy) {
+      excluded_extensions.push_back(RtpDependencyDescriptorExtension::kId);
+    }
+    RtpHeaderExtensionMap extensions = gen_.NewRtpHeaderExtensionMap(
+        /*configure_all=*/false, excluded_extensions);
     outgoing_extensions_.emplace_back(ssrc, extensions);
     auto event = gen_.NewVideoSendStreamConfig(ssrc, extensions);
     event_log->Log(event->Copy());
@@ -313,14 +355,13 @@ void RtcEventLogSession::WriteVideoSendConfigs(size_t video_send_streams,
 
 void RtcEventLogSession::WriteLog(EventCounts count,
                                   size_t num_events_before_start) {
-  // TODO(terelius): Allow test to run with either a real or a fake clock_.
-  // Maybe always use the ScopedFakeClock, but conditionally SleepMs()?
+  // TODO(terelius): Allow test to run with either a real or a fake clock_
+  // e.g. by using clock and task_queue_factory from TimeController
+  // when RtcEventLogImpl switches to use injected clock from the environment.
 
-  auto task_queue_factory = CreateDefaultTaskQueueFactory();
-  RtcEventLogFactory rtc_event_log_factory(task_queue_factory.get());
   // The log will be flushed to output when the event_log goes out of scope.
-  std::unique_ptr<RtcEventLog> event_log =
-      rtc_event_log_factory.CreateRtcEventLog(encoding_type_);
+  std::unique_ptr<RtcEventLog> event_log = RtcEventLogFactory().Create(
+      CreateEnvironment(CreateFieldTrialsFor(encoding_type_)));
 
   // We can't send or receive packets without configured streams.
   RTC_CHECK_GE(count.video_recv_streams, 1);
@@ -911,12 +952,9 @@ TEST_P(RtcEventLogCircularBufferTest, KeepsMostRecentEvents) {
   int64_t start_time_us, utc_start_time_us, stop_time_us;
 
   {
-    auto task_queue_factory = CreateDefaultTaskQueueFactory();
-    RtcEventLogFactory rtc_event_log_factory(task_queue_factory.get());
-    // When `log` goes out of scope, the contents are flushed
-    // to the output.
-    std::unique_ptr<RtcEventLog> log =
-        rtc_event_log_factory.CreateRtcEventLog(encoding_type_);
+    // When `log` goes out of scope, the contents are flushed to the output.
+    std::unique_ptr<RtcEventLog> log = RtcEventLogFactory().Create(
+        CreateEnvironment(CreateFieldTrialsFor(encoding_type_)));
 
     for (size_t i = 0; i < kNumEvents; i++) {
       // The purpose of the test is to verify that the log can handle

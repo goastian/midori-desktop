@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::front::wgsl::error::NumberError;
 use crate::front::wgsl::parse::lexer::Token;
 
@@ -14,41 +12,19 @@ pub enum Number {
     I32(i32),
     /// Concrete u32
     U32(u32),
+    /// Concrete i64
+    I64(i64),
+    /// Concrete u64
+    U64(u64),
     /// Concrete f32
     F32(f32),
+    /// Concrete f64
+    F64(f64),
 }
-
-impl Number {
-    /// Convert abstract numbers to a plausible concrete counterpart.
-    ///
-    /// Return concrete numbers unchanged. If the conversion would be
-    /// lossy, return an error.
-    fn abstract_to_concrete(self) -> Result<Number, NumberError> {
-        match self {
-            Number::AbstractInt(num) => i32::try_from(num)
-                .map(Number::I32)
-                .map_err(|_| NumberError::NotRepresentable),
-            Number::AbstractFloat(num) => {
-                let num = num as f32;
-                if num.is_finite() {
-                    Ok(Number::F32(num))
-                } else {
-                    Err(NumberError::NotRepresentable)
-                }
-            }
-            num => Ok(num),
-        }
-    }
-}
-
-// TODO: when implementing Creation-Time Expressions, remove the ability to match the minus sign
 
 pub(in crate::front::wgsl) fn consume_number(input: &str) -> (Token<'_>, &str) {
     let (result, rest) = parse(input);
-    (
-        Token::Number(result.and_then(Number::abstract_to_concrete)),
-        rest,
-    )
+    (Token::Number(result), rest)
 }
 
 enum Kind {
@@ -59,11 +35,15 @@ enum Kind {
 enum IntKind {
     I32,
     U32,
+    I64,
+    U64,
 }
 
+#[derive(Debug)]
 enum FloatKind {
-    F32,
     F16,
+    F32,
+    F64,
 }
 
 // The following regexes (from the WGSL spec) will be matched:
@@ -86,7 +66,9 @@ enum FloatKind {
 // | / 0[xX][0-9a-fA-F]+                         [pP][+-]?[0-9]+        [fh]?   /
 
 // You could visualize the regex below via https://debuggex.com to get a rough idea what `parse` is doing
-// -?(?:0[xX](?:([0-9a-fA-F]+\.[0-9a-fA-F]*|[0-9a-fA-F]*\.[0-9a-fA-F]+)(?:([pP][+-]?[0-9]+)([fh]?))?|([0-9a-fA-F]+)([pP][+-]?[0-9]+)([fh]?)|([0-9a-fA-F]+)([iu]?))|((?:[0-9]+[eE][+-]?[0-9]+|(?:[0-9]+\.[0-9]*|[0-9]*\.[0-9]+)(?:[eE][+-]?[0-9]+)?))([fh]?)|((?:[0-9]|[1-9][0-9]+))([iufh]?))
+// (?:0[xX](?:([0-9a-fA-F]+\.[0-9a-fA-F]*|[0-9a-fA-F]*\.[0-9a-fA-F]+)(?:([pP][+-]?[0-9]+)([fh]?))?|([0-9a-fA-F]+)([pP][+-]?[0-9]+)([fh]?)|([0-9a-fA-F]+)([iu]?))|((?:[0-9]+[eE][+-]?[0-9]+|(?:[0-9]+\.[0-9]*|[0-9]*\.[0-9]+)(?:[eE][+-]?[0-9]+)?))([fh]?)|((?:[0-9]|[1-9][0-9]+))([iufh]?))
+
+// Leading signs are handled as unary operators.
 
 fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
     /// returns `true` and consumes `X` bytes from the given byte buffer
@@ -104,9 +86,9 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
     /// if one of the given patterns are found at the start of the buffer
     /// returning the corresponding expr for the matched pattern
     macro_rules! consume_map {
-        ($bytes:ident, [$($pattern:pat_param => $to:expr),*]) => {
+        ($bytes:ident, [$( $($pattern:pat_param),* => $to:expr),* $(,)?]) => {
             match $bytes {
-                $( &[$pattern, ref rest @ ..] => { $bytes = rest; Some($to) }, )*
+                $( &[ $($pattern),*, ref rest @ ..] => { $bytes = rest; Some($to) }, )*
                 _ => None,
             }
         };
@@ -134,6 +116,16 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
             }
             start_len - $bytes.len()
         }};
+    }
+
+    macro_rules! consume_float_suffix {
+        ($bytes:ident) => {
+            consume_map!($bytes, [
+                b'h' => FloatKind::F16,
+                b'f' => FloatKind::F32,
+                b'l', b'f' => FloatKind::F64,
+            ])
+        };
     }
 
     /// maps the given `&[u8]` (tail of the initial `input: &str`) to a `&str`
@@ -164,8 +156,6 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
 
     let general_extract = ExtractSubStr::start(input, bytes);
 
-    let is_negative = consume!(bytes, b'-');
-
     if consume!(bytes, b'0', b'x' | b'X') {
         let digits_extract = ExtractSubStr::start(input, bytes);
 
@@ -190,7 +180,7 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
 
                 let number = general_extract.end(bytes);
 
-                let kind = consume_map!(bytes, [b'f' => FloatKind::F32, b'h' => FloatKind::F16]);
+                let kind = consume_float_suffix!(bytes);
 
                 (parse_hex_float(number, kind), rest_to_str!(bytes))
             } else {
@@ -219,7 +209,7 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
 
                 let exponent = exp_extract.end(bytes);
 
-                let kind = consume_map!(bytes, [b'f' => FloatKind::F32, b'h' => FloatKind::F16]);
+                let kind = consume_float_suffix!(bytes);
 
                 (
                     parse_hex_float_missing_period(significand, exponent, kind),
@@ -228,10 +218,7 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
             } else {
                 let kind = consume_map!(bytes, [b'i' => IntKind::I32, b'u' => IntKind::U32]);
 
-                (
-                    parse_hex_int(is_negative, digits, kind),
-                    rest_to_str!(bytes),
-                )
+                (parse_hex_int(digits, kind), rest_to_str!(bytes))
             }
         }
     } else {
@@ -257,7 +244,7 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
 
             let number = general_extract.end(bytes);
 
-            let kind = consume_map!(bytes, [b'f' => FloatKind::F32, b'h' => FloatKind::F16]);
+            let kind = consume_float_suffix!(bytes);
 
             (parse_dec_float(number, kind), rest_to_str!(bytes))
         } else {
@@ -275,7 +262,7 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
 
                 let number = general_extract.end(bytes);
 
-                let kind = consume_map!(bytes, [b'f' => FloatKind::F32, b'h' => FloatKind::F16]);
+                let kind = consume_float_suffix!(bytes);
 
                 (parse_dec_float(number, kind), rest_to_str!(bytes))
             } else {
@@ -284,26 +271,26 @@ fn parse(input: &str) -> (Result<Number, NumberError>, &str) {
                     return (Err(NumberError::Invalid), rest_to_str!(bytes));
                 }
 
-                let digits_with_sign = general_extract.end(bytes);
+                let digits = general_extract.end(bytes);
 
                 let kind = consume_map!(bytes, [
                     b'i' => Kind::Int(IntKind::I32),
                     b'u' => Kind::Int(IntKind::U32),
+                    b'l', b'i' => Kind::Int(IntKind::I64),
+                    b'l', b'u' => Kind::Int(IntKind::U64),
+                    b'h' => Kind::Float(FloatKind::F16),
                     b'f' => Kind::Float(FloatKind::F32),
-                    b'h' => Kind::Float(FloatKind::F16)
+                    b'l', b'f' => Kind::Float(FloatKind::F64),
                 ]);
 
-                (
-                    parse_dec(is_negative, digits_with_sign, kind),
-                    rest_to_str!(bytes),
-                )
+                (parse_dec(digits, kind), rest_to_str!(bytes))
             }
         }
     }
 }
 
 fn parse_hex_float_missing_exponent(
-    // format: -?0[xX] ( [0-9a-fA-F]+\.[0-9a-fA-F]* | [0-9a-fA-F]*\.[0-9a-fA-F]+ )
+    // format: 0[xX] ( [0-9a-fA-F]+\.[0-9a-fA-F]* | [0-9a-fA-F]*\.[0-9a-fA-F]+ )
     significand: &str,
     kind: Option<FloatKind>,
 ) -> Result<Number, NumberError> {
@@ -312,7 +299,7 @@ fn parse_hex_float_missing_exponent(
 }
 
 fn parse_hex_float_missing_period(
-    // format: -?0[xX] [0-9a-fA-F]+
+    // format: 0[xX] [0-9a-fA-F]+
     significand: &str,
     // format: [pP][+-]?[0-9]+
     exponent: &str,
@@ -323,29 +310,22 @@ fn parse_hex_float_missing_period(
 }
 
 fn parse_hex_int(
-    is_negative: bool,
     // format: [0-9a-fA-F]+
     digits: &str,
     kind: Option<IntKind>,
 ) -> Result<Number, NumberError> {
-    let digits_with_sign = if is_negative {
-        Cow::Owned(format!("-{digits}"))
-    } else {
-        Cow::Borrowed(digits)
-    };
-    parse_int(&digits_with_sign, kind, 16, is_negative)
+    parse_int(digits, kind, 16)
 }
 
 fn parse_dec(
-    is_negative: bool,
-    // format: -? ( [0-9] | [1-9][0-9]+ )
-    digits_with_sign: &str,
+    // format: ( [0-9] | [1-9][0-9]+ )
+    digits: &str,
     kind: Option<Kind>,
 ) -> Result<Number, NumberError> {
     match kind {
-        None => parse_int(digits_with_sign, None, 10, is_negative),
-        Some(Kind::Int(kind)) => parse_int(digits_with_sign, Some(kind), 10, is_negative),
-        Some(Kind::Float(kind)) => parse_dec_float(digits_with_sign, Some(kind)),
+        None => parse_int(digits, None, 10),
+        Some(Kind::Int(kind)) => parse_int(digits, Some(kind), 10),
+        Some(Kind::Float(kind)) => parse_dec_float(digits, Some(kind)),
     }
 }
 
@@ -374,7 +354,7 @@ fn parse_dec(
 
 // Therefore we only check for overflow manually for decimal floating point literals
 
-// input format: -?0[xX] ( [0-9a-fA-F]+\.[0-9a-fA-F]* | [0-9a-fA-F]*\.[0-9a-fA-F]+ ) [pP][+-]?[0-9]+
+// input format: 0[xX] ( [0-9a-fA-F]+\.[0-9a-fA-F]* | [0-9a-fA-F]*\.[0-9a-fA-F]+ ) [pP][+-]?[0-9]+
 fn parse_hex_float(input: &str, kind: Option<FloatKind>) -> Result<Number, NumberError> {
     match kind {
         None => match hexf_parse::parse_hexf64(input, false) {
@@ -382,17 +362,22 @@ fn parse_hex_float(input: &str, kind: Option<FloatKind>) -> Result<Number, Numbe
             // can only be ParseHexfErrorKind::Inexact but we can't check since it's private
             _ => Err(NumberError::NotRepresentable),
         },
+        Some(FloatKind::F16) => Err(NumberError::UnimplementedF16),
         Some(FloatKind::F32) => match hexf_parse::parse_hexf32(input, false) {
             Ok(num) => Ok(Number::F32(num)),
             // can only be ParseHexfErrorKind::Inexact but we can't check since it's private
             _ => Err(NumberError::NotRepresentable),
         },
-        Some(FloatKind::F16) => Err(NumberError::UnimplementedF16),
+        Some(FloatKind::F64) => match hexf_parse::parse_hexf64(input, false) {
+            Ok(num) => Ok(Number::F64(num)),
+            // can only be ParseHexfErrorKind::Inexact but we can't check since it's private
+            _ => Err(NumberError::NotRepresentable),
+        },
     }
 }
 
-// input format: -? ( [0-9]+\.[0-9]* | [0-9]*\.[0-9]+ ) ([eE][+-]?[0-9]+)?
-//             | -? [0-9]+ [eE][+-]?[0-9]+
+// input format: ( [0-9]+\.[0-9]* | [0-9]*\.[0-9]+ ) ([eE][+-]?[0-9]+)?
+//             | [0-9]+ [eE][+-]?[0-9]+
 fn parse_dec_float(input: &str, kind: Option<FloatKind>) -> Result<Number, NumberError> {
     match kind {
         None => {
@@ -407,16 +392,17 @@ fn parse_dec_float(input: &str, kind: Option<FloatKind>) -> Result<Number, Numbe
                 .then_some(Number::F32(num))
                 .ok_or(NumberError::NotRepresentable)
         }
+        Some(FloatKind::F64) => {
+            let num = input.parse::<f64>().unwrap(); // will never fail
+            num.is_finite()
+                .then_some(Number::F64(num))
+                .ok_or(NumberError::NotRepresentable)
+        }
         Some(FloatKind::F16) => Err(NumberError::UnimplementedF16),
     }
 }
 
-fn parse_int(
-    input: &str,
-    kind: Option<IntKind>,
-    radix: u32,
-    is_negative: bool,
-) -> Result<Number, NumberError> {
+fn parse_int(input: &str, kind: Option<IntKind>, radix: u32) -> Result<Number, NumberError> {
     fn map_err(e: core::num::ParseIntError) -> NumberError {
         match *e.kind() {
             core::num::IntErrorKind::PosOverflow | core::num::IntErrorKind::NegOverflow => {
@@ -434,9 +420,16 @@ fn parse_int(
             Ok(num) => Ok(Number::I32(num)),
             Err(e) => Err(map_err(e)),
         },
-        Some(IntKind::U32) if is_negative => Err(NumberError::NotRepresentable),
         Some(IntKind::U32) => match u32::from_str_radix(input, radix) {
             Ok(num) => Ok(Number::U32(num)),
+            Err(e) => Err(map_err(e)),
+        },
+        Some(IntKind::I64) => match i64::from_str_radix(input, radix) {
+            Ok(num) => Ok(Number::I64(num)),
+            Err(e) => Err(map_err(e)),
+        },
+        Some(IntKind::U64) => match u64::from_str_radix(input, radix) {
+            Ok(num) => Ok(Number::U64(num)),
             Err(e) => Err(map_err(e)),
         },
     }

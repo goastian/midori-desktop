@@ -817,7 +817,9 @@ int dav1d_refmvs_init_frame(refmvs_frame *const rf,
     if (r_stride != rf->r_stride || n_tile_rows != rf->n_tile_rows) {
         if (rf->r) dav1d_freep_aligned(&rf->r);
         const int uses_2pass = n_tile_threads > 1 && n_frame_threads > 1;
-        rf->r = dav1d_alloc_aligned(sizeof(*rf->r) * 35 * r_stride * n_tile_rows * (1 + uses_2pass), 64);
+        /* sizeof(refmvs_block) == 12 but it's accessed using 16-byte loads in asm,
+         * so add 4 bytes of padding to avoid buffer overreads. */
+        rf->r = dav1d_alloc_aligned(ALLOC_REFMVS, sizeof(*rf->r) * 35 * r_stride * n_tile_rows * (1 + uses_2pass) + 4, 64);
         if (!rf->r) return DAV1D_ERR(ENOMEM);
         rf->r_stride = r_stride;
     }
@@ -825,7 +827,7 @@ int dav1d_refmvs_init_frame(refmvs_frame *const rf,
     const ptrdiff_t rp_stride = r_stride >> 1;
     if (rp_stride != rf->rp_stride || n_tile_rows != rf->n_tile_rows) {
         if (rf->rp_proj) dav1d_freep_aligned(&rf->rp_proj);
-        rf->rp_proj = dav1d_alloc_aligned(sizeof(*rf->rp_proj) * 16 * rp_stride * n_tile_rows, 64);
+        rf->rp_proj = dav1d_alloc_aligned(ALLOC_REFMVS, sizeof(*rf->rp_proj) * 16 * rp_stride * n_tile_rows, 64);
         if (!rf->rp_proj) return DAV1D_ERR(ENOMEM);
         rf->rp_stride = rp_stride;
     }
@@ -919,6 +921,8 @@ static void splat_mv_c(refmvs_block **rr, const refmvs_block *const rmv,
 #if HAVE_ASM
 #if ARCH_AARCH64 || ARCH_ARM
 #include "src/arm/refmvs.h"
+#elif ARCH_LOONGARCH64
+#include "src/loongarch/refmvs.h"
 #elif ARCH_X86
 #include "src/x86/refmvs.h"
 #endif
@@ -933,6 +937,8 @@ COLD void dav1d_refmvs_dsp_init(Dav1dRefmvsDSPContext *const c)
 #if HAVE_ASM
 #if ARCH_AARCH64 || ARCH_ARM
     refmvs_dsp_init_arm(c);
+#elif ARCH_LOONGARCH64
+    refmvs_dsp_init_loongarch(c);
 #elif ARCH_X86
     refmvs_dsp_init_x86(c);
 #endif

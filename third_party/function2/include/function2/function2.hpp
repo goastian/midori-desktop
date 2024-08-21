@@ -310,8 +310,8 @@ template <typename Current, typename Next, typename... Rest>
 struct overload_impl<Current, Next, Rest...> : Current,
                                                overload_impl<Next, Rest...> {
   explicit overload_impl(Current current, Next next, Rest... rest)
-      : Current(std::move(current)), overload_impl<Next, Rest...>(
-                                         std::move(next), std::move(rest)...) {
+      : Current(std::move(current)),
+        overload_impl<Next, Rest...>(std::move(next), std::move(rest)...) {
   }
 
   using Current::operator();
@@ -338,7 +338,7 @@ namespace type_erasure {
 template <typename T, typename = void>
 struct address_taker {
   template <typename O>
-  static void* take(O&& obj) {
+  static auto take(O&& obj) {
     return std::addressof(obj);
   }
   static T& restore(void* ptr) {
@@ -447,6 +447,16 @@ union data_accessor {
   explicit constexpr data_accessor(std::nullptr_t) noexcept : ptr_(nullptr) {
   }
   explicit constexpr data_accessor(void* ptr) noexcept : ptr_(ptr) {
+  }
+  explicit constexpr data_accessor(void const* ptr) noexcept
+      : data_accessor(const_cast<void*>(ptr)) {
+  }
+
+  constexpr void assign_ptr(void* ptr) noexcept {
+    ptr_ = ptr;
+  }
+  constexpr void assign_ptr(void const* ptr) noexcept {
+    ptr_ = const_cast<void*>(ptr);
   }
 
   /// The pointer we use if the object is on the heap
@@ -1235,7 +1245,7 @@ public:
   template <typename T, typename Allocator = std::allocator<std::decay_t<T>>>
   void assign(std::true_type /*use_bool_op*/, T&& callable,
               Allocator&& allocator_ = {}) {
-    if (bool(callable)) {
+    if (!!callable) {
       assign(std::false_type{}, std::forward<T>(callable),
              std::forward<Allocator>(allocator_));
     } else {
@@ -1351,12 +1361,12 @@ public:
   constexpr void assign(std::false_type /*use_bool_op*/, T&& callable) {
     invoke_table_ = invoke_table_t::template get_invocation_view_table_of<
         std::decay_t<T>>();
-    view_.ptr_ =
-        address_taker<std::decay_t<T>>::take(std::forward<T>(callable));
+    view_.assign_ptr(
+        address_taker<std::decay_t<T>>::take(std::forward<T>(callable)));
   }
   template <typename T>
   constexpr void assign(std::true_type /*use_bool_op*/, T&& callable) {
-    if (bool(callable)) {
+    if (!!callable) {
       assign(std::false_type{}, std::forward<T>(callable));
     } else {
       operator=(nullptr);
@@ -1817,6 +1827,14 @@ constexpr auto overload(T&&... callables) {
   return detail::overloading::overload(std::forward<T>(callables)...);
 }
 } // namespace fu2
+
+namespace std{
+template <typename Config, typename Property, typename Alloc>
+struct uses_allocator<
+  ::fu2::detail::function<Config, Property>,
+  Alloc
+> : std::true_type {};
+} // namespace std
 
 #undef FU2_DETAIL_EXPAND_QUALIFIERS
 #undef FU2_DETAIL_EXPAND_QUALIFIERS_NOEXCEPT

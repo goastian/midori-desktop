@@ -14,6 +14,7 @@
 #include <set>
 #include <utility>
 
+#include "absl/flags/flag.h"
 #include "absl/strings/string_view.h"
 #include "api/jsep.h"
 #include "api/media_stream_interface.h"
@@ -44,6 +45,7 @@
 #include "test/pc/e2e/peer_params_preprocessor.h"
 #include "test/pc/e2e/stats_poller.h"
 #include "test/pc/e2e/test_peer_factory.h"
+#include "test/test_flags.h"
 #include "test/testsupport/file_utils.h"
 
 namespace webrtc {
@@ -71,8 +73,6 @@ constexpr TimeDelta kQuickTestModeRunDuration = TimeDelta::Millis(100);
 // Field trials to enable Flex FEC advertising and receiving.
 constexpr char kFlexFecEnabledFieldTrials[] =
     "WebRTC-FlexFEC-03-Advertised/Enabled/WebRTC-FlexFEC-03/Enabled/";
-constexpr char kUseStandardsBytesStats[] =
-    "WebRTC-UseStandardBytesStats/Enabled/";
 
 class FixturePeerConnectionObserver : public MockPeerConnectionObserver {
  public:
@@ -275,7 +275,7 @@ void PeerConnectionE2EQualityTest::Run(RunParams run_params) {
 
   TestPeerFactory test_peer_factory(
       signaling_thread.get(), time_controller_,
-      video_quality_analyzer_injection_helper_.get(), task_queue_.get());
+      video_quality_analyzer_injection_helper_.get(), task_queue_->Get());
   alice_ = test_peer_factory.CreateTestPeer(
       std::move(alice_configurer),
       std::make_unique<FixturePeerConnectionObserver>(
@@ -384,7 +384,7 @@ void PeerConnectionE2EQualityTest::Run(RunParams run_params) {
   executor_->Start(task_queue_.get());
   Timestamp start_time = Now();
 
-  bool is_quick_test_enabled = field_trial::IsEnabled("WebRTC-QuickPerfTest");
+  bool is_quick_test_enabled = absl::GetFlag(FLAGS_webrtc_quick_perf_test);
   if (is_quick_test_enabled) {
     time_controller_.AdvanceTime(kQuickTestModeRunDuration);
   } else {
@@ -437,8 +437,7 @@ void PeerConnectionE2EQualityTest::Run(RunParams run_params) {
 
 std::string PeerConnectionE2EQualityTest::GetFieldTrials(
     const RunParams& run_params) {
-  std::vector<absl::string_view> default_field_trials = {
-      kUseStandardsBytesStats};
+  std::vector<absl::string_view> default_field_trials = {};
   if (run_params.enable_flex_fec_support) {
     default_field_trials.push_back(kFlexFecEnabledFieldTrials);
   }
@@ -568,14 +567,14 @@ void PeerConnectionE2EQualityTest::SetPeerCodecPreferences(TestPeer* peer) {
           peer->params().video_codecs, true, peer->params().use_ulp_fec,
           peer->params().use_flex_fec,
           peer->pc_factory()
-              ->GetRtpSenderCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
+              ->GetRtpReceiverCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
               .codecs);
   std::vector<RtpCodecCapability> without_rtx_video_capabilities =
       FilterVideoCodecCapabilities(
           peer->params().video_codecs, false, peer->params().use_ulp_fec,
           peer->params().use_flex_fec,
           peer->pc_factory()
-              ->GetRtpSenderCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
+              ->GetRtpReceiverCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
               .codecs);
 
   // Set codecs for transceivers

@@ -1,45 +1,33 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Wed, 11 Jan 2023 22:42:00 +0000
-Subject: Bug 1800942 - Add DCHECKs to
- TimestampExtrapolator::ExtrapolateLocalTime. r=mjf
+From: Nico Grunbaum <na-g@nostrum.com>
+Date: Thu, 22 Jun 2023 16:23:00 +0000
+Subject: Bug 1837918 - libwebrtc update broke the build on
+ OpenBSD;r=mjf,webrtc-reviewers
 
-Differential Revision: https://phabricator.services.mozilla.com/D166536
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/c5df7f40392464ffc63f44a53ddcaab2091741e0
+Differential Revision: https://phabricator.services.mozilla.com/D181791
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/2a6a838b7021bb285f9485c2ceda6ba2543e0d6f
 ---
- modules/video_coding/timing/timestamp_extrapolator.cc | 7 +++++++
- 1 file changed, 7 insertions(+)
+ modules/video_capture/video_capture_options.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/modules/video_coding/timing/timestamp_extrapolator.cc b/modules/video_coding/timing/timestamp_extrapolator.cc
-index c91aa1a362..dc62ac674a 100644
---- a/modules/video_coding/timing/timestamp_extrapolator.cc
-+++ b/modules/video_coding/timing/timestamp_extrapolator.cc
-@@ -125,6 +125,7 @@ void TimestampExtrapolator::Update(Timestamp now, uint32_t ts90khz) {
- absl::optional<Timestamp> TimestampExtrapolator::ExtrapolateLocalTime(
-     uint32_t timestamp90khz) const {
-   int64_t unwrapped_ts90khz = unwrapper_.PeekUnwrap(timestamp90khz);
-+  RTC_DCHECK_GE(unwrapped_ts90khz, 0);
+diff --git a/modules/video_capture/video_capture_options.h b/modules/video_capture/video_capture_options.h
+index 6f72f7927e..37965305d9 100644
+--- a/modules/video_capture/video_capture_options.h
++++ b/modules/video_capture/video_capture_options.h
+@@ -55,7 +55,7 @@ class RTC_EXPORT VideoCaptureOptions {
  
-   if (!first_unwrapped_timestamp_) {
-     return absl::nullopt;
-@@ -132,12 +133,18 @@ absl::optional<Timestamp> TimestampExtrapolator::ExtrapolateLocalTime(
-     constexpr double kRtpTicksPerMs = 90;
-     TimeDelta diff = TimeDelta::Millis(
-         (unwrapped_ts90khz - *prev_unwrapped_timestamp_) / kRtpTicksPerMs);
-+    if (diff.ms() < 0) {
-+      RTC_DCHECK_GE(prev_.ms(), -diff.ms());
-+    }
-     return prev_ + diff;
-   } else if (w_[0] < 1e-3) {
-     return start_;
-   } else {
-     double timestampDiff = unwrapped_ts90khz - *first_unwrapped_timestamp_;
-     auto diff_ms = static_cast<int64_t>((timestampDiff - w_[1]) / w_[0] + 0.5);
-+    if (diff_ms < 0) {
-+      RTC_DCHECK_GE(start_.ms(), -diff_ms);
-+    }
-     return start_ + TimeDelta::Millis(diff_ms);
-   }
- }
--- 
-2.34.1
-
+   void Init(Callback* callback);
+ 
+-#if defined(WEBRTC_LINUX)
++#if defined(WEBRTC_LINUX) || defined(WEBRTC_BSD)
+   bool allow_v4l2() const { return allow_v4l2_; }
+   void set_allow_v4l2(bool allow) { allow_v4l2_ = allow; }
+ #endif
+@@ -68,7 +68,7 @@ class RTC_EXPORT VideoCaptureOptions {
+ #endif
+ 
+  private:
+-#if defined(WEBRTC_LINUX)
++#if defined(WEBRTC_LINUX) || defined(WEBRTC_BSD)
+   bool allow_v4l2_ = false;
+ #endif
+ #if defined(WEBRTC_USE_PIPEWIRE)

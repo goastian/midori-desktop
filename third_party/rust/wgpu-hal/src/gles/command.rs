@@ -8,7 +8,6 @@ struct TextureSlotDesc {
     sampler_index: Option<u8>,
 }
 
-#[derive(Default)]
 pub(super) struct State {
     topology: u32,
     primitive: super::PrimitiveState,
@@ -30,7 +29,41 @@ pub(super) struct State {
     instance_vbuf_mask: usize,
     dirty_vbuf_mask: usize,
     active_first_instance: u32,
-    push_offset_to_uniform: ArrayVec<super::UniformDesc, { super::MAX_PUSH_CONSTANTS }>,
+    first_instance_location: Option<glow::UniformLocation>,
+    push_constant_descs: ArrayVec<super::PushConstantDesc, { super::MAX_PUSH_CONSTANT_COMMANDS }>,
+    // The current state of the push constant data block.
+    current_push_constant_data: [u32; super::MAX_PUSH_CONSTANTS],
+    end_of_pass_timestamp: Option<glow::Query>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            topology: Default::default(),
+            primitive: Default::default(),
+            index_format: Default::default(),
+            index_offset: Default::default(),
+            vertex_buffers: Default::default(),
+            vertex_attributes: Default::default(),
+            color_targets: Default::default(),
+            stencil: Default::default(),
+            depth_bias: Default::default(),
+            alpha_to_coverage_enabled: Default::default(),
+            samplers: Default::default(),
+            texture_slots: Default::default(),
+            render_size: Default::default(),
+            resolve_attachments: Default::default(),
+            invalidate_attachments: Default::default(),
+            has_pass_label: Default::default(),
+            instance_vbuf_mask: Default::default(),
+            dirty_vbuf_mask: Default::default(),
+            active_first_instance: Default::default(),
+            first_instance_location: Default::default(),
+            push_constant_descs: Default::default(),
+            current_push_constant_data: [0; super::MAX_PUSH_CONSTANTS],
+            end_of_pass_timestamp: Default::default(),
+        }
+    }
 }
 
 impl super::CommandBuffer {
@@ -49,10 +82,7 @@ impl super::CommandBuffer {
 
     fn add_push_constant_data(&mut self, data: &[u32]) -> Range<u32> {
         let data_raw = unsafe {
-            std::slice::from_raw_parts(
-                data.as_ptr() as *const _,
-                data.len() * mem::size_of::<u32>(),
-            )
+            std::slice::from_raw_parts(data.as_ptr() as *const _, mem::size_of_val(data))
         };
         let start = self.data_bytes.len();
         assert!(start < u32::MAX as usize);
@@ -60,6 +90,13 @@ impl super::CommandBuffer {
         let end = self.data_bytes.len();
         assert!(end < u32::MAX as usize);
         (start as u32)..(end as u32)
+    }
+}
+
+impl Drop for super::CommandEncoder {
+    fn drop(&mut self) {
+        use crate::CommandEncoder;
+        unsafe { self.discard_encoding() }
     }
 }
 
@@ -165,23 +202,37 @@ impl super::CommandEncoder {
     }
 
     fn prepare_draw(&mut self, first_instance: u32) {
-        if first_instance != self.state.active_first_instance {
+        // If we support fully featured instancing, we want to bind everything as normal
+        // and let the draw call sort it out.
+        let emulated_first_instance_value = if self
+            .private_caps
+            .contains(super::PrivateCapabilities::FULLY_FEATURED_INSTANCING)
+        {
+            0
+        } else {
+            first_instance
+        };
+
+        if emulated_first_instance_value != self.state.active_first_instance {
             // rebind all per-instance buffers on first-instance change
             self.state.dirty_vbuf_mask |= self.state.instance_vbuf_mask;
-            self.state.active_first_instance = first_instance;
+            self.state.active_first_instance = emulated_first_instance_value;
         }
         if self.state.dirty_vbuf_mask != 0 {
-            self.rebind_vertex_data(first_instance);
+            self.rebind_vertex_data(emulated_first_instance_value);
         }
     }
 
+    #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
     fn set_pipeline_inner(&mut self, inner: &super::PipelineInner) {
         self.cmd_buffer.commands.push(C::SetProgram(inner.program));
 
-        self.state.push_offset_to_uniform.clear();
         self.state
-            .push_offset_to_uniform
-            .extend(inner.uniforms.iter().cloned());
+            .first_instance_location
+            .clone_from(&inner.first_instance_location);
+        self.state
+            .push_constant_descs
+            .clone_from(&inner.push_constant_descs);
 
         // rebind textures, if needed
         let mut dirty_textures = 0u32;
@@ -203,7 +254,9 @@ impl super::CommandEncoder {
     }
 }
 
-impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
+impl crate::CommandEncoder for super::CommandEncoder {
+    type A = super::Api;
+
     unsafe fn begin_encoding(&mut self, label: crate::Label) -> Result<(), crate::DeviceError> {
         self.state = State::default();
         self.cmd_buffer.label = label.map(str::to_string);
@@ -309,7 +362,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         }
     }
 
-    #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+    #[cfg(webgl)]
     unsafe fn copy_external_image_to_texture<T>(
         &mut self,
         src: &wgt::ImageCopyExternalImage,
@@ -353,7 +406,6 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                 dst: dst_raw,
                 dst_target,
                 copy,
-                dst_is_cubemap: dst.is_cubemap,
             })
         }
     }
@@ -413,8 +465,9 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     unsafe fn end_query(&mut self, set: &super::QuerySet, _index: u32) {
         self.cmd_buffer.commands.push(C::EndQuery(set.target));
     }
-    unsafe fn write_timestamp(&mut self, _set: &super::QuerySet, _index: u32) {
-        unimplemented!()
+    unsafe fn write_timestamp(&mut self, set: &super::QuerySet, index: u32) {
+        let query = set.queries[index as usize];
+        self.cmd_buffer.commands.push(C::TimestampQuery(query));
     }
     unsafe fn reset_queries(&mut self, _set: &super::QuerySet, _range: Range<u32>) {
         //TODO: what do we do here?
@@ -443,6 +496,16 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
     // render
 
     unsafe fn begin_render_pass(&mut self, desc: &crate::RenderPassDescriptor<super::Api>) {
+        debug_assert!(self.state.end_of_pass_timestamp.is_none());
+        if let Some(ref t) = desc.timestamp_writes {
+            if let Some(index) = t.beginning_of_pass_write_index {
+                unsafe { self.write_timestamp(t.query_set, index) }
+            }
+            self.state.end_of_pass_timestamp = t
+                .end_of_pass_write_index
+                .map(|index| t.query_set.queries[index as usize]);
+        }
+
         self.state.render_size = desc.extent;
         self.state.resolve_attachments.clear();
         self.state.invalidate_attachments.clear();
@@ -457,7 +520,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             .iter()
             .filter_map(|at| at.as_ref())
             .any(|at| match at.target.view.inner {
-                #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+                #[cfg(webgl)]
                 super::TextureInner::ExternalFramebuffer { .. } => true,
                 _ => false,
             });
@@ -465,6 +528,9 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         if rendering_to_external_framebuffer && desc.color_attachments.len() != 1 {
             panic!("Multiple render attachments with external framebuffers are not supported.");
         }
+
+        // `COLOR_ATTACHMENT0` to `COLOR_ATTACHMENT31` gives 32 possible color attachments.
+        assert!(desc.color_attachments.len() <= 32);
 
         match desc
             .color_attachments
@@ -527,13 +593,6 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                             .push(glow::STENCIL_ATTACHMENT);
                     }
                 }
-
-                if !rendering_to_external_framebuffer {
-                    // set the draw buffers and states
-                    self.cmd_buffer
-                        .commands
-                        .push(C::SetDrawColorBuffers(desc.color_attachments.len() as u8));
-                }
             }
         }
 
@@ -549,6 +608,13 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             depth: 0.0..1.0,
         });
 
+        if !rendering_to_external_framebuffer {
+            // set the draw buffers and states
+            self.cmd_buffer
+                .commands
+                .push(C::SetDrawColorBuffers(desc.color_attachments.len() as u8));
+        }
+
         // issue the clears
         for (i, cat) in desc
             .color_attachments
@@ -559,7 +625,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             if !cat.ops.contains(crate::AttachmentOps::LOAD) {
                 let c = &cat.clear_value;
                 self.cmd_buffer.commands.push(
-                    match cat.target.view.format.sample_type(None).unwrap() {
+                    match cat.target.view.format.sample_type(None, None).unwrap() {
                         wgt::TextureSampleType::Float { .. } => C::ClearColorF {
                             draw_buffer: i as u32,
                             color: [c.r as f32, c.g as f32, c.b as f32, c.a as f32],
@@ -578,6 +644,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                 );
             }
         }
+
         if let Some(ref dsat) = desc.depth_stencil_attachment {
             let clear_depth = !dsat.depth_ops.contains(crate::AttachmentOps::LOAD);
             let clear_stencil = !dsat.stencil_ops.contains(crate::AttachmentOps::LOAD);
@@ -627,6 +694,10 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         }
         self.state.vertex_attributes.clear();
         self.state.primitive = super::PrimitiveState::default();
+
+        if let Some(query) = self.state.end_of_pass_timestamp.take() {
+            self.cmd_buffer.commands.push(C::TimestampQuery(query));
+        }
     }
 
     unsafe fn set_bind_group(
@@ -685,6 +756,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                     raw,
                     target,
                     aspects,
+                    ref mip_levels,
                 } => {
                     dirty_textures |= 1 << slot;
                     self.state.texture_slots[slot as usize].tex_target = target;
@@ -693,6 +765,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                         texture: raw,
                         target,
                         aspects,
+                        mip_levels: mip_levels.clone(),
                     });
                 }
                 super::RawBinding::Image(ref binding) => {
@@ -711,24 +784,46 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         &mut self,
         _layout: &super::PipelineLayout,
         _stages: wgt::ShaderStages,
-        start_offset: u32,
+        offset_bytes: u32,
         data: &[u32],
     ) {
-        let range = self.cmd_buffer.add_push_constant_data(data);
+        // There is nothing preventing the user from trying to update a single value within
+        // a vector or matrix in the set_push_constant call, as to the user, all of this is
+        // just memory. However OpenGL does not allow partial uniform updates.
+        //
+        // As such, we locally keep a copy of the current state of the push constant memory
+        // block. If the user tries to update a single value, we have the data to update the entirety
+        // of the uniform.
+        let start_words = offset_bytes / 4;
+        let end_words = start_words + data.len() as u32;
+        self.state.current_push_constant_data[start_words as usize..end_words as usize]
+            .copy_from_slice(data);
 
-        let end = start_offset + data.len() as u32 * 4;
-        let mut offset = start_offset;
-        while offset < end {
-            let uniform = self.state.push_offset_to_uniform[offset as usize / 4].clone();
-            let size = uniform.size;
-            if uniform.location.is_none() {
-                panic!("No uniform for push constant");
+        // We iterate over the uniform list as there may be multiple uniforms that need
+        // updating from the same push constant memory (one for each shader stage).
+        //
+        // Additionally, any statically unused uniform descs will have been removed from this list
+        // by OpenGL, so the uniform list is not contiguous.
+        for uniform in self.state.push_constant_descs.iter().cloned() {
+            let uniform_size_words = uniform.size_bytes / 4;
+            let uniform_start_words = uniform.offset / 4;
+            let uniform_end_words = uniform_start_words + uniform_size_words;
+
+            // Is true if any word within the uniform binding was updated
+            let needs_updating =
+                start_words < uniform_end_words || uniform_start_words <= end_words;
+
+            if needs_updating {
+                let uniform_data = &self.state.current_push_constant_data
+                    [uniform_start_words as usize..uniform_end_words as usize];
+
+                let range = self.cmd_buffer.add_push_constant_data(uniform_data);
+
+                self.cmd_buffer.commands.push(C::SetPushConstants {
+                    uniform,
+                    offset: range.start,
+                });
             }
-            self.cmd_buffer.commands.push(C::SetPushConstants {
-                uniform,
-                offset: range.start + offset,
-            });
-            offset += size;
         }
     }
 
@@ -935,40 +1030,46 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
 
     unsafe fn draw(
         &mut self,
-        start_vertex: u32,
+        first_vertex: u32,
         vertex_count: u32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     ) {
-        self.prepare_draw(start_instance);
+        self.prepare_draw(first_instance);
+        #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
         self.cmd_buffer.commands.push(C::Draw {
             topology: self.state.topology,
-            start_vertex,
+            first_vertex,
             vertex_count,
+            first_instance,
             instance_count,
+            first_instance_location: self.state.first_instance_location.clone(),
         });
     }
     unsafe fn draw_indexed(
         &mut self,
-        start_index: u32,
+        first_index: u32,
         index_count: u32,
         base_vertex: i32,
-        start_instance: u32,
+        first_instance: u32,
         instance_count: u32,
     ) {
-        self.prepare_draw(start_instance);
+        self.prepare_draw(first_instance);
         let (index_size, index_type) = match self.state.index_format {
             wgt::IndexFormat::Uint16 => (2, glow::UNSIGNED_SHORT),
             wgt::IndexFormat::Uint32 => (4, glow::UNSIGNED_INT),
         };
-        let index_offset = self.state.index_offset + index_size * start_index as wgt::BufferAddress;
+        let index_offset = self.state.index_offset + index_size * first_index as wgt::BufferAddress;
+        #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
         self.cmd_buffer.commands.push(C::DrawIndexed {
             topology: self.state.topology,
             index_type,
             index_offset,
             index_count,
             base_vertex,
+            first_instance,
             instance_count,
+            first_instance_location: self.state.first_instance_location.clone(),
         });
     }
     unsafe fn draw_indirect(
@@ -981,10 +1082,12 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         for draw in 0..draw_count as wgt::BufferAddress {
             let indirect_offset =
                 offset + draw * mem::size_of::<wgt::DrawIndirectArgs>() as wgt::BufferAddress;
+            #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
             self.cmd_buffer.commands.push(C::DrawIndirect {
                 topology: self.state.topology,
                 indirect_buf: buffer.raw.unwrap(),
                 indirect_offset,
+                first_instance_location: self.state.first_instance_location.clone(),
             });
         }
     }
@@ -1002,11 +1105,13 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         for draw in 0..draw_count as wgt::BufferAddress {
             let indirect_offset = offset
                 + draw * mem::size_of::<wgt::DrawIndexedIndirectArgs>() as wgt::BufferAddress;
+            #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
             self.cmd_buffer.commands.push(C::DrawIndexedIndirect {
                 topology: self.state.topology,
                 index_type,
                 indirect_buf: buffer.raw.unwrap(),
                 indirect_offset,
+                first_instance_location: self.state.first_instance_location.clone(),
             });
         }
     }
@@ -1033,7 +1138,17 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
 
     // compute
 
-    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor) {
+    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor<super::Api>) {
+        debug_assert!(self.state.end_of_pass_timestamp.is_none());
+        if let Some(ref t) = desc.timestamp_writes {
+            if let Some(index) = t.beginning_of_pass_write_index {
+                unsafe { self.write_timestamp(t.query_set, index) }
+            }
+            self.state.end_of_pass_timestamp = t
+                .end_of_pass_write_index
+                .map(|index| t.query_set.queries[index as usize]);
+        }
+
         if let Some(label) = desc.label {
             let range = self.cmd_buffer.add_marker(label);
             self.cmd_buffer.commands.push(C::PushDebugGroup(range));
@@ -1044,6 +1159,10 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         if self.state.has_pass_label {
             self.cmd_buffer.commands.push(C::PopDebugGroup);
             self.state.has_pass_label = false;
+        }
+
+        if let Some(query) = self.state.end_of_pass_timestamp.take() {
+            self.cmd_buffer.commands.push(C::TimestampQuery(query));
         }
     }
 
@@ -1059,5 +1178,23 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
             indirect_buf: buffer.raw.unwrap(),
             indirect_offset: offset,
         });
+    }
+
+    unsafe fn build_acceleration_structures<'a, T>(
+        &mut self,
+        _descriptor_count: u32,
+        _descriptors: T,
+    ) where
+        super::Api: 'a,
+        T: IntoIterator<Item = crate::BuildAccelerationStructureDescriptor<'a, super::Api>>,
+    {
+        unimplemented!()
+    }
+
+    unsafe fn place_acceleration_structure_barrier(
+        &mut self,
+        _barriers: crate::AccelerationStructureBarrier,
+    ) {
+        unimplemented!()
     }
 }

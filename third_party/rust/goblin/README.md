@@ -20,13 +20,13 @@ https://docs.rs/goblin/
 
 ### Usage
 
-Goblin requires `rustc` 1.56.0 (Rust 2021 edition).
+Goblin requires `rustc` 1.63.0 (Rust 2021 edition).
 
 Add to your `Cargo.toml`
 
 ```toml
 [dependencies]
-goblin = "0.6"
+goblin = "0.8"
 ```
 
 ### Features
@@ -97,6 +97,7 @@ Here are some things you could do with this crate (or help to implement so they 
 * mach32 - 32-bit mach-o `repr(C)` struct defs
 * pe32 - 32-bit PE `repr(C)` struct defs
 * pe64 - 64-bit PE `repr(C)` struct defs
++ te - Terse Executable (TE) `repr(C)` struct defs
 * archive - a Unix Archive parser
 * endian_fd - parses according to the endianness in the binary
 * std - to allow `no_std` environments
@@ -108,10 +109,12 @@ Thank you all :heart: !
 In lexicographic order:
 
 - [@2vg]
+- [@5225225]
 - [@alessandrod]
 - [@amanieu]
 - [@anfedotoff]
 - [@apalm]
+- [@baloo]
 - [@burjui]
 - [@connorkuehl]
 - [@dancrossnyc]
@@ -120,24 +123,32 @@ In lexicographic order:
 - [@ExPixel]
 - [@flanfly]
 - [@glandium]
+- [@h33p]
 - [@ibabushkin]
 - [@jackcmay]
 - [@jan-auer]
+- [@Javagedes]
 - [@jessehui]
 - [@jdub]
+- [@Jhynjhiruu]
 - [@johannst]
+- [@JohnScience]
 - [@jrmuizel]
 - [@jsgf]
 - [@keith]
 - [@kjempelodott]
+- [@kkent030315]
 - [@ko1n]
 - [@le-jzr]
 - [@Lichtso]
 - [@lion128]
+- [@lissyx]
 - [@llogiq]
 - [@lumag]
 - [@lzutao]
 - [@lzybkr]
+- [@m-hilgendorf]
+- [@mmaekr]
 - [@m4b]
 - [@messense]
 - [@mitsuhiko]
@@ -154,6 +165,7 @@ In lexicographic order:
 - [@Pzixel]
 - [@quake]
 - [@raindev]
+- [@RaitoBezarius]
 - [@rocallahan]
 - [@sanxiyn]
 - [@skdltmxn]
@@ -163,6 +175,7 @@ In lexicographic order:
 - [@SquareMan]
 - [@tathanhdinh]
 - [@Techno-coder]
+- [@tiann]
 - [@ticki]
 - [@Timmmm]
 - [@Tiwalun]
@@ -173,40 +186,52 @@ In lexicographic order:
 - [@woodruffw]
 - [@wyxloading]
 - [@xcoldhandsx]
+- [@x64k]
 
 <!-- Contributors -->
 
 [@2vg]: https://github.com/2vg
+[@5225225]: https://github.com/5225225
 [@alessandrod]: https://github.com/alessandrod
 [@amanieu]: https://github.com/amanieu
 [@anfedotoff]: https://github.com/anfedotoff
 [@apalm]: https://github.com/apalm
+[@baloo]: https://github.com/baloo
 [@burjui]: https://github.com/burjui
 [@connorkuehl]: https://github.com/connorkuehl
+[@crzysdrs]: https://github.com/crzysdrs
 [@dancrossnyc]: https://github.com/dancrossnyc
 [@dureuill]: https://github.com/dureuill
 [@Evian-Zhang]: https://github.com/Evian-Zhang
 [@ExPixel]: https://github.com/ExPixel
 [@flanfly]: https://github.com/flanfly
 [@glandium]: https://github.com/glandium
+[@h33p]: https://github.com/h33p
 [@ibabushkin]: https://github.com/ibabushkin
 [@jackcmay]: https://github.com/jackcmay
 [@jan-auer]: https://github.com/jan-auer
+[@Javagedes]: https://github.com/Javagedes
 [@jessehui]: https://github.com/jessehui
+[@Jhynjhiruu]: https://github.com/Jhynjhiruu
+[@JohnScience]: https://github.com/JohnScience
 [@johannst]: https://github.com/johannst
 [@jdub]: https://github.com/jdub
 [@jrmuizel]: https://github.com/jrmuizel
 [@jsgf]: https://github.com/jsgf
 [@keith]: https://github.com/keith
 [@kjempelodott]: https://github.com/kjempelodott
+[@kkent030315]: https://github.com/kkent030315
 [@ko1N]: https://github.com/ko1N
 [@le-jzr]: https://github.com/le-jzr
 [@Lichtso]: https://github.com/Lichtso
 [@lion128]: https://github.com/lion128
+[@lissyx]: https://github.com/lissyx
 [@llogiq]: https://github.com/llogiq
 [@lumag]: https://github.com/lumag
 [@lzutao]: https://github.com/lzutao
 [@lzybkr]: https://github.com/lzybkr
+[@m-hilgendorf]: https://github.com/m-hilgendorf
+[@mmaekr]: https://github.com/mmaekr
 [@m4b]: https://github.com/m4b
 [@messense]: https://github.com/messense
 [@mitsuhiko]: https://github.com/mitsuhiko
@@ -223,27 +248,34 @@ In lexicographic order:
 [@Pzixel]: https://github.com/Pzixel
 [@quake]: https://github.com/quake
 [@raindev]: https://github.com/raindev
+[@RaitoBezarius]: https://github.com/RaitoBezarius
 [@rocallahan]: https://github.com/rocallahan
 [@sanxiyn]: https://github.com/sanxiyn
 [@skdltmxn]: https://github.com/skdltmxn
 [@sollyucko]: https://github.com/sollyucko
+[@suttonbradley]: https://github.com/suttonbradley
 [@Swatinem]: https://github.com/Swatinem
 [@SweetVishnya]: https://github.com/SweetVishnya
 [@SquareMan]: https://github.com/SquareMan
 [@tathanhdinh]: https://github.com/tathanhdinh
 [@Techno-coder]: https://github.com/Techno-coder
+[@tiann]: https://github.com/tiann
 [@ticki]: https://github.com/ticki
 [@Timmmm]: https://github.com/Timmmm
 [@Tiwalun]: https://github.com/Tiwalun
 [@track-5]: https://github.com/track-5
 [@tux3]: https://github.com/tux3
+[@vadimcn]: https://github.com/vadimcn
 [@wickerwacka]: https://github.com/wickerwaka
 [@willglynn]: https://github.com/willglynn
 [@woodruffw]: https://github.com/woodruffw
 [@wyxloading]: https://github.com/wyxloading
 [@xcoldhandsx]: https://github.com/xcoldhandsx
+[@x64k]: https://github.com/x64k
 
 ## Contributing
+
+Unless explicitly stated otherwise, you agree that your contributions are licensed as described in the accompanying LICENSE file (MIT).
 
 1. Please prefix commits with the affected binary component; the more specific the better, e.g.,
    if you only modify relocations in the elf module, then do "elf.reloc: added new constants for Z80"

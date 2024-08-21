@@ -5,7 +5,7 @@ s! {
     pub struct sigaction {
         pub sa_sigaction: ::sighandler_t,
         pub sa_mask: ::sigset_t,
-        pub sa_flags: ::c_ulong,
+        pub sa_flags: ::c_int,
         pub sa_restorer: ::Option<extern fn()>,
     }
 
@@ -293,6 +293,7 @@ pub const PTRACE_SYSEMU_SINGLESTEP: ::c_uint = 32;
 
 pub const MCL_CURRENT: ::c_int = 0x0001;
 pub const MCL_FUTURE: ::c_int = 0x0002;
+pub const MCL_ONFAULT: ::c_int = 0x0004;
 
 pub const POLLWRNORM: ::c_short = 0x100;
 pub const POLLWRBAND: ::c_short = 0x200;

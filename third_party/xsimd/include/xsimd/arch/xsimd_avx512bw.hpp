@@ -112,6 +112,44 @@ namespace xsimd
             }
         }
 
+        // avgr
+        template <class A, class T, class = typename std::enable_if<std::is_unsigned<T>::value, void>::type>
+        inline batch<T, A> avgr(batch<T, A> const& self, batch<T, A> const& other, requires_arch<avx512bw>) noexcept
+        {
+            XSIMD_IF_CONSTEXPR(sizeof(T) == 1)
+            {
+                return _mm512_avg_epu8(self, other);
+            }
+            else XSIMD_IF_CONSTEXPR(sizeof(T) == 2)
+            {
+                return _mm512_avg_epu16(self, other);
+            }
+            else
+            {
+                return avgr(self, other, generic {});
+            }
+        }
+
+        // avg
+        template <class A, class T, class = typename std::enable_if<std::is_unsigned<T>::value, void>::type>
+        inline batch<T, A> avg(batch<T, A> const& self, batch<T, A> const& other, requires_arch<avx512bw>) noexcept
+        {
+            XSIMD_IF_CONSTEXPR(sizeof(T) == 1)
+            {
+                auto adj = ((self ^ other) << 7) >> 7;
+                return avgr(self, other, A {}) - adj;
+            }
+            else XSIMD_IF_CONSTEXPR(sizeof(T) == 2)
+            {
+                auto adj = ((self ^ other) << 15) >> 15;
+                return avgr(self, other, A {}) - adj;
+            }
+            else
+            {
+                return avg(self, other, generic {});
+            }
+        }
+
         // bitwise_lshift
         template <class A, class T, class = typename std::enable_if<std::is_integral<T>::value, void>::type>
         inline batch<T, A> bitwise_lshift(batch<T, A> const& self, int32_t other, requires_arch<avx512bw>) noexcept
@@ -318,6 +356,18 @@ namespace xsimd
         inline batch_bool<T, A> neq(batch<T, A> const& self, batch<T, A> const& other, requires_arch<avx512bw>) noexcept
         {
             return detail::compare_int_avx512bw<A, T, _MM_CMPINT_NE>(self, other);
+        }
+
+        // rotate_right
+        template <size_t N, class A>
+        inline batch<uint16_t, A> rotate_right(batch<uint16_t, A> const& self, requires_arch<avx512bw>) noexcept
+        {
+            return _mm512_alignr_epi8(self, self, N);
+        }
+        template <size_t N, class A>
+        inline batch<int16_t, A> rotate_right(batch<int16_t, A> const& self, requires_arch<avx512bw>) noexcept
+        {
+            return bitwise_cast<int16_t>(rotate_right<N, A>(bitwise_cast<uint16_t>(self), avx2 {}));
         }
 
         // sadd
@@ -540,30 +590,54 @@ namespace xsimd
             }
         }
 
-        // swizzle
-
-        template <class A, uint16_t... Vs>
-        inline batch<uint16_t, A> swizzle(batch<uint16_t, A> const& self, batch_constant<batch<uint16_t, A>, Vs...> mask, requires_arch<avx512bw>) noexcept
+        // swizzle (dynamic version)
+        template <class A>
+        inline batch<uint16_t, A> swizzle(batch<uint16_t, A> const& self, batch<uint16_t, A> mask, requires_arch<avx512bw>) noexcept
         {
-            return _mm512_permutexvar_epi16((batch<uint16_t, A>)mask, self);
+            return _mm512_permutexvar_epi16(mask, self);
         }
 
-        template <class A, uint16_t... Vs>
-        inline batch<int16_t, A> swizzle(batch<int16_t, A> const& self, batch_constant<batch<uint16_t, A>, Vs...> mask, requires_arch<avx512bw>) noexcept
+        template <class A>
+        inline batch<int16_t, A> swizzle(batch<int16_t, A> const& self, batch<uint16_t, A> mask, requires_arch<avx512bw>) noexcept
         {
             return bitwise_cast<int16_t>(swizzle(bitwise_cast<uint16_t>(self), mask, avx512bw {}));
         }
 
-        template <class A, uint8_t... Vs>
-        inline batch<uint8_t, A> swizzle(batch<uint8_t, A> const& self, batch_constant<batch<uint8_t, A>, Vs...> mask, requires_arch<avx512bw>) noexcept
+        template <class A>
+        inline batch<uint8_t, A> swizzle(batch<uint8_t, A> const& self, batch<uint8_t, A> mask, requires_arch<avx512bw>) noexcept
         {
-            return _mm512_shuffle_epi8(self, (batch<uint8_t, A>)mask);
+            return _mm512_shuffle_epi8(self, mask);
+        }
+
+        template <class A>
+        inline batch<int8_t, A> swizzle(batch<int8_t, A> const& self, batch<uint8_t, A> mask, requires_arch<avx512bw>) noexcept
+        {
+            return bitwise_cast<int8_t>(swizzle(bitwise_cast<uint8_t>(self), mask, avx512bw {}));
+        }
+
+        // swizzle (static version)
+        template <class A, uint16_t... Vs>
+        inline batch<uint16_t, A> swizzle(batch<uint16_t, A> const& self, batch_constant<uint16_t, A, Vs...> mask, requires_arch<avx512bw>) noexcept
+        {
+            return swizzle(self, mask.as_batch(), avx512bw {});
+        }
+
+        template <class A, uint16_t... Vs>
+        inline batch<int16_t, A> swizzle(batch<int16_t, A> const& self, batch_constant<uint16_t, A, Vs...> mask, requires_arch<avx512bw>) noexcept
+        {
+            return swizzle(self, mask.as_batch(), avx512bw {});
         }
 
         template <class A, uint8_t... Vs>
-        inline batch<int8_t, A> swizzle(batch<int8_t, A> const& self, batch_constant<batch<uint8_t, A>, Vs...> mask, requires_arch<avx512bw>) noexcept
+        inline batch<uint8_t, A> swizzle(batch<uint8_t, A> const& self, batch_constant<uint8_t, A, Vs...> mask, requires_arch<avx512bw>) noexcept
         {
-            return bitwise_cast<int8_t>(swizzle(bitwise_cast<uint8_t>(self), mask, avx512bw {}));
+            return swizzle(self, mask.as_batch(), avx512bw {});
+        }
+
+        template <class A, uint8_t... Vs>
+        inline batch<int8_t, A> swizzle(batch<int8_t, A> const& self, batch_constant<uint8_t, A, Vs...> mask, requires_arch<avx512bw>) noexcept
+        {
+            return swizzle(self, mask.as_batch(), avx512bw {});
         }
 
         // zip_hi

@@ -4,11 +4,10 @@
 //! [sched.h](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/sched.h.html)
 use crate::{Errno, Result};
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(linux_android)]
 pub use self::sched_linux_like::*;
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
-#[cfg_attr(docsrs, doc(cfg(all())))]
+#[cfg(linux_android)]
 mod sched_linux_like {
     use crate::errno::Errno;
     use crate::unistd::Pid;
@@ -16,7 +15,7 @@ mod sched_linux_like {
     use libc::{self, c_int, c_void};
     use std::mem;
     use std::option::Option;
-    use std::os::unix::io::RawFd;
+    use std::os::unix::io::{AsFd, AsRawFd};
 
     // For some functions taking with a parameter of type CloneFlags,
     // only a subset of these flags have an effect.
@@ -95,7 +94,17 @@ mod sched_linux_like {
     /// address need not be the highest address of the region.  Nix will take
     /// care of that requirement.  The user only needs to provide a reference to
     /// a normally allocated buffer.
-    pub fn clone(
+    ///
+    /// # Safety
+    ///
+    /// Because `clone` creates a child process with its stack located in
+    /// `stack` without specifying the size of the stack, special care must be
+    /// taken to ensure that the child process does not overflow the provided
+    /// stack space.
+    ///
+    /// See [`fork`](crate::unistd::fork) for additional safety concerns related
+    /// to executing child processes.
+    pub unsafe fn clone(
         mut cb: CloneCb,
         stack: &mut [u8],
         flags: CloneFlags,
@@ -106,8 +115,8 @@ mod sched_linux_like {
             (*cb)() as c_int
         }
 
+        let combined = flags.bits() | signal.unwrap_or(0);
         let res = unsafe {
-            let combined = flags.bits() | signal.unwrap_or(0);
             let ptr = stack.as_mut_ptr().add(stack.len());
             let ptr_aligned = ptr.sub(ptr as usize % 16);
             libc::clone(
@@ -136,27 +145,17 @@ mod sched_linux_like {
     /// reassociate thread with a namespace
     ///
     /// See also [setns(2)](https://man7.org/linux/man-pages/man2/setns.2.html)
-    pub fn setns(fd: RawFd, nstype: CloneFlags) -> Result<()> {
-        let res = unsafe { libc::setns(fd, nstype.bits()) };
+    pub fn setns<Fd: AsFd>(fd: Fd, nstype: CloneFlags) -> Result<()> {
+        let res = unsafe { libc::setns(fd.as_fd().as_raw_fd(), nstype.bits()) };
 
         Errno::result(res).map(drop)
     }
 }
 
-#[cfg(any(
-    target_os = "android",
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "linux"
-))]
+#[cfg(any(linux_android, freebsdlike))]
 pub use self::sched_affinity::*;
 
-#[cfg(any(
-    target_os = "android",
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "linux"
-))]
+#[cfg(any(linux_android, freebsdlike))]
 mod sched_affinity {
     use crate::errno::Errno;
     use crate::unistd::Pid;

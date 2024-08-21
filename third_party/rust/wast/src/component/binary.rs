@@ -1,6 +1,6 @@
 use crate::component::*;
 use crate::core;
-use crate::token::{Id, Index, NameAnnotation};
+use crate::token::{Id, Index, NameAnnotation, Span};
 use wasm_encoder::{
     CanonicalFunctionSection, ComponentAliasSection, ComponentDefinedTypeEncoder,
     ComponentExportSection, ComponentImportSection, ComponentInstanceSection, ComponentNameSection,
@@ -43,6 +43,7 @@ fn encode_fields(
             ComponentField::Import(i) => e.encode_import(i),
             ComponentField::Export(ex) => e.encode_export(ex),
             ComponentField::Custom(c) => e.encode_custom(c),
+            ComponentField::Producers(c) => e.encode_producers(c),
         }
     }
 
@@ -90,6 +91,10 @@ fn encode_type(encoder: ComponentTypeEncoder, ty: &TypeDef) {
         TypeDef::Instance(i) => {
             encoder.instance(&i.into());
         }
+        TypeDef::Resource(i) => {
+            let dtor = i.dtor.as_ref().map(|i| i.idx.into());
+            encoder.resource(i.rep.into(), dtor);
+        }
     }
 }
 
@@ -120,7 +125,6 @@ fn encode_defined_type(encoder: ComponentDefinedTypeEncoder, ty: &ComponentDefin
         ComponentDefinedType::Enum(e) => {
             encoder.enum_type(e.names.iter().copied());
         }
-        ComponentDefinedType::Union(u) => encoder.union(u.types.iter()),
         ComponentDefinedType::Option(o) => {
             encoder.option(o.element.as_ref());
         }
@@ -130,6 +134,8 @@ fn encode_defined_type(encoder: ComponentDefinedTypeEncoder, ty: &ComponentDefin
                 e.err.as_deref().map(Into::into),
             );
         }
+        ComponentDefinedType::Own(i) => encoder.own((*i).into()),
+        ComponentDefinedType::Borrow(i) => encoder.borrow((*i).into()),
     }
 }
 
@@ -171,6 +177,18 @@ impl<'a> Encoder<'a> {
         // Flush any in-progress section before encoding the customs section
         self.flush(None);
         self.component.section(custom);
+    }
+
+    fn encode_producers(&mut self, custom: &core::Producers) {
+        use crate::encode::Encode;
+
+        let mut data = Vec::new();
+        custom.encode(&mut data);
+        self.encode_custom(&Custom {
+            name: "producers",
+            span: Span::from_offset(0),
+            data: vec![&data],
+        })
     }
 
     fn encode_core_module(&mut self, module: &CoreModule<'a>) {
@@ -256,7 +274,7 @@ impl<'a> Encoder<'a> {
             InstanceKind::BundleOfExports(exports) => {
                 self.instances.export_items(exports.iter().map(|e| {
                     let (kind, index) = (&e.kind).into();
-                    (e.name, kind, index)
+                    (e.name.0, kind, index)
                 }));
             }
         }
@@ -315,6 +333,18 @@ impl<'a> Encoder<'a> {
                 self.funcs
                     .lower(info.func.idx.into(), info.opts.iter().map(Into::into));
             }
+            CanonicalFuncKind::ResourceNew(info) => {
+                self.core_func_names.push(name);
+                self.funcs.resource_new(info.ty.into());
+            }
+            CanonicalFuncKind::ResourceDrop(info) => {
+                self.core_func_names.push(name);
+                self.funcs.resource_drop(info.ty.into());
+            }
+            CanonicalFuncKind::ResourceRep(info) => {
+                self.core_func_names.push(name);
+                self.funcs.resource_rep(info.ty.into());
+            }
         }
 
         self.flush(Some(self.funcs.id()));
@@ -323,11 +353,8 @@ impl<'a> Encoder<'a> {
     fn encode_import(&mut self, import: &ComponentImport<'a>) {
         let name = get_name(&import.item.id, &import.item.name);
         self.names_for_item_kind(&import.item.kind).push(name);
-        self.imports.import(
-            import.name,
-            import.url.unwrap_or(""),
-            (&import.item.kind).into(),
-        );
+        self.imports
+            .import(import.name.0, (&import.item.kind).into());
         self.flush(Some(self.imports.id()));
     }
 
@@ -335,8 +362,7 @@ impl<'a> Encoder<'a> {
         let name = get_name(&export.id, &export.debug_name);
         let (kind, index) = (&export.kind).into();
         self.exports.export(
-            export.name,
-            export.url.unwrap_or(""),
+            export.name.0,
             kind,
             index,
             export.ty.as_ref().map(|ty| (&ty.0.kind).into()),
@@ -571,8 +597,11 @@ impl From<core::HeapType<'_>> for wasm_encoder::HeapType {
         match r {
             core::HeapType::Func => Self::Func,
             core::HeapType::Extern => Self::Extern,
-            core::HeapType::Index(Index::Num(i, _)) => Self::TypedFunc(i),
-            core::HeapType::Index(_) => panic!("unresolved index"),
+            core::HeapType::Exn | core::HeapType::NoExn => {
+                todo!("encoding of exceptions proposal types not yet implemented")
+            }
+            core::HeapType::Concrete(Index::Num(i, _)) => Self::Concrete(i),
+            core::HeapType::Concrete(_) => panic!("unresolved index"),
             core::HeapType::Any
             | core::HeapType::Eq
             | core::HeapType::Struct
@@ -611,11 +640,23 @@ impl From<core::TableType<'_>> for wasm_encoder::TableType {
 
 impl From<core::MemoryType> for wasm_encoder::MemoryType {
     fn from(ty: core::MemoryType) -> Self {
-        let (minimum, maximum, memory64, shared) = match ty {
-            core::MemoryType::B32 { limits, shared } => {
-                (limits.min.into(), limits.max.map(Into::into), false, shared)
-            }
-            core::MemoryType::B64 { limits, shared } => (limits.min, limits.max, true, shared),
+        let (minimum, maximum, memory64, shared, page_size_log2) = match ty {
+            core::MemoryType::B32 {
+                limits,
+                shared,
+                page_size_log2,
+            } => (
+                limits.min.into(),
+                limits.max.map(Into::into),
+                false,
+                shared,
+                page_size_log2,
+            ),
+            core::MemoryType::B64 {
+                limits,
+                shared,
+                page_size_log2,
+            } => (limits.min, limits.max, true, shared, page_size_log2),
         };
 
         Self {
@@ -623,6 +664,7 @@ impl From<core::MemoryType> for wasm_encoder::MemoryType {
             maximum,
             memory64,
             shared,
+            page_size_log2,
         }
     }
 }
@@ -632,6 +674,7 @@ impl From<core::GlobalType<'_>> for wasm_encoder::GlobalType {
         Self {
             val_type: ty.ty.into(),
             mutable: ty.mutable,
+            shared: ty.shared,
         }
     }
 }
@@ -751,8 +794,8 @@ impl From<PrimitiveValType> for wasm_encoder::PrimitiveValType {
             PrimitiveValType::U32 => Self::U32,
             PrimitiveValType::S64 => Self::S64,
             PrimitiveValType::U64 => Self::U64,
-            PrimitiveValType::Float32 => Self::Float32,
-            PrimitiveValType::Float64 => Self::Float64,
+            PrimitiveValType::F32 => Self::F32,
+            PrimitiveValType::F64 => Self::F64,
             PrimitiveValType::Char => Self::Char,
             PrimitiveValType::String => Self::String,
         }
@@ -777,7 +820,10 @@ impl From<&ItemSigKind<'_>> for wasm_encoder::ComponentTypeRef {
             ItemSigKind::Value(v) => Self::Value((&v.0).into()),
             ItemSigKind::Func(f) => Self::Func(f.into()),
             ItemSigKind::Type(TypeBounds::Eq(t)) => {
-                Self::Type(wasm_encoder::TypeBounds::Eq, (*t).into())
+                Self::Type(wasm_encoder::TypeBounds::Eq((*t).into()))
+            }
+            ItemSigKind::Type(TypeBounds::SubResource) => {
+                Self::Type(wasm_encoder::TypeBounds::SubResource)
             }
         }
     }
@@ -799,10 +845,10 @@ impl From<&ComponentType<'_>> for wasm_encoder::ComponentType {
                     encoded.alias((&a.target).into());
                 }
                 ComponentTypeDecl::Import(i) => {
-                    encoded.import(i.name, i.url.unwrap_or(""), (&i.item.kind).into());
+                    encoded.import(i.name.0, (&i.item.kind).into());
                 }
                 ComponentTypeDecl::Export(e) => {
-                    encoded.export(e.name, e.url.unwrap_or(""), (&e.item.kind).into());
+                    encoded.export(e.name.0, (&e.item.kind).into());
                 }
             }
         }
@@ -827,7 +873,7 @@ impl From<&InstanceType<'_>> for wasm_encoder::InstanceType {
                     encoded.alias((&a.target).into());
                 }
                 InstanceTypeDecl::Export(e) => {
-                    encoded.export(e.name, e.url.unwrap_or(""), (&e.item.kind).into());
+                    encoded.export(e.name.0, (&e.item.kind).into());
                 }
             }
         }

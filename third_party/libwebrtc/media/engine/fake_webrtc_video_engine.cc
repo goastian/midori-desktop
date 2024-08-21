@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "absl/strings/match.h"
+#include "api/environment/environment.h"
 #include "media/base/codec.h"
 #include "media/base/media_constants.h"
 #include "media/engine/simulcast_encoder_adapter.h"
@@ -23,6 +24,8 @@
 namespace cricket {
 
 namespace {
+
+using ::webrtc::Environment;
 
 static constexpr webrtc::TimeDelta kEventTimeout =
     webrtc::TimeDelta::Seconds(10);
@@ -60,7 +63,6 @@ bool FakeWebRtcVideoDecoder::Configure(const Settings& settings) {
 }
 
 int32_t FakeWebRtcVideoDecoder::Decode(const webrtc::EncodedImage&,
-                                       bool,
                                        int64_t) {
   num_frames_received_++;
   return WEBRTC_VIDEO_CODEC_OK;
@@ -96,8 +98,8 @@ FakeWebRtcVideoDecoderFactory::GetSupportedFormats() const {
   return formats;
 }
 
-std::unique_ptr<webrtc::VideoDecoder>
-FakeWebRtcVideoDecoderFactory::CreateVideoDecoder(
+std::unique_ptr<webrtc::VideoDecoder> FakeWebRtcVideoDecoderFactory::Create(
+    const webrtc::Environment& env,
     const webrtc::SdpVideoFormat& format) {
   if (format.IsCodecInList(supported_codec_formats_)) {
     num_created_decoders_++;
@@ -119,7 +121,7 @@ void FakeWebRtcVideoDecoderFactory::DecoderDestroyed(
 void FakeWebRtcVideoDecoderFactory::AddSupportedVideoCodecType(
     const std::string& name) {
   // This is to match the default H264 params of cricket::VideoCodec.
-  cricket::VideoCodec video_codec(name);
+  cricket::VideoCodec video_codec = cricket::CreateVideoCodec(name);
   supported_codec_formats_.push_back(
       webrtc::SdpVideoFormat(video_codec.name, video_codec.params));
 }
@@ -202,8 +204,7 @@ int FakeWebRtcVideoEncoder::GetNumEncodedFrames() {
 
 // Video encoder factory.
 FakeWebRtcVideoEncoderFactory::FakeWebRtcVideoEncoderFactory()
-    : num_created_encoders_(0),
-      vp8_factory_mode_(false) {}
+    : num_created_encoders_(0), vp8_factory_mode_(false) {}
 
 std::vector<webrtc::SdpVideoFormat>
 FakeWebRtcVideoEncoderFactory::GetSupportedFormats() const {
@@ -234,8 +235,8 @@ FakeWebRtcVideoEncoderFactory::QueryCodecSupport(
   return {.is_supported = false};
 }
 
-std::unique_ptr<webrtc::VideoEncoder>
-FakeWebRtcVideoEncoderFactory::CreateVideoEncoder(
+std::unique_ptr<webrtc::VideoEncoder> FakeWebRtcVideoEncoderFactory::Create(
+    const Environment& env,
     const webrtc::SdpVideoFormat& format) {
   webrtc::MutexLock lock(&mutex_);
   std::unique_ptr<webrtc::VideoEncoder> encoder;
@@ -246,7 +247,8 @@ FakeWebRtcVideoEncoderFactory::CreateVideoEncoder(
       // encoders. Enter vp8_factory_mode so that we now create these encoders
       // instead of more adapters.
       vp8_factory_mode_ = true;
-      encoder = std::make_unique<webrtc::SimulcastEncoderAdapter>(this, format);
+      encoder = std::make_unique<webrtc::SimulcastEncoderAdapter>(
+          env, /*primary_factory=*/this, /*fallback_factory=*/nullptr, format);
     } else {
       num_created_encoders_++;
       created_video_encoder_event_.Set();
@@ -283,11 +285,13 @@ void FakeWebRtcVideoEncoderFactory::AddSupportedVideoCodec(
 }
 
 void FakeWebRtcVideoEncoderFactory::AddSupportedVideoCodecType(
-    const std::string& name) {
+    const std::string& name,
+    const std::vector<webrtc::ScalabilityMode>& scalability_modes) {
   // This is to match the default H264 params of cricket::VideoCodec.
-  cricket::VideoCodec video_codec(name);
-  formats_.push_back(
-      webrtc::SdpVideoFormat(video_codec.name, video_codec.params));
+  cricket::VideoCodec video_codec = cricket::CreateVideoCodec(name);
+  formats_.push_back(webrtc::SdpVideoFormat(
+      video_codec.name, video_codec.params,
+      {scalability_modes.begin(), scalability_modes.end()}));
 }
 
 int FakeWebRtcVideoEncoderFactory::GetNumCreatedEncoders() {

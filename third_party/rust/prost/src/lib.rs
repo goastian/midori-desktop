@@ -1,16 +1,17 @@
-#![doc(html_root_url = "https://docs.rs/prost/0.8.0")]
+#![doc(html_root_url = "https://docs.rs/prost/0.12.1")]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![doc = include_str!("../README.md")]
 
 // Re-export the alloc crate for use within derived code.
 #[doc(hidden)]
 pub extern crate alloc;
 
 // Re-export the bytes crate for use within derived code.
-#[doc(hidden)]
 pub use bytes;
 
 mod error;
 mod message;
+mod name;
 mod types;
 
 #[doc(hidden)]
@@ -18,6 +19,7 @@ pub mod encoding;
 
 pub use crate::error::{DecodeError, EncodeError};
 pub use crate::message::Message;
+pub use crate::name::Name;
 
 use bytes::{Buf, BufMut};
 

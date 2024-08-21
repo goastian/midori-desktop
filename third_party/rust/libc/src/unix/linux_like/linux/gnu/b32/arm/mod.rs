@@ -162,12 +162,6 @@ s! {
         pub ss_size: ::size_t
     }
 
-    pub struct seccomp_notif_sizes {
-        pub seccomp_notif: ::__u16,
-        pub seccomp_notif_resp: ::__u16,
-        pub seccomp_data: ::__u16,
-    }
-
     pub struct mcontext_t {
         pub trap_no: ::c_ulong,
         pub error_code: ::c_ulong,
@@ -190,6 +184,27 @@ s! {
         pub arm_pc: ::c_ulong,
         pub arm_cpsr: ::c_ulong,
         pub fault_address: ::c_ulong,
+    }
+
+    pub struct user_regs {
+        pub arm_r0: ::c_ulong,
+        pub arm_r1: ::c_ulong,
+        pub arm_r2: ::c_ulong,
+        pub arm_r3: ::c_ulong,
+        pub arm_r4: ::c_ulong,
+        pub arm_r5: ::c_ulong,
+        pub arm_r6: ::c_ulong,
+        pub arm_r7: ::c_ulong,
+        pub arm_r8: ::c_ulong,
+        pub arm_r9: ::c_ulong,
+        pub arm_r10: ::c_ulong,
+        pub arm_fp: ::c_ulong,
+        pub arm_ip: ::c_ulong,
+        pub arm_sp: ::c_ulong,
+        pub arm_lr: ::c_ulong,
+        pub arm_pc: ::c_ulong,
+        pub arm_cpsr: ::c_ulong,
+        pub arm_orig_r0: ::c_ulong,
     }
 }
 
@@ -320,6 +335,7 @@ pub const SOCK_DGRAM: ::c_int = 2;
 
 pub const MCL_CURRENT: ::c_int = 0x0001;
 pub const MCL_FUTURE: ::c_int = 0x0002;
+pub const MCL_ONFAULT: ::c_int = 0x0004;
 
 pub const POLLWRNORM: ::c_short = 0x100;
 pub const POLLWRBAND: ::c_short = 0x200;
@@ -443,11 +459,6 @@ pub const B2500000: ::speed_t = 0o010014;
 pub const B3000000: ::speed_t = 0o010015;
 pub const B3500000: ::speed_t = 0o010016;
 pub const B4000000: ::speed_t = 0o010017;
-
-pub const SECCOMP_SET_MODE_STRICT: ::c_uint = 0;
-pub const SECCOMP_SET_MODE_FILTER: ::c_uint = 1;
-pub const SECCOMP_GET_ACTION_AVAIL: ::c_uint = 2;
-pub const SECCOMP_GET_NOTIF_SIZES: ::c_uint = 3;
 
 pub const VEOL: usize = 11;
 pub const VEOL2: usize = 16;
@@ -816,6 +827,7 @@ pub const SYS_pkey_alloc: ::c_long = 395;
 pub const SYS_pkey_free: ::c_long = 396;
 pub const SYS_statx: ::c_long = 397;
 pub const SYS_rseq: ::c_long = 398;
+pub const SYS_kexec_file_load: ::c_long = 401;
 pub const SYS_pidfd_send_signal: ::c_long = 424;
 pub const SYS_io_uring_setup: ::c_long = 425;
 pub const SYS_io_uring_enter: ::c_long = 426;

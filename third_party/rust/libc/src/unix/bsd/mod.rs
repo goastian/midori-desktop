@@ -628,6 +628,7 @@ extern "C" {
     pub fn getifaddrs(ifap: *mut *mut ::ifaddrs) -> ::c_int;
     pub fn freeifaddrs(ifa: *mut ::ifaddrs);
     pub fn setgroups(ngroups: ::c_int, ptr: *const ::gid_t) -> ::c_int;
+    pub fn setlogin(name: *const ::c_char) -> ::c_int;
     pub fn ioctl(fd: ::c_int, request: ::c_ulong, ...) -> ::c_int;
     pub fn kqueue() -> ::c_int;
     pub fn unmount(target: *const ::c_char, arg: ::c_int) -> ::c_int;
@@ -760,6 +761,7 @@ extern "C" {
     )]
     #[cfg_attr(target_os = "netbsd", link_name = "__sigaltstack14")]
     pub fn sigaltstack(ss: *const stack_t, oss: *mut stack_t) -> ::c_int;
+    pub fn sigsuspend(mask: *const ::sigset_t) -> ::c_int;
     pub fn sem_close(sem: *mut sem_t) -> ::c_int;
     pub fn getdtablesize() -> ::c_int;
     pub fn getgrnam_r(
@@ -898,6 +900,20 @@ extern "C" {
         longopts: *const option,
         longindex: *mut ::c_int,
     ) -> ::c_int;
+
+    pub fn strftime(
+        buf: *mut ::c_char,
+        maxsize: ::size_t,
+        format: *const ::c_char,
+        timeptr: *const ::tm,
+    ) -> ::size_t;
+    pub fn strftime_l(
+        buf: *mut ::c_char,
+        maxsize: ::size_t,
+        format: *const ::c_char,
+        timeptr: *const ::tm,
+        locale: ::locale_t,
+    ) -> ::size_t;
 }
 
 cfg_if! {

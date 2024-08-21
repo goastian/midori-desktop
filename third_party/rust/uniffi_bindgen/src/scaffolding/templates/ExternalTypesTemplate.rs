@@ -1,48 +1,22 @@
 // Support for external types.
 
 // Types with an external `FfiConverter`...
-{% for (name, crate_name) in ci.iter_external_types() %}
-// `{{ name }}` is defined in `{{ crate_name }}`
-use {{ crate_name|crate_name_rs }}::FfiConverterType{{ name }};
-{% endfor %}
+{% for (name, crate_name, kind, tagged) in ci.iter_external_types() %}
+// The FfiConverter for `{{ name }}` is defined in `{{ crate_name }}`
+// If it has its existing FfiConverter defined with a UniFFITag, it needs forwarding.
+{% if tagged %}
+{%- match kind %}
+{%- when ExternalKind::DataClass %}
+::uniffi::ffi_converter_forward!(r#{{ name }}, ::{{ crate_name|crate_name_rs }}::UniFfiTag, crate::UniFfiTag);
+{%- when ExternalKind::Interface %}
+::uniffi::ffi_converter_arc_forward!(r#{{ name }}, ::{{ crate_name|crate_name_rs }}::UniFfiTag, crate::UniFfiTag);
+{%- when ExternalKind::Trait %}
+::uniffi::ffi_converter_arc_forward!(dyn r#{{ name }}, ::{{ crate_name|crate_name_rs }}::UniFfiTag, crate::UniFfiTag);
+{%- endmatch %}
+{% endif %}
+{%- endfor %}
 
-// For custom scaffolding types we need to generate an FfiConverterType based on the
-// UniffiCustomTypeConverter implementation that the library supplies
-{% for (name, builtin) in ci.iter_custom_types() %}
-{% if loop.first %}
-
-// A trait that's in our crate for our external wrapped types to implement.
-trait UniffiCustomTypeConverter {
-    type Builtin;
-
-    fn into_custom(val: Self::Builtin) -> uniffi::Result<Self> where Self: Sized;
-    fn from_custom(obj: Self) -> Self::Builtin;
-}
-
-{%- endif -%}
-
-// Type `{{ name }}` wraps a `{{ builtin.canonical_name() }}`
-#[doc(hidden)]
-pub struct FfiConverterType{{ name }};
-
-unsafe impl uniffi::FfiConverter for FfiConverterType{{ name }} {
-    type RustType = r#{{ name }};
-    type FfiType = {{ FfiType::from(builtin).borrow()|type_ffi }};
-
-    fn lower(obj: {{ name }} ) -> Self::FfiType {
-        <{{ builtin|type_rs }} as uniffi::FfiConverter>::lower(<{{ name }} as UniffiCustomTypeConverter>::from_custom(obj))
-    }
-
-    fn try_lift(v: Self::FfiType) -> uniffi::Result<{{ name }}> {
-        <r#{{ name }} as UniffiCustomTypeConverter>::into_custom(<{{ builtin|type_rs }} as uniffi::FfiConverter>::try_lift(v)?)
-    }
-
-    fn write(obj: {{ name }}, buf: &mut Vec<u8>) {
-        <{{ builtin|type_rs }} as uniffi::FfiConverter>::write(<{{ name }} as UniffiCustomTypeConverter>::from_custom(obj), buf);
-    }
-
-    fn try_read(buf: &mut &[u8]) -> uniffi::Result<r#{{ name }}> {
-        <{{ name }} as UniffiCustomTypeConverter>::into_custom(<{{ builtin|type_rs }} as uniffi::FfiConverter>::try_read(buf)?)
-    }
-}
+// We generate support for each Custom Type and the builtin type it uses.
+{%- for (name, builtin) in ci.iter_custom_types() %}
+::uniffi::custom_type!(r#{{ name }}, {{builtin|type_rs}});
 {%- endfor -%}

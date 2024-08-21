@@ -7,6 +7,9 @@ with Files('moz.build'):
 with Files('aom/**'):
     BUG_COMPONENT = ('Core', 'Audio/Video: Playback')
 
+with Files('content_analysis_sdk/**'):
+    BUG_COMPONENT = ('Firefox', 'Data Loss Prevention')
+
 with Files('cups/**'):
     BUG_COMPONENT = ('Core', 'Printing: Setup')
 
@@ -49,6 +52,9 @@ with Files('xsimd/**'):
 with Files('msgpack/**'):
     BUG_COMPONENT = ('Firefox Build System', 'General')
 
+with Files('simde/**'):
+    BUG_COMPONENT = ('Firefox Build System', 'General')
+
 with Files('sipcc/**'):
     BUG_COMPONENT = ('Core', 'WebRTC: Signaling')
 
@@ -56,7 +62,7 @@ with Files('sqlite3/**'):
     BUG_COMPONENT = ('Toolkit', 'Storage')
 
 with Files('rlbox/**'):
-    BUG_COMPONENT = ('Firefox Build System', 'General')
+    BUG_COMPONENT = ('Core', 'Security: RLBox')
 
 with Files("libwebrtc/**"):
     BUG_COMPONENT = ("Core", "WebRTC")
@@ -77,14 +83,13 @@ with Files('picosha2/**'):
     BUG_COMPONENT = ('Firefox Build System', 'General')
 
 with Files('rlbox_wasm2c_sandbox/**'):
-    BUG_COMPONENT = ('Firefox Build System', 'General')
+    BUG_COMPONENT = ('Core', 'Security: RLBox')
 
 with Files('wasm2c/**'):
-    BUG_COMPONENT = ('Firefox Build System', 'General')
-
-with Files('WinToast/**'):
-    BUG_COMPONENT = ('Toolkit', 'General')
+    BUG_COMPONENT = ('Core', 'Security: RLBox')
 
 with Files('libsrtp/**'):
     BUG_COMPONENT = ('Core', 'WebRTC: Networking')
 
+with Files("perfetto/**"):
+    BUG_COMPONENT = ("Core", "Performance")

@@ -44,6 +44,7 @@ static const int kMaxLogLineSize = 1024 - 60;
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "api/units/timestamp.h"
+#include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/platform_thread_types.h"
 #include "rtc_base/string_encode.h"
@@ -56,11 +57,20 @@ static const int kMaxLogLineSize = 1024 - 60;
 namespace rtc {
 
 bool LogMessage::aec_debug_ = false;
-uint32_t LogMessage::aec_debug_size_ = 4*1024*1024;
 std::string LogMessage::aec_filename_base_;
+
+void LogMessage::set_aec_debug(bool enable) {
+  aec_debug_ = enable;
+  webrtc::ApmDataDumper::SetActivated(aec_debug_);
+}
 
 std::string LogMessage::aec_debug_filename() {
   return aec_filename_base_;
+}
+
+void LogMessage::set_aec_debug_filename(const char* filename) {
+  aec_filename_base_ = filename;
+  webrtc::ApmDataDumper::SetOutputDirectory(aec_filename_base_);
 }
 
 namespace {
@@ -372,19 +382,14 @@ void LogMessage::OutputToDebug(const LogLineRef& log_line) {
   // On the Mac, all stderr output goes to the Console log and causes clutter.
   // So in opt builds, don't log to stderr unless the user specifically sets
   // a preference to do so.
-  CFStringRef key = CFStringCreateWithCString(
-      kCFAllocatorDefault, "logToStdErr", kCFStringEncodingUTF8);
   CFStringRef domain = CFBundleGetIdentifier(CFBundleGetMainBundle());
-  if (key != nullptr && domain != nullptr) {
+  if (domain != nullptr) {
     Boolean exists_and_is_valid;
-    Boolean should_log =
-        CFPreferencesGetAppBooleanValue(key, domain, &exists_and_is_valid);
+    Boolean should_log = CFPreferencesGetAppBooleanValue(
+        CFSTR("logToStdErr"), domain, &exists_and_is_valid);
     // If the key doesn't exist or is invalid or is false, we will not log to
     // stderr.
     log_to_stderr = exists_and_is_valid && should_log;
-  }
-  if (key != nullptr) {
-    CFRelease(key);
   }
 #endif  // defined(WEBRTC_MAC) && !defined(WEBRTC_IOS) && defined(NDEBUG)
 

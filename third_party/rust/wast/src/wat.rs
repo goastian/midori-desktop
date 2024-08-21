@@ -32,6 +32,14 @@ impl Wat<'_> {
             Wat::Component(c) => c.encode(),
         }
     }
+
+    /// Returns the defining span of this file.
+    pub fn span(&self) -> Span {
+        match self {
+            Wat::Module(m) => m.span,
+            Wat::Component(c) => c.span,
+        }
+    }
 }
 
 impl<'a> Parse<'a> for Wat<'a> {
@@ -41,9 +49,12 @@ impl<'a> Parse<'a> for Wat<'a> {
         }
 
         let _r = parser.register_annotation("custom");
-        let wat = if parser.peek2::<kw::module>() {
+        let _r = parser.register_annotation("producers");
+        let _r = parser.register_annotation("name");
+        let _r = parser.register_annotation("metadata.code.branch_hint");
+        let wat = if parser.peek2::<kw::module>()? {
             Wat::Module(parser.parens(|parser| parser.parse())?)
-        } else if parser.peek2::<kw::component>() {
+        } else if parser.peek2::<kw::component>()? {
             Wat::Component(parser.parens(|parser| parser.parse())?)
         } else {
             let fields = ModuleField::parse_remaining(parser)?;

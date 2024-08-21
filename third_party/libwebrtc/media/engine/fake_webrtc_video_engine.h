@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "api/environment/environment.h"
 #include "api/fec_controller_override.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_bitrate_allocation.h"
@@ -45,7 +46,7 @@ class FakeWebRtcVideoDecoder : public webrtc::VideoDecoder {
   ~FakeWebRtcVideoDecoder();
 
   bool Configure(const Settings& settings) override;
-  int32_t Decode(const webrtc::EncodedImage&, bool, int64_t) override;
+  int32_t Decode(const webrtc::EncodedImage&, int64_t) override;
   int32_t RegisterDecodeCompleteCallback(
       webrtc::DecodedImageCallback*) override;
   int32_t Release() override;
@@ -63,7 +64,8 @@ class FakeWebRtcVideoDecoderFactory : public webrtc::VideoDecoderFactory {
   FakeWebRtcVideoDecoderFactory();
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
-  std::unique_ptr<webrtc::VideoDecoder> CreateVideoDecoder(
+  std::unique_ptr<webrtc::VideoDecoder> Create(
+      const webrtc::Environment& env,
       const webrtc::SdpVideoFormat& format) override;
 
   void DecoderDestroyed(FakeWebRtcVideoDecoder* decoder);
@@ -117,14 +119,17 @@ class FakeWebRtcVideoEncoderFactory : public webrtc::VideoEncoderFactory {
   webrtc::VideoEncoderFactory::CodecSupport QueryCodecSupport(
       const webrtc::SdpVideoFormat& format,
       absl::optional<std::string> scalability_mode) const override;
-  std::unique_ptr<webrtc::VideoEncoder> CreateVideoEncoder(
+  std::unique_ptr<webrtc::VideoEncoder> Create(
+      const webrtc::Environment& env,
       const webrtc::SdpVideoFormat& format) override;
 
   bool WaitForCreatedVideoEncoders(int num_encoders);
   void EncoderDestroyed(FakeWebRtcVideoEncoder* encoder);
   void set_encoders_have_internal_sources(bool internal_source);
   void AddSupportedVideoCodec(const webrtc::SdpVideoFormat& format);
-  void AddSupportedVideoCodecType(const std::string& name);
+  void AddSupportedVideoCodecType(
+      const std::string& name,
+      const std::vector<webrtc::ScalabilityMode>& scalability_modes = {});
   int GetNumCreatedEncoders();
   const std::vector<FakeWebRtcVideoEncoder*> encoders();
 

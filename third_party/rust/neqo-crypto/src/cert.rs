@@ -4,23 +4,24 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::err::secstatus_to_res;
-use crate::p11::{CERTCertListNode, CERT_GetCertificateDer, CertList, Item, SECItem, SECItemArray};
-use crate::ssl::{
-    PRFileDesc, SSL_PeerCertificateChain, SSL_PeerSignedCertTimestamps,
-    SSL_PeerStapledOCSPResponses,
-};
-use neqo_common::qerror;
-
-use std::convert::TryFrom;
 use std::ptr::{addr_of, NonNull};
 
-use std::slice;
+use neqo_common::qerror;
+
+use crate::{
+    err::secstatus_to_res,
+    null_safe_slice,
+    p11::{CERTCertListNode, CERT_GetCertificateDer, CertList, Item, SECItem, SECItemArray},
+    ssl::{
+        PRFileDesc, SSL_PeerCertificateChain, SSL_PeerSignedCertTimestamps,
+        SSL_PeerStapledOCSPResponses,
+    },
+};
 
 pub struct CertificateInfo {
     certs: CertList,
     cursor: *const CERTCertListNode,
-    /// stapled_ocsp_responses and signed_cert_timestamp are properties
+    /// `stapled_ocsp_responses` and `signed_cert_timestamp` are properties
     /// associated with each of the certificates. Right now, NSS only
     /// reports the value for the end-entity certificate (the first).
     stapled_ocsp_responses: Option<Vec<Vec<u8>>>,
@@ -42,15 +43,13 @@ fn stapled_ocsp_responses(fd: *mut PRFileDesc) -> Option<Vec<Vec<u8>>> {
     match NonNull::new(ocsp_nss as *mut SECItemArray) {
         Some(ocsp_ptr) => {
             let mut ocsp_helper: Vec<Vec<u8>> = Vec::new();
-            let len = if let Ok(l) = isize::try_from(unsafe { ocsp_ptr.as_ref().len }) {
-                l
-            } else {
-                qerror!([format!("{:p}", fd)], "Received illegal OSCP length");
+            let Ok(len) = isize::try_from(unsafe { ocsp_ptr.as_ref().len }) else {
+                qerror!([format!("{fd:p}")], "Received illegal OSCP length");
                 return None;
             };
             for idx in 0..len {
                 let itemp: *const SECItem = unsafe { ocsp_ptr.as_ref().items.offset(idx).cast() };
-                let item = unsafe { slice::from_raw_parts((*itemp).data, (*itemp).len as usize) };
+                let item = unsafe { null_safe_slice((*itemp).data, (*itemp).len) };
                 ocsp_helper.push(item.to_owned());
             }
             Some(ocsp_helper)
@@ -66,9 +65,8 @@ fn signed_cert_timestamp(fd: *mut PRFileDesc) -> Option<Vec<u8>> {
             if unsafe { sct_ptr.as_ref().len == 0 || sct_ptr.as_ref().data.is_null() } {
                 Some(Vec::new())
             } else {
-                let sct_slice = unsafe {
-                    slice::from_raw_parts(sct_ptr.as_ref().data, sct_ptr.as_ref().len as usize)
-                };
+                let sct_slice =
+                    unsafe { null_safe_slice(sct_ptr.as_ref().data, sct_ptr.as_ref().len) };
                 Some(sct_slice.to_owned())
             }
         }
@@ -103,7 +101,7 @@ impl<'a> Iterator for &'a mut CertificateInfo {
         let cert = unsafe { *self.cursor }.cert;
         secstatus_to_res(unsafe { CERT_GetCertificateDer(cert, &mut item) })
             .expect("getting DER from certificate should work");
-        Some(unsafe { std::slice::from_raw_parts(item.data, item.len as usize) })
+        Some(unsafe { null_safe_slice(item.data, item.len) })
     }
 }
 

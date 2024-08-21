@@ -1,6 +1,6 @@
 use super::utils::{
-    test_audiounit_get_buffer_frame_size, test_get_default_audiounit, test_get_default_device,
-    test_ops_context_operation, PropertyScope, Scope,
+    noop_data_callback, test_audiounit_get_buffer_frame_size, test_get_default_audiounit,
+    test_get_default_device, test_ops_context_operation, PropertyScope, Scope,
 };
 use super::*;
 use std::thread;
@@ -232,7 +232,7 @@ fn create_streams_by_ops_in_parallel_with_different_latency<F>(
                                         ptr::null_mut()
                                     },
                                     latency_frames,
-                                    None,            // No data callback.
+                                    Some(noop_data_callback),
                                     None,            // No state callback.
                                     ptr::null_mut(), // No user data pointer.
                                 )
@@ -416,9 +416,9 @@ fn create_streams_in_parallel_with_different_latency<F>(
         return;
     }
 
-    let context = AudioUnitContext::new();
+    let mut context = AudioUnitContext::new();
 
-    let context_ptr_value = &context as *const AudioUnitContext as usize;
+    let context_ptr_value = &mut context as *mut AudioUnitContext as usize;
 
     let mut join_handles = vec![];
     for i in 0..amount {
@@ -468,7 +468,7 @@ fn create_streams_in_parallel_with_different_latency<F>(
                                 None
                             },
                             latency_frames,
-                            None,            // No data callback.
+                            Some(noop_data_callback),
                             None,            // No state callback.
                             ptr::null_mut(), // No user data pointer.
                         )
@@ -537,14 +537,16 @@ fn test_set_buffer_frame_size_in_parallel_in_scope(scope: Scope) {
         units.push(test_get_default_audiounit(scope.clone()).unwrap());
         let unit_value = units.last().unwrap().get_inner() as usize;
         join_handles.push(thread::spawn(move || {
-            let status = audio_unit_set_property(
-                unit_value as AudioUnit,
-                kAudioDevicePropertyBufferFrameSize,
-                unit_scope,
-                unit_element,
-                &latency_frames,
-                mem::size_of::<u32>(),
-            );
+            let status = run_serially(|| {
+                audio_unit_set_property(
+                    unit_value as AudioUnit,
+                    kAudioDevicePropertyBufferFrameSize,
+                    unit_scope,
+                    unit_element,
+                    &latency_frames,
+                    mem::size_of::<u32>(),
+                )
+            });
             (latency_frames, status)
         }));
     }

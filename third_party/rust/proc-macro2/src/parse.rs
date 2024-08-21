@@ -1,5 +1,5 @@
 use crate::fallback::{
-    is_ident_continue, is_ident_start, Group, LexError, Literal, Span, TokenStream,
+    self, is_ident_continue, is_ident_start, Group, LexError, Literal, Span, TokenStream,
     TokenStreamBuilder,
 };
 use crate::{Delimiter, Punct, Spacing, TokenTree};
@@ -161,6 +161,10 @@ fn word_break(input: Cursor) -> Result<Cursor, Reject> {
     }
 }
 
+// Rustc's representation of a macro expansion error in expression position or
+// type position.
+const ERROR: &str = "(/*ERROR*/)";
+
 pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
     let mut trees = TokenStreamBuilder::new();
     let mut stack = Vec::new();
@@ -192,7 +196,7 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
         };
 
         if let Some(open_delimiter) = match first {
-            b'(' => Some(Delimiter::Parenthesis),
+            b'(' if !input.starts_with(ERROR) => Some(Delimiter::Parenthesis),
             b'[' => Some(Delimiter::Bracket),
             b'{' => Some(Delimiter::Brace),
             _ => None,
@@ -267,6 +271,10 @@ fn leaf_token(input: Cursor) -> PResult<TokenTree> {
         Ok((input, TokenTree::Punct(p)))
     } else if let Ok((input, i)) = ident(input) {
         Ok((input, TokenTree::Ident(i)))
+    } else if input.starts_with(ERROR) {
+        let rest = input.advance(ERROR.len());
+        let repr = crate::Literal::_new_fallback(Literal::_new(ERROR.to_owned()));
+        Ok((rest, TokenTree::Literal(repr)))
     } else {
         Err(Reject)
     }
@@ -292,7 +300,10 @@ fn ident_any(input: Cursor) -> PResult<crate::Ident> {
     let (rest, sym) = ident_not_raw(rest)?;
 
     if !raw {
-        let ident = crate::Ident::new(sym, crate::Span::call_site());
+        let ident = crate::Ident::_new(crate::imp::Ident::new_unchecked(
+            sym,
+            fallback::Span::call_site(),
+        ));
         return Ok((rest, ident));
     }
 
@@ -301,7 +312,10 @@ fn ident_any(input: Cursor) -> PResult<crate::Ident> {
         _ => {}
     }
 
-    let ident = crate::Ident::_new_raw(sym, crate::Span::call_site());
+    let ident = crate::Ident::_new(crate::imp::Ident::new_raw_unchecked(
+        sym,
+        fallback::Span::call_site(),
+    ));
     Ok((rest, ident))
 }
 
@@ -900,12 +914,13 @@ fn doc_comment<'a>(input: Cursor<'a>, trees: &mut TokenStreamBuilder) -> PResult
     #[cfg(span_locations)]
     let lo = input.off;
     let (rest, (comment, inner)) = doc_comment_contents(input)?;
-    let span = crate::Span::_new_fallback(Span {
+    let fallback_span = Span {
         #[cfg(span_locations)]
         lo,
         #[cfg(span_locations)]
         hi: rest.off,
-    });
+    };
+    let span = crate::Span::_new_fallback(fallback_span);
 
     let mut scan_for_bare_cr = comment;
     while let Some(cr) = scan_for_bare_cr.find('\r') {
@@ -926,7 +941,7 @@ fn doc_comment<'a>(input: Cursor<'a>, trees: &mut TokenStreamBuilder) -> PResult
         trees.push_token_from_parser(TokenTree::Punct(bang));
     }
 
-    let doc_ident = crate::Ident::new("doc", span);
+    let doc_ident = crate::Ident::_new(crate::imp::Ident::new_unchecked("doc", fallback_span));
     let mut equal = Punct::new('=', Spacing::Alone);
     equal.set_span(span);
     let mut literal = crate::Literal::string(comment);

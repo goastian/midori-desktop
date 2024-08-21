@@ -25,7 +25,7 @@ namespace xsimd
     namespace detail
     {
         /**
-         * @ingroup arch
+         * @ingroup architectures
          *
          * SVE instructions (fixed vector size) for arm64
          */
@@ -36,7 +36,6 @@ namespace xsimd
             static constexpr bool available() noexcept { return true; }
             static constexpr bool requires_alignment() noexcept { return true; }
             static constexpr std::size_t alignment() noexcept { return 16; }
-            static constexpr unsigned version() noexcept { return generic::version(9, 0, 0); }
             static constexpr char const* name() noexcept { return "arm64+sve"; }
         };
     }
@@ -149,6 +148,8 @@ namespace xsimd
             using type = detail::sve_bool_simd_register;
         };
     } // namespace types
+#else
+    using sve = detail::sve<0xFFFFFFFF>;
 #endif
 } // namespace xsimd
 

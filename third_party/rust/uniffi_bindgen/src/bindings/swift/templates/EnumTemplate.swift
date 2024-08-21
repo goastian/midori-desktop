@@ -1,11 +1,26 @@
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-{%- let e = ci.get_enum_definition(name).unwrap() %}
+{%- call swift::docstring(e, 0) %}
+{% match e.variant_discr_type() %}
+{% when None %}
 public enum {{ type_name }} {
     {% for variant in e.variants() %}
-    case {{ variant.name()|enum_variant_swift }}{% if variant.fields().len() > 0 %}({% call swift::field_list_decl(variant) %}){% endif -%}
+    {%- call swift::docstring(variant, 4) %}
+    case {{ variant.name()|enum_variant_swift_quoted }}{% if variant.fields().len() > 0 %}(
+        {%- call swift::field_list_decl(variant, variant.has_nameless_fields()) %}
+    ){% endif -%}
     {% endfor %}
 }
+{% when Some with (variant_discr_type) %}
+public enum {{ type_name }} : {{ variant_discr_type|type_name }} {
+    {% for variant in e.variants() %}
+    {%- call swift::docstring(variant, 4) %}
+    case {{ variant.name()|enum_variant_swift_quoted }} = {{ e|variant_discr_literal(loop.index0) }}{% if variant.fields().len() > 0 %}(
+        {%- call swift::field_list_decl(variant, variant.has_nameless_fields()) %}
+    ){% endif -%}
+    {% endfor %}
+}
+{% endmatch %}
 
 public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
     typealias SwiftType = {{ type_name }}
@@ -14,9 +29,13 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         {% for variant in e.variants() %}
-        case {{ loop.index }}: return .{{ variant.name()|enum_variant_swift }}{% if variant.has_fields() %}(
+        case {{ loop.index }}: return .{{ variant.name()|enum_variant_swift_quoted }}{% if variant.has_fields() %}(
             {%- for field in variant.fields() %}
-            {{ field.name()|var_name }}: try {{ field|read_fn }}(from: &buf)
+            {%- if variant.has_nameless_fields() -%}
+            try {{ field|read_fn }}(from: &buf)
+            {%- else -%}
+            {{ field.name()|arg_name }}: try {{ field|read_fn }}(from: &buf)
+            {%- endif -%}
             {%- if !loop.last %}, {% endif %}
             {%- endfor %}
         ){%- endif %}
@@ -29,13 +48,13 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
         switch value {
         {% for variant in e.variants() %}
         {% if variant.has_fields() %}
-        case let .{{ variant.name()|enum_variant_swift }}({% for field in variant.fields() %}{{ field.name()|var_name }}{%- if loop.last -%}{%- else -%},{%- endif -%}{% endfor %}):
+        case let .{{ variant.name()|enum_variant_swift_quoted }}({% for field in variant.fields() %}{%- call swift::field_name(field, loop.index) -%}{%- if loop.last -%}{%- else -%},{%- endif -%}{% endfor %}):
             writeInt(&buf, Int32({{ loop.index }}))
             {% for field in variant.fields() -%}
-            {{ field|write_fn }}({{ field.name()|var_name }}, into: &buf)
+            {{ field|write_fn }}({% call swift::field_name(field, loop.index) %}, into: &buf)
             {% endfor -%}
         {% else %}
-        case .{{ variant.name()|enum_variant_swift }}:
+        case .{{ variant.name()|enum_variant_swift_quoted }}:
             writeInt(&buf, Int32({{ loop.index }}))
         {% endif %}
         {%- endfor %}
@@ -56,5 +75,6 @@ public func {{ ffi_converter_name }}_lower(_ value: {{ type_name }}) -> RustBuff
 }
 
 {% if !contains_object_references %}
+{% if config.experimental_sendable_value_types() %}extension {{ type_name }}: Sendable {} {% endif %}
 extension {{ type_name }}: Equatable, Hashable {}
 {% endif %}

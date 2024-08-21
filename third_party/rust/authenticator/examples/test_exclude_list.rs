@@ -3,15 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use authenticator::{
-    authenticatorservice::{AuthenticatorService, GetAssertionExtensions, RegisterArgs, SignArgs},
+    authenticatorservice::{AuthenticatorService, RegisterArgs, SignArgs},
+    crypto::COSEAlgorithm,
     ctap2::commands::StatusCode,
     ctap2::server::{
-        PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, RelyingParty,
-        ResidentKeyRequirement, Transport, User, UserVerificationRequirement,
+        PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
+        PublicKeyCredentialUserEntity, RelyingParty, ResidentKeyRequirement, Transport,
+        UserVerificationRequirement,
     },
     errors::{AuthenticatorError, CommandError, HIDError, UnsupportedOption},
     statecallback::StateCallback,
-    COSEAlgorithm, Pin, RegisterResult, SignResult, StatusPinUv, StatusUpdate,
+    Pin, StatusPinUv, StatusUpdate,
 };
 
 use getopts::Options;
@@ -80,20 +82,8 @@ fn main() {
             Ok(StatusUpdate::InteractiveManagement(..)) => {
                 panic!("STATUS: This can't happen when doing non-interactive usage");
             }
-            Ok(StatusUpdate::DeviceAvailable { dev_info }) => {
-                println!("STATUS: device available: {dev_info}")
-            }
-            Ok(StatusUpdate::DeviceUnavailable { dev_info }) => {
-                println!("STATUS: device unavailable: {dev_info}")
-            }
-            Ok(StatusUpdate::Success { dev_info }) => {
-                println!("STATUS: success using device: {dev_info}");
-            }
             Ok(StatusUpdate::SelectDeviceNotice) => {
                 println!("STATUS: Please select a device by touching one of them.");
-            }
-            Ok(StatusUpdate::DeviceSelected(dev_info)) => {
-                println!("STATUS: Continuing with device: {dev_info}");
             }
             Ok(StatusUpdate::PresenceRequired) => {
                 println!("STATUS: waiting for user presence");
@@ -138,6 +128,9 @@ fn main() {
             Ok(StatusUpdate::PinUvError(e)) => {
                 panic!("Unexpected error: {:?}", e)
             }
+            Ok(StatusUpdate::SelectResultNotice(_, _)) => {
+                panic!("Unexpected select device notice")
+            }
             Err(RecvError) => {
                 println!("STATUS: end");
                 return;
@@ -145,9 +138,8 @@ fn main() {
         }
     });
 
-    let user = User {
+    let user = PublicKeyCredentialUserEntity {
         id: "user_id".as_bytes().to_vec(),
-        icon: None,
         name: Some("A. User".to_string()),
         display_name: None,
     };
@@ -157,7 +149,6 @@ fn main() {
         relying_party: RelyingParty {
             id: "example.com".to_string(),
             name: None,
-            icon: None,
         },
         origin: origin.clone(),
         user,
@@ -193,11 +184,16 @@ fn main() {
             .recv()
             .expect("Problem receiving, unable to continue");
         match register_result {
-            Ok(RegisterResult::CTAP1(_, _)) => panic!("Requested CTAP2, but got CTAP1 results!"),
-            Ok(RegisterResult::CTAP2(a)) => {
+            Ok(a) => {
                 println!("Ok!");
                 println!("Registering again with the key_handle we just got back. This should result in a 'already registered' error.");
-                let key_handle = a.auth_data.credential_data.unwrap().credential_id.clone();
+                let key_handle = a
+                    .att_obj
+                    .auth_data
+                    .credential_data
+                    .unwrap()
+                    .credential_id
+                    .clone();
                 let pub_key = PublicKeyCredentialDescriptor {
                     id: key_handle,
                     transports: vec![Transport::USB],
@@ -234,9 +230,8 @@ fn main() {
         origin,
         relying_party_id: "example.com".to_string(),
         allow_list: vec![],
-        extensions: GetAssertionExtensions::default(),
+        extensions: Default::default(),
         pin: None,
-        alternate_rp_id: None,
         use_ctap1_fallback: false,
         user_verification_req: UserVerificationRequirement::Preferred,
         user_presence_req: true,
@@ -257,8 +252,7 @@ fn main() {
             .recv()
             .expect("Problem receiving, unable to continue");
         match sign_result {
-            Ok(SignResult::CTAP1(..)) => panic!("Requested CTAP2, but got CTAP1 results!"),
-            Ok(SignResult::CTAP2(..)) => {
+            Ok(_) => {
                 if !no_cred_errors_done {
                     panic!("Should have errored out with NoCredentials, but it succeeded.");
                 }

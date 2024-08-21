@@ -1,4 +1,4 @@
-use crate::{encode_section, Encode, HeapType, Section, SectionId, ValType};
+use crate::{encode_section, Encode, HeapType, RefType, Section, SectionId, ValType};
 use std::borrow::Cow;
 
 /// An encoder for the code section.
@@ -274,6 +274,34 @@ impl Encode for MemArg {
     }
 }
 
+/// The memory ordering for atomic instructions.
+///
+/// For an in-depth explanation of memory orderings, see the C++ documentation
+/// for [`memory_order`] or the Rust documentation for [`atomic::Ordering`].
+///
+/// [`memory_order`]: https://en.cppreference.com/w/cpp/atomic/memory_order
+/// [`atomic::Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
+#[derive(Clone, Copy, Debug)]
+pub enum Ordering {
+    /// For a load, it acquires; this orders all operations before the last
+    /// "releasing" store. For a store, it releases; this orders all operations
+    /// before it at the next "acquiring" load.
+    AcqRel,
+    /// Like `AcqRel` but all threads see all sequentially consistent operations
+    /// in the same order.
+    SeqCst,
+}
+
+impl Encode for Ordering {
+    fn encode(&self, sink: &mut Vec<u8>) {
+        let flag: u8 = match self {
+            Ordering::SeqCst => 0,
+            Ordering::AcqRel => 1,
+        };
+        sink.push(flag);
+    }
+}
+
 /// Describe an unchecked SIMD lane index.
 pub type Lane = u8;
 
@@ -310,10 +338,6 @@ pub enum Instruction<'a> {
     Loop(BlockType),
     If(BlockType),
     Else,
-    Try(BlockType),
-    Delegate(u32),
-    Catch(u32),
-    CatchAll,
     End,
     Br(u32),
     BrIf(u32),
@@ -322,12 +346,26 @@ pub enum Instruction<'a> {
     BrOnNonNull(u32),
     Return,
     Call(u32),
-    CallRef(HeapType),
-    CallIndirect { ty: u32, table: u32 },
-    ReturnCallRef(HeapType),
+    CallRef(u32),
+    CallIndirect {
+        ty: u32,
+        table: u32,
+    },
+    ReturnCallRef(u32),
     ReturnCall(u32),
-    ReturnCallIndirect { ty: u32, table: u32 },
+    ReturnCallIndirect {
+        ty: u32,
+        table: u32,
+    },
+    TryTable(BlockType, Cow<'a, [Catch]>),
     Throw(u32),
+    ThrowRef,
+
+    // Deprecated exception-handling instructions
+    Try(BlockType),
+    Delegate(u32),
+    Catch(u32),
+    CatchAll,
     Rethrow(u32),
 
     // Parametric instructions.
@@ -367,9 +405,15 @@ pub enum Instruction<'a> {
     I64Store32(MemArg),
     MemorySize(u32),
     MemoryGrow(u32),
-    MemoryInit { mem: u32, data_index: u32 },
+    MemoryInit {
+        mem: u32,
+        data_index: u32,
+    },
     DataDrop(u32),
-    MemoryCopy { src_mem: u32, dst_mem: u32 },
+    MemoryCopy {
+        src_mem: u32,
+        dst_mem: u32,
+    },
     MemoryFill(u32),
     MemoryDiscard(u32),
 
@@ -520,17 +564,97 @@ pub enum Instruction<'a> {
     RefNull(HeapType),
     RefIsNull,
     RefFunc(u32),
+    RefEq,
     RefAsNonNull,
 
+    // GC types instructions.
+    StructNew(u32),
+    StructNewDefault(u32),
+    StructGet {
+        struct_type_index: u32,
+        field_index: u32,
+    },
+    StructGetS {
+        struct_type_index: u32,
+        field_index: u32,
+    },
+    StructGetU {
+        struct_type_index: u32,
+        field_index: u32,
+    },
+    StructSet {
+        struct_type_index: u32,
+        field_index: u32,
+    },
+
+    ArrayNew(u32),
+    ArrayNewDefault(u32),
+    ArrayNewFixed {
+        array_type_index: u32,
+        array_size: u32,
+    },
+    ArrayNewData {
+        array_type_index: u32,
+        array_data_index: u32,
+    },
+    ArrayNewElem {
+        array_type_index: u32,
+        array_elem_index: u32,
+    },
+    ArrayGet(u32),
+    ArrayGetS(u32),
+    ArrayGetU(u32),
+    ArraySet(u32),
+    ArrayLen,
+    ArrayFill(u32),
+    ArrayCopy {
+        array_type_index_dst: u32,
+        array_type_index_src: u32,
+    },
+    ArrayInitData {
+        array_type_index: u32,
+        array_data_index: u32,
+    },
+    ArrayInitElem {
+        array_type_index: u32,
+        array_elem_index: u32,
+    },
+    RefTestNonNull(HeapType),
+    RefTestNullable(HeapType),
+    RefCastNonNull(HeapType),
+    RefCastNullable(HeapType),
+    BrOnCast {
+        relative_depth: u32,
+        from_ref_type: RefType,
+        to_ref_type: RefType,
+    },
+    BrOnCastFail {
+        relative_depth: u32,
+        from_ref_type: RefType,
+        to_ref_type: RefType,
+    },
+    AnyConvertExtern,
+    ExternConvertAny,
+
+    RefI31,
+    I31GetS,
+    I31GetU,
+
     // Bulk memory instructions.
-    TableInit { elem_index: u32, table: u32 },
+    TableInit {
+        elem_index: u32,
+        table: u32,
+    },
     ElemDrop(u32),
     TableFill(u32),
     TableSet(u32),
     TableGet(u32),
     TableGrow(u32),
     TableSize(u32),
-    TableCopy { src_table: u32, dst_table: u32 },
+    TableCopy {
+        src_table: u32,
+        dst_table: u32,
+    },
 
     // SIMD instructions.
     V128Load(MemArg),
@@ -547,14 +671,38 @@ pub enum Instruction<'a> {
     V128Load32Zero(MemArg),
     V128Load64Zero(MemArg),
     V128Store(MemArg),
-    V128Load8Lane { memarg: MemArg, lane: Lane },
-    V128Load16Lane { memarg: MemArg, lane: Lane },
-    V128Load32Lane { memarg: MemArg, lane: Lane },
-    V128Load64Lane { memarg: MemArg, lane: Lane },
-    V128Store8Lane { memarg: MemArg, lane: Lane },
-    V128Store16Lane { memarg: MemArg, lane: Lane },
-    V128Store32Lane { memarg: MemArg, lane: Lane },
-    V128Store64Lane { memarg: MemArg, lane: Lane },
+    V128Load8Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Load16Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Load32Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Load64Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store8Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store16Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store32Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store64Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
     V128Const(i128),
     I8x16Shuffle([Lane; 16]),
     I8x16ExtractLaneS(Lane),
@@ -860,6 +1008,16 @@ pub enum Instruction<'a> {
     I64AtomicRmw8CmpxchgU(MemArg),
     I64AtomicRmw16CmpxchgU(MemArg),
     I64AtomicRmw32CmpxchgU(MemArg),
+
+    // More atomic instructions (the shared-everything-threads proposal)
+    GlobalAtomicGet {
+        ordering: Ordering,
+        global_index: u32,
+    },
+    GlobalAtomicSet {
+        ordering: Ordering,
+        global_index: u32,
+    },
 }
 
 impl Encode for Instruction<'_> {
@@ -897,6 +1055,9 @@ impl Encode for Instruction<'_> {
                 sink.push(0x09);
                 l.encode(sink);
             }
+            Instruction::ThrowRef => {
+                sink.push(0x0A);
+            }
             Instruction::End => sink.push(0x0B),
             Instruction::Br(l) => {
                 sink.push(0x0C);
@@ -912,7 +1073,7 @@ impl Encode for Instruction<'_> {
                 l.encode(sink);
             }
             Instruction::BrOnNull(l) => {
-                sink.push(0xD4);
+                sink.push(0xD5);
                 l.encode(sink);
             }
             Instruction::BrOnNonNull(l) => {
@@ -961,6 +1122,12 @@ impl Encode for Instruction<'_> {
             Instruction::TypedSelect(ty) => {
                 sink.push(0x1c);
                 [ty].encode(sink);
+            }
+
+            Instruction::TryTable(ty, ref catches) => {
+                sink.push(0x1f);
+                ty.encode(sink);
+                catches.encode(sink);
             }
 
             // Variable instructions.
@@ -1313,7 +1480,217 @@ impl Encode for Instruction<'_> {
                 sink.push(0xd2);
                 f.encode(sink);
             }
-            Instruction::RefAsNonNull => sink.push(0xD3),
+            Instruction::RefEq => sink.push(0xd3),
+            Instruction::RefAsNonNull => sink.push(0xd4),
+
+            // GC instructions.
+            Instruction::StructNew(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x00);
+                type_index.encode(sink);
+            }
+            Instruction::StructNewDefault(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x01);
+                type_index.encode(sink);
+            }
+            Instruction::StructGet {
+                struct_type_index,
+                field_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x02);
+                struct_type_index.encode(sink);
+                field_index.encode(sink);
+            }
+            Instruction::StructGetS {
+                struct_type_index,
+                field_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x03);
+                struct_type_index.encode(sink);
+                field_index.encode(sink);
+            }
+            Instruction::StructGetU {
+                struct_type_index,
+                field_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x04);
+                struct_type_index.encode(sink);
+                field_index.encode(sink);
+            }
+            Instruction::StructSet {
+                struct_type_index,
+                field_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x05);
+                struct_type_index.encode(sink);
+                field_index.encode(sink);
+            }
+            Instruction::ArrayNew(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x06);
+                type_index.encode(sink);
+            }
+            Instruction::ArrayNewDefault(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x07);
+                type_index.encode(sink);
+            }
+            Instruction::ArrayNewFixed {
+                array_type_index,
+                array_size,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x08);
+                array_type_index.encode(sink);
+                array_size.encode(sink);
+            }
+            Instruction::ArrayNewData {
+                array_type_index,
+                array_data_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x09);
+                array_type_index.encode(sink);
+                array_data_index.encode(sink);
+            }
+            Instruction::ArrayNewElem {
+                array_type_index,
+                array_elem_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x0a);
+                array_type_index.encode(sink);
+                array_elem_index.encode(sink);
+            }
+            Instruction::ArrayGet(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x0b);
+                type_index.encode(sink);
+            }
+            Instruction::ArrayGetS(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x0c);
+                type_index.encode(sink);
+            }
+            Instruction::ArrayGetU(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x0d);
+                type_index.encode(sink);
+            }
+            Instruction::ArraySet(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x0e);
+                type_index.encode(sink);
+            }
+            Instruction::ArrayLen => {
+                sink.push(0xfb);
+                sink.push(0x0f);
+            }
+            Instruction::ArrayFill(type_index) => {
+                sink.push(0xfb);
+                sink.push(0x10);
+                type_index.encode(sink);
+            }
+            Instruction::ArrayCopy {
+                array_type_index_dst,
+                array_type_index_src,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x11);
+                array_type_index_dst.encode(sink);
+                array_type_index_src.encode(sink);
+            }
+            Instruction::ArrayInitData {
+                array_type_index,
+                array_data_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x12);
+                array_type_index.encode(sink);
+                array_data_index.encode(sink);
+            }
+            Instruction::ArrayInitElem {
+                array_type_index,
+                array_elem_index,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x13);
+                array_type_index.encode(sink);
+                array_elem_index.encode(sink);
+            }
+            Instruction::RefTestNonNull(heap_type) => {
+                sink.push(0xfb);
+                sink.push(0x14);
+                heap_type.encode(sink);
+            }
+            Instruction::RefTestNullable(heap_type) => {
+                sink.push(0xfb);
+                sink.push(0x15);
+                heap_type.encode(sink);
+            }
+            Instruction::RefCastNonNull(heap_type) => {
+                sink.push(0xfb);
+                sink.push(0x16);
+                heap_type.encode(sink);
+            }
+            Instruction::RefCastNullable(heap_type) => {
+                sink.push(0xfb);
+                sink.push(0x17);
+                heap_type.encode(sink);
+            }
+            Instruction::BrOnCast {
+                relative_depth,
+                from_ref_type,
+                to_ref_type,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x18);
+                let cast_flags =
+                    (from_ref_type.nullable as u8) | ((to_ref_type.nullable as u8) << 1);
+                sink.push(cast_flags);
+                relative_depth.encode(sink);
+                from_ref_type.heap_type.encode(sink);
+                to_ref_type.heap_type.encode(sink);
+            }
+            Instruction::BrOnCastFail {
+                relative_depth,
+                from_ref_type,
+                to_ref_type,
+            } => {
+                sink.push(0xfb);
+                sink.push(0x19);
+                let cast_flags =
+                    (from_ref_type.nullable as u8) | ((to_ref_type.nullable as u8) << 1);
+                sink.push(cast_flags);
+                relative_depth.encode(sink);
+                from_ref_type.heap_type.encode(sink);
+                to_ref_type.heap_type.encode(sink);
+            }
+            Instruction::AnyConvertExtern => {
+                sink.push(0xfb);
+                sink.push(0x1a);
+            }
+            Instruction::ExternConvertAny => {
+                sink.push(0xfb);
+                sink.push(0x1b);
+            }
+            Instruction::RefI31 => {
+                sink.push(0xfb);
+                sink.push(0x1c);
+            }
+            Instruction::I31GetS => {
+                sink.push(0xfb);
+                sink.push(0x1d);
+            }
+            Instruction::I31GetU => {
+                sink.push(0xfb);
+                sink.push(0x1e);
+            }
 
             // Bulk memory instructions.
             Instruction::TableInit { elem_index, table } => {
@@ -2448,7 +2825,7 @@ impl Encode for Instruction<'_> {
                 0x113u32.encode(sink);
             }
 
-            // Atmoic instructions from the thread proposal
+            // Atomic instructions from the thread proposal
             Instruction::MemoryAtomicNotify(memarg) => {
                 sink.push(0xFE);
                 sink.push(0x00);
@@ -2784,6 +3161,60 @@ impl Encode for Instruction<'_> {
                 sink.push(0x4E);
                 memarg.encode(sink);
             }
+
+            // Atomic instructions from the shared-everything-threads proposal
+            Instruction::GlobalAtomicGet {
+                ordering,
+                global_index,
+            } => {
+                sink.push(0xFE);
+                sink.push(0x4F);
+                ordering.encode(sink);
+                global_index.encode(sink);
+            }
+            Instruction::GlobalAtomicSet {
+                ordering,
+                global_index,
+            } => {
+                sink.push(0xFE);
+                sink.push(0x50);
+                ordering.encode(sink);
+                global_index.encode(sink);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[allow(missing_docs)]
+pub enum Catch {
+    One { tag: u32, label: u32 },
+    OneRef { tag: u32, label: u32 },
+    All { label: u32 },
+    AllRef { label: u32 },
+}
+
+impl Encode for Catch {
+    fn encode(&self, sink: &mut Vec<u8>) {
+        match self {
+            Catch::One { tag, label } => {
+                sink.push(0x00);
+                tag.encode(sink);
+                label.encode(sink);
+            }
+            Catch::OneRef { tag, label } => {
+                sink.push(0x01);
+                tag.encode(sink);
+                label.encode(sink);
+            }
+            Catch::All { label } => {
+                sink.push(0x02);
+                label.encode(sink);
+            }
+            Catch::AllRef { label } => {
+                sink.push(0x03);
+                label.encode(sink);
+            }
         }
     }
 }
@@ -2813,6 +3244,11 @@ impl ConstExpr {
         let mut bytes = vec![];
         insn.encode(&mut bytes);
         Self { bytes }
+    }
+
+    fn with_insn(mut self, insn: Instruction) -> Self {
+        insn.encode(&mut self.bytes);
+        self
     }
 
     /// Create a constant expression containing a single `global.get` instruction.
@@ -2854,12 +3290,184 @@ impl ConstExpr {
     pub fn v128_const(value: i128) -> Self {
         Self::new_insn(Instruction::V128Const(value))
     }
+
+    /// Add a `global.get` instruction to this constant expression.
+    pub fn with_global_get(self, index: u32) -> Self {
+        self.with_insn(Instruction::GlobalGet(index))
+    }
+
+    /// Add a `ref.null` instruction to this constant expression.
+    pub fn with_ref_null(self, ty: HeapType) -> Self {
+        self.with_insn(Instruction::RefNull(ty))
+    }
+
+    /// Add a `ref.func` instruction to this constant expression.
+    pub fn with_ref_func(self, func: u32) -> Self {
+        self.with_insn(Instruction::RefFunc(func))
+    }
+
+    /// Add an `i32.const` instruction to this constant expression.
+    pub fn with_i32_const(self, value: i32) -> Self {
+        self.with_insn(Instruction::I32Const(value))
+    }
+
+    /// Add an `i64.const` instruction to this constant expression.
+    pub fn with_i64_const(self, value: i64) -> Self {
+        self.with_insn(Instruction::I64Const(value))
+    }
+
+    /// Add a `f32.const` instruction to this constant expression.
+    pub fn with_f32_const(self, value: f32) -> Self {
+        self.with_insn(Instruction::F32Const(value))
+    }
+
+    /// Add a `f64.const` instruction to this constant expression.
+    pub fn with_f64_const(self, value: f64) -> Self {
+        self.with_insn(Instruction::F64Const(value))
+    }
+
+    /// Add a `v128.const` instruction to this constant expression.
+    pub fn with_v128_const(self, value: i128) -> Self {
+        self.with_insn(Instruction::V128Const(value))
+    }
+
+    /// Add an `i32.add` instruction to this constant expression.
+    pub fn with_i32_add(self) -> Self {
+        self.with_insn(Instruction::I32Add)
+    }
+
+    /// Add an `i32.sub` instruction to this constant expression.
+    pub fn with_i32_sub(self) -> Self {
+        self.with_insn(Instruction::I32Sub)
+    }
+
+    /// Add an `i32.mul` instruction to this constant expression.
+    pub fn with_i32_mul(self) -> Self {
+        self.with_insn(Instruction::I32Mul)
+    }
+
+    /// Add an `i64.add` instruction to this constant expression.
+    pub fn with_i64_add(self) -> Self {
+        self.with_insn(Instruction::I64Add)
+    }
+
+    /// Add an `i64.sub` instruction to this constant expression.
+    pub fn with_i64_sub(self) -> Self {
+        self.with_insn(Instruction::I64Sub)
+    }
+
+    /// Add an `i64.mul` instruction to this constant expression.
+    pub fn with_i64_mul(self) -> Self {
+        self.with_insn(Instruction::I64Mul)
+    }
+
+    /// Returns the function, if any, referenced by this global.
+    pub fn get_ref_func(&self) -> Option<u32> {
+        let prefix = *self.bytes.get(0)?;
+        // 0xd2 == `ref.func` opcode, and if that's found then load the leb
+        // corresponding to the function index.
+        if prefix != 0xd2 {
+            return None;
+        }
+        leb128::read::unsigned(&mut &self.bytes[1..])
+            .ok()?
+            .try_into()
+            .ok()
+    }
 }
 
 impl Encode for ConstExpr {
     fn encode(&self, sink: &mut Vec<u8>) {
         sink.extend(&self.bytes);
         Instruction::End.encode(sink);
+    }
+}
+
+/// An error when converting a `wasmparser::ConstExpr` into a
+/// `wasm_encoder::ConstExpr`.
+#[cfg(feature = "wasmparser")]
+#[derive(Debug)]
+pub enum ConstExprConversionError {
+    /// There was an error when parsing the const expression.
+    ParseError(wasmparser::BinaryReaderError),
+
+    /// The const expression is invalid: not actually constant or something like
+    /// that.
+    Invalid,
+
+    /// There was a type reference that was canonicalized and no longer
+    /// references an index into a module's types space, so we cannot encode it
+    /// into a Wasm binary again.
+    CanonicalizedTypeReference,
+}
+
+#[cfg(feature = "wasmparser")]
+impl std::fmt::Display for ConstExprConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParseError(_e) => {
+                write!(f, "There was an error when parsing the const expression")
+            }
+            Self::Invalid => write!(f, "The const expression was invalid"),
+            Self::CanonicalizedTypeReference => write!(
+                f,
+                "There was a canonicalized type reference without type index information"
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "wasmparser")]
+impl std::error::Error for ConstExprConversionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ParseError(e) => Some(e),
+            Self::Invalid | Self::CanonicalizedTypeReference => None,
+        }
+    }
+}
+
+#[cfg(feature = "wasmparser")]
+impl<'a> TryFrom<wasmparser::ConstExpr<'a>> for ConstExpr {
+    type Error = ConstExprConversionError;
+
+    fn try_from(const_expr: wasmparser::ConstExpr) -> Result<Self, Self::Error> {
+        let mut ops = const_expr.get_operators_reader().into_iter();
+
+        let result = match ops.next() {
+            Some(Ok(wasmparser::Operator::I32Const { value })) => ConstExpr::i32_const(value),
+            Some(Ok(wasmparser::Operator::I64Const { value })) => ConstExpr::i64_const(value),
+            Some(Ok(wasmparser::Operator::F32Const { value })) => {
+                ConstExpr::f32_const(value.bits() as _)
+            }
+            Some(Ok(wasmparser::Operator::F64Const { value })) => {
+                ConstExpr::f64_const(value.bits() as _)
+            }
+            Some(Ok(wasmparser::Operator::V128Const { value })) => {
+                ConstExpr::v128_const(i128::from_le_bytes(*value.bytes()))
+            }
+            Some(Ok(wasmparser::Operator::RefNull { hty })) => ConstExpr::ref_null(
+                HeapType::try_from(hty)
+                    .map_err(|_| ConstExprConversionError::CanonicalizedTypeReference)?,
+            ),
+            Some(Ok(wasmparser::Operator::RefFunc { function_index })) => {
+                ConstExpr::ref_func(function_index)
+            }
+            Some(Ok(wasmparser::Operator::GlobalGet { global_index })) => {
+                ConstExpr::global_get(global_index)
+            }
+
+            // TODO: support the extended-const proposal.
+            Some(Ok(_op)) => return Err(ConstExprConversionError::Invalid),
+
+            Some(Err(e)) => return Err(ConstExprConversionError::ParseError(e)),
+            None => return Err(ConstExprConversionError::Invalid),
+        };
+
+        match (ops.next(), ops.next()) {
+            (Some(Ok(wasmparser::Operator::End)), None) => Ok(result),
+            _ => Err(ConstExprConversionError::Invalid),
+        }
     }
 }
 

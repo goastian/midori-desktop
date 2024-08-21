@@ -18,6 +18,7 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "api/environment/environment.h"
 #include "api/test/video_quality_analyzer_interface.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_frame.h"
@@ -59,7 +60,6 @@ class QualityAnalyzingVideoDecoder : public VideoDecoder {
   // Methods of VideoDecoder interface.
   bool Configure(const Settings& settings) override;
   int32_t Decode(const EncodedImage& input_image,
-                 bool missing_frames,
                  int64_t render_time_ms) override;
   int32_t RegisterDecodeCompleteCallback(
       DecodedImageCallback* callback) override;
@@ -137,8 +137,8 @@ class QualityAnalyzingVideoDecoderFactory : public VideoDecoderFactory {
 
   // Methods of VideoDecoderFactory interface.
   std::vector<SdpVideoFormat> GetSupportedFormats() const override;
-  std::unique_ptr<VideoDecoder> CreateVideoDecoder(
-      const SdpVideoFormat& format) override;
+  std::unique_ptr<VideoDecoder> Create(const Environment& env,
+                                       const SdpVideoFormat& format) override;
 
  private:
   const std::string peer_name_;

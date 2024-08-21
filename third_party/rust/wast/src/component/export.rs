@@ -1,4 +1,4 @@
-use super::{ItemRef, ItemSigNoName};
+use super::{ComponentExternName, ItemRef, ItemSigNoName};
 use crate::kw;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
 use crate::token::{Id, Index, NameAnnotation, Span};
@@ -13,9 +13,7 @@ pub struct ComponentExport<'a> {
     /// An optional name for this instance stored in the custom `name` section.
     pub debug_name: Option<NameAnnotation<'a>>,
     /// The name of this export from the component.
-    pub name: &'a str,
-    /// The URL of the export.
-    pub url: Option<&'a str>,
+    pub name: ComponentExternName<'a>,
     /// The kind of export.
     pub kind: ComponentExportKind<'a>,
     /// The kind of export.
@@ -28,7 +26,6 @@ impl<'a> Parse<'a> for ComponentExport<'a> {
         let id = parser.parse()?;
         let debug_name = parser.parse()?;
         let name = parser.parse()?;
-        let url = parser.parse()?;
         let kind = parser.parse()?;
         let ty = if !parser.is_empty() {
             Some(parser.parens(|p| p.parse())?)
@@ -40,7 +37,6 @@ impl<'a> Parse<'a> for ComponentExport<'a> {
             id,
             debug_name,
             name,
-            url,
             kind,
             ty,
         })
@@ -123,19 +119,19 @@ impl<'a> Parse<'a> for ComponentExportKind<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         parser.parens(|parser| {
             let mut l = parser.lookahead1();
-            if l.peek::<kw::core>() {
+            if l.peek::<kw::core>()? {
                 // Remove core prefix
                 parser.parse::<kw::core>()?;
                 Ok(Self::CoreModule(parser.parse()?))
-            } else if l.peek::<kw::func>() {
+            } else if l.peek::<kw::func>()? {
                 Ok(Self::Func(parser.parse()?))
-            } else if l.peek::<kw::value>() {
+            } else if l.peek::<kw::value>()? {
                 Ok(Self::Value(parser.parse()?))
-            } else if l.peek::<kw::r#type>() {
+            } else if l.peek::<kw::r#type>()? {
                 Ok(Self::Type(parser.parse()?))
-            } else if l.peek::<kw::component>() {
+            } else if l.peek::<kw::component>()? {
                 Ok(Self::Component(parser.parse()?))
-            } else if l.peek::<kw::instance>() {
+            } else if l.peek::<kw::instance>()? {
                 Ok(Self::Instance(parser.parse()?))
             } else {
                 Err(l.error())
@@ -145,23 +141,23 @@ impl<'a> Parse<'a> for ComponentExportKind<'a> {
 }
 
 impl Peek for ComponentExportKind<'_> {
-    fn peek(cursor: Cursor) -> bool {
-        let cursor = match cursor.lparen() {
+    fn peek(cursor: Cursor) -> Result<bool> {
+        let cursor = match cursor.lparen()? {
             Some(c) => c,
-            None => return false,
+            None => return Ok(false),
         };
 
-        let cursor = match cursor.keyword() {
-            Some(("core", c)) => match c.keyword() {
+        let cursor = match cursor.keyword()? {
+            Some(("core", c)) => match c.keyword()? {
                 Some(("module", c)) => c,
-                _ => return false,
+                _ => return Ok(false),
             },
             Some(("func", c))
             | Some(("value", c))
             | Some(("type", c))
             | Some(("component", c))
             | Some(("instance", c)) => c,
-            _ => return false,
+            _ => return Ok(false),
         };
 
         Index::peek(cursor)
@@ -177,16 +173,16 @@ impl Peek for ComponentExportKind<'_> {
 #[derive(Debug, Default)]
 pub struct InlineExport<'a> {
     /// The extra names to export an item as, if any.
-    pub names: Vec<(&'a str, Option<&'a str>)>,
+    pub names: Vec<ComponentExternName<'a>>,
 }
 
 impl<'a> Parse<'a> for InlineExport<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut names = Vec::new();
-        while parser.peek::<Self>() {
+        while parser.peek::<Self>()? {
             names.push(parser.parens(|p| {
                 p.parse::<kw::export>()?;
-                Ok((p.parse()?, p.parse()?))
+                p.parse()
             })?);
         }
         Ok(InlineExport { names })
@@ -194,25 +190,39 @@ impl<'a> Parse<'a> for InlineExport<'a> {
 }
 
 impl Peek for InlineExport<'_> {
-    fn peek(cursor: Cursor<'_>) -> bool {
-        let cursor = match cursor.lparen() {
+    fn peek(cursor: Cursor<'_>) -> Result<bool> {
+        let cursor = match cursor.lparen()? {
             Some(cursor) => cursor,
-            None => return false,
+            None => return Ok(false),
         };
-        let cursor = match cursor.keyword() {
+        let cursor = match cursor.keyword()? {
             Some(("export", cursor)) => cursor,
-            _ => return false,
+            _ => return Ok(false),
         };
-        // Name
-        let mut cursor = match cursor.string() {
-            Some((_, cursor)) => cursor,
-            None => return false,
-        };
-        // Optional URL
-        if let Some((_, c)) = cursor.string() {
-            cursor = c;
+
+        // (export "foo")
+        if let Some((_, cursor)) = cursor.string()? {
+            return Ok(cursor.rparen()?.is_some());
         }
-        cursor.rparen().is_some()
+
+        // (export (interface "foo"))
+        let cursor = match cursor.lparen()? {
+            Some(cursor) => cursor,
+            None => return Ok(false),
+        };
+        let cursor = match cursor.keyword()? {
+            Some(("interface", cursor)) => cursor,
+            _ => return Ok(false),
+        };
+        let cursor = match cursor.string()? {
+            Some((_, cursor)) => cursor,
+            _ => return Ok(false),
+        };
+        let cursor = match cursor.rparen()? {
+            Some(cursor) => cursor,
+            _ => return Ok(false),
+        };
+        Ok(cursor.rparen()?.is_some())
     }
 
     fn display() -> &'static str {

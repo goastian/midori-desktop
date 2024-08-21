@@ -10,9 +10,9 @@ origin:
 
   url: https://google.github.io/googletest/
 
-  release: e009c3d3dcb522c21ea83984dac6064a6399d3f6 (2022-07-07T16:18:52Z).
+  release: 9b4993ca7d1279dec5c5d41ba327cb11a77bdc00 (2024-05-21T19:08:38Z).
 
-  revision: e009c3d3dcb522c21ea83984dac6064a6399d3f6
+  revision: 9b4993ca7d1279dec5c5d41ba327cb11a77bdc00
 
   license: BSD-3-Clause
   license-file: LICENSE
@@ -51,3 +51,11 @@ vendoring:
 
   patches:
     - "*.patch"
+
+updatebot:
+  maintainer-phab: ahal
+  maintainer-bz: ahal@mozilla.com
+  tasks:
+    - type: vendoring
+      enabled: true
+      frequency: release

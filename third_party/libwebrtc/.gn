@@ -29,6 +29,10 @@ no_check_targets = [
 
   # TODO(crbug.com/1151236) Remove once fixed.
   "//base/allocator/partition_allocator:partition_alloc",
+
+  # TODO: crbug/326607005 - GTEST_HAS_ABSL is broken
+  "//third_party/googletest:gmock",
+  "//third_party/googletest:gtest",
 ]
 
 # These are the list of GN files that run exec_script. This whitelist exists
@@ -52,7 +56,7 @@ default_args = {
   ios_deployment_target = "12.0"
 
   # The SDK API level, in contrast, is set by build/android/AndroidManifest.xml.
-  android32_ndk_api_level = 16
+  android32_ndk_api_level = 21
   android64_ndk_api_level = 21
 
   # WebRTC does not provide the gflags dependency. Because libyuv uses it only
@@ -76,5 +80,4 @@ default_args = {
   # Chromium fix resolves the problem.
   fuchsia_sdk_readelf_exec =
       "//third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
-  fuchsia_target_api_level = 9
 }

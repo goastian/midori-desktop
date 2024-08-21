@@ -5,15 +5,15 @@
 
 #include "lib/jxl/render_pipeline/stage_tone_mapping.h"
 
+#include "lib/jxl/base/sanitizers.h"
+
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/render_pipeline/stage_tone_mapping.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
-#include "lib/jxl/dec_tone_mapping-inl.h"
+#include "lib/jxl/cms/tone_mapping-inl.h"
 #include "lib/jxl/dec_xyb-inl.h"
-#include "lib/jxl/sanitizers.h"
-#include "lib/jxl/transfer_functions-inl.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -29,26 +29,25 @@ class ToneMappingStage : public RenderPipelineStage {
       // No tone mapping requested.
       return;
     }
-    if (output_encoding_info_.orig_color_encoding.tf.IsPQ() &&
-        output_encoding_info_.desired_intensity_target <
-            output_encoding_info_.orig_intensity_target) {
+    const auto& orig_tf = output_encoding_info_.orig_color_encoding.Tf();
+    const auto& dest_tf = output_encoding_info_.color_encoding.Tf();
+    if (orig_tf.IsPQ() && output_encoding_info_.desired_intensity_target <
+                              output_encoding_info_.orig_intensity_target) {
       tone_mapper_ = jxl::make_unique<ToneMapper>(
           /*source_range=*/std::pair<float, float>(
-              0, output_encoding_info_.orig_intensity_target),
+              0.0f, output_encoding_info_.orig_intensity_target),
           /*target_range=*/
           std::pair<float, float>(
-              0, output_encoding_info_.desired_intensity_target),
+              0.0f, output_encoding_info_.desired_intensity_target),
           output_encoding_info_.luminances);
-    } else if (output_encoding_info_.orig_color_encoding.tf.IsHLG() &&
-               !output_encoding_info_.color_encoding.tf.IsHLG()) {
+    } else if (orig_tf.IsHLG() && !dest_tf.IsHLG()) {
       hlg_ootf_ = jxl::make_unique<HlgOOTF>(
           /*source_luminance=*/output_encoding_info_.orig_intensity_target,
           /*target_luminance=*/output_encoding_info_.desired_intensity_target,
           output_encoding_info_.luminances);
     }
 
-    if (output_encoding_info_.color_encoding.tf.IsPQ() &&
-        (tone_mapper_ || hlg_ootf_)) {
+    if (dest_tf.IsPQ() && (tone_mapper_ || hlg_ootf_)) {
       to_intensity_target_ =
           10000.f / output_encoding_info_.orig_intensity_target;
       from_desired_intensity_target_ =
@@ -58,12 +57,10 @@ class ToneMappingStage : public RenderPipelineStage {
 
   bool IsNeeded() const { return tone_mapper_ || hlg_ootf_; }
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
-    PROFILER_ZONE("ToneMapping");
-
-    if (!(tone_mapper_ || hlg_ootf_)) return;
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra, size_t xsize, size_t xpos, size_t ypos,
+                    size_t thread_id) const final {
+    if (!(tone_mapper_ || hlg_ootf_)) return true;
 
     const HWY_FULL(float) d;
     const size_t xsize_v = RoundUpTo(xsize, Lanes(d));
@@ -76,7 +73,8 @@ class ToneMappingStage : public RenderPipelineStage {
     msan::UnpoisonMemory(row0 + xsize, sizeof(float) * (xsize_v - xsize));
     msan::UnpoisonMemory(row1 + xsize, sizeof(float) * (xsize_v - xsize));
     msan::UnpoisonMemory(row2 + xsize, sizeof(float) * (xsize_v - xsize));
-    for (ssize_t x = -xextra; x < (ssize_t)(xsize + xextra); x += Lanes(d)) {
+    for (ssize_t x = -xextra; x < static_cast<ssize_t>(xsize + xextra);
+         x += Lanes(d)) {
       auto r = LoadU(d, row0 + x);
       auto g = LoadU(d, row1 + x);
       auto b = LoadU(d, row2 + x);
@@ -104,6 +102,7 @@ class ToneMappingStage : public RenderPipelineStage {
     msan::PoisonMemory(row0 + xsize, sizeof(float) * (xsize_v - xsize));
     msan::PoisonMemory(row1 + xsize, sizeof(float) * (xsize_v - xsize));
     msan::PoisonMemory(row2 + xsize, sizeof(float) * (xsize_v - xsize));
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {

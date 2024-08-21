@@ -1,13 +1,44 @@
-use super::{u2ftypes, Pin};
-use crate::ctap2::commands::get_info::AuthenticatorInfo;
+use super::Pin;
+use crate::{
+    ctap2::{
+        commands::{
+            authenticator_config::{AuthConfigCommand, AuthConfigResult},
+            bio_enrollment::BioTemplateId,
+            get_info::AuthenticatorInfo,
+            PinUvAuthResult,
+        },
+        server::{PublicKeyCredentialDescriptor, PublicKeyCredentialUserEntity},
+    },
+    BioEnrollmentResult, CredentialManagementResult,
+};
 use serde::{Deserialize, Serialize as DeriveSer, Serializer};
 use std::sync::mpsc::Sender;
 
 #[derive(Debug, Deserialize, DeriveSer)]
+pub enum CredManagementCmd {
+    GetCredentials,
+    DeleteCredential(PublicKeyCredentialDescriptor),
+    UpdateUserInformation(PublicKeyCredentialDescriptor, PublicKeyCredentialUserEntity),
+}
+
+#[derive(Debug, Deserialize, DeriveSer)]
+pub enum BioEnrollmentCmd {
+    GetFingerprintSensorInfo,
+    GetEnrollments,
+    StartNewEnrollment(Option<String>),
+    DeleteEnrollment(BioTemplateId),
+    ChangeName(BioTemplateId, String),
+}
+
+#[derive(Debug)]
 pub enum InteractiveRequest {
+    Quit,
     Reset,
     ChangePIN(Pin, Pin),
     SetPIN(Pin),
+    ChangeConfig(AuthConfigCommand, Option<PinUvAuthResult>),
+    CredentialManagement(CredManagementCmd, Option<PinUvAuthResult>),
+    BioEnrollment(BioEnrollmentCmd, Option<PinUvAuthResult>),
 }
 
 // Simply ignoring the Sender when serializing
@@ -54,31 +85,28 @@ pub enum StatusPinUv {
 }
 
 #[derive(Debug)]
+pub enum InteractiveUpdate {
+    StartManagement((Sender<InteractiveRequest>, Option<AuthenticatorInfo>)),
+    // We provide the already determined PUAT to be able to issue more requests without
+    // forcing the user to enter another PIN.
+    BioEnrollmentUpdate((BioEnrollmentResult, Option<PinUvAuthResult>)),
+    CredentialManagementUpdate((CredentialManagementResult, Option<PinUvAuthResult>)),
+    AuthConfigUpdate((AuthConfigResult, Option<PinUvAuthResult>)),
+}
+
+#[derive(Debug)]
 pub enum StatusUpdate {
-    /// Device found
-    DeviceAvailable { dev_info: u2ftypes::U2FDeviceInfo },
-    /// Device got removed
-    DeviceUnavailable { dev_info: u2ftypes::U2FDeviceInfo },
     /// We're waiting for the user to touch their token
     PresenceRequired,
-    /// We successfully finished the register or sign request
-    Success { dev_info: u2ftypes::U2FDeviceInfo },
     /// Sent if a PIN is needed (or was wrong), or some other kind of PIN-related
     /// error occurred. The Sender is for sending back a PIN (if needed).
     PinUvError(StatusPinUv),
     /// Sent, if multiple devices are found and the user has to select one
     SelectDeviceNotice,
-    /// Sent, once a device was selected (either automatically or by user-interaction)
-    /// and the register or signing process continues with this device
-    DeviceSelected(u2ftypes::U2FDeviceInfo),
     /// Sent when a token was selected for interactive management
-    InteractiveManagement(
-        (
-            Sender<InteractiveRequest>,
-            u2ftypes::U2FDeviceInfo,
-            Option<AuthenticatorInfo>,
-        ),
-    ),
+    InteractiveManagement(InteractiveUpdate),
+    /// Sent when a token returns multiple results for a getAssertion request
+    SelectResultNotice(Sender<Option<usize>>, Vec<PublicKeyCredentialUserEntity>),
 }
 
 pub(crate) fn send_status(status: &Sender<StatusUpdate>, msg: StatusUpdate) {

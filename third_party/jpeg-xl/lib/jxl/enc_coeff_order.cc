@@ -3,26 +3,38 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#include <stdint.h>
+#include <jxl/memory_manager.h>
+
+// Suppress any -Wdeprecated-declarations warning that might be emitted by
+// GCC or Clang by std::stable_sort in C++17 or later mode
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC push_options
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 #include <algorithm>
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#endif
+
+#include <cmath>
+#include <cstdint>
 #include <hwy/aligned_allocator.h>
 #include <vector>
 
-#include "lib/jxl/ans_params.h"
-#include "lib/jxl/base/padded_bytes.h"
-#include "lib/jxl/base/profiler.h"
-#include "lib/jxl/base/span.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/coeff_order.h"
 #include "lib/jxl/coeff_order_fwd.h"
-#include "lib/jxl/dec_ans.h"
-#include "lib/jxl/dec_bit_reader.h"
+#include "lib/jxl/dct_util.h"
 #include "lib/jxl/enc_ans.h"
 #include "lib/jxl/enc_bit_writer.h"
-#include "lib/jxl/entropy_coder.h"
 #include "lib/jxl/lehmer_code.h"
-#include "lib/jxl/modular/encoding/encoding.h"
-#include "lib/jxl/modular/modular_image.h"
 
 namespace jxl {
 
@@ -31,6 +43,7 @@ struct AuxOut;
 std::pair<uint32_t, uint32_t> ComputeUsedOrders(
     const SpeedTier speed, const AcStrategyImage& ac_strategy,
     const Rect& rect) {
+  // No coefficient reordering in Falcon or faster.
   // Only uses DCT8 = 0, so bitfield = 1.
   if (speed >= SpeedTier::kFalcon) return {1, 1};
 
@@ -58,20 +71,22 @@ std::pair<uint32_t, uint32_t> ComputeUsedOrders(
 
 void ComputeCoeffOrder(SpeedTier speed, const ACImage& acs,
                        const AcStrategyImage& ac_strategy,
-                       const FrameDimensions& frame_dim, uint32_t& used_orders,
-                       uint16_t used_acs, coeff_order_t* JXL_RESTRICT order) {
+                       const FrameDimensions& frame_dim,
+                       uint32_t& all_used_orders, uint32_t prev_used_acs,
+                       uint32_t current_used_acs, uint32_t current_used_orders,
+                       coeff_order_t* JXL_RESTRICT order) {
   std::vector<int32_t> num_zeros(kCoeffOrderMaxSize);
   // If compressing at high speed and only using 8x8 DCTs, only consider a
   // subset of blocks.
   double block_fraction = 1.0f;
   // TODO(veluca): figure out why sampling blocks if non-8x8s are used makes
   // encoding significantly less dense.
-  if (speed >= SpeedTier::kSquirrel && used_orders == 1) {
+  if (speed >= SpeedTier::kSquirrel && current_used_orders == 1) {
     block_fraction = 0.5f;
   }
   // No need to compute number of zero coefficients if all orders are the
   // default.
-  if (used_orders != 0) {
+  if (current_used_orders != 0) {
     uint64_t threshold =
         (std::numeric_limits<uint64_t>::max() >> 32) * block_fraction;
     uint64_t s[2] = {static_cast<uint64_t>(0x94D049BB133111EBull),
@@ -158,14 +173,18 @@ void ComputeCoeffOrder(SpeedTier speed, const ACImage& acs,
     size_t sz = kDCTBlockSize * acs.covered_blocks_x() * acs.covered_blocks_y();
 
     // Do nothing for transforms that don't appear.
-    if ((1 << ord) & ~used_acs) continue;
+    if ((1 << ord) & ~current_used_acs) continue;
+
+    // Do nothing if we already committed to this custom order previously.
+    if ((1 << ord) & prev_used_acs) continue;
+    if ((1 << ord) & all_used_orders) continue;
 
     if (natural_order_buffer.size() < sz) natural_order_buffer.resize(sz);
     acs.ComputeNaturalCoeffOrder(natural_order_buffer.data());
 
     // Ensure natural coefficient order is not permuted if the order is
     // not transmitted.
-    if ((1 << ord) & ~used_orders) {
+    if ((1 << ord) & ~current_used_orders) {
       for (size_t c = 0; c < 3; c++) {
         size_t offset = CoeffOrderOffset(ord, c);
         JXL_DASSERT(CoeffOrderOffset(ord, c + 1) - offset == sz);
@@ -204,9 +223,10 @@ void ComputeCoeffOrder(SpeedTier speed, const ACImage& acs,
       }
     }
     if (!is_nondefault) {
-      used_orders &= ~(1 << ord);
+      current_used_orders &= ~(1 << ord);
     }
   }
+  all_used_orders |= current_used_orders;
 }
 
 namespace {
@@ -233,13 +253,15 @@ void TokenizePermutation(const coeff_order_t* JXL_RESTRICT order, size_t skip,
 void EncodePermutation(const coeff_order_t* JXL_RESTRICT order, size_t skip,
                        size_t size, BitWriter* writer, int layer,
                        AuxOut* aux_out) {
+  JxlMemoryManager* memory_manager = writer->memory_manager();
   std::vector<std::vector<Token>> tokens(1);
-  TokenizePermutation(order, skip, size, &tokens[0]);
+  TokenizePermutation(order, skip, size, tokens.data());
   std::vector<uint8_t> context_map;
   EntropyEncodingData codes;
-  BuildAndEncodeHistograms(HistogramParams(), kPermutationContexts, tokens,
-                           &codes, &context_map, writer, layer, aux_out);
-  WriteTokens(tokens[0], codes, context_map, writer, layer, aux_out);
+  BuildAndEncodeHistograms(memory_manager, HistogramParams(),
+                           kPermutationContexts, tokens, &codes, &context_map,
+                           writer, layer, aux_out);
+  WriteTokens(tokens[0], codes, context_map, 0, writer, layer, aux_out);
 }
 
 namespace {
@@ -259,6 +281,7 @@ void EncodeCoeffOrders(uint16_t used_orders,
                        const coeff_order_t* JXL_RESTRICT order,
                        BitWriter* writer, size_t layer,
                        AuxOut* JXL_RESTRICT aux_out) {
+  JxlMemoryManager* memory_manager = writer->memory_manager();
   auto mem = hwy::AllocateAligned<coeff_order_t>(AcStrategy::kMaxCoeffArea);
   uint16_t computed = 0;
   std::vector<std::vector<Token>> tokens(1);
@@ -274,7 +297,7 @@ void EncodeCoeffOrders(uint16_t used_orders,
     if (natural_order_lut.size() < size) natural_order_lut.resize(size);
     acs.ComputeNaturalCoeffOrderLut(natural_order_lut.data());
     for (size_t c = 0; c < 3; c++) {
-      EncodeCoeffOrder(&order[CoeffOrderOffset(ord, c)], acs, &tokens[0],
+      EncodeCoeffOrder(&order[CoeffOrderOffset(ord, c)], acs, tokens.data(),
                        mem.get(), natural_order_lut);
     }
   }
@@ -282,9 +305,10 @@ void EncodeCoeffOrders(uint16_t used_orders,
   if (used_orders != 0) {
     std::vector<uint8_t> context_map;
     EntropyEncodingData codes;
-    BuildAndEncodeHistograms(HistogramParams(), kPermutationContexts, tokens,
-                             &codes, &context_map, writer, layer, aux_out);
-    WriteTokens(tokens[0], codes, context_map, writer, layer, aux_out);
+    BuildAndEncodeHistograms(memory_manager, HistogramParams(),
+                             kPermutationContexts, tokens, &codes, &context_map,
+                             writer, layer, aux_out);
+    WriteTokens(tokens[0], codes, context_map, 0, writer, layer, aux_out);
   }
 }
 

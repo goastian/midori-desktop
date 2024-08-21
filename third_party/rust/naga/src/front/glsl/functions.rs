@@ -7,9 +7,9 @@ use super::{
     Frontend, Result,
 };
 use crate::{
-    front::glsl::types::type_power, proc::ensure_block_returns, AddressSpace, Arena, Block,
-    Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument, FunctionResult,
-    Handle, LocalVariable, ScalarKind, ScalarValue, Span, Statement, StructMember, Type, TypeInner,
+    front::glsl::types::type_power, proc::ensure_block_returns, AddressSpace, Block, EntryPoint,
+    Expression, Function, FunctionArgument, FunctionResult, Handle, Literal, LocalVariable, Scalar,
+    ScalarKind, Span, Statement, StructMember, Type, TypeInner,
 };
 use std::iter;
 
@@ -20,58 +20,33 @@ struct ProxyWrite {
     /// A pointer to read the value of the store
     value: Handle<Expression>,
     /// An optional conversion to be applied
-    convert: Option<(ScalarKind, crate::Bytes)>,
+    convert: Option<Scalar>,
 }
 
 impl Frontend {
-    fn add_constant_value(
-        &mut self,
-        scalar_kind: ScalarKind,
-        value: u64,
-        meta: Span,
-    ) -> Handle<Constant> {
-        let value = match scalar_kind {
-            ScalarKind::Uint => ScalarValue::Uint(value),
-            ScalarKind::Sint => ScalarValue::Sint(value as i64),
-            ScalarKind::Float => ScalarValue::Float(value as f64),
-            ScalarKind::Bool => unreachable!(),
-        };
-
-        self.module.constants.fetch_or_append(
-            Constant {
-                name: None,
-                specialization: None,
-                inner: ConstantInner::Scalar { width: 4, value },
-            },
-            meta,
-        )
-    }
-
     pub(crate) fn function_or_constructor_call(
         &mut self,
         ctx: &mut Context,
         stmt: &StmtContext,
-        body: &mut Block,
         fc: FunctionCallKind,
         raw_args: &[Handle<HirExpr>],
         meta: Span,
     ) -> Result<Option<Handle<Expression>>> {
         let args: Vec<_> = raw_args
             .iter()
-            .map(|e| ctx.lower_expect_inner(stmt, self, *e, ExprPos::Rhs, body))
+            .map(|e| ctx.lower_expect_inner(stmt, self, *e, ExprPos::Rhs))
             .collect::<Result<_>>()?;
 
         match fc {
             FunctionCallKind::TypeConstructor(ty) => {
                 if args.len() == 1 {
-                    self.constructor_single(ctx, body, ty, args[0], meta)
-                        .map(Some)
+                    self.constructor_single(ctx, ty, args[0], meta).map(Some)
                 } else {
-                    self.constructor_many(ctx, body, ty, args, meta).map(Some)
+                    self.constructor_many(ctx, ty, args, meta).map(Some)
                 }
             }
             FunctionCallKind::Function(name) => {
-                self.function_call(ctx, stmt, body, name, args, raw_args, meta)
+                self.function_call(ctx, stmt, name, args, raw_args, meta)
             }
         }
     }
@@ -79,31 +54,33 @@ impl Frontend {
     fn constructor_single(
         &mut self,
         ctx: &mut Context,
-        body: &mut Block,
         ty: Handle<Type>,
         (mut value, expr_meta): (Handle<Expression>, Span),
         meta: Span,
     ) -> Result<Handle<Expression>> {
-        let expr_type = self.resolve_type(ctx, value, expr_meta)?;
+        let expr_type = ctx.resolve_type(value, expr_meta)?;
 
         let vector_size = match *expr_type {
             TypeInner::Vector { size, .. } => Some(size),
             _ => None,
         };
 
-        // Special case: if casting from a bool, we need to use Select and not As.
-        match self.module.types[ty].inner.scalar_kind() {
-            Some(result_scalar_kind)
-                if expr_type.scalar_kind() == Some(ScalarKind::Bool)
-                    && result_scalar_kind != ScalarKind::Bool =>
-            {
-                let c0 = self.add_constant_value(result_scalar_kind, 0u64, meta);
-                let c1 = self.add_constant_value(result_scalar_kind, 1u64, meta);
-                let mut reject = ctx.add_expression(Expression::Constant(c0), expr_meta, body);
-                let mut accept = ctx.add_expression(Expression::Constant(c1), expr_meta, body);
+        let expr_is_bool = expr_type.scalar_kind() == Some(ScalarKind::Bool);
 
-                ctx.implicit_splat(self, &mut reject, meta, vector_size)?;
-                ctx.implicit_splat(self, &mut accept, meta, vector_size)?;
+        // Special case: if casting from a bool, we need to use Select and not As.
+        match ctx.module.types[ty].inner.scalar() {
+            Some(result_scalar) if expr_is_bool && result_scalar.kind != ScalarKind::Bool => {
+                let result_scalar = Scalar {
+                    width: 4,
+                    ..result_scalar
+                };
+                let l0 = Literal::zero(result_scalar).unwrap();
+                let l1 = Literal::one(result_scalar).unwrap();
+                let mut reject = ctx.add_expression(Expression::Literal(l0), expr_meta)?;
+                let mut accept = ctx.add_expression(Expression::Literal(l1), expr_meta)?;
+
+                ctx.implicit_splat(&mut reject, meta, vector_size)?;
+                ctx.implicit_splat(&mut accept, meta, vector_size)?;
 
                 let h = ctx.add_expression(
                     Expression::Select {
@@ -112,37 +89,27 @@ impl Frontend {
                         condition: value,
                     },
                     expr_meta,
-                    body,
-                );
+                )?;
 
                 return Ok(h);
             }
             _ => {}
         }
 
-        Ok(match self.module.types[ty].inner {
-            TypeInner::Vector { size, kind, width } if vector_size.is_none() => {
-                ctx.forced_conversion(self, &mut value, expr_meta, kind, width)?;
+        Ok(match ctx.module.types[ty].inner {
+            TypeInner::Vector { size, scalar } if vector_size.is_none() => {
+                ctx.forced_conversion(&mut value, expr_meta, scalar)?;
 
-                if let TypeInner::Scalar { .. } = *self.resolve_type(ctx, value, expr_meta)? {
-                    ctx.add_expression(Expression::Splat { size, value }, meta, body)
+                if let TypeInner::Scalar { .. } = *ctx.resolve_type(value, expr_meta)? {
+                    ctx.add_expression(Expression::Splat { size, value }, meta)?
                 } else {
-                    self.vector_constructor(
-                        ctx,
-                        body,
-                        ty,
-                        size,
-                        kind,
-                        width,
-                        &[(value, expr_meta)],
-                        meta,
-                    )?
+                    self.vector_constructor(ctx, ty, size, scalar, &[(value, expr_meta)], meta)?
                 }
             }
-            TypeInner::Scalar { kind, width } => {
+            TypeInner::Scalar(scalar) => {
                 let mut expr = value;
                 if let TypeInner::Vector { .. } | TypeInner::Matrix { .. } =
-                    *self.resolve_type(ctx, value, expr_meta)?
+                    *ctx.resolve_type(value, expr_meta)?
                 {
                     expr = ctx.add_expression(
                         Expression::AccessIndex {
@@ -150,66 +117,53 @@ impl Frontend {
                             index: 0,
                         },
                         meta,
-                        body,
-                    );
+                    )?;
                 }
 
-                if let TypeInner::Matrix { .. } = *self.resolve_type(ctx, value, expr_meta)? {
+                if let TypeInner::Matrix { .. } = *ctx.resolve_type(value, expr_meta)? {
                     expr = ctx.add_expression(
                         Expression::AccessIndex {
                             base: expr,
                             index: 0,
                         },
                         meta,
-                        body,
-                    );
+                    )?;
                 }
 
                 ctx.add_expression(
                     Expression::As {
-                        kind,
+                        kind: scalar.kind,
                         expr,
-                        convert: Some(width),
+                        convert: Some(scalar.width),
                     },
                     meta,
-                    body,
-                )
+                )?
             }
-            TypeInner::Vector { size, kind, width } => {
+            TypeInner::Vector { size, scalar } => {
                 if vector_size.map_or(true, |s| s != size) {
-                    value = ctx.vector_resize(size, value, expr_meta, body);
+                    value = ctx.vector_resize(size, value, expr_meta)?;
                 }
 
                 ctx.add_expression(
                     Expression::As {
-                        kind,
+                        kind: scalar.kind,
                         expr: value,
-                        convert: Some(width),
+                        convert: Some(scalar.width),
                     },
                     meta,
-                    body,
-                )
+                )?
             }
             TypeInner::Matrix {
                 columns,
                 rows,
-                width,
-            } => self.matrix_one_arg(
-                ctx,
-                body,
-                ty,
-                columns,
-                rows,
-                width,
-                (value, expr_meta),
-                meta,
-            )?,
+                scalar,
+            } => self.matrix_one_arg(ctx, ty, columns, rows, scalar, (value, expr_meta), meta)?,
             TypeInner::Struct { ref members, .. } => {
                 let scalar_components = members
-                    .get(0)
-                    .and_then(|member| scalar_components(&self.module.types[member.ty].inner));
-                if let Some((kind, width)) = scalar_components {
-                    ctx.implicit_conversion(self, &mut value, expr_meta, kind, width)?;
+                    .first()
+                    .and_then(|member| scalar_components(&ctx.module.types[member.ty].inner));
+                if let Some(scalar) = scalar_components {
+                    ctx.implicit_conversion(&mut value, expr_meta, scalar)?;
                 }
 
                 ctx.add_expression(
@@ -218,14 +172,13 @@ impl Frontend {
                         components: vec![value],
                     },
                     meta,
-                    body,
-                )
+                )?
             }
 
             TypeInner::Array { base, .. } => {
-                let scalar_components = scalar_components(&self.module.types[base].inner);
-                if let Some((kind, width)) = scalar_components {
-                    ctx.implicit_conversion(self, &mut value, expr_meta, kind, width)?;
+                let scalar_components = scalar_components(&ctx.module.types[base].inner);
+                if let Some(scalar) = scalar_components {
+                    ctx.implicit_conversion(&mut value, expr_meta, scalar)?;
                 }
 
                 ctx.add_expression(
@@ -234,8 +187,7 @@ impl Frontend {
                         components: vec![value],
                     },
                     meta,
-                    body,
-                )
+                )?
             }
             _ => {
                 self.errors.push(Error {
@@ -252,11 +204,10 @@ impl Frontend {
     fn matrix_one_arg(
         &mut self,
         ctx: &mut Context,
-        body: &mut Block,
         ty: Handle<Type>,
         columns: crate::VectorSize,
         rows: crate::VectorSize,
-        width: crate::Bytes,
+        element_scalar: Scalar,
         (mut value, expr_meta): (Handle<Expression>, Span),
         meta: Span,
     ) -> Result<Handle<Expression>> {
@@ -265,35 +216,25 @@ impl Frontend {
         // `Expression::As` doesn't support matrix width
         // casts so we need to do some extra work for casts
 
-        ctx.forced_conversion(self, &mut value, expr_meta, ScalarKind::Float, width)?;
-        match *self.resolve_type(ctx, value, expr_meta)? {
-            TypeInner::Scalar { .. } => {
+        ctx.forced_conversion(&mut value, expr_meta, element_scalar)?;
+        match *ctx.resolve_type(value, expr_meta)? {
+            TypeInner::Scalar(_) => {
                 // If a matrix is constructed with a single scalar value, then that
                 // value is used to initialize all the values along the diagonal of
                 // the matrix; the rest are given zeros.
-                let vector_ty = self.module.types.insert(
+                let vector_ty = ctx.module.types.insert(
                     Type {
                         name: None,
                         inner: TypeInner::Vector {
                             size: rows,
-                            kind: ScalarKind::Float,
-                            width,
+                            scalar: element_scalar,
                         },
                     },
                     meta,
                 );
-                let zero_constant = self.module.constants.fetch_or_append(
-                    Constant {
-                        name: None,
-                        specialization: None,
-                        inner: ConstantInner::Scalar {
-                            width,
-                            value: ScalarValue::Float(0.0),
-                        },
-                    },
-                    meta,
-                );
-                let zero = ctx.add_expression(Expression::Constant(zero_constant), meta, body);
+
+                let zero_literal = Literal::zero(element_scalar).unwrap();
+                let zero = ctx.add_expression(Expression::Literal(zero_literal), meta)?;
 
                 for i in 0..columns as u32 {
                     components.push(
@@ -308,8 +249,7 @@ impl Frontend {
                                     .collect(),
                             },
                             meta,
-                            body,
-                        ),
+                        )?,
                     )
                 }
             }
@@ -323,37 +263,18 @@ impl Frontend {
                 // (column i, row j) in the argument will be initialized from there. All
                 // other components will be initialized to the identity matrix.
 
-                let zero_constant = self.module.constants.fetch_or_append(
-                    Constant {
-                        name: None,
-                        specialization: None,
-                        inner: ConstantInner::Scalar {
-                            width,
-                            value: ScalarValue::Float(0.0),
-                        },
-                    },
-                    meta,
-                );
-                let zero = ctx.add_expression(Expression::Constant(zero_constant), meta, body);
-                let one_constant = self.module.constants.fetch_or_append(
-                    Constant {
-                        name: None,
-                        specialization: None,
-                        inner: ConstantInner::Scalar {
-                            width,
-                            value: ScalarValue::Float(1.0),
-                        },
-                    },
-                    meta,
-                );
-                let one = ctx.add_expression(Expression::Constant(one_constant), meta, body);
-                let vector_ty = self.module.types.insert(
+                let zero_literal = Literal::zero(element_scalar).unwrap();
+                let one_literal = Literal::one(element_scalar).unwrap();
+
+                let zero = ctx.add_expression(Expression::Literal(zero_literal), meta)?;
+                let one = ctx.add_expression(Expression::Literal(one_literal), meta)?;
+
+                let vector_ty = ctx.module.types.insert(
                     Type {
                         name: None,
                         inner: TypeInner::Vector {
                             size: rows,
-                            kind: ScalarKind::Float,
-                            width,
+                            scalar: element_scalar,
                         },
                     },
                     meta,
@@ -369,8 +290,7 @@ impl Frontend {
                                 index: i,
                             },
                             meta,
-                            body,
-                        );
+                        )?;
 
                         components.push(match ori_rows.cmp(&rows) {
                             Ordering::Less => {
@@ -383,15 +303,14 @@ impl Frontend {
                                                     index: r,
                                                 },
                                                 meta,
-                                                body,
                                             )
                                         } else if r == i {
-                                            one
+                                            Ok(one)
                                         } else {
-                                            zero
+                                            Ok(zero)
                                         }
                                     })
-                                    .collect();
+                                    .collect::<Result<_>>()?;
 
                                 ctx.add_expression(
                                     Expression::Compose {
@@ -399,31 +318,23 @@ impl Frontend {
                                         components,
                                     },
                                     meta,
-                                    body,
-                                )
+                                )?
                             }
                             Ordering::Equal => vector,
-                            Ordering::Greater => ctx.vector_resize(rows, vector, meta, body),
+                            Ordering::Greater => ctx.vector_resize(rows, vector, meta)?,
                         })
                     } else {
-                        let vec_constant = self.module.constants.fetch_or_append(
-                            Constant {
-                                name: None,
-                                specialization: None,
-                                inner: ConstantInner::Composite {
-                                    ty: vector_ty,
-                                    components: (0..rows as u32)
-                                        .map(|r| match r == i {
-                                            true => one_constant,
-                                            false => zero_constant,
-                                        })
-                                        .collect(),
-                                },
-                            },
-                            meta,
-                        );
-                        let vec =
-                            ctx.add_expression(Expression::Constant(vec_constant), meta, body);
+                        let compose_expr = Expression::Compose {
+                            ty: vector_ty,
+                            components: (0..rows as u32)
+                                .map(|r| match r == i {
+                                    true => one,
+                                    false => zero,
+                                })
+                                .collect(),
+                        };
+
+                        let vec = ctx.add_expression(compose_expr, meta)?;
 
                         components.push(vec)
                     }
@@ -434,31 +345,29 @@ impl Frontend {
             }
         }
 
-        Ok(ctx.add_expression(Expression::Compose { ty, components }, meta, body))
+        ctx.add_expression(Expression::Compose { ty, components }, meta)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn vector_constructor(
         &mut self,
         ctx: &mut Context,
-        body: &mut Block,
         ty: Handle<Type>,
         size: crate::VectorSize,
-        kind: ScalarKind,
-        width: crate::Bytes,
+        scalar: Scalar,
         args: &[(Handle<Expression>, Span)],
         meta: Span,
     ) -> Result<Handle<Expression>> {
         let mut components = Vec::with_capacity(size as usize);
 
         for (mut arg, expr_meta) in args.iter().copied() {
-            ctx.forced_conversion(self, &mut arg, expr_meta, kind, width)?;
+            ctx.forced_conversion(&mut arg, expr_meta, scalar)?;
 
             if components.len() >= size as usize {
                 break;
             }
 
-            match *self.resolve_type(ctx, arg, expr_meta)? {
+            match *ctx.resolve_type(arg, expr_meta)? {
                 TypeInner::Scalar { .. } => components.push(arg),
                 TypeInner::Matrix { rows, columns, .. } => {
                     components.reserve(rows as usize * columns as usize);
@@ -469,14 +378,12 @@ impl Frontend {
                                 index: c,
                             },
                             expr_meta,
-                            body,
-                        );
+                        )?;
                         for r in 0..(rows as u32) {
                             components.push(ctx.add_expression(
                                 Expression::AccessIndex { base, index: r },
                                 expr_meta,
-                                body,
-                            ))
+                            )?)
                         }
                     }
                 }
@@ -486,8 +393,7 @@ impl Frontend {
                         components.push(ctx.add_expression(
                             Expression::AccessIndex { base: arg, index },
                             expr_meta,
-                            body,
-                        ))
+                        )?)
                     }
                 }
                 _ => components.push(arg),
@@ -496,31 +402,30 @@ impl Frontend {
 
         components.truncate(size as usize);
 
-        Ok(ctx.add_expression(Expression::Compose { ty, components }, meta, body))
+        ctx.add_expression(Expression::Compose { ty, components }, meta)
     }
 
     fn constructor_many(
         &mut self,
         ctx: &mut Context,
-        body: &mut Block,
         ty: Handle<Type>,
         args: Vec<(Handle<Expression>, Span)>,
         meta: Span,
     ) -> Result<Handle<Expression>> {
         let mut components = Vec::with_capacity(args.len());
 
-        match self.module.types[ty].inner {
+        let struct_member_data = match ctx.module.types[ty].inner {
             TypeInner::Matrix {
                 columns,
                 rows,
-                width,
+                scalar: element_scalar,
             } => {
                 let mut flattened = Vec::with_capacity(columns as usize * rows as usize);
 
                 for (mut arg, meta) in args.iter().copied() {
-                    ctx.forced_conversion(self, &mut arg, meta, ScalarKind::Float, width)?;
+                    ctx.forced_conversion(&mut arg, meta, element_scalar)?;
 
-                    match *self.resolve_type(ctx, arg, meta)? {
+                    match *ctx.resolve_type(arg, meta)? {
                         TypeInner::Vector { size, .. } => {
                             for i in 0..(size as u32) {
                                 flattened.push(ctx.add_expression(
@@ -529,21 +434,19 @@ impl Frontend {
                                         index: i,
                                     },
                                     meta,
-                                    body,
-                                ))
+                                )?)
                             }
                         }
                         _ => flattened.push(arg),
                     }
                 }
 
-                let ty = self.module.types.insert(
+                let ty = ctx.module.types.insert(
                     Type {
                         name: None,
                         inner: TypeInner::Vector {
                             size: rows,
-                            kind: ScalarKind::Float,
-                            width,
+                            scalar: element_scalar,
                         },
                     },
                     meta,
@@ -556,42 +459,51 @@ impl Frontend {
                             components: Vec::from(chunk),
                         },
                         meta,
-                        body,
-                    ))
+                    )?)
                 }
+                None
             }
-            TypeInner::Vector { size, kind, width } => {
-                return self.vector_constructor(ctx, body, ty, size, kind, width, &args, meta)
+            TypeInner::Vector { size, scalar } => {
+                return self.vector_constructor(ctx, ty, size, scalar, &args, meta)
             }
             TypeInner::Array { base, .. } => {
                 for (mut arg, meta) in args.iter().copied() {
-                    let scalar_components = scalar_components(&self.module.types[base].inner);
-                    if let Some((kind, width)) = scalar_components {
-                        ctx.implicit_conversion(self, &mut arg, meta, kind, width)?;
+                    let scalar_components = scalar_components(&ctx.module.types[base].inner);
+                    if let Some(scalar) = scalar_components {
+                        ctx.implicit_conversion(&mut arg, meta, scalar)?;
                     }
 
                     components.push(arg)
                 }
+                None
             }
-            TypeInner::Struct { ref members, .. } => {
-                for ((mut arg, meta), member) in args.iter().copied().zip(members.iter()) {
-                    let scalar_components = scalar_components(&self.module.types[member.ty].inner);
-                    if let Some((kind, width)) = scalar_components {
-                        ctx.implicit_conversion(self, &mut arg, meta, kind, width)?;
-                    }
-
-                    components.push(arg)
-                }
-            }
+            TypeInner::Struct { ref members, .. } => Some(
+                members
+                    .iter()
+                    .map(|member| scalar_components(&ctx.module.types[member.ty].inner))
+                    .collect::<Vec<_>>(),
+            ),
             _ => {
                 return Err(Error {
                     kind: ErrorKind::SemanticError("Constructor: Too many arguments".into()),
                     meta,
                 })
             }
+        };
+
+        if let Some(struct_member_data) = struct_member_data {
+            for ((mut arg, meta), scalar_components) in
+                args.iter().copied().zip(struct_member_data.iter().copied())
+            {
+                if let Some(scalar) = scalar_components {
+                    ctx.implicit_conversion(&mut arg, meta, scalar)?;
+                }
+
+                components.push(arg)
+            }
         }
 
-        Ok(ctx.add_expression(Expression::Compose { ty, components }, meta, body))
+        ctx.add_expression(Expression::Compose { ty, components }, meta)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -599,7 +511,6 @@ impl Frontend {
         &mut self,
         ctx: &mut Context,
         stmt: &StmtContext,
-        body: &mut Block,
         name: String,
         args: Vec<(Handle<Expression>, Span)>,
         raw_args: &[Handle<HirExpr>],
@@ -608,21 +519,19 @@ impl Frontend {
         // Grow the typifier to be able to index it later without needing
         // to hold the context mutably
         for &(expr, span) in args.iter() {
-            self.typifier_grow(ctx, expr, span)?;
+            ctx.typifier_grow(expr, span)?;
         }
 
         // Check if the passed arguments require any special variations
-        let mut variations = builtin_required_variations(
-            args.iter()
-                .map(|&(expr, _)| ctx.typifier.get(expr, &self.module.types)),
-        );
+        let mut variations =
+            builtin_required_variations(args.iter().map(|&(expr, _)| ctx.get_type(expr)));
 
         // Initiate the declaration if it wasn't previously initialized and inject builtins
         let declaration = self.lookup_function.entry(name.clone()).or_insert_with(|| {
             variations |= BuiltinVariations::STANDARD;
             Default::default()
         });
-        inject_builtin(declaration, &mut self.module, &name, variations);
+        inject_builtin(declaration, ctx.module, &name, variations);
 
         // Borrow again but without mutability, at this point a declaration is guaranteed
         let declaration = self.lookup_function.get(&name).unwrap();
@@ -666,18 +575,14 @@ impl Frontend {
                 // If the image is used in the overload as a depth texture convert it
                 // before comparing, otherwise exact matches wouldn't be reported
                 if parameter_info.depth {
-                    sampled_to_depth(
-                        &mut self.module,
-                        ctx,
-                        call_argument.0,
-                        call_argument.1,
-                        &mut self.errors,
-                    );
-                    self.invalidate_expression(ctx, call_argument.0, call_argument.1)?
+                    sampled_to_depth(ctx, call_argument.0, call_argument.1, &mut self.errors);
+                    ctx.invalidate_expression(call_argument.0, call_argument.1)?
                 }
 
-                let overload_param_ty = &self.module.types[*overload_parameter].inner;
-                let call_arg_ty = self.resolve_type(ctx, call_argument.0, call_argument.1)?;
+                ctx.typifier_grow(call_argument.0, call_argument.1)?;
+
+                let overload_param_ty = &ctx.module.types[*overload_parameter].inner;
+                let call_arg_ty = ctx.get_type(call_argument.0);
 
                 log::trace!(
                     "Testing parameter {}\n\tOverload = {:?}\n\tCall = {:?}",
@@ -880,12 +785,11 @@ impl Frontend {
             .zip(&parameters)
         {
             let (mut handle, meta) =
-                ctx.lower_expect_inner(stmt, self, *expr, parameter_info.qualifier.as_pos(), body)?;
+                ctx.lower_expect_inner(stmt, self, *expr, parameter_info.qualifier.as_pos())?;
 
             if parameter_info.qualifier.is_lhs() {
                 self.process_lhs_argument(
                     ctx,
-                    body,
                     meta,
                     *parameter,
                     parameter_info,
@@ -898,11 +802,11 @@ impl Frontend {
                 continue;
             }
 
-            let scalar_comps = scalar_components(&self.module.types[*parameter].inner);
+            let scalar_comps = scalar_components(&ctx.module.types[*parameter].inner);
 
             // Apply implicit conversions as needed
-            if let Some((kind, width)) = scalar_comps {
-                ctx.implicit_conversion(self, &mut handle, meta, kind, width)?;
+            if let Some(scalar) = scalar_comps {
+                ctx.implicit_conversion(&mut handle, meta, scalar)?;
             }
 
             arguments.push(handle)
@@ -910,16 +814,16 @@ impl Frontend {
 
         match kind {
             FunctionKind::Call(function) => {
-                ctx.emit_end(body);
+                ctx.emit_end();
 
                 let result = if !is_void {
-                    Some(ctx.add_expression(Expression::CallResult(function), meta, body))
+                    Some(ctx.add_expression(Expression::CallResult(function), meta)?)
                 } else {
                     None
                 };
 
-                body.push(
-                    crate::Statement::Call {
+                ctx.body.push(
+                    Statement::Call {
                         function,
                         arguments,
                         result,
@@ -936,16 +840,15 @@ impl Frontend {
                             pointer: proxy_write.value,
                         },
                         meta,
-                        body,
-                    );
+                    )?;
 
-                    if let Some((kind, width)) = proxy_write.convert {
-                        ctx.conversion(&mut value, meta, kind, width)?;
+                    if let Some(scalar) = proxy_write.convert {
+                        ctx.conversion(&mut value, meta, scalar)?;
                     }
 
-                    ctx.emit_restart(body);
+                    ctx.emit_restart();
 
-                    body.push(
+                    ctx.body.push(
                         Statement::Store {
                             pointer: proxy_write.target,
                             value,
@@ -956,9 +859,7 @@ impl Frontend {
 
                 Ok(result)
             }
-            FunctionKind::Macro(builtin) => {
-                builtin.call(self, ctx, body, arguments.as_mut_slice(), meta)
-            }
+            FunctionKind::Macro(builtin) => builtin.call(self, ctx, arguments.as_mut_slice(), meta),
         }
     }
 
@@ -968,7 +869,6 @@ impl Frontend {
     fn process_lhs_argument(
         &mut self,
         ctx: &mut Context,
-        body: &mut Block,
         meta: Span,
         parameter_ty: Handle<Type>,
         parameter_info: &ParameterInfo,
@@ -977,7 +877,7 @@ impl Frontend {
         proxy_writes: &mut Vec<ProxyWrite>,
         arguments: &mut Vec<Handle<Expression>>,
     ) -> Result<()> {
-        let original_ty = self.resolve_type(ctx, original, meta)?;
+        let original_ty = ctx.resolve_type(original, meta)?;
         let original_pointer_space = original_ty.pointer_space();
 
         // The type of a possible spill variable needed for a proxy write
@@ -985,10 +885,10 @@ impl Frontend {
             // If the argument is to be passed as a pointer but the type of the
             // expression returns a vector it must mean that it was for example
             // swizzled and it must be spilled into a local before calling
-            TypeInner::Vector { size, kind, width } => Some(self.module.types.insert(
+            TypeInner::Vector { size, scalar } => Some(ctx.module.types.insert(
                 Type {
                     name: None,
-                    inner: TypeInner::Vector { size, kind, width },
+                    inner: TypeInner::Vector { size, scalar },
                 },
                 Span::default(),
             )),
@@ -998,17 +898,16 @@ impl Frontend {
             TypeInner::Pointer { base, space } if space != AddressSpace::Function => Some(base),
             TypeInner::ValuePointer {
                 size,
-                kind,
-                width,
+                scalar,
                 space,
             } if space != AddressSpace::Function => {
                 let inner = match size {
-                    Some(size) => TypeInner::Vector { size, kind, width },
-                    None => TypeInner::Scalar { kind, width },
+                    Some(size) => TypeInner::Vector { size, scalar },
+                    None => TypeInner::Scalar(scalar),
                 };
 
                 Some(
-                    self.module
+                    ctx.module
                         .types
                         .insert(Type { name: None, inner }, Span::default()),
                 )
@@ -1019,17 +918,15 @@ impl Frontend {
         // Since the original expression might be a pointer and we want a value
         // for the proxy writes, we might need to load the pointer.
         let value = if original_pointer_space.is_some() {
-            ctx.add_expression(
-                Expression::Load { pointer: original },
-                Span::default(),
-                body,
-            )
+            ctx.add_expression(Expression::Load { pointer: original }, Span::default())?
         } else {
             original
         };
 
-        let call_arg_ty = self.resolve_type(ctx, call_argument.0, call_argument.1)?;
-        let overload_param_ty = &self.module.types[parameter_ty].inner;
+        ctx.typifier_grow(call_argument.0, call_argument.1)?;
+
+        let overload_param_ty = &ctx.module.types[parameter_ty].inner;
+        let call_arg_ty = ctx.get_type(call_argument.0);
         let needs_conversion = call_arg_ty != overload_param_ty;
 
         let arg_scalar_comps = scalar_components(call_arg_ty);
@@ -1052,12 +949,12 @@ impl Frontend {
                 Span::default(),
             );
             let spill_expr =
-                ctx.add_expression(Expression::LocalVariable(spill_var), Span::default(), body);
+                ctx.add_expression(Expression::LocalVariable(spill_var), Span::default())?;
 
             // If the argument is also copied in we must store the value of the
             // original variable to the spill variable.
             if let ParameterQualifier::InOut = parameter_info.qualifier {
-                body.push(
+                ctx.body.push(
                     Statement::Store {
                         pointer: spill_expr,
                         value,
@@ -1094,8 +991,7 @@ impl Frontend {
                             index: *component as u32,
                         },
                         Span::default(),
-                        body,
-                    );
+                    )?;
 
                     let spill_component = ctx.add_expression(
                         Expression::AccessIndex {
@@ -1103,8 +999,7 @@ impl Frontend {
                             index: i as u32,
                         },
                         Span::default(),
-                        body,
-                    );
+                    )?;
 
                     proxy_writes.push(ProxyWrite {
                         target: original,
@@ -1128,32 +1023,28 @@ impl Frontend {
 
     pub(crate) fn add_function(
         &mut self,
-        ctx: Context,
+        mut ctx: Context,
         name: String,
         result: Option<FunctionResult>,
-        mut body: Block,
         meta: Span,
     ) {
-        ensure_block_returns(&mut body);
+        ensure_block_returns(&mut ctx.body);
 
         let void = result.is_none();
 
-        let &mut Frontend {
-            ref mut lookup_function,
-            ref mut module,
-            ..
-        } = self;
-
         // Check if the passed arguments require any special variations
-        let mut variations =
-            builtin_required_variations(ctx.parameters.iter().map(|&arg| &module.types[arg].inner));
+        let mut variations = builtin_required_variations(
+            ctx.parameters
+                .iter()
+                .map(|&arg| &ctx.module.types[arg].inner),
+        );
 
         // Initiate the declaration if it wasn't previously initialized and inject builtins
-        let declaration = lookup_function.entry(name.clone()).or_insert_with(|| {
+        let declaration = self.lookup_function.entry(name.clone()).or_insert_with(|| {
             variations |= BuiltinVariations::STANDARD;
             Default::default()
         });
-        inject_builtin(declaration, module, &name, variations);
+        inject_builtin(declaration, ctx.module, &name, variations);
 
         let Context {
             expressions,
@@ -1161,6 +1052,8 @@ impl Frontend {
             arguments,
             parameters,
             parameters_info,
+            body,
+            module,
             ..
         } = ctx;
 
@@ -1198,7 +1091,7 @@ impl Frontend {
             decl.defined = true;
             decl.parameters_info = parameters_info;
             match decl.kind {
-                FunctionKind::Call(handle) => *self.module.functions.get_mut(handle) = function,
+                FunctionKind::Call(handle) => *module.functions.get_mut(handle) = function,
                 FunctionKind::Macro(_) => {
                     let handle = module.functions.append(function, meta);
                     decl.kind = FunctionKind::Call(handle)
@@ -1227,27 +1120,25 @@ impl Frontend {
     ) {
         let void = result.is_none();
 
-        let &mut Frontend {
-            ref mut lookup_function,
-            ref mut module,
-            ..
-        } = self;
-
         // Check if the passed arguments require any special variations
-        let mut variations =
-            builtin_required_variations(ctx.parameters.iter().map(|&arg| &module.types[arg].inner));
+        let mut variations = builtin_required_variations(
+            ctx.parameters
+                .iter()
+                .map(|&arg| &ctx.module.types[arg].inner),
+        );
 
         // Initiate the declaration if it wasn't previously initialized and inject builtins
-        let declaration = lookup_function.entry(name.clone()).or_insert_with(|| {
+        let declaration = self.lookup_function.entry(name.clone()).or_insert_with(|| {
             variations |= BuiltinVariations::STANDARD;
             Default::default()
         });
-        inject_builtin(declaration, module, &name, variations);
+        inject_builtin(declaration, ctx.module, &name, variations);
 
         let Context {
             arguments,
             parameters,
             parameters_info,
+            module,
             ..
         } = ctx;
 
@@ -1289,166 +1180,73 @@ impl Frontend {
         });
     }
 
-    /// Helper function for building the input/output interface of the entry point
+    /// Create a Naga [`EntryPoint`] that calls the GLSL `main` function.
     ///
-    /// Calls `f` with the data of the entry point argument, flattening composite types
-    /// recursively
+    /// We compile the GLSL `main` function as an ordinary Naga [`Function`].
+    /// This function synthesizes a Naga [`EntryPoint`] to call that.
     ///
-    /// The passed arguments to the callback are:
-    /// - The name
-    /// - The pointer expression to the global storage
-    /// - The handle to the type of the entry point argument
-    /// - The binding of the entry point argument
-    /// - The expression arena
-    fn arg_type_walker(
-        &self,
-        name: Option<String>,
-        binding: crate::Binding,
-        pointer: Handle<Expression>,
-        ty: Handle<Type>,
-        expressions: &mut Arena<Expression>,
-        f: &mut impl FnMut(
-            Option<String>,
-            Handle<Expression>,
-            Handle<Type>,
-            crate::Binding,
-            &mut Arena<Expression>,
-        ),
-    ) {
-        match self.module.types[ty].inner {
-            TypeInner::Array {
-                base,
-                size: crate::ArraySize::Constant(constant),
-                ..
-            } => {
-                let mut location = match binding {
-                    crate::Binding::Location { location, .. } => location,
-                    crate::Binding::BuiltIn(_) => return,
-                };
-
-                // TODO: Better error reporting
-                // right now we just don't walk the array if the size isn't known at
-                // compile time and let validation catch it
-                let size = match self.module.constants[constant].to_array_length() {
-                    Some(val) => val,
-                    None => return f(name, pointer, ty, binding, expressions),
-                };
-
-                let interpolation =
-                    self.module.types[base]
-                        .inner
-                        .scalar_kind()
-                        .map(|kind| match kind {
-                            ScalarKind::Float => crate::Interpolation::Perspective,
-                            _ => crate::Interpolation::Flat,
-                        });
-
-                for index in 0..size {
-                    let member_pointer = expressions.append(
-                        Expression::AccessIndex {
-                            base: pointer,
-                            index,
-                        },
-                        crate::Span::default(),
-                    );
-
-                    let binding = crate::Binding::Location {
-                        location,
-                        interpolation,
-                        sampling: None,
-                    };
-                    location += 1;
-
-                    self.arg_type_walker(
-                        name.clone(),
-                        binding,
-                        member_pointer,
-                        base,
-                        expressions,
-                        f,
-                    )
-                }
-            }
-            TypeInner::Struct { ref members, .. } => {
-                let mut location = match binding {
-                    crate::Binding::Location { location, .. } => location,
-                    crate::Binding::BuiltIn(_) => return,
-                };
-
-                for (i, member) in members.iter().enumerate() {
-                    let member_pointer = expressions.append(
-                        Expression::AccessIndex {
-                            base: pointer,
-                            index: i as u32,
-                        },
-                        crate::Span::default(),
-                    );
-
-                    let binding = match member.binding.clone() {
-                        Some(binding) => binding,
-                        None => {
-                            let interpolation = self.module.types[member.ty]
-                                .inner
-                                .scalar_kind()
-                                .map(|kind| match kind {
-                                    ScalarKind::Float => crate::Interpolation::Perspective,
-                                    _ => crate::Interpolation::Flat,
-                                });
-                            let binding = crate::Binding::Location {
-                                location,
-                                interpolation,
-                                sampling: None,
-                            };
-                            location += 1;
-                            binding
-                        }
-                    };
-
-                    self.arg_type_walker(
-                        member.name.clone(),
-                        binding,
-                        member_pointer,
-                        member.ty,
-                        expressions,
-                        f,
-                    )
-                }
-            }
-            _ => f(name, pointer, ty, binding, expressions),
-        }
-    }
-
+    /// Each GLSL input and output variable (including builtins) becomes a Naga
+    /// [`GlobalVariable`]s in the [`Private`] address space, which `main` can
+    /// access in the usual way.
+    ///
+    /// The `EntryPoint` we synthesize here has an argument for each GLSL input
+    /// variable, and returns a struct with a member for each GLSL output
+    /// variable. The entry point contains code to:
+    ///
+    /// - copy its arguments into the Naga globals representing the GLSL input
+    ///   variables,
+    ///
+    /// - call the Naga `Function` representing the GLSL `main` function, and then
+    ///
+    /// - build its return value from whatever values the GLSL `main` left in
+    ///   the Naga globals representing GLSL `output` variables.
+    ///
+    /// Upon entry, [`ctx.body`] should contain code, accumulated by prior calls
+    /// to [`ParsingContext::parse_external_declaration`][pxd], to initialize
+    /// private global variables as needed. This code gets spliced into the
+    /// entry point before the call to `main`.
+    ///
+    /// [`GlobalVariable`]: crate::GlobalVariable
+    /// [`Private`]: crate::AddressSpace::Private
+    /// [`ctx.body`]: Context::body
+    /// [pxd]: super::ParsingContext::parse_external_declaration
     pub(crate) fn add_entry_point(
         &mut self,
         function: Handle<Function>,
-        global_init_body: Block,
-        mut expressions: Arena<Expression>,
-    ) {
+        mut ctx: Context,
+    ) -> Result<()> {
         let mut arguments = Vec::new();
-        let mut body = Block::with_capacity(
+
+        let body = Block::with_capacity(
             // global init body
-            global_init_body.len() +
-                        // prologue and epilogue
-                        self.entry_args.len() * 2
-                        // Call, Emit for composing struct and return
-                        + 3,
+            ctx.body.len() +
+            // prologue and epilogue
+            self.entry_args.len() * 2
+            // Call, Emit for composing struct and return
+            + 3,
         );
+
+        let global_init_body = std::mem::replace(&mut ctx.body, body);
 
         for arg in self.entry_args.iter() {
             if arg.storage != StorageQualifier::Input {
                 continue;
             }
 
-            let pointer =
-                expressions.append(Expression::GlobalVariable(arg.handle), Default::default());
+            let pointer = ctx
+                .expressions
+                .append(Expression::GlobalVariable(arg.handle), Default::default());
+            ctx.local_expression_kind_tracker
+                .insert(pointer, crate::proc::ExpressionKind::Runtime);
 
-            self.arg_type_walker(
+            let ty = ctx.module.global_variables[arg.handle].ty;
+
+            ctx.arg_type_walker(
                 arg.name.clone(),
                 arg.binding.clone(),
                 pointer,
-                self.module.global_variables[arg.handle].ty,
-                &mut expressions,
-                &mut |name, pointer, ty, binding, expressions| {
+                ty,
+                &mut |ctx, name, pointer, ty, binding| {
                     let idx = arguments.len() as u32;
 
                     arguments.push(FunctionArgument {
@@ -1457,16 +1255,20 @@ impl Frontend {
                         binding: Some(binding),
                     });
 
-                    let value =
-                        expressions.append(Expression::FunctionArgument(idx), Default::default());
-                    body.push(Statement::Store { pointer, value }, Default::default());
+                    let value = ctx
+                        .expressions
+                        .append(Expression::FunctionArgument(idx), Default::default());
+                    ctx.local_expression_kind_tracker
+                        .insert(value, crate::proc::ExpressionKind::Runtime);
+                    ctx.body
+                        .push(Statement::Store { pointer, value }, Default::default());
                 },
-            )
+            )?
         }
 
-        body.extend_block(global_init_body);
+        ctx.body.extend_block(global_init_body);
 
-        body.push(
+        ctx.body.push(
             Statement::Call {
                 function,
                 arguments: Vec::new(),
@@ -1484,16 +1286,20 @@ impl Frontend {
                 continue;
             }
 
-            let pointer =
-                expressions.append(Expression::GlobalVariable(arg.handle), Default::default());
+            let pointer = ctx
+                .expressions
+                .append(Expression::GlobalVariable(arg.handle), Default::default());
+            ctx.local_expression_kind_tracker
+                .insert(pointer, crate::proc::ExpressionKind::Runtime);
 
-            self.arg_type_walker(
+            let ty = ctx.module.global_variables[arg.handle].ty;
+
+            ctx.arg_type_walker(
                 arg.name.clone(),
                 arg.binding.clone(),
                 pointer,
-                self.module.global_variables[arg.handle].ty,
-                &mut expressions,
-                &mut |name, pointer, ty, binding, expressions| {
+                ty,
+                &mut |ctx, name, pointer, ty, binding| {
                     members.push(StructMember {
                         name,
                         ty,
@@ -1501,21 +1307,25 @@ impl Frontend {
                         offset: span,
                     });
 
-                    span += self.module.types[ty].inner.size(&self.module.constants);
+                    span += ctx.module.types[ty].inner.size(ctx.module.to_ctx());
 
-                    let len = expressions.len();
-                    let load = expressions.append(Expression::Load { pointer }, Default::default());
-                    body.push(
-                        Statement::Emit(expressions.range_from(len)),
+                    let len = ctx.expressions.len();
+                    let load = ctx
+                        .expressions
+                        .append(Expression::Load { pointer }, Default::default());
+                    ctx.local_expression_kind_tracker
+                        .insert(load, crate::proc::ExpressionKind::Runtime);
+                    ctx.body.push(
+                        Statement::Emit(ctx.expressions.range_from(len)),
                         Default::default(),
                     );
                     components.push(load)
                 },
-            )
+            )?
         }
 
         let (ty, value) = if !components.is_empty() {
-            let ty = self.module.types.insert(
+            let ty = ctx.module.types.insert(
                 Type {
                     name: None,
                     inner: TypeInner::Struct { members, span },
@@ -1523,11 +1333,14 @@ impl Frontend {
                 Default::default(),
             );
 
-            let len = expressions.len();
-            let res =
-                expressions.append(Expression::Compose { ty, components }, Default::default());
-            body.push(
-                Statement::Emit(expressions.range_from(len)),
+            let len = ctx.expressions.len();
+            let res = ctx
+                .expressions
+                .append(Expression::Compose { ty, components }, Default::default());
+            ctx.local_expression_kind_tracker
+                .insert(res, crate::proc::ExpressionKind::Runtime);
+            ctx.body.push(
+                Statement::Emit(ctx.expressions.range_from(len)),
                 Default::default(),
             );
 
@@ -1536,9 +1349,14 @@ impl Frontend {
             (None, None)
         };
 
-        body.push(Statement::Return { value }, Default::default());
+        ctx.body
+            .push(Statement::Return { value }, Default::default());
 
-        self.module.entry_points.push(EntryPoint {
+        let Context {
+            body, expressions, ..
+        } = ctx;
+
+        ctx.module.entry_points.push(EntryPoint {
             name: "main".to_string(),
             stage: self.meta.stage,
             early_depth_test: Some(crate::EarlyDepthTest { conservative: None })
@@ -1552,6 +1370,123 @@ impl Frontend {
                 ..Default::default()
             },
         });
+
+        Ok(())
+    }
+}
+
+impl Context<'_> {
+    /// Helper function for building the input/output interface of the entry point
+    ///
+    /// Calls `f` with the data of the entry point argument, flattening composite types
+    /// recursively
+    ///
+    /// The passed arguments to the callback are:
+    /// - The ctx
+    /// - The name
+    /// - The pointer expression to the global storage
+    /// - The handle to the type of the entry point argument
+    /// - The binding of the entry point argument
+    fn arg_type_walker(
+        &mut self,
+        name: Option<String>,
+        binding: crate::Binding,
+        pointer: Handle<Expression>,
+        ty: Handle<Type>,
+        f: &mut impl FnMut(
+            &mut Context,
+            Option<String>,
+            Handle<Expression>,
+            Handle<Type>,
+            crate::Binding,
+        ),
+    ) -> Result<()> {
+        match self.module.types[ty].inner {
+            // TODO: Better error reporting
+            // right now we just don't walk the array if the size isn't known at
+            // compile time and let validation catch it
+            TypeInner::Array {
+                base,
+                size: crate::ArraySize::Constant(size),
+                ..
+            } => {
+                let mut location = match binding {
+                    crate::Binding::Location { location, .. } => location,
+                    crate::Binding::BuiltIn(_) => return Ok(()),
+                };
+
+                let interpolation =
+                    self.module.types[base]
+                        .inner
+                        .scalar_kind()
+                        .map(|kind| match kind {
+                            ScalarKind::Float => crate::Interpolation::Perspective,
+                            _ => crate::Interpolation::Flat,
+                        });
+
+                for index in 0..size.get() {
+                    let member_pointer = self.add_expression(
+                        Expression::AccessIndex {
+                            base: pointer,
+                            index,
+                        },
+                        Span::default(),
+                    )?;
+
+                    let binding = crate::Binding::Location {
+                        location,
+                        interpolation,
+                        sampling: None,
+                        second_blend_source: false,
+                    };
+                    location += 1;
+
+                    self.arg_type_walker(name.clone(), binding, member_pointer, base, f)?
+                }
+            }
+            TypeInner::Struct { ref members, .. } => {
+                let mut location = match binding {
+                    crate::Binding::Location { location, .. } => location,
+                    crate::Binding::BuiltIn(_) => return Ok(()),
+                };
+
+                for (i, member) in members.clone().into_iter().enumerate() {
+                    let member_pointer = self.add_expression(
+                        Expression::AccessIndex {
+                            base: pointer,
+                            index: i as u32,
+                        },
+                        Span::default(),
+                    )?;
+
+                    let binding = match member.binding {
+                        Some(binding) => binding,
+                        None => {
+                            let interpolation = self.module.types[member.ty]
+                                .inner
+                                .scalar_kind()
+                                .map(|kind| match kind {
+                                    ScalarKind::Float => crate::Interpolation::Perspective,
+                                    _ => crate::Interpolation::Flat,
+                                });
+                            let binding = crate::Binding::Location {
+                                location,
+                                interpolation,
+                                sampling: None,
+                                second_blend_source: false,
+                            };
+                            location += 1;
+                            binding
+                        }
+                    };
+
+                    self.arg_type_walker(member.name, binding, member_pointer, member.ty, f)?
+                }
+            }
+            _ => f(self, name, pointer, ty, binding),
+        }
+
+        Ok(())
     }
 }
 
@@ -1578,66 +1513,67 @@ fn conversion(target: &TypeInner, source: &TypeInner) -> Option<Conversion> {
     use ScalarKind::*;
 
     // Gather the `ScalarKind` and scalar width from both the target and the source
-    let (target_kind, target_width, source_kind, source_width) = match (target, source) {
+    let (target_scalar, source_scalar) = match (target, source) {
         // Conversions between scalars are allowed
-        (
-            &TypeInner::Scalar {
-                kind: tgt_kind,
-                width: tgt_width,
-            },
-            &TypeInner::Scalar {
-                kind: src_kind,
-                width: src_width,
-            },
-        ) => (tgt_kind, tgt_width, src_kind, src_width),
+        (&TypeInner::Scalar(tgt_scalar), &TypeInner::Scalar(src_scalar)) => {
+            (tgt_scalar, src_scalar)
+        }
         // Conversions between vectors of the same size are allowed
         (
             &TypeInner::Vector {
-                kind: tgt_kind,
                 size: tgt_size,
-                width: tgt_width,
+                scalar: tgt_scalar,
             },
             &TypeInner::Vector {
-                kind: src_kind,
                 size: src_size,
-                width: src_width,
+                scalar: src_scalar,
             },
-        ) if tgt_size == src_size => (tgt_kind, tgt_width, src_kind, src_width),
+        ) if tgt_size == src_size => (tgt_scalar, src_scalar),
         // Conversions between matrices of the same size are allowed
         (
             &TypeInner::Matrix {
                 rows: tgt_rows,
                 columns: tgt_cols,
-                width: tgt_width,
+                scalar: tgt_scalar,
             },
             &TypeInner::Matrix {
                 rows: src_rows,
                 columns: src_cols,
-                width: src_width,
+                scalar: src_scalar,
             },
-        ) if tgt_cols == src_cols && tgt_rows == src_rows => (Float, tgt_width, Float, src_width),
+        ) if tgt_cols == src_cols && tgt_rows == src_rows => (tgt_scalar, src_scalar),
         _ => return None,
     };
 
     // Check if source can be converted into target, if this is the case then the type
     // power of target must be higher than that of source
-    let target_power = type_power(target_kind, target_width);
-    let source_power = type_power(source_kind, source_width);
+    let target_power = type_power(target_scalar);
+    let source_power = type_power(source_scalar);
     if target_power < source_power {
         return None;
     }
 
-    Some(
-        match ((target_kind, target_width), (source_kind, source_width)) {
-            // A conversion from a float to a double is special
-            ((Float, 8), (Float, 4)) => Conversion::FloatToDouble,
-            // A conversion from an integer to a float is special
-            ((Float, 4), (Sint | Uint, _)) => Conversion::IntToFloat,
-            // A conversion from an integer to a double is special
-            ((Float, 8), (Sint | Uint, _)) => Conversion::IntToDouble,
-            _ => Conversion::Other,
-        },
-    )
+    Some(match (target_scalar, source_scalar) {
+        // A conversion from a float to a double is special
+        (Scalar::F64, Scalar::F32) => Conversion::FloatToDouble,
+        // A conversion from an integer to a float is special
+        (
+            Scalar::F32,
+            Scalar {
+                kind: Sint | Uint,
+                width: _,
+            },
+        ) => Conversion::IntToFloat,
+        // A conversion from an integer to a double is special
+        (
+            Scalar::F64,
+            Scalar {
+                kind: Sint | Uint,
+                width: _,
+            },
+        ) => Conversion::IntToDouble,
+        _ => Conversion::Other,
+    })
 }
 
 /// Helper method returning all the non standard builtin variations needed
@@ -1647,15 +1583,11 @@ fn builtin_required_variations<'a>(args: impl Iterator<Item = &'a TypeInner>) ->
 
     for ty in args {
         match *ty {
-            TypeInner::ValuePointer { kind, width, .. }
-            | TypeInner::Scalar { kind, width }
-            | TypeInner::Vector { kind, width, .. } => {
-                if kind == ScalarKind::Float && width == 8 {
-                    variations |= BuiltinVariations::DOUBLE
-                }
-            }
-            TypeInner::Matrix { width, .. } => {
-                if width == 8 {
+            TypeInner::ValuePointer { scalar, .. }
+            | TypeInner::Scalar(scalar)
+            | TypeInner::Vector { scalar, .. }
+            | TypeInner::Matrix { scalar, .. } => {
+                if scalar == Scalar::F64 {
                     variations |= BuiltinVariations::DOUBLE
                 }
             }

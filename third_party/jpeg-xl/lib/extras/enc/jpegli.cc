@@ -5,14 +5,36 @@
 
 #include "lib/extras/enc/jpegli.h"
 
+#include <jxl/cms.h>
 #include <jxl/codestream_header.h>
+#include <jxl/types.h>
 #include <setjmp.h>
 #include <stdint.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <hwy/aligned_allocator.h>
+#include <limits>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "lib/extras/enc/encode.h"
+#include "lib/extras/packed_image.h"
+#include "lib/jpegli/common.h"
 #include "lib/jpegli/encode.h"
-#include "lib/jxl/enc_color_management.h"
+#include "lib/jpegli/types.h"
+#include "lib/jxl/base/byte_order.h"
+#include "lib/jxl/base/common.h"
+#include "lib/jxl/base/data_parallel.h"
+#include "lib/jxl/base/status.h"
+#include "lib/jxl/color_encoding_internal.h"
 #include "lib/jxl/enc_xyb.h"
+#include "lib/jxl/image.h"
+#include "lib/jxl/simd_util.h"
 
 namespace jxl {
 namespace extras {
@@ -29,11 +51,12 @@ void MyErrorExit(j_common_ptr cinfo) {
 Status VerifyInput(const PackedPixelFile& ppf) {
   const JxlBasicInfo& info = ppf.info;
   JXL_RETURN_IF_ERROR(Encoder::VerifyBasicInfo(info));
-  if (info.alpha_bits > 0) {
-    return JXL_FAILURE("Alpha is not supported for JPEG output.");
-  }
   if (ppf.frames.size() != 1) {
     return JXL_FAILURE("JPEG input must have exactly one frame.");
+  }
+  if (info.num_color_channels != 1 && info.num_color_channels != 3) {
+    return JXL_FAILURE("Invalid number of color channels %d",
+                       info.num_color_channels);
   }
   const PackedImage& image = ppf.frames[0].color;
   JXL_RETURN_IF_ERROR(Encoder::VerifyImageSize(image, info));
@@ -53,13 +76,12 @@ Status VerifyInput(const PackedPixelFile& ppf) {
 
 Status GetColorEncoding(const PackedPixelFile& ppf,
                         ColorEncoding* color_encoding) {
-  if (!ppf.icc.empty()) {
-    PaddedBytes icc;
-    icc.assign(ppf.icc.data(), ppf.icc.data() + ppf.icc.size());
-    JXL_RETURN_IF_ERROR(color_encoding->SetICC(std::move(icc)));
+  if (ppf.primary_color_representation == PackedPixelFile::kIccIsPrimary) {
+    IccBytes icc = ppf.icc;
+    JXL_RETURN_IF_ERROR(
+        color_encoding->SetICC(std::move(icc), JxlGetDefaultCms()));
   } else {
-    JXL_RETURN_IF_ERROR(ConvertExternalToInternalColorEncoding(
-        ppf.color_encoding, color_encoding));
+    JXL_RETURN_IF_ERROR(color_encoding->FromExternal(ppf.color_encoding));
   }
   if (color_encoding->ICC().empty()) {
     return JXL_FAILURE("Invalid color encoding.");
@@ -105,12 +127,12 @@ Status WriteAppData(j_compress_ptr cinfo,
   return true;
 }
 
-static constexpr int kICCMarker = 0xe2;
+constexpr int kICCMarker = 0xe2;
 constexpr unsigned char kICCSignature[12] = {
     0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0x00};
-static constexpr uint8_t kUnknownTf = 2;
-static constexpr unsigned char kCICPTagSignature[4] = {0x63, 0x69, 0x63, 0x70};
-static constexpr size_t kCICPTagSize = 12;
+constexpr uint8_t kUnknownTf = 2;
+constexpr unsigned char kCICPTagSignature[4] = {0x63, 0x69, 0x63, 0x70};
+constexpr size_t kCICPTagSize = 12;
 
 bool FindCICPTag(const uint8_t* icc_data, size_t len, bool is_first_chunk,
                  size_t* cicp_offset, size_t* cicp_length, uint8_t* cicp_tag,
@@ -231,32 +253,48 @@ JpegliEndianness ConvertEndianness(JxlEndianness endianness) {
   }
 }
 
-void ToFloatRow(const uint8_t* row_in, JxlPixelFormat format, size_t len,
-                float* row_out) {
+void ToFloatRow(const uint8_t* row_in, JxlPixelFormat format, size_t xsize,
+                size_t c_out, float* row_out) {
   bool is_little_endian =
       (format.endianness == JXL_LITTLE_ENDIAN ||
        (format.endianness == JXL_NATIVE_ENDIAN && IsLittleEndian()));
   static constexpr double kMul8 = 1.0 / 255.0;
   static constexpr double kMul16 = 1.0 / 65535.0;
+  const size_t c_in = format.num_channels;
   if (format.data_type == JXL_TYPE_UINT8) {
-    for (size_t x = 0; x < len; ++x) {
-      row_out[x] = row_in[x] * kMul8;
+    for (size_t x = 0; x < xsize; ++x) {
+      for (size_t c = 0; c < c_out; ++c) {
+        const size_t ix = c_in * x + c;
+        row_out[c_out * x + c] = row_in[ix] * kMul8;
+      }
     }
   } else if (format.data_type == JXL_TYPE_UINT16 && is_little_endian) {
-    for (size_t x = 0; x < len; ++x) {
-      row_out[x] = LoadLE16(&row_in[2 * x]) * kMul16;
+    for (size_t x = 0; x < xsize; ++x) {
+      for (size_t c = 0; c < c_out; ++c) {
+        const size_t ix = c_in * x + c;
+        row_out[c_out * x + c] = LoadLE16(&row_in[2 * ix]) * kMul16;
+      }
     }
   } else if (format.data_type == JXL_TYPE_UINT16 && !is_little_endian) {
-    for (size_t x = 0; x < len; ++x) {
-      row_out[x] = LoadBE16(&row_in[2 * x]) * kMul16;
+    for (size_t x = 0; x < xsize; ++x) {
+      for (size_t c = 0; c < c_out; ++c) {
+        const size_t ix = c_in * x + c;
+        row_out[c_out * x + c] = LoadBE16(&row_in[2 * ix]) * kMul16;
+      }
     }
   } else if (format.data_type == JXL_TYPE_FLOAT && is_little_endian) {
-    for (size_t x = 0; x < len; ++x) {
-      row_out[x] = LoadLEFloat(&row_in[4 * x]);
+    for (size_t x = 0; x < xsize; ++x) {
+      for (size_t c = 0; c < c_out; ++c) {
+        const size_t ix = c_in * x + c;
+        row_out[c_out * x + c] = LoadLEFloat(&row_in[4 * ix]);
+      }
     }
   } else if (format.data_type == JXL_TYPE_FLOAT && !is_little_endian) {
-    for (size_t x = 0; x < len; ++x) {
-      row_out[x] = LoadBEFloat(&row_in[4 * x]);
+    for (size_t x = 0; x < xsize; ++x) {
+      for (size_t c = 0; c < c_out; ++c) {
+        const size_t ix = c_in * x + c;
+        row_out[c_out * x + c] = LoadBEFloat(&row_in[4 * ix]);
+      }
     }
   }
 }
@@ -332,12 +370,9 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
   ColorEncoding color_encoding;
   JXL_RETURN_IF_ERROR(GetColorEncoding(ppf, &color_encoding));
 
-  ColorSpaceTransform c_transform(GetJxlCms());
+  ColorSpaceTransform c_transform(*JxlGetDefaultCms());
   ColorEncoding xyb_encoding;
   if (jpeg_settings.xyb) {
-    if (ppf.info.num_color_channels != 3) {
-      return JXL_FAILURE("Only RGB input is supported in XYB mode.");
-    }
     if (HasICCProfile(jpeg_settings.app_data)) {
       return JXL_FAILURE("APP data ICC profile is not supported in XYB mode.");
     }
@@ -345,7 +380,7 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
     JXL_RETURN_IF_ERROR(
         c_transform.Init(color_encoding, c_desired, 255.0f, ppf.info.xsize, 1));
     xyb_encoding.SetColorSpace(jxl::ColorSpace::kXYB);
-    xyb_encoding.rendering_intent = jxl::RenderingIntent::kPerceptual;
+    xyb_encoding.SetRenderingIntent(jxl::RenderingIntent::kPerceptual);
     JXL_RETURN_IF_ERROR(xyb_encoding.CreateICC());
   }
   const ColorEncoding& output_encoding =
@@ -355,13 +390,13 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
   // before the call to setjmp().
   std::vector<uint8_t> pixels;
   unsigned char* output_buffer = nullptr;
-  unsigned long output_size = 0;
+  unsigned long output_size = 0;  // NOLINT
   std::vector<uint8_t> row_bytes;
-  size_t rowlen = RoundUpTo(ppf.info.xsize, VectorSize());
+  size_t rowlen = RoundUpTo(ppf.info.xsize, MaxVectorSize());
   hwy::AlignedFreeUniquePtr<float[]> xyb_tmp =
       hwy::AllocateAligned<float>(6 * rowlen);
   hwy::AlignedFreeUniquePtr<float[]> premul_absorb =
-      hwy::AllocateAligned<float>(VectorSize() * 12);
+      hwy::AllocateAligned<float>(MaxVectorSize() * 12);
   ComputePremulAbsorb(255.0f, premul_absorb.get());
 
   jpeg_compress_struct cinfo;
@@ -384,6 +419,8 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
         cinfo.input_components == 1 ? JCS_GRAYSCALE : JCS_RGB;
     if (jpeg_settings.xyb) {
       jpegli_set_xyb_mode(&cinfo);
+      cinfo.input_components = 3;
+      cinfo.in_color_space = JCS_RGB;
     } else if (jpeg_settings.use_std_quant_tables) {
       jpegli_use_standard_quant_tables(&cinfo);
     }
@@ -417,16 +454,29 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
         cinfo.comp_info[i].h_samp_factor = 1;
         cinfo.comp_info[i].v_samp_factor = 1;
       }
+    } else if (!jpeg_settings.xyb) {
+      // Default is no chroma subsampling.
+      cinfo.comp_info[0].h_samp_factor = 1;
+      cinfo.comp_info[0].v_samp_factor = 1;
     }
     jpegli_enable_adaptive_quantization(
-        &cinfo, jpeg_settings.use_adaptive_quantization);
-    jpegli_set_distance(&cinfo, jpeg_settings.distance, TRUE);
+        &cinfo, TO_JXL_BOOL(jpeg_settings.use_adaptive_quantization));
+    if (jpeg_settings.psnr_target > 0.0) {
+      jpegli_set_psnr(&cinfo, jpeg_settings.psnr_target,
+                      jpeg_settings.search_tolerance,
+                      jpeg_settings.min_distance, jpeg_settings.max_distance);
+    } else if (jpeg_settings.quality > 0.0) {
+      float distance = jpegli_quality_to_distance(jpeg_settings.quality);
+      jpegli_set_distance(&cinfo, distance, TRUE);
+    } else {
+      jpegli_set_distance(&cinfo, jpeg_settings.distance, TRUE);
+    }
     jpegli_set_progressive_level(&cinfo, jpeg_settings.progressive_level);
-    cinfo.optimize_coding = jpeg_settings.optimize_coding;
+    cinfo.optimize_coding = TO_JXL_BOOL(jpeg_settings.optimize_coding);
     if (!jpeg_settings.app_data.empty()) {
       // Make sure jpegli_start_compress() does not write any APP markers.
-      cinfo.write_JFIF_header = false;
-      cinfo.write_Adobe_marker = false;
+      cinfo.write_JFIF_header = JXL_FALSE;
+      cinfo.write_Adobe_marker = JXL_FALSE;
     }
     const PackedImage& image = ppf.frames[0].color;
     if (jpeg_settings.xyb) {
@@ -450,10 +500,10 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
       float* dst_buf = c_transform.BufDst(0);
       for (size_t y = 0; y < image.ysize; ++y) {
         // convert to float
-        ToFloatRow(&pixels[y * image.stride], image.format, 3 * image.xsize,
-                   src_buf);
+        ToFloatRow(&pixels[y * image.stride], image.format, image.xsize,
+                   info.num_color_channels, src_buf);
         // convert to linear srgb
-        if (!c_transform.Run(0, src_buf, dst_buf)) {
+        if (!c_transform.Run(0, src_buf, dst_buf, image.xsize)) {
           return false;
         }
         // deinterleave channels
@@ -482,10 +532,25 @@ Status EncodeJpeg(const PackedPixelFile& ppf, const JpegSettings& jpeg_settings,
       }
     } else {
       row_bytes.resize(image.stride);
-      for (size_t y = 0; y < info.ysize; ++y) {
-        memcpy(&row_bytes[0], pixels + y * image.stride, image.stride);
-        JSAMPROW row[] = {row_bytes.data()};
-        jpegli_write_scanlines(&cinfo, row, 1);
+      if (cinfo.num_components == static_cast<int>(image.format.num_channels)) {
+        for (size_t y = 0; y < info.ysize; ++y) {
+          memcpy(row_bytes.data(), pixels + y * image.stride, image.stride);
+          JSAMPROW row[] = {row_bytes.data()};
+          jpegli_write_scanlines(&cinfo, row, 1);
+        }
+      } else {
+        for (size_t y = 0; y < info.ysize; ++y) {
+          int bytes_per_channel =
+              PackedImage::BitsPerChannel(image.format.data_type) / 8;
+          int bytes_per_pixel = cinfo.num_components * bytes_per_channel;
+          for (size_t x = 0; x < info.xsize; ++x) {
+            memcpy(&row_bytes[x * bytes_per_pixel],
+                   &pixels[y * image.stride + x * image.pixel_stride()],
+                   bytes_per_pixel);
+          }
+          JSAMPROW row[] = {row_bytes.data()};
+          jpegli_write_scanlines(&cinfo, row, 1);
+        }
       }
     }
     jpegli_finish_compress(&cinfo);

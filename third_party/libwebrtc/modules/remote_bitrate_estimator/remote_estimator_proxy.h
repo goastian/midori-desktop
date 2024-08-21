@@ -26,6 +26,7 @@
 #include "modules/remote_bitrate_estimator/packet_arrival_map.h"
 #include "modules/rtp_rtcp/source/rtcp_packet.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/transport_feedback.h"
+#include "modules/rtp_rtcp/source/rtp_packet_received.h"
 #include "rtc_base/numerics/sequence_number_unwrapper.h"
 #include "rtc_base/synchronization/mutex.h"
 
@@ -44,26 +45,13 @@ class RemoteEstimatorProxy {
                        NetworkStateEstimator* network_state_estimator);
   ~RemoteEstimatorProxy();
 
-  struct Packet {
-    Timestamp arrival_time;
-    DataSize size;
-    uint32_t ssrc;
-    absl::optional<uint32_t> absolute_send_time_24bits;
-    absl::optional<uint16_t> transport_sequence_number;
-    absl::optional<FeedbackRequest> feedback_request;
-  };
-  void IncomingPacket(Packet packet);
-
-  void IncomingPacket(int64_t arrival_time_ms,
-                      size_t payload_size,
-                      const RTPHeader& header);
+  void IncomingPacket(const RtpPacketReceived& packet);
 
   // Sends periodic feedback if it is time to send it.
   // Returns time until next call to Process should be made.
   TimeDelta Process(Timestamp now);
 
   void OnBitrateChanged(int bitrate);
-  void SetSendPeriodicFeedback(bool send_periodic_feedback);
   void SetTransportOverhead(DataSize overhead_per_packet);
 
  private:
@@ -117,6 +105,7 @@ class RemoteEstimatorProxy {
   // Unwraps absolute send times.
   uint32_t previous_abs_send_time_ RTC_GUARDED_BY(&lock_);
   Timestamp abs_send_timestamp_ RTC_GUARDED_BY(&lock_);
+  Timestamp last_arrival_time_with_abs_send_time_ RTC_GUARDED_BY(&lock_);
 };
 
 }  // namespace webrtc

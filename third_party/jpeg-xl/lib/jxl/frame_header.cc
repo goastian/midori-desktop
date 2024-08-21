@@ -9,7 +9,9 @@
 
 #include "lib/jxl/base/printf_macros.h"
 #include "lib/jxl/base/status.h"
+#include "lib/jxl/common.h"  // kMaxNumPasses
 #include "lib/jxl/fields.h"
+#include "lib/jxl/pack_signed.h"
 
 namespace jxl {
 
@@ -78,6 +80,7 @@ Status BlendingInfo::VisitFields(Visitor* JXL_RESTRICT visitor) {
   return true;
 }
 
+#if JXL_DEBUG_V_LEVEL >= 1
 std::string BlendingInfo::DebugString() const {
   std::ostringstream os;
   os << (mode == BlendMode::kReplace            ? "Replace"
@@ -96,6 +99,7 @@ std::string BlendingInfo::DebugString() const {
   }
   return os.str();
 }
+#endif
 
 AnimationFrame::AnimationFrame(const CodecMetadata* metadata)
     : nonserialized_metadata(metadata) {
@@ -160,6 +164,7 @@ Status Passes::VisitFields(Visitor* JXL_RESTRICT visitor) {
   return true;
 }
 
+#if JXL_DEBUG_V_LEVEL >= 1
 std::string Passes::DebugString() const {
   std::ostringstream os;
   os << "p=" << num_passes;
@@ -183,6 +188,7 @@ std::string Passes::DebugString() const {
   }
   return os.str();
 }
+#endif
 
 FrameHeader::FrameHeader(const CodecMetadata* metadata)
     : animation_frame(metadata), nonserialized_metadata(metadata) {
@@ -362,8 +368,7 @@ Status FrameHeader::VisitFields(Visitor* JXL_RESTRICT visitor) {
       JXL_QUIET_RETURN_IF_ERROR(visitor->VisitNested(&animation_frame));
     }
     JXL_QUIET_RETURN_IF_ERROR(visitor->Bool(true, &is_last));
-  }
-  if (frame_type != FrameType::kRegularFrame) {
+  } else {
     is_last = false;
   }
 
@@ -392,16 +397,18 @@ Status FrameHeader::VisitFields(Visitor* JXL_RESTRICT visitor) {
     } else if (visitor->Conditional(frame_type == FrameType::kReferenceOnly)) {
       JXL_QUIET_RETURN_IF_ERROR(
           visitor->Bool(true, &save_before_color_transform));
+      size_t xsize = custom_size_or_origin ? frame_size.xsize
+                                           : nonserialized_metadata->xsize();
+      size_t ysize = custom_size_or_origin ? frame_size.ysize
+                                           : nonserialized_metadata->ysize();
       if (!save_before_color_transform &&
-          (frame_size.xsize < nonserialized_metadata->xsize() ||
-           frame_size.ysize < nonserialized_metadata->ysize() ||
-           frame_origin.x0 != 0 || frame_origin.y0 != 0)) {
+          (xsize < nonserialized_metadata->xsize() ||
+           ysize < nonserialized_metadata->ysize() || frame_origin.x0 != 0 ||
+           frame_origin.y0 != 0)) {
         return JXL_FAILURE(
             "non-patch reference frame with invalid crop: %" PRIuS "x%" PRIuS
             "%+d%+d",
-            static_cast<size_t>(frame_size.xsize),
-            static_cast<size_t>(frame_size.ysize),
-            static_cast<int>(frame_origin.x0),
+            xsize, ysize, static_cast<int>(frame_origin.x0),
             static_cast<int>(frame_origin.y0));
       }
     }
@@ -419,6 +426,7 @@ Status FrameHeader::VisitFields(Visitor* JXL_RESTRICT visitor) {
   return visitor->EndExtensions();
 }
 
+#if JXL_DEBUG_V_LEVEL >= 1
 std::string FrameHeader::DebugString() const {
   std::ostringstream os;
   os << (encoding == FrameEncoding::kVarDCT ? "VarDCT" : "Modular");
@@ -490,5 +498,6 @@ std::string FrameHeader::DebugString() const {
   if (is_last) os << ",last";
   return os.str();
 }
+#endif
 
 }  // namespace jxl

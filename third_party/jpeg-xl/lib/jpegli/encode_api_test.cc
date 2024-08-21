@@ -3,17 +3,24 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#include <stdio.h>
-
 #include <algorithm>
-#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "lib/jpegli/encode.h"
-#include "lib/jpegli/error.h"
+#include "lib/jpegli/libjpeg_test_util.h"
+#include "lib/jpegli/test_params.h"
 #include "lib/jpegli/test_utils.h"
 #include "lib/jpegli/testing.h"
-#include "lib/jxl/sanitizers.h"
+#include "lib/jpegli/types.h"
+#include "lib/jxl/base/status.h"
 
 namespace jpegli {
 namespace {
@@ -71,7 +78,7 @@ TEST(EncodeAPITest, ReuseCinfoSameImageTwice) {
   CompressParams jparams;
   GenerateInput(PIXELS, jparams, &input);
   uint8_t* buffer = nullptr;
-  unsigned long buffer_size = 0;
+  unsigned long buffer_size = 0;  // NOLINT
   std::vector<uint8_t> compressed0;
   std::vector<uint8_t> compressed1;
   jpeg_compress_struct cinfo;
@@ -119,7 +126,7 @@ std::vector<TestConfig> GenerateBasicConfigs() {
 TEST(EncodeAPITest, ReuseCinfoSameMemOutput) {
   std::vector<TestConfig> all_configs = GenerateBasicConfigs();
   uint8_t* buffer = nullptr;
-  unsigned long buffer_size = 0;
+  unsigned long buffer_size = 0;  // NOLINT
   {
     jpeg_compress_struct cinfo;
     const auto try_catch_block = [&]() -> bool {
@@ -134,25 +141,12 @@ TEST(EncodeAPITest, ReuseCinfoSameMemOutput) {
     EXPECT_TRUE(try_catch_block());
     jpegli_destroy_compress(&cinfo);
   }
-  std::vector<TestImage> all_outputs(all_configs.size());
-  {
-    jpeg_decompress_struct cinfo = {};
-    const auto try_catch_block = [&]() -> bool {
-      ERROR_HANDLER_SETUP(jpegli);
-      jpeg_create_decompress(&cinfo);
-      jpeg_mem_src(&cinfo, buffer, buffer_size);
-      for (size_t i = 0; i < all_configs.size(); ++i) {
-        DecodeWithLibjpeg(all_configs[i].jparams, DecompressParams(), &cinfo,
-                          &all_outputs[i]);
-      }
-      return true;
-    };
-    EXPECT_TRUE(try_catch_block());
-    jpeg_destroy_decompress(&cinfo);
-  }
-  for (size_t i = 0; i < all_configs.size(); ++i) {
-    VerifyOutputImage(all_configs[i].input, all_outputs[i],
-                      all_configs[i].max_dist);
+  size_t pos = 0;
+  for (auto& config : all_configs) {
+    TestImage output;
+    pos += DecodeWithLibjpeg(config.jparams, DecompressParams(), nullptr, 0,
+                             buffer + pos, buffer_size - pos, &output);
+    VerifyOutputImage(config.input, output, config.max_dist);
   }
   if (buffer) free(buffer);
 }
@@ -175,36 +169,28 @@ TEST(EncodeAPITest, ReuseCinfoSameStdOutput) {
     EXPECT_TRUE(try_catch_block());
     jpegli_destroy_compress(&cinfo);
   }
-  rewind(tmpf);
-  std::vector<TestImage> all_outputs(all_configs.size());
-  {
-    jpeg_decompress_struct cinfo = {};
-    const auto try_catch_block = [&]() -> bool {
-      ERROR_HANDLER_SETUP(jpegli);
-      jpeg_create_decompress(&cinfo);
-      jpeg_stdio_src(&cinfo, tmpf);
-      for (size_t i = 0; i < all_configs.size(); ++i) {
-        DecodeWithLibjpeg(all_configs[i].jparams, DecompressParams(), &cinfo,
-                          &all_outputs[i]);
-      }
-      return true;
-    };
-    EXPECT_TRUE(try_catch_block());
-    jpeg_destroy_decompress(&cinfo);
-  }
-  for (size_t i = 0; i < all_configs.size(); ++i) {
-    VerifyOutputImage(all_configs[i].input, all_outputs[i],
-                      all_configs[i].max_dist);
-  }
+  size_t total_size = ftell(tmpf);
+  fseek(tmpf, 0, SEEK_SET);
+  std::vector<uint8_t> compressed(total_size);
+  JXL_CHECK(total_size == fread(compressed.data(), 1, total_size, tmpf));
   fclose(tmpf);
+  size_t pos = 0;
+  for (auto& config : all_configs) {
+    TestImage output;
+    pos +=
+        DecodeWithLibjpeg(config.jparams, DecompressParams(), nullptr, 0,
+                          &compressed[pos], compressed.size() - pos, &output);
+    VerifyOutputImage(config.input, output, config.max_dist);
+  }
 }
 
 TEST(EncodeAPITest, ReuseCinfoChangeParams) {
-  TestImage input, output;
+  TestImage input;
+  TestImage output;
   CompressParams jparams;
   DecompressParams dparams;
   uint8_t* buffer = nullptr;
-  unsigned long buffer_size = 0;
+  unsigned long buffer_size = 0;  // NOLINT
   std::vector<uint8_t> compressed;
   jpeg_compress_struct cinfo;
   const auto max_rms = [](int q, int hs, int vs) {
@@ -269,9 +255,9 @@ TEST(EncodeAPITest, ReuseCinfoChangeParams) {
 
 TEST(EncodeAPITest, AbbreviatedStreams) {
   uint8_t* table_stream = nullptr;
-  unsigned long table_stream_size = 0;
+  unsigned long table_stream_size = 0;  // NOLINT
   uint8_t* data_stream = nullptr;
-  unsigned long data_stream_size = 0;
+  unsigned long data_stream_size = 0;  // NOLINT
   {
     jpeg_compress_struct cinfo;
     const auto try_catch_block = [&]() -> bool {
@@ -298,32 +284,15 @@ TEST(EncodeAPITest, AbbreviatedStreams) {
     EXPECT_LT(data_stream_size, 50);
     jpegli_destroy_compress(&cinfo);
   }
-  {
-    jpeg_decompress_struct cinfo = {};
-    const auto try_catch_block = [&]() -> bool {
-      ERROR_HANDLER_SETUP(jpeg);
-      jpeg_create_decompress(&cinfo);
-      jpeg_mem_src(&cinfo, table_stream, table_stream_size);
-      jpeg_read_header(&cinfo, FALSE);
-      jpeg_mem_src(&cinfo, data_stream, data_stream_size);
-      jpeg_read_header(&cinfo, TRUE);
-      EXPECT_EQ(1, cinfo.image_width);
-      EXPECT_EQ(1, cinfo.image_height);
-      EXPECT_EQ(3, cinfo.num_components);
-      jpeg_start_decompress(&cinfo);
-      JSAMPLE image[3] = {0};
-      JSAMPROW row[] = {image};
-      jpeg_read_scanlines(&cinfo, row, 1);
-      jxl::msan::UnpoisonMemory(image, 3);
-      EXPECT_EQ(0, image[0]);
-      EXPECT_EQ(0, image[1]);
-      EXPECT_EQ(0, image[2]);
-      jpeg_finish_decompress(&cinfo);
-      return true;
-    };
-    EXPECT_TRUE(try_catch_block());
-    jpeg_destroy_decompress(&cinfo);
-  }
+  TestImage output;
+  DecodeWithLibjpeg(CompressParams(), DecompressParams(), table_stream,
+                    table_stream_size, data_stream, data_stream_size, &output);
+  EXPECT_EQ(1, output.xsize);
+  EXPECT_EQ(1, output.ysize);
+  EXPECT_EQ(3, output.components);
+  EXPECT_EQ(0, output.pixels[0]);
+  EXPECT_EQ(0, output.pixels[1]);
+  EXPECT_EQ(0, output.pixels[2]);
   if (table_stream) free(table_stream);
   if (data_stream) free(data_stream);
 }
@@ -398,8 +367,8 @@ std::vector<TestConfig> GenerateTests() {
           if (!progr) {
             config.jparams.optimize_coding = optimize;
           }
-          const float kMaxBpp[4] = {1.55, 1.45, 1.45, 1.32};
-          const float kMaxDist[4] = {1.95, 2.1, 2.1, 2.0};
+          const float kMaxBpp[4] = {1.55, 1.4, 1.4, 1.32};
+          const float kMaxDist[4] = {1.95, 2.2, 2.2, 2.0};
           const int idx = v_samp * 2 + h_samp - 3;
           config.max_bpp =
               kMaxBpp[idx] * (optimize ? 0.97 : 1.0) * (progr ? 0.97 : 1.0);
@@ -412,6 +381,8 @@ std::vector<TestConfig> GenerateTests() {
   {
     TestConfig config;
     config.jparams.quality = 100;
+    config.jparams.h_sampling = {1, 1, 1};
+    config.jparams.v_sampling = {1, 1, 1};
     config.max_bpp = 6.6;
     config.max_dist = 0.6;
     all_tests.push_back(config);
@@ -490,13 +461,34 @@ std::vector<TestConfig> GenerateTests() {
       all_tests.push_back(config);
     }
   }
-  for (int p = 0; p < 3 + kNumTestScripts; ++p) {
-    TestConfig config;
-    config.jparams.progressive_mode = p;
-    const float kMaxBpp[] = {1.59, 1.51, 1.48, 1.59, 1.55, 1.55, 1.51};
-    config.max_bpp = kMaxBpp[p];
-    config.max_dist = 2.0;
-    all_tests.push_back(config);
+  for (int p = 0; p < 3 + NumTestScanScripts(); ++p) {
+    for (int samp : {1, 2}) {
+      for (int quality : {100, 90, 1}) {
+        for (int r : {0, 1024, 1}) {
+          for (int optimize : {0, 1}) {
+            bool progressive = p == 1 || p == 2 || p > 4;
+            if (progressive && !optimize) continue;
+            TestConfig config;
+            config.input.xsize = 273;
+            config.input.ysize = 265;
+            config.jparams.progressive_mode = p;
+            if (!progressive) {
+              config.jparams.optimize_coding = optimize;
+            }
+            config.jparams.h_sampling = {samp, 1, 1};
+            config.jparams.v_sampling = {samp, 1, 1};
+            config.jparams.quality = quality;
+            config.jparams.restart_interval = r;
+            config.max_bpp = quality == 100 ? 8.0 : 1.9;
+            if (r == 1) {
+              config.max_bpp += 10.0;
+            }
+            config.max_dist = quality == 1 ? 20.0 : 2.1;
+            all_tests.push_back(config);
+          }
+        }
+      }
+    }
   }
   {
     TestConfig config;
@@ -529,17 +521,23 @@ std::vector<TestConfig> GenerateTests() {
     config.jparams.libjpeg_mode = true;
     config.max_bpp = 2.1;
     config.max_dist = 1.7;
+    config.jparams.h_sampling = {1, 1, 1};
+    config.jparams.v_sampling = {1, 1, 1};
     all_tests.push_back(config);
   }
 
-  for (J_COLOR_SPACE in_color_space : {JCS_RGB, JCS_YCbCr, JCS_GRAYSCALE}) {
+  for (J_COLOR_SPACE in_color_space :
+       {JCS_RGB, JCS_YCbCr, JCS_GRAYSCALE, JCS_EXT_RGB, JCS_EXT_BGR,
+        JCS_EXT_RGBA, JCS_EXT_BGRA, JCS_EXT_ARGB, JCS_EXT_ABGR}) {
     for (J_COLOR_SPACE jpeg_color_space : {JCS_RGB, JCS_YCbCr, JCS_GRAYSCALE}) {
-      if (jpeg_color_space == JCS_RGB && in_color_space == JCS_YCbCr) continue;
+      if (jpeg_color_space == JCS_RGB && in_color_space >= JCS_YCbCr) continue;
       TestConfig config;
       config.input.xsize = config.input.ysize = 256;
       config.input.color_space = in_color_space;
       config.jparams.set_jpeg_colorspace = true;
       config.jparams.jpeg_color_space = jpeg_color_space;
+      config.jparams.h_sampling = {1, 1, 1};
+      config.jparams.v_sampling = {1, 1, 1};
       config.max_bpp = jpeg_color_space == JCS_RGB ? 4.5 : 1.85;
       config.max_dist = jpeg_color_space == JCS_RGB ? 1.4 : 2.05;
       all_tests.push_back(config);
@@ -555,6 +553,8 @@ std::vector<TestConfig> GenerateTests() {
         config.jparams.set_jpeg_colorspace = true;
         config.jparams.jpeg_color_space = jpeg_color_space;
       }
+      config.jparams.h_sampling = {1, 1, 1, 1};
+      config.jparams.v_sampling = {1, 1, 1, 1};
       config.max_bpp = jpeg_color_space == JCS_CMYK ? 4.0 : 3.6;
       config.max_dist = jpeg_color_space == JCS_CMYK ? 1.2 : 1.5;
       all_tests.push_back(config);
@@ -565,6 +565,8 @@ std::vector<TestConfig> GenerateTests() {
     config.input.color_space = JCS_YCbCr;
     config.max_bpp = 1.6;
     config.max_dist = 1.35;
+    config.jparams.h_sampling = {1, 1, 1};
+    config.jparams.v_sampling = {1, 1, 1};
     all_tests.push_back(config);
   }
   for (bool xyb : {false, true}) {
@@ -615,6 +617,8 @@ std::vector<TestConfig> GenerateTests() {
           table.add_raw = add_raw;
           table.Generate();
           config.jparams.optimize_coding = 1;
+          config.jparams.h_sampling = {1, 1, 1};
+          config.jparams.v_sampling = {1, 1, 1};
           config.jparams.quant_tables.push_back(table);
           config.jparams.quant_indexes = {0, 0, 0};
           float q = (type == 0 ? 16 : type) * scale * 0.01f;
@@ -633,6 +637,8 @@ std::vector<TestConfig> GenerateTests() {
     config.input.ysize = 256;
     config.jparams.quant_indexes = {(qidx >> 2) & 1, (qidx >> 1) & 1,
                                     (qidx >> 0) & 1};
+    config.jparams.h_sampling = {1, 1, 1};
+    config.jparams.v_sampling = {1, 1, 1};
     config.max_bpp = 2.25;
     config.max_dist = 2.8;
     all_tests.push_back(config);
@@ -645,6 +651,8 @@ std::vector<TestConfig> GenerateTests() {
       config.input.ysize = 256;
       config.jparams.quant_indexes = {(qidx >> 2) & 1, (qidx >> 1) & 1,
                                       (qidx >> 0) & 1};
+      config.jparams.h_sampling = {1, 1, 1};
+      config.jparams.v_sampling = {1, 1, 1};
       CustomQuantTable table;
       table.slot_idx = slot_idx;
       table.Generate();
@@ -662,6 +670,10 @@ std::vector<TestConfig> GenerateTests() {
       config.jparams.xyb_mode = xyb;
       config.jparams.quant_indexes = {(qidx >> 2) & 1, (qidx >> 1) & 1,
                                       (qidx >> 0) & 1};
+      if (!xyb) {
+        config.jparams.h_sampling = {1, 1, 1};
+        config.jparams.v_sampling = {1, 1, 1};
+      }
       {
         CustomQuantTable table;
         table.slot_idx = 0;
@@ -686,6 +698,10 @@ std::vector<TestConfig> GenerateTests() {
     config.input.ysize = 256;
     config.jparams.xyb_mode = xyb;
     config.jparams.quant_indexes = {0, 1, 2};
+    if (!xyb) {
+      config.jparams.h_sampling = {1, 1, 1};
+      config.jparams.v_sampling = {1, 1, 1};
+    }
     {
       CustomQuantTable table;
       table.slot_idx = 0;
@@ -757,6 +773,8 @@ std::vector<TestConfig> GenerateTests() {
     }
     config.jparams.progressive_mode = 0;
     config.jparams.optimize_coding = 0;
+    config.jparams.h_sampling = {1, 1, 1};
+    config.jparams.v_sampling = {1, 1, 1};
     config.max_bpp = 1.85;
     config.max_dist = 2.05;
     if (input_mode == COEFFICIENTS) {

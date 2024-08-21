@@ -65,7 +65,7 @@ Follow the [Google styleguide for `TODO` comments][goog-style-todo]. When
 referencing a WebRTC bug, prefer using the URL form (excluding the scheme part):
 
 ```cpp
-// TODO(bugs.webrtc.org/12345): Delete the hack when blocking bugs are resolved.
+// TODO: bugs.webrtc.org/12345 - Delete the hack when blocking bugs are resolved.
 ```
 
 The short form used in commit messages, e.g. `webrtc:12345`, is discouraged.
@@ -126,6 +126,20 @@ For example,
 
 See the [source code for `rtc::ArrayView`](api/array_view.h) for more detailed
 docs.
+
+### Strings
+
+WebRTC uses std::string, with content assumed to be UTF-8. Note that this
+has to be verified whenever accepting external input.
+
+For concatenation of strings, use webrtc::StrJoin or rtc::SimpleStringBuilder
+directly.
+
+The following string building tools are NOT recommended:
+* The + operator. See https://abseil.io/tips/3 for why not.
+* absl::StrCat, absl::StrAppend, absl::StrJoin. These are optimized for
+  speed, not code size, and have significant code size overhead.
+* strcat. It is too easy to create buffer overflows.
 
 ### sigslot
 

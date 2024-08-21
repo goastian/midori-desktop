@@ -3,135 +3,41 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import functools
 import hashlib
 import io
-import json
 import os
 import re
-import sys
-import urllib.parse
-
-import requests_unixsocket
+from typing import Optional
 
 from taskgraph.util.archive import create_tar_gz_from_files
-from taskgraph.util.memoize import memoize
 
 IMAGE_DIR = os.path.join(".", "taskcluster", "docker")
 
 from .yaml import load_yaml
 
 
-def docker_url(path, **kwargs):
-    docker_socket = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
-    return urllib.parse.urlunparse(
-        (
-            "http+unix",
-            urllib.parse.quote(docker_socket, safe=""),
-            path,
-            "",
-            urllib.parse.urlencode(kwargs),
-            "",
-        )
-    )
-
-
-def post_to_docker(tar, api_path, **kwargs):
-    """POSTs a tar file to a given docker API path.
-
-    The tar argument can be anything that can be passed to requests.post()
-    as data (e.g. iterator or file object).
-    The extra keyword arguments are passed as arguments to the docker API.
-    """
-    req = requests_unixsocket.Session().post(
-        docker_url(api_path, **kwargs),
-        data=tar,
-        stream=True,
-        headers={"Content-Type": "application/x-tar"},
-    )
-    if req.status_code != 200:
-        message = req.json().get("message")
-        if not message:
-            message = f"docker API returned HTTP code {req.status_code}"
-        raise Exception(message)
-    status_line = {}
-
-    buf = b""
-    for content in req.iter_content(chunk_size=None):
-        if not content:
-            continue
-        # Sometimes, a chunk of content is not a complete json, so we cumulate
-        # with leftovers from previous iterations.
-        buf += content
-        try:
-            data = json.loads(buf)
-        except Exception:
-            continue
-        buf = b""
-        # data is sometimes an empty dict.
-        if not data:
-            continue
-        # Mimic how docker itself presents the output. This code was tested
-        # with API version 1.18 and 1.26.
-        if "status" in data:
-            if "id" in data:
-                if sys.stderr.isatty():
-                    total_lines = len(status_line)
-                    line = status_line.setdefault(data["id"], total_lines)
-                    n = total_lines - line
-                    if n > 0:
-                        # Move the cursor up n lines.
-                        sys.stderr.write(f"\033[{n}A")
-                    # Clear line and move the cursor to the beginning of it.
-                    sys.stderr.write("\033[2K\r")
-                    sys.stderr.write(
-                        "{}: {} {}\n".format(
-                            data["id"], data["status"], data.get("progress", "")
-                        )
-                    )
-                    if n > 1:
-                        # Move the cursor down n - 1 lines, which, considering
-                        # the carriage return on the last write, gets us back
-                        # where we started.
-                        sys.stderr.write(f"\033[{n - 1}B")
-                else:
-                    status = status_line.get(data["id"])
-                    # Only print status changes.
-                    if status != data["status"]:
-                        sys.stderr.write("{}: {}\n".format(data["id"], data["status"]))
-                        status_line[data["id"]] = data["status"]
-            else:
-                status_line = {}
-                sys.stderr.write("{}\n".format(data["status"]))
-        elif "stream" in data:
-            sys.stderr.write(data["stream"])
-        elif "aux" in data:
-            sys.stderr.write(repr(data["aux"]))
-        elif "error" in data:
-            sys.stderr.write("{}\n".format(data["error"]))
-            # Sadly, docker doesn't give more than a plain string for errors,
-            # so the best we can do to propagate the error code from the command
-            # that failed is to parse the error message...
-            errcode = 1
-            m = re.search(r"returned a non-zero code: (\d+)", data["error"])
-            if m:
-                errcode = int(m.group(1))
-            sys.exit(errcode)
-        else:
-            raise NotImplementedError(repr(data))
-        sys.stderr.flush()
-
-
-def docker_image(name, by_tag=False):
+def docker_image(name: str, by_tag: bool = False) -> Optional[str]:
     """
     Resolve in-tree prebuilt docker image to ``<registry>/<repository>@sha256:<digest>``,
     or ``<registry>/<repository>:<tag>`` if `by_tag` is `True`.
+
+    Args:
+        name (str): The image to build.
+        by_tag (bool): If True, will apply a tag based on VERSION file.
+            Otherwise will apply a hash based on HASH file.
+    Returns:
+        Optional[str]: Image if it can be resolved, otherwise None.
     """
     try:
         with open(os.path.join(IMAGE_DIR, name, "REGISTRY")) as f:
             registry = f.read().strip()
     except OSError:
-        with open(os.path.join(IMAGE_DIR, "REGISTRY")) as f:
-            registry = f.read().strip()
+        try:
+            with open(os.path.join(IMAGE_DIR, "REGISTRY")) as f:
+                registry = f.read().strip()
+        except OSError:
+            return None
 
     if not by_tag:
         hashfile = os.path.join(IMAGE_DIR, name, "HASH")
@@ -139,7 +45,7 @@ def docker_image(name, by_tag=False):
             with open(hashfile) as f:
                 return f"{registry}/{name}@{f.read().strip()}"
         except OSError:
-            raise Exception(f"Failed to read HASH file {hashfile}")
+            return None
 
     try:
         with open(os.path.join(IMAGE_DIR, name, "VERSION")) as f:
@@ -271,15 +177,15 @@ def stream_context_tar(topsrcdir, context_dir, out_file, image_name=None, args=N
 
             p = line[len("# %include ") :].strip()
             if os.path.isabs(p):
-                raise Exception("extra include path cannot be absolute: %s" % p)
+                raise Exception(f"extra include path cannot be absolute: {p}")
 
             fs_path = os.path.normpath(os.path.join(topsrcdir, p))
             # Check for filesystem traversal exploits.
             if not fs_path.startswith(topsrcdir):
-                raise Exception("extra include path outside topsrcdir: %s" % p)
+                raise Exception(f"extra include path outside topsrcdir: {p}")
 
             if not os.path.exists(fs_path):
-                raise Exception("extra include path does not exist: %s" % p)
+                raise Exception(f"extra include path does not exist: {p}")
 
             if os.path.isdir(fs_path):
                 for root, dirs, files in os.walk(fs_path):
@@ -299,10 +205,10 @@ def stream_context_tar(topsrcdir, context_dir, out_file, image_name=None, args=N
     return writer.hexdigest()
 
 
-@memoize
+@functools.lru_cache(maxsize=None)
 def image_paths():
     """Return a map of image name to paths containing their Dockerfile."""
-    config = load_yaml("taskcluster", "ci", "docker-image", "kind.yml")
+    config = load_yaml("taskcluster", "kinds", "docker-image", "kind.yml")
     return {
         k: os.path.join(IMAGE_DIR, v.get("definition", k))
         for k, v in config["tasks"].items()
@@ -316,7 +222,7 @@ def image_path(name):
     return os.path.join(IMAGE_DIR, name)
 
 
-@memoize
+@functools.lru_cache(maxsize=None)
 def parse_volumes(image):
     """Parse VOLUME entries from a Dockerfile for an image."""
     volumes = set()

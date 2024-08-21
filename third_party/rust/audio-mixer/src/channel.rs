@@ -21,6 +21,7 @@ pub enum Channel {
     TopBackCenter = 16,
     TopBackRight = 17,
     Silence = 18,
+    Discrete = 19, // To be used based on its index
 }
 
 impl Channel {
@@ -29,7 +30,7 @@ impl Channel {
     }
 
     pub const fn count() -> usize {
-        Channel::Silence as usize + 1
+        Channel::Discrete as usize + 1
     }
 
     pub const fn bitmask(self) -> u32 {
@@ -58,24 +59,18 @@ bitflags! {
         const TOP_BACK_CENTER = Channel::TopBackCenter.bitmask();
         const TOP_BACK_RIGHT = Channel::TopBackRight.bitmask();
         const SILENCE = Channel::Silence.bitmask();
+        const DISCRETE = Channel::Discrete.bitmask();
     }
 }
 
 // Avoid printing the following types in debugging context {:?} by declaring them in impl
 // rather than bitflags! {} scope.
 impl ChannelMap {
-    pub const FRONT_2: Self = Self {
-        bits: Self::FRONT_LEFT.bits() | Self::FRONT_RIGHT.bits(),
-    };
-    pub const BACK_2: Self = Self {
-        bits: Self::BACK_LEFT.bits() | Self::BACK_RIGHT.bits(),
-    };
-    pub const FRONT_2_OF_CENTER: Self = Self {
-        bits: Self::FRONT_LEFT_OF_CENTER.bits() | Self::FRONT_RIGHT_OF_CENTER.bits(),
-    };
-    pub const SIDE_2: Self = Self {
-        bits: Self::SIDE_LEFT.bits() | Self::SIDE_RIGHT.bits(),
-    };
+    pub const FRONT_2: Self = Self::union(Self::FRONT_LEFT, Self::FRONT_RIGHT);
+    pub const BACK_2: Self = Self::union(Self::BACK_LEFT, Self::BACK_RIGHT);
+    pub const FRONT_2_OF_CENTER: Self =
+        Self::union(Self::FRONT_LEFT_OF_CENTER, Self::FRONT_RIGHT_OF_CENTER);
+    pub const SIDE_2: Self = Self::union(Self::SIDE_LEFT, Self::SIDE_RIGHT);
 }
 
 impl From<Channel> for ChannelMap {

@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include <deque>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -60,7 +61,7 @@ class RttBasedBackoff {
   explicit RttBasedBackoff(const FieldTrialsView* key_value_config);
   ~RttBasedBackoff();
   void UpdatePropagationRtt(Timestamp at_time, TimeDelta propagation_rtt);
-  TimeDelta CorrectedRtt(Timestamp at_time) const;
+  bool IsRttAboveLimit() const;
 
   FieldTrialFlag disabled_;
   FieldTrialParameter<TimeDelta> configured_limit_;
@@ -73,6 +74,9 @@ class RttBasedBackoff {
   Timestamp last_propagation_rtt_update_;
   TimeDelta last_propagation_rtt_;
   Timestamp last_packet_sent_;
+
+ private:
+  TimeDelta CorrectedRtt() const;
 };
 
 class SendSideBandwidthEstimation {
@@ -86,6 +90,9 @@ class SendSideBandwidthEstimation {
 
   DataRate target_rate() const;
   LossBasedState loss_based_state() const;
+  // Return whether the current rtt is higher than the rtt limited configured in
+  // RttBasedBackoff.
+  bool IsRttAboveLimit() const;
   uint8_t fraction_loss() const { return last_fraction_loss_; }
   TimeDelta round_trip_time() const { return last_round_trip_time_; }
 
@@ -121,7 +128,8 @@ class SendSideBandwidthEstimation {
   void UpdateLossBasedEstimator(const TransportPacketsFeedback& report,
                                 BandwidthUsage delay_detector_state,
                                 absl::optional<DataRate> probe_bitrate,
-                                DataRate upper_link_capacity);
+                                bool in_alr);
+  bool PaceAtLossBasedEstimate() const;
 
  private:
   friend class GoogCcStatePrinter;
@@ -161,6 +169,7 @@ class SendSideBandwidthEstimation {
   bool LossBasedBandwidthEstimatorV1ReadyForUse() const;
   bool LossBasedBandwidthEstimatorV2ReadyForUse() const;
 
+  const FieldTrialsView* key_value_config_;
   RttBasedBackoff rtt_backoff_;
   LinkCapacityTracker link_capacity_;
 
@@ -202,7 +211,7 @@ class SendSideBandwidthEstimation {
   float high_loss_threshold_;
   DataRate bitrate_threshold_;
   LossBasedBandwidthEstimation loss_based_bandwidth_estimator_v1_;
-  LossBasedBweV2 loss_based_bandwidth_estimator_v2_;
+  std::unique_ptr<LossBasedBweV2> loss_based_bandwidth_estimator_v2_;
   LossBasedState loss_based_state_;
   FieldTrialFlag disable_receiver_limit_caps_only_;
 };

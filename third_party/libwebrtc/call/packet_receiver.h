@@ -23,12 +23,14 @@ class PacketReceiver {
   // Demux RTCP packets. Must be called on the worker thread.
   virtual void DeliverRtcpPacket(rtc::CopyOnWriteBuffer packet) = 0;
 
-  // Invoked once when a packet packet is received that can not be demuxed.
+  // Invoked once when a packet is received that can not be demuxed.
   // If the method returns true, a new attempt is made to demux the packet.
   using OnUndemuxablePacketHandler =
       absl::AnyInvocable<bool(const RtpPacketReceived& parsed_packet)>;
 
-  // Demux RTP packets. Must be called on the worker thread.
+  // Must be called on the worker thread.
+  // If `media_type` is not Audio or Video, packets may be used for BWE
+  // calculations but are not demuxed.
   virtual void DeliverRtpPacket(
       MediaType media_type,
       RtpPacketReceived packet,

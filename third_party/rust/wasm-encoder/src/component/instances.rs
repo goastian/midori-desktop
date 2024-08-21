@@ -177,6 +177,7 @@ impl ComponentInstanceSection {
         self.bytes.push(0x01);
         exports.len().encode(&mut self.bytes);
         for (name, kind, index) in exports {
+            crate::push_extern_name_byte(&mut self.bytes, name);
             name.encode(&mut self.bytes);
             kind.encode(&mut self.bytes);
             index.encode(&mut self.bytes);

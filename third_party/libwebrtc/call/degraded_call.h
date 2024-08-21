@@ -39,7 +39,6 @@
 #include "call/video_send_stream.h"
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/network/sent_packet.h"
-#include "rtc_base/task_queue.h"
 #include "system_wrappers/include/clock.h"
 #include "video/config/video_encoder_config.h"
 
@@ -128,11 +127,10 @@ class DegradedCall : public Call, private PacketReceiver {
         Clock* clock,
         std::unique_ptr<NetworkBehaviorInterface> network_behavior);
 
-    void SendRtp(const uint8_t* packet,
-                 size_t length,
+    void SendRtp(rtc::ArrayView<const uint8_t> packet,
                  const PacketOptions& options,
                  Transport* transport);
-    void SendRtcp(const uint8_t* packet, size_t length, Transport* transport);
+    void SendRtcp(rtc::ArrayView<const uint8_t> packet, Transport* transport);
 
     void AddActiveTransport(Transport* transport);
     void RemoveActiveTransport(Transport* transport);
@@ -161,10 +159,9 @@ class DegradedCall : public Call, private PacketReceiver {
                                     Transport* real_transport);
     ~FakeNetworkPipeTransportAdapter();
 
-    bool SendRtp(const uint8_t* packet,
-                 size_t length,
+    bool SendRtp(rtc::ArrayView<const uint8_t> packet,
                  const PacketOptions& options) override;
-    bool SendRtcp(const uint8_t* packet, size_t length) override;
+    bool SendRtcp(rtc::ArrayView<const uint8_t> packet) override;
 
    private:
     FakeNetworkPipeOnTaskQueue* const network_pipe_;

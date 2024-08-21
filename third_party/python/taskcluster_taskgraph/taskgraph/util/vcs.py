@@ -10,9 +10,6 @@ import subprocess
 from abc import ABC, abstractmethod, abstractproperty
 from shutil import which
 
-import requests
-from redo import retry
-
 from taskgraph.util.path import ancestors
 
 PUSHLOG_TMPL = "{}/json-pushes?version=2&changeset={}&tipsonly=1&full=1"
@@ -21,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class Repository(ABC):
-    # Both mercurial and git use sha1 as revision idenfiers. Luckily, both define
+    # Both mercurial and git use sha1 as revision identifiers. Luckily, both define
     # the same value as the null revision.
     #
     # https://github.com/git/git/blob/dc04167d378fb29d30e1647ff6ff51dd182bc9a3/t/oid-info/hash-info#L7
@@ -166,7 +163,10 @@ class Repository(ABC):
     @abstractmethod
     def find_latest_common_revision(self, base_ref_or_rev, head_rev):
         """Find the latest revision that is common to both the given
-        ``head_rev`` and ``base_ref_or_rev``"""
+        ``head_rev`` and ``base_ref_or_rev``.
+
+        If no common revision exists, ``Repository.NULL_REVISION`` will
+        be returned."""
 
     @abstractmethod
     def does_revision_exist_locally(self, revision):
@@ -225,8 +225,8 @@ class HgRepository(Repository):
         return self.run("path", "-T", "{url}", remote).strip()
 
     def get_commit_message(self, revision=None):
-        revision = revision or self.head_rev
-        return self.run("log", "-r", ".", "-T", "{desc}")
+        revision = revision or "."
+        return self.run("log", "-r", revision, "-T", "{desc}")
 
     def _format_diff_filter(self, diff_filter, for_status=False):
         df = diff_filter.lower()
@@ -296,17 +296,18 @@ class HgRepository(Repository):
         return self.run("update", "--check", ref)
 
     def find_latest_common_revision(self, base_ref_or_rev, head_rev):
-        return self.run(
+        ancestor = self.run(
             "log",
             "-r",
             f"last(ancestors('{base_ref_or_rev}') and ancestors('{head_rev}'))",
             "--template",
             "{node}",
         ).strip()
+        return ancestor or self.NULL_REVISION
 
     def does_revision_exist_locally(self, revision):
         try:
-            return self.run("log", "-r", revision).strip() != ""
+            return bool(self.run("log", "-r", revision).strip())
         except subprocess.CalledProcessError as e:
             # Error code 255 comes with the message:
             # "abort: unknown revision $REVISION"
@@ -349,13 +350,19 @@ class GitRepository(Repository):
     def remote_name(self):
         try:
             remote_branch_name = self.run(
-                "rev-parse", "--verify", "--abbrev-ref", "--symbolic-full-name", "@{u}"
+                "rev-parse",
+                "--verify",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{u}",
+                stderr=subprocess.PIPE,
             ).strip()
             return remote_branch_name.split("/")[0]
         except subprocess.CalledProcessError as e:
             # Error code 128 comes with the message:
             # "fatal: no upstream configured for branch $BRANCH"
             if e.returncode != 128:
+                print(e.stderr)
                 raise
 
         return self._get_most_suitable_remote("`git remote add origin $URL`")
@@ -415,8 +422,8 @@ class GitRepository(Repository):
         return self.run("remote", "get-url", remote).strip()
 
     def get_commit_message(self, revision=None):
-        revision = revision or self.head_rev
-        return self.run("log", "-n1", "--format=%B")
+        revision = revision or "HEAD"
+        return self.run("log", "-n1", "--format=%B", revision)
 
     def get_changed_files(
         self, diff_filter="ADM", mode="unstaged", rev=None, base_rev=None
@@ -482,7 +489,10 @@ class GitRepository(Repository):
         self.run("checkout", ref)
 
     def find_latest_common_revision(self, base_ref_or_rev, head_rev):
-        return self.run("merge-base", base_ref_or_rev, head_rev).strip()
+        try:
+            return self.run("merge-base", base_ref_or_rev, head_rev).strip()
+        except subprocess.CalledProcessError:
+            return self.NULL_REVISION
 
     def does_revision_exist_locally(self, revision):
         try:
@@ -506,34 +516,3 @@ def get_repository(path):
             return GitRepository(path)
 
     raise RuntimeError("Current directory is neither a git or hg repository")
-
-
-def find_hg_revision_push_info(repository, revision):
-    """Given the parameters for this action and a revision, find the
-    pushlog_id of the revision."""
-    pushlog_url = PUSHLOG_TMPL.format(repository, revision)
-
-    def query_pushlog(url):
-        r = requests.get(pushlog_url, timeout=60)
-        r.raise_for_status()
-        return r
-
-    r = retry(
-        query_pushlog,
-        args=(pushlog_url,),
-        attempts=5,
-        sleeptime=10,
-    )
-    pushes = r.json()["pushes"]
-    if len(pushes) != 1:
-        raise RuntimeError(
-            "Unable to find a single pushlog_id for {} revision {}: {}".format(
-                repository, revision, pushes
-            )
-        )
-    pushid = list(pushes.keys())[0]
-    return {
-        "pushdate": pushes[pushid]["date"],
-        "pushid": pushid,
-        "user": pushes[pushid]["user"],
-    }

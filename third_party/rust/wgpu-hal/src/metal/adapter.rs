@@ -5,6 +5,8 @@ use wgt::{AstcBlock, AstcChannel};
 
 use std::{sync::Arc, thread};
 
+use super::TimestampQuerySupport;
+
 const MAX_COMMAND_BUFFERS: u64 = 2048;
 
 unsafe impl Send for super::Adapter {}
@@ -16,7 +18,9 @@ impl super::Adapter {
     }
 }
 
-impl crate::Adapter<super::Api> for super::Adapter {
+impl crate::Adapter for super::Adapter {
+    type A = super::Api;
+
     unsafe fn open(
         &self,
         features: wgt::Features,
@@ -27,6 +31,33 @@ impl crate::Adapter<super::Api> for super::Adapter {
             .device
             .lock()
             .new_command_queue_with_max_command_buffer_count(MAX_COMMAND_BUFFERS);
+
+        // Acquiring the meaning of timestamp ticks is hard with Metal!
+        // The only thing there is is a method correlating cpu & gpu timestamps (`device.sample_timestamps`).
+        // Users are supposed to call this method twice and calculate the difference,
+        // see "Converting GPU Timestamps into CPU Time":
+        // https://developer.apple.com/documentation/metal/gpu_counters_and_counter_sample_buffers/converting_gpu_timestamps_into_cpu_time
+        // Not only does this mean we get an approximate value, this is as also *very slow*!
+        // Chromium opted to solve this using a linear regression that they stop at some point
+        // https://source.chromium.org/chromium/chromium/src/+/refs/heads/main:third_party/dawn/src/dawn/native/metal/DeviceMTL.mm;drc=76be2f9f117654f3fe4faa477b0445114fccedda;bpv=0;bpt=1;l=46
+        // Generally, the assumption is that timestamp values aren't changing over time, after all all other APIs provide stable values.
+        //
+        // We should do as Chromium does for the general case, but this requires quite some state tracking
+        // and doesn't even provide perfectly accurate values, especially at the start of the application when
+        // we didn't have the chance to sample a lot of values just yet.
+        //
+        // So instead, we're doing the dangerous but easy thing and use our "knowledge" of timestamps
+        // conversions on different devices, after all Metal isn't supported on that many ;)
+        // Based on:
+        // * https://github.com/gfx-rs/wgpu/pull/2528
+        // * https://github.com/gpuweb/gpuweb/issues/1325#issuecomment-761041326
+        let timestamp_period = if self.shared.device.lock().name().starts_with("Intel") {
+            83.333
+        } else {
+            // Known for Apple Silicon (at least M1 & M2, iPad Pro 2018) and AMD GPUs.
+            1.0
+        };
+
         Ok(crate::OpenDevice {
             device: super::Device {
                 shared: Arc::clone(&self.shared),
@@ -34,6 +65,7 @@ impl crate::Adapter<super::Api> for super::Adapter {
             },
             queue: super::Queue {
                 raw: Arc::new(Mutex::new(queue)),
+                timestamp_period,
             },
         })
     }
@@ -50,11 +82,9 @@ impl crate::Adapter<super::Api> for super::Adapter {
         // https://developer.apple.com/documentation/metal/mtlreadwritetexturetier/mtlreadwritetexturetier1?language=objc
         // https://developer.apple.com/documentation/metal/mtlreadwritetexturetier/mtlreadwritetexturetier2?language=objc
         let (read_write_tier1_if, read_write_tier2_if) = match pc.read_write_texture_tier {
-            metal::MTLReadWriteTextureTier::TierNone => (Tfc::empty(), Tfc::empty()),
-            metal::MTLReadWriteTextureTier::Tier1 => (Tfc::STORAGE_READ_WRITE, Tfc::empty()),
-            metal::MTLReadWriteTextureTier::Tier2 => {
-                (Tfc::STORAGE_READ_WRITE, Tfc::STORAGE_READ_WRITE)
-            }
+            MTLReadWriteTextureTier::TierNone => (Tfc::empty(), Tfc::empty()),
+            MTLReadWriteTextureTier::Tier1 => (Tfc::STORAGE_READ_WRITE, Tfc::empty()),
+            MTLReadWriteTextureTier::Tier2 => (Tfc::STORAGE_READ_WRITE, Tfc::STORAGE_READ_WRITE),
         };
         let msaa_count = pc.sample_count_mask;
 
@@ -136,6 +166,11 @@ impl crate::Adapter<super::Api> for super::Adapter {
                 flags.set(Tfc::STORAGE, pc.format_rgba8_srgb_all);
                 flags
             }
+            Tf::Rgb10a2Uint => {
+                let mut flags = Tfc::COLOR_ATTACHMENT | msaa_count;
+                flags.set(Tfc::STORAGE, pc.format_rgb10a2_uint_write);
+                flags
+            }
             Tf::Rgb10a2Unorm => {
                 let mut flags = all_caps;
                 flags.set(Tfc::STORAGE, pc.format_rgb10a2_unorm_all);
@@ -197,6 +232,7 @@ impl crate::Adapter<super::Api> for super::Adapter {
                 }
                 flags
             }
+            Tf::NV12 => return Tfc::empty(),
             Tf::Rgb9e5Ufloat => {
                 if pc.msaa_apple3 {
                     all_caps
@@ -284,13 +320,14 @@ impl crate::Adapter<super::Api> for super::Adapter {
         let pc = &self.shared.private_caps;
         Some(crate::SurfaceCapabilities {
             formats,
-            //Note: this is hardcoded in `CAMetalLayer` documentation
-            swap_chain_sizes: if pc.can_set_maximum_drawables_count {
-                2..=3
+            // We use this here to govern the maximum number of drawables + 1.
+            // See https://developer.apple.com/documentation/quartzcore/cametallayer/2938720-maximumdrawablecount
+            maximum_frame_latency: if pc.can_set_maximum_drawables_count {
+                1..=2
             } else {
-                // 3 is the default in `CAMetalLayer` documentation
+                // 3 is the default value for maximum drawables in `CAMetalLayer` documentation
                 // iOS 10.3 was tested to use 3 on iphone5s
-                3..=3
+                2..=2
             },
             present_modes: if pc.can_set_display_sync {
                 vec![wgt::PresentMode::Fifo, wgt::PresentMode::Immediate]
@@ -303,16 +340,9 @@ impl crate::Adapter<super::Api> for super::Adapter {
             ],
 
             current_extent,
-            extents: wgt::Extent3d {
-                width: 4,
-                height: 4,
-                depth_or_array_layers: 1,
-            }..=wgt::Extent3d {
-                width: pc.max_texture_size as u32,
-                height: pc.max_texture_size as u32,
-                depth_or_array_layers: 1,
-            },
-            usage: crate::TextureUses::COLOR_TARGET | crate::TextureUses::COPY_DST, //TODO: expose more
+            usage: crate::TextureUses::COLOR_TARGET
+                | crate::TextureUses::COPY_SRC
+                | crate::TextureUses::COPY_DST,
         })
     }
 
@@ -369,7 +399,7 @@ const RGB10A2UNORM_ALL: &[MTLFeatureSet] = &[
     MTLFeatureSet::macOS_GPUFamily1_v1,
 ];
 
-const RGB10A2UINT_COLOR_WRITE: &[MTLFeatureSet] = &[
+const RGB10A2UINT_WRITE: &[MTLFeatureSet] = &[
     MTLFeatureSet::iOS_GPUFamily3_v1,
     MTLFeatureSet::tvOS_GPUFamily2_v1,
     MTLFeatureSet::macOS_GPUFamily1_v1,
@@ -392,17 +422,17 @@ const BGR10A2_ALL: &[MTLFeatureSet] = &[
     MTLFeatureSet::macOS_GPUFamily2_v1,
 ];
 
-const BASE_INSTANCE_SUPPORT: &[MTLFeatureSet] = &[
+/// "Indirect draw & dispatch arguments" in the Metal feature set tables
+const INDIRECT_DRAW_DISPATCH_SUPPORT: &[MTLFeatureSet] = &[
     MTLFeatureSet::iOS_GPUFamily3_v1,
     MTLFeatureSet::tvOS_GPUFamily2_v1,
     MTLFeatureSet::macOS_GPUFamily1_v1,
 ];
 
-const BASE_VERTEX_INSTANCE_SUPPORT: &[MTLFeatureSet] = &[
-    MTLFeatureSet::iOS_GPUFamily3_v1,
-    MTLFeatureSet::tvOS_GPUFamily2_v1,
-    MTLFeatureSet::macOS_GPUFamily1_v1,
-];
+/// "Base vertex/instance drawing" in the Metal feature set tables
+///
+/// in our terms, `base_vertex` and `first_instance` must be 0
+const BASE_VERTEX_FIRST_INSTANCE_SUPPORT: &[MTLFeatureSet] = INDIRECT_DRAW_DISPATCH_SUPPORT;
 
 const TEXTURE_CUBE_ARRAY_SUPPORT: &[MTLFeatureSet] = &[
     MTLFeatureSet::iOS_GPUFamily4_v1,
@@ -478,7 +508,12 @@ impl super::PrivateCapabilities {
         };
 
         let os_is_mac = device.supports_feature_set(MTLFeatureSet::macOS_GPUFamily1_v1);
-        let family_check = version.at_least((10, 15), (13, 0), os_is_mac);
+        // Metal was first introduced in OS X 10.11 and iOS 8. The current version number of visionOS is 1.0.0. Additionally,
+        // on the Simulator, Apple only provides the Apple2 GPU capability, and the Apple2+ GPU capability covers the capabilities of Apple2.
+        // Therefore, the following conditions can be used to determine if it is visionOS.
+        // https://developer.apple.com/documentation/metal/developing_metal_apps_that_run_in_simulator
+        let os_is_xr = version.major < 8 && device.supports_family(MTLGPUFamily::Apple2);
+        let family_check = os_is_xr || version.at_least((10, 15), (13, 0), os_is_mac);
 
         let mut sample_count_mask = crate::TextureFormatCapabilities::MULTISAMPLE_X4; // 1 and 4 samples are supported on all devices
         if device.supports_texture_sample_count(2) {
@@ -503,9 +538,33 @@ impl super::PrivateCapabilities {
             MTLReadWriteTextureTier::TierNone
         };
 
+        let mut timestamp_query_support = TimestampQuerySupport::empty();
+        if version.at_least((11, 0), (14, 0), os_is_mac)
+            && device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
+        {
+            // If we don't support at stage boundary, don't support anything else.
+            timestamp_query_support.insert(TimestampQuerySupport::STAGE_BOUNDARIES);
+
+            if device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtDrawBoundary) {
+                timestamp_query_support.insert(TimestampQuerySupport::ON_RENDER_ENCODER);
+            }
+            if device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtDispatchBoundary)
+            {
+                timestamp_query_support.insert(TimestampQuerySupport::ON_COMPUTE_ENCODER);
+            }
+            if device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtBlitBoundary) {
+                timestamp_query_support.insert(TimestampQuerySupport::ON_BLIT_ENCODER);
+            }
+            // `TimestampQuerySupport::INSIDE_WGPU_PASSES` emerges from the other flags.
+        }
+
         Self {
             family_check,
-            msl_version: if version.at_least((12, 0), (15, 0), os_is_mac) {
+            msl_version: if os_is_xr || version.at_least((14, 0), (17, 0), os_is_mac) {
+                MTLLanguageVersion::V3_1
+            } else if version.at_least((13, 0), (16, 0), os_is_mac) {
+                MTLLanguageVersion::V3_0
+            } else if version.at_least((12, 0), (15, 0), os_is_mac) {
                 MTLLanguageVersion::V2_4
             } else if version.at_least((11, 0), (14, 0), os_is_mac) {
                 MTLLanguageVersion::V2_3
@@ -540,8 +599,11 @@ impl super::PrivateCapabilities {
                 MUTABLE_COMPARISON_SAMPLER_SUPPORT,
             ),
             sampler_clamp_to_border: Self::supports_any(device, SAMPLER_CLAMP_TO_BORDER_SUPPORT),
-            base_instance: Self::supports_any(device, BASE_INSTANCE_SUPPORT),
-            base_vertex_instance_drawing: Self::supports_any(device, BASE_VERTEX_INSTANCE_SUPPORT),
+            indirect_draw_dispatch: Self::supports_any(device, INDIRECT_DRAW_DISPATCH_SUPPORT),
+            base_vertex_first_instance_drawing: Self::supports_any(
+                device,
+                BASE_VERTEX_FIRST_INSTANCE_SUPPORT,
+            ),
             dual_source_blending: Self::supports_any(device, DUAL_SOURCE_BLEND_SUPPORT),
             low_power: !os_is_mac || device.is_low_power(),
             headless: os_is_mac && device.is_headless(),
@@ -549,6 +611,9 @@ impl super::PrivateCapabilities {
             function_specialization: Self::supports_any(device, FUNCTION_SPECIALIZATION_SUPPORT),
             depth_clip_mode: Self::supports_any(device, DEPTH_CLIP_MODE),
             texture_cube_array: Self::supports_any(device, TEXTURE_CUBE_ARRAY_SUPPORT),
+            supports_float_filtering: os_is_mac
+                || (version.at_least((11, 0), (14, 0), os_is_mac)
+                    && device.supports_32bit_float_filtering()),
             format_depth24_stencil8: os_is_mac && device.d24_s8_supported(),
             format_depth32_stencil8_filter: os_is_mac,
             format_depth32_stencil8_none: !os_is_mac,
@@ -581,8 +646,7 @@ impl super::PrivateCapabilities {
             format_rgba8_srgb_no_write: !Self::supports_any(device, RGBA8_SRGB),
             format_rgb10a2_unorm_all: Self::supports_any(device, RGB10A2UNORM_ALL),
             format_rgb10a2_unorm_no_write: !Self::supports_any(device, RGB10A2UNORM_ALL),
-            format_rgb10a2_uint_color: !Self::supports_any(device, RGB10A2UINT_COLOR_WRITE),
-            format_rgb10a2_uint_color_write: Self::supports_any(device, RGB10A2UINT_COLOR_WRITE),
+            format_rgb10a2_uint_write: Self::supports_any(device, RGB10A2UINT_WRITE),
             format_rg11b10_all: Self::supports_any(device, RG11B10FLOAT_ALL),
             format_rg11b10_no_write: !Self::supports_any(device, RG11B10FLOAT_ALL),
             format_rgb9e5_all: Self::supports_any(device, RGB9E5FLOAT_ALL),
@@ -616,7 +680,7 @@ impl super::PrivateCapabilities {
             format_bgr10a2_all: Self::supports_any(device, BGR10A2_ALL),
             format_bgr10a2_no_write: !Self::supports_any(device, BGR10A2_ALL),
             max_buffers_per_stage: 31,
-            max_vertex_buffers: 31,
+            max_vertex_buffers: 31.min(crate::MAX_VERTEX_BUFFERS as u32),
             max_textures_per_stage: if os_is_mac
                 || (family_check && device.supports_family(MTLGPUFamily::Apple6))
             {
@@ -627,7 +691,7 @@ impl super::PrivateCapabilities {
                 31
             },
             max_samplers_per_stage: 16,
-            buffer_alignment: if os_is_mac { 256 } else { 64 },
+            buffer_alignment: if os_is_mac || os_is_xr { 256 } else { 64 },
             max_buffer_size: if version.at_least((10, 14), (12, 0), os_is_mac) {
                 // maxBufferLength available on macOS 10.14+ and iOS 12.0+
                 let buffer_size: metal::NSInteger =
@@ -670,6 +734,14 @@ impl super::PrivateCapabilities {
                 8
             } else {
                 4
+            },
+            // Per https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
+            max_color_attachment_bytes_per_sample: if family_check
+                && device.supports_family(MTLGPUFamily::Apple4)
+            {
+                64
+            } else {
+                32
             },
             max_varying_components: if device
                 .supports_feature_set(MTLFeatureSet::macOS_GPUFamily1_v1)
@@ -740,6 +812,15 @@ impl super::PrivateCapabilities {
             } else {
                 None
             },
+            timestamp_query_support,
+            supports_simd_scoped_operations: family_check
+                && (device.supports_family(MTLGPUFamily::Metal3)
+                    || device.supports_family(MTLGPUFamily::Mac2)
+                    || device.supports_family(MTLGPUFamily::Apple7)),
+            // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf#page=5
+            int64: family_check
+                && (device.supports_family(MTLGPUFamily::Apple3)
+                    || device.supports_family(MTLGPUFamily::Metal3)),
         }
     }
 
@@ -755,7 +836,6 @@ impl super::PrivateCapabilities {
         use wgt::Features as F;
 
         let mut features = F::empty()
-            | F::INDIRECT_FIRST_INSTANCE
             | F::MAPPABLE_PRIMARY_BUFFERS
             | F::VERTEX_WRITABLE_STORAGE
             | F::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
@@ -765,8 +845,27 @@ impl super::PrivateCapabilities {
             | F::TEXTURE_FORMAT_16BIT_NORM
             | F::SHADER_F16
             | F::DEPTH32FLOAT_STENCIL8
-            | F::MULTI_DRAW_INDIRECT;
+            | F::BGRA8UNORM_STORAGE;
 
+        features.set(F::FLOAT32_FILTERABLE, self.supports_float_filtering);
+        features.set(
+            F::INDIRECT_FIRST_INSTANCE | F::MULTI_DRAW_INDIRECT,
+            self.indirect_draw_dispatch,
+        );
+        features.set(
+            F::TIMESTAMP_QUERY | F::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+            self.timestamp_query_support
+                .contains(TimestampQuerySupport::STAGE_BOUNDARIES),
+        );
+        features.set(
+            F::TIMESTAMP_QUERY_INSIDE_PASSES,
+            self.timestamp_query_support
+                .contains(TimestampQuerySupport::INSIDE_WGPU_PASSES),
+        );
+        features.set(
+            F::DUAL_SOURCE_BLENDING,
+            self.msl_version >= MTLLanguageVersion::V1_2 && self.dual_source_blending,
+        );
         features.set(F::TEXTURE_COMPRESSION_ASTC, self.format_astc);
         features.set(F::TEXTURE_COMPRESSION_ASTC_HDR, self.format_astc_hdr);
         features.set(F::TEXTURE_COMPRESSION_BC, self.format_bc);
@@ -793,6 +892,10 @@ impl super::PrivateCapabilities {
         {
             features.insert(F::STORAGE_RESOURCE_BINDING_ARRAY);
         }
+        features.set(
+            F::SHADER_INT64,
+            self.int64 && self.msl_version >= MTLLanguageVersion::V2_3,
+        );
 
         features.set(
             F::ADDRESS_MODE_CLAMP_TO_BORDER,
@@ -801,6 +904,11 @@ impl super::PrivateCapabilities {
         features.set(F::ADDRESS_MODE_CLAMP_TO_ZERO, true);
 
         features.set(F::RG11B10UFLOAT_RENDERABLE, self.format_rg11b10_all);
+        features.set(F::SHADER_UNUSED_VERTEX_OUTPUT, true);
+
+        if self.supports_simd_scoped_operations {
+            features.insert(F::SUBGROUP | F::SUBGROUP_BARRIER);
+        }
 
         features
     }
@@ -815,10 +923,19 @@ impl super::PrivateCapabilities {
             wgt::DownlevelFlags::CUBE_ARRAY_TEXTURES,
             self.texture_cube_array,
         );
-        //TODO: separate the mutable comparisons from immutable ones
+        // TODO: separate the mutable comparisons from immutable ones
         downlevel.flags.set(
             wgt::DownlevelFlags::COMPARISON_SAMPLERS,
             self.mutable_comparison_samplers,
+        );
+        downlevel.flags.set(
+            wgt::DownlevelFlags::INDIRECT_EXECUTION,
+            self.indirect_draw_dispatch,
+        );
+        // TODO: add another flag for `first_instance`
+        downlevel.flags.set(
+            wgt::DownlevelFlags::BASE_VERTEX,
+            self.base_vertex_first_instance_drawing,
         );
         downlevel
             .flags
@@ -847,10 +964,16 @@ impl super::PrivateCapabilities {
                 max_vertex_buffers: self.max_vertex_buffers,
                 max_vertex_attributes: 31,
                 max_vertex_buffer_array_stride: base.max_vertex_buffer_array_stride,
+                min_subgroup_size: 4,
+                max_subgroup_size: 64,
                 max_push_constant_size: 0x1000,
                 min_uniform_buffer_offset_alignment: self.buffer_alignment as u32,
                 min_storage_buffer_offset_alignment: self.buffer_alignment as u32,
                 max_inter_stage_shader_components: self.max_varying_components,
+                max_color_attachments: (self.max_color_render_targets as u32)
+                    .min(crate::MAX_COLOR_ATTACHMENTS as u32),
+                max_color_attachment_bytes_per_sample: self.max_color_attachment_bytes_per_sample
+                    as u32,
                 max_compute_workgroup_storage_size: self.max_total_threadgroup_memory,
                 max_compute_invocations_per_workgroup: self.max_threads_per_group,
                 max_compute_workgroup_size_x: self.max_threads_per_group,
@@ -858,6 +981,7 @@ impl super::PrivateCapabilities {
                 max_compute_workgroup_size_z: self.max_threads_per_group,
                 max_compute_workgroups_per_dimension: 0xFFFF,
                 max_buffer_size: self.max_buffer_size,
+                max_non_sampler_bindings: u32::MAX,
             },
             alignments: crate::Alignments {
                 buffer_copy_offset: wgt::BufferSize::new(self.buffer_alignment).unwrap(),
@@ -899,6 +1023,7 @@ impl super::PrivateCapabilities {
             Tf::Bgra8Unorm => BGRA8Unorm,
             Tf::Rgba8Uint => RGBA8Uint,
             Tf::Rgba8Sint => RGBA8Sint,
+            Tf::Rgb10a2Uint => RGB10A2Uint,
             Tf::Rgb10a2Unorm => RGB10A2Unorm,
             Tf::Rg11b10Float => RG11B10Float,
             Tf::Rg32Uint => RG32Uint,
@@ -930,6 +1055,7 @@ impl super::PrivateCapabilities {
                     Depth32Float_Stencil8
                 }
             }
+            Tf::NV12 => unreachable!(),
             Tf::Rgb9e5Ufloat => RGB9E5Float,
             Tf::Bc1RgbaUnorm => BC1_RGBA,
             Tf::Bc1RgbaUnormSrgb => BC1_RGBA_sRGB,

@@ -9,8 +9,9 @@ use core::{
     ptr,
     sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
 };
-use instant::Instant;
+use std::time::Instant;
 
+mod bindings;
 mod keyed_event;
 mod waitaddress;
 
@@ -60,7 +61,7 @@ impl Backend {
             Err(global_backend_ptr) => {
                 unsafe {
                     // We lost the race, free our object and return the global one
-                    Box::from_raw(backend_ptr);
+                    let _ = Box::from_raw(backend_ptr);
                     &*global_backend_ptr
                 }
             }
@@ -74,11 +75,13 @@ pub struct ThreadParker {
     backend: &'static Backend,
 }
 
-impl ThreadParker {
-    pub const IS_CHEAP_TO_CONSTRUCT: bool = true;
+impl super::ThreadParkerT for ThreadParker {
+    type UnparkHandle = UnparkHandle;
+
+    const IS_CHEAP_TO_CONSTRUCT: bool = true;
 
     #[inline]
-    pub fn new() -> ThreadParker {
+    fn new() -> ThreadParker {
         // Initialize the backend here to ensure we don't get any panics
         // later on, which could leave synchronization primitives in a broken
         // state.
@@ -90,7 +93,7 @@ impl ThreadParker {
 
     // Prepares the parker. This should be called before adding it to the queue.
     #[inline]
-    pub fn prepare_park(&self) {
+    unsafe fn prepare_park(&self) {
         match *self.backend {
             Backend::KeyedEvent(ref x) => x.prepare_park(&self.key),
             Backend::WaitAddress(ref x) => x.prepare_park(&self.key),
@@ -100,7 +103,7 @@ impl ThreadParker {
     // Checks if the park timed out. This should be called while holding the
     // queue lock after park_until has returned false.
     #[inline]
-    pub fn timed_out(&self) -> bool {
+    unsafe fn timed_out(&self) -> bool {
         match *self.backend {
             Backend::KeyedEvent(ref x) => x.timed_out(&self.key),
             Backend::WaitAddress(ref x) => x.timed_out(&self.key),
@@ -110,7 +113,7 @@ impl ThreadParker {
     // Parks the thread until it is unparked. This should be called after it has
     // been added to the queue, after unlocking the queue.
     #[inline]
-    pub unsafe fn park(&self) {
+    unsafe fn park(&self) {
         match *self.backend {
             Backend::KeyedEvent(ref x) => x.park(&self.key),
             Backend::WaitAddress(ref x) => x.park(&self.key),
@@ -121,7 +124,7 @@ impl ThreadParker {
     // should be called after it has been added to the queue, after unlocking
     // the queue. Returns true if we were unparked and false if we timed out.
     #[inline]
-    pub unsafe fn park_until(&self, timeout: Instant) -> bool {
+    unsafe fn park_until(&self, timeout: Instant) -> bool {
         match *self.backend {
             Backend::KeyedEvent(ref x) => x.park_until(&self.key, timeout),
             Backend::WaitAddress(ref x) => x.park_until(&self.key, timeout),
@@ -132,7 +135,7 @@ impl ThreadParker {
     // necessary to ensure that thread-local ThreadData objects remain valid.
     // This should be called while holding the queue lock.
     #[inline]
-    pub unsafe fn unpark_lock(&self) -> UnparkHandle {
+    unsafe fn unpark_lock(&self) -> UnparkHandle {
         match *self.backend {
             Backend::KeyedEvent(ref x) => UnparkHandle::KeyedEvent(x.unpark_lock(&self.key)),
             Backend::WaitAddress(ref x) => UnparkHandle::WaitAddress(x.unpark_lock(&self.key)),
@@ -148,11 +151,11 @@ pub enum UnparkHandle {
     WaitAddress(waitaddress::UnparkHandle),
 }
 
-impl UnparkHandle {
+impl super::UnparkHandleT for UnparkHandle {
     // Wakes up the parked thread. This should be called after the queue lock is
     // released to avoid blocking the queue for too long.
     #[inline]
-    pub unsafe fn unpark(self) {
+    unsafe fn unpark(self) {
         match self {
             UnparkHandle::KeyedEvent(x) => x.unpark(),
             UnparkHandle::WaitAddress(x) => x.unpark(),
@@ -163,26 +166,10 @@ impl UnparkHandle {
 // Yields the rest of the current timeslice to the OS
 #[inline]
 pub fn thread_yield() {
-    // Note that this is manually defined here rather than using the definition
-    // through `winapi`. The `winapi` definition comes from the `synchapi`
-    // header which enables the "synchronization.lib" library. It turns out,
-    // however that `Sleep` comes from `kernel32.dll` so this activation isn't
-    // necessary.
-    //
-    // This was originally identified in rust-lang/rust where on MinGW the
-    // libsynchronization.a library pulls in a dependency on a newer DLL not
-    // present in older versions of Windows. (see rust-lang/rust#49438)
-    //
-    // This is a bit of a hack for now and ideally we'd fix MinGW's own import
-    // libraries, but that'll probably take a lot longer than patching this here
-    // and avoiding the `synchapi` feature entirely.
-    extern "system" {
-        fn Sleep(a: winapi::shared::minwindef::DWORD);
-    }
     unsafe {
         // We don't use SwitchToThread here because it doesn't consider all
         // threads in the system and the thread we are waiting for may not get
         // selected.
-        Sleep(0);
+        bindings::Sleep(0);
     }
 }

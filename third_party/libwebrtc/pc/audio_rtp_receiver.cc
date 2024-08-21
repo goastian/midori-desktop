@@ -139,7 +139,7 @@ RtpParameters AudioRtpReceiver::GetParameters() const {
     return RtpParameters();
   auto current_ssrc = ssrc();
   return current_ssrc.has_value()
-             ? media_channel_->GetRtpReceiveParameters(current_ssrc.value())
+             ? media_channel_->GetRtpReceiverParameters(current_ssrc.value())
              : media_channel_->GetDefaultRtpReceiveParameters();
 }
 
@@ -278,7 +278,7 @@ std::vector<RtpSource> AudioRtpReceiver::GetSources() const {
 }
 
 void AudioRtpReceiver::SetDepacketizerToDecoderFrameTransformer(
-    rtc::scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer) {
+    rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) {
   RTC_DCHECK_RUN_ON(worker_thread_);
   if (media_channel_) {
     media_channel_->SetDepacketizerToDecoderFrameTransformer(

@@ -16,7 +16,7 @@ drawn on a [HTML5 canvas using WebAssembly][wasm-demo].
 To use the textwrap crate, add this to your `Cargo.toml` file:
 ```toml
 [dependencies]
-textwrap = "0.15"
+textwrap = "0.16"
 ```
 
 By default, this enables word wrapping with support for Unicode
@@ -165,7 +165,7 @@ Contributions will be accepted under the same license.
 [`textwrap-macros` crate]: https://crates.io/crates/textwrap-macros
 [`hyphenation` example]: https://github.com/mgeisler/textwrap/blob/master/examples/hyphenation.rs
 [`termwidth` example]: https://github.com/mgeisler/textwrap/blob/master/examples/termwidth.rs
-[patterns]: https://github.com/tapeinosyne/hyphenation/tree/master/patterns-tex
+[patterns]: https://github.com/tapeinosyne/hyphenation/tree/master/patterns
 [en-us license]: https://github.com/hyphenation/tex-hyphen/blob/master/hyph-utf8/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex
 [bincode]: https://github.com/tapeinosyne/hyphenation/tree/master/dictionaries
 [`hyphenation` documentation]: http://docs.rs/hyphenation

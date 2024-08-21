@@ -59,10 +59,6 @@ class FlexfecReceiveStreamImpl : public FlexfecReceiveStream {
   void SetPayloadType(int payload_type) override;
   int payload_type() const override;
 
-  // ReceiveStreamInterface impl.
-  void SetRtpExtensions(std::vector<RtpExtension> extensions) override;
-  RtpHeaderExtensionMap GetRtpExtensionMap() const override;
-
   // Updates the `rtp_video_stream_receiver_`'s `local_ssrc` when the default
   // sender has been created, changed or removed.
   void SetLocalSsrc(uint32_t local_ssrc);
@@ -74,10 +70,12 @@ class FlexfecReceiveStreamImpl : public FlexfecReceiveStream {
     rtp_rtcp_->SetRTCPStatus(mode);
   }
 
+  const ReceiveStatistics* GetStats() const override {
+    return rtp_receive_statistics_.get();
+  }
+
  private:
   RTC_NO_UNIQUE_ADDRESS SequenceChecker packet_sequence_checker_;
-
-  RtpHeaderExtensionMap extension_map_;
 
   const uint32_t remote_ssrc_;
 

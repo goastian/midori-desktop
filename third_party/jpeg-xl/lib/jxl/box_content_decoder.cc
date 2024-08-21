@@ -5,11 +5,16 @@
 
 #include "lib/jxl/box_content_decoder.h"
 
-#include "lib/jxl/sanitizers.h"
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+
+#include "lib/jxl/base/sanitizers.h"
 
 namespace jxl {
 
-JxlBoxContentDecoder::JxlBoxContentDecoder() {}
+JxlBoxContentDecoder::JxlBoxContentDecoder() = default;
 
 JxlBoxContentDecoder::~JxlBoxContentDecoder() {
   if (brotli_dec) {

@@ -112,6 +112,15 @@ impl StringMetric {
     /// Gets the currently stored value as a string.
     ///
     /// This doesn't clear the stored value.
+    ///
+    /// # Arguments
+    ///
+    /// * `ping_name` - the optional name of the ping to retrieve the metric
+    ///                 for. Defaults to the first value in `send_in_pings`.
+    ///
+    /// # Returns
+    ///
+    /// The stored value or `None` if nothing stored.
     pub fn test_get_value(&self, ping_name: Option<String>) -> Option<String> {
         crate::block_on_dispatcher();
         crate::core::with_glean(|glean| self.get_value(glean, ping_name.as_deref()))
@@ -124,8 +133,6 @@ impl StringMetric {
     /// # Arguments
     ///
     /// * `error` - The type of error
-    /// * `ping_name` - represents the optional name of the ping to retrieve the
-    ///   metric for. Defaults to the first value in `send_in_pings`.
     ///
     /// # Returns
     ///
@@ -142,10 +149,8 @@ impl StringMetric {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_get_num_recorded_errors;
     use crate::tests::new_glean;
     use crate::util::truncate_string_at_boundary;
-    use crate::ErrorType;
     use crate::Lifetime;
 
     #[test]

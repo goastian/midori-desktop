@@ -5,20 +5,24 @@
 
 #include "lib/extras/dec/exr.h"
 
+#include "lib/jxl/base/common.h"
+
+#if JPEGXL_ENABLE_EXR
 #include <ImfChromaticitiesAttribute.h>
 #include <ImfIO.h>
 #include <ImfRgbaFile.h>
 #include <ImfStandardAttributes.h>
+#endif
 
 #include <vector>
 
 namespace jxl {
 namespace extras {
 
+#if JPEGXL_ENABLE_EXR
 namespace {
 
 namespace OpenEXR = OPENEXR_IMF_NAMESPACE;
-namespace Imath = IMATH_NAMESPACE;
 
 // OpenEXR::Int64 is deprecated in favor of using uint64_t directly, but using
 // uint64_t as recommended causes build failures with previous OpenEXR versions
@@ -60,18 +64,29 @@ class InMemoryIStream : public OpenEXR::IStream {
 };
 
 }  // namespace
+#endif
+
+bool CanDecodeEXR() {
+#if JPEGXL_ENABLE_EXR
+  return true;
+#else
+  return false;
+#endif
+}
 
 Status DecodeImageEXR(Span<const uint8_t> bytes, const ColorHints& color_hints,
                       PackedPixelFile* ppf,
                       const SizeConstraints* constraints) {
+#if JPEGXL_ENABLE_EXR
   InMemoryIStream is(bytes);
 
 #ifdef __EXCEPTIONS
   std::unique_ptr<OpenEXR::RgbaInputFile> input_ptr;
   try {
-    input_ptr.reset(new OpenEXR::RgbaInputFile(is));
+    input_ptr = jxl::make_unique<OpenEXR::RgbaInputFile>(is);
   } catch (...) {
-    return JXL_FAILURE("OpenEXR failed to parse input");
+    // silently return false if it is not an EXR file
+    return false;
   }
   OpenEXR::RgbaInputFile& input = *input_ptr;
 #else
@@ -108,7 +123,12 @@ Status DecodeImageEXR(Span<const uint8_t> bytes, const ColorHints& color_hints,
   };
   ppf->frames.clear();
   // Allocates the frame buffer.
-  ppf->frames.emplace_back(image_size.x, image_size.y, format);
+  {
+    JXL_ASSIGN_OR_RETURN(
+        PackedFrame frame,
+        PackedFrame::Create(image_size.x, image_size.y, format));
+    ppf->frames.emplace_back(std::move(frame));
+  }
   const auto& frame = ppf->frames.back();
 
   const int row_size = input.dataWindow().size().x + 1;
@@ -144,6 +164,7 @@ Status DecodeImageEXR(Span<const uint8_t> bytes, const ColorHints& color_hints,
            std::min(input.dataWindow().max.x, input.displayWindow().max.x);
            ++exr_x) {
         const int image_x = exr_x - input.displayWindow().min.x;
+        // TODO(eustas): UB: OpenEXR::Rgba is not TriviallyCopyable
         memcpy(row + image_x * pixel_size,
                input_row + (exr_x - input.dataWindow().min.x), pixel_size);
       }
@@ -174,10 +195,13 @@ Status DecodeImageEXR(Span<const uint8_t> bytes, const ColorHints& color_hints,
   if (has_alpha) {
     ppf->info.alpha_bits = kExrAlphaBits;
     ppf->info.alpha_exponent_bits = ppf->info.exponent_bits_per_sample;
-    ppf->info.alpha_premultiplied = true;
+    ppf->info.alpha_premultiplied = JXL_TRUE;
   }
   ppf->info.intensity_target = intensity_target;
   return true;
+#else
+  return false;
+#endif
 }
 
 }  // namespace extras

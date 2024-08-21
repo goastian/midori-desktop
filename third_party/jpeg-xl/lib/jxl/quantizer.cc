@@ -5,12 +5,11 @@
 
 #include "lib/jxl/quantizer.h"
 
-#include <stdio.h>
-#include <string.h>
-
 #include <algorithm>
+#include <cstring>
 
 #include "lib/jxl/base/compiler_specific.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/field_encodings.h"
 #include "lib/jxl/fields.h"
 #include "lib/jxl/image.h"
@@ -21,7 +20,9 @@ namespace jxl {
 
 static const int32_t kDefaultQuant = 64;
 
+#if JXL_CXX_LANG < JXL_CXX_17
 constexpr int32_t Quantizer::kQuantMax;
+#endif
 
 Quantizer::Quantizer(const DequantMatrices* dequant)
     : Quantizer(dequant, kDefaultQuant, kGlobalScaleDenom / kDefaultQuant) {}

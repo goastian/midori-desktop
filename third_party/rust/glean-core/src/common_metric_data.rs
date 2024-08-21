@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::convert::TryFrom;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::error::{Error, ErrorKind};
@@ -91,9 +90,10 @@ impl Clone for CommonMetricDataInternal {
 
 impl From<CommonMetricData> for CommonMetricDataInternal {
     fn from(input_data: CommonMetricData) -> Self {
+        let disabled = input_data.disabled;
         Self {
-            inner: input_data.clone(),
-            disabled: AtomicU8::new(u8::from(input_data.disabled)),
+            inner: input_data,
+            disabled: AtomicU8::new(u8::from(disabled)),
         }
     }
 }

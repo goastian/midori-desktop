@@ -10,12 +10,9 @@ mod handles;
 mod interface;
 mod r#type;
 
-#[cfg(feature = "validate")]
-use crate::arena::{Arena, UniqueArena};
-
 use crate::{
     arena::Handle,
-    proc::{LayoutError, Layouter},
+    proc::{ExpressionKindTracker, LayoutError, Layouter, TypeResolution},
     FastHashSet,
 };
 use bit_set::BitSet;
@@ -27,10 +24,11 @@ use std::ops;
 use crate::span::{AddSpan as _, WithSpan};
 pub use analyzer::{ExpressionInfo, FunctionInfo, GlobalUse, Uniformity, UniformityRequirements};
 pub use compose::ComposeError;
-pub use expression::ExpressionError;
+pub use expression::{check_literal_value, LiteralError};
+pub use expression::{ConstExpressionError, ExpressionError};
 pub use function::{CallError, FunctionError, LocalVariableError};
 pub use interface::{EntryPointError, GlobalVariableError, VaryingError};
-pub use r#type::{Disalignment, TypeError, TypeFlags};
+pub use r#type::{Disalignment, TypeError, TypeFlags, WidthError};
 
 use self::handles::InvalidHandleError;
 
@@ -47,30 +45,22 @@ bitflags::bitflags! {
     /// should never panic.
     ///
     /// The default value for `ValidationFlags` is
-    /// `ValidationFlags::all()`. If Naga's `"validate"` feature is
-    /// enabled, this requests full validation; otherwise, this
-    /// requests no validation. (The `"validate"` feature is disabled
-    /// by default.)
+    /// `ValidationFlags::all()`.
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct ValidationFlags: u8 {
         /// Expressions.
-        #[cfg(feature = "validate")]
         const EXPRESSIONS = 0x1;
         /// Statements and blocks of them.
-        #[cfg(feature = "validate")]
         const BLOCKS = 0x2;
         /// Uniformity of control flow for operations that require it.
-        #[cfg(feature = "validate")]
         const CONTROL_FLOW_UNIFORMITY = 0x4;
         /// Host-shareable structure layouts.
-        #[cfg(feature = "validate")]
         const STRUCT_LAYOUTS = 0x8;
         /// Constants.
-        #[cfg(feature = "validate")]
         const CONSTANTS = 0x10;
         /// Group, binding, and location attributes.
-        #[cfg(feature = "validate")]
         const BINDINGS = 0x20;
     }
 }
@@ -86,7 +76,8 @@ bitflags::bitflags! {
     #[must_use]
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
-    pub struct Capabilities: u16 {
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct Capabilities: u32 {
         /// Support for [`AddressSpace:PushConstant`].
         const PUSH_CONSTANT = 0x1;
         /// Float values with width = 8.
@@ -113,12 +104,73 @@ bitflags::bitflags! {
         const MULTISAMPLED_SHADING = 0x800;
         /// Support for ray queries and acceleration structures.
         const RAY_QUERY = 0x1000;
+        /// Support for generating two sources for blending from fragment shaders.
+        const DUAL_SOURCE_BLENDING = 0x2000;
+        /// Support for arrayed cube textures.
+        const CUBE_ARRAY_TEXTURES = 0x4000;
+        /// Support for 64-bit signed and unsigned integers.
+        const SHADER_INT64 = 0x8000;
+        /// Support for subgroup operations.
+        const SUBGROUP = 0x10000;
+        /// Support for subgroup barriers.
+        const SUBGROUP_BARRIER = 0x20000;
     }
 }
 
 impl Default for Capabilities {
     fn default() -> Self {
-        Self::MULTISAMPLED_SHADING
+        Self::MULTISAMPLED_SHADING | Self::CUBE_ARRAY_TEXTURES
+    }
+}
+
+bitflags::bitflags! {
+    /// Supported subgroup operations
+    #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+    #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+    pub struct SubgroupOperationSet: u8 {
+        /// Elect, Barrier
+        const BASIC = 1 << 0;
+        /// Any, All
+        const VOTE = 1 << 1;
+        /// reductions, scans
+        const ARITHMETIC = 1 << 2;
+        /// ballot, broadcast
+        const BALLOT = 1 << 3;
+        /// shuffle, shuffle xor
+        const SHUFFLE = 1 << 4;
+        /// shuffle up, down
+        const SHUFFLE_RELATIVE = 1 << 5;
+        // We don't support these operations yet
+        // /// Clustered
+        // const CLUSTERED = 1 << 6;
+        // /// Quad supported
+        // const QUAD_FRAGMENT_COMPUTE = 1 << 7;
+        // /// Quad supported in all stages
+        // const QUAD_ALL_STAGES = 1 << 8;
+    }
+}
+
+impl super::SubgroupOperation {
+    const fn required_operations(&self) -> SubgroupOperationSet {
+        use SubgroupOperationSet as S;
+        match *self {
+            Self::All | Self::Any => S::VOTE,
+            Self::Add | Self::Mul | Self::Min | Self::Max | Self::And | Self::Or | Self::Xor => {
+                S::ARITHMETIC
+            }
+        }
+    }
+}
+
+impl super::GatherMode {
+    const fn required_operations(&self) -> SubgroupOperationSet {
+        use SubgroupOperationSet as S;
+        match *self {
+            Self::BroadcastFirst | Self::Broadcast(_) => S::BALLOT,
+            Self::Shuffle(_) | Self::ShuffleXor(_) => S::SHUFFLE,
+            Self::ShuffleUp(_) | Self::ShuffleDown(_) => S::SHUFFLE_RELATIVE,
+        }
     }
 }
 
@@ -126,6 +178,7 @@ bitflags::bitflags! {
     /// Validation flags.
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct ShaderStages: u8 {
         const VERTEX = 0x1;
         const FRAGMENT = 0x2;
@@ -133,13 +186,14 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
 pub struct ModuleInfo {
     type_flags: Vec<TypeFlags>,
     functions: Vec<FunctionInfo>,
     entry_points: Vec<FunctionInfo>,
+    const_expression_types: Box<[TypeResolution]>,
 }
 
 impl ops::Index<Handle<crate::Type>> for ModuleInfo {
@@ -156,33 +210,63 @@ impl ops::Index<Handle<crate::Function>> for ModuleInfo {
     }
 }
 
+impl ops::Index<Handle<crate::Expression>> for ModuleInfo {
+    type Output = TypeResolution;
+    fn index(&self, handle: Handle<crate::Expression>) -> &Self::Output {
+        &self.const_expression_types[handle.index()]
+    }
+}
+
 #[derive(Debug)]
 pub struct Validator {
     flags: ValidationFlags,
     capabilities: Capabilities,
+    subgroup_stages: ShaderStages,
+    subgroup_operations: SubgroupOperationSet,
     types: Vec<r#type::TypeInfo>,
     layouter: Layouter,
     location_mask: BitSet,
-    bind_group_masks: Vec<BitSet>,
+    ep_resource_bindings: FastHashSet<crate::ResourceBinding>,
     #[allow(dead_code)]
     switch_values: FastHashSet<crate::SwitchValue>,
     valid_expression_list: Vec<Handle<crate::Expression>>,
     valid_expression_set: BitSet,
+    override_ids: FastHashSet<u16>,
+    allow_overrides: bool,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ConstantError {
+    #[error("Initializer must be a const-expression")]
+    InitializerExprType,
     #[error("The type doesn't match the constant")]
     InvalidType,
-    #[error("The component handle {0:?} can not be resolved")]
-    UnresolvedComponent(Handle<crate::Constant>),
-    #[error("The array size handle {0:?} can not be resolved")]
-    UnresolvedSize(Handle<crate::Constant>),
-    #[error(transparent)]
-    Compose(#[from] ComposeError),
+    #[error("The type is not constructible")]
+    NonConstructibleType,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum OverrideError {
+    #[error("Override name and ID are missing")]
+    MissingNameAndID,
+    #[error("Override ID must be unique")]
+    DuplicateID,
+    #[error("Initializer must be a const-expression or override-expression")]
+    InitializerExprType,
+    #[error("The type doesn't match the override")]
+    InvalidType,
+    #[error("The type is not constructible")]
+    NonConstructibleType,
+    #[error("The type is not a scalar")]
+    TypeNotScalar,
+    #[error("Override declarations are not allowed")]
+    NotAllowed,
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ValidationError {
     #[error(transparent)]
     InvalidHandle(#[from] InvalidHandleError),
@@ -194,11 +278,22 @@ pub enum ValidationError {
         name: String,
         source: TypeError,
     },
+    #[error("Constant expression {handle:?} is invalid")]
+    ConstExpression {
+        handle: Handle<crate::Expression>,
+        source: ConstExpressionError,
+    },
     #[error("Constant {handle:?} '{name}' is invalid")]
     Constant {
         handle: Handle<crate::Constant>,
         name: String,
         source: ConstantError,
+    },
+    #[error("Override {handle:?} '{name}' is invalid")]
+    Override {
+        handle: Handle<crate::Override>,
+        name: String,
+        source: OverrideError,
     },
     #[error("Global variable {handle:?} '{name}' is invalid")]
     GlobalVariable {
@@ -223,7 +318,6 @@ pub enum ValidationError {
 }
 
 impl crate::TypeInner {
-    #[cfg(feature = "validate")]
     const fn is_sized(&self) -> bool {
         match *self {
             Self::Scalar { .. }
@@ -247,22 +341,27 @@ impl crate::TypeInner {
     }
 
     /// Return the `ImageDimension` for which `self` is an appropriate coordinate.
-    #[cfg(feature = "validate")]
     const fn image_storage_coordinates(&self) -> Option<crate::ImageDimension> {
         match *self {
-            Self::Scalar {
+            Self::Scalar(crate::Scalar {
                 kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
                 ..
-            } => Some(crate::ImageDimension::D1),
+            }) => Some(crate::ImageDimension::D1),
             Self::Vector {
                 size: crate::VectorSize::Bi,
-                kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
-                ..
+                scalar:
+                    crate::Scalar {
+                        kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
+                        ..
+                    },
             } => Some(crate::ImageDimension::D2),
             Self::Vector {
                 size: crate::VectorSize::Tri,
-                kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
-                ..
+                scalar:
+                    crate::Scalar {
+                        kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
+                        ..
+                    },
             } => Some(crate::ImageDimension::D3),
             _ => None,
         }
@@ -275,14 +374,28 @@ impl Validator {
         Validator {
             flags,
             capabilities,
+            subgroup_stages: ShaderStages::empty(),
+            subgroup_operations: SubgroupOperationSet::empty(),
             types: Vec::new(),
             layouter: Layouter::default(),
             location_mask: BitSet::new(),
-            bind_group_masks: Vec::new(),
+            ep_resource_bindings: FastHashSet::default(),
             switch_values: FastHashSet::default(),
             valid_expression_list: Vec::new(),
             valid_expression_set: BitSet::new(),
+            override_ids: FastHashSet::default(),
+            allow_overrides: true,
         }
+    }
+
+    pub fn subgroup_stages(&mut self, stages: ShaderStages) -> &mut Self {
+        self.subgroup_stages = stages;
+        self
+    }
+
+    pub fn subgroup_operations(&mut self, operations: SubgroupOperationSet) -> &mut Self {
+        self.subgroup_operations = operations;
+        self
     }
 
     /// Reset the validator internals
@@ -290,49 +403,87 @@ impl Validator {
         self.types.clear();
         self.layouter.clear();
         self.location_mask.clear();
-        self.bind_group_masks.clear();
+        self.ep_resource_bindings.clear();
         self.switch_values.clear();
         self.valid_expression_list.clear();
         self.valid_expression_set.clear();
+        self.override_ids.clear();
     }
 
-    #[cfg(feature = "validate")]
     fn validate_constant(
         &self,
         handle: Handle<crate::Constant>,
-        constants: &Arena<crate::Constant>,
-        types: &UniqueArena<crate::Type>,
+        gctx: crate::proc::GlobalCtx,
+        mod_info: &ModuleInfo,
+        global_expr_kind: &ExpressionKindTracker,
     ) -> Result<(), ConstantError> {
-        let con = &constants[handle];
-        match con.inner {
-            crate::ConstantInner::Scalar { width, ref value } => {
-                if self.check_width(value.scalar_kind(), width).is_err() {
-                    return Err(ConstantError::InvalidType);
-                }
-            }
-            crate::ConstantInner::Composite { ty, ref components } => {
-                match types[ty].inner {
-                    crate::TypeInner::Array {
-                        size: crate::ArraySize::Constant(size_handle),
-                        ..
-                    } if handle <= size_handle => {
-                        return Err(ConstantError::UnresolvedSize(size_handle));
-                    }
-                    _ => {}
-                }
-                if let Some(&comp) = components.iter().find(|&&comp| handle <= comp) {
-                    return Err(ConstantError::UnresolvedComponent(comp));
-                }
-                compose::validate_compose(
-                    ty,
-                    constants,
-                    types,
-                    components
-                        .iter()
-                        .map(|&component| constants[component].inner.resolve_type()),
-                )?;
+        let con = &gctx.constants[handle];
+
+        let type_info = &self.types[con.ty.index()];
+        if !type_info.flags.contains(TypeFlags::CONSTRUCTIBLE) {
+            return Err(ConstantError::NonConstructibleType);
+        }
+
+        if !global_expr_kind.is_const(con.init) {
+            return Err(ConstantError::InitializerExprType);
+        }
+
+        let decl_ty = &gctx.types[con.ty].inner;
+        let init_ty = mod_info[con.init].inner_with(gctx.types);
+        if !decl_ty.equivalent(init_ty, gctx.types) {
+            return Err(ConstantError::InvalidType);
+        }
+
+        Ok(())
+    }
+
+    fn validate_override(
+        &mut self,
+        handle: Handle<crate::Override>,
+        gctx: crate::proc::GlobalCtx,
+        mod_info: &ModuleInfo,
+    ) -> Result<(), OverrideError> {
+        if !self.allow_overrides {
+            return Err(OverrideError::NotAllowed);
+        }
+
+        let o = &gctx.overrides[handle];
+
+        if o.name.is_none() && o.id.is_none() {
+            return Err(OverrideError::MissingNameAndID);
+        }
+
+        if let Some(id) = o.id {
+            if !self.override_ids.insert(id) {
+                return Err(OverrideError::DuplicateID);
             }
         }
+
+        let type_info = &self.types[o.ty.index()];
+        if !type_info.flags.contains(TypeFlags::CONSTRUCTIBLE) {
+            return Err(OverrideError::NonConstructibleType);
+        }
+
+        let decl_ty = &gctx.types[o.ty].inner;
+        match decl_ty {
+            &crate::TypeInner::Scalar(scalar) => match scalar {
+                crate::Scalar::BOOL
+                | crate::Scalar::I32
+                | crate::Scalar::U32
+                | crate::Scalar::F32
+                | crate::Scalar::F64 => {}
+                _ => return Err(OverrideError::TypeNotScalar),
+            },
+            _ => return Err(OverrideError::TypeNotScalar),
+        }
+
+        if let Some(init) = o.init {
+            let init_ty = mod_info[init].inner_with(gctx.types);
+            if !decl_ty.equivalent(init_ty, gctx.types) {
+                return Err(OverrideError::InvalidType);
+            }
+        }
+
         Ok(())
     }
 
@@ -341,43 +492,52 @@ impl Validator {
         &mut self,
         module: &crate::Module,
     ) -> Result<ModuleInfo, WithSpan<ValidationError>> {
+        self.allow_overrides = true;
+        self.validate_impl(module)
+    }
+
+    /// Check the given module to be valid.
+    ///
+    /// With the additional restriction that overrides are not present.
+    pub fn validate_no_overrides(
+        &mut self,
+        module: &crate::Module,
+    ) -> Result<ModuleInfo, WithSpan<ValidationError>> {
+        self.allow_overrides = false;
+        self.validate_impl(module)
+    }
+
+    fn validate_impl(
+        &mut self,
+        module: &crate::Module,
+    ) -> Result<ModuleInfo, WithSpan<ValidationError>> {
         self.reset();
         self.reset_types(module.types.len());
 
-        #[cfg(feature = "validate")]
         Self::validate_module_handles(module).map_err(|e| e.with_span())?;
 
-        self.layouter
-            .update(&module.types, &module.constants)
-            .map_err(|e| {
-                let handle = e.ty;
-                ValidationError::from(e).with_span_handle(handle, &module.types)
-            })?;
+        self.layouter.update(module.to_ctx()).map_err(|e| {
+            let handle = e.ty;
+            ValidationError::from(e).with_span_handle(handle, &module.types)
+        })?;
 
-        #[cfg(feature = "validate")]
-        if self.flags.contains(ValidationFlags::CONSTANTS) {
-            for (handle, constant) in module.constants.iter() {
-                self.validate_constant(handle, &module.constants, &module.types)
-                    .map_err(|source| {
-                        ValidationError::Constant {
-                            handle,
-                            name: constant.name.clone().unwrap_or_default(),
-                            source,
-                        }
-                        .with_span_handle(handle, &module.constants)
-                    })?
-            }
-        }
+        // These should all get overwritten.
+        let placeholder = TypeResolution::Value(crate::TypeInner::Scalar(crate::Scalar {
+            kind: crate::ScalarKind::Bool,
+            width: 0,
+        }));
 
         let mut mod_info = ModuleInfo {
             type_flags: Vec::with_capacity(module.types.len()),
             functions: Vec::with_capacity(module.functions.len()),
             entry_points: Vec::with_capacity(module.entry_points.len()),
+            const_expression_types: vec![placeholder; module.global_expressions.len()]
+                .into_boxed_slice(),
         };
 
         for (handle, ty) in module.types.iter() {
             let ty_info = self
-                .validate_type(handle, &module.types, &module.constants)
+                .validate_type(handle, module.to_ctx())
                 .map_err(|source| {
                     ValidationError::Type {
                         handle,
@@ -390,9 +550,62 @@ impl Validator {
             self.types[handle.index()] = ty_info;
         }
 
-        #[cfg(feature = "validate")]
+        {
+            let t = crate::Arena::new();
+            let resolve_context = crate::proc::ResolveContext::with_locals(module, &t, &[]);
+            for (handle, _) in module.global_expressions.iter() {
+                mod_info
+                    .process_const_expression(handle, &resolve_context, module.to_ctx())
+                    .map_err(|source| {
+                        ValidationError::ConstExpression { handle, source }
+                            .with_span_handle(handle, &module.global_expressions)
+                    })?
+            }
+        }
+
+        let global_expr_kind = ExpressionKindTracker::from_arena(&module.global_expressions);
+
+        if self.flags.contains(ValidationFlags::CONSTANTS) {
+            for (handle, _) in module.global_expressions.iter() {
+                self.validate_const_expression(
+                    handle,
+                    module.to_ctx(),
+                    &mod_info,
+                    &global_expr_kind,
+                )
+                .map_err(|source| {
+                    ValidationError::ConstExpression { handle, source }
+                        .with_span_handle(handle, &module.global_expressions)
+                })?
+            }
+
+            for (handle, constant) in module.constants.iter() {
+                self.validate_constant(handle, module.to_ctx(), &mod_info, &global_expr_kind)
+                    .map_err(|source| {
+                        ValidationError::Constant {
+                            handle,
+                            name: constant.name.clone().unwrap_or_default(),
+                            source,
+                        }
+                        .with_span_handle(handle, &module.constants)
+                    })?
+            }
+
+            for (handle, override_) in module.overrides.iter() {
+                self.validate_override(handle, module.to_ctx(), &mod_info)
+                    .map_err(|source| {
+                        ValidationError::Override {
+                            handle,
+                            name: override_.name.clone().unwrap_or_default(),
+                            source,
+                        }
+                        .with_span_handle(handle, &module.overrides)
+                    })?
+            }
+        }
+
         for (var_handle, var) in module.global_variables.iter() {
-            self.validate_global_var(var, &module.types)
+            self.validate_global_var(var, module.to_ctx(), &mod_info, &global_expr_kind)
                 .map_err(|source| {
                     ValidationError::GlobalVariable {
                         handle: var_handle,
@@ -404,7 +617,7 @@ impl Validator {
         }
 
         for (handle, fun) in module.functions.iter() {
-            match self.validate_function(fun, module, &mod_info, false) {
+            match self.validate_function(fun, module, &mod_info, false, &global_expr_kind) {
                 Ok(info) => mod_info.functions.push(info),
                 Err(error) => {
                     return Err(error.and_then(|source| {
@@ -430,7 +643,7 @@ impl Validator {
                 .with_span()); // TODO: keep some EP span information?
             }
 
-            match self.validate_entry_point(ep, module, &mod_info) {
+            match self.validate_entry_point(ep, module, &mod_info, &global_expr_kind) {
                 Ok(info) => mod_info.entry_points.push(info),
                 Err(error) => {
                     return Err(error.and_then(|source| {
@@ -449,9 +662,8 @@ impl Validator {
     }
 }
 
-#[cfg(feature = "validate")]
 fn validate_atomic_compare_exchange_struct(
-    types: &UniqueArena<crate::Type>,
+    types: &crate::UniqueArena<crate::Type>,
     members: &[crate::StructMember],
     scalar_predicate: impl FnOnce(&crate::TypeInner) -> bool,
 ) -> bool {
@@ -459,9 +671,5 @@ fn validate_atomic_compare_exchange_struct(
         && members[0].name.as_deref() == Some("old_value")
         && scalar_predicate(&types[members[0].ty].inner)
         && members[1].name.as_deref() == Some("exchanged")
-        && types[members[1].ty].inner
-            == crate::TypeInner::Scalar {
-                kind: crate::ScalarKind::Bool,
-                width: crate::BOOL_WIDTH,
-            }
+        && types[members[1].ty].inner == crate::TypeInner::Scalar(crate::Scalar::BOOL)
 }

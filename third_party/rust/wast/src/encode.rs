@@ -8,6 +8,12 @@ impl<T: Encode + ?Sized> Encode for &'_ T {
     }
 }
 
+impl<T: Encode + ?Sized> Encode for Box<T> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        T::encode(self, e)
+    }
+}
+
 impl<T: Encode> Encode for [T] {
     fn encode(&self, e: &mut Vec<u8>) {
         self.len().encode(e);
@@ -71,5 +77,13 @@ impl<T: Encode, U: Encode> Encode for (T, U) {
     fn encode(&self, e: &mut Vec<u8>) {
         self.0.encode(e);
         self.1.encode(e);
+    }
+}
+
+impl<T: Encode, U: Encode, V: Encode> Encode for (T, U, V) {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.0.encode(e);
+        self.1.encode(e);
+        self.2.encode(e);
     }
 }

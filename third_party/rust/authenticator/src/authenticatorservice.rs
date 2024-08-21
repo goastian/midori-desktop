@@ -3,11 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use crate::ctap2::commands::client_pin::Pin;
-pub use crate::ctap2::commands::get_assertion::{GetAssertionExtensions, HmacSecretExtension};
-pub use crate::ctap2::commands::make_credentials::MakeCredentialsExtensions;
 use crate::ctap2::server::{
-    PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, RelyingParty,
-    ResidentKeyRequirement, User, UserVerificationRequirement,
+    AuthenticationExtensionsClientInputs, PublicKeyCredentialDescriptor,
+    PublicKeyCredentialParameters, PublicKeyCredentialUserEntity, RelyingParty,
+    ResidentKeyRequirement, UserVerificationRequirement,
 };
 use crate::errors::*;
 use crate::manager::Manager;
@@ -19,12 +18,12 @@ pub struct RegisterArgs {
     pub client_data_hash: [u8; 32],
     pub relying_party: RelyingParty,
     pub origin: String,
-    pub user: User,
+    pub user: PublicKeyCredentialUserEntity,
     pub pub_cred_params: Vec<PublicKeyCredentialParameters>,
     pub exclude_list: Vec<PublicKeyCredentialDescriptor>,
     pub user_verification_req: UserVerificationRequirement,
     pub resident_key_req: ResidentKeyRequirement,
-    pub extensions: MakeCredentialsExtensions,
+    pub extensions: AuthenticationExtensionsClientInputs,
     pub pin: Option<Pin>,
     pub use_ctap1_fallback: bool,
 }
@@ -37,16 +36,9 @@ pub struct SignArgs {
     pub allow_list: Vec<PublicKeyCredentialDescriptor>,
     pub user_verification_req: UserVerificationRequirement,
     pub user_presence_req: bool,
-    pub extensions: GetAssertionExtensions,
+    pub extensions: AuthenticationExtensionsClientInputs,
     pub pin: Option<Pin>,
-    pub alternate_rp_id: Option<String>,
     pub use_ctap1_fallback: bool,
-    // Todo: Extensions
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct AssertionExtensions {
-    pub hmac_secret: Option<HmacSecretExtension>,
 }
 
 pub trait AuthenticatorTransport {
@@ -88,7 +80,7 @@ pub trait AuthenticatorTransport {
         &mut self,
         timeout: u64,
         status: Sender<crate::StatusUpdate>,
-        callback: StateCallback<crate::Result<crate::ResetResult>>,
+        callback: StateCallback<crate::Result<crate::ManageResult>>,
     ) -> crate::Result<()>;
 }
 
@@ -127,7 +119,7 @@ impl AuthenticatorService {
         self.add_u2f_usb_hid_platform_transports();
     }
 
-    fn add_transport(&mut self, boxed_token: Box<dyn AuthenticatorTransport + Send>) {
+    pub fn add_transport(&mut self, boxed_token: Box<dyn AuthenticatorTransport + Send>) {
         self.transports.push(Arc::new(Mutex::new(boxed_token)))
     }
 
@@ -135,17 +127,6 @@ impl AuthenticatorService {
         match Manager::new() {
             Ok(token) => self.add_transport(Box::new(token)),
             Err(e) => error!("Could not add CTAP2 HID transport: {}", e),
-        }
-    }
-
-    #[cfg(feature = "webdriver")]
-    pub fn add_webdriver_virtual_bus(&mut self) {
-        match crate::virtualdevices::webdriver::VirtualManager::new() {
-            Ok(token) => {
-                println!("WebDriver ready, listening at {}", &token.url());
-                self.add_transport(Box::new(token));
-            }
-            Err(e) => error!("Could not add WebDriver virtual bus: {}", e),
         }
     }
 
@@ -298,7 +279,7 @@ impl AuthenticatorService {
         &mut self,
         timeout: u64,
         status: Sender<crate::StatusUpdate>,
-        callback: StateCallback<crate::Result<crate::ResetResult>>,
+        callback: StateCallback<crate::Result<crate::ManageResult>>,
     ) -> crate::Result<()> {
         let iterable_transports = self.transports.clone();
         if iterable_transports.is_empty() {
@@ -335,12 +316,14 @@ impl AuthenticatorService {
 #[cfg(test)]
 mod tests {
     use super::{AuthenticatorService, AuthenticatorTransport, Pin, RegisterArgs, SignArgs};
-    use crate::consts::{Capability, PARAMETER_SIZE};
+    use crate::consts::PARAMETER_SIZE;
     use crate::ctap2::server::{
-        RelyingParty, ResidentKeyRequirement, User, UserVerificationRequirement,
+        PublicKeyCredentialUserEntity, RelyingParty, ResidentKeyRequirement,
+        UserVerificationRequirement,
     };
+    use crate::errors::AuthenticatorError;
     use crate::statecallback::StateCallback;
-    use crate::{RegisterResult, SignResult, StatusUpdate};
+    use crate::StatusUpdate;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::{channel, Sender};
     use std::sync::Arc;
@@ -364,20 +347,6 @@ mod tests {
         }
     }
 
-    impl TestTransportDriver {
-        fn dev_info(&self) -> crate::u2ftypes::U2FDeviceInfo {
-            crate::u2ftypes::U2FDeviceInfo {
-                vendor_name: String::from("Mozilla").into_bytes(),
-                device_name: String::from("Test Transport Token").into_bytes(),
-                version_interface: 0,
-                version_major: 1,
-                version_minor: 2,
-                version_build: 3,
-                cap_flags: Capability::empty(),
-            }
-        }
-    }
-
     impl AuthenticatorTransport for TestTransportDriver {
         fn register(
             &mut self,
@@ -387,7 +356,9 @@ mod tests {
             callback: StateCallback<crate::Result<crate::RegisterResult>>,
         ) -> crate::Result<()> {
             if self.consent {
-                let rv = Ok(RegisterResult::CTAP1(vec![0u8; 16], self.dev_info()));
+                // The value we send is ignored, and this is easier than constructing a
+                // RegisterResult
+                let rv = Err(AuthenticatorError::Platform);
                 thread::spawn(move || callback.call(rv));
             }
             Ok(())
@@ -401,12 +372,9 @@ mod tests {
             callback: StateCallback<crate::Result<crate::SignResult>>,
         ) -> crate::Result<()> {
             if self.consent {
-                let rv = Ok(SignResult::CTAP1(
-                    vec![0u8; 0],
-                    vec![0u8; 0],
-                    vec![0u8; 0],
-                    self.dev_info(),
-                ));
+                // The value we send is ignored, and this is easier than constructing a
+                // RegisterResult
+                let rv = Err(AuthenticatorError::Platform);
                 thread::spawn(move || callback.call(rv));
             }
             Ok(())
@@ -446,7 +414,7 @@ mod tests {
             &mut self,
             _timeout: u64,
             _status: Sender<crate::StatusUpdate>,
-            _callback: StateCallback<crate::Result<crate::ResetResult>>,
+            _callback: StateCallback<crate::Result<crate::ManageResult>>,
         ) -> crate::Result<()> {
             unimplemented!();
         }
@@ -470,12 +438,10 @@ mod tests {
                     relying_party: RelyingParty {
                         id: "example.com".to_string(),
                         name: None,
-                        icon: None,
                     },
                     origin: "example.com".to_string(),
-                    user: User {
+                    user: PublicKeyCredentialUserEntity {
                         id: "user_id".as_bytes().to_vec(),
-                        icon: None,
                         name: Some("A. User".to_string()),
                         display_name: None,
                     },
@@ -486,8 +452,7 @@ mod tests {
                     extensions: Default::default(),
                     pin: None,
                     use_ctap1_fallback: false,
-                }
-                .into(),
+                },
                 status_tx.clone(),
                 StateCallback::new(Box::new(move |_rv| {})),
             )
@@ -507,10 +472,8 @@ mod tests {
                     user_presence_req: true,
                     extensions: Default::default(),
                     pin: None,
-                    alternate_rp_id: None,
                     use_ctap1_fallback: false,
-                }
-                .into(),
+                },
                 status_tx,
                 StateCallback::new(Box::new(move |_rv| {})),
             )
@@ -551,12 +514,10 @@ mod tests {
                     relying_party: RelyingParty {
                         id: "example.com".to_string(),
                         name: None,
-                        icon: None,
                     },
                     origin: "example.com".to_string(),
-                    user: User {
+                    user: PublicKeyCredentialUserEntity {
                         id: "user_id".as_bytes().to_vec(),
-                        icon: None,
                         name: Some("A. User".to_string()),
                         display_name: None,
                     },
@@ -567,8 +528,7 @@ mod tests {
                     extensions: Default::default(),
                     pin: None,
                     use_ctap1_fallback: false,
-                }
-                .into(),
+                },
                 status_tx,
                 callback.clone(),
             )
@@ -611,10 +571,8 @@ mod tests {
                     user_presence_req: true,
                     extensions: Default::default(),
                     pin: None,
-                    alternate_rp_id: None,
                     use_ctap1_fallback: false,
-                }
-                .into(),
+                },
                 status_tx,
                 callback.clone(),
             )
@@ -651,12 +609,10 @@ mod tests {
                     relying_party: RelyingParty {
                         id: "example.com".to_string(),
                         name: None,
-                        icon: None,
                     },
                     origin: "example.com".to_string(),
-                    user: User {
+                    user: PublicKeyCredentialUserEntity {
                         id: "user_id".as_bytes().to_vec(),
-                        icon: None,
                         name: Some("A. User".to_string()),
                         display_name: None,
                     },
@@ -667,8 +623,7 @@ mod tests {
                     extensions: Default::default(),
                     pin: None,
                     use_ctap1_fallback: false,
-                }
-                .into(),
+                },
                 status_tx,
                 callback.clone(),
             )

@@ -8,25 +8,24 @@ mod datagrams;
 mod negotiation;
 mod sessions;
 mod streams;
+use std::{cell::RefCell, rc::Rc, time::Duration};
+
 use neqo_common::event::Provider;
+use neqo_crypto::AuthenticationStatus;
+use neqo_transport::{ConnectionParameters, StreamId, StreamType, MIN_INITIAL_PACKET_SIZE};
+use test_fixture::{
+    anti_replay, fixture_init, now, CountingConnectionIdGenerator, DEFAULT_ADDR, DEFAULT_ALPN_H3,
+    DEFAULT_KEYS, DEFAULT_SERVER_NAME,
+};
 
 use crate::{
     features::extended_connect::SessionCloseReason, Error, Header, Http3Client, Http3ClientEvent,
     Http3OrWebTransportStream, Http3Parameters, Http3Server, Http3ServerEvent, Http3State,
-    WebTransportEvent, WebTransportRequest, WebTransportServerEvent,
-    WebTransportSessionAcceptAction,
-};
-use neqo_crypto::AuthenticationStatus;
-use neqo_transport::{ConnectionParameters, StreamId, StreamType};
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use test_fixture::{
-    addr, anti_replay, fixture_init, now, CountingConnectionIdGenerator, DEFAULT_ALPN_H3,
-    DEFAULT_KEYS, DEFAULT_SERVER_NAME,
+    RecvStreamStats, SendStreamStats, WebTransportEvent, WebTransportRequest,
+    WebTransportServerEvent, WebTransportSessionAcceptAction,
 };
 
-const DATAGRAM_SIZE: u64 = 1200;
+const DATAGRAM_SIZE: u64 = MIN_INITIAL_PACKET_SIZE as u64;
 
 pub fn wt_default_parameters() -> Http3Parameters {
     Http3Parameters::default()
@@ -39,8 +38,8 @@ pub fn default_http3_client(client_params: Http3Parameters) -> Http3Client {
     Http3Client::new(
         DEFAULT_SERVER_NAME,
         Rc::new(RefCell::new(CountingConnectionIdGenerator::default())),
-        addr(),
-        addr(),
+        DEFAULT_ADDR,
+        DEFAULT_ADDR,
         client_params,
         now(),
     )
@@ -63,8 +62,8 @@ pub fn default_http3_server(server_params: Http3Parameters) -> Http3Server {
 fn exchange_packets(client: &mut Http3Client, server: &mut Http3Server) {
     let mut out = None;
     loop {
-        out = client.process(out, now()).dgram();
-        out = server.process(out, now()).dgram();
+        out = client.process(out.as_ref(), now()).dgram();
+        out = server.process(out.as_ref(), now()).dgram();
         if out.is_none() {
             break;
         }
@@ -77,27 +76,28 @@ fn connect_with(client: &mut Http3Client, server: &mut Http3Server) {
     let out = client.process(None, now());
     assert_eq!(client.state(), Http3State::Initializing);
 
-    let out = server.process(out.dgram(), now());
-    let out = client.process(out.dgram(), now());
-    let out = server.process(out.dgram(), now());
+    let out = server.process(out.as_dgram_ref(), now());
+    let out = client.process(out.as_dgram_ref(), now());
+    let out = server.process(out.as_dgram_ref(), now());
     assert!(out.as_dgram_ref().is_none());
 
     let authentication_needed = |e| matches!(e, Http3ClientEvent::AuthenticationNeeded);
     assert!(client.events().any(authentication_needed));
     client.authenticated(AuthenticationStatus::Ok, now());
 
-    let out = client.process(out.dgram(), now());
+    let out = client.process(out.as_dgram_ref(), now());
     let connected = |e| matches!(e, Http3ClientEvent::StateChange(Http3State::Connected));
     assert!(client.events().any(connected));
 
     assert_eq!(client.state(), Http3State::Connected);
 
     // Exchange H3 setttings
-    let out = server.process(out.dgram(), now());
-    let out = client.process(out.dgram(), now());
-    let out = server.process(out.dgram(), now());
-    let out = client.process(out.dgram(), now());
-    std::mem::drop(server.process(out.dgram(), now()));
+    let out = server.process(out.as_dgram_ref(), now());
+    let out = client.process(out.as_dgram_ref(), now());
+    let out = server.process(out.as_dgram_ref(), now());
+    let out = client.process(out.as_dgram_ref(), now());
+    let out = server.process(out.as_dgram_ref(), now());
+    std::mem::drop(client.process(out.as_dgram_ref(), now()));
 }
 
 fn connect(
@@ -194,11 +194,16 @@ impl WtTest {
     }
 
     fn exchange_packets(&mut self) {
+        const RTT: Duration = Duration::from_millis(10);
         let mut out = None;
+        let mut now = now();
         loop {
-            out = self.client.process(out, now()).dgram();
-            out = self.server.process(out, now()).dgram();
-            if out.is_none() {
+            now += RTT / 2;
+            out = self.client.process(out.as_ref(), now).dgram();
+            let client_none = out.is_none();
+            now += RTT / 2;
+            out = self.server.process(out.as_ref(), now).dgram();
+            if client_none && out.is_none() {
                 break;
             }
         }
@@ -302,6 +307,14 @@ impl WtTest {
             data.len()
         );
         self.exchange_packets();
+    }
+
+    fn send_stream_stats(&mut self, wt_stream_id: StreamId) -> Result<SendStreamStats, Error> {
+        self.client.webtransport_send_stream_stats(wt_stream_id)
+    }
+
+    fn recv_stream_stats(&mut self, wt_stream_id: StreamId) -> Result<RecvStreamStats, Error> {
+        self.client.webtransport_recv_stream_stats(wt_stream_id)
     }
 
     fn receive_data_client(

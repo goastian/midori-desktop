@@ -4,69 +4,121 @@
  * distinction between a usage scope and a full tracker.
 !*/
 
-use std::marker::PhantomData;
+use std::sync::Arc;
 
 use crate::{
-    hub,
-    id::{TypedId, Valid},
+    id::Id,
+    lock::{rank, Mutex},
+    resource::Resource,
+    resource_log,
+    storage::Storage,
     track::ResourceMetadata,
-    RefCount,
 };
 
-/// Stores all the resources that a bind group stores.
-pub(crate) struct StatelessBindGroupSate<T, Id: TypedId> {
-    resources: Vec<(Valid<Id>, RefCount)>,
+use super::{ResourceTracker, TrackerIndex};
 
-    _phantom: PhantomData<T>,
+/// Satisfy clippy.
+type Pair<T> = (Id<<T as Resource>::Marker>, Arc<T>);
+
+/// Stores all the resources that a bind group stores.
+#[derive(Debug)]
+pub(crate) struct StatelessBindGroupSate<T: Resource> {
+    resources: Mutex<Vec<Pair<T>>>,
 }
 
-impl<T: hub::Resource, Id: TypedId> StatelessBindGroupSate<T, Id> {
+impl<T: Resource> StatelessBindGroupSate<T> {
     pub fn new() -> Self {
         Self {
-            resources: Vec::new(),
-
-            _phantom: PhantomData,
+            resources: Mutex::new(rank::STATELESS_BIND_GROUP_STATE_RESOURCES, Vec::new()),
         }
     }
 
     /// Optimize the buffer bind group state by sorting it by ID.
     ///
     /// When this list of states is merged into a tracker, the memory
-    /// accesses will be in a constant assending order.
-    pub(crate) fn optimize(&mut self) {
-        self.resources
-            .sort_unstable_by_key(|&(id, _)| id.0.unzip().0);
+    /// accesses will be in a constant ascending order.
+    pub(crate) fn optimize(&self) {
+        let mut resources = self.resources.lock();
+        resources.sort_unstable_by_key(|&(id, _)| id.unzip().0);
     }
 
     /// Returns a list of all resources tracked. May contain duplicates.
-    pub fn used(&self) -> impl Iterator<Item = Valid<Id>> + '_ {
-        self.resources.iter().map(|&(id, _)| id)
+    pub fn used_resources(&self) -> impl Iterator<Item = Arc<T>> + '_ {
+        let resources = self.resources.lock();
+        resources
+            .iter()
+            .map(|(_, resource)| resource.clone())
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    /// Returns a list of all resources tracked. May contain duplicates.
+    pub fn drain_resources(&self) -> impl Iterator<Item = Arc<T>> + '_ {
+        let mut resources = self.resources.lock();
+        resources
+            .drain(..)
+            .map(|(_, r)| r)
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     /// Adds the given resource.
-    pub fn add_single<'a>(&mut self, storage: &'a hub::Storage<T, Id>, id: Id) -> Option<&'a T> {
+    pub fn add_single<'a>(&self, storage: &'a Storage<T>, id: Id<T::Marker>) -> Option<&'a T> {
         let resource = storage.get(id).ok()?;
 
-        self.resources
-            .push((Valid(id), resource.life_guard().add_ref()));
+        let mut resources = self.resources.lock();
+        resources.push((id, resource.clone()));
 
         Some(resource)
     }
 }
 
 /// Stores all resource state within a command buffer or device.
-pub(crate) struct StatelessTracker<A: hub::HalApi, T, Id: TypedId> {
-    metadata: ResourceMetadata<A>,
-
-    _phantom: PhantomData<(T, Id)>,
+#[derive(Debug)]
+pub(crate) struct StatelessTracker<T: Resource> {
+    metadata: ResourceMetadata<T>,
 }
 
-impl<A: hub::HalApi, T: hub::Resource, Id: TypedId> StatelessTracker<A, T, Id> {
+impl<T: Resource> ResourceTracker for StatelessTracker<T> {
+    /// Try to remove the given resource from the tracker iff we have the last reference to the
+    /// resource and the epoch matches.
+    ///
+    /// Returns true if the resource was removed or if not existing in metadata.
+    ///
+    /// If the ID is higher than the length of internal vectors,
+    /// false will be returned.
+    fn remove_abandoned(&mut self, index: TrackerIndex) -> bool {
+        let index = index.as_usize();
+
+        if index >= self.metadata.size() {
+            return false;
+        }
+
+        resource_log!("StatelessTracker::remove_abandoned {index:?}");
+
+        self.tracker_assert_in_bounds(index);
+
+        unsafe {
+            if self.metadata.contains_unchecked(index) {
+                let existing_ref_count = self.metadata.get_ref_count_unchecked(index);
+                //RefCount 2 means that resource is hold just by DeviceTracker and this suspected resource itself
+                //so it's already been released from user and so it's not inside Registry\Storage
+                if existing_ref_count <= 2 {
+                    self.metadata.remove(index);
+                    return true;
+                }
+
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl<T: Resource> StatelessTracker<T> {
     pub fn new() -> Self {
         Self {
             metadata: ResourceMetadata::new(),
-
-            _phantom: PhantomData,
         }
     }
 
@@ -90,8 +142,14 @@ impl<A: hub::HalApi, T: hub::Resource, Id: TypedId> StatelessTracker<A, T, Id> {
     }
 
     /// Returns a list of all resources tracked.
-    pub fn used(&self) -> impl Iterator<Item = Valid<Id>> + '_ {
-        self.metadata.owned_ids()
+    pub fn used_resources(&self) -> impl Iterator<Item = Arc<T>> + '_ {
+        self.metadata.owned_resources()
+    }
+
+    /// Returns a list of all resources tracked.
+    pub fn drain_resources(&mut self) -> impl Iterator<Item = Arc<T>> + '_ {
+        let resources = self.metadata.drain_resources();
+        resources.into_iter()
     }
 
     /// Inserts a single resource into the resource tracker.
@@ -100,39 +158,41 @@ impl<A: hub::HalApi, T: hub::Resource, Id: TypedId> StatelessTracker<A, T, Id> {
     ///
     /// If the ID is higher than the length of internal vectors,
     /// the vectors will be extended. A call to set_size is not needed.
-    pub fn insert_single(&mut self, id: Valid<Id>, ref_count: RefCount) {
-        let (index32, epoch, _) = id.0.unzip();
-        let index = index32 as usize;
+    ///
+    /// Returns a reference to the newly inserted resource.
+    /// (This allows avoiding a clone/reference count increase in many cases.)
+    pub fn insert_single(&mut self, resource: Arc<T>) -> &Arc<T> {
+        let index = resource.as_info().tracker_index().as_usize();
 
         self.allow_index(index);
 
         self.tracker_assert_in_bounds(index);
 
-        unsafe {
-            self.metadata.insert(index, epoch, ref_count);
-        }
+        unsafe { self.metadata.insert(index, resource) }
     }
 
     /// Adds the given resource to the tracker.
     ///
     /// If the ID is higher than the length of internal vectors,
     /// the vectors will be extended. A call to set_size is not needed.
-    pub fn add_single<'a>(&mut self, storage: &'a hub::Storage<T, Id>, id: Id) -> Option<&'a T> {
-        let item = storage.get(id).ok()?;
+    pub fn add_single<'a>(
+        &mut self,
+        storage: &'a Storage<T>,
+        id: Id<T::Marker>,
+    ) -> Option<&'a Arc<T>> {
+        let resource = storage.get(id).ok()?;
 
-        let (index32, epoch, _) = id.unzip();
-        let index = index32 as usize;
+        let index = resource.as_info().tracker_index().as_usize();
 
         self.allow_index(index);
 
         self.tracker_assert_in_bounds(index);
 
         unsafe {
-            self.metadata
-                .insert(index, epoch, item.life_guard().add_ref());
+            self.metadata.insert(index, resource.clone());
         }
 
-        Some(item)
+        Some(resource)
     }
 
     /// Adds the given resources from the given tracker.
@@ -152,43 +212,10 @@ impl<A: hub::HalApi, T: hub::Resource, Id: TypedId> StatelessTracker<A, T, Id> {
                 let previously_owned = self.metadata.contains_unchecked(index);
 
                 if !previously_owned {
-                    let epoch = other.metadata.get_epoch_unchecked(index);
-                    let other_ref_count = other.metadata.get_ref_count_unchecked(index);
-                    self.metadata.insert(index, epoch, other_ref_count.clone());
+                    let other_resource = other.metadata.get_resource_unchecked(index);
+                    self.metadata.insert(index, other_resource.clone());
                 }
             }
         }
-    }
-
-    /// Removes the given resource from the tracker iff we have the last reference to the
-    /// resource and the epoch matches.
-    ///
-    /// Returns true if the resource was removed.
-    ///
-    /// If the ID is higher than the length of internal vectors,
-    /// false will be returned.
-    pub fn remove_abandoned(&mut self, id: Valid<Id>) -> bool {
-        let (index32, epoch, _) = id.0.unzip();
-        let index = index32 as usize;
-
-        if index > self.metadata.size() {
-            return false;
-        }
-
-        self.tracker_assert_in_bounds(index);
-
-        unsafe {
-            if self.metadata.contains_unchecked(index) {
-                let existing_epoch = self.metadata.get_epoch_unchecked(index);
-                let existing_ref_count = self.metadata.get_ref_count_unchecked(index);
-
-                if existing_epoch == epoch && existing_ref_count.load() == 1 {
-                    self.metadata.remove(index);
-                    return true;
-                }
-            }
-        }
-
-        false
     }
 }

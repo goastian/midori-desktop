@@ -2,15 +2,17 @@
 //!
 //! After a text has been broken into words (or [`Fragment`]s), one
 //! now has to decide how to break the fragments into lines. The
-//! simplest algorithm for this is implemented by [`wrap_first_fit`]:
-//! it uses no look-ahead and simply adds fragments to the line as
-//! long as they fit. However, this can lead to poor line breaks if a
-//! large fragment almost-but-not-quite fits on a line. When that
-//! happens, the fragment is moved to the next line and it will leave
-//! behind a large gap. A more advanced algorithm, implemented by
-//! [`wrap_optimal_fit`], will take this into account. The optimal-fit
-//! algorithm considers all possible line breaks and will attempt to
-//! minimize the gaps left behind by overly short lines.
+//! simplest algorithm for this is implemented by
+//! [`wrap_first_fit()`]: it uses no look-ahead and simply adds
+//! fragments to the line as long as they fit. However, this can lead
+//! to poor line breaks if a large fragment almost-but-not-quite fits
+//! on a line. When that happens, the fragment is moved to the next
+//! line and it will leave behind a large gap.
+//!
+//! A more advanced algorithm, implemented by [`wrap_optimal_fit()`],
+//! will take this into account. The optimal-fit algorithm considers
+//! all possible line breaks and will attempt to minimize the gaps
+//! left behind by overly short lines.
 //!
 //! While both algorithms run in linear time, the first-fit algorithm
 //! is about 4 times faster than the optimal-fit algorithm.
@@ -35,8 +37,8 @@ pub enum WrapAlgorithm {
     /// Wrap words using a fast and simple algorithm.
     ///
     /// This algorithm uses no look-ahead when finding line breaks.
-    /// Implemented by [`wrap_first_fit`], please see that function for
-    /// details and examples.
+    /// Implemented by [`wrap_first_fit()`], please see that function
+    /// for details and examples.
     FirstFit,
 
     /// Wrap words using an advanced algorithm with look-ahead.
@@ -47,7 +49,7 @@ pub enum WrapAlgorithm {
     /// lines. See [`Penalties`] for details.
     ///
     /// The underlying wrapping algorithm is implemented by
-    /// [`wrap_optimal_fit`], please see that function for examples.
+    /// [`wrap_optimal_fit()`], please see that function for examples.
     ///
     /// **Note:** Only available when the `smawk` Cargo feature is
     /// enabled.
@@ -85,6 +87,36 @@ pub enum WrapAlgorithm {
     ///                 "fourth, fifth, sixth"]);
     /// ```
     Custom(for<'a, 'b> fn(words: &'b [Word<'a>], line_widths: &'b [usize]) -> Vec<&'b [Word<'a>]>),
+}
+
+impl PartialEq for WrapAlgorithm {
+    /// Compare two wrap algorithms.
+    ///
+    /// ```
+    /// use textwrap::WrapAlgorithm;
+    ///
+    /// assert_eq!(WrapAlgorithm::FirstFit, WrapAlgorithm::FirstFit);
+    /// #[cfg(feature = "smawk")] {
+    ///     assert_eq!(WrapAlgorithm::new_optimal_fit(), WrapAlgorithm::new_optimal_fit());
+    /// }
+    /// ```
+    ///
+    /// Note that `WrapAlgorithm::Custom` values never compare equal:
+    ///
+    /// ```
+    /// use textwrap::WrapAlgorithm;
+    ///
+    /// assert_ne!(WrapAlgorithm::Custom(|words, line_widths| vec![words]),
+    ///            WrapAlgorithm::Custom(|words, line_widths| vec![words]));
+    /// ```
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (WrapAlgorithm::FirstFit, WrapAlgorithm::FirstFit) => true,
+            #[cfg(feature = "smawk")]
+            (WrapAlgorithm::OptimalFit(a), WrapAlgorithm::OptimalFit(b)) => a == b,
+            (_, _) => false,
+        }
+    }
 }
 
 impl std::fmt::Debug for WrapAlgorithm {
@@ -148,7 +180,7 @@ impl WrapAlgorithm {
 
             #[cfg(feature = "smawk")]
             WrapAlgorithm::OptimalFit(penalties) => {
-                // The computation cannnot overflow when the line
+                // The computation cannot overflow when the line
                 // widths are restricted to usize.
                 wrap_optimal_fit(words, &f64_line_widths, penalties).unwrap()
             }
@@ -218,10 +250,10 @@ impl Default for WrapAlgorithm {
 ///                 "nicely."]);
 /// ```
 ///
-/// The [`wrap_optimal_fit`] function was used above to get better
+/// The [`wrap_optimal_fit()`] function was used above to get better
 /// line breaks. It uses an advanced algorithm which tries to avoid
 /// short lines. This function is about 4 times faster than
-/// [`wrap_optimal_fit`].
+/// [`wrap_optimal_fit()`].
 ///
 /// # Examples
 ///
@@ -312,9 +344,9 @@ impl Default for WrapAlgorithm {
 ///
 /// Apologies to anyone who actually knows how to build a house and
 /// knows how long each step takes :-)
-pub fn wrap_first_fit<'a, 'b, T: Fragment>(
+pub fn wrap_first_fit<'a, T: Fragment>(
     fragments: &'a [T],
-    line_widths: &'b [f64],
+    line_widths: &[f64],
 ) -> Vec<&'a [T]> {
     // The final line width is used for all remaining lines.
     let default_line_width = line_widths.last().copied().unwrap_or(0.0);

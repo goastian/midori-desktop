@@ -1,8 +1,8 @@
 //! Building blocks for advanced wrapping functionality.
 //!
 //! The functions and structs in this module can be used to implement
-//! advanced wrapping functionality when the [`wrap`](super::wrap) and
-//! [`fill`](super::fill) function don't do what you want.
+//! advanced wrapping functionality when [`wrap()`](crate::wrap())
+//! [`fill()`](crate::fill()) don't do what you want.
 //!
 //! In general, you want to follow these steps when wrapping
 //! something:
@@ -41,22 +41,45 @@ const CSI: (char, char) = ('\x1b', '[');
 /// The final bytes of an ANSI escape sequence must be in this range.
 const ANSI_FINAL_BYTE: std::ops::RangeInclusive<char> = '\x40'..='\x7e';
 
-/// Skip ANSI escape sequences. The `ch` is the current `char`, the
-/// `chars` provide the following characters. The `chars` will be
-/// modified if `ch` is the start of an ANSI escape sequence.
+/// Skip ANSI escape sequences.
+///
+/// The `ch` is the current `char`, the `chars` provide the following
+/// characters. The `chars` will be modified if `ch` is the start of
+/// an ANSI escape sequence.
+///
+/// Returns `true` if one or more chars were skipped.
 #[inline]
 pub(crate) fn skip_ansi_escape_sequence<I: Iterator<Item = char>>(ch: char, chars: &mut I) -> bool {
-    if ch == CSI.0 && chars.next() == Some(CSI.1) {
+    if ch != CSI.0 {
+        return false; // Nothing to skip here.
+    }
+
+    let next = chars.next();
+    if next == Some(CSI.1) {
         // We have found the start of an ANSI escape code, typically
         // used for colored terminal text. We skip until we find a
         // "final byte" in the range 0x40–0x7E.
         for ch in chars {
             if ANSI_FINAL_BYTE.contains(&ch) {
-                return true;
+                break;
             }
         }
+    } else if next == Some(']') {
+        // We have found the start of an Operating System Command,
+        // which extends until the next sequence "\x1b\\" (the String
+        // Terminator sequence) or the BEL character. The BEL
+        // character is non-standard, but it is still used quite
+        // often, for example, by GNU ls.
+        let mut last = ']';
+        for new in chars {
+            if new == '\x07' || (new == '\\' && last == CSI.0) {
+                break;
+            }
+            last = new;
+        }
     }
-    false
+
+    true // Indicate that some chars were skipped.
 }
 
 #[cfg(feature = "unicode-width")]
@@ -90,6 +113,7 @@ fn ch_width(ch: char) -> usize {
 ///
 /// assert_eq!(display_width("Café Plain"), 10);
 /// assert_eq!(display_width("\u{1b}[31mCafé Rouge\u{1b}[0m"), 10);
+/// assert_eq!(display_width("\x1b]8;;http://example.com\x1b\\This is a link\x1b]8;;\x1b\\"), 14);
 /// ```
 ///
 /// **Note:** When the `unicode-width` Cargo feature is disabled, the
@@ -117,7 +141,7 @@ fn ch_width(ch: char) -> usize {
 /// ## Emojis and CJK Characters
 ///
 /// Characters such as emojis and [CJK characters] used in the
-/// Chinese, Japanese, and Korean langauges are seen as double-width,
+/// Chinese, Japanese, and Korean languages are seen as double-width,
 /// even if the `unicode-width` feature is disabled:
 ///
 /// ```
@@ -404,6 +428,10 @@ mod tests {
         assert_eq!("Café Plain".len(), 11); // “é” is two bytes
         assert_eq!(display_width("Café Plain"), 10);
         assert_eq!(display_width("\u{1b}[31mCafé Rouge\u{1b}[0m"), 10);
+        assert_eq!(
+            display_width("\x1b]8;;http://example.com\x1b\\This is a link\x1b]8;;\x1b\\"),
+            14
+        );
     }
 
     #[test]

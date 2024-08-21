@@ -7,6 +7,10 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+#include <cstdint>
+
+#include "api/array_view.h"
+#include "rtc_base/network/received_packet.h"
 #if defined(WEBRTC_POSIX)
 #include <dirent.h>
 
@@ -50,10 +54,10 @@ using rtc::SocketAddress;
 
 using ::testing::_;
 using ::testing::DoAll;
-using ::testing::InvokeArgument;
 using ::testing::Return;
 using ::testing::ReturnPointee;
 using ::testing::SetArgPointee;
+using ::webrtc::IceCandidateType;
 
 static const SocketAddress kLocalAddr1("11.11.11.11", 0);
 static const SocketAddress kLocalAddr2("22.22.22.22", 0);
@@ -217,26 +221,10 @@ class TurnPortTest : public ::testing::Test,
                             bool /*port_muxed*/) {
     turn_unknown_address_ = true;
   }
-  void OnTurnReadPacket(Connection* conn,
-                        const char* data,
-                        size_t size,
-                        int64_t packet_time_us) {
-    turn_packets_.push_back(rtc::Buffer(data, size));
-  }
   void OnUdpPortComplete(Port* port) { udp_ready_ = true; }
-  void OnUdpReadPacket(Connection* conn,
-                       const char* data,
-                       size_t size,
-                       int64_t packet_time_us) {
-    udp_packets_.push_back(rtc::Buffer(data, size));
-  }
   void OnSocketReadPacket(rtc::AsyncPacketSocket* socket,
-                          const char* data,
-                          size_t size,
-                          const rtc::SocketAddress& remote_addr,
-                          const int64_t& packet_time_us) {
-    turn_port_->HandleIncomingPacket(socket, data, size, remote_addr,
-                                     packet_time_us);
+                          const rtc::ReceivedPacket& packet) {
+    turn_port_->HandleIncomingPacket(socket, packet);
   }
   void OnTurnPortDestroyed(PortInterface* port) { turn_port_destroyed_ = true; }
 
@@ -248,6 +236,10 @@ class TurnPortTest : public ::testing::Test,
     turn_refresh_success_ = (code == 0);
   }
   void OnTurnPortClosed() override { turn_port_closed_ = true; }
+
+  void OnConnectionSignalDestroyed(Connection* connection) {
+    connection->DeregisterReceivedPacketCallback();
+  }
 
   rtc::Socket* CreateServerSocket(const SocketAddress addr) {
     rtc::Socket* socket = ss_->CreateSocket(AF_INET, SOCK_STREAM);
@@ -332,8 +324,11 @@ class TurnPortTest : public ::testing::Test,
       socket_.reset(socket_factory()->CreateUdpSocket(
           rtc::SocketAddress(kLocalAddr1.ipaddr(), 0), 0, 0));
       ASSERT_TRUE(socket_ != NULL);
-      socket_->SignalReadPacket.connect(this,
-                                        &TurnPortTest::OnSocketReadPacket);
+      socket_->RegisterReceivedPacketCallback(
+          [&](rtc::AsyncPacketSocket* socket,
+              const rtc::ReceivedPacket& packet) {
+            OnSocketReadPacket(socket, packet);
+          });
     }
 
     RelayServerConfig config;
@@ -728,10 +723,20 @@ class TurnPortTest : public ::testing::Test,
                                                     Port::ORIGIN_MESSAGE);
     ASSERT_TRUE(conn1 != NULL);
     ASSERT_TRUE(conn2 != NULL);
-    conn1->SignalReadPacket.connect(static_cast<TurnPortTest*>(this),
-                                    &TurnPortTest::OnTurnReadPacket);
-    conn2->SignalReadPacket.connect(static_cast<TurnPortTest*>(this),
-                                    &TurnPortTest::OnUdpReadPacket);
+    conn1->RegisterReceivedPacketCallback(
+        [&](Connection* connection, const rtc::ReceivedPacket& packet) {
+          turn_packets_.push_back(
+              rtc::Buffer(packet.payload().data(), packet.payload().size()));
+        });
+    conn1->SignalDestroyed.connect(this,
+                                   &TurnPortTest::OnConnectionSignalDestroyed);
+    conn2->RegisterReceivedPacketCallback(
+        [&](Connection* connection, const rtc::ReceivedPacket& packet) {
+          udp_packets_.push_back(
+              rtc::Buffer(packet.payload().data(), packet.payload().size()));
+        });
+    conn2->SignalDestroyed.connect(this,
+                                   &TurnPortTest::OnConnectionSignalDestroyed);
     conn1->Ping(0);
     EXPECT_EQ_SIMULATED_WAIT(Connection::STATE_WRITABLE, conn1->write_state(),
                              kSimulatedRtt * 2, fake_clock_);
@@ -781,10 +786,21 @@ class TurnPortTest : public ::testing::Test,
                                                     Port::ORIGIN_MESSAGE);
     ASSERT_TRUE(conn1 != NULL);
     ASSERT_TRUE(conn2 != NULL);
-    conn1->SignalReadPacket.connect(static_cast<TurnPortTest*>(this),
-                                    &TurnPortTest::OnTurnReadPacket);
-    conn2->SignalReadPacket.connect(static_cast<TurnPortTest*>(this),
-                                    &TurnPortTest::OnUdpReadPacket);
+    conn1->RegisterReceivedPacketCallback(
+        [&](Connection* connection, const rtc::ReceivedPacket& packet) {
+          turn_packets_.push_back(
+              rtc::Buffer(packet.payload().data(), packet.payload().size()));
+        });
+    conn1->SignalDestroyed.connect(this,
+                                   &TurnPortTest::OnConnectionSignalDestroyed);
+    conn2->RegisterReceivedPacketCallback(
+        [&](Connection* connection, const rtc::ReceivedPacket& packet) {
+          udp_packets_.push_back(
+              rtc::Buffer(packet.payload().data(), packet.payload().size()));
+        });
+    conn2->SignalDestroyed.connect(this,
+                                   &TurnPortTest::OnConnectionSignalDestroyed);
+
     conn1->Ping(0);
     EXPECT_EQ_SIMULATED_WAIT(Connection::STATE_WRITABLE, conn1->write_state(),
                              kSimulatedRtt * 2, fake_clock_);
@@ -849,7 +865,7 @@ class TurnPortTest : public ::testing::Test,
 
 TEST_F(TurnPortTest, TestTurnPortType) {
   CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
-  EXPECT_EQ(cricket::RELAY_PORT_TYPE, turn_port_->Type());
+  EXPECT_EQ(IceCandidateType::kRelay, turn_port_->Type());
 }
 
 // Tests that the URL of the servers can be correctly reconstructed when
@@ -863,9 +879,10 @@ TEST_F(TurnPortTest, TestReconstructedServerUrlForUdpIPv6) {
   turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
   CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
                  kTurnUdpIPv6ProtoAddr);
+  // Should add [] around the IPv6.
   TestReconstructedServerUrl(
       PROTO_UDP,
-      "turn:2400:4030:1:2c00:be30:abcd:efab:cdef:3478?transport=udp");
+      "turn:[2400:4030:1:2c00:be30:abcd:efab:cdef]:3478?transport=udp");
 }
 
 TEST_F(TurnPortTest, TestReconstructedServerUrlForTcp) {
@@ -917,7 +934,7 @@ class TurnLoggingIdValidator : public StunMessageObserver {
       }
     }
   }
-  void ReceivedChannelData(const char* data, size_t size) override {}
+  void ReceivedChannelData(rtc::ArrayView<const uint8_t> packet) override {}
 
  private:
   const char* expect_val_;
@@ -1181,8 +1198,10 @@ TEST_F(TurnPortTest, TestTurnAllocateMismatch) {
   // Verify that all packets received from the shared socket are ignored.
   std::string test_packet = "Test packet";
   EXPECT_FALSE(turn_port_->HandleIncomingPacket(
-      socket_.get(), test_packet.data(), test_packet.size(),
-      rtc::SocketAddress(kTurnUdpExtAddr.ipaddr(), 0), rtc::TimeMicros()));
+      socket_.get(),
+      rtc::ReceivedPacket::CreateFromLegacy(
+          test_packet.data(), test_packet.size(), rtc::TimeMicros(),
+          rtc::SocketAddress(kTurnUdpExtAddr.ipaddr(), 0))));
 }
 
 // Tests that a shared-socket-TurnPort creates its own socket after
@@ -1508,10 +1527,15 @@ TEST_F(TurnPortTest, TestChannelBindGetErrorResponse) {
                              kSimulatedRtt, fake_clock_);
   // Verify that packets are allowed to be sent after a bind request error.
   // They'll just use a send indication instead.
-  conn2->SignalReadPacket.connect(static_cast<TurnPortTest*>(this),
-                                  &TurnPortTest::OnUdpReadPacket);
+
+  conn2->RegisterReceivedPacketCallback(
+      [&](Connection* connection, const rtc::ReceivedPacket& packet) {
+        udp_packets_.push_back(
+            rtc::Buffer(packet.payload().data(), packet.payload().size()));
+      });
   conn1->Send(data.data(), data.length(), options);
   EXPECT_TRUE_SIMULATED_WAIT(!udp_packets_.empty(), kSimulatedRtt, fake_clock_);
+  conn2->DeregisterReceivedPacketCallback();
 }
 
 // Do a TURN allocation, establish a UDP connection, and send some data.
@@ -1575,7 +1599,8 @@ TEST_F(TurnPortTest, TestCandidateAddressFamilyMatch) {
 
   // Create an IPv4 candidate. It will match the TURN candidate.
   Candidate remote_candidate(ICE_CANDIDATE_COMPONENT_RTP, "udp", kLocalAddr2, 0,
-                             "", "", "local", 0, kCandidateFoundation);
+                             "", "", IceCandidateType::kHost, 0,
+                             kCandidateFoundation);
   remote_candidate.set_address(kLocalAddr2);
   Connection* conn =
       turn_port_->CreateConnection(remote_candidate, Port::ORIGIN_MESSAGE);
@@ -1705,14 +1730,14 @@ class MessageObserver : public StunMessageObserver {
     const StunByteStringAttribute* attr =
         msg->GetByteString(TestTurnCustomizer::STUN_ATTR_COUNTER);
     if (attr != nullptr && attr_counter_ != nullptr) {
-      rtc::ByteBufferReader buf(attr->bytes(), attr->length());
+      rtc::ByteBufferReader buf(attr->array_view());
       unsigned int val = ~0u;
       buf.ReadUInt32(&val);
       (*attr_counter_)++;
     }
   }
 
-  void ReceivedChannelData(const char* data, size_t size) override {
+  void ReceivedChannelData(rtc::ArrayView<const uint8_t> payload) override {
     if (channel_data_counter_ != nullptr) {
       (*channel_data_counter_)++;
     }
@@ -1881,13 +1906,6 @@ TEST_F(TurnPortTest, TestTurnDangerousAlternateServer) {
   ASSERT_EQ(0U, turn_port_->Candidates().size());
 }
 
-TEST_F(TurnPortTest, TestTurnDangerousServerAllowedWithFieldTrial) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_, "WebRTC-Turn-AllowSystemPorts/Enabled/");
-  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnDangerousProtoAddr);
-  ASSERT_TRUE(turn_port_);
-}
-
 class TurnPortWithMockDnsResolverTest : public TurnPortTest {
  public:
   TurnPortWithMockDnsResolverTest()
@@ -1912,8 +1930,9 @@ TEST_F(TurnPortWithMockDnsResolverTest, TestHostnameResolved) {
   SetDnsResolverExpectations(
       [](webrtc::MockAsyncDnsResolver* resolver,
          webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
+        EXPECT_CALL(*resolver, Start(kTurnValidAddr, /*family=*/AF_INET, _))
+            .WillOnce([](const rtc::SocketAddress& addr, int family,
+                         absl::AnyInvocable<void()> callback) { callback(); });
         EXPECT_CALL(*resolver, result)
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
@@ -1932,87 +1951,9 @@ TEST_F(TurnPortWithMockDnsResolverTest, TestHostnameResolvedIPv6Network) {
   SetDnsResolverExpectations(
       [](webrtc::MockAsyncDnsResolver* resolver,
          webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
-        EXPECT_CALL(*resolver, result)
-            .WillRepeatedly(ReturnPointee(resolver_result));
-        EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
-        EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(
-                DoAll(SetArgPointee<1>(kTurnUdpIPv6IntAddr), Return(true)));
-      });
-  TestTurnAllocateSucceeds(kSimulatedRtt * 2);
-}
-
-// Test an allocation from a TURN server specified by a hostname on an IPv6
-// network, without network family-specific resolution.
-TEST_F(TurnPortWithMockDnsResolverTest,
-       TestHostnameResolvedIPv6NetworkFamilyFieldTrialDisabled) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_, "WebRTC-IPv6NetworkResolutionFixes/Disabled/");
-  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
-  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 kTurnPortValidHostnameProtoAddr);
-  SetDnsResolverExpectations(
-      [](webrtc::MockAsyncDnsResolver* resolver,
-         webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        // Expect to call Resolver::Start without family arg.
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
-        EXPECT_CALL(*resolver, result)
-            .WillRepeatedly(ReturnPointee(resolver_result));
-        EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
-        EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(
-                DoAll(SetArgPointee<1>(kTurnUdpIPv6IntAddr), Return(true)));
-      });
-  TestTurnAllocateSucceeds(kSimulatedRtt * 2);
-}
-
-// Test an allocation from a TURN server specified by a hostname on an IPv6
-// network, without network family-specific resolution.
-TEST_F(TurnPortWithMockDnsResolverTest,
-       TestHostnameResolvedIPv6NetworkFamilyFieldTrialParamDisabled) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_,
-      "WebRTC-IPv6NetworkResolutionFixes/"
-      "Enabled,ResolveTurnHostnameForFamily:false/");
-  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
-  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 kTurnPortValidHostnameProtoAddr);
-  SetDnsResolverExpectations(
-      [](webrtc::MockAsyncDnsResolver* resolver,
-         webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        // Expect to call Resolver::Start without family arg.
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
-        EXPECT_CALL(*resolver, result)
-            .WillRepeatedly(ReturnPointee(resolver_result));
-        EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
-        EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(
-                DoAll(SetArgPointee<1>(kTurnUdpIPv6IntAddr), Return(true)));
-      });
-  TestTurnAllocateSucceeds(kSimulatedRtt * 2);
-}
-
-// Test an allocation from a TURN server specified by a hostname on an IPv6
-// network, with network family-specific resolution.
-TEST_F(TurnPortWithMockDnsResolverTest,
-       TestHostnameResolvedIPv6NetworkFieldTrialEnabled) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_,
-      "WebRTC-IPv6NetworkResolutionFixes/"
-      "Enabled,ResolveTurnHostnameForFamily:true/");
-  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
-  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 kTurnPortValidHostnameProtoAddr);
-  SetDnsResolverExpectations(
-      [](webrtc::MockAsyncDnsResolver* resolver,
-         webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        // Expect to call Resolver::Start _with_ family arg.
         EXPECT_CALL(*resolver, Start(kTurnValidAddr, /*family=*/AF_INET6, _))
-            .WillOnce(InvokeArgument<2>());
+            .WillOnce([](const rtc::SocketAddress& addr, int family,
+                         absl::AnyInvocable<void()> callback) { callback(); });
         EXPECT_CALL(*resolver, result)
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));

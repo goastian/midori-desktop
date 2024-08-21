@@ -43,7 +43,11 @@
 
 #ifdef __GNUC__
 #define ATTR_ALIAS __attribute__((may_alias))
+#if defined(__MINGW32__) && !defined(__clang__)
+#define ATTR_FORMAT_PRINTF(fmt, attr) __attribute__((__format__(__gnu_printf__, fmt, attr)))
+#else
 #define ATTR_FORMAT_PRINTF(fmt, attr) __attribute__((__format__(__printf__, fmt, attr)))
+#endif
 #define COLD __attribute__((cold))
 #else
 #define ATTR_ALIAS
@@ -56,7 +60,7 @@
 #define ALIGN_64_VAL 64
 #define ALIGN_32_VAL 32
 #define ALIGN_16_VAL 16
-#elif ARCH_X86_32 || ARCH_ARM || ARCH_AARCH64 || ARCH_PPC64LE
+#elif ARCH_AARCH64 || ARCH_ARM || ARCH_LOONGARCH || ARCH_PPC64LE || ARCH_X86_32
 /* ARM doesn't benefit from anything more than 16-byte alignment. */
 #define ALIGN_64_VAL 16
 #define ALIGN_32_VAL 16

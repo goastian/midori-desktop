@@ -4,7 +4,8 @@
 
 // Re-exports used by the decl_derive! and test_derive!
 pub use proc_macro2::TokenStream as TokenStream2;
-pub use syn::{parse_str, DeriveInput};
+pub use syn::{parse2, parse_str, DeriveInput};
+pub use quote::quote;
 
 #[cfg(all(
     not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
@@ -95,13 +96,17 @@ macro_rules! decl_derive {
             i: $crate::macros::TokenStream
         ) -> $crate::macros::TokenStream {
             match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
-                Ok(p) => {
+                ::core::result::Result::Ok(p) => {
                     match $crate::Structure::try_new(&p) {
-                        Ok(s) => $crate::MacroResult::into_stream($inner(s)),
-                        Err(e) => e.to_compile_error().into(),
+                        ::core::result::Result::Ok(s) => $crate::MacroResult::into_stream($inner(s)),
+                        ::core::result::Result::Err(e) => {
+                            ::core::convert::Into::into(e.to_compile_error())
+                        }
                     }
                 }
-                Err(e) => e.to_compile_error().into(),
+                ::core::result::Result::Err(e) => {
+                    ::core::convert::Into::into(e.to_compile_error())
+                }
             }
         }
     };
@@ -153,11 +158,19 @@ macro_rules! decl_attribute {
             i: $crate::macros::TokenStream,
         ) -> $crate::macros::TokenStream {
             match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
-                Ok(p) => match $crate::Structure::try_new(&p) {
-                    Ok(s) => $crate::MacroResult::into_stream($inner(attr.into(), s)),
-                    Err(e) => e.to_compile_error().into(),
+                ::core::result::Result::Ok(p) => match $crate::Structure::try_new(&p) {
+                    ::core::result::Result::Ok(s) => {
+                        $crate::MacroResult::into_stream(
+                            $inner(::core::convert::Into::into(attr), s)
+                        )
+                    }
+                    ::core::result::Result::Err(e) => {
+                        ::core::convert::Into::into(e.to_compile_error())
+                    }
                 },
-                Err(e) => e.to_compile_error().into(),
+                ::core::result::Result::Err(e) => {
+                    ::core::convert::Into::into(e.to_compile_error())
+                }
             }
         }
     };
@@ -209,27 +222,26 @@ macro_rules! test_derive {
 
     ($name:path { $($i:tt)* } expands to { $($o:tt)* } no_build) => {
         {
-            let i = stringify!( $($i)* );
-            let parsed = $crate::macros::parse_str::<$crate::macros::DeriveInput>(i)
-                .expect(concat!(
+            let i = $crate::macros::quote!( $($i)* );
+            let parsed = $crate::macros::parse2::<$crate::macros::DeriveInput>(i)
+                .expect(::core::concat!(
                     "Failed to parse input to `#[derive(",
-                    stringify!($name),
+                    ::core::stringify!($name),
                     ")]`",
                 ));
 
             let raw_res = $name($crate::Structure::new(&parsed));
             let res = $crate::MacroResult::into_result(raw_res)
-                .expect(concat!(
+                .expect(::core::concat!(
                     "Procedural macro failed for `#[derive(",
-                    stringify!($name),
+                    ::core::stringify!($name),
                     ")]`",
                 ));
 
-            let expected = stringify!( $($o)* )
-                .parse::<$crate::macros::TokenStream2>()
-                .expect("output should be a valid TokenStream");
-            let mut expected_toks = $crate::macros::TokenStream2::from(expected);
-            if res.to_string() != expected_toks.to_string() {
+            let expected_toks = $crate::macros::quote!( $($o)* );
+            if <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&res)
+                != <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&expected_toks)
+            {
                 panic!("\
 test_derive failed:
 expected:

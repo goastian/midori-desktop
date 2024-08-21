@@ -9,6 +9,7 @@ use super::*;
 
 use objc::runtime::{NO, YES};
 
+/// See <https://developer.apple.com/documentation/metal/mtlattributeformat>
 #[repr(u64)]
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -67,6 +68,7 @@ pub enum MTLAttributeFormat {
     Half = 53,
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlstepfunction>
 #[repr(u64)]
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -82,12 +84,12 @@ pub enum MTLStepFunction {
     ThreadPositionInGridYIndexed = 8,
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlcomputepipelinedescriptor>
 pub enum MTLComputePipelineDescriptor {}
 
 foreign_obj_type! {
     type CType = MTLComputePipelineDescriptor;
     pub struct ComputePipelineDescriptor;
-    pub struct ComputePipelineDescriptorRef;
 }
 
 impl ComputePipelineDescriptor {
@@ -123,13 +125,7 @@ impl ComputePipelineDescriptorRef {
     }
 
     pub fn thread_group_size_is_multiple_of_thread_execution_width(&self) -> bool {
-        unsafe {
-            match msg_send![self, threadGroupSizeIsMultipleOfThreadExecutionWidth] {
-                YES => true,
-                NO => false,
-                _ => unreachable!(),
-            }
-        }
+        unsafe { msg_send_bool![self, threadGroupSizeIsMultipleOfThreadExecutionWidth] }
     }
 
     pub fn set_thread_group_size_is_multiple_of_thread_execution_width(
@@ -156,13 +152,7 @@ impl ComputePipelineDescriptorRef {
 
     /// API_AVAILABLE(ios(13.0),macos(11.0));
     pub fn support_indirect_command_buffers(&self) -> bool {
-        unsafe {
-            match msg_send![self, supportIndirectCommandBuffers] {
-                YES => true,
-                NO => false,
-                _ => unreachable!(),
-            }
-        }
+        unsafe { msg_send_bool![self, supportIndirectCommandBuffers] }
     }
 
     /// API_AVAILABLE(ios(13.0),macos(11.0));
@@ -172,13 +162,7 @@ impl ComputePipelineDescriptorRef {
 
     /// API_AVAILABLE(macos(11.0), ios(14.0));
     pub fn support_adding_binary_functions(&self) -> bool {
-        unsafe {
-            match msg_send![self, supportAddingBinaryFunctions] {
-                YES => true,
-                NO => false,
-                _ => unreachable!(),
-            }
-        }
+        unsafe { msg_send_bool![self, supportAddingBinaryFunctions] }
     }
 
     /// API_AVAILABLE(macos(11.0), ios(14.0));
@@ -268,12 +252,12 @@ impl ComputePipelineDescriptorRef {
     }
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlcomputepipelinestate>
 pub enum MTLComputePipelineState {}
 
 foreign_obj_type! {
     type CType = MTLComputePipelineState;
     pub struct ComputePipelineState;
-    pub struct ComputePipelineStateRef;
 }
 
 impl ComputePipelineStateRef {
@@ -303,13 +287,7 @@ impl ComputePipelineStateRef {
 
     /// Only available on (ios(13.0), macos(11.0))
     pub fn support_indirect_command_buffers(&self) -> bool {
-        unsafe {
-            match msg_send![self, supportIndirectCommandBuffers] {
-                YES => true,
-                NO => false,
-                _ => unreachable!(),
-            }
-        }
+        unsafe { msg_send_bool![self, supportIndirectCommandBuffers] }
     }
 
     /// Only available on (macos(11.0), ios(14.0))
@@ -327,17 +305,22 @@ impl ComputePipelineStateRef {
     // API_AVAILABLE(macos(11.0), ios(14.0));
     // TODO: newVisibleFunctionTableWithDescriptor
     // - (nullable id<MTLVisibleFunctionTable>)newVisibleFunctionTableWithDescriptor:(MTLVisibleFunctionTableDescriptor * __nonnull)descriptor
-    // API_AVAILABLE(macos(11.0), ios(14.0));
-    // TODO: newIntersectionFunctionTableWithDescriptor
-    // - (nullable id <MTLIntersectionFunctionTable>)newIntersectionFunctionTableWithDescriptor:(MTLIntersectionFunctionTableDescriptor * _Nonnull)descriptor
+
+    /// Only available on (macos(11.0), ios(14.0))
+    pub fn new_intersection_function_table_with_descriptor(
+        &self,
+        descriptor: &IntersectionFunctionTableDescriptorRef,
+    ) -> IntersectionFunctionTable {
+        unsafe { msg_send![self, newIntersectionFunctionTableWithDescriptor: descriptor] }
+    }
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlstageinputoutputdescriptor>
 pub enum MTLStageInputOutputDescriptor {}
 
 foreign_obj_type! {
     type CType = MTLStageInputOutputDescriptor;
     pub struct StageInputOutputDescriptor;
-    pub struct StageInputOutputDescriptorRef;
 }
 
 impl StageInputOutputDescriptor {
@@ -379,12 +362,12 @@ impl StageInputOutputDescriptorRef {
     }
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlattributedescriptorarray>
 pub enum MTLAttributeDescriptorArray {}
 
 foreign_obj_type! {
     type CType = MTLAttributeDescriptorArray;
     pub struct AttributeDescriptorArray;
-    pub struct AttributeDescriptorArrayRef;
 }
 
 impl AttributeDescriptorArrayRef {
@@ -397,12 +380,12 @@ impl AttributeDescriptorArrayRef {
     }
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlattributedescriptor>
 pub enum MTLAttributeDescriptor {}
 
 foreign_obj_type! {
     type CType = MTLAttributeDescriptor;
     pub struct AttributeDescriptor;
-    pub struct AttributeDescriptorRef;
 }
 
 impl AttributeDescriptorRef {
@@ -431,12 +414,12 @@ impl AttributeDescriptorRef {
     }
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlbufferlayoutdescriptorarray>
 pub enum MTLBufferLayoutDescriptorArray {}
 
 foreign_obj_type! {
     type CType = MTLBufferLayoutDescriptorArray;
     pub struct BufferLayoutDescriptorArray;
-    pub struct BufferLayoutDescriptorArrayRef;
 }
 
 impl BufferLayoutDescriptorArrayRef {
@@ -453,12 +436,12 @@ impl BufferLayoutDescriptorArrayRef {
     }
 }
 
+/// See <https://developer.apple.com/documentation/metal/mtlbufferlayoutdescriptor>
 pub enum MTLBufferLayoutDescriptor {}
 
 foreign_obj_type! {
     type CType = MTLBufferLayoutDescriptor;
     pub struct BufferLayoutDescriptor;
-    pub struct BufferLayoutDescriptorRef;
 }
 
 impl BufferLayoutDescriptorRef {

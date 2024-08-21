@@ -9,9 +9,11 @@
  * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
-#include <tmmintrin.h>
-
 #include "config/av1_rtcd.h"
+
+#if CONFIG_AV1_HIGHBITDEPTH
+
+#include <tmmintrin.h>
 
 #include "aom/aom_integer.h"
 #include "aom_dsp/blend.h"
@@ -74,7 +76,7 @@ void av1_build_compound_diffwtd_mask_highbd_ssse3(
         }
       }
     } else {
-      const __m128i xshift = xx_set1_64_from_32i(bd - 8 + DIFF_FACTOR_LOG2);
+      const __m128i xshift = _mm_set1_epi64x(bd - 8 + DIFF_FACTOR_LOG2);
       if (mask_type == DIFFWTD_38_INV) {
         for (int i = 0; i < h; ++i) {
           for (int j = 0; j < w; j += 8) {
@@ -114,3 +116,5 @@ void av1_build_compound_diffwtd_mask_highbd_ssse3(
     }
   }
 }
+
+#endif  // CONFIG_AV1_HIGHBITDEPTH

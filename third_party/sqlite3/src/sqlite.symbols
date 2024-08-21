@@ -2,8 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#include ../ext/lib.symbols
 sqlite3_aggregate_context
 sqlite3_auto_extension
+sqlite3_backup_finish
+sqlite3_backup_init
+sqlite3_backup_step
 sqlite3_bind_blob
 sqlite3_bind_double
 sqlite3_bind_int
@@ -106,6 +110,7 @@ sqlite3_prepare
 sqlite3_prepare16
 sqlite3_prepare16_v2
 sqlite3_prepare_v2
+sqlite3_prepare_v3
 sqlite3_progress_handler
 sqlite3_randomness
 sqlite3_realloc

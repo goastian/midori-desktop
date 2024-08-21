@@ -5,12 +5,14 @@
 
 #include "lib/jxl/render_pipeline/stage_upsampling.h"
 
+#include "lib/jxl/base/sanitizers.h"
+#include "lib/jxl/base/status.h"
+
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/render_pipeline/stage_upsampling.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
-#include "lib/jxl/sanitizers.h"
 #include "lib/jxl/simd_util-inl.h"
 
 HWY_BEFORE_NAMESPACE();
@@ -44,10 +46,9 @@ class UpsamplingStage : public RenderPipelineStage {
     }
   }
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
-    PROFILER_ZONE("Upsampling");
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra, size_t xsize, size_t xpos, size_t ypos,
+                    size_t thread_id) const final {
     static HWY_FULL(float) df;
     size_t shift = settings_.shift_x;
     size_t N = 1 << shift;
@@ -73,6 +74,7 @@ class UpsamplingStage : public RenderPipelineStage {
       msan::PoisonMemory(dst_row + xsize * N,
                          sizeof(float) * (xsize_v - xsize) * N);
     }
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {
@@ -100,7 +102,7 @@ class UpsamplingStage : public RenderPipelineStage {
                     [x % 8 < 4 ? x % 4 : 3 - x % 4][y % 8 < 4 ? iy : 4 - iy]
                     [x % 8 < 4 ? ix : 4 - ix];
     }
-    JXL_ABORT("Invalid upsample");
+    JXL_UNREACHABLE("Invalid upsample");
   }
 
   template <ssize_t N>
@@ -108,9 +110,12 @@ class UpsamplingStage : public RenderPipelineStage {
                       ssize_t x0, ssize_t x1) const {
     static HWY_FULL(float) df;
     using V = hwy::HWY_NAMESPACE::Vec<HWY_FULL(float)>;
-    V ups0, ups1, ups2, ups3, ups4, ups5, ups6, ups7;
+    V ups0, ups1, ups2, ups3, ups4, ups5, ups6, ups7;  // NOLINT
     (void)ups2, (void)ups3, (void)ups4, (void)ups5, (void)ups6, (void)ups7;
-    V* ups[N];
+    // Once we have C++17 available, change this back to `V* ups[N]` and
+    // initialize using `if constexpr` below.
+    V* ups[8] = {};
+    static_assert(N == 2 || N == 4 || N == 8, "N must be 2, 4, or 8");
     if (N >= 2) {
       ups[0] = &ups0;
       ups[1] = &ups1;
@@ -125,6 +130,7 @@ class UpsamplingStage : public RenderPipelineStage {
       ups[6] = &ups6;
       ups[7] = &ups7;
     }
+
     for (size_t oy = 0; oy < N; oy++) {
       float* dst_row = GetOutputRow(output_rows, c_, oy);
       for (ssize_t x = x0; x < x1; x += Lanes(df)) {

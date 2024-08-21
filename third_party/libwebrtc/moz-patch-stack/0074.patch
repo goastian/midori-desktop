@@ -1,31 +1,31 @@
 From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Mon, 12 Dec 2022 15:47:00 +0000
-Subject: Bug 1451394 - Record video frame captures with PerformanceRecorder in
- the new mac camera backend. r=padenot
+Date: Mon, 27 Feb 2023 16:22:00 +0000
+Subject: Bug 1817024 - (fix-fdcfefa708) In PhysicalSocket avoid a non-trivial
+ designated initializer. r=mjf,webrtc-reviewers
 
-Also includes:
-Bug 1806605 - Pass TrackingId instead of nsCString to CaptureStage.
+This fixes a build failure in the base-toolchain job with GCC 7.5.0:
+  In file included from Unified_cpp_threading_gn0.cpp:38:0:
+  .../third_party/libwebrtc/rtc_base/physical_socket_server.cc: In member function 'int rtc::PhysicalSocket::DoReadFromSocket(void*, size_t, rtc::SocketAddress*, int64_t*)':
+  .../third_party/libwebrtc/rtc_base/physical_socket_server.cc:463:51: sorry, unimplemented: non-trivial designated initializers not supported
+       msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
+                                                   ^
 
-Differential Revision: https://phabricator.services.mozilla.com/D163687
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/a7362238c9e6fbe0d28200f6b41fc40a0c9a2158
+Differential Revision: https://phabricator.services.mozilla.com/D171057
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/a3447f709befd84a282ca40f29b7a5ea76d5b68d
 ---
- modules/video_capture/video_capture.h | 3 +++
- 1 file changed, 3 insertions(+)
+ rtc_base/physical_socket_server.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/modules/video_capture/video_capture.h b/modules/video_capture/video_capture.h
-index ad1b341b62..7e181c538e 100644
---- a/modules/video_capture/video_capture.h
-+++ b/modules/video_capture/video_capture.h
-@@ -158,6 +158,9 @@ class VideoCaptureModule : public rtc::RefCountInterface {
-   // Return whether the rotation is applied or left pending.
-   virtual bool GetApplyRotation() = 0;
- 
-+  // Mozilla: TrackingId setter for use in profiler markers.
-+  virtual void SetTrackingId(uint32_t aTrackingIdProcId) {}
-+
-  protected:
-   ~VideoCaptureModule() override {}
- };
--- 
-2.34.1
-
+diff --git a/rtc_base/physical_socket_server.cc b/rtc_base/physical_socket_server.cc
+index 899c29aecd..8c2a96198c 100644
+--- a/rtc_base/physical_socket_server.cc
++++ b/rtc_base/physical_socket_server.cc
+@@ -528,7 +528,7 @@ int PhysicalSocket::DoReadFromSocket(void* buffer,
+   int received = 0;
+   if (read_scm_timestamp_experiment_) {
+     iovec iov = {.iov_base = buffer, .iov_len = length};
+-    msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
++    msghdr msg = {.msg_name = nullptr, .msg_namelen = 0, .msg_iov = &iov, .msg_iovlen = 1};
+     if (out_addr) {
+       out_addr->Clear();
+       msg.msg_name = addr;

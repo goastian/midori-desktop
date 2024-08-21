@@ -26,7 +26,11 @@ int dim_1d = NagaDimensions1D(image_1d);
 ```
 */
 
-use super::{super::FunctionCtx, BackendResult};
+use super::{
+    super::FunctionCtx,
+    writer::{EXTRACT_BITS_FUNCTION, INSERT_BITS_FUNCTION},
+    BackendResult,
+};
 use crate::{arena::Handle, proc::NameKey};
 use std::fmt::Write;
 
@@ -57,6 +61,18 @@ pub(super) struct WrappedStructMatrixAccess {
 #[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct WrappedMatCx2 {
     pub(super) columns: crate::VectorSize,
+}
+
+#[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct WrappedMath {
+    pub(super) fun: crate::MathFunction,
+    pub(super) scalar: crate::Scalar,
+    pub(super) components: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct WrappedZeroValue {
+    pub(super) ty: Handle<crate::Type>,
 }
 
 /// HLSL backend requires its own `ImageQuery` enum.
@@ -133,7 +149,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
             }
             crate::ImageClass::Sampled { kind, multi } => {
                 let multi_str = if multi { "MS" } else { "" };
-                let scalar_kind_str = kind.to_hlsl_str(4)?;
+                let scalar_kind_str = crate::Scalar { kind, width: 4 }.to_hlsl_str()?;
                 write!(self.out, "{multi_str}<{scalar_kind_str}4>")?
             }
             crate::ImageClass::Storage { format, .. } => {
@@ -159,10 +175,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
     /// <https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/sm5-object-rwbyteaddressbuffer-getdimensions>
     pub(super) fn write_wrapped_array_length_function(
         &mut self,
-        module: &crate::Module,
         wal: WrappedArrayLength,
-        expr_handle: Handle<crate::Expression>,
-        func_ctx: &FunctionCtx,
     ) -> BackendResult {
         use crate::back::INDENT;
 
@@ -170,9 +183,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
         const RETURN_VARIABLE_NAME: &str = "ret";
 
         // Write function return type and name
-        let ret_ty = func_ctx.info[expr_handle].ty.inner_with(&module.types);
-        self.write_value_type(module, ret_ty)?;
-        write!(self.out, " ")?;
+        write!(self.out, "uint ")?;
         self.write_wrapped_array_length_function_name(wal)?;
 
         // Write function parameters
@@ -249,7 +260,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
         const MIP_LEVEL_PARAM: &str = "mip_level";
 
         // Write function return type and name
-        let ret_ty = func_ctx.info[expr_handle].ty.inner_with(&module.types);
+        let ret_ty = func_ctx.resolve_type(expr_handle, &module.types);
         self.write_value_type(module, ret_ty)?;
         write!(self.out, " ")?;
         self.write_wrapped_image_query_function_name(wiq)?;
@@ -347,18 +358,13 @@ impl<'a, W: Write> super::Writer<'a, W> {
         module: &crate::Module,
         constructor: WrappedConstructor,
     ) -> BackendResult {
-        let name = crate::TypeInner::hlsl_type_id(
-            constructor.ty,
-            &module.types,
-            &module.constants,
-            &self.names,
-        )?;
+        let name = crate::TypeInner::hlsl_type_id(constructor.ty, module.to_ctx(), &self.names)?;
         write!(self.out, "Construct{name}")?;
         Ok(())
     }
 
     /// Helper function that write wrapped function for `Expression::Compose` for structures.
-    pub(super) fn write_wrapped_constructor_function(
+    fn write_wrapped_constructor_function(
         &mut self,
         module: &crate::Module,
         constructor: WrappedConstructor,
@@ -411,8 +417,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
                 size: crate::ArraySize::Constant(size),
                 ..
             } => {
-                let count = module.constants[size].to_array_length().unwrap();
-                for i in 0..count as usize {
+                for i in 0..size.get() as usize {
                     write_arg(i, base)?;
                 }
             }
@@ -486,8 +491,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
                 write!(self.out, " {RETURN_VARIABLE_NAME}")?;
                 self.write_array_size(module, base, crate::ArraySize::Constant(size))?;
                 write!(self.out, " = {{ ")?;
-                let count = module.constants[size].to_array_length().unwrap();
-                for i in 0..count {
+                for i in 0..size.get() {
                     if i != 0 {
                         write!(self.out, ", ")?;
                     }
@@ -668,11 +672,9 @@ impl<'a, W: Write> super::Writer<'a, W> {
             _ => unreachable!(),
         };
         let vec_ty = match module.types[member.ty].inner {
-            crate::TypeInner::Matrix { rows, width, .. } => crate::TypeInner::Vector {
-                size: rows,
-                kind: crate::ScalarKind::Float,
-                width,
-            },
+            crate::TypeInner::Matrix { rows, scalar, .. } => {
+                crate::TypeInner::Vector { size: rows, scalar }
+            }
             _ => unreachable!(),
         };
         self.write_value_type(module, &vec_ty)?;
@@ -749,10 +751,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
             _ => unreachable!(),
         };
         let scalar_ty = match module.types[member.ty].inner {
-            crate::TypeInner::Matrix { width, .. } => crate::TypeInner::Scalar {
-                kind: crate::ScalarKind::Float,
-                width,
-            },
+            crate::TypeInner::Matrix { scalar, .. } => crate::TypeInner::Scalar(scalar),
             _ => unreachable!(),
         };
         self.write_value_type(module, &scalar_ty)?;
@@ -793,14 +792,246 @@ impl<'a, W: Write> super::Writer<'a, W> {
         Ok(())
     }
 
-    /// Helper function that write wrapped function for `Expression::ImageQuery` and `Expression::ArrayLength`
-    ///
-    /// <https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-to-getdimensions>
+    /// Write functions to create special types.
+    pub(super) fn write_special_functions(&mut self, module: &crate::Module) -> BackendResult {
+        for (type_key, struct_ty) in module.special_types.predeclared_types.iter() {
+            match type_key {
+                &crate::PredeclaredType::ModfResult { size, width }
+                | &crate::PredeclaredType::FrexpResult { size, width } => {
+                    let arg_type_name_owner;
+                    let arg_type_name = if let Some(size) = size {
+                        arg_type_name_owner = format!(
+                            "{}{}",
+                            if width == 8 { "double" } else { "float" },
+                            size as u8
+                        );
+                        &arg_type_name_owner
+                    } else if width == 8 {
+                        "double"
+                    } else {
+                        "float"
+                    };
+
+                    let (defined_func_name, called_func_name, second_field_name, sign_multiplier) =
+                        if matches!(type_key, &crate::PredeclaredType::ModfResult { .. }) {
+                            (super::writer::MODF_FUNCTION, "modf", "whole", "")
+                        } else {
+                            (
+                                super::writer::FREXP_FUNCTION,
+                                "frexp",
+                                "exp_",
+                                "sign(arg) * ",
+                            )
+                        };
+
+                    let struct_name = &self.names[&NameKey::Type(*struct_ty)];
+
+                    writeln!(
+                        self.out,
+                        "{struct_name} {defined_func_name}({arg_type_name} arg) {{
+    {arg_type_name} other;
+    {struct_name} result;
+    result.fract = {sign_multiplier}{called_func_name}(arg, other);
+    result.{second_field_name} = other;
+    return result;
+}}"
+                    )?;
+                    writeln!(self.out)?;
+                }
+                &crate::PredeclaredType::AtomicCompareExchangeWeakResult { .. } => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Helper function that writes compose wrapped functions
+    pub(super) fn write_wrapped_compose_functions(
+        &mut self,
+        module: &crate::Module,
+        expressions: &crate::Arena<crate::Expression>,
+    ) -> BackendResult {
+        for (handle, _) in expressions.iter() {
+            if let crate::Expression::Compose { ty, .. } = expressions[handle] {
+                match module.types[ty].inner {
+                    crate::TypeInner::Struct { .. } | crate::TypeInner::Array { .. } => {
+                        let constructor = WrappedConstructor { ty };
+                        if self.wrapped.constructors.insert(constructor) {
+                            self.write_wrapped_constructor_function(module, constructor)?;
+                        }
+                    }
+                    _ => {}
+                };
+            }
+        }
+        Ok(())
+    }
+
+    // TODO: we could merge this with iteration in write_wrapped_compose_functions...
+    //
+    /// Helper function that writes zero value wrapped functions
+    pub(super) fn write_wrapped_zero_value_functions(
+        &mut self,
+        module: &crate::Module,
+        expressions: &crate::Arena<crate::Expression>,
+    ) -> BackendResult {
+        for (handle, _) in expressions.iter() {
+            if let crate::Expression::ZeroValue(ty) = expressions[handle] {
+                let zero_value = WrappedZeroValue { ty };
+                if self.wrapped.zero_values.insert(zero_value) {
+                    self.write_wrapped_zero_value_function(module, zero_value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn write_wrapped_math_functions(
+        &mut self,
+        module: &crate::Module,
+        func_ctx: &FunctionCtx,
+    ) -> BackendResult {
+        for (_, expression) in func_ctx.expressions.iter() {
+            if let crate::Expression::Math {
+                fun,
+                arg,
+                arg1: _arg1,
+                arg2: _arg2,
+                arg3: _arg3,
+            } = *expression
+            {
+                match fun {
+                    crate::MathFunction::ExtractBits => {
+                        // The behavior of our extractBits polyfill is undefined if offset + count > bit_width. We need
+                        // to first sanitize the offset and count first. If we don't do this, we will get out-of-spec
+                        // values if the extracted range is not within the bit width.
+                        //
+                        // This encodes the exact formula specified by the wgsl spec:
+                        // https://gpuweb.github.io/gpuweb/wgsl/#extractBits-unsigned-builtin
+                        //
+                        // w = sizeof(x) * 8
+                        // o = min(offset, w)
+                        // c = min(count, w - o)
+                        //
+                        // bitfieldExtract(x, o, c)
+                        let arg_ty = func_ctx.resolve_type(arg, &module.types);
+                        let scalar = arg_ty.scalar().unwrap();
+                        let components = arg_ty.components();
+
+                        let wrapped = WrappedMath {
+                            fun,
+                            scalar,
+                            components,
+                        };
+
+                        if !self.wrapped.math.insert(wrapped) {
+                            continue;
+                        }
+
+                        // Write return type
+                        self.write_value_type(module, arg_ty)?;
+
+                        let scalar_width: u8 = scalar.width * 8;
+
+                        // Write function name and parameters
+                        writeln!(self.out, " {EXTRACT_BITS_FUNCTION}(")?;
+                        write!(self.out, "    ")?;
+                        self.write_value_type(module, arg_ty)?;
+                        writeln!(self.out, " e,")?;
+                        writeln!(self.out, "    uint offset,")?;
+                        writeln!(self.out, "    uint count")?;
+                        writeln!(self.out, ") {{")?;
+
+                        // Write function body
+                        writeln!(self.out, "    uint w = {scalar_width};")?;
+                        writeln!(self.out, "    uint o = min(offset, w);")?;
+                        writeln!(self.out, "    uint c = min(count, w - o);")?;
+                        writeln!(
+                            self.out,
+                            "    return (c == 0 ? 0 : (e << (w - c - o)) >> (w - c));"
+                        )?;
+
+                        // End of function body
+                        writeln!(self.out, "}}")?;
+                    }
+                    crate::MathFunction::InsertBits => {
+                        // The behavior of our insertBits polyfill has the same constraints as the extractBits polyfill.
+
+                        let arg_ty = func_ctx.resolve_type(arg, &module.types);
+                        let scalar = arg_ty.scalar().unwrap();
+                        let components = arg_ty.components();
+
+                        let wrapped = WrappedMath {
+                            fun,
+                            scalar,
+                            components,
+                        };
+
+                        if !self.wrapped.math.insert(wrapped) {
+                            continue;
+                        }
+
+                        // Write return type
+                        self.write_value_type(module, arg_ty)?;
+
+                        let scalar_width: u8 = scalar.width * 8;
+                        let scalar_max: u64 = match scalar.width {
+                            1 => 0xFF,
+                            2 => 0xFFFF,
+                            4 => 0xFFFFFFFF,
+                            8 => 0xFFFFFFFFFFFFFFFF,
+                            _ => unreachable!(),
+                        };
+
+                        // Write function name and parameters
+                        writeln!(self.out, " {INSERT_BITS_FUNCTION}(")?;
+                        write!(self.out, "    ")?;
+                        self.write_value_type(module, arg_ty)?;
+                        writeln!(self.out, " e,")?;
+                        write!(self.out, "    ")?;
+                        self.write_value_type(module, arg_ty)?;
+                        writeln!(self.out, " newbits,")?;
+                        writeln!(self.out, "    uint offset,")?;
+                        writeln!(self.out, "    uint count")?;
+                        writeln!(self.out, ") {{")?;
+
+                        // Write function body
+                        writeln!(self.out, "    uint w = {scalar_width}u;")?;
+                        writeln!(self.out, "    uint o = min(offset, w);")?;
+                        writeln!(self.out, "    uint c = min(count, w - o);")?;
+
+                        // The `u` suffix on the literals is _extremely_ important. Otherwise it will use
+                        // i32 shifting instead of the intended u32 shifting.
+                        writeln!(
+                            self.out,
+                            "    uint mask = (({scalar_max}u >> ({scalar_width}u - c)) << o);"
+                        )?;
+                        writeln!(
+                            self.out,
+                            "    return (c == 0 ? e : ((e & ~mask) | ((newbits << o) & mask)));"
+                        )?;
+
+                        // End of function body
+                        writeln!(self.out, "}}")?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Helper function that writes various wrapped functions
     pub(super) fn write_wrapped_functions(
         &mut self,
         module: &crate::Module,
         func_ctx: &FunctionCtx,
     ) -> BackendResult {
+        self.write_wrapped_math_functions(module, func_ctx)?;
+        self.write_wrapped_compose_functions(module, func_ctx.expressions)?;
+        self.write_wrapped_zero_value_functions(module, func_ctx.expressions)?;
+
         for (handle, _) in func_ctx.expressions.iter() {
             match func_ctx.expressions[handle] {
                 crate::Expression::ArrayLength(expr) => {
@@ -813,7 +1044,12 @@ impl<'a, W: Write> super::Writer<'a, W> {
                         crate::Expression::GlobalVariable(var_handle) => {
                             &module.global_variables[var_handle]
                         }
-                        ref other => unreachable!("Array length of base {:?}", other),
+                        ref other => {
+                            return Err(super::Error::Unimplemented(format!(
+                                "Array length of base {:?}",
+                                other
+                            )))
+                        }
                     };
                     let storage_access = match global_var.space {
                         crate::AddressSpace::Storage { access } => access,
@@ -823,13 +1059,12 @@ impl<'a, W: Write> super::Writer<'a, W> {
                         writable: storage_access.contains(crate::StorageAccess::STORE),
                     };
 
-                    if !self.wrapped.array_lengths.contains(&wal) {
-                        self.write_wrapped_array_length_function(module, wal, handle, func_ctx)?;
-                        self.wrapped.array_lengths.insert(wal);
+                    if self.wrapped.array_lengths.insert(wal) {
+                        self.write_wrapped_array_length_function(wal)?;
                     }
                 }
                 crate::Expression::ImageQuery { image, query } => {
-                    let wiq = match *func_ctx.info[image].ty.inner_with(&module.types) {
+                    let wiq = match *func_ctx.resolve_type(image, &module.types) {
                         crate::TypeInner::Image {
                             dim,
                             arrayed,
@@ -843,17 +1078,15 @@ impl<'a, W: Write> super::Writer<'a, W> {
                         _ => unreachable!("we only query images"),
                     };
 
-                    if !self.wrapped.image_queries.contains(&wiq) {
+                    if self.wrapped.image_queries.insert(wiq) {
                         self.write_wrapped_image_query_function(module, wiq, handle, func_ctx)?;
-                        self.wrapped.image_queries.insert(wiq);
                     }
                 }
                 // Write `WrappedConstructor` for structs that are loaded from `AddressSpace::Storage`
                 // since they will later be used by the fn `write_storage_load`
                 crate::Expression::Load { pointer } => {
-                    let pointer_space = func_ctx.info[pointer]
-                        .ty
-                        .inner_with(&module.types)
+                    let pointer_space = func_ctx
+                        .resolve_type(pointer, &module.types)
                         .pointer_space();
 
                     if let Some(crate::AddressSpace::Storage { .. }) = pointer_space {
@@ -874,37 +1107,24 @@ impl<'a, W: Write> super::Writer<'a, W> {
                                 }
 
                                 let constructor = WrappedConstructor { ty };
-                                if !writer.wrapped.constructors.contains(&constructor) {
+                                if writer.wrapped.constructors.insert(constructor) {
                                     writer
                                         .write_wrapped_constructor_function(module, constructor)?;
-                                    writer.wrapped.constructors.insert(constructor);
                                 }
                             }
                             crate::TypeInner::Array { base, .. } => {
                                 write_wrapped_constructor(writer, base, module)?;
+
                                 let constructor = WrappedConstructor { ty };
-                                if !writer.wrapped.constructors.contains(&constructor) {
+                                if writer.wrapped.constructors.insert(constructor) {
                                     writer
                                         .write_wrapped_constructor_function(module, constructor)?;
-                                    writer.wrapped.constructors.insert(constructor);
                                 }
                             }
                             _ => {}
                         };
 
                         Ok(())
-                    }
-                }
-                crate::Expression::Compose { ty, components: _ } => {
-                    let constructor = match module.types[ty].inner {
-                        crate::TypeInner::Struct { .. } | crate::TypeInner::Array { .. } => {
-                            WrappedConstructor { ty }
-                        }
-                        _ => continue,
-                    };
-                    if !self.wrapped.constructors.contains(&constructor) {
-                        self.write_wrapped_constructor_function(module, constructor)?;
-                        self.wrapped.constructors.insert(constructor);
                     }
                 }
                 // We treat matrices of the form `matCx2` as a sequence of C `vec2`s
@@ -932,7 +1152,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
                                 let ty = base_ty_handle.unwrap();
                                 let access = WrappedStructMatrixAccess { ty, index };
 
-                                if !self.wrapped.struct_matrix_access.contains(&access) {
+                                if self.wrapped.struct_matrix_access.insert(access) {
                                     self.write_wrapped_struct_matrix_get_function(module, access)?;
                                     self.write_wrapped_struct_matrix_set_function(module, access)?;
                                     self.write_wrapped_struct_matrix_set_vec_function(
@@ -941,7 +1161,6 @@ impl<'a, W: Write> super::Writer<'a, W> {
                                     self.write_wrapped_struct_matrix_set_scalar_function(
                                         module, access,
                                     )?;
-                                    self.wrapped.struct_matrix_access.insert(access);
                                 }
                             }
                             _ => {}
@@ -950,33 +1169,6 @@ impl<'a, W: Write> super::Writer<'a, W> {
                 }
                 _ => {}
             };
-        }
-
-        Ok(())
-    }
-
-    pub(super) fn write_wrapped_constructor_function_for_constant(
-        &mut self,
-        module: &crate::Module,
-        constant: &crate::Constant,
-    ) -> BackendResult {
-        if let crate::ConstantInner::Composite { ty, ref components } = constant.inner {
-            match module.types[ty].inner {
-                crate::TypeInner::Struct { .. } | crate::TypeInner::Array { .. } => {
-                    let constructor = WrappedConstructor { ty };
-                    if !self.wrapped.constructors.contains(&constructor) {
-                        self.write_wrapped_constructor_function(module, constructor)?;
-                        self.wrapped.constructors.insert(constructor);
-                    }
-                }
-                _ => {}
-            }
-            for constant in components {
-                self.write_wrapped_constructor_function_for_constant(
-                    module,
-                    &module.constants[*constant],
-                )?;
-            }
         }
 
         Ok(())
@@ -996,7 +1188,7 @@ impl<'a, W: Write> super::Writer<'a, W> {
         if extra == 0 {
             self.write_expr(module, coordinate, func_ctx)?;
         } else {
-            let num_coords = match *func_ctx.info[coordinate].ty.inner_with(&module.types) {
+            let num_coords = match *func_ctx.resolve_type(coordinate, &module.types) {
                 crate::TypeInner::Scalar { .. } => 1,
                 crate::TypeInner::Vector { size, .. } => size as usize,
                 _ => unreachable!(),
@@ -1092,9 +1284,8 @@ impl<'a, W: Write> super::Writer<'a, W> {
                 }) = super::writer::get_inner_matrix_data(module, global.ty)
                 {
                     let entry = WrappedMatCx2 { columns };
-                    if !self.wrapped.mat_cx2s.contains(&entry) {
+                    if self.wrapped.mat_cx2s.insert(entry) {
                         self.write_mat_cx2_typedef_and_functions(entry)?;
-                        self.wrapped.mat_cx2s.insert(entry);
                     }
                 }
             }
@@ -1111,15 +1302,81 @@ impl<'a, W: Write> super::Writer<'a, W> {
                         }) = super::writer::get_inner_matrix_data(module, member.ty)
                         {
                             let entry = WrappedMatCx2 { columns };
-                            if !self.wrapped.mat_cx2s.contains(&entry) {
+                            if self.wrapped.mat_cx2s.insert(entry) {
                                 self.write_mat_cx2_typedef_and_functions(entry)?;
-                                self.wrapped.mat_cx2s.insert(entry);
                             }
                         }
                     }
                 }
             }
         }
+
+        Ok(())
+    }
+
+    pub(super) fn write_wrapped_zero_value_function_name(
+        &mut self,
+        module: &crate::Module,
+        zero_value: WrappedZeroValue,
+    ) -> BackendResult {
+        let name = crate::TypeInner::hlsl_type_id(zero_value.ty, module.to_ctx(), &self.names)?;
+        write!(self.out, "ZeroValue{name}")?;
+        Ok(())
+    }
+
+    /// Helper function that write wrapped function for `Expression::ZeroValue`
+    ///
+    /// This is necessary since we might have a member access after the zero value expression, e.g.
+    /// `.y` (in practice this can come up when consuming SPIRV that's been produced by glslc).
+    ///
+    /// So we can't just write `(float4)0` since `(float4)0.y` won't parse correctly.
+    ///
+    /// Parenthesizing the expression like `((float4)0).y` would work... except DXC can't handle
+    /// cases like:
+    ///
+    /// ```text
+    /// tests\out\hlsl\access.hlsl:183:41: error: cannot compile this l-value expression yet
+    ///     t_1.am = (__mat4x2[2])((float4x2[2])0);
+    ///                                         ^
+    /// ```
+    fn write_wrapped_zero_value_function(
+        &mut self,
+        module: &crate::Module,
+        zero_value: WrappedZeroValue,
+    ) -> BackendResult {
+        use crate::back::INDENT;
+
+        const RETURN_VARIABLE_NAME: &str = "ret";
+
+        // Write function return type and name
+        if let crate::TypeInner::Array { base, size, .. } = module.types[zero_value.ty].inner {
+            write!(self.out, "typedef ")?;
+            self.write_type(module, zero_value.ty)?;
+            write!(self.out, " ret_")?;
+            self.write_wrapped_zero_value_function_name(module, zero_value)?;
+            self.write_array_size(module, base, size)?;
+            writeln!(self.out, ";")?;
+
+            write!(self.out, "ret_")?;
+            self.write_wrapped_zero_value_function_name(module, zero_value)?;
+        } else {
+            self.write_type(module, zero_value.ty)?;
+        }
+        write!(self.out, " ")?;
+        self.write_wrapped_zero_value_function_name(module, zero_value)?;
+
+        // Write function parameters (none) and start function body
+        writeln!(self.out, "() {{")?;
+
+        // Write `ZeroValue` function.
+        write!(self.out, "{INDENT}return ")?;
+        self.write_default_init(module, zero_value.ty)?;
+        writeln!(self.out, ";")?;
+
+        // End of function body
+        writeln!(self.out, "}}")?;
+        // Write extra new line
+        writeln!(self.out)?;
 
         Ok(())
     }

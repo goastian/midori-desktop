@@ -4,8 +4,8 @@ DAV1D="tools/dav1d"
 ARGON_DIR='.'
 FILMGRAIN=1
 CPUMASK=-1
-THREADS=0
-JOBS=1
+THREADS=1
+JOBS=0
 
 usage() {
     NAME=$(basename "$0")
@@ -19,8 +19,8 @@ usage() {
         printf " -a dir    path to argon dir (default: 'tests/argon' if found; '.' otherwise)\n"
         printf " -g \$num   enable filmgrain (default: 1)\n"
         printf " -c \$mask  use restricted cpumask (default: -1)\n"
-        printf " -t \$num   number of threads per dav1d (default: 0)\n"
-        printf " -j \$num   number of parallel dav1d processes (default: 1)\n\n"
+        printf " -t \$num   number of threads per dav1d (default: 1)\n"
+        printf " -j \$num   number of parallel dav1d processes (default: 0)\n\n"
     } >&2
     exit 1
 }
@@ -110,6 +110,14 @@ while getopts ":d:a:g:c:t:j:" opt; do
 done
 shift $((OPTIND-1))
 
+if [ "$JOBS" -eq 0 ]; then
+    if [ "$THREADS" -gt 0 ]; then
+        JOBS="$((($( (nproc || sysctl -n hw.logicalcpu || getconf _NPROCESSORS_ONLN || echo 1) 2>/dev/null)+THREADS-1)/THREADS))"
+    else
+        JOBS=1
+    fi
+fi
+
 if [ "$#" -eq 0 ]; then
     # Everything except large scale tiles and stress files.
     dirs=("$ARGON_DIR/profile0_core"       "$ARGON_DIR/profile0_core_special"
@@ -132,7 +140,8 @@ for d in "${dirs[@]}"; do
     fi
 done
 
-if [ ${#files[@]} -eq 0 ]; then
+num_files="${#files[@]}"
+if [ "$num_files" -eq 0 ]; then
     error "Error! No files found at ${dirs[*]}"
 fi
 
@@ -148,17 +157,17 @@ for i in "${!files[@]}"; do
     md5=$(<"${md5/%obu/md5}") || error "Error! Can't read md5 ${md5} for file ${f}"
     md5=${md5/ */}
 
-    printf "\033[1K\r[%3d%% %d/%d] Verifying %s" "$(((i+1)*100/${#files[@]}))" "$((i+1))" "${#files[@]}" "$f"
+    printf '\033[1K\r[%3d%% %*d/%d] Verifying %s' "$(((i+1)*100/num_files))" "${#num_files}" "$((i+1))" "$num_files" "${f#"$ARGON_DIR"/}"
     cmd=("$DAV1D" -i "$f" --filmgrain "$FILMGRAIN" --verify "$md5" --cpumask "$CPUMASK" --threads "$THREADS" -q)
     if [ "$JOBS" -gt 1 ]; then
         "${cmd[@]}" 2>/dev/null &
         p=$!
         pids+=("$p")
-        declare "file$p=$f"
+        declare "file$p=${f#"$ARGON_DIR"/}"
         block_pids
     else
         if ! "${cmd[@]}" 2>/dev/null; then
-            fail "$f"
+            fail "${f#"$ARGON_DIR"/}"
         fi
     fi
 done
@@ -166,9 +175,9 @@ done
 wait_all_pids
 
 if [ "$failed" -ne 0 ]; then
-    printf "\033[1K\r%d/%d files \033[1;91mfailed\033[0m to verify" "$failed" "${#files[@]}"
+    printf "\033[1K\r%d/%d files \033[1;91mfailed\033[0m to verify" "$failed" "$num_files"
 else
-    printf "\033[1K\r%d files \033[1;92msuccessfully\033[0m verified" "${#files[@]}"
+    printf "\033[1K\r%d files \033[1;92msuccessfully\033[0m verified" "$num_files"
 fi
 printf " in %dm%ds (%s)\n" "$((SECONDS/60))" "$((SECONDS%60))" "$ver_info"
 

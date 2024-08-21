@@ -24,6 +24,7 @@
 #include "call/audio_state.h"
 #include "media/base/codec.h"
 #include "media/base/media_channel.h"
+#include "media/base/media_channel_impl.h"
 #include "media/base/media_config.h"
 #include "media/base/video_common.h"
 #include "rtc_base/system/file_wrapper.h"
@@ -37,27 +38,27 @@ class Call;
 
 namespace cricket {
 
-class VideoMediaChannel;
-class VoiceMediaChannel;
-
 // Checks that the scalability_mode value of each encoding is supported by at
 // least one video codec of the list. If the list is empty, no check is done.
 webrtc::RTCError CheckScalabilityModeValues(
     const webrtc::RtpParameters& new_parameters,
-    rtc::ArrayView<cricket::VideoCodec> codecs);
+    rtc::ArrayView<cricket::Codec> send_codecs,
+    absl::optional<cricket::Codec> send_codec);
 
 // Checks the parameters have valid and supported values, and checks parameters
 // with CheckScalabilityModeValues().
 webrtc::RTCError CheckRtpParametersValues(
     const webrtc::RtpParameters& new_parameters,
-    rtc::ArrayView<cricket::VideoCodec> codecs);
+    rtc::ArrayView<cricket::Codec> send_codecs,
+    absl::optional<cricket::Codec> send_codec);
 
 // Checks that the immutable values have not changed in new_parameters and
 // checks all parameters with CheckRtpParametersValues().
 webrtc::RTCError CheckRtpParametersInvalidModificationAndValues(
     const webrtc::RtpParameters& old_parameters,
     const webrtc::RtpParameters& new_parameters,
-    rtc::ArrayView<cricket::VideoCodec> codecs);
+    rtc::ArrayView<cricket::Codec> send_codecs,
+    absl::optional<cricket::Codec> send_codec);
 
 // Checks that the immutable values have not changed in new_parameters and
 // checks parameters (except SVC) with CheckRtpParametersValues(). It should
@@ -97,13 +98,27 @@ class VoiceEngineInterface : public RtpHeaderExtensionQueryInterface {
   // TODO(solenberg): Remove once VoE API refactoring is done.
   virtual rtc::scoped_refptr<webrtc::AudioState> GetAudioState() const = 0;
 
-  // MediaChannel creation
-  // Creates a voice media channel. Returns NULL on failure.
-  virtual VoiceMediaChannel* CreateMediaChannel(
+  virtual std::unique_ptr<VoiceMediaSendChannelInterface> CreateSendChannel(
       webrtc::Call* call,
       const MediaConfig& config,
       const AudioOptions& options,
-      const webrtc::CryptoOptions& crypto_options) = 0;
+      const webrtc::CryptoOptions& crypto_options,
+      webrtc::AudioCodecPairId codec_pair_id) {
+    // TODO(hta): Make pure virtual when all downstream has updated
+    RTC_CHECK_NOTREACHED();
+    return nullptr;
+  }
+
+  virtual std::unique_ptr<VoiceMediaReceiveChannelInterface>
+  CreateReceiveChannel(webrtc::Call* call,
+                       const MediaConfig& config,
+                       const AudioOptions& options,
+                       const webrtc::CryptoOptions& crypto_options,
+                       webrtc::AudioCodecPairId codec_pair_id) {
+    // TODO(hta): Make pure virtual when all downstream has updated
+    RTC_CHECK_NOTREACHED();
+    return nullptr;
+  }
 
   virtual const std::vector<AudioCodec>& send_codecs() const = 0;
   virtual const std::vector<AudioCodec>& recv_codecs() const = 0;
@@ -129,15 +144,26 @@ class VideoEngineInterface : public RtpHeaderExtensionQueryInterface {
   VideoEngineInterface(const VideoEngineInterface&) = delete;
   VideoEngineInterface& operator=(const VideoEngineInterface&) = delete;
 
-  // Creates a video media channel, paired with the specified voice channel.
-  // Returns NULL on failure.
-  virtual VideoMediaChannel* CreateMediaChannel(
+  virtual std::unique_ptr<VideoMediaSendChannelInterface> CreateSendChannel(
       webrtc::Call* call,
       const MediaConfig& config,
       const VideoOptions& options,
       const webrtc::CryptoOptions& crypto_options,
-      webrtc::VideoBitrateAllocatorFactory*
-          video_bitrate_allocator_factory) = 0;
+      webrtc::VideoBitrateAllocatorFactory* video_bitrate_allocator_factory) {
+    // Default implementation, delete when all is updated
+    RTC_CHECK_NOTREACHED();
+    return nullptr;
+  }
+
+  virtual std::unique_ptr<VideoMediaReceiveChannelInterface>
+  CreateReceiveChannel(webrtc::Call* call,
+                       const MediaConfig& config,
+                       const VideoOptions& options,
+                       const webrtc::CryptoOptions& crypto_options) {
+    // Default implementation, delete when all is updated
+    RTC_CHECK_NOTREACHED();
+    return nullptr;
+  }
 
   // Retrieve list of supported codecs.
   virtual std::vector<VideoCodec> send_codecs() const = 0;

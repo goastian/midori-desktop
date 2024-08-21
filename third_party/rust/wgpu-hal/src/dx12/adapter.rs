@@ -1,10 +1,13 @@
 use crate::{
     auxil::{self, dxgi::result::HResult as _},
-    dx12::SurfaceTarget,
+    dx12::{shader_compilation, SurfaceTarget},
 };
+use parking_lot::Mutex;
 use std::{mem, ptr, sync::Arc, thread};
 use winapi::{
-    shared::{dxgi, dxgi1_2, minwindef::DWORD, windef, winerror},
+    shared::{
+        dxgi, dxgi1_2, dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM, minwindef::DWORD, windef, winerror,
+    },
     um::{d3d12 as d3d12_ty, d3d12sdklayers, winuser},
 };
 
@@ -15,14 +18,11 @@ impl Drop for super::Adapter {
             && self
                 .private_caps
                 .instance_flags
-                .contains(crate::InstanceFlags::VALIDATION)
+                .contains(wgt::InstanceFlags::VALIDATION)
         {
             unsafe {
                 self.report_live_objects();
             }
-        }
-        unsafe {
-            self.raw.destroy();
         }
     }
 }
@@ -39,7 +39,6 @@ impl super::Adapter {
                     d3d12sdklayers::D3D12_RLDO_SUMMARY | d3d12sdklayers::D3D12_RLDO_IGNORE_INTERNAL,
                 )
             };
-            unsafe { debug_device.destroy() };
         }
     }
 
@@ -51,13 +50,13 @@ impl super::Adapter {
     pub(super) fn expose(
         adapter: d3d12::DxgiAdapter,
         library: &Arc<d3d12::D3D12Lib>,
-        instance_flags: crate::InstanceFlags,
-        dx12_shader_compiler: &wgt::Dx12Compiler,
+        instance_flags: wgt::InstanceFlags,
+        dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
     ) -> Option<crate::ExposedAdapter<super::Api>> {
         // Create the device so that we can get the capabilities.
         let device = {
             profiling::scope!("ID3D12Device::create_device");
-            match library.create_device(*adapter, d3d12::FeatureLevel::L11_0) {
+            match library.create_device(&adapter, d3d12::FeatureLevel::L11_0) {
                 Ok(pair) => match pair.into_result() {
                     Ok(device) => device,
                     Err(err) => {
@@ -74,6 +73,29 @@ impl super::Adapter {
 
         profiling::scope!("feature queries");
 
+        // Detect the highest supported feature level.
+        let d3d_feature_level = [
+            d3d12::FeatureLevel::L12_1,
+            d3d12::FeatureLevel::L12_0,
+            d3d12::FeatureLevel::L11_1,
+            d3d12::FeatureLevel::L11_0,
+        ];
+        let mut device_levels: d3d12_ty::D3D12_FEATURE_DATA_FEATURE_LEVELS =
+            unsafe { mem::zeroed() };
+        device_levels.NumFeatureLevels = d3d_feature_level.len() as u32;
+        device_levels.pFeatureLevelsRequested = d3d_feature_level.as_ptr().cast();
+        unsafe {
+            device.CheckFeatureSupport(
+                d3d12_ty::D3D12_FEATURE_FEATURE_LEVELS,
+                &mut device_levels as *mut _ as *mut _,
+                mem::size_of::<d3d12_ty::D3D12_FEATURE_DATA_FEATURE_LEVELS>() as _,
+            )
+        };
+        // This cast should never fail because we only requested feature levels that are already in the enum.
+        let max_feature_level =
+            d3d12::FeatureLevel::try_from(device_levels.MaxSupportedFeatureLevel)
+                .expect("Unexpected feature level");
+
         // We have found a possible adapter.
         // Acquire the device information.
         let mut desc: dxgi1_2::DXGI_ADAPTER_DESC2 = unsafe { mem::zeroed() };
@@ -81,12 +103,7 @@ impl super::Adapter {
             adapter.unwrap_adapter2().GetDesc2(&mut desc);
         }
 
-        let device_name = {
-            use std::{ffi::OsString, os::windows::ffi::OsStringExt};
-            let len = desc.Description.iter().take_while(|&&c| c != 0).count();
-            let name = OsString::from_wide(&desc.Description[..len]);
-            name.to_string_lossy().into_owned()
-        };
+        let device_name = auxil::dxgi::conv::map_adapter_name(desc.Description);
 
         let mut features_architecture: d3d12_ty::D3D12_FEATURE_DATA_ARCHITECTURE =
             unsafe { mem::zeroed() };
@@ -95,18 +112,6 @@ impl super::Adapter {
                 d3d12_ty::D3D12_FEATURE_ARCHITECTURE,
                 &mut features_architecture as *mut _ as *mut _,
                 mem::size_of::<d3d12_ty::D3D12_FEATURE_DATA_ARCHITECTURE>() as _,
-            )
-        });
-
-        let mut shader_model_support: d3d12_ty::D3D12_FEATURE_DATA_SHADER_MODEL =
-            d3d12_ty::D3D12_FEATURE_DATA_SHADER_MODEL {
-                HighestShaderModel: d3d12_ty::D3D_SHADER_MODEL_6_0,
-            };
-        assert_eq!(0, unsafe {
-            device.CheckFeatureSupport(
-                d3d12_ty::D3D12_FEATURE_SHADER_MODEL,
-                &mut shader_model_support as *mut _ as *mut _,
-                mem::size_of::<d3d12_ty::D3D12_FEATURE_DATA_SHADER_MODEL>() as _,
             )
         });
 
@@ -164,6 +169,53 @@ impl super::Adapter {
             hr == 0 && features3.CastingFullyTypedFormatSupported != 0
         };
 
+        let shader_model = if dxc_container.is_none() {
+            naga::back::hlsl::ShaderModel::V5_1
+        } else {
+            let mut versions = [
+                crate::dx12::types::D3D_SHADER_MODEL_6_7,
+                crate::dx12::types::D3D_SHADER_MODEL_6_6,
+                crate::dx12::types::D3D_SHADER_MODEL_6_5,
+                crate::dx12::types::D3D_SHADER_MODEL_6_4,
+                crate::dx12::types::D3D_SHADER_MODEL_6_3,
+                crate::dx12::types::D3D_SHADER_MODEL_6_2,
+                crate::dx12::types::D3D_SHADER_MODEL_6_1,
+                crate::dx12::types::D3D_SHADER_MODEL_6_0,
+                crate::dx12::types::D3D_SHADER_MODEL_5_1,
+            ]
+            .iter();
+            match loop {
+                if let Some(&sm) = versions.next() {
+                    let mut sm = crate::dx12::types::D3D12_FEATURE_DATA_SHADER_MODEL {
+                        HighestShaderModel: sm,
+                    };
+                    if 0 == unsafe {
+                        device.CheckFeatureSupport(
+                            7, // D3D12_FEATURE_SHADER_MODEL
+                            &mut sm as *mut _ as *mut _,
+                            mem::size_of::<crate::dx12::types::D3D12_FEATURE_DATA_SHADER_MODEL>()
+                                as _,
+                        )
+                    } {
+                        break sm.HighestShaderModel;
+                    }
+                } else {
+                    break crate::dx12::types::D3D_SHADER_MODEL_5_1;
+                }
+            } {
+                crate::dx12::types::D3D_SHADER_MODEL_5_1 => naga::back::hlsl::ShaderModel::V5_1,
+                crate::dx12::types::D3D_SHADER_MODEL_6_0 => naga::back::hlsl::ShaderModel::V6_0,
+                crate::dx12::types::D3D_SHADER_MODEL_6_1 => naga::back::hlsl::ShaderModel::V6_1,
+                crate::dx12::types::D3D_SHADER_MODEL_6_2 => naga::back::hlsl::ShaderModel::V6_2,
+                crate::dx12::types::D3D_SHADER_MODEL_6_3 => naga::back::hlsl::ShaderModel::V6_3,
+                crate::dx12::types::D3D_SHADER_MODEL_6_4 => naga::back::hlsl::ShaderModel::V6_4,
+                crate::dx12::types::D3D_SHADER_MODEL_6_5 => naga::back::hlsl::ShaderModel::V6_5,
+                crate::dx12::types::D3D_SHADER_MODEL_6_6 => naga::back::hlsl::ShaderModel::V6_6,
+                crate::dx12::types::D3D_SHADER_MODEL_6_7 => naga::back::hlsl::ShaderModel::V6_7,
+                _ => unreachable!(),
+            }
+        };
+
         let private_caps = super::PrivateCapabilities {
             instance_flags,
             heterogeneous_resource_heaps: options.ResourceHeapTier
@@ -177,16 +229,26 @@ impl super::Adapter {
             },
             heap_create_not_zeroed: false, //TODO: winapi support for Options7
             casting_fully_typed_format_supported,
+            // See https://github.com/gfx-rs/wgpu/issues/3552
+            suballocation_supported: !info.name.contains("Iris(R) Xe"),
+            shader_model,
         };
 
         // Theoretically vram limited, but in practice 2^20 is the limit
         let tier3_practical_descriptor_limit = 1 << 20;
 
-        let (full_heap_count, _uav_count) = match options.ResourceBindingTier {
-            d3d12_ty::D3D12_RESOURCE_BINDING_TIER_1 => (
-                d3d12_ty::D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1,
-                8, // conservative, is 64 on feature level 11.1
-            ),
+        let (full_heap_count, uav_count) = match options.ResourceBindingTier {
+            d3d12_ty::D3D12_RESOURCE_BINDING_TIER_1 => {
+                let uav_count = match max_feature_level {
+                    d3d12::FeatureLevel::L11_0 => 8,
+                    _ => 64,
+                };
+
+                (
+                    d3d12_ty::D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1,
+                    uav_count,
+                )
+            }
             d3d12_ty::D3D12_RESOURCE_BINDING_TIER_2 => (
                 d3d12_ty::D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_2,
                 64,
@@ -214,22 +276,28 @@ impl super::Adapter {
             | wgt::Features::ADDRESS_MODE_CLAMP_TO_BORDER
             | wgt::Features::ADDRESS_MODE_CLAMP_TO_ZERO
             | wgt::Features::POLYGON_MODE_LINE
-            | wgt::Features::POLYGON_MODE_POINT
-            | wgt::Features::VERTEX_WRITABLE_STORAGE
             | wgt::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
             | wgt::Features::TIMESTAMP_QUERY
+            | wgt::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
             | wgt::Features::TIMESTAMP_QUERY_INSIDE_PASSES
             | wgt::Features::TEXTURE_COMPRESSION_BC
             | wgt::Features::CLEAR_TEXTURE
             | wgt::Features::TEXTURE_FORMAT_16BIT_NORM
             | wgt::Features::PUSH_CONSTANTS
             | wgt::Features::SHADER_PRIMITIVE_INDEX
-            | wgt::Features::RG11B10UFLOAT_RENDERABLE;
+            | wgt::Features::RG11B10UFLOAT_RENDERABLE
+            | wgt::Features::DUAL_SOURCE_BLENDING
+            | wgt::Features::TEXTURE_FORMAT_NV12;
+
         //TODO: in order to expose this, we need to run a compute shader
         // that extract the necessary statistics out of the D3D12 result.
         // Alternatively, we could allocate a buffer for the query set,
         // write the results there, and issue a bunch of copy commands.
         //| wgt::Features::PIPELINE_STATISTICS_QUERY
+
+        if max_feature_level as u32 >= d3d12::FeatureLevel::L11_1 as u32 {
+            features |= wgt::Features::VERTEX_WRITABLE_STORAGE;
+        }
 
         features.set(
             wgt::Features::CONSERVATIVE_RASTERIZATION,
@@ -241,13 +309,69 @@ impl super::Adapter {
             wgt::Features::TEXTURE_BINDING_ARRAY
                 | wgt::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING
                 | wgt::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-            shader_model_support.HighestShaderModel >= d3d12_ty::D3D_SHADER_MODEL_5_1,
+            shader_model >= naga::back::hlsl::ShaderModel::V5_1,
         );
+
+        let bgra8unorm_storage_supported = {
+            let mut bgra8unorm_info: d3d12_ty::D3D12_FEATURE_DATA_FORMAT_SUPPORT =
+                unsafe { mem::zeroed() };
+            bgra8unorm_info.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            let hr = unsafe {
+                device.CheckFeatureSupport(
+                    d3d12_ty::D3D12_FEATURE_FORMAT_SUPPORT,
+                    &mut bgra8unorm_info as *mut _ as *mut _,
+                    mem::size_of::<d3d12_ty::D3D12_FEATURE_DATA_FORMAT_SUPPORT>() as _,
+                )
+            };
+            hr == 0
+                && (bgra8unorm_info.Support2 & d3d12_ty::D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE != 0)
+        };
+        features.set(
+            wgt::Features::BGRA8UNORM_STORAGE,
+            bgra8unorm_storage_supported,
+        );
+
+        let mut features1: d3d12_ty::D3D12_FEATURE_DATA_D3D12_OPTIONS1 = unsafe { mem::zeroed() };
+        let hr = unsafe {
+            device.CheckFeatureSupport(
+                d3d12_ty::D3D12_FEATURE_D3D12_OPTIONS1,
+                &mut features1 as *mut _ as *mut _,
+                mem::size_of::<d3d12_ty::D3D12_FEATURE_DATA_D3D12_OPTIONS1>() as _,
+            )
+        };
+
+        features.set(
+            wgt::Features::SHADER_INT64,
+            shader_model >= naga::back::hlsl::ShaderModel::V6_0
+                && hr == 0
+                && features1.Int64ShaderOps != 0,
+        );
+
+        features.set(
+            wgt::Features::SUBGROUP,
+            shader_model >= naga::back::hlsl::ShaderModel::V6_0
+                && hr == 0
+                && features1.WaveOps != 0,
+        );
+
+        // float32-filterable should always be available on d3d12
+        features.set(wgt::Features::FLOAT32_FILTERABLE, true);
 
         // TODO: Determine if IPresentationManager is supported
         let presentation_timer = auxil::dxgi::time::PresentationTimer::new_dxgi();
 
         let base = wgt::Limits::default();
+
+        let mut downlevel = wgt::DownlevelCapabilities::default();
+        // https://github.com/gfx-rs/wgpu/issues/2471
+        downlevel.flags -=
+            wgt::DownlevelFlags::VERTEX_AND_INSTANCE_INDEX_RESPECTS_RESPECTIVE_FIRST_VALUE_IN_INDIRECT_DRAW;
+
+        // See https://learn.microsoft.com/en-us/windows/win32/direct3d12/hardware-feature-levels#feature-level-support
+        let max_color_attachments = 8;
+        // TODO: determine this programmatically if possible.
+        // https://github.com/gpuweb/gpuweb/issues/2965#issuecomment-1361315447
+        let max_color_attachment_bytes_per_sample = 64;
 
         Some(crate::ExposedAdapter {
             adapter: super::Adapter {
@@ -257,7 +381,7 @@ impl super::Adapter {
                 private_caps,
                 presentation_timer,
                 workarounds,
-                dx12_shader_compiler: dx12_shader_compiler.clone(),
+                dxc_container,
             },
             info,
             features,
@@ -284,17 +408,20 @@ impl super::Adapter {
                         _ => d3d12_ty::D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE,
                     },
                     // these both account towards `uav_count`, but we can't express the limit as as sum
-                    max_storage_buffers_per_shader_stage: base.max_storage_buffers_per_shader_stage,
-                    max_storage_textures_per_shader_stage: base
-                        .max_storage_textures_per_shader_stage,
+                    // of the two, so we divide it by 4 to account for the worst case scenario
+                    // (2 shader stages, with both using 16 storage textures and 16 storage buffers)
+                    max_storage_buffers_per_shader_stage: uav_count / 4,
+                    max_storage_textures_per_shader_stage: uav_count / 4,
                     max_uniform_buffers_per_shader_stage: full_heap_count,
                     max_uniform_buffer_binding_size:
                         d3d12_ty::D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16,
-                    max_storage_buffer_binding_size: crate::auxil::MAX_I32_BINDING_SIZE,
+                    max_storage_buffer_binding_size: auxil::MAX_I32_BINDING_SIZE,
                     max_vertex_buffers: d3d12_ty::D3D12_VS_INPUT_REGISTER_COUNT
                         .min(crate::MAX_VERTEX_BUFFERS as u32),
                     max_vertex_attributes: d3d12_ty::D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT,
                     max_vertex_buffer_array_stride: d3d12_ty::D3D12_SO_BUFFER_MAX_STRIDE_IN_BYTES,
+                    min_subgroup_size: 4, // Not using `features1.WaveLaneCountMin` as it is unreliable
+                    max_subgroup_size: 128,
                     // The push constants are part of the root signature which
                     // has a limit of 64 DWORDS (256 bytes), but other resources
                     // also share the root signature:
@@ -318,6 +445,8 @@ impl super::Adapter {
                         d3d12_ty::D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
                     min_storage_buffer_offset_alignment: 4,
                     max_inter_stage_shader_components: base.max_inter_stage_shader_components,
+                    max_color_attachments,
+                    max_color_attachment_bytes_per_sample,
                     max_compute_workgroup_storage_size: base.max_compute_workgroup_storage_size, //TODO?
                     max_compute_invocations_per_workgroup:
                         d3d12_ty::D3D12_CS_4_X_THREAD_GROUP_MAX_THREADS_PER_GROUP,
@@ -326,7 +455,11 @@ impl super::Adapter {
                     max_compute_workgroup_size_z: d3d12_ty::D3D12_CS_THREAD_GROUP_MAX_Z,
                     max_compute_workgroups_per_dimension:
                         d3d12_ty::D3D12_CS_DISPATCH_MAX_THREAD_GROUPS_PER_DIMENSION,
-                    max_buffer_size: u64::MAX,
+                    // Dx12 does not expose a maximum buffer size in the API.
+                    // This limit is chosen to avoid potential issues with drivers should they internally
+                    // store buffer sizes using 32 bit ints (a situation we have already encountered with vulkan).
+                    max_buffer_size: i32::MAX as u64,
+                    max_non_sampler_bindings: 1_000_000,
                 },
                 alignments: crate::Alignments {
                     buffer_copy_offset: wgt::BufferSize::new(
@@ -338,17 +471,19 @@ impl super::Adapter {
                     )
                     .unwrap(),
                 },
-                downlevel: wgt::DownlevelCapabilities::default(),
+                downlevel,
             },
         })
     }
 }
 
-impl crate::Adapter<super::Api> for super::Adapter {
+impl crate::Adapter for super::Adapter {
+    type A = super::Api;
+
     unsafe fn open(
         &self,
         _features: wgt::Features,
-        _limits: &wgt::Limits,
+        limits: &wgt::Limits,
     ) -> Result<crate::OpenDevice<super::Api>, crate::DeviceError> {
         let queue = {
             profiling::scope!("ID3D12Device::CreateCommandQueue");
@@ -363,17 +498,18 @@ impl crate::Adapter<super::Api> for super::Adapter {
         };
 
         let device = super::Device::new(
-            self.device,
-            queue,
+            self.device.clone(),
+            queue.clone(),
+            limits,
             self.private_caps,
             &self.library,
-            self.dx12_shader_compiler.clone(),
+            self.dxc_container.clone(),
         )?;
         Ok(crate::OpenDevice {
             device,
             queue: super::Queue {
                 raw: queue,
-                temp_lists: Vec::new(),
+                temp_lists: Mutex::new(Vec::new()),
             },
         })
     }
@@ -542,7 +678,9 @@ impl crate::Adapter<super::Api> for super::Adapter {
                         None
                     }
                 }
-                SurfaceTarget::Visual(_) | SurfaceTarget::SurfaceHandle(_) => None,
+                SurfaceTarget::Visual(_)
+                | SurfaceTarget::SurfaceHandle(_)
+                | SurfaceTarget::SwapChainPanel(_) => None,
             }
         };
 
@@ -560,19 +698,9 @@ impl crate::Adapter<super::Api> for super::Adapter {
                 wgt::TextureFormat::Rgb10a2Unorm,
                 wgt::TextureFormat::Rgba16Float,
             ],
-            // we currently use a flip effect which supports 2..=16 buffers
-            swap_chain_sizes: 2..=16,
+            // See https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgidevice1-setmaximumframelatency
+            maximum_frame_latency: 1..=16,
             current_extent,
-            // TODO: figure out the exact bounds
-            extents: wgt::Extent3d {
-                width: 16,
-                height: 16,
-                depth_or_array_layers: 1,
-            }..=wgt::Extent3d {
-                width: 4096,
-                height: 4096,
-                depth_or_array_layers: 1,
-            },
             usage: crate::TextureUses::COLOR_TARGET
                 | crate::TextureUses::COPY_SRC
                 | crate::TextureUses::COPY_DST,

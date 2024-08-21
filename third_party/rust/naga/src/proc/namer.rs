@@ -1,5 +1,6 @@
 use crate::{arena::Handle, FastHashMap, FastHashSet};
 use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 
 pub type EntryPointIndex = u16;
 const SEPARATOR: char = '_';
@@ -24,8 +25,9 @@ pub enum NameKey {
 pub struct Namer {
     /// The last numeric suffix used for each base name. Zero means "no suffix".
     unique: FastHashMap<String, u32>,
-    keywords: FastHashSet<String>,
-    reserved_prefixes: Vec<String>,
+    keywords: FastHashSet<&'static str>,
+    keywords_case_insensitive: FastHashSet<AsciiUniCase<&'static str>>,
+    reserved_prefixes: Vec<&'static str>,
 }
 
 impl Namer {
@@ -34,6 +36,7 @@ impl Namer {
     /// - Drop leading digits.
     /// - Retain only alphanumeric and `_` characters.
     /// - Avoid prefixes in [`Namer::reserved_prefixes`].
+    /// - Replace consecutive `_` characters with a single `_` character.
     ///
     /// The return value is a valid identifier prefix in all of Naga's output languages,
     /// and it never ends with a `SEPARATOR` character.
@@ -44,6 +47,7 @@ impl Namer {
             .trim_end_matches(SEPARATOR);
 
         let base = if !string.is_empty()
+            && !string.contains("__")
             && string
                 .chars()
                 .all(|c: char| c.is_ascii_alphanumeric() || c == '_')
@@ -53,7 +57,13 @@ impl Namer {
             let mut filtered = string
                 .chars()
                 .filter(|&c| c.is_ascii_alphanumeric() || c == '_')
-                .collect::<String>();
+                .fold(String::new(), |mut s, c| {
+                    if s.ends_with('_') && c == '_' {
+                        return s;
+                    }
+                    s.push(c);
+                    s
+                });
             let stripped_len = filtered.trim_end_matches(SEPARATOR).len();
             filtered.truncate(stripped_len);
             if filtered.is_empty() {
@@ -102,10 +112,15 @@ impl Namer {
             }
             None => {
                 let mut suffixed = base.to_string();
-                if base.ends_with(char::is_numeric) || self.keywords.contains(base.as_ref()) {
+                if base.ends_with(char::is_numeric)
+                    || self.keywords.contains(base.as_ref())
+                    || self
+                        .keywords_case_insensitive
+                        .contains(&AsciiUniCase(base.as_ref()))
+                {
                     suffixed.push(SEPARATOR);
                 }
-                debug_assert!(!self.keywords.contains(&suffixed));
+                debug_assert!(!self.keywords.contains::<str>(&suffixed));
                 // `self.unique` wants to own its keys. This allocates only if we haven't
                 // already done so earlier.
                 self.unique.insert(base.into_owned(), 0);
@@ -136,18 +151,30 @@ impl Namer {
     pub fn reset(
         &mut self,
         module: &crate::Module,
-        reserved_keywords: &[&str],
-        reserved_prefixes: &[&str],
+        reserved_keywords: &[&'static str],
+        extra_reserved_keywords: &[&'static str],
+        reserved_keywords_case_insensitive: &[&'static str],
+        reserved_prefixes: &[&'static str],
         output: &mut FastHashMap<NameKey, String>,
     ) {
         self.reserved_prefixes.clear();
-        self.reserved_prefixes
-            .extend(reserved_prefixes.iter().map(|string| string.to_string()));
+        self.reserved_prefixes.extend(reserved_prefixes.iter());
 
         self.unique.clear();
         self.keywords.clear();
-        self.keywords
-            .extend(reserved_keywords.iter().map(|string| (string.to_string())));
+        self.keywords.extend(reserved_keywords.iter());
+        self.keywords.extend(extra_reserved_keywords.iter());
+
+        debug_assert!(reserved_keywords_case_insensitive
+            .iter()
+            .all(|s| s.is_ascii()));
+        self.keywords_case_insensitive.clear();
+        self.keywords_case_insensitive.extend(
+            reserved_keywords_case_insensitive
+                .iter()
+                .map(|string| (AsciiUniCase(*string))),
+        );
+
         let mut temp = String::new();
 
         for (ty_handle, ty) in module.types.iter() {
@@ -206,48 +233,39 @@ impl Namer {
                     use std::fmt::Write;
                     // Try to be more descriptive about the constant values
                     temp.clear();
-                    match constant.inner {
-                        crate::ConstantInner::Scalar {
-                            width: _,
-                            value: crate::ScalarValue::Sint(v),
-                        } => write!(temp, "const_{v}i"),
-                        crate::ConstantInner::Scalar {
-                            width: _,
-                            value: crate::ScalarValue::Uint(v),
-                        } => write!(temp, "const_{v}u"),
-                        crate::ConstantInner::Scalar {
-                            width: _,
-                            value: crate::ScalarValue::Float(v),
-                        } => {
-                            let abs = v.abs();
-                            write!(
-                                temp,
-                                "const_{}{}",
-                                if v < 0.0 { "n" } else { "" },
-                                abs.trunc(),
-                            )
-                            .unwrap();
-                            let fract = abs.fract();
-                            if fract == 0.0 {
-                                write!(temp, "f")
-                            } else {
-                                write!(temp, "_{:02}f", (fract * 100.0) as i8)
-                            }
-                        }
-                        crate::ConstantInner::Scalar {
-                            width: _,
-                            value: crate::ScalarValue::Bool(v),
-                        } => write!(temp, "const_{v}"),
-                        crate::ConstantInner::Composite { ty, components: _ } => {
-                            write!(temp, "const_{}", output[&NameKey::Type(ty)])
-                        }
-                    }
-                    .unwrap();
+                    write!(temp, "const_{}", output[&NameKey::Type(constant.ty)]).unwrap();
                     &temp
                 }
             };
             let name = self.call(label);
             output.insert(NameKey::Constant(handle), name);
+        }
+    }
+}
+
+/// A string wrapper type with an ascii case insensitive Eq and Hash impl
+struct AsciiUniCase<S: AsRef<str> + ?Sized>(S);
+
+impl<S: AsRef<str>> PartialEq<Self> for AsciiUniCase<S> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ref().eq_ignore_ascii_case(other.0.as_ref())
+    }
+}
+
+impl<S: AsRef<str>> Eq for AsciiUniCase<S> {}
+
+impl<S: AsRef<str>> Hash for AsciiUniCase<S> {
+    #[inline]
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        for byte in self
+            .0
+            .as_ref()
+            .as_bytes()
+            .iter()
+            .map(|b| b.to_ascii_lowercase())
+        {
+            hasher.write_u8(byte);
         }
     }
 }
@@ -258,4 +276,6 @@ fn test() {
     assert_eq!(namer.call("x"), "x");
     assert_eq!(namer.call("x"), "x_1");
     assert_eq!(namer.call("x1"), "x1_");
+    assert_eq!(namer.call("__x"), "_x");
+    assert_eq!(namer.call("1___x"), "_x_1");
 }

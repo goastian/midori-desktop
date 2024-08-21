@@ -51,19 +51,19 @@
 //! | `R_X86_64_GOTPC32`        | 26    | 32        | GOT + A - P       |
 //! | `R_X86_64_SIZE32`         | 32    | 32        | Z + A             |
 //! | `R_X86_64_SIZE64`         | 33    | 64        | Z + A             |
-//! | `R_X86_64_GOTPC32_TLSDESC`  34    | 32        |                   |
+//! | `R_X86_64_GOTPC32_TLSDESC`| 34    | 32        |                   |
 //! | `R_X86_64_TLSDESC_CALL`   | 35    | NONE      |                   |
 //! | `R_X86_64_TLSDESC`        | 36    | 64 × 2    |                   |
 //! | `R_X86_64_IRELATIVE`      | 37    | 64        | indirect (B + A)  |
 //!
-//! TLS information is at http://people.redhat.com/aoliva/writeups/TLS/RFC-TLSDESC-x86.txt
+//! TLS information is at <http://people.redhat.com/aoliva/writeups/TLS/RFC-TLSDESC-x86.txt>
 //!
 //! `R_X86_64_IRELATIVE` is similar to `R_X86_64_RELATIVE` except that
 //! the value used in this relocation is the program address returned by the function,
 //! which takes no arguments, at the address of the result of the corresponding
 //! `R_X86_64_RELATIVE` relocation.
 //!
-//! Read more https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-54839.html
+//! Read more <https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-54839.html>
 
 include!("constants_relocation.rs");
 
@@ -129,8 +129,6 @@ macro_rules! elf_reloc {
 macro_rules! elf_rela_std_impl {
     ($size:ident, $isize:ty) => {
         if_alloc! {
-            use crate::elf::reloc::Reloc;
-
             use core::slice;
 
             if_std! {
@@ -415,7 +413,11 @@ if_alloc! {
         /// Parse a REL or RELA section of size `filesz` from `offset`.
         pub fn parse(bytes: &'a [u8], offset: usize, filesz: usize, is_rela: bool, ctx: Ctx) -> crate::error::Result<RelocSection<'a>> {
             // TODO: better error message when too large (see symtab implementation)
-            let bytes = bytes.pread_with(offset, filesz)?;
+            let bytes = if filesz != 0 {
+                bytes.pread_with::<&'a [u8]>(offset, filesz)?
+            } else {
+                &[]
+            };
 
             Ok(RelocSection {
                 bytes: bytes,

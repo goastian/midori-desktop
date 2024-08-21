@@ -319,8 +319,7 @@ struct AudioEncoderUnicornSparklesRainbow {
   using Config = webrtc::AudioEncoderL16::Config;
   static absl::optional<Config> SdpToConfig(webrtc::SdpAudioFormat format) {
     if (absl::EqualsIgnoreCase(format.name, "UnicornSparklesRainbow")) {
-      const webrtc::SdpAudioFormat::Parameters expected_params = {
-          {"num_horns", "1"}};
+      const webrtc::CodecParameterMap expected_params = {{"num_horns", "1"}};
       EXPECT_EQ(expected_params, format.parameters);
       format.parameters.clear();
       format.name = "L16";
@@ -356,8 +355,7 @@ struct AudioDecoderUnicornSparklesRainbow {
   using Config = webrtc::AudioDecoderL16::Config;
   static absl::optional<Config> SdpToConfig(webrtc::SdpAudioFormat format) {
     if (absl::EqualsIgnoreCase(format.name, "UnicornSparklesRainbow")) {
-      const webrtc::SdpAudioFormat::Parameters expected_params = {
-          {"num_horns", "1"}};
+      const webrtc::CodecParameterMap expected_params = {{"num_horns", "1"}};
       EXPECT_EQ(expected_params, format.parameters);
       format.parameters.clear();
       format.name = "L16";
@@ -688,37 +686,6 @@ TEST_P(PeerConnectionEndToEndTest,
   // Since the second channel was created after the first finished closing, it
   // should be able to re-use the first one's ID.
   EXPECT_EQ(first_channel_id, caller_dc->id());
-  TestDataChannelSendAndReceive(caller_dc.get(),
-                                callee_signaled_data_channels_[1].get());
-
-  CloseDataChannels(caller_dc.get(), callee_signaled_data_channels_, 1);
-}
-
-// Similar to the above test, but don't wait for the first channel to finish
-// closing before creating the second one.
-TEST_P(PeerConnectionEndToEndTest,
-       DataChannelFromOpenWorksWhilePreviousChannelClosing) {
-  CreatePcs(webrtc::MockAudioEncoderFactory::CreateEmptyFactory(),
-            webrtc::MockAudioDecoderFactory::CreateEmptyFactory());
-
-  webrtc::DataChannelInit init;
-  rtc::scoped_refptr<DataChannelInterface> caller_dc(
-      caller_->CreateDataChannel("data", init));
-
-  Negotiate();
-  WaitForConnection();
-
-  WaitForDataChannelsToOpen(caller_dc.get(), callee_signaled_data_channels_, 0);
-  int first_channel_id = caller_dc->id();
-  caller_dc->Close();
-
-  // Immediately create a new channel, before waiting for the previous one to
-  // transition to "closed".
-  caller_dc = caller_->CreateDataChannel("data2", init);
-  WaitForDataChannelsToOpen(caller_dc.get(), callee_signaled_data_channels_, 1);
-  // Since the second channel was created while the first was still closing,
-  // it should have been assigned a different ID.
-  EXPECT_NE(first_channel_id, caller_dc->id());
   TestDataChannelSendAndReceive(caller_dc.get(),
                                 callee_signaled_data_channels_[1].get());
 

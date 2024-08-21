@@ -35,24 +35,24 @@ using D = HWY_FULL(float);
 using DI = HWY_FULL(int32_t);
 
 template <size_t N>
-void AddReverse(const float* JXL_RESTRICT ain1, const float* JXL_RESTRICT ain2,
-                float* JXL_RESTRICT aout) {
+void AddReverse(const float* JXL_RESTRICT a_in1,
+                const float* JXL_RESTRICT a_in2, float* JXL_RESTRICT a_out) {
   HWY_CAPPED(float, 8) d8;
   for (size_t i = 0; i < N; i++) {
-    auto in1 = Load(d8, ain1 + i * 8);
-    auto in2 = Load(d8, ain2 + (N - i - 1) * 8);
-    Store(Add(in1, in2), d8, aout + i * 8);
+    auto in1 = Load(d8, a_in1 + i * 8);
+    auto in2 = Load(d8, a_in2 + (N - i - 1) * 8);
+    Store(Add(in1, in2), d8, a_out + i * 8);
   }
 }
 
 template <size_t N>
-void SubReverse(const float* JXL_RESTRICT ain1, const float* JXL_RESTRICT ain2,
-                float* JXL_RESTRICT aout) {
+void SubReverse(const float* JXL_RESTRICT a_in1,
+                const float* JXL_RESTRICT a_in2, float* JXL_RESTRICT a_out) {
   HWY_CAPPED(float, 8) d8;
   for (size_t i = 0; i < N; i++) {
-    auto in1 = Load(d8, ain1 + i * 8);
-    auto in2 = Load(d8, ain2 + (N - i - 1) * 8);
-    Store(Sub(in1, in2), d8, aout + i * 8);
+    auto in1 = Load(d8, a_in1 + i * 8);
+    auto in2 = Load(d8, a_in2 + (N - i - 1) * 8);
+    Store(Sub(in1, in2), d8, a_out + i * 8);
   }
 }
 
@@ -73,15 +73,15 @@ void B(float* JXL_RESTRICT coeff) {
 
 // Ideally optimized away by compiler (except the multiply).
 template <size_t N>
-void InverseEvenOdd(const float* JXL_RESTRICT ain, float* JXL_RESTRICT aout) {
+void InverseEvenOdd(const float* JXL_RESTRICT a_in, float* JXL_RESTRICT a_out) {
   HWY_CAPPED(float, 8) d8;
   for (size_t i = 0; i < N / 2; i++) {
-    auto in1 = Load(d8, ain + i * 8);
-    Store(in1, d8, aout + 2 * i * 8);
+    auto in1 = Load(d8, a_in + i * 8);
+    Store(in1, d8, a_out + 2 * i * 8);
   }
   for (size_t i = N / 2; i < N; i++) {
-    auto in1 = Load(d8, ain + i * 8);
-    Store(in1, d8, aout + (2 * (i - N / 2) + 1) * 8);
+    auto in1 = Load(d8, a_in + i * 8);
+    Store(in1, d8, a_out + (2 * (i - N / 2) + 1) * 8);
   }
 }
 
@@ -109,8 +109,10 @@ struct WcMultipliers<8> {
   };
 };
 
+#if JXL_CXX_LANG < JXL_CXX_17
 constexpr float WcMultipliers<4>::kMultipliers[];
 constexpr float WcMultipliers<8>::kMultipliers[];
+#endif
 
 // Invoked on full vector.
 template <size_t N>
@@ -187,21 +189,23 @@ void DCT1D(const float* JXL_RESTRICT pixels, size_t pixels_stride,
   }
 }
 
-void TransformFromPixels(const float* JXL_RESTRICT pixels, size_t pixels_stride,
-                         float* JXL_RESTRICT coefficients,
-                         float* JXL_RESTRICT scratch_space) {
+JXL_INLINE JXL_MAYBE_UNUSED void TransformFromPixels(
+    const float* JXL_RESTRICT pixels, size_t pixels_stride,
+    float* JXL_RESTRICT coefficients, float* JXL_RESTRICT scratch_space) {
   DCT1D(pixels, pixels_stride, scratch_space);
   Transpose8x8Block(scratch_space, coefficients);
   DCT1D(coefficients, 8, scratch_space);
   Transpose8x8Block(scratch_space, coefficients);
 }
 
-void StoreQuantizedValue(const Vec<DI>& ival, int16_t* out) {
+JXL_INLINE JXL_MAYBE_UNUSED void StoreQuantizedValue(const Vec<DI>& ival,
+                                                     int16_t* out) {
   Rebind<int16_t, DI> di16;
   Store(DemoteTo(di16, ival), di16, out);
 }
 
-void StoreQuantizedValue(const Vec<DI>& ival, int32_t* out) {
+JXL_INLINE JXL_MAYBE_UNUSED void StoreQuantizedValue(const Vec<DI>& ival,
+                                                     int32_t* out) {
   DI di;
   Store(ival, di, out);
 }
@@ -227,35 +231,25 @@ void QuantizeBlock(const float* dct, const float* qmc, float aq_strength,
 }
 
 template <typename T>
-void QuantizeBlockNoAQ(const float* dct, const float* qmc, T* block) {
-  D d;
-  DI di;
-  for (size_t k = 0; k < DCTSIZE2; k += Lanes(d)) {
-    const auto val = Load(d, dct + k);
-    const auto q = Load(d, qmc + k);
-    const auto ival = ConvertTo(di, Round(Mul(val, q)));
-    StoreQuantizedValue(ival, block + k);
-  }
-}
-
-template <typename T>
 void ComputeCoefficientBlock(const float* JXL_RESTRICT pixels, size_t stride,
-                             const float* JXL_RESTRICT qmc, float aq_strength,
+                             const float* JXL_RESTRICT qmc,
+                             int16_t last_dc_coeff, float aq_strength,
                              const float* zero_bias_offset,
                              const float* zero_bias_mul,
                              float* JXL_RESTRICT tmp, T* block) {
   float* JXL_RESTRICT dct = tmp;
   float* JXL_RESTRICT scratch_space = tmp + DCTSIZE2;
   TransformFromPixels(pixels, stride, dct, scratch_space);
-  if (aq_strength > 0.0f) {
-    QuantizeBlock(dct, qmc, aq_strength, zero_bias_offset, zero_bias_mul,
-                  block);
-  } else {
-    QuantizeBlockNoAQ(dct, qmc, block);
-  }
+  QuantizeBlock(dct, qmc, aq_strength, zero_bias_offset, zero_bias_mul, block);
   // Center DC values around zero.
   static constexpr float kDCBias = 128.0f;
-  block[0] = std::round((dct[0] - kDCBias) * qmc[0]);
+  const float dc = (dct[0] - kDCBias) * qmc[0];
+  float dc_threshold = zero_bias_offset[0] + aq_strength * zero_bias_mul[0];
+  if (std::abs(dc - last_dc_coeff) < dc_threshold) {
+    block[0] = last_dc_coeff;
+  } else {
+    block[0] = std::round(dc);
+  }
 }
 
 // NOLINTNEXTLINE(google-readability-namespace-comments)

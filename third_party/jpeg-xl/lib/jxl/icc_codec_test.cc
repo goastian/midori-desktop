@@ -3,24 +3,33 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#include "lib/jxl/icc_codec.h"
+#include <jxl/memory_manager.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "lib/jxl/base/span.h"
+#include "lib/jxl/color_encoding_internal.h"
+#include "lib/jxl/dec_bit_reader.h"
+#include "lib/jxl/enc_bit_writer.h"
 #include "lib/jxl/enc_icc_codec.h"
+#include "lib/jxl/test_memory_manager.h"
+#include "lib/jxl/test_utils.h"
 #include "lib/jxl/testing.h"
 
 namespace jxl {
 namespace {
 
-void TestProfile(const PaddedBytes& icc) {
-  BitWriter writer;
+void TestProfile(const IccBytes& icc) {
+  JxlMemoryManager* memory_manager = jxl::test::MemoryManager();
+  BitWriter writer{memory_manager};
   ASSERT_TRUE(WriteICC(icc, &writer, 0, nullptr));
   writer.ZeroPadToByte();
-  PaddedBytes dec;
+  std::vector<uint8_t> dec;
   BitReader reader(writer.GetSpan());
-  ASSERT_TRUE(ReadICC(&reader, &dec));
+  ASSERT_TRUE(test::ReadICC(&reader, &dec));
   ASSERT_TRUE(reader.Close());
   EXPECT_EQ(icc.size(), dec.size());
   if (icc.size() == dec.size()) {
@@ -32,15 +41,13 @@ void TestProfile(const PaddedBytes& icc) {
 }
 
 void TestProfile(const std::string& icc) {
-  PaddedBytes bytes(icc.size());
-  for (size_t i = 0; i < icc.size(); i++) {
-    bytes[i] = icc[i];
-  }
-  TestProfile(bytes);
+  IccBytes data;
+  Bytes(icc).AppendTo(data);
+  TestProfile(data);
 }
 
 // Valid profile from one of the images output by the decoder.
-static const unsigned char kTestProfile[] = {
+const unsigned char kTestProfile[] = {
     0x00, 0x00, 0x03, 0x80, 0x6c, 0x63, 0x6d, 0x73, 0x04, 0x30, 0x00, 0x00,
     0x6d, 0x6e, 0x74, 0x72, 0x52, 0x47, 0x42, 0x20, 0x58, 0x59, 0x5a, 0x20,
     0x07, 0xe3, 0x00, 0x04, 0x00, 0x1d, 0x00, 0x0f, 0x00, 0x32, 0x00, 0x2e,
@@ -128,7 +135,7 @@ TEST(IccCodecTest, Icc) {
 
   {
     // Exactly the ICC header size
-    PaddedBytes profile(128);
+    IccBytes profile(128);
     for (size_t i = 0; i < 128; i++) {
       profile[i] = 0;
     }
@@ -136,14 +143,14 @@ TEST(IccCodecTest, Icc) {
   }
 
   {
-    PaddedBytes profile;
-    profile.append(kTestProfile, kTestProfile + sizeof(kTestProfile));
+    IccBytes profile;
+    Bytes(kTestProfile, sizeof(kTestProfile)).AppendTo(profile);
     TestProfile(profile);
   }
 
   // Test substrings of full profile
   {
-    PaddedBytes profile;
+    IccBytes profile;
     for (size_t i = 0; i <= 256; i++) {
       profile.push_back(kTestProfile[i]);
       TestProfile(profile);
@@ -190,10 +197,10 @@ static const unsigned char kEncodedTestProfile[] = {
 
 // Tests that the decoded kEncodedTestProfile matches kTestProfile.
 TEST(IccCodecTest, EncodedIccProfile) {
-  jxl::BitReader reader(jxl::Span<const uint8_t>(kEncodedTestProfile,
-                                                 sizeof(kEncodedTestProfile)));
-  jxl::PaddedBytes dec;
-  ASSERT_TRUE(ReadICC(&reader, &dec));
+  jxl::BitReader reader(
+      jxl::Bytes(kEncodedTestProfile, sizeof(kEncodedTestProfile)));
+  std::vector<uint8_t> dec;
+  ASSERT_TRUE(test::ReadICC(&reader, &dec));
   ASSERT_TRUE(reader.Close());
   EXPECT_EQ(sizeof(kTestProfile), dec.size());
   if (sizeof(kTestProfile) == dec.size()) {

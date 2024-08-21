@@ -163,6 +163,13 @@ NetEqTest::SimulationStepResult NetEqTest::RunToNextGetAudio() {
           absl::make_optional<uint32_t>(packet_data->header.timestamp);
     }
 
+    if (input_->NextSetMinimumDelayInfo().has_value() &&
+        time_now_ms >= input_->NextSetMinimumDelayInfo().value().timestamp_ms) {
+      neteq_->SetBaseMinimumDelayMs(
+          input_->NextSetMinimumDelayInfo().value().delay_ms);
+      input_->AdvanceSetMinimumDelay();
+    }
+
     // Check if it is time to get output audio.
     if (input_->NextOutputEventTime() &&
         time_now_ms >= *input_->NextOutputEventTime()) {
@@ -266,17 +273,8 @@ NetEqTest::SimulationStepResult NetEqTest::RunToNextGetAudio() {
       prev_lifetime_stats_ = lifetime_stats;
       const bool no_more_packets_to_decode =
           !input_->NextPacketTime() && !operations_state.next_packet_available;
-      // End the simulation if the gap is too large. This indicates an issue
-      // with the event log file.
-      const bool simulation_step_too_large = result.simulation_step_ms > 1000;
-      if (simulation_step_too_large) {
-        // If we don't reset the step time, the large gap will be included in
-        // the simulation time, which can be a large distortion.
-        result.simulation_step_ms = 10;
-      }
-      result.is_simulation_finished = simulation_step_too_large ||
-                                      no_more_packets_to_decode ||
-                                      input_->ended();
+      result.is_simulation_finished =
+          no_more_packets_to_decode || input_->ended();
       prev_ops_state_ = operations_state;
       return result;
     }
@@ -306,30 +304,28 @@ NetEqLifetimeStatistics NetEqTest::LifetimeStats() const {
 }
 
 NetEqTest::DecoderMap NetEqTest::StandardDecoderMap() {
-  DecoderMap codecs = {
-    {0, SdpAudioFormat("pcmu", 8000, 1)},
-    {8, SdpAudioFormat("pcma", 8000, 1)},
+  DecoderMap codecs = {{0, SdpAudioFormat("pcmu", 8000, 1)},
+                       {8, SdpAudioFormat("pcma", 8000, 1)},
 #ifdef WEBRTC_CODEC_ILBC
-    {102, SdpAudioFormat("ilbc", 8000, 1)},
+                       {102, SdpAudioFormat("ilbc", 8000, 1)},
 #endif
 #ifdef WEBRTC_CODEC_OPUS
-    {111, SdpAudioFormat("opus", 48000, 2)},
+                       {111, SdpAudioFormat("opus", 48000, 2)},
 #endif
-    {93, SdpAudioFormat("l16", 8000, 1)},
-    {94, SdpAudioFormat("l16", 16000, 1)},
-    {95, SdpAudioFormat("l16", 32000, 1)},
-    {96, SdpAudioFormat("l16", 48000, 1)},
-    {9, SdpAudioFormat("g722", 8000, 1)},
-    {106, SdpAudioFormat("telephone-event", 8000, 1)},
-    {114, SdpAudioFormat("telephone-event", 16000, 1)},
-    {115, SdpAudioFormat("telephone-event", 32000, 1)},
-    {116, SdpAudioFormat("telephone-event", 48000, 1)},
-    {117, SdpAudioFormat("red", 8000, 1)},
-    {13, SdpAudioFormat("cn", 8000, 1)},
-    {98, SdpAudioFormat("cn", 16000, 1)},
-    {99, SdpAudioFormat("cn", 32000, 1)},
-    {100, SdpAudioFormat("cn", 48000, 1)}
-  };
+                       {93, SdpAudioFormat("l16", 8000, 1)},
+                       {94, SdpAudioFormat("l16", 16000, 1)},
+                       {95, SdpAudioFormat("l16", 32000, 1)},
+                       {96, SdpAudioFormat("l16", 48000, 1)},
+                       {9, SdpAudioFormat("g722", 8000, 1)},
+                       {106, SdpAudioFormat("telephone-event", 8000, 1)},
+                       {114, SdpAudioFormat("telephone-event", 16000, 1)},
+                       {115, SdpAudioFormat("telephone-event", 32000, 1)},
+                       {116, SdpAudioFormat("telephone-event", 48000, 1)},
+                       {117, SdpAudioFormat("red", 8000, 1)},
+                       {13, SdpAudioFormat("cn", 8000, 1)},
+                       {98, SdpAudioFormat("cn", 16000, 1)},
+                       {99, SdpAudioFormat("cn", 32000, 1)},
+                       {100, SdpAudioFormat("cn", 48000, 1)}};
   return codecs;
 }
 

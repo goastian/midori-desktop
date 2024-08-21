@@ -1,12 +1,14 @@
+use std::borrow::Cow;
+
 use crate::{encoding_size, Encode, Section, SectionId};
 
 /// A custom section holding arbitrary data.
 #[derive(Clone, Debug)]
 pub struct CustomSection<'a> {
     /// The name of this custom section.
-    pub name: &'a str,
+    pub name: Cow<'a, str>,
     /// This custom section's data.
-    pub data: &'a [u8],
+    pub data: Cow<'a, [u8]>,
 }
 
 impl Encode for CustomSection<'_> {
@@ -14,11 +16,29 @@ impl Encode for CustomSection<'_> {
         let encoded_name_len = encoding_size(u32::try_from(self.name.len()).unwrap());
         (encoded_name_len + self.name.len() + self.data.len()).encode(sink);
         self.name.encode(sink);
-        sink.extend(self.data);
+        sink.extend(&*self.data);
     }
 }
 
 impl Section for CustomSection<'_> {
+    fn id(&self) -> u8 {
+        SectionId::Custom.into()
+    }
+}
+
+/// A raw custom section where the bytes specified contain the leb-encoded
+/// length of the custom section, the custom section's name, and the custom
+/// section's data.
+#[derive(Clone, Debug)]
+pub struct RawCustomSection<'a>(pub &'a [u8]);
+
+impl Encode for RawCustomSection<'_> {
+    fn encode(&self, sink: &mut Vec<u8>) {
+        sink.extend(self.0);
+    }
+}
+
+impl Section for RawCustomSection<'_> {
     fn id(&self) -> u8 {
         SectionId::Custom.into()
     }
@@ -31,8 +51,8 @@ mod tests {
     #[test]
     fn test_custom_section() {
         let custom = CustomSection {
-            name: "test",
-            data: &[11, 22, 33, 44],
+            name: "test".into(),
+            data: Cow::Borrowed(&[11, 22, 33, 44]),
         };
 
         let mut encoded = vec![];

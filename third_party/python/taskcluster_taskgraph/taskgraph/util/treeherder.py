@@ -42,23 +42,46 @@ def replace_group(treeherder_symbol, new_group):
     return join_symbol(new_group, symbol)
 
 
-def inherit_treeherder_from_dep(job, dep_job):
-    """Inherit treeherder defaults from dep_job"""
-    treeherder = job.get("treeherder", {})
+def inherit_treeherder_from_dep(task, dep_task):
+    """Inherit treeherder defaults from dep_task"""
+    treeherder = task.get("treeherder", {})
 
     dep_th_platform = (
-        dep_job.task.get("extra", {})
+        dep_task.task.get("extra", {})
         .get("treeherder", {})
         .get("machine", {})
         .get("platform", "")
     )
     dep_th_collection = list(
-        dep_job.task.get("extra", {}).get("treeherder", {}).get("collection", {}).keys()
+        dep_task.task.get("extra", {})
+        .get("treeherder", {})
+        .get("collection", {})
+        .keys()
     )[0]
     treeherder.setdefault("platform", f"{dep_th_platform}/{dep_th_collection}")
     treeherder.setdefault(
-        "tier", dep_job.task.get("extra", {}).get("treeherder", {}).get("tier", 1)
+        "tier", dep_task.task.get("extra", {}).get("treeherder", {}).get("tier", 1)
     )
     # Does not set symbol
     treeherder.setdefault("kind", "build")
     return treeherder
+
+
+def treeherder_defaults(kind, label):
+    defaults = {
+        # Despite its name, this is expected to be a platform+collection
+        "platform": "default/opt",
+        "tier": 1,
+    }
+    if "build" in kind:
+        defaults["kind"] = "build"
+    elif "test" in kind:
+        defaults["kind"] = "test"
+    else:
+        defaults["kind"] = "other"
+
+    # Takes the uppercased first letter of each part of the kind name, eg:
+    # apple-banana -> AB
+    defaults["symbol"] = "".join([c[0] for c in kind.split("-")]).upper()
+
+    return defaults

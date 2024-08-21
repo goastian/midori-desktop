@@ -4,17 +4,15 @@
 
 // https://drafts.csswg.org/css-syntax/#parsing
 
-use super::{
-    BasicParseError, BasicParseErrorKind, Delimiter, Delimiters, ParseError, Parser, Token,
-};
+use super::{BasicParseError, BasicParseErrorKind, Delimiter, ParseError, Parser, Token};
 use crate::cow_rc_str::CowRcStr;
-use crate::parser::{parse_nested_block, parse_until_after, parse_until_before, ParserState};
+use crate::parser::{parse_nested_block, parse_until_after, ParseUntilErrorBehavior, ParserState};
 
 /// Parse `!important`.
 ///
 /// Typical usage is `input.try_parse(parse_important).is_ok()`
 /// at the end of a `DeclarationParser::parse_value` implementation.
-pub fn parse_important<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseError<'i>> {
+pub fn parse_important<'i>(input: &mut Parser<'i, '_>) -> Result<(), BasicParseError<'i>> {
     input.expect_delim('!')?;
     input.expect_ident_matching("important")
 }
@@ -34,7 +32,7 @@ pub trait DeclarationParser<'i> {
     ///
     /// Return the finished representation for the declaration
     /// as returned by `DeclarationListParser::next`,
-    /// or `Err(())` to ignore the entire declaration as invalid.
+    /// or an `Err(..)` to ignore the entire declaration as invalid.
     ///
     /// Declaration name matching should be case-insensitive in the ASCII range.
     /// This can be done with `std::ascii::Ascii::eq_ignore_ascii_case`,
@@ -78,7 +76,7 @@ pub trait AtRuleParser<'i> {
     /// Parse the prelude of an at-rule with the given `name`.
     ///
     /// Return the representation of the prelude and the type of at-rule,
-    /// or `Err(())` to ignore the entire at-rule as invalid.
+    /// or an `Err(..)` to ignore the entire at-rule as invalid.
     ///
     /// The prelude is the part after the at-keyword
     /// and before the `;` semicolon or `{ /* ... */ }` block.
@@ -106,6 +104,7 @@ pub trait AtRuleParser<'i> {
     /// This is only called when `parse_prelude` returned `WithoutBlock`, and
     /// either the `;` semicolon indeed follows the prelude, or parser is at
     /// the end of the input.
+    #[allow(clippy::result_unit_err)]
     fn rule_without_block(
         &mut self,
         prelude: Self::Prelude,
@@ -122,7 +121,7 @@ pub trait AtRuleParser<'i> {
     ///
     /// Return the finished representation of the at-rule
     /// as returned by `RuleListParser::next` or `DeclarationListParser::next`,
-    /// or `Err(())` to ignore the entire at-rule as invalid.
+    /// or an `Err(..)` to ignore the entire at-rule as invalid.
     ///
     /// This is only called when `parse_prelude` returned `WithBlock`, and a block
     /// was indeed found following the prelude.
@@ -161,7 +160,7 @@ pub trait QualifiedRuleParser<'i> {
     /// Parse the prelude of a qualified rule. For style rules, this is as Selector list.
     ///
     /// Return the representation of the prelude,
-    /// or `Err(())` to ignore the entire at-rule as invalid.
+    /// or an `Err(..)` to ignore the entire at-rule as invalid.
     ///
     /// The prelude is the part before the `{ /* ... */ }` block.
     ///
@@ -180,7 +179,7 @@ pub trait QualifiedRuleParser<'i> {
     ///
     /// Return the finished representation of the qualified rule
     /// as returned by `RuleListParser::next`,
-    /// or `Err(())` to ignore the entire at-rule as invalid.
+    /// or an `Err(..)` to ignore the entire at-rule as invalid.
     fn parse_block<'t>(
         &mut self,
         prelude: Self::Prelude,
@@ -253,10 +252,10 @@ where
             self.input.skip_whitespace();
             let start = self.input.state();
             match self.input.next_including_whitespace_and_comments().ok()? {
-                Token::CloseCurlyBracket |
-                Token::WhiteSpace(..) |
-                Token::Semicolon |
-                Token::Comment(..) => continue,
+                Token::CloseCurlyBracket
+                | Token::WhiteSpace(..)
+                | Token::Semicolon
+                | Token::Comment(..) => continue,
                 Token::AtKeyword(ref name) => {
                     let name = name.clone();
                     return Some(parse_at_rule(&start, name, self.input, &mut *self.parser));
@@ -266,14 +265,25 @@ where
                 // that in a slightly more straight-forward way
                 Token::Ident(ref name) if self.parser.parse_declarations() => {
                     let name = name.clone();
+                    let parse_qualified = self.parser.parse_qualified();
                     let result = {
+                        let error_behavior = if parse_qualified {
+                            ParseUntilErrorBehavior::Stop
+                        } else {
+                            ParseUntilErrorBehavior::Consume
+                        };
                         let parser = &mut self.parser;
-                        parse_until_after(self.input, Delimiter::Semicolon, |input| {
-                            input.expect_colon()?;
-                            parser.parse_value(name, input)
-                        })
+                        parse_until_after(
+                            self.input,
+                            Delimiter::Semicolon,
+                            error_behavior,
+                            |input| {
+                                input.expect_colon()?;
+                                parser.parse_value(name, input)
+                            },
+                        )
                     };
-                    if result.is_err() && self.parser.parse_qualified() {
+                    if result.is_err() && parse_qualified {
                         self.input.reset(&start);
                         // We ignore the resulting error here. The property declaration parse error
                         // is likely to be more relevant.
@@ -281,9 +291,9 @@ where
                             &start,
                             self.input,
                             &mut *self.parser,
-                            Delimiter::Semicolon | Delimiter::CurlyBracketBlock,
+                            /* nested = */ true,
                         ) {
-                            return Some(Ok(qual))
+                            return Some(Ok(qual));
                         }
                     }
 
@@ -292,12 +302,8 @@ where
                 token => {
                     let result = if self.parser.parse_qualified() {
                         self.input.reset(&start);
-                        let delimiters = if self.parser.parse_declarations() {
-                            Delimiter::Semicolon | Delimiter::CurlyBracketBlock
-                        } else {
-                            Delimiter::CurlyBracketBlock
-                        };
-                        parse_qualified_rule(&start, self.input, &mut *self.parser, delimiters)
+                        let nested = self.parser.parse_declarations();
+                        parse_qualified_rule(&start, self.input, &mut *self.parser, nested)
                     } else {
                         let token = token.clone();
                         self.input.parse_until_after(Delimiter::Semicolon, |_| {
@@ -342,7 +348,7 @@ where
     }
 }
 
-/// `RuleListParser` is an iterator that yields `Ok(_)` for a rule or `Err(())` for an invalid one.
+/// `RuleListParser` is an iterator that yields `Ok(_)` for a rule or an `Err(..)` for an invalid one.
 impl<'i, 't, 'a, R, P, E: 'i> Iterator for StyleSheetParser<'i, 't, 'a, P>
 where
     P: QualifiedRuleParser<'i, QualifiedRule = R, Error = E>
@@ -356,7 +362,7 @@ where
             let start = self.input.state();
             let at_keyword = match self.input.next_byte()? {
                 b'@' => match self.input.next_including_whitespace_and_comments() {
-                    Ok(&Token::AtKeyword(ref name)) => Some(name.clone()),
+                    Ok(Token::AtKeyword(name)) => Some(name.clone()),
                     _ => {
                         self.input.reset(&start);
                         None
@@ -386,7 +392,7 @@ where
                     &start,
                     self.input,
                     &mut *self.parser,
-                    Delimiter::CurlyBracketBlock,
+                    /* nested = */ false,
                 );
                 return Some(result.map_err(|e| (e, self.input.slice_from(start.position()))));
             }
@@ -439,7 +445,7 @@ where
         if let Some(name) = at_keyword {
             parse_at_rule(&start, name, input, parser).map_err(|e| e.0)
         } else {
-            parse_qualified_rule(&start, input, parser, Delimiter::CurlyBracketBlock)
+            parse_qualified_rule(&start, input, parser, /* nested = */ false)
         }
     })
 }
@@ -454,7 +460,7 @@ where
     P: AtRuleParser<'i, Error = E>,
 {
     let delimiters = Delimiter::Semicolon | Delimiter::CurlyBracketBlock;
-    let result = parse_until_before(input, delimiters, |input| parser.parse_prelude(name, input));
+    let result = input.parse_until_before(delimiters, |input| parser.parse_prelude(name, input));
     match result {
         Ok(prelude) => {
             let result = match input.next() {
@@ -479,18 +485,54 @@ where
     }
 }
 
+//  If the first two non-<whitespace-token> values of rule’s prelude are an <ident-token> whose
+//  value starts with "--" followed by a <colon-token>, then...
+fn looks_like_a_custom_property(input: &mut Parser) -> bool {
+    let ident = match input.expect_ident() {
+        Ok(i) => i,
+        Err(..) => return false,
+    };
+    ident.starts_with("--") && input.expect_colon().is_ok()
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-a-qualified-rule
 fn parse_qualified_rule<'i, 't, P, E>(
     start: &ParserState,
     input: &mut Parser<'i, 't>,
     parser: &mut P,
-    delimiters: Delimiters,
+    nested: bool,
 ) -> Result<<P as QualifiedRuleParser<'i>>::QualifiedRule, ParseError<'i, E>>
 where
     P: QualifiedRuleParser<'i, Error = E>,
 {
-    let prelude = parse_until_before(input, delimiters, |input| parser.parse_prelude(input));
+    input.skip_whitespace();
+    let prelude = {
+        let state = input.state();
+        if looks_like_a_custom_property(input) {
+            // If nested is true, consume the remnants of a bad declaration from input, with
+            // nested set to true, and return nothing.
+            // If nested is false, consume a block from input, and return nothing.
+            let delimiters = if nested {
+                Delimiter::Semicolon
+            } else {
+                Delimiter::CurlyBracketBlock
+            };
+            let _: Result<(), ParseError<()>> = input.parse_until_after(delimiters, |_| Ok(()));
+            return Err(state
+                .source_location()
+                .new_error(BasicParseErrorKind::QualifiedRuleInvalid));
+        }
+        let delimiters = if nested {
+            Delimiter::Semicolon | Delimiter::CurlyBracketBlock
+        } else {
+            Delimiter::CurlyBracketBlock
+        };
+        input.reset(&state);
+        input.parse_until_before(delimiters, |input| parser.parse_prelude(input))
+    };
+
     input.expect_curly_bracket_block()?;
     // Do this here so that we consume the `{` even if the prelude is `Err`.
     let prelude = prelude?;
-    parse_nested_block(input, |input| parser.parse_block(prelude, &start, input))
+    parse_nested_block(input, |input| parser.parse_block(prelude, start, input))
 }

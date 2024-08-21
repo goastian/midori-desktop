@@ -1,33 +1,26 @@
-use super::server::RelyingPartyWrapper;
 use crate::crypto::{CryptoError, PinUvAuthParam, PinUvAuthToken};
-use crate::ctap2::commands::client_pin::{GetPinRetries, GetUvRetries, Pin, PinError};
+use crate::ctap2::commands::client_pin::{GetPinRetries, GetUvRetries, PinError};
 use crate::ctap2::commands::get_info::AuthenticatorInfo;
 use crate::ctap2::server::UserVerificationRequirement;
 use crate::errors::AuthenticatorError;
 use crate::transport::errors::{ApduErrorStatus, HIDError};
-use crate::transport::FidoDevice;
+use crate::transport::{FidoDevice, VirtualFidoDevice};
 use serde_cbor::{error::Error as CborError, Value};
 use serde_json as json;
 use std::error::Error as StdErrorT;
 use std::fmt;
-use std::io::{Read, Write};
 
-pub(crate) mod client_pin;
-pub(crate) mod get_assertion;
-pub(crate) mod get_info;
-pub(crate) mod get_next_assertion;
-pub(crate) mod get_version;
-pub(crate) mod make_credentials;
-pub(crate) mod reset;
-pub(crate) mod selection;
-
-pub trait Request<T>
-where
-    Self: fmt::Debug,
-    Self: RequestCtap1<Output = T>,
-    Self: RequestCtap2<Output = T>,
-{
-}
+pub mod authenticator_config;
+pub mod bio_enrollment;
+pub mod client_pin;
+pub mod credential_management;
+pub mod get_assertion;
+pub mod get_info;
+pub mod get_next_assertion;
+pub mod get_version;
+pub mod make_credentials;
+pub mod reset;
+pub mod selection;
 
 /// Retryable wraps an error type and may ask manager to retry sending a
 /// command, this is useful for ctap1 where token will reply with "condition not
@@ -55,7 +48,7 @@ impl<T> From<T> for Retryable<T> {
 }
 
 pub trait RequestCtap1: fmt::Debug {
-    type Output;
+    type Output: CtapResponse;
     // E.g.: For GetAssertion, which key-handle is currently being tested
     type AdditionalInfo;
 
@@ -65,32 +58,45 @@ pub trait RequestCtap1: fmt::Debug {
     fn ctap1_format(&self) -> Result<(Vec<u8>, Self::AdditionalInfo), HIDError>;
 
     /// Deserializes a response from FIDO v1.x / CTAP1 / U2Fv2 format.
-    fn handle_response_ctap1(
+    fn handle_response_ctap1<Dev: FidoDevice>(
         &self,
+        dev: &mut Dev,
         status: Result<(), ApduErrorStatus>,
         input: &[u8],
         add_info: &Self::AdditionalInfo,
     ) -> Result<Self::Output, Retryable<HIDError>>;
+
+    fn send_to_virtual_device<Dev: VirtualFidoDevice>(
+        &self,
+        dev: &mut Dev,
+    ) -> Result<Self::Output, HIDError>;
 }
 
 pub trait RequestCtap2: fmt::Debug {
-    type Output;
+    type Output: CtapResponse;
 
-    fn command() -> Command;
+    fn command(&self) -> Command;
 
     fn wire_format(&self) -> Result<Vec<u8>, HIDError>;
 
-    fn handle_response_ctap2<Dev>(
+    fn handle_response_ctap2<Dev: FidoDevice>(
         &self,
         dev: &mut Dev,
         input: &[u8],
-    ) -> Result<Self::Output, HIDError>
-    where
-        Dev: FidoDevice + Read + Write + fmt::Debug;
+    ) -> Result<Self::Output, HIDError>;
+
+    fn send_to_virtual_device<Dev: VirtualFidoDevice>(
+        &self,
+        dev: &mut Dev,
+    ) -> Result<Self::Output, HIDError>;
 }
 
+// Sadly, needs to be 'static to enable us in tests to collect them in a Vec
+// but all of them are 'static, so this is currently no problem.
+pub trait CtapResponse: std::fmt::Debug + 'static {}
+
 #[derive(Debug, Clone)]
-pub(crate) enum PinUvAuthResult {
+pub enum PinUvAuthResult {
     /// Request is CTAP1 and does not need PinUvAuth
     RequestIsCtap1,
     /// Device is not capable of CTAP2
@@ -130,16 +136,13 @@ impl PinUvAuthResult {
 
 /// Helper-trait to determine pin_uv_auth_param from PIN or UV.
 pub(crate) trait PinUvAuthCommand: RequestCtap2 {
-    fn pin(&self) -> &Option<Pin>;
-    fn set_pin(&mut self, pin: Option<Pin>);
     fn set_pin_uv_auth_param(
         &mut self,
         pin_uv_auth_token: Option<PinUvAuthToken>,
     ) -> Result<(), AuthenticatorError>;
     fn get_pin_uv_auth_param(&self) -> Option<&PinUvAuthParam>;
     fn set_uv_option(&mut self, uv: Option<bool>);
-    fn get_uv_option(&mut self) -> Option<bool>;
-    fn get_rp(&self) -> &RelyingPartyWrapper;
+    fn get_rp_id(&self) -> Option<&String>;
     fn can_skip_user_verification(
         &mut self,
         info: &AuthenticatorInfo,
@@ -155,8 +158,10 @@ pub(crate) fn repackage_pin_errors<D: FidoDevice>(
         HIDError::Command(CommandError::StatusCode(StatusCode::PinInvalid, _)) => {
             // If the given PIN was wrong, determine no. of left retries
             let cmd = GetPinRetries::new();
-            let retries = dev.send_cbor(&cmd).ok(); // If we got retries, wrap it in Some, otherwise ignore err
-            AuthenticatorError::PinError(PinError::InvalidPin(retries))
+            // Treat any error as if the device returned a valid response without a pinRetries
+            // field.
+            let resp = dev.send_cbor(&cmd).unwrap_or_default();
+            AuthenticatorError::PinError(PinError::InvalidPin(resp.pin_retries))
         }
         HIDError::Command(CommandError::StatusCode(StatusCode::PinAuthBlocked, _)) => {
             AuthenticatorError::PinError(PinError::PinAuthBlocked)
@@ -176,8 +181,10 @@ pub(crate) fn repackage_pin_errors<D: FidoDevice>(
         HIDError::Command(CommandError::StatusCode(StatusCode::UvInvalid, _)) => {
             // If the internal UV failed, determine no. of left retries
             let cmd = GetUvRetries::new();
-            let retries = dev.send_cbor(&cmd).ok(); // If we got retries, wrap it in Some, otherwise ignore err
-            AuthenticatorError::PinError(PinError::InvalidUv(retries))
+            // Treat any error as if the device returned a valid response without a uvRetries
+            // field.
+            let resp = dev.send_cbor(&cmd).unwrap_or_default();
+            AuthenticatorError::PinError(PinError::InvalidUv(resp.uv_retries))
         }
         HIDError::Command(CommandError::StatusCode(StatusCode::UvBlocked, _)) => {
             AuthenticatorError::PinError(PinError::UvBlocked)
@@ -198,22 +205,12 @@ pub enum Command {
     ClientPin = 0x06,
     Reset = 0x07,
     GetNextAssertion = 0x08,
+    BioEnrollment = 0x09,
+    CredentialManagement = 0x0A,
     Selection = 0x0B,
-}
-
-impl Command {
-    #[cfg(test)]
-    pub fn from_u8(v: u8) -> Option<Command> {
-        match v {
-            0x01 => Some(Command::MakeCredentials),
-            0x02 => Some(Command::GetAssertion),
-            0x04 => Some(Command::GetInfo),
-            0x06 => Some(Command::ClientPin),
-            0x07 => Some(Command::Reset),
-            0x08 => Some(Command::GetNextAssertion),
-            _ => None,
-        }
-    }
+    AuthenticatorConfig = 0x0D,
+    BioEnrollmentPreview = 0x40,
+    CredentialManagementPreview = 0x41,
 }
 
 #[derive(Debug)]

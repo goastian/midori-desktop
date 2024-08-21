@@ -12,6 +12,10 @@ https://github.com/libjxl/libjxl/actions/workflows/fuzz.yml)
 https://github.com/libjxl/libjxl/actions/workflows/release.yaml)
 [![Doc](https://readthedocs.org/projects/libjxl/badge/?version=latest)](
 https://libjxl.readthedocs.io/en/latest/?badge=latest)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/7845/badge)](
+https://www.bestpractices.dev/projects/7845)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/libjxl/libjxl/badge)](
+https://securityscorecards.dev/viewer/?uri=github.com/libjxl/libjxl)
 [![codecov](https://codecov.io/gh/libjxl/libjxl/branch/main/graph/badge.svg)](
 https://codecov.io/gh/libjxl/libjxl)
 
@@ -69,11 +73,14 @@ To decode a JPEG XL file run:
 djxl input.jxl output.png
 ```
 
-When possible `cjxl`/`djxl` are able to read/write the following
-image formats: .exr, .gif, .jpeg/.jpg, .pfm, .pgm/.ppm, .pgx, .png.
+When possible, `cjxl`/`djxl` are able to read/write the following image formats:
+OpenEXR (`.exr`), GIF (`.gif`), JPEG (`.jpg`/`.jpeg`), NetPBM (`.pam`/`.pgm`/`.ppm`),
+Portable FloatMap (`.pfm`), PGX Test Format (`.pgx`), Portable Network Graphics (`.png`),
+Animated PNG (`.png`/`.apng`), and JPEG XL itself (`.jxl`).
+
 Specifically for JPEG files, the default `cjxl` behavior is to apply lossless
 recompression and the default `djxl` behavior is to reconstruct the original
-JPEG file (when the extension of the output file is .jpg).
+JPEG file (when the extension of the output file is `.jpg`).
 
 ### Benchmarking
 

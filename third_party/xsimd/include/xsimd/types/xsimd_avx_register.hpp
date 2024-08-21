@@ -18,7 +18,7 @@ namespace xsimd
 {
 
     /**
-     * @ingroup arch
+     * @ingroup architectures
      *
      * AVX instructions
      */
@@ -26,7 +26,6 @@ namespace xsimd
     {
         static constexpr bool supported() noexcept { return XSIMD_WITH_AVX; }
         static constexpr bool available() noexcept { return true; }
-        static constexpr unsigned version() noexcept { return generic::version(2, 1, 0); }
         static constexpr std::size_t alignment() noexcept { return 32; }
         static constexpr bool requires_alignment() noexcept { return true; }
         static constexpr char const* name() noexcept { return "avx"; }
@@ -42,7 +41,6 @@ namespace xsimd
     namespace types
     {
 
-        XSIMD_DECLARE_SIMD_REGISTER(bool, avx, __m256i);
         XSIMD_DECLARE_SIMD_REGISTER(signed char, avx, __m256i);
         XSIMD_DECLARE_SIMD_REGISTER(unsigned char, avx, __m256i);
         XSIMD_DECLARE_SIMD_REGISTER(char, avx, __m256i);

@@ -1,22 +1,29 @@
+#[cfg(feature = "trace")]
+use crate::device::trace;
 use crate::{
-    device::{DeviceError, MissingDownlevelFlags, MissingFeatures, SHADER_STAGE_COUNT},
+    device::{
+        bgl, Device, DeviceError, MissingDownlevelFlags, MissingFeatures, SHADER_STAGE_COUNT,
+    },
     error::{ErrorFormatter, PrettyError},
-    hub::{HalApi, Resource},
-    id::{BindGroupLayoutId, BufferId, DeviceId, SamplerId, TextureId, TextureViewId, Valid},
+    hal_api::HalApi,
+    id::{BindGroupLayoutId, BufferId, SamplerId, TextureId, TextureViewId},
     init_tracker::{BufferInitTrackerAction, TextureInitTrackerAction},
+    resource::{Resource, ResourceInfo, ResourceType},
+    resource_log,
+    snatch::{SnatchGuard, Snatchable},
     track::{BindGroupStates, UsageConflict},
     validation::{MissingBufferUsageError, MissingTextureUsageError},
-    FastHashMap, Label, LifeGuard, MultiRefCount, Stored,
+    Label,
 };
 
 use arrayvec::ArrayVec;
 
-#[cfg(feature = "replay")]
+#[cfg(feature = "serde")]
 use serde::Deserialize;
-#[cfg(feature = "trace")]
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-use std::{borrow::Cow, ops::Range};
+use std::{borrow::Cow, ops::Range, sync::Arc};
 
 use thiserror::Error;
 
@@ -31,6 +38,8 @@ pub enum BindGroupLayoutEntryError {
     ArrayUnsupported,
     #[error("Multisampled binding with sample type `TextureSampleType::Float` must have filterable set to false.")]
     SampleTypeFloatFilterableBindingMultisampled,
+    #[error("Multisampled texture binding view dimension must be 2d, got {0:?}")]
+    Non2DMultisampled(wgt::TextureViewDimension),
     #[error(transparent)]
     MissingFeatures(#[from] MissingFeatures),
     #[error(transparent)]
@@ -212,7 +221,7 @@ pub enum BindingZone {
 }
 
 #[derive(Clone, Debug, Error)]
-#[error("Too many bindings of type {kind:?} in {zone}, limit is {limit}, count was {count}")]
+#[error("Too many bindings of type {kind:?} in {zone}, limit is {limit}, count was {count}. Check the limit `{}` passed to `Adapter::request_device`", .kind.to_config_str())]
 pub struct BindingTypeMaxCountError {
     pub kind: BindingTypeMaxCountErrorKind,
     pub zone: BindingZone,
@@ -229,6 +238,28 @@ pub enum BindingTypeMaxCountErrorKind {
     StorageBuffers,
     StorageTextures,
     UniformBuffers,
+}
+
+impl BindingTypeMaxCountErrorKind {
+    fn to_config_str(&self) -> &'static str {
+        match self {
+            BindingTypeMaxCountErrorKind::DynamicUniformBuffers => {
+                "max_dynamic_uniform_buffers_per_pipeline_layout"
+            }
+            BindingTypeMaxCountErrorKind::DynamicStorageBuffers => {
+                "max_dynamic_storage_buffers_per_pipeline_layout"
+            }
+            BindingTypeMaxCountErrorKind::SampledTextures => {
+                "max_sampled_textures_per_shader_stage"
+            }
+            BindingTypeMaxCountErrorKind::Samplers => "max_samplers_per_shader_stage",
+            BindingTypeMaxCountErrorKind::StorageBuffers => "max_storage_buffers_per_shader_stage",
+            BindingTypeMaxCountErrorKind::StorageTextures => {
+                "max_storage_textures_per_shader_stage"
+            }
+            BindingTypeMaxCountErrorKind::UniformBuffers => "max_uniform_buffers_per_shader_stage",
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -335,6 +366,7 @@ impl BindingTypeMaxCountValidator {
             wgt::BindingType::StorageTexture { .. } => {
                 self.storage_textures.add(binding.visibility, count);
             }
+            wgt::BindingType::AccelerationStructure => todo!(),
         }
     }
 
@@ -395,8 +427,7 @@ impl BindingTypeMaxCountValidator {
 
 /// Bindable resource and the slot to bind it to.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BindGroupEntry<'a> {
     /// Slot for which binding provides resource. Corresponds to an entry of the same
     /// binding index in the [`BindGroupLayoutDescriptor`].
@@ -407,8 +438,7 @@ pub struct BindGroupEntry<'a> {
 
 /// Describes a group of bindings and the resources to be bound.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BindGroupDescriptor<'a> {
     /// Debug label of the bind group.
     ///
@@ -422,8 +452,7 @@ pub struct BindGroupDescriptor<'a> {
 
 /// Describes a [`BindGroupLayout`].
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BindGroupLayoutDescriptor<'a> {
     /// Debug label of the bind group layout.
     ///
@@ -433,41 +462,65 @@ pub struct BindGroupLayoutDescriptor<'a> {
     pub entries: Cow<'a, [wgt::BindGroupLayoutEntry]>,
 }
 
-pub(crate) type BindEntryMap = FastHashMap<u32, wgt::BindGroupLayoutEntry>;
-
 /// Bind group layout.
-///
-/// The lifetime of BGLs is a bit special. They are only referenced on CPU
-/// without considering GPU operations. And on CPU they get manual
-/// inc-refs and dec-refs. In particular, the following objects depend on them:
-///  - produced bind groups
-///  - produced pipeline layouts
-///  - pipelines with implicit layouts
 #[derive(Debug)]
-pub struct BindGroupLayout<A: hal::Api> {
-    pub(crate) raw: A::BindGroupLayout,
-    pub(crate) device_id: Stored<DeviceId>,
-    pub(crate) multi_ref_count: MultiRefCount,
-    pub(crate) entries: BindEntryMap,
+pub struct BindGroupLayout<A: HalApi> {
+    pub(crate) raw: Option<A::BindGroupLayout>,
+    pub(crate) device: Arc<Device<A>>,
+    pub(crate) entries: bgl::EntryMap,
+    /// It is very important that we know if the bind group comes from the BGL pool.
+    ///
+    /// If it does, then we need to remove it from the pool when we drop it.
+    ///
+    /// We cannot unconditionally remove from the pool, as BGLs that don't come from the pool
+    /// (derived BGLs) must not be removed.
+    pub(crate) origin: bgl::Origin,
     #[allow(unused)]
-    pub(crate) dynamic_count: usize,
-    pub(crate) count_validator: BindingTypeMaxCountValidator,
-    #[cfg(debug_assertions)]
+    pub(crate) binding_count_validator: BindingTypeMaxCountValidator,
+    pub(crate) info: ResourceInfo<BindGroupLayout<A>>,
     pub(crate) label: String,
 }
 
-impl<A: hal::Api> Resource for BindGroupLayout<A> {
-    const TYPE: &'static str = "BindGroupLayout";
+impl<A: HalApi> Drop for BindGroupLayout<A> {
+    fn drop(&mut self) {
+        if matches!(self.origin, bgl::Origin::Pool) {
+            self.device.bgl_pool.remove(&self.entries);
+        }
+        if let Some(raw) = self.raw.take() {
+            #[cfg(feature = "trace")]
+            if let Some(t) = self.device.trace.lock().as_mut() {
+                t.add(trace::Action::DestroyBindGroupLayout(self.info.id()));
+            }
 
-    fn life_guard(&self) -> &LifeGuard {
-        unreachable!()
+            resource_log!("Destroy raw BindGroupLayout {:?}", self.info.label());
+            unsafe {
+                use hal::Device;
+                self.device.raw().destroy_bind_group_layout(raw);
+            }
+        }
+    }
+}
+
+impl<A: HalApi> Resource for BindGroupLayout<A> {
+    const TYPE: ResourceType = "BindGroupLayout";
+
+    type Marker = crate::id::markers::BindGroupLayout;
+
+    fn as_info(&self) -> &ResourceInfo<Self> {
+        &self.info
+    }
+
+    fn as_info_mut(&mut self) -> &mut ResourceInfo<Self> {
+        &mut self.info
     }
 
     fn label(&self) -> &str {
-        #[cfg(debug_assertions)]
-        return &self.label;
-        #[cfg(not(debug_assertions))]
-        return "";
+        &self.label
+    }
+}
+impl<A: HalApi> BindGroupLayout<A> {
+    pub(crate) fn raw(&self) -> &A::BindGroupLayout {
+        self.raw.as_ref().unwrap()
     }
 }
 
@@ -547,10 +600,9 @@ pub enum PushConstantUploadError {
 ///
 /// A `PipelineLayoutDescriptor` can be used to create a pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PipelineLayoutDescriptor<'a> {
-    /// Debug label of the pipeine layout.
+    /// Debug label of the pipeline layout.
     ///
     /// This will show up in graphics debuggers for easy identification.
     pub label: Label<'a>,
@@ -568,15 +620,44 @@ pub struct PipelineLayoutDescriptor<'a> {
 }
 
 #[derive(Debug)]
-pub struct PipelineLayout<A: hal::Api> {
-    pub(crate) raw: A::PipelineLayout,
-    pub(crate) device_id: Stored<DeviceId>,
-    pub(crate) life_guard: LifeGuard,
-    pub(crate) bind_group_layout_ids: ArrayVec<Valid<BindGroupLayoutId>, { hal::MAX_BIND_GROUPS }>,
+pub struct PipelineLayout<A: HalApi> {
+    pub(crate) raw: Option<A::PipelineLayout>,
+    pub(crate) device: Arc<Device<A>>,
+    pub(crate) info: ResourceInfo<PipelineLayout<A>>,
+    pub(crate) bind_group_layouts: ArrayVec<Arc<BindGroupLayout<A>>, { hal::MAX_BIND_GROUPS }>,
     pub(crate) push_constant_ranges: ArrayVec<wgt::PushConstantRange, { SHADER_STAGE_COUNT }>,
 }
 
-impl<A: hal::Api> PipelineLayout<A> {
+impl<A: HalApi> Drop for PipelineLayout<A> {
+    fn drop(&mut self) {
+        if let Some(raw) = self.raw.take() {
+            resource_log!("Destroy raw PipelineLayout {:?}", self.info.label());
+
+            #[cfg(feature = "trace")]
+            if let Some(t) = self.device.trace.lock().as_mut() {
+                t.add(trace::Action::DestroyPipelineLayout(self.info.id()));
+            }
+
+            unsafe {
+                use hal::Device;
+                self.device.raw().destroy_pipeline_layout(raw);
+            }
+        }
+    }
+}
+
+impl<A: HalApi> PipelineLayout<A> {
+    pub(crate) fn raw(&self) -> &A::PipelineLayout {
+        self.raw.as_ref().unwrap()
+    }
+
+    pub(crate) fn get_binding_maps(&self) -> ArrayVec<&bgl::EntryMap, { hal::MAX_BIND_GROUPS }> {
+        self.bind_group_layouts
+            .iter()
+            .map(|bgl| &bgl.entries)
+            .collect()
+    }
+
     /// Validate push constants match up with expected ranges.
     pub(crate) fn validate_push_constant_ranges(
         &self,
@@ -656,18 +737,23 @@ impl<A: hal::Api> PipelineLayout<A> {
     }
 }
 
-impl<A: hal::Api> Resource for PipelineLayout<A> {
-    const TYPE: &'static str = "PipelineLayout";
+impl<A: HalApi> Resource for PipelineLayout<A> {
+    const TYPE: ResourceType = "PipelineLayout";
 
-    fn life_guard(&self) -> &LifeGuard {
-        &self.life_guard
+    type Marker = crate::id::markers::PipelineLayout;
+
+    fn as_info(&self) -> &ResourceInfo<Self> {
+        &self.info
+    }
+
+    fn as_info_mut(&mut self) -> &mut ResourceInfo<Self> {
+        &mut self.info
     }
 }
 
 #[repr(C)]
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "trace", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BufferBinding {
     pub buffer_id: BufferId,
     pub offset: wgt::BufferAddress,
@@ -677,8 +763,7 @@ pub struct BufferBinding {
 // Note: Duplicated in `wgpu-rs` as `BindingResource`
 // They're different enough that it doesn't make sense to share a common type
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "trace", derive(serde::Serialize))]
-#[cfg_attr(feature = "replay", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BindingResource<'a> {
     Buffer(BufferBinding),
     BufferArray(Cow<'a, [BufferBinding]>),
@@ -763,21 +848,51 @@ pub(crate) fn buffer_binding_type_alignment(
     }
 }
 
+#[derive(Debug)]
 pub struct BindGroup<A: HalApi> {
-    pub(crate) raw: A::BindGroup,
-    pub(crate) device_id: Stored<DeviceId>,
-    pub(crate) layout_id: Valid<BindGroupLayoutId>,
-    pub(crate) life_guard: LifeGuard,
+    pub(crate) raw: Snatchable<A::BindGroup>,
+    pub(crate) device: Arc<Device<A>>,
+    pub(crate) layout: Arc<BindGroupLayout<A>>,
+    pub(crate) info: ResourceInfo<BindGroup<A>>,
     pub(crate) used: BindGroupStates<A>,
-    pub(crate) used_buffer_ranges: Vec<BufferInitTrackerAction>,
-    pub(crate) used_texture_ranges: Vec<TextureInitTrackerAction>,
+    pub(crate) used_buffer_ranges: Vec<BufferInitTrackerAction<A>>,
+    pub(crate) used_texture_ranges: Vec<TextureInitTrackerAction<A>>,
     pub(crate) dynamic_binding_info: Vec<BindGroupDynamicBindingData>,
     /// Actual binding sizes for buffers that don't have `min_binding_size`
     /// specified in BGL. Listed in the order of iteration of `BGL.entries`.
     pub(crate) late_buffer_binding_sizes: Vec<wgt::BufferSize>,
 }
 
+impl<A: HalApi> Drop for BindGroup<A> {
+    fn drop(&mut self) {
+        if let Some(raw) = self.raw.take() {
+            resource_log!("Destroy raw BindGroup {:?}", self.info.label());
+
+            #[cfg(feature = "trace")]
+            if let Some(t) = self.device.trace.lock().as_mut() {
+                t.add(trace::Action::DestroyBindGroup(self.info.id()));
+            }
+
+            unsafe {
+                use hal::Device;
+                self.device.raw().destroy_bind_group(raw);
+            }
+        }
+    }
+}
+
 impl<A: HalApi> BindGroup<A> {
+    pub(crate) fn raw(&self, guard: &SnatchGuard) -> Option<&A::BindGroup> {
+        // Clippy insist on writing it this way. The idea is to return None
+        // if any of the raw buffer is not valid anymore.
+        for buffer in &self.used_buffer_ranges {
+            let _ = buffer.buffer.raw(guard)?;
+        }
+        for texture in &self.used_texture_ranges {
+            let _ = texture.texture.raw(guard)?;
+        }
+        self.raw.get(guard)
+    }
     pub(crate) fn validate_dynamic_bindings(
         &self,
         bind_group_index: u32,
@@ -828,10 +943,16 @@ impl<A: HalApi> BindGroup<A> {
 }
 
 impl<A: HalApi> Resource for BindGroup<A> {
-    const TYPE: &'static str = "BindGroup";
+    const TYPE: ResourceType = "BindGroup";
 
-    fn life_guard(&self) -> &LifeGuard {
-        &self.life_guard
+    type Marker = crate::id::markers::BindGroup;
+
+    fn as_info(&self) -> &ResourceInfo<Self> {
+        &self.info
+    }
+
+    fn as_info_mut(&mut self) -> &mut ResourceInfo<Self> {
+        &mut self.info
     }
 }
 

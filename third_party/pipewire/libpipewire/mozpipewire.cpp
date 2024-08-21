@@ -59,6 +59,7 @@ struct pw_context * (*pw_context_new_fn)(struct pw_loop *main_loop,
                                       size_t user_data_size);
 static int (*pw_core_disconnect_fn)(struct pw_core *core);
 static void (*pw_init_fn)(int *argc, char **argv[]);
+static void (*pw_proxy_destroy_fn)(struct pw_proxy *proxy);
 static void (*pw_stream_add_listener_fn)(struct pw_stream *stream,
                                       struct spa_hook *listener,
                                       const struct pw_stream_events *events,
@@ -78,6 +79,7 @@ static struct pw_stream* (*pw_stream_new_fn)(struct pw_core *core,
 
 static int (*pw_stream_queue_buffer_fn)(struct pw_stream *stream,
                                      struct pw_buffer *buffer);
+static const char * (*pw_stream_state_as_string_fn)(enum pw_stream_state state);
 static int (*pw_stream_update_params_fn)(struct pw_stream *stream,
                                       const struct spa_pod **params,
                                       uint32_t n_params);
@@ -102,6 +104,7 @@ bool IsPwLibraryLoaded() {
           IS_FUNC_LOADED(pw_context_new_fn) &&
           IS_FUNC_LOADED(pw_core_disconnect_fn) &&
           IS_FUNC_LOADED(pw_init_fn) &&
+          IS_FUNC_LOADED(pw_proxy_destroy_fn) &&
           IS_FUNC_LOADED(pw_stream_add_listener_fn) &&
           IS_FUNC_LOADED(pw_stream_connect_fn) &&
           IS_FUNC_LOADED(pw_stream_disconnect_fn) &&
@@ -109,6 +112,7 @@ bool IsPwLibraryLoaded() {
           IS_FUNC_LOADED(pw_stream_destroy_fn) &&
           IS_FUNC_LOADED(pw_stream_new_fn) &&
           IS_FUNC_LOADED(pw_stream_queue_buffer_fn) &&
+          IS_FUNC_LOADED(pw_stream_state_as_string_fn) &&
           IS_FUNC_LOADED(pw_stream_update_params_fn) &&
           IS_FUNC_LOADED(pw_thread_loop_destroy_fn) &&
           IS_FUNC_LOADED(pw_thread_loop_get_loop_fn) &&
@@ -151,6 +155,7 @@ bool LoadPWLibrary() {
     GET_FUNC(pw_stream_new, pwLib);
     GET_FUNC(pw_stream_queue_buffer, pwLib);
     GET_FUNC(pw_stream_update_params, pwLib);
+    GET_FUNC(pw_stream_state_as_string, pwLib);
     GET_FUNC(pw_thread_loop_destroy, pwLib);
     GET_FUNC(pw_thread_loop_get_loop, pwLib);
     GET_FUNC(pw_thread_loop_new, pwLib);
@@ -162,6 +167,7 @@ bool LoadPWLibrary() {
     GET_FUNC(pw_thread_loop_wait, pwLib);
     GET_FUNC(pw_properties_new_string, pwLib);
     GET_FUNC(pw_get_library_version, pwLib);
+    GET_FUNC(pw_proxy_destroy, pwLib);
   }
 
   return IsPwLibraryLoaded();
@@ -226,6 +232,15 @@ pw_init(int *argc, char **argv[])
     return;
   }
   return pw_init_fn(argc, argv);
+}
+
+void
+pw_proxy_destroy(struct pw_proxy *proxy)
+{
+  if (!LoadPWLibrary()) {
+    return;
+  }
+  return pw_proxy_destroy_fn(proxy);
 }
 
 void
@@ -301,6 +316,15 @@ pw_stream_queue_buffer(struct pw_stream *stream,
     return 0;
   }
   return pw_stream_queue_buffer_fn(stream, buffer);
+}
+
+const char *
+pw_stream_state_as_string(enum pw_stream_state state)
+{
+  if (!LoadPWLibrary()) {
+    return nullptr;
+  }
+  return pw_stream_state_as_string_fn(state);
 }
 
 int

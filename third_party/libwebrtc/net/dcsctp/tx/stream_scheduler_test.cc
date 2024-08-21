@@ -19,9 +19,11 @@ namespace dcsctp {
 namespace {
 using ::testing::Return;
 using ::testing::StrictMock;
+using ::webrtc::Timestamp;
 
 constexpr size_t kMtu = 1000;
 constexpr size_t kPayloadSize = 4;
+constexpr Timestamp kNow = Timestamp::Zero();
 
 MATCHER_P(HasDataWithMid, mid, "") {
   if (!arg.has_value()) {
@@ -29,8 +31,8 @@ MATCHER_P(HasDataWithMid, mid, "") {
     return false;
   }
 
-  if (arg->data.message_id != mid) {
-    *result_listener << "the produced data had mid " << *arg->data.message_id
+  if (arg->data.mid != mid) {
+    *result_listener << "the produced data had mid " << *arg->data.mid
                      << " and not the expected " << *mid;
     return false;
   }
@@ -38,12 +40,17 @@ MATCHER_P(HasDataWithMid, mid, "") {
   return true;
 }
 
-std::function<absl::optional<SendQueue::DataToSend>(TimeMs, size_t)>
-CreateChunk(StreamID sid, MID mid, size_t payload_size = kPayloadSize) {
-  return [sid, mid, payload_size](TimeMs now, size_t max_size) {
-    return SendQueue::DataToSend(Data(
-        sid, SSN(0), mid, FSN(0), PPID(42), std::vector<uint8_t>(payload_size),
-        Data::IsBeginning(true), Data::IsEnd(true), IsUnordered(true)));
+std::function<absl::optional<SendQueue::DataToSend>(Timestamp, size_t)>
+CreateChunk(OutgoingMessageId message_id,
+            StreamID sid,
+            MID mid,
+            size_t payload_size = kPayloadSize) {
+  return [sid, mid, payload_size, message_id](Timestamp now, size_t max_size) {
+    return SendQueue::DataToSend(
+        message_id,
+        Data(sid, SSN(0), mid, FSN(0), PPID(42),
+             std::vector<uint8_t>(payload_size), Data::IsBeginning(true),
+             Data::IsEnd(true), IsUnordered(true)));
   };
 }
 
@@ -51,8 +58,7 @@ std::map<StreamID, size_t> GetPacketCounts(StreamScheduler& scheduler,
                                            size_t packets_to_generate) {
   std::map<StreamID, size_t> packet_counts;
   for (size_t i = 0; i < packets_to_generate; ++i) {
-    absl::optional<SendQueue::DataToSend> data =
-        scheduler.Produce(TimeMs(0), kMtu);
+    absl::optional<SendQueue::DataToSend> data = scheduler.Produce(kNow, kMtu);
     if (data.has_value()) {
       ++packet_counts[data->data.stream_id];
     }
@@ -64,7 +70,7 @@ class MockStreamProducer : public StreamScheduler::StreamProducer {
  public:
   MOCK_METHOD(absl::optional<SendQueue::DataToSend>,
               Produce,
-              (TimeMs, size_t),
+              (Timestamp, size_t),
               (override));
   MOCK_METHOD(size_t, bytes_to_send_in_next_message, (), (const, override));
 };
@@ -76,7 +82,8 @@ class TestStream {
              StreamPriority priority,
              size_t packet_size = kPayloadSize) {
     EXPECT_CALL(producer_, Produce)
-        .WillRepeatedly(CreateChunk(stream_id, MID(0), packet_size));
+        .WillRepeatedly(
+            CreateChunk(OutgoingMessageId(0), stream_id, MID(0), packet_size));
     EXPECT_CALL(producer_, bytes_to_send_in_next_message)
         .WillRepeatedly(Return(packet_size));
     stream_ = scheduler.CreateStream(&producer_, stream_id, priority);
@@ -92,14 +99,14 @@ class TestStream {
 
 // A scheduler without active streams doesn't produce data.
 TEST(StreamSchedulerTest, HasNoActiveStreams) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Stream properties can be set and retrieved
 TEST(StreamSchedulerTest, CanSetAndGetStreamProperties) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer;
   auto stream =
@@ -114,10 +121,11 @@ TEST(StreamSchedulerTest, CanSetAndGetStreamProperties) {
 
 // A scheduler with a single stream produced packets from it.
 TEST(StreamSchedulerTest, CanProduceFromSingleStream) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer;
-  EXPECT_CALL(producer, Produce).WillOnce(CreateChunk(StreamID(1), MID(0)));
+  EXPECT_CALL(producer, Produce)
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(0)));
   EXPECT_CALL(producer, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(0));
@@ -125,19 +133,19 @@ TEST(StreamSchedulerTest, CanProduceFromSingleStream) {
       scheduler.CreateStream(&producer, StreamID(1), StreamPriority(2));
   stream->MaybeMakeActive();
 
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(0)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(0)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Switches between two streams after every packet.
 TEST(StreamSchedulerTest, WillRoundRobinBetweenStreams) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer1;
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100)))
-      .WillOnce(CreateChunk(StreamID(1), MID(101)))
-      .WillOnce(CreateChunk(StreamID(1), MID(102)));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100)))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101)))
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102)));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -149,9 +157,9 @@ TEST(StreamSchedulerTest, WillRoundRobinBetweenStreams) {
 
   StrictMock<MockStreamProducer> producer2;
   EXPECT_CALL(producer2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(200)))
-      .WillOnce(CreateChunk(StreamID(2), MID(201)))
-      .WillOnce(CreateChunk(StreamID(2), MID(202)));
+      .WillOnce(CreateChunk(OutgoingMessageId(4), StreamID(2), MID(200)))
+      .WillOnce(CreateChunk(OutgoingMessageId(5), StreamID(2), MID(201)))
+      .WillOnce(CreateChunk(OutgoingMessageId(6), StreamID(2), MID(202)));
   EXPECT_CALL(producer2, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -161,42 +169,45 @@ TEST(StreamSchedulerTest, WillRoundRobinBetweenStreams) {
       scheduler.CreateStream(&producer2, StreamID(2), StreamPriority(2));
   stream2->MaybeMakeActive();
 
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(200)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(201)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(202)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(200)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(201)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(202)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Switches between two streams after every packet, but keeps producing from the
 // same stream when a packet contains of multiple fragments.
 TEST(StreamSchedulerTest, WillRoundRobinOnlyWhenFinishedProducingChunk) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer1;
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100)))
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100)))
       .WillOnce([](...) {
         return SendQueue::DataToSend(
+            OutgoingMessageId(1),
             Data(StreamID(1), SSN(0), MID(101), FSN(0), PPID(42),
                  std::vector<uint8_t>(4), Data::IsBeginning(true),
                  Data::IsEnd(false), IsUnordered(true)));
       })
       .WillOnce([](...) {
         return SendQueue::DataToSend(
+            OutgoingMessageId(1),
             Data(StreamID(1), SSN(0), MID(101), FSN(0), PPID(42),
                  std::vector<uint8_t>(4), Data::IsBeginning(false),
                  Data::IsEnd(false), IsUnordered(true)));
       })
       .WillOnce([](...) {
         return SendQueue::DataToSend(
+            OutgoingMessageId(1),
             Data(StreamID(1), SSN(0), MID(101), FSN(0), PPID(42),
                  std::vector<uint8_t>(4), Data::IsBeginning(false),
                  Data::IsEnd(true), IsUnordered(true)));
       })
-      .WillOnce(CreateChunk(StreamID(1), MID(102)));
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102)));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -210,9 +221,9 @@ TEST(StreamSchedulerTest, WillRoundRobinOnlyWhenFinishedProducingChunk) {
 
   StrictMock<MockStreamProducer> producer2;
   EXPECT_CALL(producer2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(200)))
-      .WillOnce(CreateChunk(StreamID(2), MID(201)))
-      .WillOnce(CreateChunk(StreamID(2), MID(202)));
+      .WillOnce(CreateChunk(OutgoingMessageId(3), StreamID(2), MID(200)))
+      .WillOnce(CreateChunk(OutgoingMessageId(4), StreamID(2), MID(201)))
+      .WillOnce(CreateChunk(OutgoingMessageId(5), StreamID(2), MID(202)));
   EXPECT_CALL(producer2, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -222,25 +233,25 @@ TEST(StreamSchedulerTest, WillRoundRobinOnlyWhenFinishedProducingChunk) {
       scheduler.CreateStream(&producer2, StreamID(2), StreamPriority(2));
   stream2->MaybeMakeActive();
 
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(200)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(201)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(202)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(200)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(201)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(202)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Deactivates a stream before it has finished producing all packets.
 TEST(StreamSchedulerTest, StreamsCanBeMadeInactive) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer1;
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100)))
-      .WillOnce(CreateChunk(StreamID(1), MID(101)));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100)))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101)));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -249,24 +260,24 @@ TEST(StreamSchedulerTest, StreamsCanBeMadeInactive) {
       scheduler.CreateStream(&producer1, StreamID(1), StreamPriority(2));
   stream1->MaybeMakeActive();
 
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
 
   // ... but the stream is made inactive before it can be produced.
   stream1->MakeInactive();
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Resumes a paused stream - makes a stream active after inactivating it.
 TEST(StreamSchedulerTest, SingleStreamCanBeResumed) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer1;
   // Callbacks are setup so that they hint that there is a MID(2) coming...
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100)))
-      .WillOnce(CreateChunk(StreamID(1), MID(101)))
-      .WillOnce(CreateChunk(StreamID(1), MID(102)));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100)))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101)))
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102)));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -277,25 +288,25 @@ TEST(StreamSchedulerTest, SingleStreamCanBeResumed) {
       scheduler.CreateStream(&producer1, StreamID(1), StreamPriority(2));
   stream1->MaybeMakeActive();
 
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
 
   stream1->MakeInactive();
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
   stream1->MaybeMakeActive();
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Iterates between streams, where one is suddenly paused and later resumed.
 TEST(StreamSchedulerTest, WillRoundRobinWithPausedStream) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
 
   StrictMock<MockStreamProducer> producer1;
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100)))
-      .WillOnce(CreateChunk(StreamID(1), MID(101)))
-      .WillOnce(CreateChunk(StreamID(1), MID(102)));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100)))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101)))
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102)));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -308,9 +319,9 @@ TEST(StreamSchedulerTest, WillRoundRobinWithPausedStream) {
 
   StrictMock<MockStreamProducer> producer2;
   EXPECT_CALL(producer2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(200)))
-      .WillOnce(CreateChunk(StreamID(2), MID(201)))
-      .WillOnce(CreateChunk(StreamID(2), MID(202)));
+      .WillOnce(CreateChunk(OutgoingMessageId(3), StreamID(2), MID(200)))
+      .WillOnce(CreateChunk(OutgoingMessageId(4), StreamID(2), MID(201)))
+      .WillOnce(CreateChunk(OutgoingMessageId(5), StreamID(2), MID(202)));
   EXPECT_CALL(producer2, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -320,20 +331,20 @@ TEST(StreamSchedulerTest, WillRoundRobinWithPausedStream) {
       scheduler.CreateStream(&producer2, StreamID(2), StreamPriority(2));
   stream2->MaybeMakeActive();
 
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(200)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(200)));
   stream1->MakeInactive();
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(201)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(202)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(201)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(202)));
   stream1->MaybeMakeActive();
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Verifies that packet counts are evenly distributed in round robin scheduling.
 TEST(StreamSchedulerTest, WillDistributeRoundRobinPacketsEvenlyTwoStreams) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   TestStream stream1(scheduler, StreamID(1), StreamPriority(1));
   TestStream stream2(scheduler, StreamID(2), StreamPriority(1));
 
@@ -346,7 +357,7 @@ TEST(StreamSchedulerTest, WillDistributeRoundRobinPacketsEvenlyTwoStreams) {
 // where a stream is suddenly made inactive, two are added, and then the paused
 // stream is resumed.
 TEST(StreamSchedulerTest, WillDistributeEvenlyWithPausedAndAddedStreams) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   TestStream stream1(scheduler, StreamID(1), StreamPriority(1));
   TestStream stream2(scheduler, StreamID(2), StreamPriority(1));
 
@@ -376,7 +387,7 @@ TEST(StreamSchedulerTest, WillDistributeEvenlyWithPausedAndAddedStreams) {
 
 // Degrades to fair queuing with streams having identical priority.
 TEST(StreamSchedulerTest, WillDoFairQueuingWithSamePriority) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   scheduler.EnableMessageInterleaving(true);
 
   constexpr size_t kSmallPacket = 30;
@@ -384,9 +395,12 @@ TEST(StreamSchedulerTest, WillDoFairQueuingWithSamePriority) {
 
   StrictMock<MockStreamProducer> callback1;
   EXPECT_CALL(callback1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100), kSmallPacket))
-      .WillOnce(CreateChunk(StreamID(1), MID(101), kSmallPacket))
-      .WillOnce(CreateChunk(StreamID(1), MID(102), kSmallPacket));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100),
+                            kSmallPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101),
+                            kSmallPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102),
+                            kSmallPacket));
   EXPECT_CALL(callback1, bytes_to_send_in_next_message)
       .WillOnce(Return(kSmallPacket))  // When making active
       .WillOnce(Return(kSmallPacket))
@@ -398,9 +412,12 @@ TEST(StreamSchedulerTest, WillDoFairQueuingWithSamePriority) {
 
   StrictMock<MockStreamProducer> callback2;
   EXPECT_CALL(callback2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(200), kLargePacket))
-      .WillOnce(CreateChunk(StreamID(2), MID(201), kLargePacket))
-      .WillOnce(CreateChunk(StreamID(2), MID(202), kLargePacket));
+      .WillOnce(CreateChunk(OutgoingMessageId(3), StreamID(2), MID(200),
+                            kLargePacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(4), StreamID(2), MID(201),
+                            kLargePacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(5), StreamID(2), MID(202),
+                            kLargePacket));
   EXPECT_CALL(callback2, bytes_to_send_in_next_message)
       .WillOnce(Return(kLargePacket))  // When making active
       .WillOnce(Return(kLargePacket))
@@ -411,30 +428,30 @@ TEST(StreamSchedulerTest, WillDoFairQueuingWithSamePriority) {
   stream2->MaybeMakeActive();
 
   // t = 30
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
   // t = 60
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
   // t = 70
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(200)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(200)));
   // t = 90
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
   // t = 140
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(201)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(201)));
   // t = 210
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(202)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(202)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Will do weighted fair queuing with three streams having different priority.
 TEST(StreamSchedulerTest, WillDoWeightedFairQueuingSameSizeDifferentPriority) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   scheduler.EnableMessageInterleaving(true);
 
   StrictMock<MockStreamProducer> callback1;
   EXPECT_CALL(callback1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(100)))
-      .WillOnce(CreateChunk(StreamID(1), MID(101)))
-      .WillOnce(CreateChunk(StreamID(1), MID(102)));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100)))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101)))
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102)));
   EXPECT_CALL(callback1, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -447,9 +464,9 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingSameSizeDifferentPriority) {
 
   StrictMock<MockStreamProducer> callback2;
   EXPECT_CALL(callback2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(200)))
-      .WillOnce(CreateChunk(StreamID(2), MID(201)))
-      .WillOnce(CreateChunk(StreamID(2), MID(202)));
+      .WillOnce(CreateChunk(OutgoingMessageId(3), StreamID(2), MID(200)))
+      .WillOnce(CreateChunk(OutgoingMessageId(4), StreamID(2), MID(201)))
+      .WillOnce(CreateChunk(OutgoingMessageId(5), StreamID(2), MID(202)));
   EXPECT_CALL(callback2, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -462,9 +479,9 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingSameSizeDifferentPriority) {
 
   StrictMock<MockStreamProducer> callback3;
   EXPECT_CALL(callback3, Produce)
-      .WillOnce(CreateChunk(StreamID(3), MID(300)))
-      .WillOnce(CreateChunk(StreamID(3), MID(301)))
-      .WillOnce(CreateChunk(StreamID(3), MID(302)));
+      .WillOnce(CreateChunk(OutgoingMessageId(6), StreamID(3), MID(300)))
+      .WillOnce(CreateChunk(OutgoingMessageId(7), StreamID(3), MID(301)))
+      .WillOnce(CreateChunk(OutgoingMessageId(8), StreamID(3), MID(302)));
   EXPECT_CALL(callback3, bytes_to_send_in_next_message)
       .WillOnce(Return(kPayloadSize))  // When making active
       .WillOnce(Return(kPayloadSize))
@@ -476,30 +493,30 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingSameSizeDifferentPriority) {
   stream3->MaybeMakeActive();
 
   // t ~= 20
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(300)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(300)));
   // t ~= 40
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(301)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(301)));
   // t ~= 50
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(200)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(200)));
   // t ~= 60
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(302)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(302)));
   // t ~= 80
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
   // t ~= 100
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(201)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(201)));
   // t ~= 150
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(202)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(202)));
   // t ~= 160
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
   // t ~= 240
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Will do weighted fair queuing with three streams having different priority
 // and sending different payload sizes.
 TEST(StreamSchedulerTest, WillDoWeightedFairQueuingDifferentSizeAndPriority) {
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   scheduler.EnableMessageInterleaving(true);
 
   constexpr size_t kSmallPacket = 20;
@@ -510,11 +527,14 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingDifferentSizeAndPriority) {
   StrictMock<MockStreamProducer> callback1;
   EXPECT_CALL(callback1, Produce)
       // virtual finish time ~ 0 + 50 * 80 = 4000
-      .WillOnce(CreateChunk(StreamID(1), MID(100), kMediumPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(100),
+                            kMediumPacket))
       // virtual finish time ~ 4000 + 20 * 80 = 5600
-      .WillOnce(CreateChunk(StreamID(1), MID(101), kSmallPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(101),
+                            kSmallPacket))
       // virtual finish time ~ 5600 + 70 * 80 = 11200
-      .WillOnce(CreateChunk(StreamID(1), MID(102), kLargePacket));
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(1), MID(102),
+                            kLargePacket));
   EXPECT_CALL(callback1, bytes_to_send_in_next_message)
       .WillOnce(Return(kMediumPacket))  // When making active
       .WillOnce(Return(kSmallPacket))
@@ -528,11 +548,14 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingDifferentSizeAndPriority) {
   StrictMock<MockStreamProducer> callback2;
   EXPECT_CALL(callback2, Produce)
       // virtual finish time ~ 0 + 50 * 50 = 2500
-      .WillOnce(CreateChunk(StreamID(2), MID(200), kMediumPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(3), StreamID(2), MID(200),
+                            kMediumPacket))
       // virtual finish time ~ 2500 + 70 * 50 = 6000
-      .WillOnce(CreateChunk(StreamID(2), MID(201), kLargePacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(4), StreamID(2), MID(201),
+                            kLargePacket))
       // virtual finish time ~ 6000 + 20 * 50 = 7000
-      .WillOnce(CreateChunk(StreamID(2), MID(202), kSmallPacket));
+      .WillOnce(CreateChunk(OutgoingMessageId(5), StreamID(2), MID(202),
+                            kSmallPacket));
   EXPECT_CALL(callback2, bytes_to_send_in_next_message)
       .WillOnce(Return(kMediumPacket))  // When making active
       .WillOnce(Return(kLargePacket))
@@ -546,11 +569,14 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingDifferentSizeAndPriority) {
   StrictMock<MockStreamProducer> callback3;
   EXPECT_CALL(callback3, Produce)
       // virtual finish time ~ 0 + 20 * 20 = 400
-      .WillOnce(CreateChunk(StreamID(3), MID(300), kSmallPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(6), StreamID(3), MID(300),
+                            kSmallPacket))
       // virtual finish time ~ 400 + 50 * 20 = 1400
-      .WillOnce(CreateChunk(StreamID(3), MID(301), kMediumPacket))
+      .WillOnce(CreateChunk(OutgoingMessageId(7), StreamID(3), MID(301),
+                            kMediumPacket))
       // virtual finish time ~ 1400 + 70 * 20 = 2800
-      .WillOnce(CreateChunk(StreamID(3), MID(302), kLargePacket));
+      .WillOnce(CreateChunk(OutgoingMessageId(8), StreamID(3), MID(302),
+                            kLargePacket));
   EXPECT_CALL(callback3, bytes_to_send_in_next_message)
       .WillOnce(Return(kSmallPacket))  // When making active
       .WillOnce(Return(kMediumPacket))
@@ -561,30 +587,30 @@ TEST(StreamSchedulerTest, WillDoWeightedFairQueuingDifferentSizeAndPriority) {
   stream3->MaybeMakeActive();
 
   // t ~= 400
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(300)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(300)));
   // t ~= 1400
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(301)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(301)));
   // t ~= 2500
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(200)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(200)));
   // t ~= 2800
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(302)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(302)));
   // t ~= 4000
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(100)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(100)));
   // t ~= 5600
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(101)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(101)));
   // t ~= 6000
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(201)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(201)));
   // t ~= 7000
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(202)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(202)));
   // t ~= 11200
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(102)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(102)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 TEST(StreamSchedulerTest, WillDistributeWFQPacketsInTwoStreamsByPriority) {
   // A simple test with two streams of different priority, but sending packets
   // of identical size. Verifies that the ratio of sent packets represent their
   // priority.
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   scheduler.EnableMessageInterleaving(true);
 
   TestStream stream1(scheduler, StreamID(1), StreamPriority(100), kPayloadSize);
@@ -598,7 +624,7 @@ TEST(StreamSchedulerTest, WillDistributeWFQPacketsInTwoStreamsByPriority) {
 TEST(StreamSchedulerTest, WillDistributeWFQPacketsInFourStreamsByPriority) {
   // Same as `WillDistributeWFQPacketsInTwoStreamsByPriority` but with more
   // streams.
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   scheduler.EnableMessageInterleaving(true);
 
   TestStream stream1(scheduler, StreamID(1), StreamPriority(100), kPayloadSize);
@@ -624,7 +650,7 @@ TEST(StreamSchedulerTest, WillDistributeFromTwoStreamsFairly) {
   // as stream2, but with WFQ and a 4x priority increase, stream2 should 4x as
   // many payload bytes on the wire. That translates to stream2 getting 8x as
   // many packets on the wire as they are half as large.
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   // Enable WFQ scheduler.
   scheduler.EnableMessageInterleaving(true);
 
@@ -641,7 +667,7 @@ TEST(StreamSchedulerTest, WillDistributeFromTwoStreamsFairly) {
 TEST(StreamSchedulerTest, WillDistributeFromFourStreamsFairly) {
   // Same as `WillDistributeWeightedFairFromTwoStreamsFairly` but more
   // complicated.
-  StreamScheduler scheduler(kMtu);
+  StreamScheduler scheduler("", kMtu);
   // Enable WFQ scheduler.
   scheduler.EnableMessageInterleaving(true);
 
@@ -671,14 +697,14 @@ TEST(StreamSchedulerTest, WillDistributeFromFourStreamsFairly) {
 // small for both streams. See `LargeMessageWithLargeMtu` for the same test, but
 // with a larger MTU.
 TEST(StreamSchedulerTest, SendLargeMessageWithSmallMtu) {
-  StreamScheduler scheduler(100 + SctpPacket::kHeaderSize +
-                            IDataChunk::kHeaderSize);
+  StreamScheduler scheduler(
+      "", 100 + SctpPacket::kHeaderSize + IDataChunk::kHeaderSize);
   scheduler.EnableMessageInterleaving(true);
 
   StrictMock<MockStreamProducer> producer1;
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(0), 100))
-      .WillOnce(CreateChunk(StreamID(1), MID(0), 100));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(0), 100))
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(1), MID(0), 100));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(200))  // When making active
       .WillOnce(Return(100))
@@ -689,8 +715,8 @@ TEST(StreamSchedulerTest, SendLargeMessageWithSmallMtu) {
 
   StrictMock<MockStreamProducer> producer2;
   EXPECT_CALL(producer2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(1), 100))
-      .WillOnce(CreateChunk(StreamID(2), MID(1), 50));
+      .WillOnce(CreateChunk(OutgoingMessageId(2), StreamID(2), MID(1), 100))
+      .WillOnce(CreateChunk(OutgoingMessageId(3), StreamID(2), MID(1), 50));
   EXPECT_CALL(producer2, bytes_to_send_in_next_message)
       .WillOnce(Return(150))  // When making active
       .WillOnce(Return(50))
@@ -698,23 +724,23 @@ TEST(StreamSchedulerTest, SendLargeMessageWithSmallMtu) {
   auto stream2 =
       scheduler.CreateStream(&producer2, StreamID(2), StreamPriority(1));
   stream2->MaybeMakeActive();
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(0)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(1)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(1)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(0)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(0)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(1)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(1)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(0)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 // Sending large messages with large MTU will not fragment messages and will
 // send the message first from the stream that has the smallest message.
 TEST(StreamSchedulerTest, SendLargeMessageWithLargeMtu) {
-  StreamScheduler scheduler(200 + SctpPacket::kHeaderSize +
-                            IDataChunk::kHeaderSize);
+  StreamScheduler scheduler(
+      "", 200 + SctpPacket::kHeaderSize + IDataChunk::kHeaderSize);
   scheduler.EnableMessageInterleaving(true);
 
   StrictMock<MockStreamProducer> producer1;
   EXPECT_CALL(producer1, Produce)
-      .WillOnce(CreateChunk(StreamID(1), MID(0), 200));
+      .WillOnce(CreateChunk(OutgoingMessageId(0), StreamID(1), MID(0), 200));
   EXPECT_CALL(producer1, bytes_to_send_in_next_message)
       .WillOnce(Return(200))  // When making active
       .WillOnce(Return(0));
@@ -724,16 +750,16 @@ TEST(StreamSchedulerTest, SendLargeMessageWithLargeMtu) {
 
   StrictMock<MockStreamProducer> producer2;
   EXPECT_CALL(producer2, Produce)
-      .WillOnce(CreateChunk(StreamID(2), MID(1), 150));
+      .WillOnce(CreateChunk(OutgoingMessageId(1), StreamID(2), MID(1), 150));
   EXPECT_CALL(producer2, bytes_to_send_in_next_message)
       .WillOnce(Return(150))  // When making active
       .WillOnce(Return(0));
   auto stream2 =
       scheduler.CreateStream(&producer2, StreamID(2), StreamPriority(1));
   stream2->MaybeMakeActive();
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(1)));
-  EXPECT_THAT(scheduler.Produce(TimeMs(0), kMtu), HasDataWithMid(MID(0)));
-  EXPECT_EQ(scheduler.Produce(TimeMs(0), kMtu), absl::nullopt);
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(1)));
+  EXPECT_THAT(scheduler.Produce(kNow, kMtu), HasDataWithMid(MID(0)));
+  EXPECT_EQ(scheduler.Produce(kNow, kMtu), absl::nullopt);
 }
 
 }  // namespace

@@ -1,7 +1,11 @@
 use super::ModuleState;
 use crate::arena::Handle;
+use codespan_reporting::diagnostic::Diagnostic;
+use codespan_reporting::files::SimpleFile;
+use codespan_reporting::term;
+use termcolor::{NoColor, WriteColor};
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid header")]
     InvalidHeader,
@@ -54,6 +58,8 @@ pub enum Error {
     UnknownBinaryOperator(spirv::Op),
     #[error("unknown relational function {0:?}")]
     UnknownRelationalFunction(spirv::Op),
+    #[error("unsupported group operation %{0}")]
+    UnsupportedGroupOperation(spirv::Word),
     #[error("invalid parameter {0:?}")]
     InvalidParameter(spirv::Op),
     #[error("invalid operand count {1} for {0:?}")]
@@ -78,6 +84,8 @@ pub enum Error {
     InvalidAccess(crate::Expression),
     #[error("invalid access index %{0}")]
     InvalidAccessIndex(spirv::Word),
+    #[error("invalid index type %{0}")]
+    InvalidIndexType(spirv::Word),
     #[error("invalid binding %{0}")]
     InvalidBinding(spirv::Word),
     #[error("invalid global var {0:?}")]
@@ -112,8 +120,8 @@ pub enum Error {
     ControlFlowGraphCycle(crate::front::spv::BlockId),
     #[error("recursive function call %{0}")]
     FunctionCallCycle(spirv::Word),
-    #[error("invalid array size {0:?}")]
-    InvalidArraySize(Handle<crate::Constant>),
+    #[error("invalid array size %{0}")]
+    InvalidArraySize(spirv::Word),
     #[error("invalid barrier scope %{0}")]
     InvalidBarrierScope(spirv::Word),
     #[error("invalid barrier memory semantics %{0}")]
@@ -124,4 +132,27 @@ pub enum Error {
          come from a binding)"
     )]
     NonBindingArrayOfImageOrSamplers,
+    #[error("naga only supports specialization constant IDs up to 65535 but was given {0}")]
+    SpecIdTooHigh(u32),
+}
+
+impl Error {
+    pub fn emit_to_writer(&self, writer: &mut impl WriteColor, source: &str) {
+        self.emit_to_writer_with_path(writer, source, "glsl");
+    }
+
+    pub fn emit_to_writer_with_path(&self, writer: &mut impl WriteColor, source: &str, path: &str) {
+        let path = path.to_string();
+        let files = SimpleFile::new(path, source);
+        let config = term::Config::default();
+        let diagnostic = Diagnostic::error().with_message(format!("{self:?}"));
+
+        term::emit(writer, &config, &files, &diagnostic).expect("cannot write error");
+    }
+
+    pub fn emit_to_string(&self, source: &str) -> String {
+        let mut writer = NoColor::new(Vec::new());
+        self.emit_to_writer(&mut writer, source);
+        String::from_utf8(writer.into_inner()).unwrap()
+    }
 }

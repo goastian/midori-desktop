@@ -172,8 +172,10 @@ impl DispatchGuard {
         // Blocking on the queue can only work if it is eventually flushed anyway.
 
         let task = Command::Task(Box::new(move || {
-            tx.send(())
-                .expect("(worker) Can't send message on single-use channel");
+            // In case the calling thread times out waiting for this
+            // the channel will be dropped.
+            // But in case the work continues we don't want to panic.
+            _ = tx.send(());
         }));
         self.sender
             .send(task)
@@ -358,9 +360,8 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-    use std::sync::{Arc, Mutex};
-    use std::{thread, time::Duration};
+    use std::sync::atomic::AtomicU8;
+    use std::sync::Mutex;
 
     fn enable_test_logging() {
         // When testing we want all logs to go to stdout/stderr by default,

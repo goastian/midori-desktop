@@ -24,9 +24,8 @@
 /// }
 /// ```
 ///
-/// *This macro is available only if Syn is built with the `"parsing"` feature,
-/// although interpolation of syntax tree nodes into the quoted tokens is only
-/// supported if Syn is built with the `"printing"` feature as well.*
+/// *This macro is available only if Syn is built with both the `"parsing"` and
+/// `"printing"` features.*
 ///
 /// # Example
 ///
@@ -69,7 +68,7 @@
 #[macro_export]
 macro_rules! parse_quote {
     ($($tt:tt)*) => {
-        $crate::parse_quote::parse($crate::__private::quote::quote!($($tt)*))
+        $crate::__private::parse_quote($crate::__private::quote::quote!($($tt)*))
     };
 }
 
@@ -101,7 +100,7 @@ macro_rules! parse_quote {
 #[macro_export]
 macro_rules! parse_quote_spanned {
     ($span:expr=> $($tt:tt)*) => {
-        $crate::parse_quote::parse($crate::__private::quote::quote_spanned!($span=> $($tt)*))
+        $crate::__private::parse_quote($crate::__private::quote::quote_spanned!($span=> $($tt)*))
     };
 }
 
@@ -121,7 +120,6 @@ pub fn parse<T: ParseQuote>(token_stream: TokenStream) -> T {
     }
 }
 
-// Not public API.
 #[doc(hidden)]
 pub trait ParseQuote: Sized {
     fn parse(input: ParseStream) -> Result<Self>;
@@ -138,9 +136,9 @@ impl<T: Parse> ParseQuote for T {
 
 use crate::punctuated::Punctuated;
 #[cfg(any(feature = "full", feature = "derive"))]
-use crate::{attr, Attribute};
+use crate::{attr, Attribute, Field, FieldMutability, Ident, Type, Visibility};
 #[cfg(feature = "full")]
-use crate::{Block, Stmt};
+use crate::{Block, Pat, Stmt};
 
 #[cfg(any(feature = "full", feature = "derive"))]
 impl ParseQuote for Attribute {
@@ -150,6 +148,50 @@ impl ParseQuote for Attribute {
         } else {
             attr::parsing::single_parse_outer(input)
         }
+    }
+}
+
+#[cfg(any(feature = "full", feature = "derive"))]
+impl ParseQuote for Field {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let attrs = input.call(Attribute::parse_outer)?;
+        let vis: Visibility = input.parse()?;
+
+        let ident: Option<Ident>;
+        let colon_token: Option<Token![:]>;
+        let is_named = input.peek(Ident) && input.peek2(Token![:]) && !input.peek2(Token![::]);
+        if is_named {
+            ident = Some(input.parse()?);
+            colon_token = Some(input.parse()?);
+        } else {
+            ident = None;
+            colon_token = None;
+        }
+
+        let ty: Type = input.parse()?;
+
+        Ok(Field {
+            attrs,
+            vis,
+            mutability: FieldMutability::None,
+            ident,
+            colon_token,
+            ty,
+        })
+    }
+}
+
+#[cfg(feature = "full")]
+impl ParseQuote for Pat {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Pat::parse_multi_with_leading_vert(input)
+    }
+}
+
+#[cfg(feature = "full")]
+impl ParseQuote for Box<Pat> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        <Pat as ParseQuote>::parse(input).map(Box::new)
     }
 }
 

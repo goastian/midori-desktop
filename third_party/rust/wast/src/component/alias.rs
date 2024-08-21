@@ -4,17 +4,22 @@ use crate::parser::{Parse, Parser, Result};
 use crate::token::{Id, Index, NameAnnotation, Span};
 
 /// A inline alias for component exported items.
+///
+/// Handles both `core export` and `export` aliases
 #[derive(Debug)]
-pub struct InlineExportAlias<'a> {
+pub struct InlineExportAlias<'a, const CORE: bool> {
     /// The instance to alias the export from.
     pub instance: Index<'a>,
     /// The name of the export to alias.
     pub name: &'a str,
 }
 
-impl<'a> Parse<'a> for InlineExportAlias<'a> {
+impl<'a, const CORE: bool> Parse<'a> for InlineExportAlias<'a, CORE> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         parser.parse::<kw::alias>()?;
+        if CORE {
+            parser.parse::<kw::core>()?;
+        }
         parser.parse::<kw::export>()?;
         let instance = parser.parse()?;
         let name = parser.parse()?;
@@ -74,7 +79,7 @@ impl<'a> Parse<'a> for Alias<'a> {
 
         let mut l = parser.lookahead1();
 
-        let (target, id, name) = if l.peek::<kw::outer>() {
+        let (target, id, name) = if l.peek::<kw::outer>()? {
             parser.parse::<kw::outer>()?;
             let outer = parser.parse()?;
             let index = parser.parse()?;
@@ -82,7 +87,7 @@ impl<'a> Parse<'a> for Alias<'a> {
                 parser.parens(|parser| Ok((parser.parse()?, parser.parse()?, parser.parse()?)))?;
 
             (AliasTarget::Outer { outer, index, kind }, id, name)
-        } else if l.peek::<kw::export>() {
+        } else if l.peek::<kw::export>()? {
             parser.parse::<kw::export>()?;
             let instance = parser.parse()?;
             let export_name = parser.parse()?;
@@ -98,7 +103,7 @@ impl<'a> Parse<'a> for Alias<'a> {
                 id,
                 name,
             )
-        } else if l.peek::<kw::core>() {
+        } else if l.peek::<kw::core>()? {
             parser.parse::<kw::core>()?;
             parser.parse::<kw::export>()?;
             let instance = parser.parse()?;
@@ -150,28 +155,28 @@ pub enum ComponentExportAliasKind {
 impl<'a> Parse<'a> for ComponentExportAliasKind {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
-        if l.peek::<kw::core>() {
+        if l.peek::<kw::core>()? {
             parser.parse::<kw::core>()?;
             let mut l = parser.lookahead1();
-            if l.peek::<kw::module>() {
+            if l.peek::<kw::module>()? {
                 parser.parse::<kw::module>()?;
                 Ok(Self::CoreModule)
             } else {
                 Err(l.error())
             }
-        } else if l.peek::<kw::func>() {
+        } else if l.peek::<kw::func>()? {
             parser.parse::<kw::func>()?;
             Ok(Self::Func)
-        } else if l.peek::<kw::value>() {
+        } else if l.peek::<kw::value>()? {
             parser.parse::<kw::value>()?;
             Ok(Self::Value)
-        } else if l.peek::<kw::r#type>() {
+        } else if l.peek::<kw::r#type>()? {
             parser.parse::<kw::r#type>()?;
             Ok(Self::Type)
-        } else if l.peek::<kw::component>() {
+        } else if l.peek::<kw::component>()? {
             parser.parse::<kw::component>()?;
             Ok(Self::Component)
-        } else if l.peek::<kw::instance>() {
+        } else if l.peek::<kw::instance>()? {
             parser.parse::<kw::instance>()?;
             Ok(Self::Instance)
         } else {
@@ -196,22 +201,22 @@ pub enum ComponentOuterAliasKind {
 impl<'a> Parse<'a> for ComponentOuterAliasKind {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
-        if l.peek::<kw::core>() {
+        if l.peek::<kw::core>()? {
             parser.parse::<kw::core>()?;
             let mut l = parser.lookahead1();
-            if l.peek::<kw::module>() {
+            if l.peek::<kw::module>()? {
                 parser.parse::<kw::module>()?;
                 Ok(Self::CoreModule)
-            } else if l.peek::<kw::r#type>() {
+            } else if l.peek::<kw::r#type>()? {
                 parser.parse::<kw::r#type>()?;
                 Ok(Self::CoreType)
             } else {
                 Err(l.error())
             }
-        } else if l.peek::<kw::r#type>() {
+        } else if l.peek::<kw::r#type>()? {
             parser.parse::<kw::r#type>()?;
             Ok(Self::Type)
-        } else if l.peek::<kw::component>() {
+        } else if l.peek::<kw::component>()? {
             parser.parse::<kw::component>()?;
             Ok(Self::Component)
         } else {

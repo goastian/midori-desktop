@@ -160,7 +160,7 @@ void ScreenCapturerWinGdi::PrepareCaptureResources() {
   }
 
   // If the display configurations have changed then recreate GDI resources.
-  if (display_configuration_monitor_.IsChanged()) {
+  if (display_configuration_monitor_.IsChanged(kFullDesktopScreenId)) {
     if (desktop_dc_) {
       ReleaseDC(NULL, desktop_dc_);
       desktop_dc_ = nullptr;
@@ -186,7 +186,6 @@ void ScreenCapturerWinGdi::PrepareCaptureResources() {
 }
 
 bool ScreenCapturerWinGdi::CaptureImage() {
-  RTC_DCHECK(IsGUIThread(false));
   DesktopRect screen_rect =
       GetScreenRect(current_screen_id_, current_device_key_);
   if (screen_rect.is_empty()) {

@@ -40,7 +40,7 @@ from taskgraph.actions.util import (
 )
 def add_new_jobs_action(parameters, graph_config, input, task_group_id, task_id):
     decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
-        parameters, graph_config
+        parameters, graph_config, task_group_id=task_group_id
     )
 
     to_run = []
@@ -59,6 +59,6 @@ def add_new_jobs_action(parameters, graph_config, input, task_group_id, task_id)
             label_to_taskid,
             parameters,
             decision_task_id,
-            i,
+            f"{i}",
         )
     combine_task_graph_files(list(range(times)))

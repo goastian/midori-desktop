@@ -31,6 +31,11 @@ class NetworkQualityMetricsReporter
   NetworkQualityMetricsReporter(EmulatedNetworkManagerInterface* alice_network,
                                 EmulatedNetworkManagerInterface* bob_network,
                                 test::MetricsLogger* metrics_logger);
+  NetworkQualityMetricsReporter(absl::string_view alice_network_label,
+                                EmulatedNetworkManagerInterface* alice_network,
+                                absl::string_view bob_network_label,
+                                EmulatedNetworkManagerInterface* bob_network,
+                                test::MetricsLogger* metrics_logger);
   ~NetworkQualityMetricsReporter() override = default;
 
   // Network stats must be empty when this method will be invoked.
@@ -43,8 +48,6 @@ class NetworkQualityMetricsReporter
 
  private:
   struct PCStats {
-    // TODO(nisse): Separate audio and video counters. Depends on standard stat
-    // counters, enabled by field trial "WebRTC-UseStandardBytesStats".
     DataSize payload_received = DataSize::Zero();
     DataSize payload_sent = DataSize::Zero();
   };
@@ -64,6 +67,8 @@ class NetworkQualityMetricsReporter
   test::MetricsLogger* const metrics_logger_;
   Mutex lock_;
   std::map<std::string, PCStats> pc_stats_ RTC_GUARDED_BY(lock_);
+  std::string alice_network_label_ = "alice";
+  std::string bob_network_label_ = "bob";
 };
 
 }  // namespace webrtc_pc_e2e

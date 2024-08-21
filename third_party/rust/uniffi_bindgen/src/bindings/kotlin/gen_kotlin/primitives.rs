@@ -2,13 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::backend::{CodeOracle, CodeType, Literal};
-use crate::interface::{types::Type, Radix};
+use super::CodeType;
+use crate::backend::Literal;
+use crate::interface::{ComponentInterface, Radix, Type};
 use paste::paste;
 
-fn render_literal(_oracle: &dyn CodeOracle, literal: &Literal) -> String {
+fn render_literal(literal: &Literal, _ci: &ComponentInterface) -> String {
     fn typed_number(type_: &Type, num_str: String) -> String {
-        match type_ {
+        let unwrapped_type = match type_ {
+            Type::Optional { inner_type } => inner_type,
+            t => t,
+        };
+        match unwrapped_type {
             // Bytes, Shorts and Ints can all be inferred from the type.
             Type::Int8 | Type::Int16 | Type::Int32 => num_str,
             Type::Int64 => format!("{num_str}L"),
@@ -18,7 +23,7 @@ fn render_literal(_oracle: &dyn CodeOracle, literal: &Literal) -> String {
 
             Type::Float32 => format!("{num_str}f"),
             Type::Float64 => num_str,
-            _ => panic!("Unexpected literal: {num_str} is not a number"),
+            _ => panic!("Unexpected literal: {num_str} for type: {type_:?}"),
         }
     }
 
@@ -50,15 +55,20 @@ fn render_literal(_oracle: &dyn CodeOracle, literal: &Literal) -> String {
 macro_rules! impl_code_type_for_primitive {
     ($T:ty, $class_name:literal) => {
         paste! {
+            #[derive(Debug)]
             pub struct $T;
 
             impl CodeType for $T  {
-                fn type_label(&self, _oracle: &dyn CodeOracle) -> String {
+                fn type_label(&self, _ci: &ComponentInterface) -> String {
+                    format!("kotlin.{}", $class_name)
+                }
+
+                fn canonical_name(&self) -> String {
                     $class_name.into()
                 }
 
-                fn literal(&self, oracle: &dyn CodeOracle, literal: &Literal) -> String {
-                    render_literal(oracle, &literal)
+                fn literal(&self, literal: &Literal, ci: &ComponentInterface) -> String {
+                    render_literal(&literal, ci)
                 }
             }
         }
@@ -67,6 +77,7 @@ macro_rules! impl_code_type_for_primitive {
 
 impl_code_type_for_primitive!(BooleanCodeType, "Boolean");
 impl_code_type_for_primitive!(StringCodeType, "String");
+impl_code_type_for_primitive!(BytesCodeType, "ByteArray");
 impl_code_type_for_primitive!(Int8CodeType, "Byte");
 impl_code_type_for_primitive!(Int16CodeType, "Short");
 impl_code_type_for_primitive!(Int32CodeType, "Int");

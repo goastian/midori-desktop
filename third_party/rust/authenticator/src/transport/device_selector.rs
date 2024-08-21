@@ -1,13 +1,11 @@
 use crate::transport::hid::HIDDevice;
+
 pub use crate::transport::platform::device::Device;
+
 use runloop::RunLoop;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::time::Duration;
-
-// This import is used, but Rust 1.68 gives a warning
-#[allow(unused_imports)]
-use crate::u2ftypes::U2FDevice;
 
 pub type DeviceID = <Device as HIDDevice>::Id;
 pub type DeviceBuildParameters = <Device as HIDDevice>::BuildParameters;
@@ -186,10 +184,11 @@ pub mod tests {
     use crate::{
         consts::Capability,
         ctap2::commands::get_info::{AuthenticatorInfo, AuthenticatorOptions},
+        transport::FidoDevice,
         u2ftypes::U2FDeviceInfo,
     };
 
-    fn gen_info(id: String) -> U2FDeviceInfo {
+    pub(crate) fn gen_info(id: String) -> U2FDeviceInfo {
         U2FDeviceInfo {
             vendor_name: String::from("ExampleVendor").into_bytes(),
             device_name: id.into_bytes(),
@@ -201,13 +200,16 @@ pub mod tests {
         }
     }
 
-    fn make_device_simple_u2f(dev: &mut Device) {
+    pub(crate) fn make_device_simple_u2f(dev: &mut Device) {
         dev.set_device_info(gen_info(dev.id()));
+        dev.set_cid([1, 2, 3, 4]); // Need to set something other than broadcast
+        dev.downgrade_to_ctap1();
         dev.create_channel();
     }
 
-    fn make_device_with_pin(dev: &mut Device) {
+    pub(crate) fn make_device_with_pin(dev: &mut Device) {
         dev.set_device_info(gen_info(dev.id()));
+        dev.set_cid([1, 2, 3, 4]); // Need to set something other than broadcast
         dev.create_channel();
         let info = AuthenticatorInfo {
             options: AuthenticatorOptions {

@@ -20,13 +20,11 @@ impl<'w> BlockContext<'w> {
             } => {
                 //Note: composite extract indices and types must match `generate_ray_desc_type`
                 let desc_id = self.cached[descriptor];
-                let acc_struct_id = self.get_image_id(acceleration_structure);
-                let width = 4;
+                let acc_struct_id = self.get_handle_id(acceleration_structure);
 
                 let flag_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
                     vector_size: None,
-                    kind: crate::ScalarKind::Uint,
-                    width,
+                    scalar: crate::Scalar::U32,
                     pointer_space: None,
                 }));
                 let ray_flags_id = self.gen_id();
@@ -46,8 +44,7 @@ impl<'w> BlockContext<'w> {
 
                 let scalar_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
                     vector_size: None,
-                    kind: crate::ScalarKind::Float,
-                    width,
+                    scalar: crate::Scalar::F32,
                     pointer_space: None,
                 }));
                 let tmin_id = self.gen_id();
@@ -67,8 +64,7 @@ impl<'w> BlockContext<'w> {
 
                 let vector_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
                     vector_size: Some(crate::VectorSize::Tri),
-                    kind: crate::ScalarKind::Float,
-                    width,
+                    scalar: crate::Scalar::F32,
                     pointer_space: None,
                 }));
                 let ray_origin_id = self.gen_id();
@@ -115,19 +111,14 @@ impl<'w> BlockContext<'w> {
         query: Handle<crate::Expression>,
         block: &mut Block,
     ) -> spirv::Word {
-        let width = 4;
         let query_id = self.cached[query];
-        let intersection_id = self.writer.get_constant_scalar(
-            crate::ScalarValue::Uint(
-                spirv::RayQueryIntersection::RayQueryCommittedIntersectionKHR as _,
-            ),
-            width,
-        );
+        let intersection_id = self.writer.get_constant_scalar(crate::Literal::U32(
+            spirv::RayQueryIntersection::RayQueryCommittedIntersectionKHR as _,
+        ));
 
         let flag_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
             vector_size: None,
-            kind: crate::ScalarKind::Uint,
-            width,
+            scalar: crate::Scalar::U32,
             pointer_space: None,
         }));
         let kind_id = self.gen_id();
@@ -181,8 +172,7 @@ impl<'w> BlockContext<'w> {
 
         let scalar_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
             vector_size: None,
-            kind: crate::ScalarKind::Float,
-            width,
+            scalar: crate::Scalar::F32,
             pointer_space: None,
         }));
         let t_id = self.gen_id();
@@ -196,8 +186,7 @@ impl<'w> BlockContext<'w> {
 
         let barycentrics_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
             vector_size: Some(crate::VectorSize::Bi),
-            kind: crate::ScalarKind::Float,
-            width,
+            scalar: crate::Scalar::F32,
             pointer_space: None,
         }));
         let barycentrics_id = self.gen_id();
@@ -211,8 +200,7 @@ impl<'w> BlockContext<'w> {
 
         let bool_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
             vector_size: None,
-            kind: crate::ScalarKind::Bool,
-            width: crate::BOOL_WIDTH,
+            scalar: crate::Scalar::BOOL,
             pointer_space: None,
         }));
         let front_face_id = self.gen_id();
@@ -227,7 +215,7 @@ impl<'w> BlockContext<'w> {
         let transform_type_id = self.get_type_id(LookupType::Local(LocalType::Matrix {
             columns: crate::VectorSize::Quad,
             rows: crate::VectorSize::Tri,
-            width,
+            width: 4,
         }));
         let object_to_world_id = self.gen_id();
         block.body.push(Instruction::ray_query_get_intersection(

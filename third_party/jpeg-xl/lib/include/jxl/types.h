@@ -13,11 +13,10 @@
 #ifndef JXL_TYPES_H_
 #define JXL_TYPES_H_
 
-#include <jxl/jxl_export.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -32,13 +31,17 @@ extern "C" {
 #define JXL_TRUE 1
 /** Portable @c false replacement. */
 #define JXL_FALSE 0
+/** Converts of bool-like value to either ::JXL_TRUE or ::JXL_FALSE. */
+#define TO_JXL_BOOL(C) (!!(C) ? JXL_TRUE : JXL_FALSE)
+/** Converts JXL_BOOL to C++ bool. */
+#define FROM_JXL_BOOL(C) (static_cast<bool>(C))
 
 /** Data type for the sample values per channel per pixel.
  */
 typedef enum {
   /** Use 32-bit single-precision floating point values, with range 0.0-1.0
    * (within gamut, may go outside this range for wide color gamut). Floating
-   * point output, either JXL_TYPE_FLOAT or JXL_TYPE_FLOAT16, is recommended
+   * point output, either ::JXL_TYPE_FLOAT or ::JXL_TYPE_FLOAT16, is recommended
    * for HDR and wide gamut images when color profile conversion is required. */
   JXL_TYPE_FLOAT = 0,
 
@@ -53,14 +56,6 @@ typedef enum {
   /** Use 16-bit IEEE 754 half-precision floating point values */
   JXL_TYPE_FLOAT16 = 5,
 } JxlDataType;
-
-/* DEPRECATED: bit-packed 1-bit data type. Use JXL_TYPE_UINT8 instead.
- */
-JXL_DEPRECATED static const int JXL_TYPE_BOOLEAN = 1;
-
-/* DEPRECATED: uint32_t data type. Use JXL_TYPE_FLOAT instead.
- */
-JXL_DEPRECATED static const int JXL_TYPE_UINT32 = 4;
 
 /** Ordering of multi-byte data.
  */
@@ -98,8 +93,7 @@ typedef struct {
   JxlDataType data_type;
 
   /** Whether multi-byte data types are represented in big endian or little
-   * endian format. This applies to JXL_TYPE_UINT16, JXL_TYPE_UINT32
-   * and JXL_TYPE_FLOAT.
+   * endian format. This applies to ::JXL_TYPE_UINT16 and ::JXL_TYPE_FLOAT.
    */
   JxlEndianness endianness;
 
@@ -109,7 +103,8 @@ typedef struct {
   size_t align;
 } JxlPixelFormat;
 
-/** Settings for the interpretation of the input and output buffers.
+/** Settings for the interpretation of UINT input and output buffers.
+ *  (buffers using a FLOAT data type are not affected by this)
  */
 typedef enum {
   /** This is the default setting, where the encoder expects the input pixels
@@ -150,34 +145,7 @@ typedef struct {
  */
 typedef char JxlBoxType[4];
 
-/** Types of progressive detail.
- * Setting a progressive detail with value N implies all progressive details
- * with smaller or equal value. Currently only the following level of
- * progressive detail is implemented:
- *  - kDC (which implies kFrames)
- *  - kLastPasses (which implies kDC and kFrames)
- *  - kPasses (which implies kLastPasses, kDC and kFrames)
- */
-typedef enum {
-  // after completed kRegularFrames
-  kFrames = 0,
-  // after completed DC (1:8)
-  kDC = 1,
-  // after completed AC passes that are the last pass for their resolution
-  // target.
-  kLastPasses = 2,
-  // after completed AC passes that are not the last pass for their resolution
-  // target.
-  kPasses = 3,
-  // during DC frame when lower resolution are completed (1:32, 1:16)
-  kDCProgressive = 4,
-  // after completed groups
-  kDCGroups = 5,
-  // after completed groups
-  kGroups = 6,
-} JxlProgressiveDetail;
-
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 }
 #endif
 

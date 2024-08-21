@@ -1,8 +1,10 @@
 use glow::HasContext;
-use std::sync::Arc;
+use parking_lot::Mutex;
+use std::sync::{atomic::AtomicU8, Arc};
 use wgt::AstcChannel;
 
 use crate::auxil::db;
+use crate::gles::ShaderClearProgram;
 
 // https://webgl2fundamentals.org/webgl/lessons/webgl-data-textures.html
 
@@ -10,18 +12,6 @@ const GL_UNMASKED_VENDOR_WEBGL: u32 = 0x9245;
 const GL_UNMASKED_RENDERER_WEBGL: u32 = 0x9246;
 
 impl super::Adapter {
-    /// According to the OpenGL specification, the version information is
-    /// expected to follow the following syntax:
-    ///
-    /// ~~~bnf
-    /// <major>       ::= <number>
-    /// <minor>       ::= <number>
-    /// <revision>    ::= <number>
-    /// <vendor-info> ::= <string>
-    /// <release>     ::= <major> "." <minor> ["." <release>]
-    /// <version>     ::= <release> [" " <vendor-info>]
-    /// ~~~
-    ///
     /// Note that this function is intentionally lenient in regards to parsing,
     /// and will try to recover at least the first two version numbers without
     /// resulting in an `Err`.
@@ -43,8 +33,9 @@ impl super::Adapter {
                     src = &src[pos + es_sig.len()..];
                 }
                 None => {
-                    log::warn!("ES not found in '{}'", src);
-                    return Err(crate::InstanceError);
+                    return Err(crate::InstanceError::new(format!(
+                        "OpenGL version {src:?} does not contain 'ES'"
+                    )));
                 }
             }
         };
@@ -58,6 +49,35 @@ impl super::Adapter {
             None => false,
         };
 
+        Self::parse_full_version(src).map(|(major, minor)| {
+            (
+                // Return WebGL 2.0 version as OpenGL ES 3.0
+                if is_webgl && !is_glsl {
+                    major + 1
+                } else {
+                    major
+                },
+                minor,
+            )
+        })
+    }
+
+    /// According to the OpenGL specification, the version information is
+    /// expected to follow the following syntax:
+    ///
+    /// ~~~bnf
+    /// <major>       ::= <number>
+    /// <minor>       ::= <number>
+    /// <revision>    ::= <number>
+    /// <vendor-info> ::= <string>
+    /// <release>     ::= <major> "." <minor> ["." <release>]
+    /// <version>     ::= <release> [" " <vendor-info>]
+    /// ~~~
+    ///
+    /// Note that this function is intentionally lenient in regards to parsing,
+    /// and will try to recover at least the first two version numbers without
+    /// resulting in an `Err`.
+    pub(super) fn parse_full_version(src: &str) -> Result<(u8, u8), crate::InstanceError> {
         let (version, _vendor_info) = match src.find(' ') {
             Some(i) => (&src[..i], src[i + 1..].to_string()),
             None => (src, String::new()),
@@ -77,23 +97,14 @@ impl super::Adapter {
         });
 
         match (major, minor) {
-            (Some(major), Some(minor)) => Ok((
-                // Return WebGL 2.0 version as OpenGL ES 3.0
-                if is_webgl && !is_glsl {
-                    major + 1
-                } else {
-                    major
-                },
-                minor,
-            )),
-            _ => {
-                log::warn!("Unable to extract the version from '{}'", version);
-                Err(crate::InstanceError)
-            }
+            (Some(major), Some(minor)) => Ok((major, minor)),
+            _ => Err(crate::InstanceError::new(format!(
+                "unable to extract OpenGL version from {version:?}"
+            ))),
         }
     }
 
-    fn make_info(vendor_orig: String, renderer_orig: String) -> wgt::AdapterInfo {
+    fn make_info(vendor_orig: String, renderer_orig: String, version: String) -> wgt::AdapterInfo {
         let vendor = vendor_orig.to_lowercase();
         let renderer = renderer_orig.to_lowercase();
 
@@ -173,8 +184,8 @@ impl super::Adapter {
             vendor: vendor_id,
             device: 0,
             device_type: inferred_device_type,
-            driver: String::new(),
-            driver_info: String::new(),
+            driver: "".to_owned(),
+            driver_info: version,
             backend: wgt::Backend::Gl,
         }
     }
@@ -188,61 +199,132 @@ impl super::Adapter {
         let (vendor_const, renderer_const) = if extensions.contains("WEBGL_debug_renderer_info") {
             // emscripten doesn't enable "WEBGL_debug_renderer_info" extension by default. so, we do it manually.
             // See https://github.com/gfx-rs/wgpu/issues/3245 for context
-            #[cfg(target_os = "emscripten")]
+            #[cfg(Emscripten)]
             if unsafe { super::emscripten::enable_extension("WEBGL_debug_renderer_info\0") } {
                 (GL_UNMASKED_VENDOR_WEBGL, GL_UNMASKED_RENDERER_WEBGL)
             } else {
                 (glow::VENDOR, glow::RENDERER)
             }
             // glow already enables WEBGL_debug_renderer_info on wasm32-unknown-unknown target by default.
-            #[cfg(not(target_os = "emscripten"))]
+            #[cfg(not(Emscripten))]
             (GL_UNMASKED_VENDOR_WEBGL, GL_UNMASKED_RENDERER_WEBGL)
         } else {
             (glow::VENDOR, glow::RENDERER)
         };
 
-        let (vendor, renderer) = {
-            let vendor = unsafe { gl.get_parameter_string(vendor_const) };
-            let renderer = unsafe { gl.get_parameter_string(renderer_const) };
-
-            (vendor, renderer)
-        };
+        let vendor = unsafe { gl.get_parameter_string(vendor_const) };
+        let renderer = unsafe { gl.get_parameter_string(renderer_const) };
         let version = unsafe { gl.get_parameter_string(glow::VERSION) };
-        log::info!("Vendor: {}", vendor);
-        log::info!("Renderer: {}", renderer);
-        log::info!("Version: {}", version);
+        log::debug!("Vendor: {}", vendor);
+        log::debug!("Renderer: {}", renderer);
+        log::debug!("Version: {}", version);
 
-        log::debug!("Extensions: {:#?}", extensions);
+        let full_ver = Self::parse_full_version(&version).ok();
+        let es_ver = full_ver.map_or_else(|| Self::parse_version(&version).ok(), |_| None);
 
-        let ver = Self::parse_version(&version).ok()?;
-        if ver < (3, 0) {
-            log::warn!(
-                "Returned GLES context is {}.{}, when 3.0+ was requested",
-                ver.0,
-                ver.1
+        if let Some(full_ver) = full_ver {
+            let core_profile = (full_ver >= (3, 2)).then(|| unsafe {
+                gl.get_parameter_i32(glow::CONTEXT_PROFILE_MASK)
+                    & glow::CONTEXT_CORE_PROFILE_BIT as i32
+                    != 0
+            });
+            log::trace!(
+                "Profile: {}",
+                core_profile
+                    .map(|core_profile| if core_profile {
+                        "Core"
+                    } else {
+                        "Compatibility"
+                    })
+                    .unwrap_or("Legacy")
             );
+        }
+
+        if es_ver.is_none() && full_ver.is_none() {
+            log::warn!("Unable to parse OpenGL version");
             return None;
         }
 
-        let supports_storage = ver >= (3, 1);
-        let supports_work_group_params = ver >= (3, 1);
+        if let Some(es_ver) = es_ver {
+            if es_ver < (3, 0) {
+                log::warn!(
+                    "Returned GLES context is {}.{}, when 3.0+ was requested",
+                    es_ver.0,
+                    es_ver.1
+                );
+                return None;
+            }
+        }
+
+        if let Some(full_ver) = full_ver {
+            if full_ver < (3, 3) {
+                log::warn!(
+                    "Returned GL context is {}.{}, when 3.3+ is needed",
+                    full_ver.0,
+                    full_ver.1
+                );
+                return None;
+            }
+        }
 
         let shading_language_version = {
             let sl_version = unsafe { gl.get_parameter_string(glow::SHADING_LANGUAGE_VERSION) };
-            log::info!("SL version: {}", &sl_version);
-            let (sl_major, sl_minor) = Self::parse_version(&sl_version).ok()?;
-            let value = sl_major as u16 * 100 + sl_minor as u16 * 10;
-            naga::back::glsl::Version::Embedded {
-                version: value,
-                is_webgl: cfg!(target_arch = "wasm32"),
+            log::debug!("SL version: {}", &sl_version);
+            if full_ver.is_some() {
+                let (sl_major, sl_minor) = Self::parse_full_version(&sl_version).ok()?;
+                let mut value = sl_major as u16 * 100 + sl_minor as u16 * 10;
+                // Naga doesn't think it supports GL 460+, so we cap it at 450
+                if value > 450 {
+                    value = 450;
+                }
+                naga::back::glsl::Version::Desktop(value)
+            } else {
+                let (sl_major, sl_minor) = Self::parse_version(&sl_version).ok()?;
+                let value = sl_major as u16 * 100 + sl_minor as u16 * 10;
+                naga::back::glsl::Version::Embedded {
+                    version: value,
+                    is_webgl: cfg!(any(webgl, Emscripten)),
+                }
             }
         };
+
+        log::debug!("Supported GL Extensions: {:#?}", extensions);
+
+        let supported = |(req_es_major, req_es_minor), (req_full_major, req_full_minor)| {
+            let es_supported = es_ver
+                .map(|es_ver| es_ver >= (req_es_major, req_es_minor))
+                .unwrap_or_default();
+
+            let full_supported = full_ver
+                .map(|full_ver| full_ver >= (req_full_major, req_full_minor))
+                .unwrap_or_default();
+
+            es_supported || full_supported
+        };
+
+        let supports_storage =
+            supported((3, 1), (4, 3)) || extensions.contains("GL_ARB_shader_storage_buffer_object");
+        let supports_compute =
+            supported((3, 1), (4, 3)) || extensions.contains("GL_ARB_compute_shader");
+        let supports_work_group_params = supports_compute;
 
         // ANGLE provides renderer strings like: "ANGLE (Apple, Apple M1 Pro, OpenGL 4.1)"
         let is_angle = renderer.contains("ANGLE");
 
         let vertex_shader_storage_blocks = if supports_storage {
-            (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_SHADER_STORAGE_BLOCKS) } as u32)
+            let value =
+                (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_SHADER_STORAGE_BLOCKS) } as u32);
+
+            if value == 0 && extensions.contains("GL_ARB_shader_storage_buffer_object") {
+                // The driver for AMD Radeon HD 5870 returns zero here, so assume the value matches the compute shader storage block count.
+                // Windows doesn't recognize `GL_MAX_VERTEX_ATTRIB_STRIDE`.
+                let new = (unsafe { gl.get_parameter_i32(glow::MAX_COMPUTE_SHADER_STORAGE_BLOCKS) }
+                    as u32);
+                log::warn!("Max vertex shader storage blocks is zero, but GL_ARB_shader_storage_buffer_object is specified. Assuming the compute value {new}");
+                new
+            } else {
+                value
+            }
         } else {
             0
         };
@@ -294,19 +376,21 @@ impl super::Adapter {
         let mut downlevel_flags = wgt::DownlevelFlags::empty()
             | wgt::DownlevelFlags::NON_POWER_OF_TWO_MIPMAPPED_TEXTURES
             | wgt::DownlevelFlags::CUBE_ARRAY_TEXTURES
-            | wgt::DownlevelFlags::COMPARISON_SAMPLERS;
-        downlevel_flags.set(wgt::DownlevelFlags::COMPUTE_SHADERS, ver >= (3, 1));
+            | wgt::DownlevelFlags::COMPARISON_SAMPLERS
+            | wgt::DownlevelFlags::VERTEX_AND_INSTANCE_INDEX_RESPECTS_RESPECTIVE_FIRST_VALUE_IN_INDIRECT_DRAW;
+        downlevel_flags.set(wgt::DownlevelFlags::COMPUTE_SHADERS, supports_compute);
         downlevel_flags.set(
             wgt::DownlevelFlags::FRAGMENT_WRITABLE_STORAGE,
             max_storage_block_size != 0,
         );
-        downlevel_flags.set(wgt::DownlevelFlags::INDIRECT_EXECUTION, ver >= (3, 1));
-        //TODO: we can actually support positive `base_vertex` in the same way
-        // as we emulate the `start_instance`. But we can't deal with negatives...
-        downlevel_flags.set(wgt::DownlevelFlags::BASE_VERTEX, ver >= (3, 2));
+        downlevel_flags.set(
+            wgt::DownlevelFlags::INDIRECT_EXECUTION,
+            supported((3, 1), (4, 3)) || extensions.contains("GL_ARB_multi_draw_indirect"),
+        );
+        downlevel_flags.set(wgt::DownlevelFlags::BASE_VERTEX, supported((3, 2), (3, 2)));
         downlevel_flags.set(
             wgt::DownlevelFlags::INDEPENDENT_BLEND,
-            ver >= (3, 2) || extensions.contains("GL_EXT_draw_buffers_indexed"),
+            supported((3, 2), (4, 0)) || extensions.contains("GL_EXT_draw_buffers_indexed"),
         );
         downlevel_flags.set(
             wgt::DownlevelFlags::VERTEX_STORAGE,
@@ -315,23 +399,25 @@ impl super::Adapter {
                 && (vertex_shader_storage_blocks != 0 || vertex_ssbo_false_zero),
         );
         downlevel_flags.set(wgt::DownlevelFlags::FRAGMENT_STORAGE, supports_storage);
-        if extensions.contains("EXT_texture_filter_anisotropic") {
+        if extensions.contains("EXT_texture_filter_anisotropic")
+            || extensions.contains("GL_EXT_texture_filter_anisotropic")
+        {
             let max_aniso =
                 unsafe { gl.get_parameter_i32(glow::MAX_TEXTURE_MAX_ANISOTROPY_EXT) } as u32;
             downlevel_flags.set(wgt::DownlevelFlags::ANISOTROPIC_FILTERING, max_aniso >= 16);
         }
         downlevel_flags.set(
             wgt::DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED,
-            !(cfg!(target_arch = "wasm32") || is_angle),
+            !(cfg!(any(webgl, Emscripten)) || is_angle),
         );
         // see https://registry.khronos.org/webgl/specs/latest/2.0/#BUFFER_OBJECT_BINDING
         downlevel_flags.set(
             wgt::DownlevelFlags::UNRESTRICTED_INDEX_BUFFER,
-            !cfg!(target_arch = "wasm32"),
+            !cfg!(any(webgl, Emscripten)),
         );
         downlevel_flags.set(
             wgt::DownlevelFlags::UNRESTRICTED_EXTERNAL_TEXTURE_COPIES,
-            !cfg!(target_arch = "wasm32"),
+            !cfg!(any(webgl, Emscripten)),
         );
         downlevel_flags.set(
             wgt::DownlevelFlags::FULL_DRAW_INDEX_UINT32,
@@ -339,20 +425,27 @@ impl super::Adapter {
         );
         downlevel_flags.set(
             wgt::DownlevelFlags::MULTISAMPLED_SHADING,
-            ver >= (3, 2) || extensions.contains("OES_sample_variables"),
+            supported((3, 2), (4, 0)) || extensions.contains("OES_sample_variables"),
         );
+        let query_buffers = extensions.contains("GL_ARB_query_buffer_object")
+            || extensions.contains("GL_AMD_query_buffer_object");
+        if query_buffers {
+            downlevel_flags.set(wgt::DownlevelFlags::NONBLOCKING_QUERY_RESOLVE, true);
+        }
 
         let mut features = wgt::Features::empty()
             | wgt::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
             | wgt::Features::CLEAR_TEXTURE
-            | wgt::Features::PUSH_CONSTANTS;
+            | wgt::Features::PUSH_CONSTANTS
+            | wgt::Features::DEPTH32FLOAT_STENCIL8;
         features.set(
             wgt::Features::ADDRESS_MODE_CLAMP_TO_BORDER | wgt::Features::ADDRESS_MODE_CLAMP_TO_ZERO,
-            extensions.contains("GL_EXT_texture_border_clamp"),
+            extensions.contains("GL_EXT_texture_border_clamp")
+                || extensions.contains("GL_ARB_texture_border_clamp"),
         );
         features.set(
             wgt::Features::DEPTH_CLIP_CONTROL,
-            extensions.contains("GL_EXT_depth_clamp"),
+            extensions.contains("GL_EXT_depth_clamp") || extensions.contains("GL_ARB_depth_clamp"),
         );
         features.set(
             wgt::Features::VERTEX_WRITABLE_STORAGE,
@@ -361,13 +454,34 @@ impl super::Adapter {
         );
         features.set(
             wgt::Features::MULTIVIEW,
-            extensions.contains("OVR_multiview2"),
+            extensions.contains("OVR_multiview2") || extensions.contains("GL_OVR_multiview2"),
+        );
+        features.set(
+            wgt::Features::DUAL_SOURCE_BLENDING,
+            extensions.contains("GL_EXT_blend_func_extended")
+                || extensions.contains("GL_ARB_blend_func_extended"),
         );
         features.set(
             wgt::Features::SHADER_PRIMITIVE_INDEX,
-            ver >= (3, 2) || extensions.contains("OES_geometry_shader"),
+            supported((3, 2), (3, 2))
+                || extensions.contains("OES_geometry_shader")
+                || extensions.contains("GL_ARB_geometry_shader4"),
         );
-        features.set(wgt::Features::SHADER_EARLY_DEPTH_TEST, ver >= (3, 1));
+        features.set(
+            wgt::Features::SHADER_EARLY_DEPTH_TEST,
+            supported((3, 1), (4, 2)) || extensions.contains("GL_ARB_shader_image_load_store"),
+        );
+        features.set(wgt::Features::SHADER_UNUSED_VERTEX_OUTPUT, true);
+        if extensions.contains("GL_ARB_timer_query") {
+            features.set(wgt::Features::TIMESTAMP_QUERY, true);
+            features.set(wgt::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS, true);
+            features.set(wgt::Features::TIMESTAMP_QUERY_INSIDE_PASSES, true);
+        }
+        let gl_bcn_exts = [
+            "GL_EXT_texture_compression_s3tc",
+            "GL_EXT_texture_compression_rgtc",
+            "GL_ARB_texture_compression_bptc",
+        ];
         let gles_bcn_exts = [
             "GL_EXT_texture_compression_s3tc_srgb",
             "GL_EXT_texture_compression_rgtc",
@@ -379,26 +493,49 @@ impl super::Adapter {
             "EXT_texture_compression_rgtc",
             "EXT_texture_compression_bptc",
         ];
-        let bcn_exts = if cfg!(target_arch = "wasm32") {
+        let bcn_exts = if cfg!(any(webgl, Emscripten)) {
             &webgl_bcn_exts[..]
-        } else {
+        } else if es_ver.is_some() {
             &gles_bcn_exts[..]
+        } else {
+            &gl_bcn_exts[..]
         };
         features.set(
             wgt::Features::TEXTURE_COMPRESSION_BC,
             bcn_exts.iter().all(|&ext| extensions.contains(ext)),
         );
-        features.set(
-            wgt::Features::TEXTURE_COMPRESSION_ETC2,
-            // This is a part of GLES-3 but not WebGL2 core
-            !cfg!(target_arch = "wasm32") || extensions.contains("WEBGL_compressed_texture_etc"),
-        );
+        let has_etc = if cfg!(any(webgl, Emscripten)) {
+            extensions.contains("WEBGL_compressed_texture_etc")
+        } else {
+            es_ver.is_some() || extensions.contains("GL_ARB_ES3_compatibility")
+        };
+        features.set(wgt::Features::TEXTURE_COMPRESSION_ETC2, has_etc);
+
         // `OES_texture_compression_astc` provides 2D + 3D, LDR + HDR support
         if extensions.contains("WEBGL_compressed_texture_astc")
             || extensions.contains("GL_OES_texture_compression_astc")
         {
-            features.insert(wgt::Features::TEXTURE_COMPRESSION_ASTC);
-            features.insert(wgt::Features::TEXTURE_COMPRESSION_ASTC_HDR);
+            #[cfg(webgl)]
+            {
+                if context
+                    .glow_context
+                    .compressed_texture_astc_supports_ldr_profile()
+                {
+                    features.insert(wgt::Features::TEXTURE_COMPRESSION_ASTC);
+                }
+                if context
+                    .glow_context
+                    .compressed_texture_astc_supports_hdr_profile()
+                {
+                    features.insert(wgt::Features::TEXTURE_COMPRESSION_ASTC_HDR);
+                }
+            }
+
+            #[cfg(any(native, Emscripten))]
+            {
+                features.insert(wgt::Features::TEXTURE_COMPRESSION_ASTC);
+                features.insert(wgt::Features::TEXTURE_COMPRESSION_ASTC_HDR);
+            }
         } else {
             features.set(
                 wgt::Features::TEXTURE_COMPRESSION_ASTC,
@@ -410,39 +547,54 @@ impl super::Adapter {
             );
         }
 
+        features.set(
+            wgt::Features::FLOAT32_FILTERABLE,
+            extensions.contains("GL_ARB_color_buffer_float")
+                || extensions.contains("GL_EXT_color_buffer_float")
+                || extensions.contains("OES_texture_float_linear"),
+        );
+
+        if es_ver.is_none() {
+            features |= wgt::Features::POLYGON_MODE_LINE | wgt::Features::POLYGON_MODE_POINT;
+        }
+
+        // We *might* be able to emulate bgra8unorm-storage but currently don't attempt to.
+
         let mut private_caps = super::PrivateCapabilities::empty();
         private_caps.set(
             super::PrivateCapabilities::BUFFER_ALLOCATION,
-            extensions.contains("GL_EXT_buffer_storage"),
+            extensions.contains("GL_EXT_buffer_storage")
+                || extensions.contains("GL_ARB_buffer_storage"),
         );
         private_caps.set(
             super::PrivateCapabilities::SHADER_BINDING_LAYOUT,
-            ver >= (3, 1),
+            supports_compute,
         );
         private_caps.set(
             super::PrivateCapabilities::SHADER_TEXTURE_SHADOW_LOD,
             extensions.contains("GL_EXT_texture_shadow_lod"),
         );
-        private_caps.set(super::PrivateCapabilities::MEMORY_BARRIERS, ver >= (3, 1));
+        private_caps.set(
+            super::PrivateCapabilities::MEMORY_BARRIERS,
+            supported((3, 1), (4, 2)),
+        );
         private_caps.set(
             super::PrivateCapabilities::VERTEX_BUFFER_LAYOUT,
-            ver >= (3, 1),
+            supported((3, 1), (4, 3)) || extensions.contains("GL_ARB_vertex_attrib_binding"),
         );
         private_caps.set(
             super::PrivateCapabilities::INDEX_BUFFER_ROLE_CHANGE,
-            !cfg!(target_arch = "wasm32"),
-        );
-        private_caps.set(
-            super::PrivateCapabilities::CAN_DISABLE_DRAW_BUFFER,
-            !cfg!(target_arch = "wasm32"),
+            !cfg!(any(webgl, Emscripten)),
         );
         private_caps.set(
             super::PrivateCapabilities::GET_BUFFER_SUB_DATA,
-            cfg!(target_arch = "wasm32"),
+            cfg!(any(webgl, Emscripten)) || full_ver.is_some(),
         );
         let color_buffer_float = extensions.contains("GL_EXT_color_buffer_float")
+            || extensions.contains("GL_ARB_color_buffer_float")
             || extensions.contains("EXT_color_buffer_float");
-        let color_buffer_half_float = extensions.contains("GL_EXT_color_buffer_half_float");
+        let color_buffer_half_float = extensions.contains("GL_EXT_color_buffer_half_float")
+            || extensions.contains("GL_ARB_half_float_pixel");
         private_caps.set(
             super::PrivateCapabilities::COLOR_BUFFER_HALF_FLOAT,
             color_buffer_half_float || color_buffer_float,
@@ -451,17 +603,39 @@ impl super::Adapter {
             super::PrivateCapabilities::COLOR_BUFFER_FLOAT,
             color_buffer_float,
         );
+        private_caps.set(super::PrivateCapabilities::QUERY_BUFFERS, query_buffers);
+        private_caps.set(super::PrivateCapabilities::QUERY_64BIT, full_ver.is_some());
         private_caps.set(
-            super::PrivateCapabilities::TEXTURE_FLOAT_LINEAR,
-            extensions.contains("OES_texture_float_linear"),
+            super::PrivateCapabilities::TEXTURE_STORAGE,
+            supported((3, 0), (4, 2)),
         );
+        private_caps.set(super::PrivateCapabilities::DEBUG_FNS, gl.supports_debug());
+        private_caps.set(
+            super::PrivateCapabilities::INVALIDATE_FRAMEBUFFER,
+            supported((3, 0), (4, 3)),
+        );
+        if let Some(full_ver) = full_ver {
+            let supported =
+                full_ver >= (4, 2) && extensions.contains("GL_ARB_shader_draw_parameters");
+            private_caps.set(
+                super::PrivateCapabilities::FULLY_FEATURED_INSTANCING,
+                supported,
+            );
+            // Desktop 4.2 and greater specify the first instance parameter.
+            //
+            // For all other versions, the behavior is undefined.
+            //
+            // We only support indirect first instance when we also have ARB_shader_draw_parameters as
+            // that's the only way to get gl_InstanceID to work correctly.
+            features.set(wgt::Features::INDIRECT_FIRST_INSTANCE, supported);
+        }
 
         let max_texture_size = unsafe { gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE) } as u32;
         let max_texture_3d_size = unsafe { gl.get_parameter_i32(glow::MAX_3D_TEXTURE_SIZE) } as u32;
 
         let min_uniform_buffer_offset_alignment =
             (unsafe { gl.get_parameter_i32(glow::UNIFORM_BUFFER_OFFSET_ALIGNMENT) } as u32);
-        let min_storage_buffer_offset_alignment = if ver >= (3, 1) {
+        let min_storage_buffer_offset_alignment = if supports_storage {
             (unsafe { gl.get_parameter_i32(glow::SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) } as u32)
         } else {
             256
@@ -479,6 +653,15 @@ impl super::Adapter {
         } else {
             0
         };
+
+        let max_color_attachments = unsafe {
+            gl.get_parameter_i32(glow::MAX_COLOR_ATTACHMENTS)
+                .min(gl.get_parameter_i32(glow::MAX_DRAW_BUFFERS))
+                .min(crate::MAX_COLOR_ATTACHMENTS as i32) as u32
+        };
+
+        // TODO: programmatically determine this.
+        let max_color_attachment_bytes_per_sample = 32;
 
         let limits = wgt::Limits {
             max_texture_dimension_1d: max_texture_size,
@@ -499,7 +682,7 @@ impl super::Adapter {
             max_uniform_buffer_binding_size: unsafe {
                 gl.get_parameter_i32(glow::MAX_UNIFORM_BLOCK_SIZE)
             } as u32,
-            max_storage_buffer_binding_size: if ver >= (3, 1) {
+            max_storage_buffer_binding_size: if supports_storage {
                 unsafe { gl.get_parameter_i32(glow::MAX_SHADER_STORAGE_BLOCK_SIZE) }
             } else {
                 0
@@ -510,23 +693,60 @@ impl super::Adapter {
                 (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_ATTRIB_BINDINGS) } as u32)
             } else {
                 16 // should this be different?
-            },
+            }
+            .min(crate::MAX_VERTEX_BUFFERS as u32),
             max_vertex_attributes: (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_ATTRIBS) }
                 as u32)
                 .min(super::MAX_VERTEX_ATTRIBUTES as u32),
             max_vertex_buffer_array_stride: if private_caps
                 .contains(super::PrivateCapabilities::VERTEX_BUFFER_LAYOUT)
             {
-                (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_ATTRIB_STRIDE) } as u32)
+                if let Some(full_ver) = full_ver {
+                    if full_ver >= (4, 4) {
+                        // We can query `GL_MAX_VERTEX_ATTRIB_STRIDE` in OpenGL 4.4+
+                        let value =
+                            (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_ATTRIB_STRIDE) })
+                                as u32;
+
+                        if value == 0 {
+                            // This should be at least 2048, but the driver for AMD Radeon HD 5870 on
+                            // Windows doesn't recognize `GL_MAX_VERTEX_ATTRIB_STRIDE`.
+
+                            log::warn!("Max vertex attribute stride is 0. Assuming it is 2048");
+                            2048
+                        } else {
+                            value
+                        }
+                    } else {
+                        log::warn!("Max vertex attribute stride unknown. Assuming it is 2048");
+                        2048
+                    }
+                } else {
+                    (unsafe { gl.get_parameter_i32(glow::MAX_VERTEX_ATTRIB_STRIDE) }) as u32
+                }
             } else {
                 !0
             },
+            min_subgroup_size: 0,
+            max_subgroup_size: 0,
             max_push_constant_size: super::MAX_PUSH_CONSTANTS as u32 * 4,
             min_uniform_buffer_offset_alignment,
             min_storage_buffer_offset_alignment,
-            max_inter_stage_shader_components: unsafe {
-                gl.get_parameter_i32(glow::MAX_VARYING_COMPONENTS)
-            } as u32,
+            max_inter_stage_shader_components: {
+                // MAX_VARYING_COMPONENTS may return 0, because it is deprecated since OpenGL 3.2 core,
+                // and an OpenGL Context with the core profile and with forward-compatibility=true,
+                // will make deprecated constants unavailable.
+                let max_varying_components =
+                    unsafe { gl.get_parameter_i32(glow::MAX_VARYING_COMPONENTS) } as u32;
+                if max_varying_components == 0 {
+                    // default value for max_inter_stage_shader_components
+                    60
+                } else {
+                    max_varying_components
+                }
+            },
+            max_color_attachments,
+            max_color_attachment_bytes_per_sample,
             max_compute_workgroup_storage_size: if supports_work_group_params {
                 (unsafe { gl.get_parameter_i32(glow::MAX_COMPUTE_SHARED_MEMORY_SIZE) } as u32)
             } else {
@@ -557,13 +777,14 @@ impl super::Adapter {
             },
             max_compute_workgroups_per_dimension,
             max_buffer_size: i32::MAX as u64,
+            max_non_sampler_bindings: u32::MAX,
         };
 
         let mut workarounds = super::Workarounds::empty();
 
         workarounds.set(
             super::Workarounds::EMULATE_BUFFER_MAP,
-            cfg!(target_arch = "wasm32"),
+            cfg!(any(webgl, Emscripten)),
         );
 
         let r = renderer.to_lowercase();
@@ -583,11 +804,12 @@ impl super::Adapter {
         }
 
         let downlevel_defaults = wgt::DownlevelLimits {};
+        let max_samples = unsafe { gl.get_parameter_i32(glow::MAX_SAMPLES) };
 
         // Drop the GL guard so we can move the context into AdapterShared
-        // ( on WASM the gl handle is just a ref so we tell clippy to allow
+        // ( on Wasm the gl handle is just a ref so we tell clippy to allow
         // dropping the ref )
-        #[allow(clippy::drop_ref)]
+        #[cfg_attr(target_arch = "wasm32", allow(dropping_references))]
         drop(gl);
 
         Some(crate::ExposedAdapter {
@@ -598,12 +820,13 @@ impl super::Adapter {
                     workarounds,
                     features,
                     shading_language_version,
-                    max_texture_size,
                     next_shader_id: Default::default(),
                     program_cache: Default::default(),
+                    es: es_ver.is_some(),
+                    max_msaa_samples: max_samples,
                 }),
             },
-            info: Self::make_info(vendor, renderer),
+            info: Self::make_info(vendor, renderer, version),
             features,
             capabilities: crate::Capabilities {
                 limits,
@@ -620,31 +843,89 @@ impl super::Adapter {
         })
     }
 
+    unsafe fn compile_shader(
+        source: &str,
+        gl: &glow::Context,
+        shader_type: u32,
+        es: bool,
+    ) -> Option<glow::Shader> {
+        let source = if es {
+            format!("#version 300 es\nprecision lowp float;\n{source}")
+        } else {
+            let version = gl.version();
+            if version.major == 3 && version.minor == 0 {
+                // OpenGL 3.0 only supports this format
+                format!("#version 130\n{source}")
+            } else {
+                // OpenGL 3.1+ support this format
+                format!("#version 140\n{source}")
+            }
+        };
+        let shader = unsafe { gl.create_shader(shader_type) }.expect("Could not create shader");
+        unsafe { gl.shader_source(shader, &source) };
+        unsafe { gl.compile_shader(shader) };
+
+        if !unsafe { gl.get_shader_compile_status(shader) } {
+            let msg = unsafe { gl.get_shader_info_log(shader) };
+            if !msg.is_empty() {
+                log::error!("\tShader compile error: {}", msg);
+            }
+            unsafe { gl.delete_shader(shader) };
+            None
+        } else {
+            Some(shader)
+        }
+    }
+
     unsafe fn create_shader_clear_program(
         gl: &glow::Context,
-    ) -> (glow::Program, glow::UniformLocation) {
+        es: bool,
+    ) -> Option<ShaderClearProgram> {
         let program = unsafe { gl.create_program() }.expect("Could not create shader program");
-        let vertex =
-            unsafe { gl.create_shader(glow::VERTEX_SHADER) }.expect("Could not create shader");
-        unsafe { gl.shader_source(vertex, include_str!("./shaders/clear.vert")) };
-        unsafe { gl.compile_shader(vertex) };
-        let fragment =
-            unsafe { gl.create_shader(glow::FRAGMENT_SHADER) }.expect("Could not create shader");
-        unsafe { gl.shader_source(fragment, include_str!("./shaders/clear.frag")) };
-        unsafe { gl.compile_shader(fragment) };
+        let vertex = unsafe {
+            Self::compile_shader(
+                include_str!("./shaders/clear.vert"),
+                gl,
+                glow::VERTEX_SHADER,
+                es,
+            )?
+        };
+        let fragment = unsafe {
+            Self::compile_shader(
+                include_str!("./shaders/clear.frag"),
+                gl,
+                glow::FRAGMENT_SHADER,
+                es,
+            )?
+        };
         unsafe { gl.attach_shader(program, vertex) };
         unsafe { gl.attach_shader(program, fragment) };
         unsafe { gl.link_program(program) };
+
+        let linked_ok = unsafe { gl.get_program_link_status(program) };
+        let msg = unsafe { gl.get_program_info_log(program) };
+        if !msg.is_empty() {
+            log::warn!("Shader link error: {}", msg);
+        }
+        if !linked_ok {
+            return None;
+        }
+
         let color_uniform_location = unsafe { gl.get_uniform_location(program, "color") }
             .expect("Could not find color uniform in shader clear shader");
         unsafe { gl.delete_shader(vertex) };
         unsafe { gl.delete_shader(fragment) };
 
-        (program, color_uniform_location)
+        Some(ShaderClearProgram {
+            program,
+            color_uniform_location,
+        })
     }
 }
 
-impl crate::Adapter<super::Api> for super::Adapter {
+impl crate::Adapter for super::Adapter {
+    type A = super::Api;
+
     unsafe fn open(
         &self,
         features: wgt::Features,
@@ -665,14 +946,26 @@ impl crate::Adapter<super::Api> for super::Adapter {
 
         // Compile the shader program we use for doing manual clears to work around Mesa fastclear
         // bug.
-        let (shader_clear_program, shader_clear_program_color_uniform_location) =
-            unsafe { Self::create_shader_clear_program(gl) };
+
+        let shader_clear_program = if self
+            .shared
+            .workarounds
+            .contains(super::Workarounds::MESA_I915_SRGB_SHADER_CLEAR)
+        {
+            Some(unsafe {
+                Self::create_shader_clear_program(gl, self.shared.es)
+                    .ok_or(crate::DeviceError::ResourceCreationFailed)?
+            })
+        } else {
+            // If we don't need the workaround, don't waste time and resources compiling the clear program
+            None
+        };
 
         Ok(crate::OpenDevice {
             device: super::Device {
                 shared: Arc::clone(&self.shared),
                 main_vao,
-                #[cfg(all(not(target_arch = "wasm32"), feature = "renderdoc"))]
+                #[cfg(all(native, feature = "renderdoc"))]
                 render_doc: Default::default(),
             },
             queue: super::Queue {
@@ -683,11 +976,10 @@ impl crate::Adapter<super::Api> for super::Adapter {
                 copy_fbo: unsafe { gl.create_framebuffer() }
                     .map_err(|_| crate::DeviceError::OutOfMemory)?,
                 shader_clear_program,
-                shader_clear_program_color_uniform_location,
                 zero_buffer,
-                temp_query_results: Vec::new(),
-                draw_buffer_count: 1,
-                current_index_buffer: None,
+                temp_query_results: Mutex::new(Vec::new()),
+                draw_buffer_count: AtomicU8::new(1),
+                current_index_buffer: Mutex::new(None),
             },
         })
     }
@@ -700,12 +992,7 @@ impl crate::Adapter<super::Api> for super::Adapter {
         use wgt::TextureFormat as Tf;
 
         let sample_count = {
-            let max_samples = unsafe {
-                self.shared
-                    .context
-                    .lock()
-                    .get_parameter_i32(glow::MAX_SAMPLES)
-            };
+            let max_samples = self.shared.max_msaa_samples;
             if max_samples >= 16 {
                 Tfc::MULTISAMPLE_X2
                     | Tfc::MULTISAMPLE_X4
@@ -713,10 +1000,12 @@ impl crate::Adapter<super::Api> for super::Adapter {
                     | Tfc::MULTISAMPLE_X16
             } else if max_samples >= 8 {
                 Tfc::MULTISAMPLE_X2 | Tfc::MULTISAMPLE_X4 | Tfc::MULTISAMPLE_X8
-            } else if max_samples >= 4 {
-                Tfc::MULTISAMPLE_X2 | Tfc::MULTISAMPLE_X4
             } else {
-                Tfc::MULTISAMPLE_X2
+                // The lowest supported level in GLE3.0/WebGL2 is 4X
+                // (see GL_MAX_SAMPLES in https://registry.khronos.org/OpenGL-Refpages/es3.0/html/glGet.xhtml).
+                // On some platforms, like iOS Safari, `get_parameter_i32(MAX_SAMPLES)` returns 0,
+                // so we always fall back to supporting 4x here.
+                Tfc::MULTISAMPLE_X2 | Tfc::MULTISAMPLE_X4
             }
         };
 
@@ -771,8 +1060,7 @@ impl crate::Adapter<super::Api> for super::Adapter {
                 | Tfc::MULTISAMPLE_RESOLVE,
         );
 
-        let texture_float_linear =
-            private_caps_fn(super::PrivateCapabilities::TEXTURE_FLOAT_LINEAR, filterable);
+        let texture_float_linear = feature_fn(wgt::Features::FLOAT32_FILTERABLE, filterable);
 
         match format {
             Tf::R8Unorm => filterable_renderable,
@@ -796,11 +1084,13 @@ impl crate::Adapter<super::Api> for super::Adapter {
             Tf::Rg16Unorm => empty,
             Tf::Rg16Snorm => empty,
             Tf::Rg16Float => filterable | half_float_renderable,
-            Tf::Rgba8Unorm | Tf::Rgba8UnormSrgb => filterable_renderable | storage,
+            Tf::Rgba8Unorm => filterable_renderable | storage,
+            Tf::Rgba8UnormSrgb => filterable_renderable,
             Tf::Bgra8Unorm | Tf::Bgra8UnormSrgb => filterable_renderable,
-            Tf::Rgba8Snorm => filterable,
+            Tf::Rgba8Snorm => filterable | storage,
             Tf::Rgba8Uint => renderable | storage,
             Tf::Rgba8Sint => renderable | storage,
+            Tf::Rgb10a2Uint => renderable,
             Tf::Rgb10a2Unorm => filterable_renderable,
             Tf::Rg11b10Float => filterable | float_renderable,
             Tf::Rg32Uint => renderable,
@@ -820,6 +1110,7 @@ impl crate::Adapter<super::Api> for super::Adapter {
             | Tf::Depth32FloatStencil8
             | Tf::Depth24Plus
             | Tf::Depth24PlusStencil8 => depth,
+            Tf::NV12 => empty,
             Tf::Rgb9e5Ufloat => filterable,
             Tf::Bc1RgbaUnorm
             | Tf::Bc1RgbaUnormSrgb
@@ -863,13 +1154,13 @@ impl crate::Adapter<super::Api> for super::Adapter {
         if surface.presentable {
             let mut formats = vec![
                 wgt::TextureFormat::Rgba8Unorm,
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(native)]
                 wgt::TextureFormat::Bgra8Unorm,
             ];
             if surface.supports_srgb() {
                 formats.extend([
                     wgt::TextureFormat::Rgba8UnormSrgb,
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(native)]
                     wgt::TextureFormat::Bgra8UnormSrgb,
                 ])
             }
@@ -883,19 +1174,14 @@ impl crate::Adapter<super::Api> for super::Adapter {
 
             Some(crate::SurfaceCapabilities {
                 formats,
-                present_modes: vec![wgt::PresentMode::Fifo], //TODO
-                composite_alpha_modes: vec![wgt::CompositeAlphaMode::Opaque], //TODO
-                swap_chain_sizes: 2..=2,
-                current_extent: None,
-                extents: wgt::Extent3d {
-                    width: 4,
-                    height: 4,
-                    depth_or_array_layers: 1,
-                }..=wgt::Extent3d {
-                    width: self.shared.max_texture_size,
-                    height: self.shared.max_texture_size,
-                    depth_or_array_layers: 1,
+                present_modes: if cfg!(windows) {
+                    vec![wgt::PresentMode::Fifo, wgt::PresentMode::Immediate]
+                } else {
+                    vec![wgt::PresentMode::Fifo] //TODO
                 },
+                composite_alpha_modes: vec![wgt::CompositeAlphaMode::Opaque], //TODO
+                maximum_frame_latency: 2..=2, //TODO, unused currently
+                current_extent: None,
                 usage: crate::TextureUses::COLOR_TARGET,
             })
         } else {
@@ -934,10 +1220,9 @@ impl super::AdapterShared {
     }
 }
 
-// SAFE: WASM doesn't have threads
-#[cfg(target_arch = "wasm32")]
+#[cfg(send_sync)]
 unsafe impl Sync for super::Adapter {}
-#[cfg(target_arch = "wasm32")]
+#[cfg(send_sync)]
 unsafe impl Send for super::Adapter {}
 
 #[cfg(test)]
@@ -946,27 +1231,30 @@ mod tests {
 
     #[test]
     fn test_version_parse() {
-        let error = Err(crate::InstanceError);
-        assert_eq!(Adapter::parse_version("1"), error);
-        assert_eq!(Adapter::parse_version("1."), error);
-        assert_eq!(Adapter::parse_version("1 h3l1o. W0rld"), error);
-        assert_eq!(Adapter::parse_version("1. h3l1o. W0rld"), error);
-        assert_eq!(Adapter::parse_version("1.2.3"), error);
-        assert_eq!(Adapter::parse_version("OpenGL ES 3.1"), Ok((3, 1)));
+        Adapter::parse_version("1").unwrap_err();
+        Adapter::parse_version("1.").unwrap_err();
+        Adapter::parse_version("1 h3l1o. W0rld").unwrap_err();
+        Adapter::parse_version("1. h3l1o. W0rld").unwrap_err();
+        Adapter::parse_version("1.2.3").unwrap_err();
+
+        assert_eq!(Adapter::parse_version("OpenGL ES 3.1").unwrap(), (3, 1));
         assert_eq!(
-            Adapter::parse_version("OpenGL ES 2.0 Google Nexus"),
-            Ok((2, 0))
+            Adapter::parse_version("OpenGL ES 2.0 Google Nexus").unwrap(),
+            (2, 0)
         );
-        assert_eq!(Adapter::parse_version("GLSL ES 1.1"), Ok((1, 1)));
-        assert_eq!(Adapter::parse_version("OpenGL ES GLSL ES 3.20"), Ok((3, 2)));
+        assert_eq!(Adapter::parse_version("GLSL ES 1.1").unwrap(), (1, 1));
+        assert_eq!(
+            Adapter::parse_version("OpenGL ES GLSL ES 3.20").unwrap(),
+            (3, 2)
+        );
         assert_eq!(
             // WebGL 2.0 should parse as OpenGL ES 3.0
-            Adapter::parse_version("WebGL 2.0 (OpenGL ES 3.0 Chromium)"),
-            Ok((3, 0))
+            Adapter::parse_version("WebGL 2.0 (OpenGL ES 3.0 Chromium)").unwrap(),
+            (3, 0)
         );
         assert_eq!(
-            Adapter::parse_version("WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"),
-            Ok((3, 0))
+            Adapter::parse_version("WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)").unwrap(),
+            (3, 0)
         );
     }
 }

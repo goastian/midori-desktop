@@ -42,7 +42,7 @@ definitions:
   short_id:
     allOf:
       - $ref: "#/definitions/snake_case"
-      - maxLength: 30
+      - maxLength: 70
 
   labeled_metric_id:
     type: string
@@ -119,6 +119,9 @@ definitions:
 
             - `text`: Record long text data.
 
+            - `object`: Record structured data based on a pre-defined schema
+              Additional properties: `structure`.
+
         type: string
         enum:
           - event
@@ -140,6 +143,7 @@ definitions:
           - labeled_counter
           - rate
           - text
+          - object
 
       description:
         title: Description
@@ -368,7 +372,7 @@ definitions:
         description: |
           The acceptable keys on the "extra" object sent with events. This is an
           object mapping the key to an object containing metadata about the key.
-          A maximum of 15 extra keys is allowed.
+          A maximum of 50 extra keys is allowed.
           This metadata object has the following keys:
 
             - `description`: **Required.** A description of the key.
@@ -390,7 +394,7 @@ definitions:
                 - quantity
           required:
             - description
-        maxProperties: 15
+        maxProperties: 50
         default: {}
 
       gecko_datapoint:
@@ -483,27 +487,60 @@ definitions:
             tabs, addons, or windows a user has open; uses of specific Firefox
             features; session length, scrolls and clicks; and the status of
             discrete user preferences.
+            It also includes information about the user's in-product journeys
+            and product choices helpful to understand engagement (attitudes).
+            For example, selections of add-ons or tiles to determine
+            potential interest categories etc.
 
-          - **Category 3: Web activity data:** (`web_activity`) Information
-            about user web browsing that could be considered sensitive. Examples
-            include users’ specific web browsing history; general information
-            about their web browsing history (such as TLDs or categories of
-            webpages visited over time); and potentially certain types of
-            interaction data about specific webpages visited.
+          - **Category 3: Stored Content & Communications:**
+            (`stored_content`, formerly Web activity data, `web_activity`)
+            Information about what people store, sync, communicate or connect to
+            where the information is generally considered to be more sensitive
+            and personal in nature.
+            Examples include users' saved URLs or URL history,
+            specific web browsing history, general information
+            about their web browsing history
+            (such as TLDs or categories of webpages visited over time)
+            and potentially certain types of interaction data
+            about specific web pages or stories visited
+            (such as highlighted portions of a story).
+            It also includes information such as content saved by users to
+            an individual account like saved URLs, tags, notes, passwords
+            and files as well as communications that users have with one another
+            through a Mozilla service.
 
-          - **Category 4: Highly sensitive data:** (`highly_sensitive`)
+          - **Category 4: Highly sensitive data
+            or clearly identifiable personal data:** (`highly_sensitive`)
+
             Information that directly identifies a person, or if combined with
-            other data could identify a person. Examples include e-mail,
-            usernames, identifiers such as google ad id, apple id, fxaccount,
-            city or country (unless small ones are explicitly filtered out), or
-            certain cookies. It may be embedded within specific website content,
-            such as memory contents, dumps, captures of screen data, or DOM
-            data.
+            other data could identify a person.
+            This data may be embedded within specific website content,
+            such as memory contents, dumps, captures of screen data,
+            or DOM data.
+            Examples include account registration data like name, password,
+            and email address associated with an account,
+            payment data in connection with subscriptions or donations,
+            contact information such as phone numbers or mailing addresses,
+            email addresses associated with surveys, promotions
+            and customer support contacts.
+            It also includes any data from different categories that,
+            when combined, can identify a person, device, household or account.
+            For example Category 1 log data combined with Category 3 saved URLs.
+            Additional examples are: voice audio commands
+            (including a voice audio file), speech-to-text or text-to-speech
+            (including transcripts), biometric data, demographic information,
+            and precise location data associated with a persistent identifier,
+            individual or small population cohorts.
+            This is location inferred or determined from mechanisms
+            other than IP such as wi-fi access points, Bluetooth beacons,
+            cell phone towers or provided directly to us,
+            such as in a survey or a profile.
         type: array
         items:
           enum:
             - technical
             - interaction
+            - stored_content
             - web_activity
             - highly_sensitive
           type: string
@@ -533,6 +570,15 @@ definitions:
           The named denominator must be defined in this component
           so glean_parser can find it.
         type: string
+
+      structure:
+        title: A subset of a JSON schema definition
+        description: |
+          The expected structure of data, defined in a strict subset of
+          YAML-dialect JSON Schema (Draft 7) supporting keys "type"
+          (only values "object", "array", "number", "string", and "boolean"),
+          "properties", and "items".
+        type: object
 
     required:
       - type
@@ -687,11 +733,13 @@ additionalProperties:
 
             data_sensitivity:
               description: >
-                Text metrics require Category 3 (`web_activity`)
+                Text metrics require Category 3
+                (`stored_content` / `web_activity`)
                 or Category 4 (`highly_sensitive`).
               type: array
               items:
                 enum:
+                  - stored_content
                   - web_activity
                   - highly_sensitive
 
