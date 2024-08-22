@@ -8,11 +8,9 @@
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "BrowserWindowTracker",
-  "resource:///modules/BrowserWindowTracker.jsm"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
+});
 
 class PopupShownObserver {
   _weakContext = null;
@@ -21,7 +19,7 @@ class PopupShownObserver {
     this._weakContext = Cu.getWeakReference(browsingContext);
   }
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     let ctxt = this._weakContext.get();
     let actor = ctxt.currentWindowGlobal?.getExistingActor("FormValidation");
     if (!actor) {

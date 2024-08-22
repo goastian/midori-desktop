@@ -117,7 +117,7 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     "TRROnlyFailure",
     {
       mode: "3",
-      provider_key: "fc53cb.dns.nextdns.io",
+      provider_key: "mozilla.cloudflare-dns.com",
       skip_reason: "TRR_UNKNOWN_CHANNEL_FAILURE",
     },
   ]);
@@ -164,7 +164,7 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     "TRROnlyFailure",
     {
       mode: "3",
-      provider_key: "fc53cb.dns.nextdns.io",
+      provider_key: "mozilla.cloudflare-dns.com",
       skip_reason: "TRR_UNKNOWN_CHANNEL_FAILURE",
     },
   ]);
@@ -178,7 +178,7 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     "TRROnlyFailure",
     {
       mode: "3",
-      provider_key: "fc53cb.dns.nextdns.io",
+      provider_key: "mozilla.cloudflare-dns.com",
       skip_reason: "TRR_UNKNOWN_CHANNEL_FAILURE",
     },
   ]);

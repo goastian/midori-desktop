@@ -6,6 +6,12 @@
 let { AboutHomeStartupCache } = ChromeUtils.importESModule(
   "resource:///modules/BrowserGlue.sys.mjs"
 );
+const { sinon } = ChromeUtils.importESModule(
+  "resource://testing-common/Sinon.sys.mjs"
+);
+const { DiscoveryStreamFeed } = ChromeUtils.importESModule(
+  "resource://activity-stream/lib/DiscoveryStreamFeed.sys.mjs"
+);
 
 // Some Activity Stream preferences are JSON encoded, and quite complex.
 // Hard-coding them here or in browser.ini makes them brittle to change.
@@ -13,8 +19,8 @@ let { AboutHomeStartupCache } = ChromeUtils.importESModule(
 // we need and write them to preferences here dynamically. We do this in
 // its own scope to avoid polluting the global scope.
 {
-  const { PREFS_CONFIG } = ChromeUtils.import(
-    "resource://activity-stream/lib/ActivityStream.jsm"
+  const { PREFS_CONFIG } = ChromeUtils.importESModule(
+    "resource://activity-stream/lib/ActivityStream.sys.mjs"
   );
 
   let defaultDSConfig = JSON.parse(
@@ -24,18 +30,11 @@ let { AboutHomeStartupCache } = ChromeUtils.importESModule(
     })
   );
 
-  let newConfig = Object.assign(defaultDSConfig, {
-    show_spocs: false,
-    hardcoded_layout: false,
-    layout_endpoint:
-      "https://example.com/browser/browser/components/newtab/test/browser/ds_layout.json",
-  });
-
   // Configure Activity Stream to query for the layout JSON file that points
   // at the local top stories feed.
   Services.prefs.setCharPref(
     "browser.newtabpage.activity-stream.discoverystream.config",
-    JSON.stringify(newConfig)
+    JSON.stringify(defaultDSConfig)
   );
 }
 
@@ -50,8 +49,14 @@ let { AboutHomeStartupCache } = ChromeUtils.importESModule(
  * @return {Promise}
  * @resolves {undefined}
  */
-// eslint-disable-next-line no-unused-vars
 function withFullyLoadedAboutHome(taskFn) {
+  const sandbox = sinon.createSandbox();
+  sandbox
+    .stub(DiscoveryStreamFeed.prototype, "generateFeedUrl")
+    .returns(
+      "https://example.com/browser/browser/components/newtab/test/browser/topstories.json"
+    );
+
   return BrowserTestUtils.withNewTab("about:home", async browser => {
     await SpecialPowers.spawn(browser, [], async () => {
       await ContentTaskUtils.waitForCondition(
@@ -64,6 +69,7 @@ function withFullyLoadedAboutHome(taskFn) {
     });
 
     await taskFn(browser);
+    sandbox.restore();
   });
 }
 
@@ -107,7 +113,6 @@ function withFullyLoadedAboutHome(taskFn) {
  *   Resolves once the restart simulation is complete, and the <xul:browser>
  *   pointed at about:home finishes reloading.
  */
-// eslint-disable-next-line no-unused-vars
 async function simulateRestart(
   browser,
   {
@@ -145,8 +150,8 @@ async function simulateRestart(
 
   info("Waiting for AboutHomeStartupCacheChild to uninit");
   await SpecialPowers.spawn(browser, [], async () => {
-    let { AboutHomeStartupCacheChild } = ChromeUtils.import(
-      "resource:///modules/AboutNewTabService.jsm"
+    let { AboutHomeStartupCacheChild } = ChromeUtils.importESModule(
+      "resource:///modules/AboutNewTabService.sys.mjs"
     );
     AboutHomeStartupCacheChild.uninit();
   });
@@ -167,8 +172,8 @@ async function simulateRestart(
     if (ensureCacheWinsRace) {
       info("Ensuring cache bytes are available");
       await SpecialPowers.spawn(browser, [], async () => {
-        let { AboutHomeStartupCacheChild } = ChromeUtils.import(
-          "resource:///modules/AboutNewTabService.jsm"
+        let { AboutHomeStartupCacheChild } = ChromeUtils.importESModule(
+          "resource:///modules/AboutNewTabService.sys.mjs"
         );
         let pageStream = AboutHomeStartupCacheChild._pageInputStream;
         let scriptStream = AboutHomeStartupCacheChild._scriptInputStream;
@@ -182,7 +187,7 @@ async function simulateRestart(
   if (!skipAboutHomeLoad) {
     info("Waiting for about:home to load");
     let loaded = BrowserTestUtils.browserLoaded(browser, false, "about:home");
-    BrowserTestUtils.loadURIString(browser, "about:home");
+    BrowserTestUtils.startLoadingURIString(browser, "about:home");
     await loaded;
     info("about:home loaded");
   }
@@ -205,7 +210,6 @@ async function simulateRestart(
  * @resolves undefined
  *   When the page and script content has been successfully written.
  */
-// eslint-disable-next-line no-unused-vars
 async function injectIntoCache(page, script) {
   if (!page || !script) {
     throw new Error("Cannot injectIntoCache with falsey values");
@@ -238,7 +242,6 @@ async function injectIntoCache(page, script) {
  * @resolves undefined
  *   Resolves when the cache is cleared.
  */
-// eslint-disable-next-line no-unused-vars
 async function clearCache() {
   info("Test is clearing the cache");
   AboutHomeStartupCache.clearCache();
@@ -281,14 +284,15 @@ function assertCacheResultScalar(cacheResultScalar) {
  * @resolves undefined
  *   Resolves once the cache entry has been destroyed.
  */
-// eslint-disable-next-line no-unused-vars
 async function ensureCachedAboutHome(browser) {
   await SpecialPowers.spawn(browser, [], async () => {
-    let scripts = Array.from(content.document.querySelectorAll("script"));
-    Assert.ok(!!scripts.length, "There should be page scripts.");
-    let [lastScript] = scripts.reverse();
+    let syncScripts = Array.from(
+      content.document.querySelectorAll("script:not([type='module'])")
+    );
+    Assert.ok(!!syncScripts.length, "There should be page scripts.");
+    let [lastSyncScript] = syncScripts.reverse();
     Assert.equal(
-      lastScript.src,
+      lastSyncScript.src,
       "about:home?jscache",
       "Found about:home?jscache script tag, indicating the cached doc"
     );
@@ -334,11 +338,12 @@ async function ensureCachedAboutHome(browser) {
  * @resolves undefined
  *   Resolves once the cache entry has been destroyed.
  */
-// eslint-disable-next-line no-unused-vars
 async function ensureDynamicAboutHome(browser, expectedResultScalar) {
   await SpecialPowers.spawn(browser, [], async () => {
-    let scripts = Array.from(content.document.querySelectorAll("script"));
-    Assert.equal(scripts.length, 0, "There should be no page scripts.");
+    let syncScripts = Array.from(
+      content.document.querySelectorAll("script:not([type='module'])")
+    );
+    Assert.equal(syncScripts.length, 0, "There should be no page scripts.");
 
     Assert.equal(
       Cu.waiveXrays(content).__FROM_STARTUP_CACHE__,

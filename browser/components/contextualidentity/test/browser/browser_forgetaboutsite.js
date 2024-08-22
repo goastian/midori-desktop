@@ -7,7 +7,9 @@ const CC = Components.Constructor;
 let { ForgetAboutSite } = ChromeUtils.importESModule(
   "resource://gre/modules/ForgetAboutSite.sys.mjs"
 );
-let { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+let { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const USER_CONTEXTS = ["default", "personal"];
 const TEST_HOST = "example.com";
@@ -54,19 +56,6 @@ function loadImagePageHandler(metadata, response) {
   response.bodyOutputStream.write(body, body.length);
 }
 
-async function openTabInUserContext(uri, userContextId) {
-  // Open the tab in the correct userContextId.
-  let tab = BrowserTestUtils.addTab(gBrowser, uri, { userContextId });
-
-  // Select tab and make sure its browser is focused.
-  gBrowser.selectedTab = tab;
-  tab.ownerGlobal.focus();
-
-  let browser = gBrowser.getBrowserForTab(tab);
-  await BrowserTestUtils.browserLoaded(browser);
-  return { tab, browser };
-}
-
 function getCookiesForOA(host, userContextId) {
   return Services.cookies.getCookiesFromHost(host, { userContextId });
 }
@@ -97,11 +86,11 @@ function OpenCacheEntry(key, where, flags, lci) {
     CacheListener.prototype = {
       QueryInterface: ChromeUtils.generateQI(["nsICacheEntryOpenCallback"]),
 
-      onCacheEntryCheck(entry) {
+      onCacheEntryCheck() {
         return Ci.nsICacheEntryOpenCallback.ENTRY_WANTED;
       },
 
-      onCacheEntryAvailable(entry, isnew, status) {
+      onCacheEntryAvailable() {
         resolve();
       },
 
@@ -322,7 +311,7 @@ async function test_storage_cleared() {
         let storeRequest = store.get(1);
 
         await new Promise(done => {
-          storeRequest.onsuccess = event => {
+          storeRequest.onsuccess = () => {
             let res = storeRequest.result;
             Assert.equal(
               res.userContext,

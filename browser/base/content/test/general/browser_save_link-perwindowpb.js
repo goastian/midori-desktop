@@ -2,7 +2,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 // Trigger a save of a link in public mode, then trigger an identical save
 // in private mode and ensure that the second request is differentiated from
@@ -15,7 +15,7 @@ function triggerSave(aWindow, aCallback) {
   // This page sets a cookie if and only if a cookie does not exist yet
   let testURI =
     "http://mochi.test:8888/browser/browser/base/content/test/general/bug792517-2.html";
-  BrowserTestUtils.loadURIString(testBrowser, testURI);
+  BrowserTestUtils.startLoadingURIString(testBrowser, testURI);
   BrowserTestUtils.browserLoaded(testBrowser, false, testURI).then(() => {
     waitForFocus(function () {
       info("register to handle popupshown");
@@ -68,7 +68,7 @@ function triggerSave(aWindow, aCallback) {
     info("popup hidden");
   }
 
-  function onTransferComplete(aWindow2, downloadSuccess, destDir) {
+  function onTransferComplete(aWindow2, downloadSuccess) {
     ok(downloadSuccess, "Link should have been downloaded successfully");
     aWindow2.close();
 
@@ -118,7 +118,7 @@ function test() {
     info("Finished running the cleanup code");
   });
 
-  function observer(subject, topic, state) {
+  function observer(subject, topic) {
     info("observer called with " + topic);
     if (topic == "http-on-modify-request") {
       onModifyRequest(subject);

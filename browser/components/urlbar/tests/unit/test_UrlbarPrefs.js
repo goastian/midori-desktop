@@ -56,7 +56,6 @@ add_task(function makeResultGroups_true() {
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_ENGINE_ALIAS },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_BOOKMARK_KEYWORD },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_AUTOFILL },
-            { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_PRELOADED },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_TOKEN_ALIAS_ENGINE },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_HISTORY_URL },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_FALLBACK },
@@ -80,6 +79,10 @@ add_task(function makeResultGroups_true() {
                     {
                       flex: 2,
                       group: UrlbarUtils.RESULT_GROUP.FORM_HISTORY,
+                    },
+                    {
+                      flex: 99,
+                      group: UrlbarUtils.RESULT_GROUP.RECENT_SEARCH,
                     },
                     {
                       flex: 4,
@@ -116,10 +119,6 @@ add_task(function makeResultGroups_true() {
                       flex: 2,
                       group: UrlbarUtils.RESULT_GROUP.ABOUT_PAGES,
                     },
-                    {
-                      flex: 1,
-                      group: UrlbarUtils.RESULT_GROUP.PRELOADED,
-                    },
                   ],
                 },
                 {
@@ -152,7 +151,6 @@ add_task(function makeResultGroups_false() {
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_ENGINE_ALIAS },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_BOOKMARK_KEYWORD },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_AUTOFILL },
-            { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_PRELOADED },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_TOKEN_ALIAS_ENGINE },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_HISTORY_URL },
             { group: UrlbarUtils.RESULT_GROUP.HEURISTIC_FALLBACK },
@@ -190,10 +188,6 @@ add_task(function makeResultGroups_false() {
                       flex: 2,
                       group: UrlbarUtils.RESULT_GROUP.ABOUT_PAGES,
                     },
-                    {
-                      flex: 1,
-                      group: UrlbarUtils.RESULT_GROUP.PRELOADED,
-                    },
                   ],
                 },
                 {
@@ -211,6 +205,10 @@ add_task(function makeResultGroups_false() {
                     {
                       flex: 2,
                       group: UrlbarUtils.RESULT_GROUP.FORM_HISTORY,
+                    },
+                    {
+                      flex: 99,
+                      group: UrlbarUtils.RESULT_GROUP.RECENT_SEARCH,
                     },
                     {
                       flex: 4,
@@ -365,10 +363,10 @@ add_task(async function onNimbusChanged() {
   // Add an observer that throws an Error and an observer that does not define
   // anything to check whether the other observers can get notifications.
   UrlbarPrefs.addObserver({
-    onPrefChanged(pref) {
+    onPrefChanged() {
       throw new Error("From onPrefChanged");
     },
-    onNimbusChanged(pref) {
+    onNimbusChanged() {
       throw new Error("From onNimbusChanged");
     },
   });
@@ -409,16 +407,16 @@ add_task(async function onPrefChanged() {
   // Add an observer that throws an Error and an observer that does not define
   // anything to check whether the other observers can get notifications.
   UrlbarPrefs.addObserver({
-    onPrefChanged(pref) {
+    onPrefChanged() {
       throw new Error("From onPrefChanged");
     },
-    onNimbusChanged(pref) {
+    onNimbusChanged() {
       throw new Error("From onNimbusChanged");
     },
   });
   UrlbarPrefs.addObserver({});
 
-  const deferred = PromiseUtils.defer();
+  const deferred = Promise.withResolvers();
   const observer = {
     onPrefChanged(pref) {
       this.prefChangedList.push(pref);

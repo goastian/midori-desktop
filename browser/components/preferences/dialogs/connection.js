@@ -16,6 +16,7 @@ Preferences.addAll([
   // both initialized when network.proxy.type initialization triggers a call to
   // gConnectionsDialog.updateReloadButton().
   { id: "network.proxy.autoconfig_url", type: "string" },
+  { id: "network.proxy.system_wpad", type: "bool" },
   { id: "network.proxy.type", type: "int" },
   { id: "network.proxy.http", type: "string" },
   { id: "network.proxy.http_port", type: "int" },
@@ -25,6 +26,7 @@ Preferences.addAll([
   { id: "network.proxy.socks_port", type: "int" },
   { id: "network.proxy.socks_version", type: "int" },
   { id: "network.proxy.socks_remote_dns", type: "bool" },
+  { id: "network.proxy.socks5_remote_dns", type: "bool" },
   { id: "network.proxy.no_proxies_on", type: "string" },
   { id: "network.proxy.share_proxy_settings", type: "bool" },
   { id: "signon.autologin.proxy", type: "bool" },
@@ -83,7 +85,7 @@ var gConnectionsDialog = {
       "network.proxy.share_proxy_settings"
     );
 
-    // If the port is 0 and the proxy server is specified, focus on the port and cancel submission.
+    // If the proxy server (when specified) is invalid or the port is set to 0 then cancel submission.
     for (let prefName of ["http", "ssl", "socks"]) {
       let proxyPortPref = Preferences.get(
         "network.proxy." + prefName + "_port"
@@ -93,14 +95,21 @@ var gConnectionsDialog = {
       // all ports except the HTTP and SOCKS port
       if (
         proxyPref.value != "" &&
-        proxyPortPref.value == 0 &&
         (prefName == "http" || prefName == "socks" || !shareProxiesPref.value)
       ) {
-        document
-          .getElementById("networkProxy" + prefName.toUpperCase() + "_Port")
-          .focus();
-        event.preventDefault();
-        return;
+        if (proxyPortPref.value == 0) {
+          document
+            .getElementById("networkProxy" + prefName.toUpperCase() + "_Port")
+            .focus();
+          event.preventDefault();
+          return;
+        } else if (!Services.io.isValidHostname(proxyPref.value)) {
+          document
+            .getElementById("networkProxy" + prefName.toUpperCase())
+            .focus();
+          event.preventDefault();
+          return;
+        }
       }
     }
 
@@ -123,11 +132,21 @@ var gConnectionsDialog = {
   checkForSystemProxy() {
     if ("@mozilla.org/system-proxy-settings;1" in Cc) {
       document.getElementById("systemPref").removeAttribute("hidden");
+
+      var systemWpadAllowed = Services.prefs.getBoolPref(
+        "network.proxy.system_wpad.allowed",
+        false
+      );
+      if (systemWpadAllowed && AppConstants.platform == "win") {
+        document.getElementById("systemWpad").removeAttribute("hidden");
+      }
     }
   },
 
   proxyTypeChanged() {
     var proxyTypePref = Preferences.get("network.proxy.type");
+    var systemWpadPref = Preferences.get("network.proxy.system_wpad");
+    systemWpadPref.updateControlDisabledState(proxyTypePref.value != 5);
 
     // Update http
     var httpProxyURLPref = Preferences.get("network.proxy.http");
@@ -161,12 +180,18 @@ var gConnectionsDialog = {
 
   updateDNSPref() {
     var socksVersionPref = Preferences.get("network.proxy.socks_version");
-    var socksDNSPref = Preferences.get("network.proxy.socks_remote_dns");
+    var socks4DNSPref = Preferences.get("network.proxy.socks_remote_dns");
+    var socks5DNSPref = Preferences.get("network.proxy.socks5_remote_dns");
     var proxyTypePref = Preferences.get("network.proxy.type");
     var isDefinitelySocks4 =
       proxyTypePref.value == 1 && socksVersionPref.value == 4;
-    socksDNSPref.updateControlDisabledState(
+    socks5DNSPref.updateControlDisabledState(
       isDefinitelySocks4 || proxyTypePref.value == 0
+    );
+    var isDefinitelySocks5 =
+      proxyTypePref.value == 1 && socksVersionPref.value == 5;
+    socks4DNSPref.updateControlDisabledState(
+      isDefinitelySocks5 || proxyTypePref.value == 0
     );
     return undefined;
   },

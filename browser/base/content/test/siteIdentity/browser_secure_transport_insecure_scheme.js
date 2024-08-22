@@ -7,18 +7,24 @@
 // insecure in terms of the site identity panel. We achieve this by running an
 // HTTP-over-TLS "proxy" and having Firefox request an http:// URI over it.
 
+const NOT_SECURE_LABEL = Services.prefs.getBoolPref(
+  "security.insecure_connection_text.enabled"
+)
+  ? "notSecure notSecureText"
+  : "notSecure";
+
 /**
  * Tests that the page info dialog "security" section labels a
  * connection as unencrypted and does not show certificate.
  * @param {string} uri - URI of the page to test with.
  */
 async function testPageInfoNotEncrypted(uri) {
-  let pageInfo = BrowserPageInfo(uri, "securityTab");
+  let pageInfo = BrowserCommands.pageInfo(uri, "securityTab");
   await BrowserTestUtils.waitForEvent(pageInfo, "load");
   let pageInfoDoc = pageInfo.document;
   let securityTab = pageInfoDoc.getElementById("securityTab");
   await TestUtils.waitForCondition(
-    () => BrowserTestUtils.is_visible(securityTab),
+    () => BrowserTestUtils.isVisible(securityTab),
     "Security tab should be visible."
   );
 
@@ -81,7 +87,7 @@ function startServer(cert) {
       output = transport.openOutputStream(0, 0, 0);
     },
 
-    onHandshakeDone(socket, status) {
+    onHandshakeDone() {
       input.asyncWait(
         {
           onInputStreamReady(readyInput) {
@@ -146,7 +152,7 @@ add_task(async function () {
     QueryInterface: ChromeUtils.generateQI(["nsISystemProxySettings"]),
     mainThreadOnly: true,
     PACURI: null,
-    getProxyForURI: (aSpec, aScheme, aHost, aPort) => {
+    getProxyForURI: () => {
       return `HTTPS localhost:${server.port}`;
     },
   };
@@ -175,9 +181,13 @@ add_task(async function () {
   // secure, in a real situation the connection from the proxy to
   // http://example.com won't be secure, so we treat it as not secure.
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-  await BrowserTestUtils.withNewTab("http://example.com/", async browser => {
+  await BrowserTestUtils.withNewTab("http://example.com/", async () => {
     let identityMode = window.document.getElementById("identity-box").className;
-    is(identityMode, "notSecure", "identity should be 'not secure'");
+    is(
+      identityMode,
+      NOT_SECURE_LABEL,
+      `identity should be '${NOT_SECURE_LABEL}'`
+    );
 
     // eslint-disable-next-line @microsoft/sdl/no-insecure-url
     await testPageInfoNotEncrypted("http://example.com");

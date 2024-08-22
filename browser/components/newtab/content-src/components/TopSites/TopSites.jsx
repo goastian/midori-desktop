@@ -2,15 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import { MIN_RICH_FAVICON_SIZE, TOP_SITES_SOURCE } from "./TopSitesConstants";
 import { CollapsibleSection } from "content-src/components/CollapsibleSection/CollapsibleSection";
 import { ComponentPerfTimer } from "content-src/components/ComponentPerfTimer/ComponentPerfTimer";
 import { connect } from "react-redux";
-import { ModalOverlayWrapper } from "../../asrouter/components/ModalOverlay/ModalOverlay";
+import { ModalOverlayWrapper } from "content-src/components/ModalOverlay/ModalOverlay";
 import React from "react";
 import { SearchShortcutsForm } from "./SearchShortcutsForm";
 import { TOP_SITES_MAX_SITES_PER_ROW } from "common/Reducers.sys.mjs";
@@ -93,7 +90,7 @@ export class _TopSites extends React.PureComponent {
     // We hide 2 sites per row when not in the wide layout.
     let sitesPerRow = TOP_SITES_MAX_SITES_PER_ROW;
     // $break-point-widest = 1072px (from _variables.scss)
-    if (!global.matchMedia(`(min-width: 1072px)`).matches) {
+    if (!globalThis.matchMedia(`(min-width: 1072px)`).matches) {
       sitesPerRow -= 2;
     }
     return this.props.TopSites.rows.slice(
@@ -206,7 +203,7 @@ export class _TopSites extends React.PureComponent {
   }
 }
 
-export const TopSites = connect((state, props) => ({
+export const TopSites = connect(state => ({
   TopSites: state.TopSites,
   Prefs: state.Prefs,
   TopSitesRows: state.Prefs.values.topSitesRows,

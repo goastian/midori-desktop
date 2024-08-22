@@ -97,14 +97,12 @@
  *       └───┴───┴── Open views
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gBundle", function () {
   return Services.strings.createBundle(
     "chrome://browser/locale/browser.properties"
   );
@@ -414,7 +412,6 @@ export var PanelMultiView = class extends AssociatedToNode {
     this.openViews = [];
 
     this._panel.addEventListener("popupshowing", this);
-    this._panel.addEventListener("popuppositioned", this);
     this._panel.addEventListener("popuphidden", this);
     this._panel.addEventListener("popupshown", this);
 
@@ -436,7 +433,6 @@ export var PanelMultiView = class extends AssociatedToNode {
 
     this._panel.removeEventListener("mousemove", this);
     this._panel.removeEventListener("popupshowing", this);
-    this._panel.removeEventListener("popuppositioned", this);
     this._panel.removeEventListener("popupshown", this);
     this._panel.removeEventListener("popuphidden", this);
     this.document.documentElement.removeEventListener("keydown", this, true);
@@ -583,6 +579,7 @@ export var PanelMultiView = class extends AssociatedToNode {
           typeof options == "object" &&
           options.triggerEvent &&
           (options.triggerEvent.type == "keypress" ||
+            options.triggerEvent.type == "keydown" ||
             options.triggerEvent?.inputSource ==
               MouseEvent.MOZ_SOURCE_KEYBOARD) &&
           this.openViews.length
@@ -710,9 +707,7 @@ export var PanelMultiView = class extends AssociatedToNode {
 
     // Provide visual feedback while navigation is in progress, starting before
     // the transition starts and ending when the previous view is invisible.
-    if (anchor) {
-      anchor.setAttribute("open", "true");
-    }
+    anchor?.setAttribute("open", "true");
     try {
       // If the ViewShowing event cancels the operation we have to re-enable
       // keyboard navigation, but this must be avoided if the panel was closed.
@@ -734,10 +729,22 @@ export var PanelMultiView = class extends AssociatedToNode {
       // The main view of a panel can be a subview in another one. Make sure to
       // reset all the properties that may be set on a subview.
       nextPanelView.mainview = false;
-      // The header may change based on how the subview was opened.
-      nextPanelView.headerText =
-        viewNode.getAttribute("title") ||
-        (anchor && anchor.getAttribute("label"));
+      // The header may be set by a Fluent message with a title attribute
+      // that has changed immediately before showing the panelview,
+      // and so is not reflected in the DOM yet.
+      let title;
+      const l10nId = viewNode.getAttribute("data-l10n-id");
+      if (l10nId) {
+        const l10nArgs = viewNode.getAttribute("data-l10n-args");
+        const args = l10nArgs ? JSON.parse(l10nArgs) : undefined;
+        const [msg] = await viewNode.ownerDocument.l10n.formatMessages([
+          { id: l10nId, args },
+        ]);
+        title = msg.attributes.find(a => a.name === "title")?.value;
+      }
+      // If not set by Fluent, the header may change based on how the subview was opened.
+      title ??= viewNode.getAttribute("title") || anchor?.getAttribute("label");
+      nextPanelView.headerText = title;
       // The constrained width of subviews may also vary between panels.
       nextPanelView.minMaxWidth = prevPanelView.knownWidth;
       let lockPanelVertical =
@@ -752,9 +759,7 @@ export var PanelMultiView = class extends AssociatedToNode {
 
       await this._transitionViews(prevPanelView.node, viewNode, false);
     } finally {
-      if (anchor) {
-        anchor.removeAttribute("open");
-      }
+      anchor?.removeAttribute("open");
     }
 
     nextPanelView.focusWhenActive = doingKeyboardActivation;
@@ -1174,47 +1179,6 @@ export var PanelMultiView = class extends AssociatedToNode {
     }
   }
 
-  _calculateMaxHeight(aEvent) {
-    // While opening the panel, we have to limit the maximum height of any
-    // view based on the space that will be available. We cannot just use
-    // window.screen.availTop and availHeight because these may return an
-    // incorrect value when the window spans multiple screens.
-    let anchor = this._panel.anchorNode;
-    let anchorRect = anchor.getBoundingClientRect();
-    let screen = anchor.screen;
-
-    // GetAvailRect returns screen-device pixels, which we can convert to CSS
-    // pixels here.
-    let availTop = {},
-      availHeight = {};
-    screen.GetAvailRect({}, availTop, {}, availHeight);
-    let cssAvailTop = availTop.value / screen.defaultCSSScaleFactor;
-
-    // The distance from the anchor to the available margin of the screen is
-    // based on whether the panel will open towards the top or the bottom.
-    let maxHeight;
-    if (aEvent.alignmentPosition.startsWith("before_")) {
-      maxHeight = anchor.screenY - cssAvailTop;
-    } else {
-      let anchorScreenBottom = anchor.screenY + anchorRect.height;
-      let cssAvailHeight = availHeight.value / screen.defaultCSSScaleFactor;
-      maxHeight = cssAvailTop + cssAvailHeight - anchorScreenBottom;
-    }
-
-    // To go from the maximum height of the panel to the maximum height of
-    // the view stack, we need to subtract the height of the arrow and the
-    // height of the opposite margin, but we cannot get their actual values
-    // because the panel is not visible yet. However, we know that this is
-    // currently 11px on Mac, 13px on Windows, and 13px on Linux. We also
-    // want an extra margin, both for visual reasons and to prevent glitches
-    // due to small rounding errors. So, we just use a value that makes
-    // sense for all platforms. If the arrow visuals change significantly,
-    // this value will be easy to adjust.
-    const EXTRA_MARGIN_PX = 20;
-    maxHeight -= EXTRA_MARGIN_PX;
-    return maxHeight;
-  }
-
   handleEvent(aEvent) {
     // Only process actual popup events from the panel or events we generate
     // ourselves, but not from menus being shown from within the panel.
@@ -1252,14 +1216,6 @@ export var PanelMultiView = class extends AssociatedToNode {
           // so we get the event first.
           this.document.documentElement.addEventListener("keydown", this, true);
           this._panel.addEventListener("mousemove", this);
-        }
-        break;
-      }
-      case "popuppositioned": {
-        if (this._panel.state == "showing") {
-          let maxHeight = this._calculateMaxHeight(aEvent);
-          this._viewStack.style.maxHeight = maxHeight + "px";
-          this._offscreenViewStack.style.maxHeight = maxHeight + "px";
         }
         break;
       }
@@ -1398,43 +1354,50 @@ export var PanelView = class extends AssociatedToNode {
     };
 
     // If the header already exists, update or remove it as requested.
+    let isMainView = this.node.getAttribute("mainview");
     let header = this.node.querySelector(".panel-header");
     if (header) {
-      let headerInfoButton = header.querySelector(".panel-info-button");
       let headerBackButton = header.querySelector(".subviewbutton-back");
-      if (headerBackButton && this.node.getAttribute("mainview")) {
-        // A back button should not appear in a mainview.
-        // This codepath can be reached if a user enters a panelview in
-        // the overflow panel, and then unpins it back to the toolbar.
-        headerBackButton.remove();
-      }
-      if (!this.node.getAttribute("mainview")) {
-        if (value) {
-          if (headerInfoButton && !headerBackButton) {
-            // If we're not in a mainview and an info button is present,
-            // that means the panel header is a custom one and a back
-            // button should be added, if not already present.
-            header.prepend(this.createHeaderBackButton());
-          }
-          // Set the header title based on the value given.
-          header.querySelector(".panel-header > h1 > span").textContent = value;
-          ensureHeaderSeparator(header);
-        } else {
-          if (header.nextSibling.tagName == "toolbarseparator") {
-            header.nextSibling.remove();
-          }
-          header.remove();
+      if (isMainView) {
+        if (headerBackButton) {
+          // A back button should not appear in a mainview.
+          // This codepath can be reached if a user enters a panelview in
+          // the overflow panel (like the Profiler), and then unpins it back to the toolbar.
+          headerBackButton.remove();
         }
-        return;
-      } else if (!this.node.getAttribute("showheader")) {
+      }
+      if (value) {
+        if (
+          !isMainView &&
+          !headerBackButton &&
+          !this.node.getAttribute("no-back-button")
+        ) {
+          // Add a back button when not in mainview (if it doesn't exist already),
+          // also when a panelview specifies it doesn't want a back button,
+          // like the Report Broken Site (sent) panelview.
+          header.prepend(this.createHeaderBackButton());
+        }
+        // Set the header title based on the value given.
+        header.querySelector(".panel-header > h1 > span").textContent = value;
+        ensureHeaderSeparator(header);
+      } else if (
+        !this.node.getAttribute("has-custom-header") &&
+        !this.node.getAttribute("mainview-with-header")
+      ) {
+        // No value supplied, and the panelview doesn't have a certain requirement
+        // for any kind of header, so remove it and the following toolbarseparator.
         if (header.nextSibling.tagName == "toolbarseparator") {
           header.nextSibling.remove();
         }
         header.remove();
+        return;
       }
+      // Either the header exists and has been adjusted accordingly by now,
+      // or it doesn't (or shouldn't) exist. Bail out to not create a duplicate header.
+      return;
     }
 
-    // The header doesn't exist, only create it if needed.
+    // The header doesn't and shouldn't exist, only create it if needed.
     if (!value) {
       return;
     }
@@ -1442,13 +1405,17 @@ export var PanelView = class extends AssociatedToNode {
     header = this.document.createXULElement("box");
     header.classList.add("panel-header");
 
-    let backButton = this.createHeaderBackButton();
+    if (!isMainView) {
+      let backButton = this.createHeaderBackButton();
+      header.append(backButton);
+    }
+
     let h1 = this.document.createElement("h1");
     let span = this.document.createElement("span");
     span.textContent = value;
     h1.appendChild(span);
 
-    header.append(backButton, h1);
+    header.append(h1);
     this.node.prepend(header);
 
     ensureHeaderSeparator(header);
@@ -1504,6 +1471,7 @@ export var PanelView = class extends AssociatedToNode {
     let tag = element.localName;
     return (
       tag == "menulist" ||
+      tag == "select" ||
       tag == "radiogroup" ||
       tag == "input" ||
       tag == "textarea" ||

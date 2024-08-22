@@ -31,7 +31,7 @@ class AwaitPromiseProvider extends UrlbarTestUtils.TestProvider {
 
   async startQuery(context, add) {
     await this._promise;
-    for (let result of this._results) {
+    for (let result of this.results) {
       add(this, result);
     }
   }
@@ -268,7 +268,7 @@ add_task(async function clickOnEdgeOfURLBar() {
     () => !win.gURLBar._hideFocus
   );
 
-  const container = win.document.getElementById("urlbar-input-container");
+  const container = win.gURLBar.querySelector(".urlbar-input-container");
   container.click();
 
   await onHiddenFocusRemoved;

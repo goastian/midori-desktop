@@ -166,7 +166,12 @@ add_task(async function topSites_changed() {
     // Remove the new URL. The top sites will update themselves automatically,
     // so we only need to wait for newtab-top-sites-changed.
     info("Removing new URL and awaiting newtab-top-sites-changed");
-    let changedPromise = TestUtils.topicObserved("newtab-top-sites-changed");
+    let changedPromise;
+    if (Services.prefs.getBoolPref("browser.topsites.component.enabled")) {
+      changedPromise = TestUtils.topicObserved("topsites-refreshed");
+    } else {
+      changedPromise = TestUtils.topicObserved("newtab-top-sites-changed");
+    }
     await PlacesUtils.history.remove([newURL]);
     await changedPromise;
 
@@ -378,11 +383,19 @@ async function openViewAndAssertCached({
   let getContext = () =>
     searchString ? cache.get(searchString) : cache.topSitesContext;
 
+  let cachedContext = getContext();
   Assert.equal(
-    !!getContext(),
+    !!cachedContext,
     cached,
     "Context is present or not in cache as expected for search string: " +
       JSON.stringify(searchString)
+  );
+  // Our payload schema validator allows for explicit undefined properties,
+  // thus we must transform them for stringify.
+  Assert.deepEqual(
+    cachedContext,
+    JSON.parse(JSON.stringify(cachedContext, (k, v) => v ?? null)),
+    "The query context should be made of serializable properties"
   );
 
   // Open the view by performing the accel+L command.
@@ -468,9 +481,16 @@ async function openViewAndAssertCached({
  */
 async function updateTopSitesAndAwaitChanged(expectedCount) {
   info("Updating top sites and awaiting newtab-top-sites-changed");
-  let changedPromise = TestUtils.topicObserved("newtab-top-sites-changed").then(
-    () => info("Observed newtab-top-sites-changed")
-  );
+  let changedPromise;
+  if (Services.prefs.getBoolPref("browser.topsites.component.enabled")) {
+    changedPromise = TestUtils.topicObserved("topsites-refreshed").then(() =>
+      info("Observed topsites-refreshed")
+    );
+  } else {
+    changedPromise = TestUtils.topicObserved("newtab-top-sites-changed").then(
+      () => info("Observed newtab-top-sites-changed")
+    );
+  }
   await updateTopSites(sites => sites?.length == expectedCount);
   await changedPromise;
 }

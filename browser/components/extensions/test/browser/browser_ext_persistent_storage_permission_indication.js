@@ -55,12 +55,12 @@ async function testPermissionPopup({ expectPermissionHidden }) {
 
   if (expectPermissionHidden) {
     ok(
-      BrowserTestUtils.is_hidden(permissionsGrantedIcon),
+      BrowserTestUtils.isHidden(permissionsGrantedIcon),
       "Permission Granted Icon is hidden"
     );
   } else {
     ok(
-      BrowserTestUtils.is_visible(permissionsGrantedIcon),
+      BrowserTestUtils.isVisible(permissionsGrantedIcon),
       "Permission Granted Icon is visible"
     );
   }
@@ -86,7 +86,7 @@ add_task(async function testPersistentStoragePermissionHidden() {
   await BrowserTestUtils.withNewTab("about:blank", async browser => {
     // Wait the tab to be fully loade, then run the test on the permission prompt.
     let loaded = BrowserTestUtils.browserLoaded(browser, false, url);
-    BrowserTestUtils.loadURIString(browser, url);
+    BrowserTestUtils.startLoadingURIString(browser, url);
     await loaded;
     await testPermissionPopup({ expectPermissionHidden: true });
   });
@@ -122,7 +122,7 @@ add_task(async function testPersistentStoragePermissionVisible() {
   await BrowserTestUtils.withNewTab("about:blank", async browser => {
     // Wait the tab to be fully loade, then run the test on the permission prompt.
     let loaded = BrowserTestUtils.browserLoaded(browser, false, url);
-    BrowserTestUtils.loadURIString(browser, url);
+    BrowserTestUtils.startLoadingURIString(browser, url);
     await loaded;
     await testPermissionPopup({ expectPermissionHidden: false });
   });

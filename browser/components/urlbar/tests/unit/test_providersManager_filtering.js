@@ -205,10 +205,10 @@ add_task(async function test_filter_queryContext() {
     get type() {
       return UrlbarUtils.PROVIDER_TYPE.PROFILE;
     }
-    isActive(context) {
+    isActive(_context) {
       return true;
     }
-    async startQuery(context, add) {
+    async startQuery(_context, _add) {
       Assert.ok(false, "Provider should no be invoked");
     }
   }
@@ -357,12 +357,10 @@ add_task(async function test_filter_priority() {
    */
   class TestProvider extends UrlbarTestUtils.TestProvider {
     constructor(priority, shouldBeInvoked, namePart = "") {
-      super();
-      this._priority = priority;
-      this._name = `${priority}` + namePart;
+      super({ priority, name: `${priority}` + namePart });
       this._shouldBeInvoked = shouldBeInvoked;
     }
-    async startQuery(context, add) {
+    async startQuery(_context, _add) {
       Assert.ok(this._shouldBeInvoked, `${this.name} was invoked`);
     }
   }

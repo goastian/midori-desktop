@@ -30,9 +30,19 @@ export class PageInfoChild extends JSWindowActorChild {
           mediaItems: await this.getDocumentMedia(document),
         });
       }
+      case "PageInfo:getPartitionKey": {
+        return Promise.resolve({
+          partitionKey: await this.getPartitionKey(document),
+        });
+      }
     }
 
     return undefined;
+  }
+
+  getPartitionKey(document) {
+    let partitionKey = document.cookieJarSettings.partitionKey;
+    return partitionKey;
   }
 
   getMetaInfo(document) {
@@ -171,7 +181,7 @@ export class PageInfoChild extends JSWindowActorChild {
     // One swi^H^H^Hif-else to rule them all.
     if (content.HTMLImageElement.isInstance(elem)) {
       addMedia(
-        elem.src,
+        elem.currentSrc,
         "img",
         elem.getAttribute("alt"),
         elem,

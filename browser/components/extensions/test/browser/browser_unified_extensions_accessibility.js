@@ -5,6 +5,12 @@
 
 loadTestSubscript("head_unified_extensions.js");
 
+add_setup(async () => {
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.originControls.grantByDefault", false]],
+  });
+});
+
 add_task(async function test_keyboard_navigation_activeScript() {
   const extension1 = ExtensionTestUtils.loadExtension({
     manifest: {
@@ -43,7 +49,7 @@ add_task(async function test_keyboard_navigation_activeScript() {
     useAddonManager: "temporary",
   });
 
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     gBrowser.selectedBrowser,
     "https://example.org/"
   );

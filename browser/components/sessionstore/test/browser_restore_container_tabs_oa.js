@@ -4,11 +4,15 @@
 
 "use strict";
 
+const { UrlbarProviderOpenTabs } = ChromeUtils.importESModule(
+  "resource:///modules/UrlbarProviderOpenTabs.sys.mjs"
+);
+
 const PATH = "browser/browser/components/sessionstore/test/empty.html";
 
-/* import-globals-from ../../../base/content/test/tabs/helper_origin_attrs_testing.js */
+/* import-globals-from ../../tabbrowser/test/browser/tabs/helper_origin_attrs_testing.js */
 loadTestSubscript(
-  "../../../base/content/test/tabs/helper_origin_attrs_testing.js"
+  "../../tabbrowser/test/browser/tabs/helper_origin_attrs_testing.js"
 );
 
 var TEST_CASES = [
@@ -116,6 +120,13 @@ add_task(async function testRestore() {
     SessionStore.getClosedWindowCount(),
     1,
     "Should have restore data for the closed window"
+  );
+
+  Assert.equal(
+    0,
+    (await UrlbarProviderOpenTabs.getDatabaseRegisteredOpenTabsForTests())
+      .length,
+    "No registered open pages should be left"
   );
 
   // Now restore the window
@@ -228,4 +239,11 @@ add_task(async function testRestore() {
   }
 
   await BrowserTestUtils.closeWindow(newWin);
+
+  Assert.equal(
+    0,
+    (await UrlbarProviderOpenTabs.getDatabaseRegisteredOpenTabsForTests())
+      .length,
+    "No registered open pages should be left"
+  );
 });

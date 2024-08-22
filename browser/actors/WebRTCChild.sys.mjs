@@ -95,7 +95,7 @@ export class WebRTCChild extends JSWindowActorChild {
   }
 
   // This observer is called from BrowserProcessChild to avoid
-  // loading this .jsm when WebRTC is not in use.
+  // loading this module when WebRTC is not in use.
   static observe(aSubject, aTopic, aData) {
     switch (aTopic) {
       case "getUserMedia:request":
@@ -213,7 +213,7 @@ function getActorForWindow(window) {
   return null;
 }
 
-function handlePCRequest(aSubject, aTopic, aData) {
+function handlePCRequest(aSubject) {
   let { windowID, innerWindowID, callID, isSecure } = aSubject;
   let contentWindow = Services.wm.getOuterWindowWithId(windowID);
   if (!contentWindow.pendingPeerConnectionRequests) {
@@ -235,7 +235,7 @@ function handlePCRequest(aSubject, aTopic, aData) {
   }
 }
 
-function handleGUMStop(aSubject, aTopic, aData) {
+function handleGUMStop(aSubject) {
   let contentWindow = Services.wm.getOuterWindowWithId(aSubject.windowID);
 
   let request = {
@@ -250,7 +250,7 @@ function handleGUMStop(aSubject, aTopic, aData) {
   }
 }
 
-function handleGUMRequest(aSubject, aTopic, aData) {
+function handleGUMRequest(aSubject) {
   // Now that a getUserMedia request has been created, we should check
   // to see if we're supposed to have any devices muted. This needs
   // to occur after the getUserMedia request is made, since the global
@@ -381,7 +381,7 @@ function prompt(
   // then chose to just build their own prompting mechanism instead.
   //
   // So, what you are looking at here is not a real nsIContentPermissionRequest, but
-  // something that looks really similar and will be transmitted to webrtcUI.jsm
+  // something that looks really similar and will be transmitted to webrtcUI.sys.mjs
   // for showing the prompt.
   // Note that we basically do the permission delegate check in
   // nsIContentPermissionRequest, but because webrtc uses their own prompting
@@ -392,14 +392,8 @@ function prompt(
       Ci.nsIPermissionDelegateHandler
     );
 
-  const shouldDelegatePermission =
-    permDelegateHandler.permissionDelegateFPEnabled;
-
   let secondOrigin = undefined;
-  if (
-    shouldDelegatePermission &&
-    permDelegateHandler.maybeUnsafePermissionDelegate(requestTypes)
-  ) {
+  if (permDelegateHandler.maybeUnsafePermissionDelegate(requestTypes)) {
     // We are going to prompt both first party and third party origin.
     // SecondOrigin should be third party
     secondOrigin = aContentWindow.document.nodePrincipal.origin;
@@ -412,7 +406,6 @@ function prompt(
     documentURI: aContentWindow.document.documentURI,
     secure: aSecure,
     isHandlingUserInput: aIsHandlingUserInput,
-    shouldDelegatePermission,
     requestTypes,
     sharingScreen,
     sharingAudio,
@@ -479,7 +472,7 @@ function forgetPendingListsEventually(aContentWindow) {
   aContentWindow.removeEventListener("unload", WebRTCChild.handleEvent);
 }
 
-function updateIndicators(aSubject, aTopic, aData) {
+function updateIndicators(aSubject) {
   if (
     aSubject instanceof Ci.nsIPropertyBag &&
     aSubject.getProperty("requestURL") == kBrowserURL

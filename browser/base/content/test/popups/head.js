@@ -140,8 +140,9 @@ async function testPropertyDeltas(
       return;
     }
 
-    ok(
-      matchingIndex >= 0,
+    Assert.greaterOrEqual(
+      matchingIndex,
+      0,
       `${msg} Valid intermediate state. Current: ` +
         stringifyState(currentSizeState)
     );
@@ -150,11 +151,6 @@ async function testPropertyDeltas(
     validResizeStates.splice(0, matchingIndex + 1);
   };
   win.addEventListener("resize", resizeListener);
-
-  const useProperties = !Services.prefs.getBoolPref(
-    "dom.window_position_size_properties_replaceable.enabled",
-    true
-  );
 
   info("Starting property changes.");
   await new Promise(resolve => {
@@ -168,9 +164,7 @@ async function testPropertyDeltas(
 
         let targetValue = initialState[prop] + deltaObj[prop];
         info(`${pre} Setting ${prop} to ${targetValue}.`);
-        if (useProperties) {
-          win[prop] = targetValue;
-        } else if (sizeProps.includes(prop)) {
+        if (sizeProps.includes(prop)) {
           win.resizeTo(finalState.outerWidth, finalState.outerHeight);
         } else {
           win.moveTo(finalState.screenX, finalState.screenY);

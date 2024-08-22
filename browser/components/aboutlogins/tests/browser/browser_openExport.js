@@ -8,9 +8,6 @@
  * Test the export logins file picker appears.
  */
 
-let { OSKeyStore } = ChromeUtils.importESModule(
-  "resource://gre/modules/OSKeyStore.sys.mjs"
-);
 let { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
@@ -27,7 +24,7 @@ add_setup(async function () {
     return !events || !events.length;
   }, "Waiting for content telemetry events to get cleared");
 
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   MockFilePicker.useAnyFile();
   MockFilePicker.returnValue = MockFilePicker.returnOK;
 

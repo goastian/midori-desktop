@@ -16,11 +16,14 @@ const kSideloaded = true;
 async function createWebExtension(details) {
   let options = {
     manifest: {
+      manifest_version: details.manifest_version ?? 2,
+
       browser_specific_settings: { gecko: { id: details.id } },
 
       name: details.name,
 
       permissions: details.permissions,
+      host_permissions: details.host_permissions,
     },
   };
 
@@ -73,6 +76,8 @@ add_task(async function test_sideloading() {
     ],
   });
 
+  Services.fog.testResetFOG();
+
   const ID1 = "addon1@tests.mozilla.org";
   await createWebExtension({
     id: ID1,
@@ -84,9 +89,10 @@ add_task(async function test_sideloading() {
 
   const ID2 = "addon2@tests.mozilla.org";
   await createWebExtension({
+    manifest_version: 3,
     id: ID2,
     name: "Test 2",
-    permissions: ["<all_urls>"],
+    host_permissions: ["<all_urls>"],
   });
 
   const ID3 = "addon3@tests.mozilla.org";
@@ -105,12 +111,18 @@ add_task(async function test_sideloading() {
 
   // Navigate away from the starting page to force about:addons to load
   // in a new tab during the tests below.
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:robots");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:robots"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   registerCleanupFunction(async function () {
     // Return to about:blank when we're done
-    BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:blank");
+    BrowserTestUtils.startLoadingURIString(
+      gBrowser.selectedBrowser,
+      "about:blank"
+    );
     await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
   });
 
@@ -150,7 +162,11 @@ add_task(async function test_sideloading() {
   addons.children[0].click();
 
   // The click should hide the main menu. This is currently synchronous.
-  ok(PanelUI.panel.state != "open", "Main menu is closed or closing.");
+  Assert.notEqual(
+    PanelUI.panel.state,
+    "open",
+    "Main menu is closed or closing."
+  );
 
   // When we get the permissions prompt, we should be at the extensions
   // list in about:addons
@@ -212,7 +228,7 @@ add_task(async function test_sideloading() {
   // Close the hamburger menu and go directly to the addons manager
   await gCUITestUtils.hideMainMenu();
 
-  win = await BrowserOpenAddonsMgr(VIEW);
+  win = await BrowserAddonUI.openAddonsMgr(VIEW);
   await waitAboutAddonsViewLoaded(win.document);
 
   // about:addons addon entry element.
@@ -281,7 +297,7 @@ add_task(async function test_sideloading() {
   // Close the hamburger menu and go to the detail page for this addon
   await gCUITestUtils.hideMainMenu();
 
-  win = await BrowserOpenAddonsMgr(
+  win = await BrowserAddonUI.openAddonsMgr(
     `addons://detail/${encodeURIComponent(ID3)}`
   );
 
@@ -344,6 +360,29 @@ add_task(async function test_sideloading() {
   info("Test telemetry events collected for addon1");
 
   const baseEventAddon1 = createBaseEventAddon(1);
+
+  Assert.deepEqual(
+    AddonTestUtils.getAMGleanEvents("manage", { addon_id: ID1 }),
+    [
+      {
+        addon_id: ID1,
+        method: "sideload_prompt",
+        addon_type: "extension",
+        source: "app-profile",
+        source_method: "sideload",
+        num_strings: "2",
+      },
+      {
+        addon_id: ID1,
+        method: "uninstall",
+        addon_type: "extension",
+        source: "app-profile",
+        source_method: "sideload",
+      },
+    ],
+    "Got the expected Glean events for addon1."
+  );
+
   const collectedEventsAddon1 = getEventsForAddonId(
     amEvents,
     baseEventAddon1.value
@@ -400,5 +439,34 @@ add_task(async function test_sideloading() {
     collectedEventsAddon2.length,
     expectedEventsAddon2.length,
     "Got the expected number of telemetry events for addon2"
+  );
+
+  Assert.deepEqual(
+    AddonTestUtils.getAMGleanEvents("manage", { addon_id: ID2 }),
+    [
+      {
+        addon_id: ID2,
+        method: "sideload_prompt",
+        addon_type: "extension",
+        source: "app-profile",
+        source_method: "sideload",
+        num_strings: "1",
+      },
+      {
+        addon_id: ID2,
+        method: "enable",
+        addon_type: "extension",
+        source: "app-profile",
+        source_method: "sideload",
+      },
+      {
+        addon_id: ID2,
+        method: "uninstall",
+        addon_type: "extension",
+        source: "app-profile",
+        source_method: "sideload",
+      },
+    ],
+    "Got the expected Glean events for addon2."
   );
 });

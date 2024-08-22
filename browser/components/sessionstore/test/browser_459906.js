@@ -17,7 +17,7 @@ function test() {
   let tab = BrowserTestUtils.addTab(gBrowser, testURL);
   tab.linkedBrowser.addEventListener(
     "load",
-    function listener(aEvent) {
+    function listener() {
       // wait for all frames to load completely
       if (frameCount++ < 2) {
         return;
@@ -25,14 +25,13 @@ function test() {
       tab.linkedBrowser.removeEventListener("load", listener, true);
 
       let iframes = tab.linkedBrowser.contentWindow.frames;
-      // eslint-disable-next-line no-unsanitized/property
       iframes[1].document.body.innerHTML = uniqueValue;
 
       frameCount = 0;
       let tab2 = gBrowser.duplicateTab(tab);
       tab2.linkedBrowser.addEventListener(
         "load",
-        function loadListener(eventTab2) {
+        function loadListener() {
           // wait for all frames to load (and reload!) completely
           if (frameCount++ < 2) {
             return;

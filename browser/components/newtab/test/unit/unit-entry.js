@@ -8,9 +8,7 @@ import {
 } from "test/unit/utils";
 import Adapter from "enzyme-adapter-react-16";
 import { chaiAssertions } from "test/schemas/pings";
-import chaiJsonSchema from "chai-json-schema";
 import enzyme from "enzyme";
-import FxMSCommonSchema from "../../content-src/asrouter/schemas/FxMSCommon.schema.json";
 
 enzyme.configure({ adapter: new Adapter() });
 
@@ -35,8 +33,6 @@ const files = req.keys();
 sinon.assert.expose(assert, { prefix: "" });
 
 chai.use(chaiAssertions);
-chai.use(chaiJsonSchema);
-chai.tv4.addSchema("file:///FxMSCommon.schema.json", FxMSCommonSchema);
 
 const overrider = new GlobalOverrider();
 
@@ -101,8 +97,8 @@ const TEST_GLOBAL = {
   JSWindowActorParent,
   JSWindowActorChild,
   AboutReaderParent: {
-    addMessageListener: (messageName, listener) => {},
-    removeMessageListener: (messageName, listener) => {},
+    addMessageListener: (_messageName, _listener) => {},
+    removeMessageListener: (_messageName, _listener) => {},
   },
   AboutWelcomeTelemetry: class {
     submitGleanPingForPing() {}
@@ -155,6 +151,9 @@ const TEST_GLOBAL = {
   browserSearchRegion: "US",
   BrowserWindowTracker: { getTopWindow() {} },
   ChromeUtils: {
+    defineLazyGetter(object, name, f) {
+      updateGlobalOrObject(object)[name] = f();
+    },
     defineModuleGetter: updateGlobalOrObject,
     defineESModuleGetters: updateGlobalOrObject,
     generateQI() {
@@ -282,8 +281,8 @@ const TEST_GLOBAL = {
   },
   dump() {},
   EveryWindow: {
-    registerCallback: (id, init, uninit) => {},
-    unregisterCallback: id => {},
+    registerCallback: (_id, _init, _uninit) => {},
+    unregisterCallback: _id => {},
   },
   setTimeout: window.setTimeout.bind(window),
   clearTimeout: window.clearTimeout.bind(window),
@@ -370,7 +369,6 @@ const TEST_GLOBAL = {
       removeListener() {},
     },
   },
-  PluralForm: { get() {} },
   Preferences: FakePrefs,
   PrivateBrowsingUtils: {
     isBrowserPrivate: () => false,
@@ -404,7 +402,7 @@ const TEST_GLOBAL = {
     },
     urlFormatter: { formatURL: str => str, formatURLPref: str => str },
     mm: {
-      addMessageListener: (msg, cb) => this.receiveMessage(),
+      addMessageListener: (_msg, _cb) => this.receiveMessage(),
       removeMessageListener() {},
     },
     obs: {
@@ -414,7 +412,7 @@ const TEST_GLOBAL = {
     },
     telemetry: {
       setEventRecordingEnabled: () => {},
-      recordEvent: eventDetails => {},
+      recordEvent: _eventDetails => {},
       scalarSet: () => {},
       keyedScalarAdd: () => {},
     },
@@ -495,11 +493,7 @@ const TEST_GLOBAL = {
     },
   },
   XPCOMUtils: {
-    defineLazyGetter(object, name, f) {
-      updateGlobalOrObject(object)[name] = f();
-    },
     defineLazyGlobalGetters: updateGlobalOrObject,
-    defineLazyModuleGetter: updateGlobalOrObject,
     defineLazyModuleGetters: updateGlobalOrObject,
     defineLazyServiceGetter: updateGlobalOrObject,
     defineLazyServiceGetters: updateGlobalOrObject,
@@ -576,7 +570,7 @@ const TEST_GLOBAL = {
     finish: () => {},
   },
   Sampling: {
-    ratioSample(seed, ratios) {
+    ratioSample(_seed, _ratios) {
       return Promise.resolve(0);
     },
   },
@@ -620,8 +614,16 @@ const TEST_GLOBAL = {
       blockedSponsors: {
         set() {},
       },
+      sovAllocation: {
+        set() {},
+      },
     },
     newtabSearch: {
+      enabled: {
+        set() {},
+      },
+    },
+    newtabHandoffPreference: {
       enabled: {
         set() {},
       },
@@ -648,6 +650,9 @@ const TEST_GLOBAL = {
       topicClick: {
         record() {},
       },
+      shim: {
+        set() {},
+      },
     },
     topsites: {
       enabled: {
@@ -665,10 +670,54 @@ const TEST_GLOBAL = {
       rows: {
         set() {},
       },
+      showPrivacyClick: {
+        record() {},
+      },
+      dismiss: {
+        record() {},
+      },
+      prefChanged: {
+        record() {},
+      },
+      sponsoredTilesConfigured: {
+        set() {},
+      },
+      sponsoredTilesReceived: {
+        set() {},
+      },
+    },
+    topSites: {
+      pingType: {
+        set() {},
+      },
+      position: {
+        set() {},
+      },
+      source: {
+        set() {},
+      },
+      tileId: {
+        set() {},
+      },
+      reportingUrl: {
+        set() {},
+      },
+      advertiser: {
+        set() {},
+      },
+      contextId: {
+        set() {},
+      },
     },
   },
   GleanPings: {
     newtab: {
+      submit() {},
+    },
+    topSites: {
+      submit() {},
+    },
+    spoc: {
       submit() {},
     },
   },

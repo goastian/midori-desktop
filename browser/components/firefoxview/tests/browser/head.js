@@ -2,20 +2,23 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 const {
+  getFirefoxViewURL,
+  switchToWindow,
   withFirefoxView,
   assertFirefoxViewTab,
   assertFirefoxViewTabSelected,
   openFirefoxViewTab,
   closeFirefoxViewTab,
   isFirefoxViewTabSelectedInWindow,
+  init: FirefoxViewTestUtilsInit,
 } = ChromeUtils.importESModule(
   "resource://testing-common/FirefoxViewTestUtils.sys.mjs"
 );
 
 /* exported testVisibility */
 
-const { ASRouter } = ChromeUtils.import(
-  "resource://activity-stream/lib/ASRouter.jsm"
+const { ASRouter } = ChromeUtils.importESModule(
+  "resource:///modules/asrouter/ASRouter.sys.mjs"
 );
 const { UIState } = ChromeUtils.importESModule(
   "resource://services-sync/UIState.sys.mjs"
@@ -24,30 +27,34 @@ const { sinon } = ChromeUtils.importESModule(
   "resource://testing-common/Sinon.sys.mjs"
 );
 const { FeatureCalloutMessages } = ChromeUtils.importESModule(
-  "resource://activity-stream/lib/FeatureCalloutMessages.sys.mjs"
+  "resource:///modules/asrouter/FeatureCalloutMessages.sys.mjs"
 );
 const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
+const { NonPrivateTabs } = ChromeUtils.importESModule(
+  "resource:///modules/OpenTabs.sys.mjs"
+);
+// shut down the open tabs module after each test so we don't get debounced events bleeding into the next
+registerCleanupFunction(() => NonPrivateTabs.stop());
+
+const triggeringPrincipal_base64 = E10SUtils.SERIALIZED_SYSTEMPRINCIPAL;
+const { SessionStoreTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/SessionStoreTestUtils.sys.mjs"
+);
+SessionStoreTestUtils.init(this, window);
+FirefoxViewTestUtilsInit(this, window);
 
 ChromeUtils.defineESModuleGetters(this, {
+  AboutWelcomeParent: "resource:///actors/AboutWelcomeParent.sys.mjs",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   SyncedTabs: "resource://services-sync/SyncedTabs.sys.mjs",
+  TabStateFlusher: "resource:///modules/sessionstore/TabStateFlusher.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  AboutWelcomeParent: "resource:///actors/AboutWelcomeParent.jsm",
-});
-
-const MOBILE_PROMO_DISMISSED_PREF =
-  "browser.tabs.firefox-view.mobilePromo.dismissed";
-const RECENTLY_CLOSED_STATE_PREF =
-  "browser.tabs.firefox-view.ui-state.recently-closed-tabs.open";
-const TAB_PICKUP_STATE_PREF =
-  "browser.tabs.firefox-view.ui-state.tab-pickup.open";
-
-const calloutId = "multi-stage-message-root";
+const calloutId = "feature-callout";
 const calloutSelector = `#${calloutId}.featureCallout`;
-const primaryButtonSelector = `#${calloutId} .primary`;
+const CTASelector = `#${calloutId} :is(.primary, .secondary)`;
 
 /**
  * URLs used for browser_recently_closed_tabs_keyboard and
@@ -58,6 +65,8 @@ const URLs = [
   "https://www.example.com/",
   "https://example.net/",
   "https://example.org/",
+  "about:robots",
+  "https://www.mozilla.org/",
 ];
 
 const syncedTabsData1 = [
@@ -74,6 +83,7 @@ const syncedTabsData1 = [
         url: "https://sinonjs.org/releases/latest/sandbox/",
         icon: "https://sinonjs.org/assets/images/favicon.png",
         lastUsed: 1655391592, // Thu Jun 16 2022 14:59:52 GMT+0000
+        client: 1,
       },
       {
         type: "tab",
@@ -81,6 +91,7 @@ const syncedTabsData1 = [
         url: "https://www.mozilla.org/",
         icon: "https://www.mozilla.org/media/img/favicons/mozilla/favicon.d25d81d39065.ico",
         lastUsed: 1655730486, // Mon Jun 20 2022 13:08:06 GMT+0000
+        client: 1,
       },
     ],
   },
@@ -97,6 +108,7 @@ const syncedTabsData1 = [
         url: "https://www.theguardian.com/",
         icon: "page-icon:https://www.theguardian.com/",
         lastUsed: 1655291890, // Wed Jun 15 2022 11:18:10 GMT+0000
+        client: 2,
       },
       {
         type: "tab",
@@ -104,6 +116,7 @@ const syncedTabsData1 = [
         url: "https://www.thetimes.co.uk/",
         icon: "page-icon:https://www.thetimes.co.uk/",
         lastUsed: 1655727485, // Mon Jun 20 2022 12:18:05 GMT+0000
+        client: 2,
       },
     ],
   },
@@ -129,11 +142,11 @@ function testVisibility(browser, expected) {
     const elem = document.querySelector(selector);
     if (shouldBeVisible) {
       ok(
-        BrowserTestUtils.is_visible(elem),
+        BrowserTestUtils.isVisible(elem),
         `Expected ${selector} to be visible`
       );
     } else {
-      ok(BrowserTestUtils.is_hidden(elem), `Expected ${selector} to be hidden`);
+      ok(BrowserTestUtils.isHidden(elem), `Expected ${selector} to be hidden`);
     }
   }
 }
@@ -153,8 +166,8 @@ async function waitForElementVisible(browser, selector, isVisible = true) {
     },
     () => {
       return isVisible
-        ? BrowserTestUtils.is_visible(elem)
-        : BrowserTestUtils.is_hidden(elem);
+        ? BrowserTestUtils.isVisible(elem)
+        : BrowserTestUtils.isHidden(elem);
     }
   );
 }
@@ -172,19 +185,19 @@ async function waitForVisibleSetupStep(browser, expected) {
       attributeFilter: ["selected-view"],
     },
     () => {
-      return BrowserTestUtils.is_visible(nextStepElem);
+      return BrowserTestUtils.isVisible(nextStepElem);
     }
   );
 
   for (let elem of stepElems) {
     if (elem == nextStepElem) {
       ok(
-        BrowserTestUtils.is_visible(elem),
+        BrowserTestUtils.isVisible(elem),
         `Expected ${elem.id || elem.className} to be visible`
       );
     } else {
       ok(
-        BrowserTestUtils.is_hidden(elem),
+        BrowserTestUtils.isHidden(elem),
         `Expected ${elem.id || elem.className} to be hidden`
       );
     }
@@ -242,7 +255,7 @@ function setupRecentDeviceListMocks() {
 }
 
 function getMockTabData(clients) {
-  return SyncedTabs._internal._createRecentTabsList(clients, 3);
+  return SyncedTabs._internal._createRecentTabsList(clients, 10);
 }
 
 async function setupListState(browser) {
@@ -275,37 +288,6 @@ async function setupListState(browser) {
   info("tabsContainer isn't loading anymore, returning");
 }
 
-function checkMobilePromo(browser, expected = {}) {
-  const { document } = browser.contentWindow;
-  const promoElem = document.querySelector(
-    "#tab-pickup-container > .promo-box"
-  );
-  const successElem = document.querySelector(
-    "#tab-pickup-container > .confirmation-message-box"
-  );
-
-  info("checkMobilePromo: " + JSON.stringify(expected));
-  if (expected.mobilePromo) {
-    ok(BrowserTestUtils.is_visible(promoElem), "Mobile promo is visible");
-  } else {
-    ok(
-      !promoElem || BrowserTestUtils.is_hidden(promoElem),
-      "Mobile promo is hidden"
-    );
-  }
-  if (expected.mobileConfirmation) {
-    ok(
-      BrowserTestUtils.is_visible(successElem),
-      "Success confirmation is visible"
-    );
-  } else {
-    ok(
-      !successElem || BrowserTestUtils.is_hidden(successElem),
-      "Success confirmation is hidden"
-    );
-  }
-}
-
 async function touchLastTabFetch() {
   // lastTabFetch stores a timestamp in *seconds*.
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -335,14 +317,41 @@ function setupMocks({ fxaDevices = null, state, syncEnabled = true }) {
       }),
     };
   });
+  // This is converting the device list to a client list.
+  // There are two primary differences:
+  // 1. The client list doesn't return the current device.
+  // 2. It uses clientType instead of type.
+  let tabClients = fxaDevices ? [...fxaDevices] : [];
+  for (let client of tabClients) {
+    client.clientType = client.type;
+  }
+  tabClients = tabClients.filter(device => !device.isCurrentDevice);
+  sandbox.stub(SyncedTabs, "getTabClients").callsFake(() => {
+    return Promise.resolve(tabClients);
+  });
   return sandbox;
 }
 
 async function tearDown(sandbox) {
   sandbox?.restore();
   Services.prefs.clearUserPref("services.sync.lastTabFetch");
-  Services.prefs.clearUserPref(MOBILE_PROMO_DISMISSED_PREF);
 }
+
+const featureTourPref = "browser.firefox-view.feature-tour";
+const launchFeatureTourIn = win => {
+  const { FeatureCallout } = ChromeUtils.importESModule(
+    "resource:///modules/asrouter/FeatureCallout.sys.mjs"
+  );
+  let callout = new FeatureCallout({
+    win,
+    pref: { name: featureTourPref },
+    location: "about:firefoxview",
+    context: "content",
+    theme: { preset: "themed-content" },
+  });
+  callout.showFeatureCallout();
+  return callout;
+};
 
 /**
  * Returns a value that can be used to set
@@ -352,7 +361,7 @@ async function tearDown(sandbox) {
  * @see FeatureCalloutMessages.sys.mjs for valid values of "screen"
  *
  * @param {number} screen The full ID of the feature callout screen
- * @return {string} JSON string used to set
+ * @returns {string} JSON string used to set
  * `browser.firefox-view.feature-tour`
  */
 const getPrefValueByScreen = screen => {
@@ -364,8 +373,9 @@ const getPrefValueByScreen = screen => {
 
 /**
  * Wait for a feature callout screen of given parameters to be shown
+ *
  * @param {Document} doc the document where the callout appears.
- * @param {String} screenPostfix The full ID of the feature callout screen.
+ * @param {string} screenPostfix The full ID of the feature callout screen.
  */
 const waitForCalloutScreen = async (doc, screenPostfix) => {
   await BrowserTestUtils.waitForCondition(() =>
@@ -392,8 +402,8 @@ const waitForCalloutRemoved = async doc => {
  *
  * @param {document} doc Firefox View document
  */
-const clickPrimaryButton = async doc => {
-  doc.querySelector(primaryButtonSelector).click();
+const clickCTA = async doc => {
+  doc.querySelector(CTASelector).click();
 };
 
 /**
@@ -416,7 +426,8 @@ const closeCallout = async doc => {
 /**
  * Get a Feature Callout message by id.
  *
- * @param {string} Message id
+ * @param {string} id
+ *   The message id.
  */
 const getCalloutMessageById = id => {
   return {
@@ -470,7 +481,8 @@ class TelemetrySpy {
   }
   /**
    * Assert that AWSendEventTelemetry sent the expected telemetry object.
-   * @param {Object} expectedData
+   *
+   * @param {object} expectedData
    */
   assertCalledWith(expectedData) {
     let match = this.spy.calledWith("AWPage:TELEMETRY_EVENT", expectedData);
@@ -498,22 +510,11 @@ class TelemetrySpy {
  * closed tabs list can have data.
  *
  * @param {string} url
- * @return {Promise} Promise that resolves when the session store
+ * @returns {Promise} Promise that resolves when the session store
  * has been updated after closing the tab.
  */
-async function open_then_close(url) {
-  let { updatePromise } = await BrowserTestUtils.withNewTab(
-    url,
-    async browser => {
-      return {
-        updatePromise: BrowserTestUtils.waitForSessionStoreUpdate({
-          linkedBrowser: browser,
-        }),
-      };
-    }
-  );
-  await updatePromise;
-  return TestUtils.topicObserved("sessionstore-closed-objects-changed");
+async function open_then_close(url, win = window) {
+  return SessionStoreTestUtils.openAndCloseTab(win, url);
 }
 
 /**
@@ -531,20 +532,216 @@ function clearHistory() {
 function cleanup_tab_pickup() {
   Services.prefs.clearUserPref("services.sync.engine.tabs");
   Services.prefs.clearUserPref("services.sync.lastTabFetch");
-  Services.prefs.clearUserPref(TAB_PICKUP_STATE_PREF);
 }
 
 function isFirefoxViewTabSelected(win = window) {
   return isFirefoxViewTabSelectedInWindow(win);
 }
 
+function promiseAllButPrimaryWindowClosed() {
+  let windows = [];
+  for (let win of BrowserWindowTracker.orderedWindows) {
+    if (win != window) {
+      windows.push(win);
+    }
+  }
+  return Promise.all(windows.map(BrowserTestUtils.closeWindow));
+}
+
 registerCleanupFunction(() => {
-  is(
-    typeof SyncedTabs._internal?._createRecentTabsList,
-    "function",
-    "in firefoxview/head.js, SyncedTabs._internal._createRecentTabsList is a function"
-  );
   // ensure all the stubs are restored, regardless of any exceptions
   // that might have prevented it
   gSandbox?.restore();
 });
+
+async function navigateToViewAndWait(document, view) {
+  info(`navigateToViewAndWait, for ${view}`);
+  const navigation = document.querySelector("moz-page-nav");
+  const win = document.ownerGlobal;
+  SimpleTest.promiseFocus(win);
+  let navButton = Array.from(navigation.pageNavButtons).find(pageNavButton => {
+    return pageNavButton.view === view;
+  });
+  const namedDeck = document.querySelector("named-deck");
+
+  await BrowserTestUtils.waitForCondition(
+    () => navButton.getBoundingClientRect().height,
+    `Waiting for ${view} button to be clickable`
+  );
+
+  EventUtils.synthesizeMouseAtCenter(navButton, {}, win);
+
+  await BrowserTestUtils.waitForCondition(() => {
+    let selectedView = Array.from(namedDeck.children).find(
+      child => child.slot == "selected"
+    );
+    return (
+      namedDeck.selectedViewName == view &&
+      selectedView?.getBoundingClientRect().height
+    );
+  }, `Waiting for ${view} to be visible`);
+}
+
+/**
+ * Switch to the Firefox View tab.
+ *
+ * @param {Window} [win]
+ *   The window to use, if specified. Defaults to the global window instance.
+ * @returns {Promise<MozTabbrowserTab>}
+ *   The tab switched to.
+ */
+async function switchToFxViewTab(win = window) {
+  await switchToWindow(win);
+  return BrowserTestUtils.switchTab(win.gBrowser, win.FirefoxViewHandler.tab);
+}
+
+function isElInViewport(element) {
+  const boundingRect = element.getBoundingClientRect();
+  return (
+    boundingRect.top >= 0 &&
+    boundingRect.left >= 0 &&
+    boundingRect.bottom <=
+      (window.innerHeight || document.documentElement.clientHeight) &&
+    boundingRect.right <=
+      (window.innerWidth || document.documentElement.clientWidth)
+  );
+}
+
+// TODO once we port over old tests, helpers and cleanup old firefox view
+// we should decide whether to keep this or openFirefoxViewTab.
+async function clickFirefoxViewButton(win) {
+  await BrowserTestUtils.synthesizeMouseAtCenter(
+    "#firefox-view-button",
+    { type: "mousedown" },
+    win.browsingContext
+  );
+}
+
+/**
+ * Wait for and assert telemetry events.
+ *
+ * @param {Array} eventDetails
+ *   Nested array of event details
+ */
+async function telemetryEvent(eventDetails) {
+  await TestUtils.waitForCondition(
+    () => {
+      let events = Services.telemetry.snapshotEvents(
+        Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
+        false
+      ).parent;
+      return events && events.length >= 1;
+    },
+    "Waiting for firefoxview_next telemetry event.",
+    200,
+    100
+  );
+
+  TelemetryTestUtils.assertEvents(
+    eventDetails,
+    { category: "firefoxview_next" },
+    { clear: true, process: "parent" }
+  );
+}
+
+function setSortOption(component, value) {
+  info(`Sort by ${value}.`);
+  const el = component.optionsContainer.querySelector(
+    `input[value='${value}']`
+  );
+  EventUtils.synthesizeMouseAtCenter(el, {}, el.ownerGlobal);
+}
+
+/**
+ * Select the Open Tabs view-page in the Firefox View tab.
+ */
+async function navigateToOpenTabs(browser) {
+  const document = browser.contentDocument;
+  if (document.querySelector("named-deck").selectedViewName != "opentabs") {
+    await navigateToViewAndWait(browser.contentDocument, "opentabs");
+  }
+}
+
+function getOpenTabsCards(openTabs) {
+  return openTabs.shadowRoot.querySelectorAll("view-opentabs-card");
+}
+
+function getOpenTabsComponent(browser) {
+  return browser.contentDocument.querySelector("named-deck > view-opentabs");
+}
+
+async function getTabRowsForCard(card) {
+  await TestUtils.waitForCondition(
+    () => card.tabList.rowEls.length,
+    "Wait for the card's tab list to have rows"
+  );
+  return card.tabList.rowEls;
+}
+
+async function click_recently_closed_tab_item(itemElem, itemProperty = "") {
+  // Make sure the firefoxview tab still has focus
+  is(
+    itemElem.ownerDocument.location.href,
+    "about:firefoxview#recentlyclosed",
+    "about:firefoxview is the selected tab and showing the Recently closed view page"
+  );
+
+  // Scroll to the tab element to ensure dismiss button is visible
+  itemElem.scrollIntoView();
+  is(isElInViewport(itemElem), true, "Tab is visible in viewport");
+  let clickTarget;
+  switch (itemProperty) {
+    case "dismiss":
+      clickTarget = itemElem.secondaryButtonEl;
+      break;
+    default:
+      clickTarget = itemElem.mainEl;
+      break;
+  }
+
+  const closedObjectsChangePromise = TestUtils.topicObserved(
+    "sessionstore-closed-objects-changed"
+  );
+  EventUtils.synthesizeMouseAtCenter(clickTarget, {}, itemElem.ownerGlobal);
+  await closedObjectsChangePromise;
+}
+
+async function waitForRecentlyClosedTabsList(doc) {
+  let recentlyClosedComponent = doc.querySelector(
+    "view-recentlyclosed:not([slot=recentlyclosed])"
+  );
+  // Check that the tabs list is rendered
+  await TestUtils.waitForCondition(() => {
+    return recentlyClosedComponent.cardEl;
+  });
+  let cardContainer = recentlyClosedComponent.cardEl;
+  let cardMainSlotNode = Array.from(
+    cardContainer?.mainSlot?.assignedNodes()
+  )[0];
+  await TestUtils.waitForCondition(() => {
+    return cardMainSlotNode.rowEls.length;
+  });
+  return [cardMainSlotNode, cardMainSlotNode.rowEls];
+}
+
+async function add_new_tab(URL) {
+  let tabChangeRaised = BrowserTestUtils.waitForEvent(
+    NonPrivateTabs,
+    "TabChange"
+  );
+  let tab = BrowserTestUtils.addTab(gBrowser, URL);
+  // wait so we can reliably compare the tab URL
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await tabChangeRaised;
+  return tab;
+}
+
+function isActiveElement(expectedLinkEl) {
+  return expectedLinkEl.getRootNode().activeElement == expectedLinkEl;
+}
+
+function cleanupTabs() {
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(gBrowser.tabs[0]);
+  }
+}

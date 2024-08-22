@@ -9,6 +9,10 @@ sanitize-prefs2 =
 sanitize-prefs-style =
     .style = width: 17em
 
+sanitize-dialog-title2 =
+    .title = Clear browsing data and cookies
+    .style = min-width: 34em
+
 sanitize-dialog-title =
     .title = Clear Recent History
     .style = min-width: 34em
@@ -21,6 +25,8 @@ sanitize-dialog-title-everything =
 
 clear-data-settings-label = When closed, { -brand-short-name } should automatically clear all
 
+sanitize-on-shutdown-description = Automatically clear all checked items when { -brand-short-name } closes.
+
 ## clear-time-duration-prefix is followed by a dropdown list, with
 ## values localized using clear-time-duration-value-* messages.
 ## clear-time-duration-suffix is left empty in English, but can be
@@ -32,6 +38,10 @@ clear-data-settings-label = When closed, { -brand-short-name } should automatica
 clear-time-duration-prefix =
     .value = Time range to clear:{ " " }
     .accesskey = T
+
+clear-time-duration-prefix2 =
+    .value = When:
+    .accesskey = W
 
 clear-time-duration-value-last-hour =
     .label = Last hour
@@ -60,9 +70,28 @@ item-history-and-downloads =
     .label = Browsing & download history
     .accesskey = B
 
+item-history-form-data-downloads =
+    .label = History
+    .accesskey = H
+
+item-history-form-data-downloads-description = Clears site and download history, saved form info, and searches
+
 item-cookies =
     .label = Cookies
     .accesskey = C
+
+# Variables:
+#   $amount (Number) - Amount of site data currently stored on disk
+#   $unit (String) - Abbreviation of the unit that $amount is in, e.g. "MB"
+item-cookies-site-data-with-size =
+    .label = Cookies and site data ({ $amount } { $unit })
+    .accesskey = e
+
+item-cookies-site-data =
+    .label = Cookies and site data
+    .accesskey = e
+
+item-cookies-site-data-description = May sign you out of sites or empty shopping carts
 
 item-active-logins =
     .label = Active logins
@@ -72,9 +101,28 @@ item-cache =
     .label = Cache
     .accesskey = a
 
+# Variables:
+#   $amount (Number) - Amount of cached data
+#   $unit (String) - Abbreviation of the unit that $amount is in, e.g. "MB"
+item-cached-content-with-size =
+    .label = Temporary cached files and pages ({ $amount } { $unit })
+    .accesskey = f
+
+item-cached-content =
+    .label = Temporary cached files and pages
+    .accesskey = f
+
+item-cached-content-description = Clears items that helps sites load faster
+
 item-form-search-history =
     .label = Form & search history
     .accesskey = F
+
+item-site-prefs =
+    .label = Site settings
+    .accesskey = i
+
+item-site-prefs-description = Resets your permissions and site preferences to original settings
 
 data-section-label = Data
 
@@ -93,6 +141,12 @@ window-close =
 
 sanitize-button-ok =
     .label = Clear Now
+
+sanitize-button-ok2 =
+    .label = Clear
+
+sanitize-button-ok-on-shutdown =
+    .label = Save Changes
 
 # The label for the default button between the user clicking it and the window
 # closing.  Indicates the items are being cleared.

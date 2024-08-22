@@ -1,16 +1,17 @@
-@media (max-height: 701px) {
-  .personalize-button {
-    position: absolute;
-    top: 16px;
-    inset-inline-end: 16px;
-  }
-}
+.personalizeButtonWrapper {
+  margin: 0;
+  padding: 0;
 
-@media (min-height: 700px) {
-  .personalize-button {
+  @media (height < 700px) {
+    position: absolute;
+    top: var(--space-xlarge);
+    inset-inline-end: var(--space-xlarge);
+  }
+
+  @media (height >=700px) {
     position: fixed;
-    top: 16px;
-    inset-inline-end: 16px;
+    top: var(--space-xlarge);
+    inset-inline-end: var(--space-xlarge);
     z-index: 1000;
   }
 }
@@ -19,13 +20,24 @@
   backdrop-filter: blur(12px);
 }
 
+
 .personalize-button {
   border: 0;
   border-radius: 4px;
   background-color: transparent;
   padding: 15px;
+  position: relative;
+  background-size: var(--icon-size-default);
+  background-position: center;
+
+  // Contrast fix for users who have wallpapers set
+  &:not(:hover, :active) {
+    @include wallpaper-contrast-fix;
+  }
+
   background-color: color-mix(in srgb, var(--newtab-background-color) 50%, transparent);
   border: 1px solid rgba(170, 170, 170, 0.6);
+
   &:hover {
     background-color: var(--newtab-element-hover-color);
   }
@@ -52,14 +64,24 @@
   inset-block: 0;
   inset-inline-end: 0;
   z-index: 1001;
-  padding: 16px;
+  padding-block: 0 var(--space-large);
+  padding-inline: var(--space-large);
   overflow: auto;
   transform: translateX(435px);
   visibility: hidden;
   cursor: default;
 
   @media (prefers-reduced-motion: no-preference) {
-    transition: transform 250ms $customize-menu-slide-bezier, visibility 250ms;
+    // We need customize-animate-enter and customize-animate-exit to fix bug 1868232
+    // These first 2 classes happen only while the element is animating.
+    &.customize-animate-enter,
+    &.customize-animate-exit,
+    // We only add these so the css is visible for inspecting while not animating.
+    // Otherwise it's difficult to see and inspect this css because the transition is so fast.
+    &.customize-animate-enter-done,
+    &.customize-animate-exit-done {
+      transition: transform 250ms $customize-menu-slide-bezier, visibility 250ms;
+    }
   }
 
   @media (forced-colors: active) {
@@ -81,9 +103,17 @@
     box-shadow: $shadow-large;
   }
 
+  .close-button-wrapper {
+    position: sticky;
+    top: 0;
+    padding-block-start: var(--space-large);
+    background-color: var(--newtab-background-color-secondary);
+    z-index: 1;
+  }
+
   .close-button {
     margin-inline-start: auto;
-    margin-bottom: 28px;
+    margin-inline-end: var(--space-large);
     white-space: nowrap;
     display: block;
     background-color: var(--newtab-element-secondary-color);
@@ -113,28 +143,15 @@
   grid-template-columns: 1fr;
   grid-template-rows: repeat(4, auto);
   grid-row-gap: 32px;
-  padding: 0 16px;
+  padding: var(--space-large);
+
+  .wallpapers-section h2 {
+    font-size: inherit;
+  }
 
   .section {
-    display: grid;
-    grid-template-rows: auto;
-    grid-template-columns: auto 26px;
-
-    & > div {
-      grid-area: 1;
-    }
-
-    .title {
-      grid-column: 1 / -1;
-      margin: 0;
-      font-weight: 600;
-      font-size: 16px;
+    moz-toggle {
       margin-bottom: 10px;
-    }
-
-    .subtitle {
-      margin: 0;
-      font-size: 14px;
     }
 
     .sponsored {
@@ -156,6 +173,10 @@
       border-radius: 4px;
       appearance: none;
       background-color: var(--newtab-element-secondary-color);
+
+      &:hover {
+        background-color: var(--newtab-element-secondary-hover-color);
+      }
     }
 
     .sponsored-checkbox:checked {
@@ -163,6 +184,14 @@
       fill: var(--newtab-primary-element-text-color);
       background: url('chrome://global/skin/icons/check.svg') center no-repeat;
       background-color: var(--newtab-primary-action-background);
+
+      &:hover {
+        background-color: var(--newtab-primary-element-hover-color);
+      }
+
+      &:active {
+        background-color: var(--newtab-primary-element-active-color);
+      }
 
       @media (forced-colors: active) {
         fill: $black;
@@ -191,67 +220,13 @@
       background-origin: content-box;
       background-color: var(--newtab-background-color-secondary);
 
+      &:hover {
+        background-color: var(--newtab-element-secondary-hover-color);
+      }
+
       &:dir(rtl) {
         background-position-x: left;
       }
-    }
-
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 26px;
-      height: 16px;
-      grid-column: 2;
-      margin-top: 2px;
-    }
-
-    .switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .slider {
-      position: absolute;
-      inset: 0;
-      transition: transform 250ms;
-      border-radius: 13px;
-      border: $customize-menu-border-tint;
-      background-color: var(--newtab-element-secondary-color);
-
-      &::before {
-        position: absolute;
-        content: '';
-        height: 8px;
-        width: 8px;
-        inset-inline-start: 3px;
-        bottom: 3px;
-        background-color: var(--newtab-primary-element-text-color);
-        transition: transform 250ms;
-        border-radius: 50%;
-        outline: $customize-menu-border-tint;
-      }
-    }
-
-    .switch input:focus-visible + .slider {
-      outline: 0;
-      box-shadow: $shadow-focus;
-    }
-
-    .switch input:not(:checked):focus-visible + .slider {
-      border: 1px solid var(--newtab-primary-action-background);
-    }
-
-    input:checked + .slider {
-      background-color: var(--newtab-primary-action-background);
-    }
-
-    input:checked + .slider::before {
-      transform: translateX(10px);
-    }
-
-    input:checked + .slider:dir(rtl)::before {
-      transform: translateX(-10px);
     }
 
     .more-info-top-wrapper,
@@ -260,7 +235,6 @@
       overflow: hidden;
 
       .more-information {
-        padding-top: 12px;
         position: relative;
         transition: margin-top 250ms $customize-menu-expand-bezier;
       }
@@ -270,6 +244,25 @@
       .check-wrapper {
         margin-top: 10px;
       }
+    }
+  }
+
+  .sponsored-content-info {
+    display: flex;
+    gap: var(--space-small);
+    font-size: var(--font-size-small);
+    border-radius: var(--border-radius-medium);
+    background-color: var(--newtab-element-secondary-color);
+    padding: var(--space-small) var(--space-large);
+
+    .icon-help {
+      flex-shrink: 0;
+      color: var(--color-accent-primary);
+      height: 20px;
+    }
+
+    a {
+      color: var(--newtab-primary-action-background);
     }
   }
 

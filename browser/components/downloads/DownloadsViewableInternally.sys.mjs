@@ -67,7 +67,7 @@ export let DownloadsViewableInternally = {
     this._updateAllHandlers();
 
     // Register the check for use in DownloadIntegration
-    lazy.Integration.downloads.register(base => ({
+    lazy.Integration.downloads.register(() => ({
       shouldViewDownloadInternally:
         this._shouldViewDownloadInternally.bind(this),
     }));
@@ -126,16 +126,8 @@ export let DownloadsViewableInternally = {
     {
       extension: "webp",
       mimeTypes: ["image/webp"],
-      initAvailable() {
-        XPCOMUtils.defineLazyPreferenceGetter(
-          this,
-          "available",
-          "image.webp.enabled",
-          false,
-          () => DownloadsViewableInternally._updateHandler(this)
-        );
-      },
-      // available getter is set by initAvailable()
+      available: true,
+      managedElsewhere: false,
     },
     {
       extension: "avif",

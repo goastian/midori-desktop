@@ -4,59 +4,8 @@
 
 @namespace html url("http://www.w3.org/1999/xhtml");
 
-/**
- * Our OS integration code toggles whether system colors should return light or
- * dark values based on the luminosity of the toolbar background. Because themes
- * can style panels to have a different background color than the toolbar, we
- * need specific overrides for system colors used in light or dark themes.
- */
-#editBookmarkPanel:-moz-lwtheme {
-  color-scheme: light;
-}
-
-:root[lwt-popup-brighttext] #editBookmarkPanel {
-  color-scheme: dark;
-}
-
 #editBookmarkPanel > .panel-subview-body {
   padding-bottom: 0;
-}
-
-html|div#editBookmarkPanelFaviconContainer {
-  display: flex;
-}
-
-#editBookmarkPanelInfoArea {
-  overflow: hidden;
-  padding: 4px var(--arrowpanel-padding) 0;
-  flex: none;
-}
-
-html|img#editBookmarkPanelFavicon[src] {
-  box-sizing: content-box;
-  width: 32px;
-  height: 32px;
-  padding: 5px;
-  background-color: #F9F9FA;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.1);
-  border-radius: 6px;
-  margin-top: 10px;
-  margin-inline-start: 10px;
-  margin-bottom: -52px; /* margin-top + paddings + height */
-}
-
-#editBookmarkPanelImage {
-  border-radius: 4px;
-  height: 150px;
-  background-image: -moz-element(#editBookmarkPanelImageCanvas);
-  background-repeat: no-repeat;
-  background-size: cover;
-  margin: 0;
-}
-
-/* Implements editBookmarkPanel resizing on folderTree un-collapse. */
-#editBMPanel_folderTree {
-  min-width: 27em;
 }
 
 #editBMPanel_newFolderButton {
@@ -83,8 +32,7 @@ html|img#editBookmarkPanelFavicon[src] {
   background-color: var(--button-active-bgcolor);
 }
 
-#editBookmarkPanel > #editBookmarkHeaderSeparator,
-#editBookmarkPanel > .panel-subview-body > #editBookmarkSeparator {
+#editBookmarkPanel > #editBookmarkHeaderSeparator {
   margin-bottom: 0;
   margin-inline: 16px;
 }
@@ -132,10 +80,6 @@ html|img#editBookmarkPanelFavicon[src] {
   opacity: 0.7;
 }
 
-#editBookmarkPanelBottomButtons > button {
-  margin-top: 0;
-}
-
 #editBookmarkPanel .expander-up > .button-box > .button-text,
 #editBookmarkPanel .expander-down > .button-box > .button-text {
   display: none;
@@ -179,17 +123,6 @@ html|img#editBookmarkPanelFavicon[src] {
 }
 
 #editBMPanel_folderMenuList {
-  margin: 0;
-}
-
-#editBookmarkPanelContent > html|input,
-#editBookmarkPanelContent > hbox > html|input {
-  appearance: none;
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid var(--input-border-color, ThreeDShadow);
-  background-color: var(--input-bgcolor, Field);
-  color: var(--input-color, FieldText);
   margin: 0;
 }
 

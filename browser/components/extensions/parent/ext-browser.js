@@ -12,14 +12,9 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   AboutReaderParent: "resource:///actors/AboutReaderParent.sys.mjs",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "BrowserWindowTracker",
-  "resource:///modules/BrowserWindowTracker.jsm"
-);
 
 var { ExtensionError } = ExtensionUtils;
 
@@ -72,8 +67,12 @@ global.openOptionsPage = extension => {
     return Promise.reject({ message: "No browser window available" });
   }
 
-  if (extension.manifest.options_ui.open_in_tab) {
-    window.switchToTabHavingURI(extension.manifest.options_ui.page, true, {
+  const { optionsPageProperties } = extension;
+  if (!optionsPageProperties) {
+    return Promise.reject({ message: "No options page" });
+  }
+  if (optionsPageProperties.open_in_tab) {
+    window.switchToTabHavingURI(optionsPageProperties.page, true, {
       triggeringPrincipal: extension.principal,
     });
     return Promise.resolve();
@@ -83,7 +82,7 @@ global.openOptionsPage = extension => {
     extension.id
   )}/preferences`;
 
-  return window.BrowserOpenAddonsMgr(viewId);
+  return window.BrowserAddonUI.openAddonsMgr(viewId);
 };
 
 global.makeWidgetId = id => {
@@ -113,7 +112,7 @@ global.clickModifiersFromEvent = event => {
 global.waitForTabLoaded = (tab, url) => {
   return new Promise(resolve => {
     windowTracker.addListener("progress", {
-      onLocationChange(browser, webProgress, request, locationURI, flags) {
+      onLocationChange(browser, webProgress, request, locationURI) {
         if (
           webProgress.isTopLevel &&
           browser.ownerGlobal.gBrowser.getTabForBrowser(browser) == tab &&
@@ -242,20 +241,6 @@ global.TabContext = class extends EventEmitter {
     tabTracker.off("tab-adopted", this.tabAdopted);
   }
 };
-
-// This promise is used to wait for the search service to be initialized.
-// None of the code in the WebExtension modules requests that initialization.
-// It is assumed that it is started at some point. That might never happen,
-// e.g. if the application shuts down before the search service initializes.
-XPCOMUtils.defineLazyGetter(global, "searchInitialized", () => {
-  if (Services.search.isInitialized) {
-    return Promise.resolve();
-  }
-  return ExtensionUtils.promiseObserved(
-    "browser-search-service",
-    (_, data) => data == "init-complete"
-  );
-});
 
 class WindowTracker extends WindowTrackerBase {
   addProgressListener(window, listener) {
@@ -460,7 +445,7 @@ class TabTracker extends TabTrackerBase {
   deferredForTabOpen(nativeTab) {
     let deferred = this._deferredTabOpenEvents.get(nativeTab);
     if (!deferred) {
-      deferred = PromiseUtils.defer();
+      deferred = Promise.withResolvers();
       this._deferredTabOpenEvents.set(nativeTab, deferred);
       deferred.promise.then(() => {
         this._deferredTabOpenEvents.delete(nativeTab);
@@ -724,6 +709,23 @@ class TabTracker extends TabTrackerBase {
     };
   }
 
+  getBrowserDataForContext(context) {
+    if (["tab", "background"].includes(context.viewType)) {
+      return this.getBrowserData(context.xulBrowser);
+    } else if (["popup", "sidebar"].includes(context.viewType)) {
+      // popups and sidebars are nested inside a browser element
+      // (with url "chrome://browser/content/webext-panels.xhtml")
+      // and so we look for the corresponding topChromeWindow to
+      // determine the windowId the panel belongs to.
+      const chromeWindow =
+        context.xulBrowser?.ownerGlobal?.browsingContext?.topChromeWindow;
+      const windowId = chromeWindow ? windowTracker.getId(chromeWindow) : -1;
+      return { tabId: -1, windowId };
+    }
+
+    return { tabId: -1, windowId: -1 };
+  }
+
   get activeTab() {
     let window = windowTracker.topWindow;
     if (window && window.gBrowser) {
@@ -749,6 +751,10 @@ class Tab extends TabBase {
 
   get audible() {
     return this.nativeTab.soundPlaying;
+  }
+
+  get autoDiscardable() {
+    return !this.nativeTab.undiscardable;
   }
 
   get browser() {

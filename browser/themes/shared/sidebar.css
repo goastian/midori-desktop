@@ -4,12 +4,23 @@
 
 @namespace html url("http://www.w3.org/1999/xhtml");
 
+:root {
+  --sidebar-background-color: -moz-sidebar;
+  --sidebar-text-color: -moz-sidebartext;
+  --sidebar-border-color: -moz-sidebarborder;
+}
+
 #sidebar-box {
-  --sidebar-background-color: Field;
-  --sidebar-text-color: FieldText;
   background-color: var(--sidebar-background-color);
   color: var(--sidebar-text-color);
   text-shadow: none;
+
+  :root[lwt-sidebar="light"] & {
+    color-scheme: light;
+  }
+  :root[lwt-sidebar="dark"] & {
+    color-scheme: dark;
+  }
 }
 
 #sidebar-header {
@@ -51,14 +62,7 @@
 }
 
 #sidebar-throbber[loading="true"] {
-  list-style-image: url("chrome://global/skin/icons/loading.png");
-}
-
-@media (min-resolution: 2dppx) {
-  #sidebar-throbber[loading="true"] {
-    list-style-image: url("chrome://global/skin/icons/loading@2x.png");
-    width: 16px;
-  }
+  list-style-image: image-set(url("chrome://global/skin/icons/loading.png"), url("chrome://global/skin/icons/loading@2x.png") 2x);
 }
 
 #sidebar-title {
@@ -105,11 +109,11 @@
   outline-offset: 0;
 }
 
-#sidebarMenu-popup .subviewbutton {
-  min-width: 190px;
+#sidebarMenu-popup > menuitem {
+  min-width: 16em;
 }
 
-toolbarseparator + #sidebar-extensions-separator {
+menuseparator + #sidebar-extensions-separator {
   display: none;
 }
 

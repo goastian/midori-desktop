@@ -38,7 +38,7 @@ add_setup(async function () {
       },
     ],
   });
-  bookmarkId = await PlacesUtils.promiseItemId(bookmarks[0].guid);
+  bookmarkId = await PlacesTestUtils.promiseItemId(bookmarks[0].guid);
 });
 
 async function run_drag_test(startBookmarkIndex, newParentGuid) {
@@ -81,10 +81,10 @@ async function run_drag_test(startBookmarkIndex, newParentGuid) {
       mozCursor: "auto",
       mozItemCount: 1,
       types: [PlacesUtils.TYPE_X_MOZ_PLACE],
-      mozTypesAt(i) {
+      mozTypesAt() {
         return this.types;
       },
-      mozGetDataAt(i) {
+      mozGetDataAt() {
         return bookmarkWithId;
       },
     };

@@ -5,6 +5,7 @@
     <title>Basic tests for the Migration Wizard component</title>
     <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
     <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+    <script src="head-common.js"></script>
     <script
       src="chrome://browser/content/migration/migration-wizard.mjs"
       type="module"
@@ -14,11 +15,9 @@
       href="chrome://mochikit/content/tests/SimpleTest/test.css"
     />
     <script>
-      "use strict";
+      /* import-globals-from ../head-common.js */
 
-      const { MigrationWizardConstants } = ChromeUtils.importESModule(
-        "chrome://browser/content/migration/migration-wizard-constants.mjs"
-      );
+      "use strict";
 
       const { BrowserTestUtils } = ChromeUtils.importESModule(
         "resource://testing-common/BrowserTestUtils.sys.mjs"
@@ -29,8 +28,9 @@
           key: "some-browser-0",
           type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
           displayName: "Some Browser 0",
-          resourceTypes: ["HISTORY", "FORMDATA", "PASSWORDS", "BOOKMARKS"],
+          resourceTypes: ["HISTORY", "FORMDATA", "PASSWORDS", "BOOKMARKS", "EXTENSIONS"],
           profile: { id: "person-2", name: "Person 2" },
+          hasPermissions: true,
         },
         {
           key: "some-browser-1",
@@ -38,6 +38,7 @@
           displayName: "Some Browser 1",
           resourceTypes: ["HISTORY", "BOOKMARKS"],
           profile: null,
+          hasPermissions: true,
         },
       ];
 
@@ -83,8 +84,6 @@
 
         let wiz = document.createElement("migration-wizard");
         wiz.toggleAttribute("auto-request-state", true);
-        let panelList = document.createElement("panel-list");
-        wiz.appendChild(panelList);
         let content = document.getElementById("content");
         let promise = new Promise(resolve => {
           content.addEventListener(REQUEST_STATE_EVENT, resolve, {
@@ -138,7 +137,7 @@
         let preamble = gShadowRoot.querySelector(".resource-selection-preamble");
         ok(!isHidden(preamble), "preamble should shown.");
 
-        let panelList = gWiz.querySelector("panel-list");
+        let panelList = gShadowRoot.querySelector("panel-list");
         is(panelList.childElementCount, 2, "Should have two child elements");
 
         let resourceTypeList = gShadowRoot.querySelector("#resource-type-list");
@@ -148,13 +147,13 @@
         // Test that the resource type checkboxes are shown or hidden depending on
         // which resourceTypes are included with the MigratorProfileInstance.
         for (let migratorInstance of MIGRATOR_PROFILE_INSTANCES) {
-          selector.click();
+          synthesizeMouseAtCenter(selector, {}, gWiz.ownerGlobal);
           await new Promise(resolve => {
-            gWiz
+            gShadowRoot
               .querySelector("panel-list")
               .addEventListener("shown", resolve, { once: true });
           });
-          let panelItem = gWiz.querySelector(
+          let panelItem = gShadowRoot.querySelector(
             `panel-item[key="${migratorInstance.key}"]`
           );
           ok(panelItem, "Should find panel-item.");
@@ -179,7 +178,7 @@
             is(profileName.textContent, "");
           }
 
-          for (let resourceType in MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES) {
+          for (let resourceType of getChoosableResourceTypes()) {
             let node = resourceTypeList.querySelector(
               `label[data-resource-type="${resourceType}"]`
             );
@@ -219,6 +218,7 @@
             displayName: "Some Browser 0 with no resources",
             resourceTypes: [],
             profile: { id: "person-1", name: "Person 1" },
+            hasPermissions: true,
           }],
           showImportAll: false,
         });
@@ -248,15 +248,15 @@
         ok(isHidden(preamble), "preamble should be hidden.");
 
         let selector = gShadowRoot.querySelector("#browser-profile-selector");
-        selector.click();
+        synthesizeMouseAtCenter(selector, {}, gWiz.ownerGlobal);
         await new Promise(resolve => {
-          let panelList = gWiz.querySelector("panel-list");
+          let panelList = gShadowRoot.querySelector("panel-list");
           if (panelList) {
             panelList.addEventListener("shown", resolve, { once: true });
           }
         });
 
-        let panelItems = gWiz.querySelectorAll("panel-list > panel-item");
+        let panelItems = gShadowRoot.querySelectorAll("panel-list > panel-item");
         is(panelItems.length, 2, "Should have two panel items");
 
         let details = gShadowRoot.querySelector("details");
@@ -267,7 +267,7 @@
           let migratorInstance = MIGRATOR_PROFILE_INSTANCES[i];
           let panelItem = panelItems[i];
           panelItem.click();
-          for (let resourceType in MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES) {
+          for (let resourceType of getChoosableResourceTypes()) {
             let node = gShadowRoot.querySelector(
               `#resource-type-list label[data-resource-type="${resourceType}"]`
             );
@@ -383,12 +383,14 @@
             displayName: "Some Browser 0 with a single resource",
             resourceTypes: ["HISTORY"],
             profile: { id: "person-1", name: "Person 1" },
+            hasPermissions: true,
           }, {
             key: "some-browser-1",
             type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
             displayName: "Some Browser 1 with a two resources",
             resourceTypes: ["HISTORY", "BOOKMARKS"],
             profile: { id: "person-2", name: "Person 2" },
+            hasPermissions: true,
           }],
           showImportAll: true,
         });
@@ -408,7 +410,7 @@
           gWiz,
           "MigrationWizard:ResourcesUpdated"
         );
-        let browser1Item = gWiz.querySelector("panel-item[key='some-browser-1']");
+        let browser1Item = gShadowRoot.querySelector("panel-item[key='some-browser-1']");
         browser1Item.click();
         await resourcesUpdated;
 
@@ -459,15 +461,18 @@
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: BOOKMARKS_SUCCESS_STRING,
             },
             // Don't include PASSWORDS to check that it's hidden.
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.HISTORY]: {
-              inProgress: true,
+              value: MigrationWizardConstants.PROGRESS_VALUE.LOADING,
+            },
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.LOADING,
             },
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.FORMDATA]: {
-              inProgress: true,
+              value: MigrationWizardConstants.PROGRESS_VALUE.LOADING,
             },
           },
         });
@@ -483,12 +488,13 @@
         );
         ok(!isHidden(bookmarksGroup), "Bookmarks group should be visible");
         let progressIcon = bookmarksGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          bookmarksGroup.querySelector(".success-text").textContent,
+          bookmarksGroup.querySelector(".message-text").textContent,
           BOOKMARKS_SUCCESS_STRING
         );
 
@@ -504,11 +510,24 @@
         );
         ok(!isHidden(historyGroup), "History group should be visible");
         progressIcon = historyGroup.querySelector(".progress-icon");
-        ok(
-          !progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "loading",
           "Progress should be still be underway"
         );
-        is(historyGroup.querySelector(".success-text").textContent.trim(), "");
+        is(historyGroup.querySelector(".message-text").textContent.trim(), "");
+
+        // Extensions
+        let extensionsGroup = getResourceGroup(MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS);
+        ok(!isHidden(extensionsGroup), "Extensions group should be visible");
+        progressIcon = extensionsGroup.querySelector(".progress-icon");
+        is(
+          progressIcon.getAttribute("state"),
+          "loading",
+          "Progress should be still be underway"
+        );
+        is(extensionsGroup.querySelector("a.message-text").textContent.trim(), "");
+        is(extensionsGroup.querySelector("span.message-text").textContent.trim(), "");
 
         // Form Data
         let formDataGroup = getResourceGroup(
@@ -516,11 +535,12 @@
         );
         ok(!isHidden(formDataGroup), "Form data group should be visible");
         progressIcon = formDataGroup.querySelector(".progress-icon");
-        ok(
-          !progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "loading",
           "Progress should be still be underway"
         );
-        is(formDataGroup.querySelector(".success-text").textContent.trim(), "");
+        is(formDataGroup.querySelector(".message-text").textContent.trim(), "");
 
         // With progress still being underway, the header should be using the
         // in progress string.
@@ -546,21 +566,27 @@
         const BOOKMARKS_SUCCESS_STRING = "Some bookmarks success string";
         const PASSWORDS_SUCCESS_STRING = "Some passwords success string";
         const FORMDATA_SUCCESS_STRING = "Some formdata string";
+        const EXTENSIONS_SUCCESS_STRING = "Some extensions string";
+        const EXTENSIONS_SUCCESS_HREF = "about:addons";
         gWiz.setState({
           page: MigrationWizardConstants.PAGES.PROGRESS,
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: BOOKMARKS_SUCCESS_STRING,
             },
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: PASSWORDS_SUCCESS_STRING,
             },
             // Don't include HISTORY to check that it's hidden.
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+              message: EXTENSIONS_SUCCESS_STRING,
+            },
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.FORMDATA]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: FORMDATA_SUCCESS_STRING,
             },
           },
@@ -577,12 +603,13 @@
         );
         ok(!isHidden(bookmarksGroup), "Bookmarks group should be visible");
         let progressIcon = bookmarksGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          bookmarksGroup.querySelector(".success-text").textContent,
+          bookmarksGroup.querySelector(".message-text").textContent,
           BOOKMARKS_SUCCESS_STRING
         );
 
@@ -592,12 +619,13 @@
         );
         ok(!isHidden(passwordsGroup), "Passwords group should be visible");
         progressIcon = passwordsGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          passwordsGroup.querySelector(".success-text").textContent,
+          passwordsGroup.querySelector(".message-text").textContent,
           PASSWORDS_SUCCESS_STRING
         );
 
@@ -607,18 +635,36 @@
         );
         ok(isHidden(historyGroup), "History group should be hidden");
 
+        // Extensions
+        let extensionsDataGroup = getResourceGroup(MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS);
+        ok(!isHidden(extensionsDataGroup), "Extensions data group should be visible");
+        progressIcon = extensionsDataGroup.querySelector(".progress-icon");
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
+          "Progress should be completed"
+        );
+        is(
+          extensionsDataGroup.querySelector("a.message-text").textContent,
+          EXTENSIONS_SUCCESS_STRING
+        );
+        is(
+          extensionsDataGroup.querySelector("a.message-text").href,
+          EXTENSIONS_SUCCESS_HREF
+        )
         // Form Data
         let formDataGroup = getResourceGroup(
           MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.FORMDATA
         );
         ok(!isHidden(formDataGroup), "Form data group should be visible");
         progressIcon = formDataGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          formDataGroup.querySelector(".success-text").textContent,
+          formDataGroup.querySelector(".message-text").textContent,
           FORMDATA_SUCCESS_STRING
         );
 
@@ -628,6 +674,143 @@
         is(
           header.getAttribute("data-l10n-id"),
           "migration-wizard-progress-done-header",
+          "Should be showing completed migration header string"
+        );
+
+        let progressPage = gShadowRoot.querySelector("div[name='page-progress']");
+        let doneButton = progressPage.querySelector(".done-button");
+        ok(!isHidden(doneButton), "Done button should be visible and enabled");
+        let cancelButton = progressPage.querySelector(".cancel-close");
+        ok(isHidden(cancelButton), "Cancel button should be hidden");
+      });
+
+      add_task(async function test_extension_partial_success() {
+        const EXTENSIONS_INFO_STRING = "Extensions info string";
+        const EXTENSIONS_INFO_HREF = "about:addons";
+        const EXTENSIONS_SUPPORT_STRING = "extensions support string";
+        const EXTENSIONS_SUPPORT_HREF = "about:blank";
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.PROGRESS,
+          key: "chrome",
+          progress: {
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.INFO,
+              message: EXTENSIONS_INFO_STRING,
+              linkText: EXTENSIONS_SUPPORT_STRING,
+              linkURL: EXTENSIONS_SUPPORT_HREF,
+            }
+          }
+        });
+        is(
+          gDeck.selectedViewName,
+          "page-progress",
+          "Should have the progress page selected"
+        );
+
+        let extensionsGroup = getResourceGroup(MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS);
+        ok(!isHidden(extensionsGroup), "Extensions group should be visible");
+        let progressIcon = extensionsGroup.querySelector(".progress-icon");
+        is(
+          progressIcon.getAttribute("state"),
+          "info",
+          "Progress should be completed, in info state"
+        );
+        is(
+          extensionsGroup.querySelector("a.message-text").textContent,
+          EXTENSIONS_INFO_STRING
+        );
+        is(
+          extensionsGroup.querySelector("a.message-text").href,
+          EXTENSIONS_INFO_HREF
+        );
+        is(
+          extensionsGroup.querySelector("a.message-text").target,
+          "_blank"
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").textContent,
+          EXTENSIONS_SUPPORT_STRING
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").href,
+          EXTENSIONS_SUPPORT_HREF
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").target,
+          "_blank"
+        );
+
+        // With progress being complete, the header should be using the completed
+        // migration string.
+        let header = gShadowRoot.querySelector("#progress-header");
+        is(
+          header.getAttribute("data-l10n-id"),
+          "migration-wizard-progress-done-header",
+          "Should be showing completed migration header string"
+        );
+
+        let progressPage = gShadowRoot.querySelector("div[name='page-progress']");
+        let doneButton = progressPage.querySelector(".done-button");
+        ok(!isHidden(doneButton), "Done button should be visible and enabled");
+        let cancelButton = progressPage.querySelector(".cancel-close");
+        ok(isHidden(cancelButton), "Cancel button should be hidden");
+      });
+
+      add_task(async function test_extension_error() {
+        const EXTENSIONS_ERROR_STRING = "Extensions error string";
+        const EXTENSIONS_SUPPORT_STRING = "extensions support string";
+        const EXTENSIONS_SUPPORT_HREF = "about:blank";
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.PROGRESS,
+          key: "chrome",
+          progress: {
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.WARNING,
+              message: EXTENSIONS_ERROR_STRING,
+              linkText: EXTENSIONS_SUPPORT_STRING,
+              linkURL: EXTENSIONS_SUPPORT_HREF,
+            }
+          }
+        });
+        is(
+          gDeck.selectedViewName,
+          "page-progress",
+          "Should have the progress page selected"
+        );
+
+        let extensionsGroup = getResourceGroup(MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS);
+        ok(!isHidden(extensionsGroup), "Extensions group should be visible");
+        let progressIcon = extensionsGroup.querySelector(".progress-icon");
+        is(progressIcon.getAttribute("state"), "warning");
+        is(
+          extensionsGroup.querySelector("a.message-text").textContent,
+          ""
+        );
+        is(
+          extensionsGroup.querySelector("span.message-text").textContent,
+          EXTENSIONS_ERROR_STRING
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").textContent,
+          EXTENSIONS_SUPPORT_STRING
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").href,
+          EXTENSIONS_SUPPORT_HREF
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").target,
+          "_blank"
+        );
+
+        // With progress being complete, the header should be using the completed
+        // migration string.
+        let header = gShadowRoot.querySelector("#progress-header");
+        is(
+          header.getAttribute("data-l10n-id"),
+          "migration-wizard-progress-done-with-warnings-header",
           "Should be showing completed migration header string"
         );
 
@@ -650,11 +833,11 @@
           title: "Partial progress",
           progress: {
             [MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES.PASSWORDS_FROM_FILE]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: PASSWORDS_SUCCESS_STRING,
             },
             [MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES.PASSWORDS_NEW]: {
-              inProgress: true,
+              value: MigrationWizardConstants.PROGRESS_VALUE.LOADING,
             },
           },
         });
@@ -673,12 +856,13 @@
         );
         ok(!isHidden(passwordsFromFileGroup), "Passwords from file group should be visible");
         let progressIcon = passwordsFromFileGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          passwordsFromFileGroup.querySelector(".success-text").textContent,
+          passwordsFromFileGroup.querySelector(".message-text").textContent,
           PASSWORDS_SUCCESS_STRING
         );
 
@@ -692,11 +876,12 @@
         );
         ok(!isHidden(passwordsNewGroup), "Passwords new group should be visible");
         progressIcon = passwordsNewGroup.querySelector(".progress-icon");
-        ok(
-          !progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "loading",
           "Progress should be still be underway"
         );
-        is(passwordsNewGroup.querySelector(".success-text").textContent.trim(), "");
+        is(passwordsNewGroup.querySelector(".message-text").textContent.trim(), "");
 
         let progressPage = gShadowRoot.querySelector("div[name='page-file-import-progress']");
         let doneButton = progressPage.querySelector(".done-button");
@@ -719,11 +904,11 @@
           title: TITLE,
           progress: {
             [MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES.PASSWORDS_NEW]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: PASSWORDS_NEW_SUCCESS_STRING,
             },
             [MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES.PASSWORDS_UPDATED]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: PASSWORDS_UPDATED_SUCCESS_STRING,
             },
           },
@@ -742,12 +927,13 @@
         );
         ok(!isHidden(passwordsNewGroup), "Passwords new group should be visible");
         let progressIcon = passwordsNewGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          passwordsNewGroup.querySelector(".success-text").textContent,
+          passwordsNewGroup.querySelector(".message-text").textContent,
           PASSWORDS_NEW_SUCCESS_STRING
         );
 
@@ -756,12 +942,13 @@
         );
         ok(!isHidden(passwordsUpdatedGroup), "Passwords updated group should be visible");
         progressIcon = passwordsUpdatedGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          passwordsUpdatedGroup.querySelector(".success-text").textContent,
+          passwordsUpdatedGroup.querySelector(".message-text").textContent,
           PASSWORDS_UPDATED_SUCCESS_STRING
         );
 
@@ -804,7 +991,7 @@
           ".cancel-close button should be visible in dialog mode."
         );
         let closeEvent = BrowserTestUtils.waitForEvent(gWiz, "MigrationWizard:Close");
-        synthesizeMouseAtCenter(button, {});
+        button.click();
         await closeEvent;
 
         gWiz.toggleAttribute("dialog-mode", false);
@@ -864,6 +1051,7 @@
               displayName: "Legacy Microsoft Browser",
               resourceTypes: ["BOOKMARKS"],
               profile: null,
+              hasPermissions: true,
             }],
             showImportAll: false,
           });
@@ -887,6 +1075,7 @@
               displayName: "Legacy Microsoft Browser",
               resourceTypes: ["BOOKMARKS"],
               profile: null,
+              hasPermissions: true,
             }],
             showImportAll: true,
           });
@@ -962,7 +1151,7 @@
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: "A string from the parent",
             },
           },
@@ -1030,8 +1219,7 @@
 
       /**
        * Tests that if a progress update comes down which puts a resource from
-       * being done to being back "inProgress", that the status message is
-       * cleared.
+       * being done to loading, that the status message is cleared.
        */
       add_task(async function test_clear_status_message_when_in_progress() {
         const STRING_TO_CLEAR = "This string should get cleared";
@@ -1041,7 +1229,7 @@
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: STRING_TO_CLEAR,
             },
           },
@@ -1052,12 +1240,13 @@
         );
         ok(!isHidden(bookmarksGroup), "Bookmarks group should be visible");
         let progressIcon = bookmarksGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          bookmarksGroup.querySelector(".success-text").textContent,
+          bookmarksGroup.querySelector(".message-text").textContent,
           STRING_TO_CLEAR
         );
 
@@ -1066,27 +1255,27 @@
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS]: {
-              inProgress: true,
+              value: MigrationWizardConstants.PROGRESS_VALUE.LOADING,
               message: "",
             },
           },
         });
 
         ok(!isHidden(bookmarksGroup), "Bookmarks group should be visible");
-        ok(
-          !progressIcon.classList.contains("completed"),
-          "Progress should still be underway"
+        is(
+          progressIcon.getAttribute("state"),
+          "loading",
+          "Progress should be still be underway"
         );
         is(
-          bookmarksGroup.querySelector(".success-text").textContent.trim(),
+          bookmarksGroup.querySelector(".message-text").textContent.trim(),
           ""
         );
       });
 
       /**
        * Tests that if a file progress update comes down which puts a resource
-       * from being done to being back "inProgress", that the status message is
-       * cleared.
+       * from being done to loading, that the status message is cleared.
        *
        * This is extremely similar to the above test, except that it's for progress
        * updates for file resources.
@@ -1099,7 +1288,7 @@
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES.PASSWORDS_NEW]: {
-              inProgress: false,
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
               message: STRING_TO_CLEAR,
             },
           },
@@ -1110,12 +1299,13 @@
         );
         ok(!isHidden(passwordsGroup), "Passwords group should be visible");
         let progressIcon = passwordsGroup.querySelector(".progress-icon");
-        ok(
-          progressIcon.classList.contains("completed"),
+        is(
+          progressIcon.getAttribute("state"),
+          "success",
           "Progress should be completed"
         );
         is(
-          passwordsGroup.querySelector(".success-text").textContent,
+          passwordsGroup.querySelector(".message-text").textContent,
           STRING_TO_CLEAR
         );
 
@@ -1124,30 +1314,473 @@
           key: "chrome",
           progress: {
             [MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES.PASSWORDS_NEW]: {
-              inProgress: true,
+              value: MigrationWizardConstants.PROGRESS_VALUE.LOADING,
               message: "",
             },
           },
         });
 
         ok(!isHidden(passwordsGroup), "Passwords group should be visible");
-        ok(
-          !progressIcon.classList.contains("completed"),
-          "Progress should still be underway"
+        is(
+          progressIcon.getAttribute("state"),
+          "loading",
+          "Progress should be still be underway"
         );
         is(
-          passwordsGroup.querySelector(".success-text").textContent.trim(),
+          passwordsGroup.querySelector(".message-text").textContent.trim(),
           ""
         );
+      });
+
+      /**
+       * Tests that the migration wizard can be put into the selection page after
+       * a file migrator error and show an error message.
+       */
+      add_task(async function test_file_migrator_error() {
+        const FILE_MIGRATOR_KEY = "some-file-migrator";
+        const FILE_IMPORT_ERROR_MESSAGE = "This is an error message";
+        const MIGRATORS = [
+          {
+            key: "some-browser-0",
+            type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+            displayName: "Some Browser 0",
+            resourceTypes: ["HISTORY", "FORMDATA", "PASSWORDS", "BOOKMARKS"],
+            profile: { id: "person-2", name: "Person 2" },
+            hasPermissions: true,
+          },
+          {
+            key: "some-browser-1",
+            type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+            displayName: "Some Browser 1",
+            resourceTypes: ["HISTORY", "BOOKMARKS"],
+            profile: null,
+            hasPermissions: true,
+          },
+          {
+            key: FILE_MIGRATOR_KEY,
+            type: MigrationWizardConstants.MIGRATOR_TYPES.FILE,
+            displayName: "Some File Migrator",
+            resourceTypes: [],
+          },
+        ];
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATORS,
+          showImportAll: true,
+          migratorKey: "some-file-migrator",
+          fileImportErrorMessage: FILE_IMPORT_ERROR_MESSAGE,
+        });
+
+        let errorMessageContainer = gShadowRoot.querySelector(".file-import-error");
+        ok(!isHidden(errorMessageContainer), "Error message should be shown.");
+        let errorText = gShadowRoot.querySelector("#file-import-error-message").textContent;
+        is(errorText, FILE_IMPORT_ERROR_MESSAGE);
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATORS,
+          showImportAll: true,
+        });
+
+        ok(isHidden(errorMessageContainer), "Error message should be hidden.");
+        errorText = gShadowRoot.querySelector("#file-import-error-message").textContent;
+        is(errorText, "");
+      });
+
+      /**
+       * Tests that the variant of the wizard can be forced via
+       * attributes on the migration-wizard element.
+       */
+      add_task(async function force_show_import_all() {
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: true,
+        });
+
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let details = gShadowRoot.querySelector("details");
+        ok(
+          selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to showImportAll=true on state object"
+        );
+        ok(!details.open, "Details collapsed by default");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: false,
+        });
+
+        ok(
+          !selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to showImportAll=false on state object"
+        );
+        ok(details.open, "Details expanded by default");
+
+        gWiz.setAttribute("force-show-import-all", "false");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: true,
+        });
+        ok(
+          !selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to force-show-import-all=false on DOM node"
+        );
+        ok(details.open, "Details expanded by default");
+
+        gWiz.setAttribute("force-show-import-all", "true");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: false,
+        });
+        ok(
+          selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to force-show-import-all=true on DOM node"
+        );
+        ok(!details.open, "Details collapsed by default");
+
+        gWiz.removeAttribute("force-show-import-all");
+      });
+
+      /**
+       * Tests that for non-Safari migrators without permissions, we show
+       * the appropriate message and the button for getting permissions.
+       */
+      add_task(async function no_permissions() {
+        const SOME_FAKE_PERMISSION_PATH = "/some/fake/path";
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: [{
+            key: "some-browser-0",
+            type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+            displayName: "Some Browser 0 with no permissions",
+            resourceTypes: [],
+            profile: null,
+            hasPermissions: false,
+            permissionsPath: SOME_FAKE_PERMISSION_PATH,
+          }],
+          showImportAll: false,
+        });
+
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        ok(selectionPage.hasAttribute("no-permissions"), "no-permissions attribute set.");
+
+        let resourceList = gShadowRoot.querySelector(".resource-selection-details");
+        ok(isHidden(resourceList), "Resources list is hidden.");
+
+        let importButton = gShadowRoot.querySelector("#import");
+        ok(isHidden(importButton), "Import button hidden.");
+        let noPermissionsMessage = gShadowRoot.querySelector(".no-permissions-message");
+        ok(!isHidden(noPermissionsMessage), "No permissions message shown.");
+        let getPermissionButton = gShadowRoot.querySelector("#get-permissions");
+        ok(!isHidden(getPermissionButton), "Get permissions button shown.");
+
+        let step2 = gShadowRoot.querySelector(".migration-no-permissions-instructions-step2");
+        ok(step2.hasAttribute("data-l10n-args"));
+        is(JSON.parse(step2.getAttribute("data-l10n-args")).permissionsPath, SOME_FAKE_PERMISSION_PATH);
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: false,
+        });
+
+        ok(!selectionPage.hasAttribute("no-permissions"), "no-permissions attribute set to false.");
+        ok(!isHidden(resourceList), "Resources list is shown.");
+        ok(!isHidden(importButton), "Import button is shown.");
+        ok(isHidden(noPermissionsMessage), "No permissions message hidden.");
+        ok(isHidden(getPermissionButton), "Get permissions button hidden.");
+      });
+
+      /**
+       * Tests that for the Safari migrator without permissions, we show the
+       * normal resources list and impor tbutton instead of the no permissions
+       * message. Safari has a special flow where permissions are requested
+       * only after resource selection has occurred.
+       */
+      add_task(async function no_permissions_safari() {
+        const SOME_FAKE_PERMISSION_PATH = "/some/fake/safari/path";
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: [{
+            key: "safari",
+            type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+            displayName: "Safari with no permissions",
+            resourceTypes: ["HISTORY", "BOOKMARKS"],
+            profile: null,
+            hasPermissions: false,
+            permissionsPath: SOME_FAKE_PERMISSION_PATH,
+          }],
+          showImportAll: false,
+        });
+
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        ok(!selectionPage.hasAttribute("no-permissions"), "no-permissions attribute not set.");
+
+        let resourceList = gShadowRoot.querySelector(".resource-selection-details");
+        ok(!isHidden(resourceList), "Resources list is shown.");
+
+        let importButton = gShadowRoot.querySelector("#import");
+        ok(!isHidden(importButton), "Import button shown.");
+        let noPermissionsMessage = gShadowRoot.querySelector(".no-permissions-message");
+        ok(isHidden(noPermissionsMessage), "No permissions message hidden.");
+        let getPermissionButton = gShadowRoot.querySelector("#get-permissions");
+        ok(isHidden(getPermissionButton), "Get permissions button hiddne.");
+      });
+
+      add_task(async function hide_option_expander_subtitle() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        gWiz.setAttribute("hide-option-expander-subtitle", "true");
+        let subtitle = selectionPage.querySelector("#resource-selection-summary > .selected-data");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(gWiz.hasAttribute("hide-option-expander-subtitle"), "hide option expander subtitle attribute is present on migration wizard");
+
+        ok(isHidden(subtitle), "subtitle is hidden");
+
+        gWiz.removeAttribute("hide-option-expander-subtitle");
+      });
+
+      add_task(async function update_option_expander_title_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+
+        let title = selectionPage.querySelector(".selected-data-header");
+        gWiz.setAttribute("option-expander-title-string", "test");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        await BrowserTestUtils.waitForMutationCondition(
+          title,
+          {childList: true},
+          () => title.textContent == "test"
+        )
+        is(title.textContent, "test", "resource selection expander subtitle has been changed");
+
+        gWiz.removeAttribute("option-expander-title-string");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        await BrowserTestUtils.waitForMutationCondition(
+          title,
+          {childList: true},
+          () => title.textContent != "test"
+        )
+        isnot(title.textContent, "test", "resource selection expander subtitle was reverted");
+      });
+
+      add_task(async function hide_select_all_checkbox() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+
+        let selectAll = selectionPage.querySelector("#select-all");
+        gWiz.setAttribute("hide-select-all", true);
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(isHidden(selectAll), "select all is not displayed");
+
+        gWiz.removeAttribute("hide-select-all");
+      });
+
+      add_task(async function update_import_button_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        gWiz.setAttribute("import-button-string", "test");
+        let button = selectionPage.querySelector(".migration-import-button");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        is(button.textContent, "test", "button text is expected");
+
+        gWiz.removeAttribute("import-button-string");
+      });
+
+      add_task(async function update_checkbox_margins() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+
+        gWiz.setAttribute("checkbox-margin-inline", "27px 42px");
+        gWiz.setAttribute("checkbox-margin-block", "42px 27px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        let checkboxLabels = selectionPage.querySelectorAll(".resource-type-label");
+        for(let label of checkboxLabels) {
+          let computedStyle = getComputedStyle(label);
+          let marginInline = computedStyle.getPropertyValue("margin-inline");
+          let marginBlock = computedStyle.getPropertyValue("margin-block");
+          is(marginInline, "27px 42px", "margin inline is set to expected value");
+          is(marginBlock, "42px 27px", "margin block is set to expected value");
+        }
+
+        gWiz.removeAttribute("checkbox-margin-inline");
+        gWiz.removeAttribute("checkbox-margin-block");
+      });
+
+      add_task(async function update_import_button_class() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let importButton = selectionPage.querySelector("#import");
+
+        gWiz.setAttribute("import-button-class", "primary");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(importButton.classList.contains("primary"), "import button has the primary class");
+
+        gWiz.removeAttribute("import-button-class");
+      });
+
+      add_task(async function update_header_font_size() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let header = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("header-font-size", "24px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(header);
+
+        is(computedStyle.getPropertyValue("font-size"), "24px", "header font size is changed to correct value");
+        gWiz.removeAttribute("header-font-size");
+      });
+
+      add_task(async function update_header_margin_block() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let header = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("header-margin-block", "20px 30px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(header);
+
+        is(computedStyle.getPropertyValue("margin-block"), "20px 30px", "header margin block is changed to correct value");
+        gWiz.removeAttribute("header-margin-block");
+      });
+
+      add_task(async function update_header_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let header = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("selection-header-string", "test string");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        is(header.textContent, "test string", "header text content is changed to correct value");
+        gWiz.removeAttribute("selection-header-string");
+      });
+
+      add_task(async function update_subheader_font_size() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let subheader = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("subheader-font-size", "24px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(subheader);
+
+        is(computedStyle.getPropertyValue("font-size"), "24px", "subheader font size is changed to correct value");
+        gWiz.removeAttribute("subheader-font-size");
+      });
+
+      add_task(async function update_subheader_margin_block() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let subheader = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("subheader-margin-block", "20px 30px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(subheader);
+
+        is(computedStyle.getPropertyValue("margin-block"), "20px 30px", "subheader margin block is changed to correct value");
+        gWiz.removeAttribute("subheader-margin-block");
+      });
+
+      add_task(async function update_subheader_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let subheader = selectionPage.querySelector(".migration-wizard-subheader");
+
+        gWiz.setAttribute("selection-subheader-string", "test string");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        is(subheader.textContent, "test string", "subheader text content is changed to correct value");
+
+        gWiz.removeAttribute("selection-subheader-string");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(isHidden(subheader), "subheader is hidden")
+      });
+
+      add_task(async function update_data_import_success_string() {
+        let progressPage = gShadowRoot.querySelector("div[name='page-progress']");
+        let header = progressPage.querySelector("h1");
+
+        gWiz.setAttribute("data-import-complete-success-string", "test string");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.PROGRESS,
+          key: "chrome",
+          progress: {
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+            },
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.FORMDATA]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+            },
+          },
+        });
+
+        is(header.textContent, "test string", "import success header text content is changed to correct value");
+        gWiz.removeAttribute("data-import-complete-success-string");
       });
     </script>
   </head>
   <body>
     <p id="display"></p>
     <div id="content">
-      <migration-wizard id="test-wizard" dialog-mode="">
-        <panel-list></panel-list>
-      </migration-wizard>
+      <migration-wizard id="test-wizard" dialog-mode=""></migration-wizard>
     </div>
     <pre id="test"></pre>
   </body>

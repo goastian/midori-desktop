@@ -55,13 +55,13 @@ function sleep(ms) {
 
 async function blockedIconShown() {
   await TestUtils.waitForCondition(() => {
-    return BrowserTestUtils.is_visible(autoplayBlockedIcon());
+    return BrowserTestUtils.isVisible(autoplayBlockedIcon());
   }, "Blocked icon is shown");
 }
 
 async function blockedIconHidden() {
   await TestUtils.waitForCondition(() => {
-    return BrowserTestUtils.is_hidden(autoplayBlockedIcon());
+    return BrowserTestUtils.isHidden(autoplayBlockedIcon());
   }, "Blocked icon is hidden");
 }
 
@@ -91,7 +91,7 @@ add_task(async function testMainViewVisible() {
 
   await BrowserTestUtils.withNewTab(AUTOPLAY_PAGE, async function () {
     ok(
-      BrowserTestUtils.is_hidden(autoplayBlockedIcon()),
+      BrowserTestUtils.isHidden(autoplayBlockedIcon()),
       "Blocked icon not shown"
     );
 
@@ -102,7 +102,7 @@ add_task(async function testMainViewVisible() {
 
   Services.prefs.setIntPref(AUTOPLAY_PREF, Ci.nsIAutoplay.BLOCKED);
 
-  await BrowserTestUtils.withNewTab(AUTOPLAY_PAGE, async function (browser) {
+  await BrowserTestUtils.withNewTab(AUTOPLAY_PAGE, async function () {
     let permissionsList = document.getElementById(
       "permission-popup-permission-list"
     );
@@ -203,7 +203,7 @@ add_task(async function testBFCache() {
   Services.prefs.setIntPref(AUTOPLAY_PREF, Ci.nsIAutoplay.BLOCKED);
 
   await BrowserTestUtils.withNewTab("about:home", async function (browser) {
-    BrowserTestUtils.loadURIString(browser, AUTOPLAY_PAGE);
+    BrowserTestUtils.startLoadingURIString(browser, AUTOPLAY_PAGE);
     await blockedIconShown();
 
     gBrowser.goBack();
@@ -250,7 +250,7 @@ add_task(async function testChangingBlockingSettingDuringNavigation() {
 
   await BrowserTestUtils.withNewTab("about:home", async function (browser) {
     await blockedIconHidden();
-    BrowserTestUtils.loadURIString(browser, AUTOPLAY_PAGE);
+    BrowserTestUtils.startLoadingURIString(browser, AUTOPLAY_PAGE);
     await blockedIconShown();
     Services.prefs.setIntPref(AUTOPLAY_PREF, Ci.nsIAutoplay.ALLOWED);
 
@@ -265,7 +265,7 @@ add_task(async function testChangingBlockingSettingDuringNavigation() {
     // would have shown.
     await sleep(100);
     ok(
-      BrowserTestUtils.is_hidden(autoplayBlockedIcon()),
+      BrowserTestUtils.isHidden(autoplayBlockedIcon()),
       "Blocked icon is hidden"
     );
   });
@@ -303,7 +303,7 @@ add_task(async function testBlockedAll() {
 
   await BrowserTestUtils.withNewTab("about:home", async function (browser) {
     await blockedIconHidden();
-    BrowserTestUtils.loadURIString(browser, MUTED_AUTOPLAY_PAGE);
+    BrowserTestUtils.startLoadingURIString(browser, MUTED_AUTOPLAY_PAGE);
     await blockedIconShown();
 
     await openPermissionPopup();
@@ -343,7 +343,7 @@ add_task(async function testMultiplePlayNotificationsFromJS() {
 
     await blockedIconHidden();
 
-    BrowserTestUtils.loadURIString(browser, AUTOPLAY_JS_PAGE);
+    BrowserTestUtils.startLoadingURIString(browser, AUTOPLAY_JS_PAGE);
 
     await blockedIconShown();
 

@@ -16,6 +16,10 @@ ChromeUtils.defineESModuleGetters(this, {
   DoHTestUtils: "resource://testing-common/DoHTestUtils.sys.mjs",
 });
 
+const { MockRegistrar } = ChromeUtils.importESModule(
+  "resource://testing-common/MockRegistrar.sys.mjs"
+);
+
 const TRR_MODE_PREF = "network.trr.mode";
 const TRR_URI_PREF = "network.trr.uri";
 const TRR_CUSTOM_URI_PREF = "network.trr.custom_uri";
@@ -105,6 +109,164 @@ function waitForPrefObserver(name) {
     Services.prefs.addObserver(name, observer);
   });
 }
+
+// Mock parental controls service in order to enable it
+let parentalControlsService = {
+  parentalControlsEnabled: true,
+  QueryInterface: ChromeUtils.generateQI(["nsIParentalControlsService"]),
+};
+let mockParentalControlsServiceCid = undefined;
+
+async function setMockParentalControlEnabled(aEnabled) {
+  if (mockParentalControlsServiceCid != undefined) {
+    MockRegistrar.unregister(mockParentalControlsServiceCid);
+    mockParentalControlsServiceCid = undefined;
+  }
+  if (aEnabled) {
+    mockParentalControlsServiceCid = MockRegistrar.register(
+      "@mozilla.org/parental-controls-service;1",
+      parentalControlsService
+    );
+  }
+  Services.dns.reloadParentalControlEnabled();
+}
+
+add_task(async function testParentalControls() {
+  async function withConfiguration(configuration, fn) {
+    info("testParentalControls");
+
+    await resetPrefs();
+    Services.prefs.setIntPref(TRR_MODE_PREF, configuration.trr_mode);
+    await setMockParentalControlEnabled(configuration.parentalControlsState);
+
+    await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
+    let doc = gBrowser.selectedBrowser.contentDocument;
+    let statusElement = doc.getElementById("dohStatus");
+
+    await TestUtils.waitForCondition(() => {
+      return (
+        document.l10n.getAttributes(statusElement).args.status ==
+        configuration.wait_for_doh_status
+      );
+    });
+
+    await fn({
+      statusElement,
+    });
+
+    gBrowser.removeCurrentTab();
+    await setMockParentalControlEnabled(false);
+  }
+
+  info("Check parental controls disabled, TRR off");
+  await withConfiguration(
+    {
+      parentalControlsState: false,
+      trr_mode: 0,
+      wait_for_doh_status: "Off",
+    },
+    async res => {
+      is(
+        document.l10n.getAttributes(res.statusElement).args.status,
+        "Off",
+        "expecting status off"
+      );
+    }
+  );
+
+  info("Check parental controls enabled, TRR off");
+  await withConfiguration(
+    {
+      parentalControlsState: true,
+      trr_mode: 0,
+      wait_for_doh_status: "Off",
+    },
+    async res => {
+      is(
+        document.l10n.getAttributes(res.statusElement).args.status,
+        "Off",
+        "expecting status off"
+      );
+    }
+  );
+
+  // Enable the rollout.
+  await DoHTestUtils.loadRemoteSettingsConfig({
+    providers: "example",
+    rolloutEnabled: true,
+    steeringEnabled: false,
+    steeringProviders: "",
+    autoDefaultEnabled: false,
+    autoDefaultProviders: "",
+    id: "global",
+  });
+
+  info("Check parental controls disabled, TRR first");
+  await withConfiguration(
+    {
+      parentalControlsState: false,
+      trr_mode: 2,
+      wait_for_doh_status: "Active",
+    },
+    async res => {
+      is(
+        document.l10n.getAttributes(res.statusElement).args.status,
+        "Active",
+        "expecting status active"
+      );
+    }
+  );
+
+  info("Check parental controls enabled, TRR first");
+  await withConfiguration(
+    {
+      parentalControlsState: true,
+      trr_mode: 2,
+      wait_for_doh_status: "Not active (TRR_PARENTAL_CONTROL)",
+    },
+    async res => {
+      is(
+        document.l10n.getAttributes(res.statusElement).args.status,
+        "Not active (TRR_PARENTAL_CONTROL)",
+        "expecting status not active"
+      );
+    }
+  );
+
+  info("Check parental controls disabled, TRR only");
+  await withConfiguration(
+    {
+      parentalControlsState: false,
+      trr_mode: 3,
+      wait_for_doh_status: "Active",
+    },
+    async res => {
+      is(
+        document.l10n.getAttributes(res.statusElement).args.status,
+        "Active",
+        "expecting status active"
+      );
+    }
+  );
+
+  info("Check parental controls enabled, TRR only");
+  await withConfiguration(
+    {
+      parentalControlsState: true,
+      trr_mode: 3,
+      wait_for_doh_status: "Not active (TRR_PARENTAL_CONTROL)",
+    },
+    async res => {
+      is(
+        document.l10n.getAttributes(res.statusElement).args.status,
+        "Not active (TRR_PARENTAL_CONTROL)",
+        "expecting status not active"
+      );
+    }
+  );
+
+  await resetPrefs();
+});
 
 async function testWithProperties(props, startTime) {
   info(
@@ -396,13 +558,25 @@ let testVariations = [
     name: "mode 2",
     [TRR_MODE_PREF]: 2,
     expectedSelectedIndex: ENABLED_OPTION_INDEX,
-    expectedFinalUriPref: "",
+  },
+  {
+    name: "mode 2 and match default uri",
+    [TRR_MODE_PREF]: 2,
+    [TRR_URI_PREF]: "",
+    expectedSelectedIndex: ENABLED_OPTION_INDEX,
+    expectedFinalUriPref: DEFAULT_RESOLVER_VALUE,
   },
   {
     name: "mode 3",
     [TRR_MODE_PREF]: 3,
     expectedSelectedIndex: STRICT_OPTION_INDEX,
-    expectedFinalUriPref: "",
+  },
+  {
+    name: "mode 3 and match default uri",
+    [TRR_URI_PREF]: "",
+    [TRR_MODE_PREF]: 3,
+    expectedSelectedIndex: STRICT_OPTION_INDEX,
+    expectedFinalUriPref: DEFAULT_RESOLVER_VALUE,
   },
   {
     name: "mode 4",
@@ -420,7 +594,57 @@ let testVariations = [
     [TRR_MODE_PREF]: 77,
     expectedSelectedIndex: OFF_OPTION_INDEX,
   },
-
+  {
+    name: "mode out-of-bounds-negative",
+    [TRR_MODE_PREF]: -1,
+    expectedSelectedIndex: OFF_OPTION_INDEX,
+  },
+  // Changing mode 0 to mode 2 and 3
+  {
+    name: "back to mode 0",
+    [TRR_MODE_PREF]: 0,
+    expectedSelectedIndex: DEFAULT_OPTION_INDEX,
+  },
+  {
+    name: "mode 2 after mode 0",
+    [TRR_MODE_PREF]: 2,
+    expectedSelectedIndex: ENABLED_OPTION_INDEX,
+    expectedFinalUriPref: FIRST_RESOLVER_VALUE,
+  },
+  {
+    name: "back to mode 0_2",
+    [TRR_MODE_PREF]: 0,
+    expectedSelectedIndex: DEFAULT_OPTION_INDEX,
+  },
+  {
+    name: "mode 3 after mode 0",
+    [TRR_MODE_PREF]: 3,
+    expectedSelectedIndex: STRICT_OPTION_INDEX,
+    expectedFinalUriPref: FIRST_RESOLVER_VALUE,
+  },
+  // verify the final URI of changing mode 5 to mode 2 and 3
+  {
+    name: "back to mode 5",
+    [TRR_MODE_PREF]: 5,
+    expectedSelectedIndex: OFF_OPTION_INDEX,
+  },
+  {
+    name: "mode 2 after mode 5",
+    [TRR_MODE_PREF]: 2,
+    expectedSelectedIndex: ENABLED_OPTION_INDEX,
+    expectedFinalUriPref: FIRST_RESOLVER_VALUE,
+  },
+  {
+    name: "back to mode 5_2",
+    [TRR_MODE_PREF]: 5,
+    expectedSelectedIndex: OFF_OPTION_INDEX,
+  },
+  {
+    name: "mode 3 after mode 5",
+    [TRR_MODE_PREF]: 3,
+    expectedSelectedIndex: STRICT_OPTION_INDEX,
+    expectedFinalUriPref: FIRST_RESOLVER_VALUE,
+  },
   // verify automatic heuristics states
   {
     name: "heuristics on and mode unset",
@@ -453,7 +677,15 @@ let testVariations = [
     clickMode: "dohEnabledRadio",
     expectedModeValue: 2,
     expectedUriValue: "",
-    expectedFinalUriPref: "",
+  },
+  // TRR_URI_PREF should match the expectedFinalUriPref based on the changes made in Bug 1861285
+  {
+    name: "toggle mode on and auto default uri",
+    [TRR_URI_PREF]: "https://stub.com",
+    clickMode: "dohEnabledRadio",
+    expectedModeValue: 2,
+    expectedUriValue: "",
+    expectedFinalUriPref: FIRST_RESOLVER_VALUE,
   },
   {
     name: "toggle mode off",
@@ -493,6 +725,36 @@ let testVariations = [
     expectedResolverListValue: SECOND_RESOLVER_VALUE,
     selectResolver: DEFAULT_RESOLVER_VALUE,
     expectedFinalUriPref: FIRST_RESOLVER_VALUE,
+  },
+  // Attempt to select NextDNS with DoH not enabled
+  // from mode 5 to 3
+  {
+    name: "Select NextDNS as TRR provider in mode 5_2",
+    [TRR_MODE_PREF]: 5,
+    selectResolver: SECOND_RESOLVER_VALUE,
+    expectedFinalUriPref: SECOND_RESOLVER_VALUE,
+  },
+  // should maintain the uri pref set
+  {
+    name: "maintain NextDNS mode 3 from mode 5",
+    [TRR_MODE_PREF]: 3,
+    [TRR_URI_PREF]: SECOND_RESOLVER_VALUE,
+    expectedResolverListValue: SECOND_RESOLVER_VALUE,
+    expectedFinalUriPref: SECOND_RESOLVER_VALUE,
+  },
+  {
+    name: "Select NextDNS as TRR provider in mode 5",
+    [TRR_MODE_PREF]: 5,
+    selectResolver: SECOND_RESOLVER_VALUE,
+    expectedFinalUriPref: SECOND_RESOLVER_VALUE,
+  },
+  // should maintain the uri pref set
+  {
+    name: "maintain NextDNS mode 2 from mode 5",
+    [TRR_MODE_PREF]: 2,
+    [TRR_URI_PREF]: SECOND_RESOLVER_VALUE,
+    expectedResolverListValue: SECOND_RESOLVER_VALUE,
+    expectedFinalUriPref: SECOND_RESOLVER_VALUE,
   },
   // test that selecting Custom, when we have a TRR_CUSTOM_URI_PREF subsequently changes TRR_URI_PREF
   {

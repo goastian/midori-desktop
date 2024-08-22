@@ -60,7 +60,16 @@ add_task(async function testMainViewVisible() {
 
     PermissionTestUtils.remove(gBrowser.currentURI, "camera");
 
+    // We intentionally turn off a11y_checks, because the following function
+    // is expected to click a toolbar button that may be already hidden
+    // with "display:none;". The permissions panel anchor is hidden because
+    // the last permission was removed, however we force opening the panel
+    // anyways in order to test that the list has been properly emptied:
+    AccessibilityUtils.setEnv({
+      mustHaveAccessibleRule: false,
+    });
     await openPermissionPopup();
+    AccessibilityUtils.resetEnv();
 
     testPermListHasEntries(false);
 
@@ -198,7 +207,7 @@ add_task(async function testPermissionHints() {
 
     await openPermissionPopup();
 
-    ok(BrowserTestUtils.is_hidden(reloadHint), "Reload hint is hidden");
+    ok(BrowserTestUtils.isHidden(reloadHint), "Reload hint is hidden");
 
     await closePermissionPopup();
 
@@ -215,7 +224,7 @@ add_task(async function testPermissionHints() {
 
     await openPermissionPopup();
 
-    ok(BrowserTestUtils.is_hidden(reloadHint), "Reload hint is hidden");
+    ok(BrowserTestUtils.isHidden(reloadHint), "Reload hint is hidden");
 
     let cancelButtons = permissionsList.querySelectorAll(
       ".permission-popup-permission-remove-button"
@@ -223,19 +232,19 @@ add_task(async function testPermissionHints() {
     PermissionTestUtils.remove(gBrowser.currentURI, "camera");
 
     cancelButtons[0].click();
-    ok(!BrowserTestUtils.is_hidden(reloadHint), "Reload hint is visible");
+    ok(!BrowserTestUtils.isHidden(reloadHint), "Reload hint is visible");
 
     cancelButtons[1].click();
-    ok(!BrowserTestUtils.is_hidden(reloadHint), "Reload hint is visible");
+    ok(!BrowserTestUtils.isHidden(reloadHint), "Reload hint is visible");
 
     await closePermissionPopup();
     let loaded = BrowserTestUtils.browserLoaded(browser);
-    BrowserTestUtils.loadURIString(browser, PERMISSIONS_PAGE);
+    BrowserTestUtils.startLoadingURIString(browser, PERMISSIONS_PAGE);
     await loaded;
     await openPermissionPopup();
 
     ok(
-      BrowserTestUtils.is_hidden(reloadHint),
+      BrowserTestUtils.isHidden(reloadHint),
       "Reload hint is hidden after reloading"
     );
 
@@ -401,12 +410,20 @@ add_task(async function testPolicyPermission() {
     // Check if the menulist and the remove button are hidden.
     // The menulist is specific to the "popup" permission.
     let menulist = document.getElementById("permission-popup-menulist");
-    ok(menulist == null, "The popup permission menulist is not visible");
+    Assert.equal(
+      menulist,
+      null,
+      "The popup permission menulist is not visible"
+    );
 
     let removeButton = permissionsList.querySelector(
       ".permission-popup-permission-remove-button"
     );
-    ok(removeButton == null, "The permission remove button is not visible");
+    Assert.equal(
+      removeButton,
+      null,
+      "The permission remove button is not visible"
+    );
 
     Services.perms.removeAll();
     await closePermissionPopup();
@@ -416,14 +433,14 @@ add_task(async function testPolicyPermission() {
 add_task(async function testHiddenAfterRefresh() {
   await BrowserTestUtils.withNewTab(PERMISSIONS_PAGE, async function (browser) {
     ok(
-      BrowserTestUtils.is_hidden(gPermissionPanel._permissionPopup),
+      BrowserTestUtils.isHidden(gPermissionPanel._permissionPopup),
       "Popup is hidden"
     );
 
     await openPermissionPopup();
 
     ok(
-      !BrowserTestUtils.is_hidden(gPermissionPanel._permissionPopup),
+      !BrowserTestUtils.isHidden(gPermissionPanel._permissionPopup),
       "Popup is shown"
     );
 
@@ -436,13 +453,13 @@ add_task(async function testHiddenAfterRefresh() {
     await reloaded;
 
     ok(
-      BrowserTestUtils.is_hidden(gPermissionPanel._permissionPopup),
+      BrowserTestUtils.isHidden(gPermissionPanel._permissionPopup),
       "Popup is hidden"
     );
   });
 });
 
-add_task(async function test3rdPartyStoragePermission() {
+async function helper3rdPartyStoragePermissionTest(permissionID) {
   // 3rdPartyStorage permissions are listed under an anchor container - test
   // that this works correctly, i.e. the permission items are added to the
   // anchor when relevant, and other permission items are added to the default
@@ -461,13 +478,13 @@ add_task(async function test3rdPartyStoragePermission() {
     testPermListHasEntries(false);
 
     ok(
-      BrowserTestUtils.is_hidden(storagePermissionAnchor.firstElementChild),
+      BrowserTestUtils.isHidden(storagePermissionAnchor.firstElementChild),
       "Anchor header is hidden"
     );
 
     await closePermissionPopup();
 
-    let storagePermissionID = "3rdPartyStorage^example2.com";
+    let storagePermissionID = `${permissionID}^https://example2.com`;
     PermissionTestUtils.add(
       browser.currentURI,
       storagePermissionID,
@@ -478,7 +495,7 @@ add_task(async function test3rdPartyStoragePermission() {
 
     testPermListHasEntries(true);
     ok(
-      BrowserTestUtils.is_visible(storagePermissionAnchor.firstElementChild),
+      BrowserTestUtils.isVisible(storagePermissionAnchor.firstElementChild),
       "Anchor header is visible"
     );
 
@@ -505,7 +522,7 @@ add_task(async function test3rdPartyStoragePermission() {
 
     testPermListHasEntries(true);
     ok(
-      BrowserTestUtils.is_visible(storagePermissionAnchor.firstElementChild),
+      BrowserTestUtils.isVisible(storagePermissionAnchor.firstElementChild),
       "Anchor header is visible"
     );
 
@@ -543,7 +560,7 @@ add_task(async function test3rdPartyStoragePermission() {
 
     testPermListHasEntries(true);
     ok(
-      BrowserTestUtils.is_hidden(storagePermissionAnchor.firstElementChild),
+      BrowserTestUtils.isHidden(storagePermissionAnchor.firstElementChild),
       "Anchor header is hidden"
     );
 
@@ -560,8 +577,120 @@ add_task(async function test3rdPartyStoragePermission() {
 
     testPermListHasEntries(false);
     ok(
-      BrowserTestUtils.is_hidden(storagePermissionAnchor.firstElementChild),
+      BrowserTestUtils.isHidden(storagePermissionAnchor.firstElementChild),
       "Anchor header is hidden"
+    );
+
+    await closePermissionPopup();
+  });
+}
+
+add_task(async function test3rdPartyStoragePermission() {
+  await helper3rdPartyStoragePermissionTest("3rdPartyStorage");
+});
+
+add_task(async function test3rdPartyFrameStoragePermission() {
+  await helper3rdPartyStoragePermissionTest("3rdPartyFrameStorage");
+});
+
+add_task(async function test3rdPartyBothStoragePermission() {
+  // Test the handling of both types of 3rdParty(Frame)?Storage permissions together
+
+  await BrowserTestUtils.withNewTab(PERMISSIONS_PAGE, async function (browser) {
+    await openPermissionPopup();
+
+    let permissionsList = document.getElementById(
+      "permission-popup-permission-list"
+    );
+    let storagePermissionAnchor = permissionsList.querySelector(
+      `.permission-popup-permission-list-anchor[anchorfor="3rdPartyStorage"]`
+    );
+
+    testPermListHasEntries(false);
+
+    ok(
+      BrowserTestUtils.isHidden(storagePermissionAnchor.firstElementChild),
+      "Anchor header is hidden"
+    );
+
+    await closePermissionPopup();
+
+    let storagePermissionID = "3rdPartyFrameStorage^https://example2.com";
+    PermissionTestUtils.add(
+      browser.currentURI,
+      storagePermissionID,
+      Services.perms.ALLOW_ACTION
+    );
+
+    await openPermissionPopup();
+
+    testPermListHasEntries(true);
+    ok(
+      BrowserTestUtils.isVisible(storagePermissionAnchor.firstElementChild),
+      "Anchor header is visible"
+    );
+
+    let labelText = SitePermissions.getPermissionLabel(storagePermissionID);
+    let labels = storagePermissionAnchor.querySelectorAll(
+      ".permission-popup-permission-label"
+    );
+    is(labels.length, 1, "One permission visible in 3rdPartyStorage anchor");
+    is(
+      labels[0].getAttribute("value"),
+      labelText,
+      "Permission label has the correct value"
+    );
+
+    await closePermissionPopup();
+
+    PermissionTestUtils.add(
+      browser.currentURI,
+      "3rdPartyStorage^https://www.example2.com",
+      Services.perms.ALLOW_ACTION
+    );
+
+    await openPermissionPopup();
+
+    testPermListHasEntries(true);
+    ok(
+      BrowserTestUtils.isVisible(storagePermissionAnchor.firstElementChild),
+      "Anchor header is visible"
+    );
+
+    labels = permissionsList.querySelectorAll(
+      ".permission-popup-permission-label"
+    );
+    is(labels.length, 1, "One permissions visible in main view");
+    labels = storagePermissionAnchor.querySelectorAll(
+      ".permission-popup-permission-label"
+    );
+    is(labels.length, 1, "One permission visible in 3rdPartyStorage anchor");
+
+    storagePermissionAnchor
+      .querySelector(".permission-popup-permission-remove-button")
+      .click();
+    is(
+      storagePermissionAnchor.querySelectorAll(
+        ".permission-popup-permission-label"
+      ).length,
+      0,
+      "Permission item should be removed"
+    );
+    is(
+      PermissionTestUtils.testPermission(
+        browser.currentURI,
+        storagePermissionID
+      ),
+      SitePermissions.UNKNOWN,
+      "Permission removed from permission manager"
+    );
+    is(
+      PermissionTestUtils.testPermission(
+        browser.currentURI,
+        "3rdPartyStorage^https://www.example2.com"
+      ),
+      SitePermissions.UNKNOWN,
+      "3rdPartyStorage permission removed from permission manager"
     );
 
     await closePermissionPopup();

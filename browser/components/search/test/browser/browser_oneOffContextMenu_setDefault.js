@@ -34,7 +34,7 @@ add_setup(async function () {
     await resetEngines();
   });
 
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
   });
 });
@@ -71,10 +71,10 @@ async function testSearchBarChangeEngine(win, testPrivate, isPrivateWindow) {
 
   if (testPrivate == isPrivateWindow) {
     let expectedName = originalEngine.name;
-    let expectedImage = originalEngine.iconURI.spec;
+    let expectedImage = await originalEngine.getIconURL();
     if (isPrivateWindow) {
       expectedName = originalPrivateEngine.name;
-      expectedImage = originalPrivateEngine.iconURI.spec;
+      expectedImage = await originalPrivateEngine.getIconURL();
     }
 
     Assert.equal(

@@ -8,8 +8,6 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  CONTEXTUAL_SERVICES_PING_TYPES:
-    "resource:///modules/PartnerLinkAttribution.sys.mjs",
   UrlbarView: "resource:///modules/UrlbarView.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
 });
@@ -40,12 +38,7 @@ const REMOTE_SETTINGS_RESULTS = [
 
 const SPONSORED_RESULT = REMOTE_SETTINGS_RESULTS[0];
 
-// Spy for the custom impression/click sender
-let spy;
-
 add_setup(async function () {
-  ({ spy } = QuickSuggestTestUtils.createTelemetryPingSpy());
-
   await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
   await UrlbarTestUtils.formHistory.clear();
@@ -57,7 +50,7 @@ add_setup(async function () {
   await SearchTestUtils.installSearchExtension({}, { setAsDefault: true });
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
-    remoteSettingsResults: [
+    remoteSettingsRecords: [
       {
         type: "data",
         attachment: REMOTE_SETTINGS_RESULTS,
@@ -84,7 +77,6 @@ add_task(async function abandonment() {
   });
   QuickSuggestTestUtils.assertScalars({});
   QuickSuggestTestUtils.assertEvents([]);
-  QuickSuggestTestUtils.assertPings(spy, []);
 });
 
 // Makes sure impression telemetry is not recorded when a quick suggest result
@@ -103,7 +95,6 @@ add_task(async function noQuickSuggestResult() {
     });
     QuickSuggestTestUtils.assertScalars({});
     QuickSuggestTestUtils.assertEvents([]);
-    QuickSuggestTestUtils.assertPings(spy, []);
   });
   await PlacesUtils.history.clear();
 });
@@ -179,7 +170,7 @@ add_task(async function hiddenRow() {
   // mutation listener to the view so we can tell when the quick suggest row is
   // added.
   let mutationPromise = new Promise(resolve => {
-    let observer = new MutationObserver(mutations => {
+    let observer = new MutationObserver(() => {
       let rows = UrlbarTestUtils.getResultsContainer(window).children;
       for (let row of rows) {
         if (row.result.providerName == "UrlbarProviderQuickSuggest") {
@@ -219,7 +210,7 @@ add_task(async function hiddenRow() {
   // the view, so the row should never appear.
   let quickSuggestRow = await mutationPromise;
   Assert.ok(
-    BrowserTestUtils.is_hidden(quickSuggestRow),
+    BrowserTestUtils.isHidden(quickSuggestRow),
     "Quick suggest row is hidden"
   );
 
@@ -239,7 +230,6 @@ add_task(async function hiddenRow() {
   // view. No impression telemetry should be recorded for it.
   QuickSuggestTestUtils.assertScalars({});
   QuickSuggestTestUtils.assertEvents([]);
-  QuickSuggestTestUtils.assertPings(spy, []);
 
   BrowserTestUtils.removeTab(tab);
   UrlbarProvidersManager.unregisterProvider(provider);
@@ -275,7 +265,6 @@ add_task(async function notAddedToView() {
     // impression telemetry should be recorded.
     QuickSuggestTestUtils.assertScalars({});
     QuickSuggestTestUtils.assertEvents([]);
-    QuickSuggestTestUtils.assertPings(spy, []);
   });
 });
 
@@ -289,13 +278,37 @@ add_task(async function previousResultStillVisible() {
   await BrowserTestUtils.withNewTab("about:blank", async () => {
     // Do a search for the first suggestion.
     let firstSuggestion = REMOTE_SETTINGS_RESULTS[0];
+    let index = 1;
+
+    let pingSubmitted = false;
+    GleanPings.quickSuggest.testBeforeNextSubmit(() => {
+      pingSubmitted = true;
+      Assert.equal(
+        Glean.quickSuggest.pingType.testGetValue(),
+        CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION
+      );
+      Assert.equal(
+        Glean.quickSuggest.improveSuggestExperience.testGetValue(),
+        false
+      );
+      Assert.equal(
+        Glean.quickSuggest.blockId.testGetValue(),
+        firstSuggestion.id
+      );
+      Assert.equal(Glean.quickSuggest.isClicked.testGetValue(), false);
+      Assert.equal(
+        Glean.quickSuggest.matchType.testGetValue(),
+        "firefox-suggest"
+      );
+      Assert.equal(Glean.quickSuggest.position.testGetValue(), index + 1);
+    });
+
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
       value: firstSuggestion.keywords[0],
       fireInputEvent: true,
     });
 
-    let index = 1;
     await QuickSuggestTestUtils.assertIsQuickSuggest({
       window,
       index,
@@ -327,18 +340,7 @@ add_task(async function previousResultStillVisible() {
         },
       },
     ]);
-    QuickSuggestTestUtils.assertPings(spy, [
-      {
-        type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
-        payload: {
-          improve_suggest_experience_checked: false,
-          block_id: firstSuggestion.id,
-          is_clicked: false,
-          match_type: "firefox-suggest",
-          position: index + 1,
-        },
-      },
-    ]);
+    Assert.ok(pingSubmitted, "Glean ping was submitted");
   });
 });
 
@@ -360,19 +362,23 @@ async function doEngagementWithoutAddingResultToView(
   // Set the timeout of the chunk timer to a really high value so that it will
   // not fire. The view updates when the timer fires, which we specifically want
   // to avoid here.
-  let originalChunkDelayMs = UrlbarProvidersManager._chunkResultsDelayMs;
-  UrlbarProvidersManager._chunkResultsDelayMs = 30000;
-  registerCleanupFunction(() => {
-    UrlbarProvidersManager._chunkResultsDelayMs = originalChunkDelayMs;
-  });
+  let originalChunkTimeout = UrlbarProvidersManager.CHUNK_RESULTS_DELAY_MS;
+  UrlbarProvidersManager.CHUNK_RESULTS_DELAY_MS = 30000;
+  const cleanup = () => {
+    UrlbarProvidersManager.CHUNK_RESULTS_DELAY_MS = originalChunkTimeout;
+  };
+  registerCleanupFunction(cleanup);
 
   // Stub `UrlbarProviderQuickSuggest.getPriority()` to return Infinity.
   let sandbox = sinon.createSandbox();
   let getPriorityStub = sandbox.stub(UrlbarProviderQuickSuggest, "getPriority");
   getPriorityStub.returns(Infinity);
 
-  // Spy on `UrlbarProviderQuickSuggest.onEngagement()`.
-  let onEngagementSpy = sandbox.spy(UrlbarProviderQuickSuggest, "onEngagement");
+  // Spy on `UrlbarProviderQuickSuggest.onLegacyEngagement()`.
+  let onLegacyEngagementSpy = sandbox.spy(
+    UrlbarProviderQuickSuggest,
+    "onLegacyEngagement"
+  );
 
   let sandboxCleanup = () => {
     getPriorityStub?.restore();
@@ -449,8 +455,8 @@ async function doEngagementWithoutAddingResultToView(
   });
   await loadPromise;
 
-  let engagementCalls = onEngagementSpy.getCalls().filter(call => {
-    let state = call.args[1];
+  let engagementCalls = onLegacyEngagementSpy.getCalls().filter(call => {
+    let state = call.args[0];
     return state == "engagement";
   });
   Assert.equal(engagementCalls.length, 1, "One engagement occurred");
@@ -458,7 +464,7 @@ async function doEngagementWithoutAddingResultToView(
   // Clean up.
   resolveQuery();
   UrlbarProvidersManager.unregisterProvider(provider);
-  UrlbarProvidersManager._chunkResultsDelayMs = originalChunkDelayMs;
+  cleanup();
   sandboxCleanup();
 }
 
@@ -469,7 +475,7 @@ async function doEngagementWithoutAddingResultToView(
 class DelayingTestProvider extends UrlbarTestUtils.TestProvider {
   finishQueryPromise = null;
   async startQuery(context, addCallback) {
-    for (let result of this._results) {
+    for (let result of this.results) {
       addCallback(this, result);
     }
     await this.finishQueryPromise;

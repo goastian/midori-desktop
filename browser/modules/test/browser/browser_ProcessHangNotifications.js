@@ -2,7 +2,7 @@
 
 const { WebExtensionPolicy } = Cu.getGlobalForObject(Services);
 
-function promiseNotificationShown(aWindow, aName) {
+function promiseNotificationShown(aWindow) {
   return new Promise(resolve => {
     let notificationBox = aWindow.gNotificationBox;
     notificationBox.stack.addEventListener(
@@ -52,7 +52,7 @@ let TestHangReport = function (
   hangType = SLOW_SCRIPT,
   browser = gBrowser.selectedBrowser
 ) {
-  this.promise = new Promise((resolve, reject) => {
+  this.promise = new Promise(resolve => {
     this._resolver = resolve;
   });
 
@@ -98,7 +98,8 @@ TestHangReport.prototype = {
 };
 
 // on dev edition we add a button for js debugging of hung scripts.
-let buttonCount = AppConstants.MOZ_DEV_EDITION ? 2 : 1;
+let buttonCount =
+  AppConstants.MOZ_DEV_EDITION || AppConstants.NIGHTLY_BUILD ? 2 : 1;
 
 add_setup(async function () {
   // Create a fake WebExtensionPolicy that we can use for

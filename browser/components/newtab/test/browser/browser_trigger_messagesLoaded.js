@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { ASRouter } = ChromeUtils.import(
-  "resource://activity-stream/lib/ASRouter.jsm"
+const { ASRouter } = ChromeUtils.importESModule(
+  "resource:///modules/asrouter/ASRouter.sys.mjs"
 );
 const { RemoteSettings } = ChromeUtils.importESModule(
   "resource://services-settings/remote-settings.sys.mjs"
@@ -27,8 +27,9 @@ const TEST_MESSAGE_CONTENT = {
     bucket_id: "ON_LOAD_TEST_MESSAGE",
     anchor_id: "PanelUI-menu-button",
     layout: "icon_and_message",
-    icon: "chrome://browser/content/cfr-lightning.svg",
-    icon_dark_theme: "chrome://browser/content/cfr-lightning-dark.svg",
+    icon: "chrome://activity-stream/content/data/content/assets/glyph-webextension-16.svg",
+    icon_dark_theme:
+      "chrome://activity-stream/content/data/content/assets/glyph-webextension-16.svg",
     icon_class: "cfr-doorhanger-small-icon",
     heading_text: "Heading",
     text: "Text",

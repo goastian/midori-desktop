@@ -75,7 +75,7 @@
     <panelmultiview mainViewId="unified-extensions-view">
       <panelview id="unified-extensions-view"
                  class="cui-widget-panelview"
-                 showheader="true">
+                 mainview-with-header="true">
         <box class="panel-header">
           <html:h1>
             <html:span data-l10n-id="unified-extensions-header-title"/>
@@ -107,7 +107,7 @@
         <toolbarbutton id="unified-extensions-manage-extensions"
                        class="subviewbutton panel-subview-footer-button unified-extensions-manage-extensions"
                        data-l10n-id="unified-extensions-manage-extensions"
-                       oncommand="BrowserOpenAddonsMgr('addons://list/extension');" />
+                       oncommand="BrowserAddonUI.openAddonsMgr('addons://list/extension');" />
       </panelview>
     </panelmultiview>
   </panel>
@@ -271,7 +271,7 @@
        flip="slide"
        position="bottomright topright"
        noautofocus="true">
-  <panelmultiview id="appMenu-multiView" mainViewId="appMenu-protonMainView"
+  <panelmultiview id="appMenu-multiView" mainViewId="appMenu-mainView"
                   viewCacheId="appMenu-viewCache">
   </panelmultiview>
 </panel>

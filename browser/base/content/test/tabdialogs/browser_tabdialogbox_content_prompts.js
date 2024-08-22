@@ -3,7 +3,6 @@
 
 "use strict";
 
-const CONTENT_PROMPT_PREF = "prompts.contentPromptSubDialog";
 const TEST_ROOT_CHROME = getRootDirectory(gTestPath);
 const TEST_DIALOG_PATH = TEST_ROOT_CHROME + "subdialog.xhtml";
 
@@ -40,13 +39,6 @@ const TEST_PAGE =
 var commonDialogsBundle = Services.strings.createBundle(
   "chrome://global/locale/commonDialogs.properties"
 );
-
-// Setup.
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [[CONTENT_PROMPT_PREF, true]],
-  });
-});
 
 /**
  * Test that a manager for content prompts is added to tab dialog box.
@@ -158,7 +150,7 @@ async function checkOriginText(browser, origin = null) {
   let dialogDoc = dialog._frame.contentWindow.document;
   let titleSelector = "#titleText";
   let infoTitle = dialogDoc.querySelector(titleSelector);
-  ok(BrowserTestUtils.is_visible(infoTitle), "Title text is visible");
+  ok(BrowserTestUtils.isVisible(infoTitle), "Title text is visible");
 
   info("Check the displayed origin text is correct.");
   if (origin) {

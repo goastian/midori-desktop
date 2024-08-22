@@ -8,6 +8,8 @@ const { PermissionTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PermissionTestUtils.sys.mjs"
 );
 
+const l10n = new Localization(["browser/siteProtections.ftl"]);
+
 const TRACKING_PAGE =
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
   "http://tracking.example.org/browser/browser/base/content/test/protectionsUI/trackingPage.html";
@@ -39,10 +41,10 @@ async function assertSitesListed(blocked) {
 
   // Explicitly waiting for the category item becoming visible.
   await TestUtils.waitForCondition(() => {
-    return BrowserTestUtils.is_visible(categoryItem);
+    return BrowserTestUtils.isVisible(categoryItem);
   });
 
-  ok(BrowserTestUtils.is_visible(categoryItem), "TP category item is visible");
+  ok(BrowserTestUtils.isVisible(categoryItem), "TP category item is visible");
   let trackersView = document.getElementById("protections-popup-trackersView");
   let viewShown = BrowserTestUtils.waitForEvent(trackersView, "ViewShown");
   categoryItem.click();
@@ -81,6 +83,14 @@ async function assertSitesListed(blocked) {
 
   ok(true, "Trackers view was shown");
 
+  const header = trackersView.querySelector(".panel-header > h1 > span");
+  const headerL10nId = blocked
+    ? "protections-blocking-tracking-content"
+    : "protections-not-blocking-tracking-content";
+  const [headerMsg] = await l10n.formatMessages([headerL10nId]);
+  const expHeader = headerMsg.attributes.find(a => a.name === "title").value;
+  is(header.textContent, expHeader, "Trackers view header is correct");
+
   listItems = Array.from(
     trackersView.querySelectorAll(".protections-popup-list-item")
   );
@@ -91,7 +101,7 @@ async function assertSitesListed(blocked) {
     item => item.querySelector("label").value == "http://trackertest.org"
   );
   ok(listItem, "Has an item for trackertest.org");
-  ok(BrowserTestUtils.is_visible(listItem), "List item is visible");
+  ok(BrowserTestUtils.isVisible(listItem), "List item is visible");
   is(
     listItem.classList.contains("allowed"),
     !blocked,
@@ -102,7 +112,7 @@ async function assertSitesListed(blocked) {
     item => item.querySelector("label").value == "https://itisatracker.org"
   );
   ok(listItem, "Has an item for itisatracker.org");
-  ok(BrowserTestUtils.is_visible(listItem), "List item is visible");
+  ok(BrowserTestUtils.isVisible(listItem), "List item is visible");
   is(
     listItem.classList.contains("allowed"),
     !blocked,

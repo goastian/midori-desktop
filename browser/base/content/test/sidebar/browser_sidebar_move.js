@@ -1,18 +1,20 @@
 registerCleanupFunction(() => {
   Services.prefs.clearUserPref("sidebar.position_start");
-  SidebarUI.hide();
+  SidebarController.hide();
 });
 
 const EXPECTED_START_ORDINALS = [
-  ["sidebar-box", 1],
-  ["sidebar-splitter", 2],
-  ["appcontent", 3],
+  ["sidebar-main", 1],
+  ["sidebar-box", 2],
+  ["sidebar-splitter", 3],
+  ["appcontent", 4],
 ];
 
 const EXPECTED_END_ORDINALS = [
-  ["sidebar-box", 3],
-  ["sidebar-splitter", 2],
-  ["appcontent", 1],
+  ["sidebar-main", 5],
+  ["sidebar-box", 4],
+  ["sidebar-splitter", 3],
+  ["appcontent", 2],
 ];
 
 function getBrowserChildrenWithOrdinals() {
@@ -23,8 +25,8 @@ function getBrowserChildrenWithOrdinals() {
 }
 
 add_task(async function () {
-  await SidebarUI.show("viewBookmarksSidebar");
-  SidebarUI.showSwitcherPanel();
+  await SidebarController.show("viewBookmarksSidebar");
+  SidebarController.showSwitcherPanel();
 
   let reversePositionButton = document.getElementById(
     "sidebar-reverse-position"
@@ -41,8 +43,8 @@ add_task(async function () {
   ok(!box.hasAttribute("positionend"), "Positioned start");
 
   // Moved to right
-  SidebarUI.reversePosition();
-  SidebarUI.showSwitcherPanel();
+  SidebarController.reversePosition();
+  SidebarController.showSwitcherPanel();
   Assert.deepEqual(
     getBrowserChildrenWithOrdinals(),
     EXPECTED_END_ORDINALS,
@@ -56,8 +58,8 @@ add_task(async function () {
   ok(box.hasAttribute("positionend"), "Positioned end");
 
   // Moved to back to left
-  SidebarUI.reversePosition();
-  SidebarUI.showSwitcherPanel();
+  SidebarController.reversePosition();
+  SidebarController.showSwitcherPanel();
   Assert.deepEqual(
     getBrowserChildrenWithOrdinals(),
     EXPECTED_START_ORDINALS,

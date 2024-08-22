@@ -75,8 +75,8 @@ add_task(async function () {
   let longURL = "http://longurl.com/" + "foobar/".repeat(30);
   gURLBar.value = longURL;
   is(
-    gURLBar.inputField.value,
-    longURL.replace(/^http:\/\//, ""),
+    gURLBar.value,
+    UrlbarTestUtils.trimURL(longURL),
     "Urlbar value has http:// stripped"
   );
   await expectTooltip(longURL);

@@ -25,7 +25,7 @@ class CsvImportHelper {
    */
   static waitForOpenFilePicker(destFile) {
     return new Promise(resolve => {
-      MockFilePicker.showCallback = fp => {
+      MockFilePicker.showCallback = _fp => {
         info("showCallback");
         info("fileName: " + destFile.path);
         MockFilePicker.setFiles([destFile]);
@@ -48,7 +48,7 @@ class CsvImportHelper {
    * @returns {Promise} A promise that is resolved when the picker selects the file.
    */
   static async clickImportFromCsvMenu(browser, linesInFile) {
-    MockFilePicker.init(window);
+    MockFilePicker.init(window.browsingContext);
     MockFilePicker.returnValue = MockFilePicker.returnOK;
     let csvFile = await LoginTestUtils.file.setupCsvFileWithLines(linesInFile);
 
@@ -217,11 +217,9 @@ class CsvImportHelper {
   /**
    * An utility method to fetch data from the about:loginsimportreport page.
    *
-   * @param {browser} browser
-   *        The browser object.
    * @returns {Promise<Object>} A promise that contains the detailed report data like added, modified, noChange, errors and rows.
    */
-  static async getDetailedReportData(browser) {
+  static async getDetailedReportData() {
     const data = await SpecialPowers.spawn(
       gBrowser.selectedBrowser,
       [],
@@ -357,7 +355,7 @@ add_task(async function test_open_import_all_four_detailed_report() {
       await CsvImportHelper.clickImportFromCsvMenu(browser, updatedCsvData);
       await CsvImportHelper.waitForImportToComplete();
       const reportTab = await CsvImportHelper.clickDetailedReport(browser);
-      const report = await CsvImportHelper.getDetailedReportData(browser);
+      const report = await CsvImportHelper.getDetailedReportData();
       BrowserTestUtils.removeTab(reportTab);
       const { added, modified, noChange, errors, rows } = report;
       Assert.equal(added, 1, "It should have one item as added");
@@ -366,9 +364,9 @@ add_task(async function test_open_import_all_four_detailed_report() {
       Assert.equal(errors, 1, "It should have one item as error");
       Assert.deepEqual(
         [
-          "about-logins-import-report-row-description-added",
-          "about-logins-import-report-row-description-modified",
-          "about-logins-import-report-row-description-no-change",
+          "about-logins-import-report-row-description-added2",
+          "about-logins-import-report-row-description-modified2",
+          "about-logins-import-report-row-description-no-change2",
           "about-logins-import-report-row-description-error-missing-field",
         ],
         rows,

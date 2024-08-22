@@ -38,8 +38,6 @@ async function promiseAddonEnabled() {
 }
 
 class HelpMenuHelper {
-  #popup = null;
-
   async open() {
     this.popup = document.getElementById("menu_HelpPopup");
     ok(this.popup, "Help menu should exist");
@@ -99,8 +97,8 @@ async function startIssueServer() {
     xhr.send();
   });
 
-  const { HttpServer } = ChromeUtils.import(
-    "resource://testing-common/httpd.js"
+  const { HttpServer } = ChromeUtils.importESModule(
+    "resource://testing-common/httpd.sys.mjs"
   );
   const server = new HttpServer();
 

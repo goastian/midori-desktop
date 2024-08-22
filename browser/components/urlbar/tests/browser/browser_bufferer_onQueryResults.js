@@ -11,7 +11,7 @@
 
 add_setup(async function () {
   sandbox = sinon.createSandbox();
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "searchSuggestionEngine.xml",
     setAsDefault: true,
   });
@@ -33,8 +33,8 @@ add_task(async function test() {
     opening: "about:robots",
   });
 
-  let defer = PromiseUtils.defer();
-  let waitFirstSearchResults = PromiseUtils.defer();
+  let defer = Promise.withResolvers();
+  let waitFirstSearchResults = Promise.withResolvers();
   let count = 0;
   let original = gURLBar.controller.notify;
   sandbox.stub(gURLBar.controller, "notify").callsFake(async (msg, context) => {

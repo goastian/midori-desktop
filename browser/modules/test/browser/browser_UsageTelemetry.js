@@ -18,14 +18,13 @@ const TELEMETRY_SUBSESSION_TOPIC = "internal-telemetry-after-subsession-split";
 
 const RESTORE_ON_DEMAND_PREF = "browser.sessionstore.restore_on-demand";
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "MINIMUM_TAB_COUNT_INTERVAL_MS",
-  "resource:///modules/BrowserUsageTelemetry.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  MINIMUM_TAB_COUNT_INTERVAL_MS:
+    "resource:///modules/BrowserUsageTelemetry.sys.mjs",
+});
 
-const { ObjectUtils } = ChromeUtils.import(
-  "resource://gre/modules/ObjectUtils.jsm"
+const { ObjectUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/ObjectUtils.sys.mjs"
 );
 
 BrowserUsageTelemetry._onTabsOpenedTask._timeoutMs = 0;
@@ -347,7 +346,10 @@ add_task(async function test_tabsHistogram() {
   );
   openedTabs.push(tab);
   BrowserUsageTelemetry._lastRecordTabCount = 0;
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, "http://example.com/");
+  BrowserTestUtils.startLoadingURIString(
+    tab.linkedBrowser,
+    "http://example.com/"
+  );
   await BrowserTestUtils.browserLoaded(
     tab.linkedBrowser,
     false,
@@ -393,8 +395,9 @@ add_task(async function test_tabsHistogram() {
       { 1: 0, 2: 1, 3: 2, 4: 1, 5: 1, 6: 0 },
       "TAB_COUNT telemetry - new tab, recount event ignored"
     );
-    ok(
-      BrowserUsageTelemetry._lastRecordTabCount == oldLastRecordTabCount,
+    Assert.equal(
+      BrowserUsageTelemetry._lastRecordTabCount,
+      oldLastRecordTabCount,
       "TAB_COUNT telemetry - _lastRecordTabCount unchanged"
     );
   }
@@ -412,13 +415,14 @@ add_task(async function test_tabsHistogram() {
       { 1: 0, 2: 1, 3: 2, 4: 1, 5: 1, 7: 1, 8: 0 },
       "TAB_COUNT telemetry - new tab, recount event included"
     );
-    ok(
-      BrowserUsageTelemetry._lastRecordTabCount != oldLastRecordTabCount,
+    Assert.notEqual(
+      BrowserUsageTelemetry._lastRecordTabCount,
+      oldLastRecordTabCount,
       "TAB_COUNT telemetry - _lastRecordTabCount updated"
     );
-    ok(
-      BrowserUsageTelemetry._lastRecordTabCount >
-        Date.now() - MINIMUM_TAB_COUNT_INTERVAL_MS,
+    Assert.greater(
+      BrowserUsageTelemetry._lastRecordTabCount,
+      Date.now() - MINIMUM_TAB_COUNT_INTERVAL_MS,
       "TAB_COUNT telemetry - _lastRecordTabCount invariant"
     );
   }
@@ -428,7 +432,10 @@ add_task(async function test_tabsHistogram() {
     Date.now() - MINIMUM_TAB_COUNT_INTERVAL_MS / 2;
   {
     let oldLastRecordTabCount = BrowserUsageTelemetry._lastRecordTabCount;
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, "http://example.com/");
+    BrowserTestUtils.startLoadingURIString(
+      tab.linkedBrowser,
+      "http://example.com/"
+    );
     await BrowserTestUtils.browserLoaded(
       tab.linkedBrowser,
       false,
@@ -439,8 +446,9 @@ add_task(async function test_tabsHistogram() {
       { 1: 0, 2: 1, 3: 2, 4: 1, 5: 1, 7: 1, 8: 0 },
       "TAB_COUNT telemetry - page load, recount event ignored"
     );
-    ok(
-      BrowserUsageTelemetry._lastRecordTabCount == oldLastRecordTabCount,
+    Assert.equal(
+      BrowserUsageTelemetry._lastRecordTabCount,
+      oldLastRecordTabCount,
       "TAB_COUNT telemetry - _lastRecordTabCount unchanged"
     );
   }
@@ -450,7 +458,10 @@ add_task(async function test_tabsHistogram() {
     Date.now() - (MINIMUM_TAB_COUNT_INTERVAL_MS + 1000);
   {
     let oldLastRecordTabCount = BrowserUsageTelemetry._lastRecordTabCount;
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, "http://example.com/");
+    BrowserTestUtils.startLoadingURIString(
+      tab.linkedBrowser,
+      "http://example.com/"
+    );
     await BrowserTestUtils.browserLoaded(
       tab.linkedBrowser,
       false,
@@ -461,13 +472,14 @@ add_task(async function test_tabsHistogram() {
       { 1: 0, 2: 1, 3: 2, 4: 1, 5: 1, 7: 2, 8: 0 },
       "TAB_COUNT telemetry - page load, recount event included"
     );
-    ok(
-      BrowserUsageTelemetry._lastRecordTabCount != oldLastRecordTabCount,
+    Assert.notEqual(
+      BrowserUsageTelemetry._lastRecordTabCount,
+      oldLastRecordTabCount,
       "TAB_COUNT telemetry - _lastRecordTabCount updated"
     );
-    ok(
-      BrowserUsageTelemetry._lastRecordTabCount >
-        Date.now() - MINIMUM_TAB_COUNT_INTERVAL_MS,
+    Assert.greater(
+      BrowserUsageTelemetry._lastRecordTabCount,
+      Date.now() - MINIMUM_TAB_COUNT_INTERVAL_MS,
       "TAB_COUNT telemetry - _lastRecordTabCount invariant"
     );
   }
@@ -555,7 +567,7 @@ add_task(async function test_loadedTabsHistogram() {
   resetTimestamps();
 
   await Promise.all([
-    BrowserTestUtils.loadURIString(
+    BrowserTestUtils.startLoadingURIString(
       lazyTab.linkedBrowser,
       "http://example.com/"
     ),

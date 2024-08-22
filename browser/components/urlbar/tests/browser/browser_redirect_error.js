@@ -67,7 +67,7 @@ var gWebProgressListener = {
   // onSecurityChange: function() {},
   // ----------------------------------------------------------------------------
 
-  onLocationChange(aWebProgress, aRequest, aLocation, aFlags) {
+  onLocationChange(aWebProgress, aRequest, aLocation) {
     if (!aRequest) {
       // This is bug 673752, or maybe initial "about:blank".
       return;
@@ -108,13 +108,13 @@ function delayed(aIsSelectedTab) {
   );
   is(
     gURLBar.value,
-    currentURI,
+    UrlbarTestUtils.trimURL(currentURI),
     "The URL bar shows the content URI. aIsSelectedTab:" + aIsSelectedTab
   );
 
   if (!aIsSelectedTab) {
     // If this was a background request, go on a foreground request.
-    BrowserTestUtils.loadURIString(
+    BrowserTestUtils.startLoadingURIString(
       gBrowser.selectedBrowser,
       REDIRECT_FROM + "#FG"
     );

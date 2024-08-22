@@ -7,16 +7,9 @@ function getOriginalURL(request) {
 }
 
 var gFrontProgressListener = {
-  onProgressChange(
-    aWebProgress,
-    aRequest,
-    aCurSelfProgress,
-    aMaxSelfProgress,
-    aCurTotalProgress,
-    aMaxTotalProgress
-  ) {},
+  onProgressChange() {},
 
-  onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
+  onStateChange(aWebProgress, aRequest, aStateFlags) {
     var url = getOriginalURL(aRequest);
     if (url == "about:blank") {
       return;
@@ -28,7 +21,7 @@ var gFrontProgressListener = {
     assertCorrectBrowserAndEventOrderForFront(state);
   },
 
-  onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags) {
+  onLocationChange(aWebProgress, aRequest, aLocationURI) {
     var url = getOriginalURL(aRequest);
     if (url == "about:blank") {
       return;
@@ -64,7 +57,7 @@ function assertCorrectBrowserAndEventOrderForFront(aEventName) {
 }
 
 var gAllProgressListener = {
-  onStateChange(aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
+  onStateChange(aBrowser, aWebProgress, aRequest, aStateFlags) {
     var url = getOriginalURL(aRequest);
     if (url == "about:blank") {
       // ignore initial about blank
@@ -133,8 +126,9 @@ var gAllProgressListener = {
 };
 
 function assertCorrectBrowserAndEventOrderForAll(aState, aBrowser) {
-  ok(
-    aBrowser == gTestBrowser,
+  Assert.equal(
+    aBrowser,
+    gTestBrowser,
     aState + " notification came from the correct browser"
   );
   Assert.less(
@@ -198,8 +192,8 @@ async function test() {
     BrowserTestUtils.browserStopped(gBackgroundBrowser, kBasePage),
     BrowserTestUtils.browserStopped(gForegroundBrowser, kBasePage),
   ];
-  BrowserTestUtils.loadURIString(gBackgroundBrowser, kBasePage);
-  BrowserTestUtils.loadURIString(gForegroundBrowser, kBasePage);
+  BrowserTestUtils.startLoadingURIString(gBackgroundBrowser, kBasePage);
+  BrowserTestUtils.startLoadingURIString(gForegroundBrowser, kBasePage);
   await Promise.all(promises);
   // If we process switched, the tabbrowser may still be processing the state_stop
   // notification here because of how microtasks work. Ensure that that has
@@ -214,7 +208,7 @@ function runTest(browser, url, next) {
   gAllNotificationsPos = 0;
   gNextTest = next;
   gTestBrowser = browser;
-  BrowserTestUtils.loadURIString(browser, url);
+  BrowserTestUtils.startLoadingURIString(browser, url);
 }
 
 function startTest1() {

@@ -3,14 +3,11 @@
 
 "use strict";
 
-const { Spotlight } = ChromeUtils.import(
-  "resource://activity-stream/lib/Spotlight.jsm"
+const { Spotlight } = ChromeUtils.importESModule(
+  "resource:///modules/asrouter/Spotlight.sys.mjs"
 );
 const { PanelTestProvider } = ChromeUtils.importESModule(
-  "resource://activity-stream/lib/PanelTestProvider.sys.mjs"
-);
-const { BrowserWindowTracker } = ChromeUtils.import(
-  "resource:///modules/BrowserWindowTracker.jsm"
+  "resource:///modules/asrouter/PanelTestProvider.sys.mjs"
 );
 const { SpecialMessageActions } = ChromeUtils.importESModule(
   "resource://messaging-system/lib/SpecialMessageActions.sys.mjs"
@@ -32,12 +29,13 @@ async function showDialog(dialogOptions) {
 }
 
 add_task(async function test_specialAction() {
+  const sandbox = sinon.createSandbox();
   let message = (await PanelTestProvider.getMessages()).find(
     m => m.id === "MULTISTAGE_SPOTLIGHT_MESSAGE"
   );
-  let dispatchStub = sinon.stub();
+  let dispatchStub = sandbox.stub();
   let browser = BrowserWindowTracker.getTopWindow().gBrowser.selectedBrowser;
-  let specialActionStub = sinon.stub(SpecialMessageActions, "handleAction");
+  let specialActionStub = sandbox.stub(SpecialMessageActions, "handleAction");
 
   let win = await showDialog({ message, browser, dispatchStub });
   await waitForClick("button.primary", win);
@@ -54,5 +52,39 @@ add_task(async function test_specialAction() {
     "Should be called with button action"
   );
 
-  specialActionStub.restore();
+  sandbox.restore();
+});
+
+add_task(async function test_embedded_import() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.migrate.internal-testing.enabled", true]],
+  });
+  let message = (await PanelTestProvider.getMessages()).find(
+    m => m.id === "IMPORT_SETTINGS_EMBEDDED"
+  );
+  let browser = BrowserWindowTracker.getTopWindow().gBrowser.selectedBrowser;
+  let win = await showDialog({ message, browser });
+  let migrationWizardReady = BrowserTestUtils.waitForEvent(
+    win,
+    "MigrationWizard:Ready"
+  );
+
+  await TestUtils.waitForCondition(() =>
+    win.document.querySelector("migration-wizard")
+  );
+  Assert.ok(
+    win.document.querySelector("migration-wizard"),
+    "Migration Wizard rendered"
+  );
+
+  await migrationWizardReady;
+
+  let panelList = win.document
+    .querySelector("migration-wizard")
+    .openOrClosedShadowRoot.querySelector("panel-list");
+  Assert.equal(panelList.tagName, "PANEL-LIST");
+  Assert.equal(panelList.firstChild.tagName, "PANEL-ITEM");
+
+  win.close();
+  await SpecialPowers.popPrefEnv();
 });

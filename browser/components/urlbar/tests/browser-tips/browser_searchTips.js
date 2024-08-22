@@ -12,18 +12,13 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.sys.mjs",
-  ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderSearchTips:
     "resource:///modules/UrlbarProviderSearchTips.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  HttpServer: "resource://testing-common/httpd.js",
-});
-
-// These should match the same consts in UrlbarProviderSearchTips.jsm.
+// These should match the same consts in UrlbarProviderSearchTips.sys.mjs.
 const MAX_SHOWN_COUNT = 4;
 const LAST_UPDATE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
@@ -62,15 +57,11 @@ add_setup(async function () {
         `browser.urlbar.tipShownCount.${UrlbarProviderSearchTips.TIP_TYPE.REDIRECT}`,
         0,
       ],
+      // Set following prefs so tips are actually shown.
+      ["browser.laterrun.bookkeeping.profileCreationTime", 0],
+      ["browser.laterrun.bookkeeping.updateAppliedTime", 0],
     ],
   });
-
-  // Write an old profile age so tips are actually shown.
-  let age = await ProfileAge();
-  let originalTimes = age._times;
-  let date = Date.now() - LAST_UPDATE_THRESHOLD_MS - 30000;
-  age._times = { created: date, firstUse: date };
-  await age.writeTimes();
 
   // Remove update history and the current active update so tips are shown.
   let updateRootDir = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
@@ -93,9 +84,6 @@ add_setup(async function () {
   await SearchTestUtils.installSearchExtension();
 
   registerCleanupFunction(async () => {
-    let age2 = await ProfileAge();
-    age2._times = originalTimes;
-    await age2.writeTimes();
     await setDefaultEngine(defaultEngineName);
     resetSearchTipsProvider();
   });
@@ -367,7 +355,7 @@ add_task(async function noPersistTipInWindowWithNonSerpTab() {
     false,
     SEARCH_SERP_URL
   );
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     newWindow.gBrowser.selectedBrowser,
     SEARCH_SERP_URL
   );
@@ -445,7 +433,7 @@ add_task(async function noSearchTipWhileAnotherPageLoads() {
 
   // Load a slow URI to cause an onStateChange event but
   // not an onLocationChange event.
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, SLOW_PAGE);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, SLOW_PAGE);
 
   // Wait roughly for the amount of time it would take for the
   // persist search tip to show.

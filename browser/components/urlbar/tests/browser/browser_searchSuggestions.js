@@ -17,7 +17,7 @@ const MAX_CHARS_PREF = "browser.urlbar.maxCharsForSearchSuggestions";
 add_task(async function prepare() {
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
     setAsDefault: true,
   });
@@ -297,6 +297,22 @@ add_task(async function heuristicAddsFormHistory() {
 
   BrowserTestUtils.removeTab(tab);
   await UrlbarTestUtils.formHistory.clear();
+});
+
+add_task(async function minChars() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.trending.featureGate", true]],
+  });
+  gURLBar.focus();
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "f",
+  });
+
+  // Suggestions shouldn't be fetched with single character queries.
+  await assertSuggestions([]);
+  await SpecialPowers.popPrefEnv();
 });
 
 async function getFirstSuggestion() {

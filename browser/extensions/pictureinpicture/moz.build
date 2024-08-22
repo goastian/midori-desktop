@@ -29,7 +29,9 @@ FINAL_TARGET_FILES.features["pictureinpicture@mozilla.org"]["lib"] += [
 
 FINAL_TARGET_FILES.features["pictureinpicture@mozilla.org"]["video-wrappers"] += [
     "video-wrappers/airmozilla.js",
+    "video-wrappers/arte.js",
     "video-wrappers/bbc.js",
+    "video-wrappers/canalplus.js",
     "video-wrappers/cbc.js",
     "video-wrappers/dailymotion.js",
     "video-wrappers/disneyplus.js",
@@ -37,6 +39,7 @@ FINAL_TARGET_FILES.features["pictureinpicture@mozilla.org"]["video-wrappers"] +=
     "video-wrappers/hbomax.js",
     "video-wrappers/hotstar.js",
     "video-wrappers/hulu.js",
+    "video-wrappers/jwplayerWrapper.js",
     "video-wrappers/mock-wrapper.js",
     "video-wrappers/netflix.js",
     "video-wrappers/nytimes.js",
@@ -51,11 +54,10 @@ FINAL_TARGET_FILES.features["pictureinpicture@mozilla.org"]["video-wrappers"] +=
     "video-wrappers/videojsWrapper.js",
     "video-wrappers/voot.js",
     "video-wrappers/washingtonpost.js",
-    "video-wrappers/yahoo.js",
     "video-wrappers/youtube.js",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 with Files("**"):
     BUG_COMPONENT = ("Toolkit", "Picture-in-Picture")

@@ -6,6 +6,8 @@
 
 "use strict";
 
+const { DEFAULT_SUGGESTION_SCORE } = UrlbarProviderQuickSuggest;
+
 // For each of these objects, the test creates a quick suggest result (the kind
 // stored in the remote settings data, not a urlbar result), the corresponding
 // expected quick suggest suggestion, and the corresponding expected urlbar
@@ -15,25 +17,27 @@ let SUGGESTIONS_DATA = [
   {
     keywords: ["aaa"],
     isSponsored: true,
+    score: DEFAULT_SUGGESTION_SCORE,
   },
   {
     keywords: ["aaa", "bbb"],
     isSponsored: false,
-    score: 2 * QuickSuggestRemoteSettings.DEFAULT_SUGGESTION_SCORE,
+    score: 2 * DEFAULT_SUGGESTION_SCORE,
   },
   {
     keywords: ["bbb"],
     isSponsored: true,
-    score: 4 * QuickSuggestRemoteSettings.DEFAULT_SUGGESTION_SCORE,
+    score: 4 * DEFAULT_SUGGESTION_SCORE,
   },
   {
     keywords: ["bbb"],
     isSponsored: false,
-    score: 3 * QuickSuggestRemoteSettings.DEFAULT_SUGGESTION_SCORE,
+    score: 3 * DEFAULT_SUGGESTION_SCORE,
   },
   {
     keywords: ["ccc"],
     isSponsored: true,
+    score: DEFAULT_SUGGESTION_SCORE,
   },
 ];
 
@@ -130,10 +134,6 @@ let TESTS = {
 };
 
 add_task(async function () {
-  UrlbarPrefs.set("quicksuggest.enabled", true);
-  UrlbarPrefs.set("suggest.quicksuggest.sponsored", true);
-  UrlbarPrefs.set("suggest.quicksuggest.nonsponsored", true);
-
   // Create results and suggestions based on `SUGGESTIONS_DATA`.
   let qsResults = [];
   let qsSuggestions = [];
@@ -158,12 +158,9 @@ add_task(async function () {
     // expected quick suggest suggestion
     let qsSuggestion = {
       ...qsResult,
+      score,
       block_id: qsResult.id,
       is_sponsored: isSponsored,
-      score:
-        typeof score == "number"
-          ? score
-          : QuickSuggestRemoteSettings.DEFAULT_SUGGESTION_SCORE,
       source: "remote-settings",
       icon: null,
       position: undefined,
@@ -191,29 +188,33 @@ add_task(async function () {
         sponsoredAdvertiser: qsResult.advertiser,
         sponsoredIabCategory: qsResult.iab_category,
         icon: null,
+        descriptionL10n: isSponsored
+          ? { id: "urlbar-result-action-sponsored" }
+          : undefined,
         helpUrl: QuickSuggest.HELP_URL,
         helpL10n: {
-          id: UrlbarPrefs.get("resultMenu")
-            ? "urlbar-result-menu-learn-more-about-firefox-suggest"
-            : "firefox-suggest-urlbar-learn-more",
+          id: "urlbar-result-menu-learn-more-about-firefox-suggest",
         },
-        isBlockable: UrlbarPrefs.get("quickSuggestBlockingEnabled"),
+        isBlockable: true,
         blockL10n: {
-          id: UrlbarPrefs.get("resultMenu")
-            ? "urlbar-result-menu-dismiss-firefox-suggest"
-            : "firefox-suggest-urlbar-block",
+          id: "urlbar-result-menu-dismiss-firefox-suggest",
         },
         source: "remote-settings",
+        provider: "AdmWikipedia",
       },
     });
   }
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
-    remoteSettingsResults: [
+    remoteSettingsRecords: [
       {
         type: "data",
         attachment: qsResults,
       },
+    ],
+    prefs: [
+      ["suggest.quicksuggest.sponsored", true],
+      ["suggest.quicksuggest.nonsponsored", true],
     ],
   });
 
@@ -225,7 +226,7 @@ add_task(async function () {
 
     // Call `query()`.
     Assert.deepEqual(
-      await QuickSuggestRemoteSettings.query(keyword),
+      await QuickSuggest.jsBackend.query(keyword),
       expectedIndexes.map(i => ({
         ...qsSuggestions[i],
         full_keyword: keyword,
@@ -254,6 +255,7 @@ add_task(async function () {
 
         UrlbarPrefs.set("suggest.quicksuggest.sponsored", sponsored);
         UrlbarPrefs.set("suggest.quicksuggest.nonsponsored", nonsponsored);
+        await QuickSuggestTestUtils.forceSync();
 
         // Set up the search and do it.
         let context = createContext(keyword, {
@@ -278,5 +280,6 @@ add_task(async function () {
 
     UrlbarPrefs.set("suggest.quicksuggest.sponsored", true);
     UrlbarPrefs.set("suggest.quicksuggest.nonsponsored", true);
+    await QuickSuggestTestUtils.forceSync();
   }
 });

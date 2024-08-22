@@ -69,7 +69,7 @@ Most part of frontend code is located in : `Browser/Components/Places/Content`_:
 Backend
 -------
 
-Because any bookmark operation done by the user in the frontend is undo-able, Firefox usually doesn’t directly invoke the Bookmarks / History API, it instead goes through a wrapper called PlacesTransactions.jsm.
+Because any bookmark operation done by the user in the frontend is undo-able, Firefox usually doesn’t directly invoke the Bookmarks / History API, it instead goes through a wrapper called PlacesTransactions.
 
 The scope of this module is to translate requests for bookmark changes into operation descriptors, and store them in a log. When a bookmark has been modified by the user, PlacesTransactions stores the previous state of it in the log; that state can be restored if the user picks Undo (or CTRL+Z) in the Library window. This prevents data loss in case the user removes bookmarks inadvertently.
 
@@ -86,7 +86,7 @@ Most part of backend code is located in : `Toolkit/Components/Places`_:
   - :doc:`PlacesTransactions` - This module serves as the transactions manager for Places
 
   .. _Toolkit/Components/Places: https://searchfox.org/mozilla-central/source/toolkit/components/places
-  .. _PlacesUtils: https://searchfox.org/mozilla-central/source/toolkit/components/places/PlacesUtils.jsm
+  .. _PlacesUtils: https://searchfox.org/mozilla-central/source/toolkit/components/places/PlacesUtils.sys.mjs
 
 Storage
 -------

@@ -11,6 +11,18 @@ const { FormAutofill } = ChromeUtils.importESModule(
   "resource://autofill/FormAutofill.sys.mjs"
 );
 
+add_setup(async () => {
+  Services.prefs.setBoolPref(
+    "extensions.formautofill.addresses.experiments.enabled",
+    false
+  );
+  registerCleanupFunction(function cleanupRegion() {
+    Services.prefs.clearUserPref(
+      "extensions.formautofill.addresses.experiments.enabled"
+    );
+  });
+});
+
 add_task(async function test_defaultTestEnvironment() {
   Assert.equal(
     Services.prefs.getCharPref("extensions.formautofill.addresses.supported"),

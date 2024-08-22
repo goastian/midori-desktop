@@ -14,6 +14,7 @@ add_task(async function () {
   let widgetSpec = {
     id: kButton,
     type: "button",
+    tooltiptext: "I am an accessible name",
     onClick() {
       gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:addons");
     },
@@ -81,7 +82,9 @@ function resetTabs() {
 
 async function checkButtonFunctionality(aButton) {
   aButton.click();
-  await TestUtils.waitForCondition(
-    () => gBrowser.currentURI && gBrowser.currentURI.spec == "about:addons"
+  await BrowserTestUtils.browserLoaded(
+    gBrowser.selectedBrowser,
+    false,
+    "about:addons"
   );
 }

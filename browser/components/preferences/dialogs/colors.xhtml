@@ -5,9 +5,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
-<?xml-stylesheet href="chrome://browser/skin/preferences/preferences.css"?>
-
 <window
   type="child"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -22,6 +19,12 @@
     helpTopic="prefs-fonts-and-colors"
   >
     <linkset>
+      <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+      <html:link
+        rel="stylesheet"
+        href="chrome://browser/skin/preferences/preferences.css"
+      />
+
       <html:link rel="localization" href="browser/preferences/colors.ftl" />
     </linkset>
 
@@ -38,7 +41,11 @@
 
     <hbox>
       <groupbox flex="1">
-        <label><html:h2 data-l10n-id="colors-text-and-background" /></label>
+        <label
+          ><html:h2
+            class="heading-medium"
+            data-l10n-id="colors-text-and-background"
+        /></label>
         <hbox align="center">
           <label
             data-l10n-id="colors-text-header"
@@ -71,7 +78,9 @@
       </groupbox>
 
       <groupbox flex="1">
-        <label><html:h2 data-l10n-id="colors-links-header" /></label>
+        <label
+          ><html:h2 class="heading-medium" data-l10n-id="colors-links-header"
+        /></label>
         <hbox align="center">
           <label
             data-l10n-id="colors-unvisited-links"
@@ -94,14 +103,6 @@
             type="color"
             id="visitedlinkmenu"
             preference="browser.visited_color"
-          />
-        </hbox>
-        <separator class="thin" />
-        <hbox align="center">
-          <checkbox
-            id="browserUnderlineAnchors"
-            data-l10n-id="colors-underline-links"
-            preference="browser.underline_anchors"
           />
         </hbox>
       </groupbox>

@@ -18,7 +18,11 @@ function check_audio_playing_state(isPlaying) {
   // wait for a while to make sure the video is playing and related event has
   // been dispatched (if any).
   let PLAYING_TIME_SEC = 0.5;
-  ok(PLAYING_TIME_SEC < autoPlay.duration, "The playing time is valid.");
+  Assert.less(
+    PLAYING_TIME_SEC,
+    autoPlay.duration,
+    "The playing time is valid."
+  );
 
   return new Promise(resolve => {
     autoPlay.ontimeupdate = function () {
@@ -40,7 +44,7 @@ add_task(async function should_not_show_sound_indicator_for_silent_video() {
   await waitForTabSoundIndicatorDisappears(tab);
 
   info("- loading autoplay silent video -");
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, SILENT_PAGE);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, SILENT_PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   await SpecialPowers.spawn(
     tab.linkedBrowser,
@@ -69,7 +73,10 @@ add_task(
     await waitForTabSoundIndicatorDisappears(tab);
 
     info("- loading autoplay almost silent video -");
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, ALMOST_SILENT_PAGE);
+    BrowserTestUtils.startLoadingURIString(
+      tab.linkedBrowser,
+      ALMOST_SILENT_PAGE
+    );
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     await SpecialPowers.spawn(
       tab.linkedBrowser,

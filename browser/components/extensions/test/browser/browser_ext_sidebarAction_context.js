@@ -101,7 +101,7 @@ async function runTests(options) {
       sidebarActionId = `${makeWidgetId(extension.id)}-sidebar-action`;
     }
 
-    let menuId = `menu_${sidebarActionId}`;
+    let menuId = `menubar_menu_${sidebarActionId}`;
     let menu = document.getElementById(menuId);
     ok(menu, "menu exists");
 
@@ -124,7 +124,7 @@ async function runTests(options) {
   });
 
   // Wait for initial sidebar load.
-  SidebarUI.browser.addEventListener(
+  SidebarController.browser.addEventListener(
     "load",
     async () => {
       // Wait for the background page listeners to be ready and

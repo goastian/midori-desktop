@@ -249,14 +249,14 @@ function generateErrors() {
   const consoleEvents = storage.getEvents();
   const prefixes = [
     "Enterprise Policies",
-    "JsonSchemaValidator.jsm",
-    "Policies.jsm",
-    "GPOParser.jsm",
+    "JsonSchemaValidator",
+    "Policies",
+    "WindowsGPOParser",
     "Enterprise Policies Child",
-    "BookmarksPolicies.jsm",
-    "ProxyPolicies.jsm",
+    "BookmarksPolicies",
+    "ProxyPolicies",
     "WebsiteFilter Policy",
-    "macOSPoliciesParser.jsm",
+    "macOSPoliciesParser",
   ];
 
   let new_cont = document.getElementById("errorsContent");
@@ -294,6 +294,7 @@ function generateDocumentation() {
     SanitizeOnShutdown: "SanitizeOnShutdown2",
     WindowsSSO: "Windows10SSO",
     SecurityDevices: "SecurityDevices2",
+    DisableFirefoxAccounts: "DisableFirefoxAccounts1",
   };
 
   for (let policyName in schema.properties) {
@@ -307,7 +308,7 @@ function generateDocumentation() {
     row.appendChild(link(policyName));
     let descriptionColumn = col("");
     let stringID = string_mapping[policyName] || policyName;
-    descriptionColumn.setAttribute("data-l10n-id", `policy-${stringID}`);
+    document.l10n.setAttributes(descriptionColumn, `policy-${stringID}`);
     row.appendChild(descriptionColumn);
     main_tbody.appendChild(row);
     let sec_tbody = document.createElement("tbody");

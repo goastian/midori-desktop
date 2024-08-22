@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- import {
+import {
   cancelIdleCallback,
   clearTimeout,
   requestIdleCallback,
@@ -210,7 +210,7 @@ var SessionSaverInternal = {
   /**
    * Observe idle/ active notifications.
    */
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "idle":
         this._isIdle = true;
@@ -250,29 +250,7 @@ var SessionSaverInternal = {
     }
 
     stopWatchStart("COLLECT_DATA_MS");
-
-    // Floorp Injections
     let state = lazy.SessionStore.getCurrentState(forceUpdateAllWindows);
-
-    for (let i = state.windows.length - 1; i >= 0; i--) {
-      let win = state.windows[i];
-      if (win.isWebpanelWindow) {
-        state.windows.splice(i, 1);
-
-        if (state.selectedWindow >= i) {
-          state.selectedWindow--;
-        }
-      } else {
-        for (let tab of win.tabs) {
-          let ssbEnabled = tab.floorpSSB === "true";
-          let webpanelTab = tab.floorpWebpanelTab;
-          if (ssbEnabled || webpanelTab) {
-            state.windows.splice(i, 1);
-          }
-        }
-      }
-    }
-
     lazy.PrivacyFilter.filterPrivateWindowsAndTabs(state);
 
     // Make sure we only write worth saving tabs to disk.

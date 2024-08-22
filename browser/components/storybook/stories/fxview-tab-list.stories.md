@@ -28,11 +28,10 @@ And used as follows:
 With context menu:
 ```html
 <fxview-tab-list
-    class="with-context-menu"
+    secondaryActionClass="options-button"
     .dateTimeFormat=${"relative"}
     .hasPopup=${"menu"}
     .maxTabsLength=${this.maxTabsLength}
-    .secondaryL10nId=${"fxviewtabrow-open-menu"}
     .tabItems=${this.tabItems}
     @fxview-tab-list-secondary-action=${this.onSecondaryAction}
     @fxview-tab-list-primary-action=${this.onPrimaryAction}
@@ -56,44 +55,55 @@ With dismiss button:
     class="with-dismiss-button"
     .dateTimeFormat=${"relative"}
     .maxTabsLength=${this.maxTabsLength}
-    .secondaryL10nId=${"fxviewtabrow-dismiss-tab-button"}
     .tabItems=${this.tabItems}
     @fxview-tab-list-secondary-action=${this.onSecondaryAction}
     @fxview-tab-list-primary-action=${this.onPrimaryAction}
 ></fxview-tab-list>
 ```
 
-### Notes
-
-* You'll need to defines function for `this.onPrimaryAction` and `this.onSecondaryAction` in order to add functionality to the primary element and the secondary button
-* You can also supply a `class` attribute to the instance on `fxview-tab-list` in order to apply styles to things like the icon for the secondary action button:
-For example:
-```css
-    fxview-tab-list.with-context-menu::part(secondary-button) {
-      background-image: url("chrome://global/skin/icons/more.svg");
-    }
-```
-
 ### Properties
 
 You'll need to pass along some of the following properties:
-* `dateTimeFormat`: A string to indicate the expected format/options for the date and/or time displayed on each tab item in the list. The default for this if not given is `"relative"`.
+* `compactRows` (**Optional**): If `true`, displays shorter rows by omitting the URL and date/time. The default value is `false`.
+* `dateTimeFormat` (**Optional**): A string to indicate the expected format/options for the date and/or time displayed on each tab item in the list. The default for this if not given is `"relative"`.
     * Options include:
         * `relative` (Ex: "Just now", "2m ago", etc.)
         * `date` (Ex: "4/1/23", "01/04/23", etc. - Will be formatted based on locale)
         * `time` (Ex: "4:00 PM", "16:00", etc - Will be formatted based on locale)
         * `dateTime` (Ex: "4/1/23 4:00PM", "01/04/23 16:00", etc. - Will be formatted based on locale)
-* `hasPopup`: The optional aria-haspopup attribute for the secondary action, if required
-* `maxTabsLength`: The max number of tabs you want to display in the tabs list. The default value will be `25` if no max value is given.
-* `secondaryL10nId`: The l10n ID of the secondary action button
-* `tabItems`: An array of tab data such as History nodes, Bookmark nodes, Synced Tabs, etc.
-    * The component is expecting to receive the following properties within each `tabItems` object (you may need to do some normalizing for this):
-        * `icon` - The location string for the favicon. Will fallback to default favicon if none is found.
-        * `primaryL10nId` - The l10n id to be used for the primary action element
-        * `primaryL10nArgs` - The l10n args you can optionally pass for the primary action element
-        * `secondaryL10nId` - The l10n id to be used for the secondary action button
-         * `secondaryL10nArgs` - The l10n args you can optionally pass for the secondary action button
-        * `tabid` - Optional property expected for Recently Closed tab data
-        * `time` - The time in milliseconds for expected last interaction with the tab (Ex: `lastUsed` for SyncedTabs tabs, `closedAt` for RecentlyClosed tabs, etc.)
-        * `title` - The title for the tab
-        * `url` - The full URL for the tab
+* `hasPopup` (**Optional**): The optional aria-haspopup attribute for the secondary action, if required
+* `maxTabsLength` (**Optional**): The max number of tabs you want to display in the tabs list. The default value will be `25` if no max value is given. You may use any negative number such as `-1` to indicate no max.
+* `tabItems` (**Required**): An array of tab data such as History nodes, Bookmark nodes, Synced Tabs, etc.
+    * The component is expecting to receive the following properties within each `tabItems` object (you may need to do some normalizing for this). If you just pass a title and an icon, it creates a header row that is not clickable.
+        * `closedId` (**Optional**) - For a closed tab, this ID is used by SessionStore to retrieve the tab data for forgetting/re-opening the tab.
+        * `icon` (**Required**) - The location string for the favicon. Will fallback to default favicon if none is found.
+        * `primaryL10nId` (**Optional**) - The l10n id to be used for the primary action element. This fluent string should ONLY define a `.title` attribute to describe the link element in each row.
+        * `primaryL10nArgs` (**Optional**) - The l10n args you can optionally pass for the primary action element
+        * `secondaryL10nId` (**Optional**) -  The l10n id to be used for the secondary action button. This fluent string should ONLY define a `.title` attribute to describe the secondary button in each row.
+        * `tertiaryL10nId` (**Optional**) -  The l10n id to be used for the tertiary action button. This fluent string should ONLY define a `.title` attribute to describe the secondary button in each row.
+        * `secondaryL10nArgs` (**Optional**) - The l10n args you can optionally pass for the secondary action button
+        * `tertiaryL10nArgs` (**Optional**) - The l10n args you can optionally pass for the tertiary action button
+        * `secondaryActionClass` (**Optional**) - The class used to style the secondary action button. `options-button` or `dismiss-button`
+        * `tertiaryActionClass` (**Optional**) - The class used to style the tertiary action button. `options-button` or `dismiss-button`
+        * `tabElement` (**Optional**) - The MozTabbrowserTab element for the tab item.
+        * `sourceClosedId` (**Optional**) - The closedId of the closed window the tab is from if applicable.
+        * `sourceWindowId` (**Optional**) - The SessionStore id of the window the tab is from if applicable.
+        * `tabid` (**Optional**) - Optional property expected for Recently Closed tab data
+        * `time` (**Optional**) - The time in milliseconds for expected last interaction with the tab (Ex: `lastUsed` for SyncedTabs tabs, `closedAt` for RecentlyClosed tabs, etc.)
+        * `title` (**Required**) - The title for the tab
+        * `url` (**Optional**) - The full URL for the tab
+* `searchQuery` (**Optional**) - Highlights matches of the query string for titles of each row.
+
+
+### Notes
+
+* In order to keep this as generic as possible, the icon for the secondary action button will NOT have a default. You can supply a `class` attribute to an instance of `fxview-tab-list` in order to apply styles to things like the icon for the secondary action button. In the above example, I added a `secondaryActionClass` `"options-button"` to `fxview-tab-list`, so I can update the button's icon by using:
+```css
+    .fxview-tab-row-button {
+        &.options-button {
+            background-image: url("chrome://global/skin/icons/more.svg");
+        }
+    }
+```
+* You'll also need to define functions for the `fxview-tab-list-primary-action` and `fxview-tab-list-secondary-action` listeners in order to add functionality to the primary element and the secondary button.
+    * For the both handler functions, you can reference the `fxview-tab-row` associated with the interaction by using `event.originalTarget`. You can also reference the original event by using `event.detail.originalEvent`.

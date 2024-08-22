@@ -8,8 +8,6 @@
   --reveal-checkbox-opacity: .8;
   --reveal-checkbox-opacity-hover: .6;
   --reveal-checkbox-opacity-active: 1;
-  --success-color: #2AC3A2;
-  --edit-delete-button-color: #4a4a4f;
 }
 
 /* Only overwrite the deemphasized text color in non-dark mode. */
@@ -24,8 +22,6 @@
     --reveal-checkbox-opacity: .8;
     --reveal-checkbox-opacity-hover: 1;
     --reveal-checkbox-opacity-active: .6;
-    --success-color: #54FFBD;
-    --edit-delete-button-color: #cfcfd1;
   }
 }
 
@@ -57,9 +53,9 @@ form {
   flex-grow: 1;
 }
 
-:host([data-editing]) .edit-button,
-:host([data-editing]) .copy-button,
-:host([data-is-new-login]) .delete-button,
+:host([data-editing]) edit-button,
+:host([data-editing]) :is(.copy-button, .copied-button),
+:host([data-is-new-login]) delete-button,
 :host([data-is-new-login]) .origin-saved-value,
 :host([data-is-new-login]) login-timeline,
 :host([data-is-new-login]) .login-item-title,
@@ -68,11 +64,6 @@ form {
   display: none;
 }
 
-input[type="password"],
-input[type="text"],
-input[type="url"] {
-  text-align: match-parent !important; /* override `all: unset` in the rule below */
-}
 
 :host(:not([data-editing])) input[type="password"]:read-only,
 input[type="text"]:read-only,
@@ -84,6 +75,17 @@ input[type="url"]:read-only {
   text-overflow: ellipsis;
   overflow: hidden;
   width: 100%;
+}
+
+input:is([type="password"], [type="text"], [type="url"]) {
+  /* Override all: unset above */
+  appearance: textfield !important;
+  text-align: match-parent !important;
+}
+
+input.password-display,
+input[name="password"] {
+  font-family: monospace !important; /* Override all: unset above */
 }
 
 /* We can't use `margin-inline-start` here because we force
@@ -105,108 +107,25 @@ input[type="url"]:read-only {
   display: flex;
   align-items: center;
   margin-bottom: 40px;
+  margin-top: 5px;
 }
 
 .title {
   margin-block: 0;
   flex-grow: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.delete-button,
-.edit-button {
-  color: var(--edit-delete-button-color);
-  background-repeat: no-repeat;
-  background-position: 8px;
-  -moz-context-properties: fill;
-  fill: currentColor;
-  min-width: auto;
-  /* See bug 1627164: In CJK locales, line break could happen in any letter of the button. The fix here is to explicitly specify flex property so that the button couldn't grow or shrink. */
-  flex: 0 0 auto;
-}
-
-.delete-button:dir(rtl),
-.edit-button:dir(rtl) {
-  background-position-x: right 8px;
-}
-
-.delete-button {
-  background-image: url("chrome://global/skin/icons/delete.svg");
-  padding-inline-start: 30px; /* 8px on each side, and 14px for icon width */
-}
-
-.edit-button {
-  background-image: url("chrome://global/skin/icons/edit.svg");
-  padding-inline-start: 32px; /* 8px on each side, and 16px for icon width */
-}
-
-input[type="url"]:read-only {
-  color: var(--in-content-link-color) !important;
-  cursor: pointer;
-}
-
-input[type="url"]:read-only:hover {
-  color: var(--in-content-link-color-hover) !important;
-  text-decoration: underline;
-}
-
-input[type="url"]:read-only:hover:active {
-  color: var(--in-content-link-color-active) !important;
-}
-
-input[type = "url"]:focus:not(:-moz-ui-invalid):invalid ~ .tooltip-container {
-  display: block;
-}
-
-input[type = "url"]:focus:-moz-ui-invalid:not(:placeholder-shown) ~ .tooltip-container {
-  display: block;
-}
-
-.tooltip-container {
+origin-warning, password-warning {
   display: none;
-  position: absolute;
-  inset-inline-start: 315px;
-  width: 232px;
-  box-shadow: 2px 2px 10px 1px rgba(0,0,0,0.18);
-  top: 0;
 }
 
-.tooltip-message {
-  margin: 0;
-  font-size: 14px;
+input[type = "url"]:focus:not(:user-invalid):invalid ~ origin-warning,
+input[type = "url"]:focus:user-invalid:not(:placeholder-shown) ~ origin-warning {
+  display: block;
 }
 
-.arrow-box {
-  position: relative;
-  padding: 12px;
-	background-color: var(--in-content-box-background);
-	border: 1px solid var(--in-content-border-color);
-  border-radius: 4px;
-}
-
-.arrow-box::before,
-.arrow-box::after {
-  inset-inline-end: 100%;
-  top: 40px; /* This allows the arrow to stay in the correct position, even if the text length is changed */
-	border: solid transparent;
-	content: "";
-	height: 0;
-	width: 0;
-	position: absolute;
-	pointer-events: none;
-}
-
-.arrow-box::after {
-	border-inline-end-color: var(--in-content-box-background);
-	border-width: 10px;
-	margin-top: -10px;
-}
-.arrow-box::before {
-	border-inline-end-color: var(--in-content-border-color);
-	border-width: 11px;
-	margin-top: -11px;
+input[name = "password"]:focus ~ password-warning {
+  display: block;
 }
 
 .reveal-password-wrapper {
@@ -228,6 +147,10 @@ input[type = "url"]:focus:-moz-ui-invalid:not(:placeholder-shown) ~ .tooltip-con
   grid-template-columns: auto;
 }
 
+:host([data-editing]) .detail-grid > .detail-row {
+  display: flex;
+}
+
 .detail-grid > .detail-row:not([hidden]) {
   display: contents;
 }
@@ -236,7 +159,7 @@ input[type = "url"]:focus:-moz-ui-invalid:not(:placeholder-shown) ~ .tooltip-con
   grid-column: 1;
 }
 
-.detail-grid > .detail-row > .copy-button {
+.detail-grid > .detail-row > :is(.copy-button, .copied-button) {
   grid-column: 2;
   margin-inline-start: 0; /* Reset button's margin so it doesn't affect the overall grid's width */
   justify-self: start;
@@ -249,8 +172,7 @@ input[type = "url"]:focus:-moz-ui-invalid:not(:placeholder-shown) ~ .tooltip-con
 }
 
 .detail-grid,
-.detail-row,
-.form-actions-row {
+.detail-row {
   margin-bottom: 40px;
 }
 
@@ -261,8 +183,6 @@ input[type = "url"]:focus:-moz-ui-invalid:not(:placeholder-shown) ~ .tooltip-con
 
 .field-label {
   display: block;
-  font-size: smaller;
-  color: var(--text-color-deemphasized);
   margin-bottom: 8px;
 }
 
@@ -273,67 +193,37 @@ moz-button-group,
   box-sizing: border-box;
 }
 
-.copy-button {
+.copy-button,
+.copied-button {
   margin-bottom: 0; /* Align button at the bottom of the row */
 }
 
-.copy-button:not([data-copied]) .copied-button-text,
-.copy-button[data-copied] .copy-button-text {
-  display: none;
-}
-
-.copy-button[data-copied] {
-  color: var(--success-color) !important; /* override common.css */
-  background-color: transparent;
-  opacity: 1; /* override common.css fading out disabled buttons */
-}
-
-.copy-button[data-copied]:-moz-focusring {
+.copied-button[data-copied]:focus-visible {
   outline-width: 0;
   box-shadow: none;
 }
 
-.copied-button-text {
-  background-image: url(chrome://global/skin/icons/check.svg);
-  background-repeat: no-repeat;
-  -moz-context-properties: fill;
-  fill: currentColor;
-  padding-inline-start: 22px;
-}
-
-.copied-button-text:dir(rtl) {
-  background-position-x: right;
-}
-
-input.password-display,
-input[name="password"] {
-  font-family: monospace !important; /* override `all: unset` in the rule above */
-}
-
 .reveal-password-checkbox {
-  /* !important is needed to override common.css styling for checkboxes */
-  background-color: transparent !important;
-  border-width: 0 !important;
-  background-image: url("resource://gre-resources/password.svg") !important;
-  margin-inline: 10px 0 !important;
+  appearance: none;
+  background-image: url("resource://gre-resources/password.svg");
+  margin-inline: 10px 0;
   cursor: pointer;
   -moz-context-properties: fill;
-  fill: currentColor !important;
-  color: inherit !important;
+  fill: currentColor;
+  color: inherit;
   opacity: var(--reveal-checkbox-opacity);
-  flex-shrink: 0;
-}
 
-.reveal-password-checkbox:hover {
-  opacity: var(--reveal-checkbox-opacity-hover);
-}
+  &:hover {
+    opacity: var(--reveal-checkbox-opacity-hover);
 
-.reveal-password-checkbox:hover:active {
-  opacity: var(--reveal-checkbox-opacity-active);
-}
+    &:active {
+      opacity: var(--reveal-checkbox-opacity-active);
+    }
+  }
 
-.reveal-password-checkbox:checked {
-  background-image: url("resource://gre-resources/password-hide.svg") !important;
+  &:checked {
+    background-image: url("resource://gre-resources/password-hide.svg");
+  }
 }
 
 .login-item-favicon {
@@ -346,44 +236,30 @@ input[name="password"] {
   fill-opacity: 0.75;
 }
 
-.vulnerable-alert,
-.breach-alert {
-  border-radius: 4px;
-  border: 1px solid var(--in-content-border-color);
-  box-shadow: 0 2px 8px 0 var(--grey-90-a10);
-  font-size: .9em;
-  line-height: 1.4;
-  padding-block: 12px;
-  padding-inline: 64px 32px;
+login-breach-alert,
+login-vulnerable-password-alert {
   margin-block-end: 40px;
-  position: relative;
 }
 
-.breach-alert {
-  background-color: var(--red-70);
-  color: #fff;
-}
-
-.vulnerable-alert {
-  background-color: var(--in-content-box-background);
-  color: var(--in-content-text-color);
+login-command-button {
+  margin-block-start: 4px; /* Focus did not display entirely on edit and remove with margin:0 */
 }
 
 .alert-title {
-  font-size: 22px;
-  font-weight: normal;
+  font-size: var(--font-size-xlarge);
+  font-weight: var(--font-weight);
   line-height: 1em;
   margin-block: 0 12px;
 }
 
 .alert-date {
   display: block;
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
 }
 
 .alert-link:visited,
 .alert-link {
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
   overflow-wrap: anywhere;
 }
 
@@ -409,7 +285,7 @@ input[name="password"] {
   inset-block-start: 16px;
   inset-inline-end: 32px;
   color: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-small);
 }
 
 .vulnerable-alert > .alert-learn-more-link {
@@ -440,5 +316,14 @@ input[name="password"] {
 .error-message-link > a:hover:active {
   color: currentColor;
   text-decoration: underline;
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: row;
+}
+
+.action-buttons .form-actions-row {
+  margin-inline: 0 5px;
 }

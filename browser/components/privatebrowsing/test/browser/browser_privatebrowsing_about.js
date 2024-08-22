@@ -6,7 +6,7 @@ ChromeUtils.defineESModuleGetters(this, {
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
+ChromeUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
   const { UrlbarTestUtils: module } = ChromeUtils.importESModule(
     "resource://testing-common/UrlbarTestUtils.sys.mjs"
   );
@@ -55,7 +55,7 @@ add_setup(async function () {
     Ci.nsISearchService.CHANGE_REASON_UNKNOWN
   );
   expectedEngineAlias = privateEngine.aliases[0];
-  expectedIconURL = privateEngine.iconURI.spec;
+  expectedIconURL = await privateEngine.getIconURL();
 
   registerCleanupFunction(async () => {
     await Services.search.setDefaultPrivate(
@@ -101,11 +101,28 @@ add_task(async function test_search_icon() {
   let { win, tab } = await openAboutPrivateBrowsing();
 
   await SpecialPowers.spawn(tab, [expectedIconURL], async function (iconURL) {
-    is(
-      content.document.body.getAttribute("style"),
-      `--newtab-search-icon: url(${iconURL});`,
-      "Should have the correct icon URL for the logo"
+    let computedStyle = content.window.getComputedStyle(content.document.body);
+    await ContentTaskUtils.waitForCondition(
+      () => computedStyle.getPropertyValue("--newtab-search-icon") != "null",
+      "Search Icon should get set."
     );
+
+    if (iconURL.startsWith("blob:")) {
+      // We don't check the data here as `browser_contentSearch.js` performs
+      // those checks.
+      Assert.ok(
+        computedStyle
+          .getPropertyValue("--newtab-search-icon")
+          .startsWith("url(blob:"),
+        "Should have a blob URL for the logo"
+      );
+    } else {
+      Assert.equal(
+        computedStyle.getPropertyValue("--newtab-search-icon"),
+        `url(${iconURL})`,
+        "Should have the correct icon URL for the logo"
+      );
+    }
   });
 
   await BrowserTestUtils.closeWindow(win);

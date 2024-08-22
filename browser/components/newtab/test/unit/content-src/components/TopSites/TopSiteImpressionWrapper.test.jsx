@@ -1,10 +1,8 @@
-"use strict";
-
 import {
   TopSiteImpressionWrapper,
   INTERSECTION_RATIO,
 } from "content-src/components/TopSites/TopSiteImpressionWrapper";
-import { actionTypes as at } from "common/Actions.sys.mjs";
+import { actionTypes as at } from "common/Actions.mjs";
 import React from "react";
 import { shallow } from "enzyme";
 

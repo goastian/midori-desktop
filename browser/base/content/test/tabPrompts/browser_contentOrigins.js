@@ -7,7 +7,9 @@ const { PromptTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PromptTestUtils.sys.mjs"
 );
 
-let { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+let { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const TEST_ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -80,9 +82,9 @@ async function checkDialog(
       "Title should fit without overflowing."
     );
 
-    ok(BrowserTestUtils.is_visible(titleEl), "New title should be shown.");
+    ok(BrowserTestUtils.isVisible(titleEl), "New title should be shown.");
     ok(
-      BrowserTestUtils.is_hidden(doc.getElementById("infoTitle")),
+      BrowserTestUtils.isHidden(doc.getElementById("infoTitle")),
       "Old title should be hidden."
     );
     let iconCS = doc.ownerGlobal.getComputedStyle(
@@ -124,16 +126,6 @@ async function checkDialog(
     await spawnPromise;
   });
 }
-
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [
-      ["prompts.contentPromptSubDialog", true],
-      ["prompts.modalType.httpAuth", Ci.nsIPrompt.MODAL_TYPE_TAB],
-      ["prompts.tabChromePromptSubDialog", true],
-    ],
-  });
-});
 
 add_task(async function test_check_prompt_origin_display() {
   await checkAlert("https://example.com/", { value: "example.com" });
@@ -190,7 +182,7 @@ add_task(async function test_check_auth() {
   // Try a simple load:
   await checkDialog(
     "https://example.com/",
-    browser => BrowserTestUtils.loadURIString(browser, AUTH_URI),
+    browser => BrowserTestUtils.startLoadingURIString(browser, AUTH_URI),
     HOST,
     "chrome://global/skin/icons/defaultFavicon.svg",
     Ci.nsIPrompt.MODAL_TYPE_TAB

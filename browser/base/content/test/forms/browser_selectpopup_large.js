@@ -174,12 +174,18 @@ async function performLargePopupTests(win) {
   ok(true, "scroll position at drag up from option");
 
   scrollPos = getScrollPos();
+  // We intentionally turn off this a11y check, because the following click
+  // is sent on an arbitrary web content that is not expected to be tested
+  // by itself with the browser mochitests, therefore this rule check shall
+  // be ignored by a11y-checks suite.
+  AccessibilityUtils.setEnv({ labelRule: false });
   EventUtils.synthesizeMouseAtPoint(
     popupRect.left + 20,
     popupRect.bottom + 25,
     { type: "mouseup" },
     win
   );
+  AccessibilityUtils.resetEnv();
   is(
     getScrollPos(),
     scrollPos,
@@ -213,12 +219,14 @@ async function performLargePopupTests(win) {
     let rect = selectPopup.getBoundingClientRect();
     let marginBottom = parseFloat(getComputedStyle(selectPopup).marginBottom);
     let marginTop = parseFloat(getComputedStyle(selectPopup).marginTop);
-    ok(
-      rect.top - marginTop >= browserRect.top,
+    Assert.greaterOrEqual(
+      rect.top - marginTop,
+      browserRect.top,
       "Popup top position in within browser area"
     );
-    ok(
-      rect.bottom + marginBottom <= browserRect.bottom,
+    Assert.lessOrEqual(
+      rect.bottom + marginBottom,
+      browserRect.bottom,
       "Popup bottom position in within browser area"
     );
 
@@ -241,12 +249,7 @@ async function performLargePopupTests(win) {
     // might return floating point values. We don't care about sub-pixel
     // accuracy, and only care about the final pixel value, so we add a
     // fuzz-factor of 1.
-    //
-    // FIXME(emilio): In win7 scroll position is off by 20px more, but that's
-    // not reproducible in win10 even with the win7 "native" menus enabled.
-    const fuzzFactor = matchMedia("(-moz-platform: windows-win7)").matches
-      ? 21
-      : 1;
+    const fuzzFactor = 1;
     SimpleTest.isfuzzy(
       selectPopup.children[selectedOption].getBoundingClientRect().bottom,
       selectPopup.getBoundingClientRect().bottom - bpBottom + marginBottom,
@@ -273,27 +276,6 @@ async function performLargePopupTests(win) {
     );
     await contentPainted;
   }
-
-  if (navigator.platform.indexOf("Mac") == 0) {
-    await SpecialPowers.spawn(browser, [], async function () {
-      let doc = content.document;
-      doc.body.style = "padding-top: 400px;";
-
-      let select = doc.getElementById("one");
-      select.options[41].selected = true;
-      select.focus();
-    });
-
-    await openSelectPopup("key", "select", win);
-
-    ok(
-      selectPopup.getBoundingClientRect().top >
-        browser.getBoundingClientRect().top,
-      "select popup appears over selected item"
-    );
-
-    await hideSelectPopup("escape", win);
-  }
 }
 
 // This test checks select elements with a large number of options to ensure that
@@ -315,7 +297,7 @@ add_task(async function test_large_popup_in_small_window() {
     newWin,
     "resize",
     false,
-    e => {
+    () => {
       info(`Got resize event (innerHeight: ${newWin.innerHeight})`);
       return newWin.innerHeight <= 450;
     }
@@ -327,7 +309,10 @@ add_task(async function test_large_popup_in_small_window() {
   let browserLoadedPromise = BrowserTestUtils.browserLoaded(
     newWin.gBrowser.selectedBrowser
   );
-  BrowserTestUtils.loadURIString(newWin.gBrowser.selectedBrowser, pageUrl);
+  BrowserTestUtils.startLoadingURIString(
+    newWin.gBrowser.selectedBrowser,
+    pageUrl
+  );
   await browserLoadedPromise;
 
   newWin.gBrowser.selectedBrowser.focus();

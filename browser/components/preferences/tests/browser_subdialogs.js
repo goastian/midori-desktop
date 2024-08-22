@@ -61,13 +61,37 @@ function open_subdialog_and_test_generic_start_state(
       await dialogOpenPromise;
       info("subdialog window is loaded");
 
-      let expectedStyleSheetURLs = subdialog._injectedStyleSheets.slice(0);
-      for (let styleSheet of subdialog._frame.contentDocument.styleSheets) {
-        let index = expectedStyleSheetURLs.indexOf(styleSheet.href);
-        if (index >= 0) {
-          expectedStyleSheetURLs.splice(index, 1);
-        }
-      }
+      let expectedStyleSheetURLs = subdialog._injectedStyleSheets;
+      let foundStyleSheetURLs = Array.from(
+        subdialog._frame.contentDocument.styleSheets,
+        s => s.href
+      );
+
+      Assert.greaterOrEqual(
+        expectedStyleSheetURLs.length,
+        0,
+        "Should be at least one injected stylesheet."
+      );
+      // We can't test that the injected stylesheets come later if those are
+      // the only ones. If this test fails it indicates the test needs to be
+      // changed somehow.
+      Assert.greater(
+        foundStyleSheetURLs.length,
+        expectedStyleSheetURLs.length,
+        "Should see at least all one additional stylesheet from the document."
+      );
+
+      // The expected stylesheets should be at the end of the list of loaded
+      // stylesheets.
+      foundStyleSheetURLs = foundStyleSheetURLs.slice(
+        foundStyleSheetURLs.length - expectedStyleSheetURLs.length
+      );
+
+      Assert.deepEqual(
+        foundStyleSheetURLs,
+        expectedStyleSheetURLs,
+        "Should have seen the injected stylesheets in the correct order"
+      );
 
       Assert.ok(
         !!subdialog._frame.contentWindow,
@@ -83,11 +107,7 @@ function open_subdialog_and_test_generic_start_state(
         "visible",
         "Overlay should be visible"
       );
-      Assert.equal(
-        expectedStyleSheetURLs.length,
-        0,
-        "No stylesheets that were expected are missing"
-      );
+
       return result;
     }
   );
@@ -153,7 +173,7 @@ async function close_subdialog_and_test_generic_end_state(
       );
       Assert.equal(
         frame.getAttribute("style"),
-        "",
+        null,
         "inline styles should be cleared"
       );
       Assert.equal(
@@ -387,17 +407,29 @@ add_task(async function background_click_should_close_dialog() {
   // Clicking on an inactive part of dialog itself should not close the dialog.
   // Click the dialog title bar here to make sure nothing happens.
   info("clicking the dialog title bar");
+  // We intentionally turn off this a11y check, because the following click
+  // is purposefully targeting a non-interactive element to confirm the opened
+  // dialog won't be dismissed. It is not meant to be interactive and is not
+  // expected to be accessible, therefore this rule check shall be ignored by
+  // a11y_checks suite.
+  AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
   BrowserTestUtils.synthesizeMouseAtCenter(
     ".dialogTitle",
     {},
     tab.linkedBrowser
   );
+  AccessibilityUtils.resetEnv();
 
   // Close the dialog by clicking on the overlay background. Simulate a click
   // at point (2,2) instead of (0,0) so we are sure we're clicking on the
   // overlay background instead of some boundary condition that a real user
   // would never click.
   info("clicking the overlay background");
+  // We intentionally turn off this a11y check, because the following click
+  // is purposefully targeting a non-interactive element to dismiss the opened
+  // dialog with a mouse which can be done by assistive technology and keyboard
+  // by pressing `Esc` key, this rule check shall be ignored by a11y_checks.
+  AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
   await close_subdialog_and_test_generic_end_state(
     tab.linkedBrowser,
     function () {
@@ -412,6 +444,7 @@ add_task(async function background_click_should_close_dialog() {
     0,
     { runClosingFnOutsideOfContentTask: true }
   );
+  AccessibilityUtils.resetEnv();
 });
 
 add_task(async function escape_should_close_dialog() {

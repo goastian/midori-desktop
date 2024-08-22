@@ -9,12 +9,8 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   SitePermissions: "resource:///modules/SitePermissions.sys.mjs",
+  webrtcUI: "resource:///modules/webrtcUI.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "webrtcUI",
-  "resource:///modules/webrtcUI.jsm"
-);
 
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -99,9 +95,7 @@ export class WebRTCParent extends JSWindowActorParent {
           this.manager.topWindowContext.documentPrincipal.origin;
         data.isThirdPartyOrigin = isThirdPartyOrigin;
 
-        data.origin = data.shouldDelegatePermission
-          ? this.manager.topWindowContext.documentPrincipal.origin
-          : this.manager.documentPrincipal.origin;
+        data.origin = this.manager.topWindowContext.documentPrincipal.origin;
 
         let browser = this.getBrowser();
         if (browser.fxrPermissionPrompt) {
@@ -401,12 +395,9 @@ export class WebRTCParent extends JSWindowActorParent {
     }
 
     // Don't use persistent permissions from the top-level principal
-    // if we're in a cross-origin iframe and permission delegation is not
-    // allowed, or when we're handling a potentially insecure third party
+    // if we're handling a potentially insecure third party
     // through a wildcard ("*") allow attribute.
-    let limited =
-      (aRequest.isThirdPartyOrigin && !aRequest.shouldDelegatePermission) ||
-      aRequest.secondOrigin;
+    let limited = aRequest.secondOrigin;
 
     let map = lazy.webrtcUI.activePerms.get(this.manager.outerWindowId);
     // We consider a camera or mic active if it is active or was active within a
@@ -580,11 +571,18 @@ function prompt(aActor, aBrowser, aRequest) {
     reqAudioOutput,
     !!aRequest.secondOrigin
   );
-  const message = localization.formatValueSync(stringId, {
-    origin: "<>",
-    thirdParty: "{}",
-  });
-
+  let message;
+  let originToShow;
+  if (principal.schemeIs("file")) {
+    message = localization.formatValueSync(stringId + "-with-file");
+    originToShow = null;
+  } else {
+    message = localization.formatValueSync(stringId, {
+      origin: "<>",
+      thirdParty: "{}",
+    });
+    originToShow = lazy.webrtcUI.getHostOrExtensionName(principal.URI);
+  }
   let notification; // Used by action callbacks.
   const actionL10nIds = [{ id: "webrtc-action-allow" }];
 
@@ -611,7 +609,7 @@ function prompt(aActor, aBrowser, aRequest) {
     actionL10nIds.push({ id }, { id: "webrtc-action-always-block" });
     secondaryActions = [
       {
-        callback(aState) {
+        callback() {
           aActor.denyRequest(aRequest);
           if (!isNotNowLabelEnabled) {
             lazy.SitePermissions.setForPrincipal(
@@ -625,7 +623,7 @@ function prompt(aActor, aBrowser, aRequest) {
         },
       },
       {
-        callback(aState) {
+        callback() {
           aActor.denyRequest(aRequest);
           lazy.SitePermissions.setForPrincipal(
             principal,
@@ -723,7 +721,7 @@ function prompt(aActor, aBrowser, aRequest) {
   }
 
   let options = {
-    name: lazy.webrtcUI.getHostOrExtensionName(principal.URI),
+    name: originToShow,
     persistent: true,
     hideClose: true,
     eventCallback(aTopic, aNewBrowser, isCancel) {
@@ -757,9 +755,17 @@ function prompt(aActor, aBrowser, aRequest) {
         }
       }
 
-      // If the notification has been cancelled (e.g. due to entering full-screen), also cancel the webRTC request
       if (aTopic == "removed" && notification && isCancel) {
+        // The notification has been cancelled (e.g. due to entering
+        // full-screen).  Also cancel the webRTC request.
         aActor.denyRequest(aRequest);
+      } else if (
+        aTopic == "shown" &&
+        audioOutputDevices.length > 1 &&
+        !notification.wasDismissed
+      ) {
+        // Focus the list on first show so that arrow keys select the speaker.
+        doc.getElementById("webRTC-selectSpeaker-richlistbox").focus();
       }
 
       if (aTopic != "showing") {
@@ -776,37 +782,62 @@ function prompt(aActor, aBrowser, aRequest) {
         return true;
       }
 
-      function listDevices(menupopup, devices, labelID) {
-        while (menupopup.lastChild) {
-          menupopup.removeChild(menupopup.lastChild);
+      /**
+       * Prepare the device selector for one kind of device.
+       * @param {Object[]} devices - available devices of this kind.
+       * @param {string} IDPrefix - indicating kind of device and so
+       *   associated UI elements.
+       * @param {string[]} describedByIDs - an array to which might be
+       *   appended ids of elements that describe the panel, for the caller to
+       *   use in the aria-describedby attribute.
+       */
+      function listDevices(devices, IDPrefix, describedByIDs) {
+        let labelID = `${IDPrefix}-single-device-label`;
+        let list;
+        let itemParent;
+        if (IDPrefix == "webRTC-selectSpeaker") {
+          list = doc.getElementById(`${IDPrefix}-richlistbox`);
+          itemParent = list;
+        } else {
+          itemParent = doc.getElementById(`${IDPrefix}-menupopup`);
+          list = itemParent.parentNode; // menulist
         }
-        let menulist = menupopup.parentNode;
-        // Removing the child nodes of the menupopup doesn't clear the value
-        // attribute of the menulist. This can have unfortunate side effects
-        // when the list is rebuilt with a different content, so we remove
-        // the value attribute and unset the selectedItem explicitly.
-        menulist.removeAttribute("value");
-        menulist.selectedItem = null;
+        while (itemParent.lastChild) {
+          itemParent.removeChild(itemParent.lastChild);
+        }
+
+        // Removing the child nodes of a menupopup doesn't clear the value
+        // attribute of its menulist. Similary for richlistbox state. This can
+        // have unfortunate side effects when the list is rebuilt with a
+        // different content, so we set the selectedIndex explicitly to reset
+        // state.
+        let defaultIndex = 0;
 
         for (let device of devices) {
-          let item = addDeviceToList(
-            menupopup,
-            device.name,
-            device.deviceIndex
-          );
-          if (device.id == aRequest.audioOutputId) {
-            menulist.selectedItem = item;
+          let item = addDeviceToList(list, device.name, device.deviceIndex);
+          if (IDPrefix == "webRTC-selectSpeaker") {
+            item.addEventListener("dblclick", event => {
+              // Allow the chosen speakers via
+              // .popup-notification-primary-button so that
+              // "security.notification_enable_delay" is checked.
+              event.target.closest("popupnotification").button.doCommand();
+            });
+            if (device.id == aRequest.audioOutputId) {
+              defaultIndex = device.deviceIndex;
+            }
           }
         }
+        list.selectedIndex = defaultIndex;
 
         let label = doc.getElementById(labelID);
         if (devices.length == 1) {
+          describedByIDs.push(`${IDPrefix}-icon`, labelID);
           label.value = devices[0].name;
           label.hidden = false;
-          menulist.hidden = true;
+          list.hidden = true;
         } else {
           label.hidden = true;
-          menulist.hidden = false;
+          list.hidden = false;
         }
       }
 
@@ -839,7 +870,7 @@ function prompt(aActor, aBrowser, aRequest) {
         // "Select a Window or Screen" is the default because we can't and don't
         // want to pick a 'default' window to share (Full screen is "scary").
         addDeviceToList(
-          menupopup,
+          menupopup.parentNode,
           localization.formatValueSync("webrtc-pick-window-or-screen"),
           "-1"
         );
@@ -862,7 +893,7 @@ function prompt(aActor, aBrowser, aRequest) {
 
             isPipeWireDetected = true;
             let item = addDeviceToList(
-              menupopup,
+              menupopup.parentNode,
               localization.formatValueSync("webrtc-share-pipe-wire-portal"),
               i,
               type
@@ -897,7 +928,7 @@ function prompt(aActor, aBrowser, aRequest) {
               });
             }
           }
-          let item = addDeviceToList(menupopup, name, i, type);
+          let item = addDeviceToList(menupopup.parentNode, name, i, type);
           item.deviceId = device.rawId;
           item.mediaSource = type;
           if (device.scary) {
@@ -976,7 +1007,13 @@ function prompt(aActor, aBrowser, aRequest) {
 
           // We don't have access to any screen content besides our browser tabs
           // on Wayland, therefore there are no previews we can show.
-          if (!isPipeWireDetected || mediaSource == "browser") {
+          if (
+            (!isPipeWireDetected || mediaSource == "browser") &&
+            Services.prefs.getBoolPref(
+              "media.getdisplaymedia.previews.enabled",
+              true
+            )
+          ) {
             video.deviceId = deviceId;
             let constraints = {
               video: { mediaSource, deviceId: { exact: deviceId } },
@@ -992,7 +1029,7 @@ function prompt(aActor, aBrowser, aRequest) {
                 video.srcObject = stream;
                 video.stream = stream;
                 doc.getElementById("webRTC-preview").hidden = false;
-                video.onloadedmetadata = function (e) {
+                video.onloadedmetadata = function () {
                   video.play();
                 };
               },
@@ -1015,21 +1052,18 @@ function prompt(aActor, aBrowser, aRequest) {
         menupopup.addEventListener("command", menupopup._commandEventListener);
       }
 
-      function addDeviceToList(menupopup, deviceName, deviceIndex, type) {
-        let menuitem = doc.createXULElement("menuitem");
-        menuitem.setAttribute("value", deviceIndex);
-        menuitem.setAttribute("label", deviceName);
-        menuitem.setAttribute("tooltiptext", deviceName);
+      function addDeviceToList(list, deviceName, deviceIndex, type) {
+        let item = list.appendItem(deviceName, deviceIndex);
+        item.setAttribute("tooltiptext", deviceName);
         if (type) {
-          menuitem.setAttribute("devicetype", type);
+          item.setAttribute("devicetype", type);
         }
 
         if (deviceIndex == "-1") {
-          menuitem.setAttribute("disabled", true);
+          item.setAttribute("disabled", true);
         }
 
-        menupopup.appendChild(menuitem);
-        return menuitem;
+        return item;
       }
 
       doc.getElementById("webRTC-selectCamera").hidden =
@@ -1040,41 +1074,26 @@ function prompt(aActor, aBrowser, aRequest) {
         reqAudioInput !== "Microphone";
       doc.getElementById("webRTC-selectSpeaker").hidden = !reqAudioOutput;
 
-      let camMenupopup = doc.getElementById("webRTC-selectCamera-menupopup");
-      let windowMenupopup = doc.getElementById("webRTC-selectWindow-menupopup");
-      let micMenupopup = doc.getElementById(
-        "webRTC-selectMicrophone-menupopup"
-      );
-      let speakerMenupopup = doc.getElementById(
-        "webRTC-selectSpeaker-menupopup"
-      );
       let describedByIDs = ["webRTC-shareDevices-notification-description"];
 
       if (sharingScreen) {
+        let windowMenupopup = doc.getElementById(
+          "webRTC-selectWindow-menupopup"
+        );
         listScreenShareDevices(windowMenupopup, videoInputDevices);
         checkDisabledWindowMenuItem();
       } else {
-        let labelID = "webRTC-selectCamera-single-device-label";
-        listDevices(camMenupopup, videoInputDevices, labelID);
+        listDevices(videoInputDevices, "webRTC-selectCamera", describedByIDs);
         notificationElement.removeAttribute("invalidselection");
-        if (videoInputDevices.length == 1) {
-          describedByIDs.push("webRTC-selectCamera-icon", labelID);
-        }
       }
-
       if (!sharingAudio) {
-        let labelID = "webRTC-selectMicrophone-single-device-label";
-        listDevices(micMenupopup, audioInputDevices, labelID);
-        if (audioInputDevices.length == 1) {
-          describedByIDs.push("webRTC-selectMicrophone-icon", labelID);
-        }
+        listDevices(
+          audioInputDevices,
+          "webRTC-selectMicrophone",
+          describedByIDs
+        );
       }
-
-      let labelID = "webRTC-selectSpeaker-single-device-label";
-      listDevices(speakerMenupopup, audioOutputDevices, labelID);
-      if (audioOutputDevices.length == 1) {
-        describedByIDs.push("webRTC-selectSpeaker-icon", labelID);
-      }
+      listDevices(audioOutputDevices, "webRTC-selectSpeaker", describedByIDs);
 
       // PopupNotifications knows to clear the aria-describedby attribute
       // when hiding, so we don't have to worry about cleaning it up ourselves.
@@ -1151,7 +1170,7 @@ function prompt(aActor, aBrowser, aRequest) {
 
         if (reqAudioOutput) {
           let audioDeviceIndex = doc.getElementById(
-            "webRTC-selectSpeaker-menulist"
+            "webRTC-selectSpeaker-richlistbox"
           ).value;
           let allowSpeaker = audioDeviceIndex != "-1";
           if (allowSpeaker) {
@@ -1204,15 +1223,9 @@ function prompt(aActor, aBrowser, aRequest) {
       return false;
     }
 
-    // Don't offer "always remember" action in third party with no permission
-    // delegation
-    if (aRequest.isThirdPartyOrigin && !aRequest.shouldDelegatePermission) {
-      return false;
-    }
-
     // Don't offer "always remember" action in maybe unsafe permission
     // delegation
-    if (aRequest.shouldDelegatePermission && aRequest.secondOrigin) {
+    if (aRequest.secondOrigin) {
       return false;
     }
 
@@ -1222,6 +1235,21 @@ function prompt(aActor, aBrowser, aRequest) {
     }
 
     return true;
+  }
+
+  function getRememberCheckboxLabel() {
+    if (reqVideoInput == "Camera") {
+      if (reqAudioInput == "Microphone") {
+        return "webrtc-remember-allow-checkbox-camera-and-microphone";
+      }
+      return "webrtc-remember-allow-checkbox-camera";
+    }
+
+    if (reqAudioInput == "Microphone") {
+      return "webrtc-remember-allow-checkbox-microphone";
+    }
+
+    return "webrtc-remember-allow-checkbox";
   }
 
   if (shouldShowAlwaysRemember()) {
@@ -1239,7 +1267,7 @@ function prompt(aActor, aBrowser, aRequest) {
     }
 
     options.checkbox = {
-      label: localization.formatValueSync("webrtc-remember-allow-checkbox"),
+      label: localization.formatValueSync(getRememberCheckboxLabel()),
       checked: principal.isAddonOrExpandedAddonPrincipal,
       checkedState: reason
         ? {

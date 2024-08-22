@@ -1,17 +1,14 @@
 "use strict";
 
+requestLongerTimeout(3);
+
 const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
 
-const { AddressTelemetry } = ChromeUtils.import(
-  "resource://autofill/AutofillTelemetry.jsm"
+const { AddressTelemetry } = ChromeUtils.importESModule(
+  "resource://gre/modules/shared/AutofillTelemetry.sys.mjs"
 );
-
-// Preference definitions
-const ENABLED_PREF = ENABLED_AUTOFILL_ADDRESSES_PREF;
-const AVAILABLE_PREF = AUTOFILL_ADDRESSES_AVAILABLE_PREF;
-const CAPTURE_ENABLE_PREF = ENABLED_AUTOFILL_ADDRESSES_CAPTURE_PREF;
 
 // Telemetry definitions
 const EVENT_CATEGORY = "address";
@@ -260,9 +257,9 @@ async function openTabAndUseAutofillProfile(
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      [ENABLED_PREF, true],
-      [AVAILABLE_PREF, "on"],
-      [CAPTURE_ENABLE_PREF, true],
+      [ENABLED_AUTOFILL_ADDRESSES_PREF, true],
+      [AUTOFILL_ADDRESSES_AVAILABLE_PREF, "on"],
+      ["extensions.formautofill.addresses.capture.enabled", true],
     ],
   });
 
@@ -349,9 +346,6 @@ add_task(async function test_popup_opened_form_without_autocomplete() {
 });
 
 add_task(async function test_submit_autofill_profile_new() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["extensions.formautofill.firstTimeUse", true]],
-  });
   async function test_per_command(
     command,
     idx,
@@ -380,7 +374,7 @@ add_task(async function test_submit_autofill_profile_new() {
             TelemetryTestUtils.getProcessScalars("parent"),
             SCALAR_AUTOFILL_PROFILE_COUNT,
             expectChanged,
-            "There should be ${expectChanged} profile(s) stored."
+            `There should be ${expectChanged} profile(s) stored.`
           );
         }
       }
@@ -405,15 +399,11 @@ add_task(async function test_submit_autofill_profile_new() {
     ...formArgs("submitted", {}, fields, "user_filled", "unavailable"),
   ];
 
-  // FTU
   await test_per_command(MAIN_BUTTON, undefined, { 1: 1 }, 1);
   await assertTelemetry(expected_content, [
     [EVENT_CATEGORY, "show", "capture_doorhanger"],
-    [EVENT_CATEGORY, "pref", "capture_doorhanger"],
+    [EVENT_CATEGORY, "save", "capture_doorhanger"],
   ]);
-
-  // Need to close preference tab
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
   TelemetryTestUtils.assertScalar(
     TelemetryTestUtils.getProcessScalars("content"),
@@ -474,7 +464,7 @@ add_task(async function test_submit_autofill_profile_update() {
             TelemetryTestUtils.getProcessScalars("parent"),
             SCALAR_AUTOFILL_PROFILE_COUNT,
             expectChanged,
-            "There should be ${expectChanged} profile(s) stored."
+            `There should be ${expectChanged} profile(s) stored.`
           );
         }
       }
@@ -486,7 +476,7 @@ add_task(async function test_submit_autofill_profile_update() {
       useCount
     );
 
-    SpecialPowers.clearUserPref(ENABLED_PREF);
+    SpecialPowers.clearUserPref(ENABLED_AUTOFILL_ADDRESSES_PREF);
 
     await removeAllRecords();
   }
@@ -529,10 +519,10 @@ add_task(async function test_submit_autofill_profile_update() {
     [EVENT_CATEGORY, "update", "update_doorhanger"],
   ]);
 
-  await test_per_command(SECONDARY_BUTTON, undefined, { 0: 1, 1: 1 }, 2);
+  await test_per_command(SECONDARY_BUTTON, undefined, { 0: 1 });
   await assertTelemetry(expected_content, [
     [EVENT_CATEGORY, "show", "update_doorhanger"],
-    [EVENT_CATEGORY, "save", "update_doorhanger"],
+    [EVENT_CATEGORY, "cancel", "update_doorhanger"],
   ]);
 
   await removeAllRecords();
@@ -680,6 +670,66 @@ add_task(async function test_histogram() {
     undefined
   );
 
+  Services.telemetry.clearEvents();
+  Services.telemetry.clearScalars();
+});
+
+add_task(async function test_click_doorhanger_menuitems() {
+  const TESTS = [
+    {
+      button: ADDRESS_MENU_BUTTON,
+      menuItem: ADDRESS_MENU_LEARN_MORE,
+      expectedEvt: "learn_more",
+    },
+    {
+      button: ADDRESS_MENU_BUTTON,
+      menuItem: ADDRESS_MENU_PREFENCE,
+      expectedEvt: "pref",
+    },
+  ];
+  for (const TEST of TESTS) {
+    await BrowserTestUtils.withNewTab(
+      { gBrowser, url: TEST_BASIC_ADDRESS_FORM_URL },
+      async function (browser) {
+        await showAddressDoorhanger(browser);
+
+        const tabOpenPromise = BrowserTestUtils.waitForNewTab(gBrowser);
+        await clickAddressDoorhangerButton(TEST.button, TEST.menuItem);
+        gBrowser.removeTab(await tabOpenPromise);
+      }
+    );
+
+    await assertTelemetry(undefined, [
+      [EVENT_CATEGORY, "show", "capture_doorhanger"],
+      [EVENT_CATEGORY, TEST.expectedEvt, "capture_doorhanger"],
+    ]);
+
+    Services.telemetry.clearEvents();
+    Services.telemetry.clearScalars();
+  }
+});
+
+add_task(async function test_show_edit_doorhanger() {
+  await BrowserTestUtils.withNewTab(
+    { gBrowser, url: TEST_BASIC_ADDRESS_FORM_URL },
+    async function (browser) {
+      await showAddressDoorhanger(browser);
+
+      const onEditPopupShown = waitForPopupShown();
+      await clickAddressDoorhangerButton(EDIT_ADDRESS_BUTTON);
+      await onEditPopupShown;
+
+      await clickAddressDoorhangerButton(MAIN_BUTTON);
+    }
+  );
+
+  await assertTelemetry(undefined, [
+    [EVENT_CATEGORY, "show", "capture_doorhanger"],
+    [EVENT_CATEGORY, "show", "edit_doorhanger"],
+    [EVENT_CATEGORY, "save", "edit_doorhanger"],
+  ]);
+
+  await removeAllRecords();
   Services.telemetry.clearEvents();
   Services.telemetry.clearScalars();
 });

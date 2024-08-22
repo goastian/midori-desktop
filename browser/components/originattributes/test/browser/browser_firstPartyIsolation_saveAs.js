@@ -15,7 +15,7 @@ const TEST_ORIGIN = `http://${TEST_FIRST_PARTY}`;
 const TEST_BASE_PATH =
   "/browser/browser/components/originattributes/test/browser/";
 const TEST_PATH = `${TEST_BASE_PATH}file_saveAs.sjs`;
-const TEST_PATH_VIDEO = `${TEST_BASE_PATH}file_thirdPartyChild.video.ogv`;
+const TEST_PATH_VIDEO = `${TEST_BASE_PATH}file_thirdPartyChild.video.webm`;
 const TEST_PATH_IMAGE = `${TEST_BASE_PATH}file_favicon.png`;
 
 // For the "Save Page As" test, we will check the channel of the sub-resource
@@ -27,7 +27,7 @@ const TEST_PATH_PAGE = `${TEST_BASE_PATH}file_favicon.png`;
 const TEST_PATH_FRAME = `${TEST_BASE_PATH}file_favicon.png`;
 
 let MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 const tempDir = createTemporarySaveDirectory();
 MockFilePicker.displayDirectory = tempDir;
 
@@ -284,7 +284,7 @@ add_task(async function testPageInfoMediaSaveAs() {
   );
 
   info("Open the media panel of the pageinfo.");
-  let pageInfo = BrowserPageInfo(
+  let pageInfo = BrowserCommands.pageInfo(
     gBrowser.selectedBrowser.currentURI.spec,
     "mediaTab"
   );

@@ -3,19 +3,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { JsonSchema } from "resource://gre/modules/JsonSchema.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  CFRPageActions: "resource:///modules/asrouter/CFRPageActions.sys.mjs",
+  FeatureCalloutBroker:
+    "resource:///modules/asrouter/FeatureCalloutBroker.sys.mjs",
+  InfoBar: "resource:///modules/asrouter/InfoBar.sys.mjs",
   SpecialMessageActions:
     "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
-});
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  InfoBar: "resource://activity-stream/lib/InfoBar.jsm",
-  Spotlight: "resource://activity-stream/lib/Spotlight.jsm",
-  CFRPageActions: "resource://activity-stream/lib/CFRPageActions.jsm",
+  Spotlight: "resource:///modules/asrouter/Spotlight.sys.mjs",
 });
 
 function dispatchCFRAction({ type, data }, browser) {
@@ -41,6 +40,39 @@ export class AboutMessagePreviewParent extends JSWindowActorParent {
     );
   }
 
+  async showFeatureCallout(message, browser) {
+    // For messagePreview, force the trigger && targeting to be something we can show.
+    message.trigger.id = "nthTabClosed";
+    message.targeting = "true";
+    // Check whether or not the callout is showing already, then
+    // modify the anchor property of the feature callout to
+    // ensure it's something we can show.
+    let showing = await lazy.FeatureCalloutBroker.showFeatureCallout(
+      browser,
+      message
+    );
+    if (!showing) {
+      for (const screen of message.content.screens) {
+        let existingAnchors = screen.anchors;
+        let fallbackAnchor = { selector: "#star-button-box" };
+
+        if (existingAnchors[0].hasOwnProperty("arrow_position")) {
+          fallbackAnchor.arrow_position = "top-center-arrow-end";
+        } else {
+          fallbackAnchor.panel_position = {
+            anchor_attachment: "bottomcenter",
+            callout_attachment: "topright",
+          };
+        }
+
+        screen.anchors = [...existingAnchors, fallbackAnchor];
+        console.log("ANCHORS: ", screen.anchors);
+      }
+      // Try showing again
+      await lazy.FeatureCalloutBroker.showFeatureCallout(browser, message);
+    }
+  }
+
   async showMessage(data) {
     let message;
     try {
@@ -51,7 +83,7 @@ export class AboutMessagePreviewParent extends JSWindowActorParent {
     }
 
     const schema = await fetch(
-      "resource://activity-stream/schemas/MessagingExperiment.schema.json",
+      "chrome://browser/content/asrouter/schemas/MessagingExperiment.schema.json",
       { credentials: "omit" }
     ).then(rsp => rsp.json());
 
@@ -73,6 +105,9 @@ export class AboutMessagePreviewParent extends JSWindowActorParent {
         return;
       case "cfr_doorhanger":
         this.showCFR(message, browser);
+        return;
+      case "feature_callout":
+        this.showFeatureCallout(message, browser);
         return;
       default:
         console.error(`Unsupported message template ${message.template}`);

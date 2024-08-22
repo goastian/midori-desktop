@@ -21,7 +21,7 @@ add_task(async function () {
 
     const TLS_HANDSHAKE_FAILURE_URI = "https://ssl3.example.com/";
     // Try to connect to a server where the TLS handshake will fail.
-    BrowserTestUtils.loadURIString(browser, TLS_HANDSHAKE_FAILURE_URI);
+    BrowserTestUtils.startLoadingURIString(browser, TLS_HANDSHAKE_FAILURE_URI);
     await BrowserTestUtils.browserLoaded(
       browser,
       false,
@@ -46,7 +46,7 @@ add_task(async function () {
 
     const BAD_ABOUT_PAGE_URI = "about:somethingthatdoesnotexist";
     // Try to load an about: page that doesn't exist
-    BrowserTestUtils.loadURIString(browser, BAD_ABOUT_PAGE_URI);
+    BrowserTestUtils.startLoadingURIString(browser, BAD_ABOUT_PAGE_URI);
     await BrowserTestUtils.browserLoaded(
       browser,
       false,
@@ -85,10 +85,10 @@ function startServer(cert) {
       output = transport.openOutputStream(0, 0, 0);
     },
 
-    onHandshakeDone(socket, status) {
+    onHandshakeDone() {
       input.asyncWait(
         {
-          onInputStreamReady(readyInput) {
+          onInputStreamReady() {
             try {
               input.close();
               output.close();
@@ -148,7 +148,7 @@ add_task(async function () {
     const TLS_HANDSHAKE_FAILURE_URI = `https://localhost:${server.port}/`;
     // Try to connect to a server where the TLS handshake will succeed, but then
     // the server closes the connection right after.
-    BrowserTestUtils.loadURIString(browser, TLS_HANDSHAKE_FAILURE_URI);
+    BrowserTestUtils.startLoadingURIString(browser, TLS_HANDSHAKE_FAILURE_URI);
     await BrowserTestUtils.browserLoaded(
       browser,
       false,

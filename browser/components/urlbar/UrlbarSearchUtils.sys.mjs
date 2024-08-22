@@ -65,29 +65,16 @@ class SearchUtils {
    *   Match at each sub domain, for example "a.b.c.com" will be matched at
    *   "a.b.c.com", "b.c.com", and "c.com". Partial matches are always returned
    *   after perfect matches.
-   * @param {boolean} [options.onlyEnabled]
-   *   Match only engines that have not been disabled on the Search Preferences
-   *   list.
    * @returns {Array<nsISearchEngine>}
    *   An array of all matching engines. An empty array if there are none.
    */
-  async enginesForDomainPrefix(
-    prefix,
-    { matchAllDomainLevels = false, onlyEnabled = false } = {}
-  ) {
+  async enginesForDomainPrefix(prefix, { matchAllDomainLevels = false } = {}) {
     try {
       await this.init();
     } catch {
       return [];
     }
     prefix = prefix.toLowerCase();
-
-    let disabledEngines = onlyEnabled
-      ? Services.prefs
-          .getStringPref("browser.search.hiddenOneOffs", "")
-          .split(",")
-          .filter(e => !!e)
-      : [];
 
     // Array of partially matched engines, added through matchPrefix().
     let partialMatchEngines = [];
@@ -104,7 +91,7 @@ class SearchUtils {
     let perfectMatchEngines = [];
     let perfectMatchEngineSet = new Set();
     for (let engine of await Services.search.getVisibleEngines()) {
-      if (disabledEngines.includes(engine.name)) {
+      if (engine.hideOneOffButton) {
         continue;
       }
       let domain = engine.searchUrlDomain;
@@ -143,6 +130,10 @@ class SearchUtils {
 
   /**
    * Gets the engine with a given alias.
+   *
+   * Note: engines returned from this list may be updated at any time. If you
+   * are caching the icon or other fields for more than a single engagement of
+   * the urlbar, consider observing the SEARCH_ENGINE_TOPIC.
    *
    * @param {string} alias
    *   A search engine alias.  The alias string comparison is case insensitive.
@@ -307,8 +298,9 @@ class SearchUtils {
    *   The uri to check.
    * @returns {string}
    *   The search terms used.
-   *   Will return an empty string if it's not a default SERP
-   *   or if the default engine hasn't been initialized.
+   *   Will return an empty string if it's not a default SERP, the search term
+   *   looks too similar to a URL, the string exceeds the maximum characters,
+   *   or the default engine hasn't been initialized.
    */
   getSearchTermIfDefaultSerpUri(uri) {
     if (!Services.search.hasSuccessfullyInitialized || !uri) {
@@ -324,7 +316,43 @@ class SearchUtils {
       return "";
     }
 
-    return Services.search.defaultEngine.searchTermFromResult(uri);
+    let searchTerm = Services.search.defaultEngine.searchTermFromResult(uri);
+
+    if (!searchTerm || searchTerm.length > lazy.UrlbarUtils.MAX_TEXT_LENGTH) {
+      return "";
+    }
+
+    let searchTermWithSpacesRemoved = searchTerm.replaceAll(/\s/g, "");
+
+    // Check if the search string uses a commonly used URL protocol. This
+    // avoids doing a fixup if we already know it matches a URL. Additionally,
+    // it ensures neither http:// nor https:// will appear by themselves in
+    // UrlbarInput. This is important because http:// can be trimmed, which in
+    // the Persisted Search Terms case, will cause the UrlbarInput to appear
+    // blank.
+    if (
+      searchTermWithSpacesRemoved.startsWith("https://") ||
+      searchTermWithSpacesRemoved.startsWith("http://")
+    ) {
+      return "";
+    }
+
+    // We pass the search term to URIFixup to determine if it could be
+    // interpreted as a URL, including typos in the scheme and/or the domain
+    // suffix. This is to prevent search terms from persisting in the Urlbar if
+    // they look too similar to a URL, but still allow phrases with periods
+    // that are unlikely to be a URL.
+    try {
+      let info = Services.uriFixup.getFixupURIInfo(
+        searchTermWithSpacesRemoved,
+        Ci.nsIURIFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS |
+          Ci.nsIURIFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP
+      );
+      if (info.keywordAsSent) {
+        return searchTerm;
+      }
+    } catch (e) {}
+    return "";
   }
 
   /**

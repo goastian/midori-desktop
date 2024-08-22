@@ -18,7 +18,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
-  UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.sys.mjs",
 });
 
@@ -39,15 +38,11 @@ const ORIGIN_FRECENCY_FIELD = ORIGIN_USE_ALT_FRECENCY
   ? "alt_frecency"
   : "frecency";
 
-// `WITH` clause for the autofill queries.  autofill_frecency_threshold.value is
-// the mean of all moz_origins.frecency values + stddevMultiplier * one standard
-// deviation.  This is inlined directly in the SQL (as opposed to being a custom
-// Sqlite function for example) in order to be as efficient as possible.
-// For alternative frecency, a NULL frecency will be normalized to 0.0, and when
-// it will graduate, it will likely become 1 (official frecency is NOT NULL).
-// Thus we set a minimum threshold of 2.0, otherwise if all the visits are older
-// than the cutoff, we end up checking 0.0 (frecency) >= 0.0 (threshold) and
-// autofill everything instead of nothing.
+// `WITH` clause for the autofill queries.
+// A NULL frecency is normalized to 1.0, because the table doesn't support NULL.
+// Because of that, here we must set a minimum threshold of 2.0, otherwise when
+// all the visits are older than the cutoff, we'd check
+// 0.0 (frecency) >= 0.0 (threshold) and autofill everything instead of nothing.
 const SQL_AUTOFILL_WITH = ORIGIN_USE_ALT_FRECENCY
   ? `
     WITH
@@ -60,20 +55,11 @@ const SQL_AUTOFILL_WITH = ORIGIN_USE_ALT_FRECENCY
     `
   : `
     WITH
-    frecency_stats(count, sum, squares) AS (
-      SELECT
-        CAST((SELECT IFNULL(value, 0.0) FROM moz_meta WHERE key = 'origin_frecency_count') AS REAL),
-        CAST((SELECT IFNULL(value, 0.0) FROM moz_meta WHERE key = 'origin_frecency_sum') AS REAL),
-        CAST((SELECT IFNULL(value, 0.0) FROM moz_meta WHERE key = 'origin_frecency_sum_of_squares') AS REAL)
-    ),
     autofill_frecency_threshold(value) AS (
-      SELECT
-        CASE count
-        WHEN 0 THEN 0.0
-        WHEN 1 THEN sum
-        ELSE (sum / count) + (:stddevMultiplier * sqrt((squares - ((sum * sum) / count)) / count))
-        END
-      FROM frecency_stats
+      SELECT IFNULL(
+        (SELECT value FROM moz_meta WHERE key = 'origin_frecency_threshold'),
+        2.0
+      )
     )
   `;
 
@@ -82,7 +68,7 @@ const SQL_AUTOFILL_FRECENCY_THRESHOLD = `host_frecency >= (
   )`;
 
 function originQuery(where) {
-  // `frecency`, `bookmarked` and `visited` are partitioned by the fixed host,
+  // `frecency`, `n_bookmarks` and `visited` are partitioned by the fixed host,
   // without `www.`. `host_prefix` instead is partitioned by full host, because
   // we assume a prefix may not work regardless of `www.`.
   let selectVisited = where.includes("visited")
@@ -92,7 +78,7 @@ function originQuery(where) {
     : "0";
   let selectTitle;
   let joinBookmarks;
-  if (where.includes("bookmarked")) {
+  if (where.includes("n_bookmarks")) {
     selectTitle = "ifnull(b.title, iif(h.frecency <> 0, h.title, NULL))";
     joinBookmarks = "LEFT JOIN moz_bookmarks b ON b.fk = h.id";
   } else {
@@ -101,7 +87,7 @@ function originQuery(where) {
   }
   return `/* do not warn (bug no): cannot use an index to sort */
     ${SQL_AUTOFILL_WITH},
-    origins(id, prefix, host_prefix, host, fixed, host_frecency, frecency, bookmarked, visited) AS (
+    origins(id, prefix, host_prefix, host, fixed, host_frecency, frecency, n_bookmarks, visited) AS (
       SELECT
       id,
       prefix,
@@ -110,13 +96,11 @@ function originQuery(where) {
       ),
       host,
       fixup_url(host),
-      IFNULL(${
-        ORIGIN_USE_ALT_FRECENCY ? "avg(alt_frecency)" : "total(frecency)"
-      } OVER (PARTITION BY fixup_url(host)), 0.0),
+      total(${ORIGIN_FRECENCY_FIELD}) OVER (PARTITION BY fixup_url(host)),
       ${ORIGIN_FRECENCY_FIELD},
-      MAX(EXISTS(
-        SELECT 1 FROM moz_places WHERE origin_id = o.id AND foreign_count > 0
-      )) OVER (PARTITION BY fixup_url(host)),
+      total(
+        (SELECT total(foreign_count) FROM moz_places WHERE origin_id = o.id)
+      ) OVER (PARTITION BY fixup_url(host)),
       ${selectVisited}
       FROM moz_origins o
       WHERE prefix NOT IN ('about:', 'place:')
@@ -128,7 +112,7 @@ function originQuery(where) {
              ifnull(:prefix, host_prefix) || host || '/'
       FROM origins
       ${where}
-      ORDER BY frecency DESC, prefix = "https://" DESC, id DESC
+      ORDER BY frecency DESC, n_bookmarks DESC, prefix = "https://" DESC, id DESC
       LIMIT 1
     ),
     matched_place(host_fixed, url, id, title, frecency) AS (
@@ -173,11 +157,11 @@ function urlQuery(where1, where2, isBookmarkContained) {
     joinBookmarks = "";
   }
   return `/* do not warn (bug no): cannot use an index to sort */
-    WITH matched_url(url, title, frecency, bookmarked, visited, stripped_url, is_exact_match, id) AS (
+    WITH matched_url(url, title, frecency, n_bookmarks, visited, stripped_url, is_exact_match, id) AS (
       SELECT url,
              title,
              frecency,
-             foreign_count > 0 AS bookmarked,
+             foreign_count AS n_bookmarks,
              visit_count > 0 AS visited,
              strip_prefix_and_userinfo(url) AS stripped_url,
              strip_prefix_and_userinfo(url) = strip_prefix_and_userinfo(:strippedURL) AS is_exact_match,
@@ -189,7 +173,7 @@ function urlQuery(where1, where2, isBookmarkContained) {
       SELECT url,
              title,
              frecency,
-             foreign_count > 0 AS bookmarked,
+             foreign_count AS n_bookmarks,
              visit_count > 0 AS visited,
              strip_prefix_and_userinfo(url) AS stripped_url,
              strip_prefix_and_userinfo(url) = 'www.' || strip_prefix_and_userinfo(:strippedURL) AS is_exact_match,
@@ -212,12 +196,12 @@ function urlQuery(where1, where2, isBookmarkContained) {
 
 // Queries
 const QUERY_ORIGIN_HISTORY_BOOKMARK = originQuery(
-  `WHERE bookmarked OR ${SQL_AUTOFILL_FRECENCY_THRESHOLD}`
+  `WHERE n_bookmarks > 0 OR ${SQL_AUTOFILL_FRECENCY_THRESHOLD}`
 );
 
 const QUERY_ORIGIN_PREFIX_HISTORY_BOOKMARK = originQuery(
   `WHERE prefix BETWEEN :prefix AND :prefix || X'FFFF'
-     AND (bookmarked OR ${SQL_AUTOFILL_FRECENCY_THRESHOLD})`
+     AND (n_bookmarks > 0 OR ${SQL_AUTOFILL_FRECENCY_THRESHOLD})`
 );
 
 const QUERY_ORIGIN_HISTORY = originQuery(
@@ -229,38 +213,38 @@ const QUERY_ORIGIN_PREFIX_HISTORY = originQuery(
      AND visited AND ${SQL_AUTOFILL_FRECENCY_THRESHOLD}`
 );
 
-const QUERY_ORIGIN_BOOKMARK = originQuery(`WHERE bookmarked`);
+const QUERY_ORIGIN_BOOKMARK = originQuery(`WHERE n_bookmarks > 0`);
 
 const QUERY_ORIGIN_PREFIX_BOOKMARK = originQuery(
-  `WHERE prefix BETWEEN :prefix AND :prefix || X'FFFF' AND bookmarked`
+  `WHERE prefix BETWEEN :prefix AND :prefix || X'FFFF' AND n_bookmarks > 0`
 );
 
 const QUERY_URL_HISTORY_BOOKMARK = urlQuery(
-  `AND (bookmarked OR frecency > 20)
+  `AND (n_bookmarks > 0 OR frecency > 20)
      AND stripped_url COLLATE NOCASE
        BETWEEN :strippedURL AND :strippedURL || X'FFFF'`,
-  `AND (bookmarked OR frecency > 20)
+  `AND (n_bookmarks > 0 OR frecency > 20)
      AND stripped_url COLLATE NOCASE
        BETWEEN 'www.' || :strippedURL AND 'www.' || :strippedURL || X'FFFF'`,
   true
 );
 
 const QUERY_URL_PREFIX_HISTORY_BOOKMARK = urlQuery(
-  `AND (bookmarked OR frecency > 20)
+  `AND (n_bookmarks > 0 OR frecency > 20)
      AND url COLLATE NOCASE
        BETWEEN :prefix || :strippedURL AND :prefix || :strippedURL || X'FFFF'`,
-  `AND (bookmarked OR frecency > 20)
+  `AND (n_bookmarks > 0 OR frecency > 20)
      AND url COLLATE NOCASE
        BETWEEN :prefix || 'www.' || :strippedURL AND :prefix || 'www.' || :strippedURL || X'FFFF'`,
   true
 );
 
 const QUERY_URL_HISTORY = urlQuery(
-  `AND (visited OR NOT bookmarked)
+  `AND (visited OR n_bookmarks = 0)
      AND frecency > 20
      AND stripped_url COLLATE NOCASE
        BETWEEN :strippedURL AND :strippedURL || X'FFFF'`,
-  `AND (visited OR NOT bookmarked)
+  `AND (visited OR n_bookmarks = 0)
      AND frecency > 20
      AND stripped_url COLLATE NOCASE
        BETWEEN 'www.' || :strippedURL AND 'www.' || :strippedURL || X'FFFF'`,
@@ -268,11 +252,11 @@ const QUERY_URL_HISTORY = urlQuery(
 );
 
 const QUERY_URL_PREFIX_HISTORY = urlQuery(
-  `AND (visited OR NOT bookmarked)
+  `AND (visited OR n_bookmarks = 0)
      AND frecency > 20
      AND url COLLATE NOCASE
        BETWEEN :prefix || :strippedURL AND :prefix || :strippedURL || X'FFFF'`,
-  `AND (visited OR NOT bookmarked)
+  `AND (visited OR n_bookmarks = 0)
      AND frecency > 20
      AND url COLLATE NOCASE
        BETWEEN :prefix || 'www.' || :strippedURL AND :prefix || 'www.' || :strippedURL || X'FFFF'`,
@@ -280,20 +264,20 @@ const QUERY_URL_PREFIX_HISTORY = urlQuery(
 );
 
 const QUERY_URL_BOOKMARK = urlQuery(
-  `AND bookmarked
+  `AND n_bookmarks > 0
      AND stripped_url COLLATE NOCASE
        BETWEEN :strippedURL AND :strippedURL || X'FFFF'`,
-  `AND bookmarked
+  `AND n_bookmarks > 0
      AND stripped_url COLLATE NOCASE
        BETWEEN 'www.' || :strippedURL AND 'www.' || :strippedURL || X'FFFF'`,
   true
 );
 
 const QUERY_URL_PREFIX_BOOKMARK = urlQuery(
-  `AND bookmarked
+  `AND n_bookmarks > 0
      AND url COLLATE NOCASE
        BETWEEN :prefix || :strippedURL AND :prefix || :strippedURL || X'FFFF'`,
-  `AND bookmarked
+  `AND n_bookmarks > 0
      AND url COLLATE NOCASE
        BETWEEN :prefix || 'www.' || :strippedURL AND :prefix || 'www.' || :strippedURL || X'FFFF'`,
   true
@@ -408,19 +392,9 @@ class ProviderAutofill extends UrlbarProvider {
   /**
    * Gets the provider's priority.
    *
-   * @param {UrlbarQueryContext} queryContext The query context object
    * @returns {number} The provider's priority for the given query.
    */
-  getPriority(queryContext) {
-    // Priority search results are restricting.
-    if (
-      this._autofillData &&
-      this._autofillData.instance == this.queryInstance &&
-      this._autofillData.result.type == UrlbarUtils.RESULT_TYPE.SEARCH
-    ) {
-      return 1;
-    }
-
+  getPriority() {
     return 0;
   }
 
@@ -451,10 +425,8 @@ class ProviderAutofill extends UrlbarProvider {
 
   /**
    * Cancels a running query.
-   *
-   * @param {object} queryContext The query context object
    */
-  cancelQuery(queryContext) {
+  cancelQuery() {
     if (this._autofillData?.instance == this.queryInstance) {
       this._autofillData = null;
     }
@@ -475,25 +447,24 @@ class ProviderAutofill extends UrlbarProvider {
     let conditions = [];
     // Pay attention to the order of params, since they are not named.
     let params = [...hosts];
-    if (!ORIGIN_USE_ALT_FRECENCY) {
-      params.unshift(lazy.UrlbarPrefs.get("autoFill.stddevMultiplier"));
-    }
     let sources = queryContext.sources;
     if (
       sources.includes(UrlbarUtils.RESULT_SOURCE.HISTORY) &&
       sources.includes(UrlbarUtils.RESULT_SOURCE.BOOKMARKS)
     ) {
-      conditions.push(`(bookmarked OR ${SQL_AUTOFILL_FRECENCY_THRESHOLD})`);
+      conditions.push(
+        `(n_bookmarks > 0 OR ${SQL_AUTOFILL_FRECENCY_THRESHOLD})`
+      );
     } else if (sources.includes(UrlbarUtils.RESULT_SOURCE.HISTORY)) {
       conditions.push(`visited AND ${SQL_AUTOFILL_FRECENCY_THRESHOLD}`);
     } else if (sources.includes(UrlbarUtils.RESULT_SOURCE.BOOKMARKS)) {
-      conditions.push("bookmarked");
+      conditions.push("n_bookmarks > 0");
     }
 
     let rows = await db.executeCached(
       `
         ${SQL_AUTOFILL_WITH},
-        origins(id, prefix, host_prefix, host, fixed, host_frecency, frecency, bookmarked, visited) AS (
+        origins(id, prefix, host_prefix, host, fixed, host_frecency, frecency, n_bookmarks, visited) AS (
           SELECT
           id,
           prefix,
@@ -502,13 +473,11 @@ class ProviderAutofill extends UrlbarProvider {
           ),
           host,
           fixup_url(host),
-          IFNULL(${
-            ORIGIN_USE_ALT_FRECENCY ? "avg(alt_frecency)" : "total(frecency)"
-          } OVER (PARTITION BY fixup_url(host)), 0.0),
+          total(${ORIGIN_FRECENCY_FIELD}) OVER (PARTITION BY fixup_url(host)),
           ${ORIGIN_FRECENCY_FIELD},
-          MAX(EXISTS(
-            SELECT 1 FROM moz_places WHERE origin_id = o.id AND foreign_count > 0
-          )) OVER (PARTITION BY fixup_url(host)),
+          total(
+            (SELECT total(foreign_count) FROM moz_places WHERE origin_id = o.id)
+          ) OVER (PARTITION BY fixup_url(host)),
           MAX(EXISTS(
             SELECT 1 FROM moz_places WHERE origin_id = o.id AND visit_count > 0
           )) OVER (PARTITION BY fixup_url(host))
@@ -550,9 +519,6 @@ class ProviderAutofill extends UrlbarProvider {
       query_type: QUERYTYPE.AUTOFILL_ORIGIN,
       searchString: searchStr.toLowerCase(),
     };
-    if (!ORIGIN_USE_ALT_FRECENCY) {
-      opts.stddevMultiplier = lazy.UrlbarPrefs.get("autoFill.stddevMultiplier");
-    }
     if (this._strippedPrefix) {
       opts.prefix = this._strippedPrefix;
     }
@@ -689,7 +655,7 @@ class ProviderAutofill extends UrlbarProvider {
       queryType: QUERYTYPE.AUTOFILL_ADAPTIVE,
       // `fullSearchString` is the value the user typed including a prefix if
       // they typed one. `searchString` has been stripped of the prefix.
-      fullSearchString: queryContext.searchString.toLowerCase(),
+      fullSearchString: queryContext.lowerCaseSearchString,
       searchString: this._searchString,
       strippedPrefix: this._strippedPrefix,
       useCountThreshold: lazy.UrlbarPrefs.get(
@@ -881,12 +847,17 @@ class ProviderAutofill extends UrlbarProvider {
     if (title) {
       payload.title = [title, UrlbarUtils.HIGHLIGHT.TYPED];
     } else {
-      let [autofilled] = UrlbarUtils.stripPrefixAndTrim(finalCompleteValue, {
-        stripHttp: true,
+      let trimHttps = lazy.UrlbarPrefs.get("trimHttps");
+      let displaySpec = UrlbarUtils.prepareUrlForDisplay(finalCompleteValue, {
+        trimURL: false,
+      });
+      let [fallbackTitle] = UrlbarUtils.stripPrefixAndTrim(displaySpec, {
+        stripHttp: !trimHttps,
+        stripHttps: trimHttps,
         trimEmptyQuery: true,
         trimSlash: !this._searchString.includes("/"),
       });
-      payload.fallbackTitle = [autofilled, UrlbarUtils.HIGHLIGHT.TYPED];
+      payload.fallbackTitle = [fallbackTitle, UrlbarUtils.HIGHLIGHT.TYPED];
     }
 
     let result = new lazy.UrlbarResult(
@@ -917,12 +888,6 @@ class ProviderAutofill extends UrlbarProvider {
 
     // It may also look like a URL we know from the database.
     result = await this._matchKnownUrl(queryContext);
-    if (result) {
-      return result;
-    }
-
-    // Or we may want to fill a search engine domain regardless of the threshold.
-    result = await this._matchSearchEngineDomain(queryContext);
     if (result) {
       return result;
     }
@@ -1020,76 +985,6 @@ class ProviderAutofill extends UrlbarProvider {
       }
     }
     return null;
-  }
-
-  async _matchSearchEngineDomain(queryContext) {
-    if (
-      !lazy.UrlbarPrefs.get("autoFill.searchEngines") ||
-      !this._searchString.length
-    ) {
-      return null;
-    }
-
-    // enginesForDomainPrefix only matches against engine domains.
-    // Remove an eventual trailing slash from the search string (without the
-    // prefix) and check if the resulting string is worth matching.
-    // Later, we'll verify that the found result matches the original
-    // searchString and eventually discard it.
-    let searchStr = this._searchString;
-    if (searchStr.indexOf("/") == searchStr.length - 1) {
-      searchStr = searchStr.slice(0, -1);
-    }
-    // If the search string looks more like a url than a domain, bail out.
-    if (
-      !lazy.UrlbarTokenizer.looksLikeOrigin(searchStr, {
-        ignoreKnownDomains: true,
-      })
-    ) {
-      return null;
-    }
-
-    // Since we are autofilling, we can only pick one matching engine. Use the
-    // first.
-    let engine = (
-      await lazy.UrlbarSearchUtils.enginesForDomainPrefix(searchStr)
-    )[0];
-    if (!engine) {
-      return null;
-    }
-    let url = engine.searchForm;
-    let domain = engine.searchUrlDomain;
-    // Verify that the match we got is acceptable. Autofilling "example/" to
-    // "example.com/" would not be good.
-    if (
-      (this._strippedPrefix && !url.startsWith(this._strippedPrefix)) ||
-      !(domain + "/").includes(this._searchString)
-    ) {
-      return null;
-    }
-
-    // The value that's autofilled in the input is the prefix the user typed, if
-    // any, plus the portion of the engine domain that the user typed.  Append a
-    // trailing slash too, as is usual with autofill.
-    let value =
-      this._strippedPrefix + domain.substr(domain.indexOf(searchStr)) + "/";
-
-    let result = new lazy.UrlbarResult(
-      UrlbarUtils.RESULT_TYPE.SEARCH,
-      UrlbarUtils.RESULT_SOURCE.SEARCH,
-      ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
-        engine: [engine.name, UrlbarUtils.HIGHLIGHT.TYPED],
-        icon: engine.iconURI?.spec,
-      })
-    );
-    let autofilledValue =
-      queryContext.searchString +
-      value.substring(queryContext.searchString.length);
-    result.autofill = {
-      value: autofilledValue,
-      selectionStart: queryContext.searchString.length,
-      selectionEnd: autofilledValue.length,
-    };
-    return result;
   }
 }
 

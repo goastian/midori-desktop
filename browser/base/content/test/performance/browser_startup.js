@@ -56,16 +56,17 @@ const startupPhases = {
   "before first paint": {
     denylist: {
       modules: new Set([
-        "resource:///modules/AboutNewTab.jsm",
-        "resource:///modules/BrowserUsageTelemetry.jsm",
-        "resource:///modules/ContentCrashHandlers.jsm",
+        "resource:///modules/AboutNewTab.sys.mjs",
+        "resource:///modules/BrowserUsageTelemetry.sys.mjs",
+        "resource:///modules/ContentCrashHandlers.sys.mjs",
         "resource:///modules/ShellService.sys.mjs",
         "resource://gre/modules/NewTabUtils.sys.mjs",
         "resource://gre/modules/PageThumbs.sys.mjs",
         "resource://gre/modules/PlacesUtils.sys.mjs",
         "resource://gre/modules/Preferences.sys.mjs",
         "resource://gre/modules/SearchService.sys.mjs",
-        "resource://gre/modules/Sqlite.sys.mjs",
+        // Sqlite.sys.mjs commented out because of bug 1828735.
+        // "resource://gre/modules/Sqlite.sys.mjs"
       ]),
       services: new Set(["@mozilla.org/browser/search-service;1"]),
     },
@@ -78,8 +79,8 @@ const startupPhases = {
     denylist: {
       modules: new Set([
         "resource://gre/modules/Blocklist.sys.mjs",
-        // Bug 1391495 - BrowserWindowTracker.jsm is intermittently used.
-        // "resource:///modules/BrowserWindowTracker.jsm",
+        // Bug 1391495 - BrowserWindowTracker.sys.mjs is intermittently used.
+        // "resource:///modules/BrowserWindowTracker.sys.mjs",
         "resource://gre/modules/BookmarkHTMLUtils.sys.mjs",
         "resource://gre/modules/Bookmarks.sys.mjs",
         "resource://gre/modules/ContextualIdentityService.sys.mjs",

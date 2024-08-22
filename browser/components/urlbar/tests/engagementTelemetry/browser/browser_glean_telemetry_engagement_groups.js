@@ -8,6 +8,9 @@
 // - results
 // - n_results
 
+// This test has many subtests and can time out in verify mode.
+requestLongerTimeout(5);
+
 add_setup(async function () {
   await initGroupTest();
 });
@@ -50,6 +53,20 @@ add_task(async function search_history() {
   });
 });
 
+add_task(async function recent_search() {
+  await doRecentSearchTest({
+    trigger: () => doEnter(),
+    assert: () =>
+      assertEngagementTelemetry([
+        {
+          groups: "recent_search",
+          results: "recent_search",
+          n_results: 1,
+        },
+      ]),
+  });
+});
+
 add_task(async function search_suggest() {
   await doSearchSuggestTest({
     trigger: () => doEnter(),
@@ -84,7 +101,7 @@ add_task(async function top_pick() {
         {
           groups: "heuristic,top_pick,search_suggest,search_suggest",
           results:
-            "search_engine,rs_adm_sponsored,search_suggest,search_suggest",
+            "search_engine,merino_top_picks,search_suggest,search_suggest",
           n_results: 4,
         },
       ]),
@@ -97,9 +114,23 @@ add_task(async function top_site() {
     assert: () =>
       assertEngagementTelemetry([
         {
-          groups: "top_site,suggested_index",
-          results: "top_site,action",
-          n_results: 2,
+          groups: "top_site",
+          results: "top_site",
+          n_results: 1,
+        },
+      ]),
+  });
+});
+
+add_task(async function clipboard() {
+  await doClipboardTest({
+    trigger: () => doEnter(),
+    assert: () =>
+      assertEngagementTelemetry([
+        {
+          groups: "general",
+          results: "clipboard",
+          n_results: 1,
         },
       ]),
   });
@@ -139,9 +170,9 @@ add_task(async function general() {
     assert: () =>
       assertEngagementTelemetry([
         {
-          groups: "heuristic,suggested_index,general",
-          results: "search_engine,action,bookmark",
-          n_results: 3,
+          groups: "heuristic,general",
+          results: "search_engine,bookmark",
+          n_results: 2,
         },
       ]),
   });
@@ -166,7 +197,9 @@ add_task(async function suggest() {
       assertEngagementTelemetry([
         {
           groups: "heuristic,suggest",
-          results: "search_engine,rs_adm_nonsponsored",
+          results: UrlbarPrefs.get("quickSuggestRustEnabled")
+            ? "search_engine,rust_adm_nonsponsored"
+            : "search_engine,rs_adm_nonsponsored",
           n_results: 2,
         },
       ]),
@@ -214,14 +247,15 @@ add_task(async function always_empty_if_drop_go() {
     },
   ];
 
-  await doTest(async browser => {
+  await doTest(async () => {
     await doDropAndGo("example.com");
 
     assertEngagementTelemetry(expected);
   });
 
-  await doTest(async browser => {
+  await doTest(async () => {
     // Open the results view once.
+    await addTopSites("https://example.com/");
     await showResultByArrowDown();
     await UrlbarTestUtils.promisePopupClose(window);
 
@@ -241,14 +275,15 @@ add_task(async function always_empty_if_paste_go() {
     },
   ];
 
-  await doTest(async browser => {
+  await doTest(async () => {
     await doPasteAndGo("example.com");
 
     assertEngagementTelemetry(expected);
   });
 
-  await doTest(async browser => {
+  await doTest(async () => {
     // Open the results view once.
+    await addTopSites("https://example.com/");
     await showResultByArrowDown();
     await UrlbarTestUtils.promisePopupClose(window);
 

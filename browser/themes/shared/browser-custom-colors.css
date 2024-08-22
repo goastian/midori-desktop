@@ -5,59 +5,87 @@
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 @media not (prefers-contrast) {
-  :root:not(:-moz-lwtheme) {
-    --button-primary-bgcolor: rgb(0,97,224);
-    --button-primary-hover-bgcolor: rgb(2,80,187);
-    --button-primary-active-bgcolor: rgb(5,62,148);
-    --button-primary-color: rgb(251,251,254);
-    --button-bgcolor: rgba(207,207,216,.33);
-    --button-hover-bgcolor: rgba(207,207,216,.66);
-    --button-active-bgcolor: rgb(207,207,216);
-    --button-color: rgb(21,20,26);
+  :root:not([lwtheme]) {
+    --button-primary-bgcolor: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --button-primary-hover-bgcolor: light-dark(rgb(2, 80, 187), rgb(128, 235, 255));
+    --button-primary-active-bgcolor: light-dark(rgb(5, 62, 148), rgb(170, 242, 255));
+    --button-primary-color: light-dark(rgb(251, 251, 254), rgb(43, 42, 51));
+    --button-bgcolor: light-dark(
+      rgba(207, 207, 216, .33),
+      rgba(0, 0, 0, .33)
+    );
+    --button-hover-bgcolor: light-dark(
+      rgba(207, 207, 216, .66),
+      rgba(207, 207, 216, .20)
+    );
+    --button-active-bgcolor: light-dark(
+      rgb(207, 207, 216),
+      rgba(207, 207, 216, .40)
+    );
+    --button-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
 
     --focus-outline-color: var(--button-primary-bgcolor);
 
-    --checkbox-border-color: var(--input-border-color);
-    --checkbox-unchecked-bgcolor: var(--button-bgcolor);
-    --checkbox-unchecked-hover-bgcolor: var(--button-hover-bgcolor);
-    --checkbox-unchecked-active-bgcolor: var(--button-active-bgcolor);
-    --checkbox-checked-border-color: transparent;
-    --checkbox-checked-bgcolor: var(--button-primary-bgcolor);
-    --checkbox-checked-color: var(--button-primary-color);
-    --checkbox-checked-hover-bgcolor: var(--button-primary-hover-bgcolor);
-    --checkbox-checked-active-bgcolor: var(--button-primary-active-bgcolor);
+    --arrowpanel-background: light-dark(white, rgb(66, 65, 77));
+    --arrowpanel-color: light-dark(black, rgb(251, 251, 254));
+    --arrowpanel-border-color: light-dark(rgb(240, 240, 244), rgb(82,82,94));
 
-    --arrowpanel-dimmed: color-mix(in srgb, currentColor 12%, transparent);
-    --arrowpanel-dimmed-further: color-mix(in srgb, currentColor 20%, transparent);
-    --panel-shortcut-color: rgb(91,91,102);
+    --arrowpanel-dimmed: light-dark(
+      color-mix(in srgb, currentColor 12%, transparent),
+      color-mix(in srgb, currentColor 17%, transparent)
+    );
+    --arrowpanel-dimmed-further: light-dark(
+      color-mix(in srgb, currentColor 20%, transparent),
+      color-mix(in srgb, currentColor 14%, transparent)
+    );
 
-    --input-color: rgb(21,20,26);
-    --input-bgcolor: rgb(255,255,255);
-    --input-border-color: color-mix(in srgb, currentColor 41%, transparent);
+    --input-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --input-bgcolor: light-dark(rgb(255, 255, 255), #42414d);
 
-    --tab-selected-bgcolor: rgb(255,255,255);
-    --tab-icon-overlay-stroke: rgb(255,255,255);
-    --tab-icon-overlay-fill: rgb(91,91,102);
-    --toolbar-color: rgb(21,20,26);
-    --toolbar-non-lwt-bgcolor: #f9f9fb;
-    --toolbar-non-lwt-textcolor: rgb(21, 20, 26);
-    --toolbarbutton-icon-fill: rgb(91,91,102);
-    --toolbarbutton-icon-fill-attention: rgb(0,97,224);
+    --tab-selected-bgcolor: light-dark(rgb(255, 255, 255), rgb(66, 65, 77));
+    --tab-selected-textcolor: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --tab-icon-overlay-stroke: light-dark(rgb(255, 255, 255), rgb(66, 65, 77));
+    --tab-icon-overlay-fill: light-dark(rgb(91, 91, 102), rgb(251, 251, 254));
+    --tabs-navbar-separator-style: none;
 
-    --urlbar-popup-action-color: rgb(91,91,102);
-    --urlbar-popup-url-color: rgb(0,97,224);
-    --urlbar-icon-fill-opacity: 0.72;
+    --toolbox-non-lwt-bgcolor: light-dark(rgb(240, 240, 244), rgb(28, 27, 34));
+    --toolbox-non-lwt-textcolor: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --toolbox-non-lwt-bgcolor-inactive: var(--toolbox-non-lwt-bgcolor);
+    --toolbox-non-lwt-textcolor-inactive: var(--toolbox-non-lwt-textcolor);
 
-    --autocomplete-popup-separator-color: rgb(240,240,244);
+    &:where([tabsintitlebar]) {
+      --toolbox-non-lwt-bgcolor-inactive: light-dark(rgb(235, 235, 239), rgb(31, 30, 37));
+    }
+
+    --toolbar-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --toolbar-non-lwt-bgcolor: light-dark(#f9f9fb, rgb(43, 42, 51));
+    --toolbar-non-lwt-textcolor: var(--toolbar-color);
+
+    --toolbarbutton-icon-fill: light-dark(rgb(91, 91, 102), rgb(251, 251, 254));
+    --toolbarbutton-icon-fill-attention: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --toolbarbutton-icon-fill-attention-text: light-dark(rgb(240, 240, 244), rgb(28, 27, 34));
+
     --toolbar-field-border-color: transparent;
-    --arrowpanel-border-color: rgb(240,240,244);
-    --chrome-content-separator-color: rgb(204,204,204);
+    --toolbar-field-background-color: light-dark(rgb(240, 240, 244), rgb(28, 27, 34));
+    --toolbar-field-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --toolbar-field-focus-background-color: light-dark(white, rgb(66, 65, 77));
+    --toolbar-field-focus-color: light-dark(black, rgb(251, 251, 254));
 
-    --toolbar-field-background-color: rgb(240,240,244);
-    --toolbar-field-color: rgb(21,20,26);
+    --urlbarView-action-color: light-dark(rgb(91, 91, 102), rgb(191, 191, 201));
+    --urlbarView-separator-color: light-dark(rgb(240, 240, 244), rgb(82, 82, 94));
+    --urlbarView-highlight-background: light-dark(#e0e0e6, rgb(43,42,51));
+    --urlbarView-highlight-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --urlbarView-hover-background: light-dark(rgb(240, 240, 244), var(--arrowpanel-dimmed));
 
-    --autocomplete-popup-highlight-background: #e0e0e6;
-    --autocomplete-popup-highlight-color: rgb(21,20,26);
-    --autocomplete-popup-hover-background: rgb(240,240,244);
+    --urlbar-box-bgcolor: light-dark(white, rgb(66, 65, 77));
+    --urlbar-icon-fill-opacity: 0.72;
+    @media (prefers-color-scheme: dark) {
+      --urlbar-icon-fill-opacity: 1;
+    }
+
+    --chrome-content-separator-color: light-dark(rgb(204, 204, 204), hsl(240, 5%, 5%));
+
+    --link-color: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --attention-dot-color: light-dark(#2ac3a2, #54ffbd);
   }
 }

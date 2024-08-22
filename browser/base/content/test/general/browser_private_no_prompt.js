@@ -3,8 +3,8 @@ function test() {
   var privateWin = OpenBrowserWindow({ private: true });
 
   whenDelayedStartupFinished(privateWin, function () {
-    privateWin.BrowserOpenTab();
-    privateWin.BrowserTryToCloseWindow();
+    privateWin.BrowserCommands.openTab();
+    privateWin.BrowserCommands.tryToCloseWindow();
     ok(true, "didn't prompt");
 
     executeSoon(finish);

@@ -8,18 +8,16 @@
 export const AttributionIOUtils = {
   write: async (path, bytes) => IOUtils.write(path, bytes),
   read: async path => IOUtils.read(path),
-  readUTF8: async path => IOUtils.readUTF8(path),
   exists: async path => IOUtils.exists(path),
 };
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   MacAttribution: "resource:///modules/MacAttribution.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -65,10 +63,12 @@ export var AttributionCode = {
    * Wrapper to pull campaign IDs from MSIX builds.
    * This function solely exists to make it easy to mock out for tests.
    */
-  get msixCampaignId() {
-    return Cc["@mozilla.org/windows-package-manager;1"]
-      .createInstance(Ci.nsIWindowsPackageManager)
-      .getCampaignId();
+  async msixCampaignId() {
+    const windowsPackageManager = Cc[
+      "@mozilla.org/windows-package-manager;1"
+    ].createInstance(Ci.nsIWindowsPackageManager);
+
+    return windowsPackageManager.campaignId();
   },
 
   /**
@@ -81,35 +81,6 @@ export var AttributionCode = {
       let file = Services.dirsvc.get("GreD", Ci.nsIFile);
       file.append("postSigningData");
       return file;
-    } else if (AppConstants.platform == "macosx") {
-      // There's no `UpdRootD` in xpcshell tests.  Some existing tests override
-      // it, which is onerous and difficult to share across tests.  When testing,
-      // if it's not defined, fallback to a nested subdirectory of the xpcshell
-      // temp directory.  Nesting more closely replicates the situation where the
-      // update directory does not (yet) exist, testing a scenario witnessed in
-      // development.
-      let file;
-      try {
-        file = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
-      } catch (ex) {
-        // It's most common to test for the profile dir, even though we actually
-        // are using the temp dir.
-        if (
-          ex instanceof Ci.nsIException &&
-          ex.result == Cr.NS_ERROR_FAILURE &&
-          Services.env.exists("XPCSHELL_TEST_PROFILE_DIR")
-        ) {
-          let path = Services.env.get("XPCSHELL_TEST_TEMP_DIR");
-          file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-          file.initWithPath(path);
-          file.append("nested_UpdRootD_1");
-          file.append("nested_UpdRootD_2");
-        } else {
-          throw ex;
-        }
-      }
-      file.append("macAttributionData");
-      return file;
     }
 
     return null;
@@ -120,8 +91,8 @@ export var AttributionCode = {
    * @param {String} code to write.
    */
   async writeAttributionFile(code) {
-    // Writing attribution files is only used as part of test code, and Mac
-    // attribution, so bailing here for MSIX builds is no big deal.
+    // Writing attribution files is only used as part of test code
+    // so bailing here for MSIX builds is no big deal.
     if (
       AppConstants.platform === "win" &&
       Services.sysinfo.getProperty("hasWinPackageId")
@@ -193,43 +164,6 @@ export var AttributionCode = {
   },
 
   /**
-   * Returns an object containing a key-value pair for each piece of attribution
-   * data included in the passed-in URL containing a query string encoding an
-   * attribution code.
-   *
-   * We have less control of the attribution codes on macOS so we accept more
-   * URLs than we accept attribution codes on Windows.
-   *
-   * If the URL is empty, returns an empty object.
-   *
-   * If the URL doesn't parse, throws.
-   */
-  parseAttributionCodeFromUrl(url) {
-    if (!url) {
-      return {};
-    }
-
-    let parsed = {};
-
-    let params = new URL(url).searchParams;
-    for (let key of ATTR_CODE_KEYS) {
-      // We support the key prefixed with utm_ or not, but intentionally
-      // choose non-utm params over utm params.
-      for (let paramKey of [`utm_${key}`, `funnel_${key}`, key]) {
-        if (params.has(paramKey)) {
-          // We expect URI-encoded components in our attribution codes.
-          let value = encodeURIComponent(params.get(paramKey));
-          if (value && ATTR_CODE_VALUE_REGEX.test(value)) {
-            parsed[key] = value;
-          }
-        }
-      }
-    }
-
-    return parsed;
-  },
-
-  /**
    * Returns a string serializing the given attribution data.
    *
    * It is expected that the given values are already URL-encoded.
@@ -249,6 +183,74 @@ export var AttributionCode = {
     return s;
   },
 
+  async _getMacAttrDataAsync() {
+    // On macOS, we fish the attribution data from an extended attribute on
+    // the .app bundle directory.
+    try {
+      let attrStr = await lazy.MacAttribution.getAttributionString();
+      lazy.log.debug(
+        `_getMacAttrDataAsync: getAttributionString: "${attrStr}"`
+      );
+
+      if (attrStr === null) {
+        gCachedAttrData = {};
+
+        lazy.log.debug(`_getMacAttrDataAsync: null attribution string`);
+        Services.telemetry
+          .getHistogramById("BROWSER_ATTRIBUTION_ERRORS")
+          .add("null_error");
+      } else if (attrStr == "") {
+        gCachedAttrData = {};
+
+        lazy.log.debug(`_getMacAttrDataAsync: empty attribution string`);
+        Services.telemetry
+          .getHistogramById("BROWSER_ATTRIBUTION_ERRORS")
+          .add("empty_error");
+      } else {
+        gCachedAttrData = this.parseAttributionCode(attrStr);
+      }
+    } catch (ex) {
+      // Avoid partial attribution data.
+      gCachedAttrData = {};
+
+      // No attributions.  Just `warn` 'cuz this isn't necessarily an error.
+      lazy.log.warn("Caught exception fetching macOS attribution codes!", ex);
+
+      if (
+        ex instanceof Ci.nsIException &&
+        ex.result == Cr.NS_ERROR_UNEXPECTED
+      ) {
+        // Bad quarantine data.
+        Services.telemetry
+          .getHistogramById("BROWSER_ATTRIBUTION_ERRORS")
+          .add("quarantine_error");
+      }
+    }
+
+    lazy.log.debug(
+      `macOS attribution data is ${JSON.stringify(gCachedAttrData)}`
+    );
+
+    return gCachedAttrData;
+  },
+
+  async _getWindowsNSISAttrDataAsync() {
+    return AttributionIOUtils.read(this.attributionFile.path);
+  },
+
+  async _getWindowsMSIXAttrDataAsync() {
+    // This comes out of windows-package-manager _not_ URL encoded or in an ArrayBuffer,
+    // but the parsing code wants it that way. It's easier to just provide that
+    // than have the parsing code support both.
+    lazy.log.debug(
+      `winPackageFamilyName is: ${Services.sysinfo.getProperty(
+        "winPackageFamilyName"
+      )}`
+    );
+    let encoder = new TextEncoder();
+    return encoder.encode(encodeURIComponent(await this.msixCampaignId()));
+  },
+
   /**
    * Reads the attribution code, either from disk or a cached version.
    * Returns a promise that fulfills with an object containing the parsed
@@ -260,6 +262,10 @@ export var AttributionCode = {
    * strip "utm_" while retrieving the params.
    */
   async getAttrDataAsync() {
+    if (AppConstants.platform != "win" && AppConstants.platform != "macosx") {
+      // This platform doesn't support attribution.
+      return gCachedAttrData;
+    }
     if (gCachedAttrData != null) {
       lazy.log.debug(
         `getAttrDataAsync: attribution is cached: ${JSON.stringify(
@@ -270,98 +276,26 @@ export var AttributionCode = {
     }
 
     gCachedAttrData = {};
+
+    if (AppConstants.platform == "macosx") {
+      lazy.log.debug(`getAttrDataAsync: macOS`);
+      return this._getMacAttrDataAsync();
+    }
+
+    lazy.log.debug("getAttrDataAsync: !macOS");
+
     let attributionFile = this.attributionFile;
-    if (!attributionFile) {
-      // This platform doesn't support attribution.
-      lazy.log.debug(
-        `getAttrDataAsync: no attribution (attributionFile is null)`
-      );
-      return gCachedAttrData;
-    }
-
-    if (
-      AppConstants.platform == "macosx" &&
-      !(await AttributionIOUtils.exists(attributionFile.path))
-    ) {
-      lazy.log.debug(
-        `getAttrDataAsync: macOS && !exists("${attributionFile.path}")`
-      );
-
-      // On macOS, we fish the attribution data from the system quarantine DB.
-      try {
-        let referrer = await lazy.MacAttribution.getReferrerUrl();
-        lazy.log.debug(
-          `getAttrDataAsync: macOS attribution getReferrerUrl: "${referrer}"`
-        );
-
-        gCachedAttrData = this.parseAttributionCodeFromUrl(referrer);
-      } catch (ex) {
-        // Avoid partial attribution data.
-        gCachedAttrData = {};
-
-        // No attributions.  Just `warn` 'cuz this isn't necessarily an error.
-        lazy.log.warn("Caught exception fetching macOS attribution codes!", ex);
-
-        if (
-          ex instanceof Ci.nsIException &&
-          ex.result == Cr.NS_ERROR_UNEXPECTED
-        ) {
-          // Bad quarantine data.
-          Services.telemetry
-            .getHistogramById("BROWSER_ATTRIBUTION_ERRORS")
-            .add("quarantine_error");
-        }
-      }
-
-      lazy.log.debug(
-        `macOS attribution data is ${JSON.stringify(gCachedAttrData)}`
-      );
-
-      // We only want to try to fetch the referrer from the quarantine
-      // database once on macOS.
-      try {
-        let code = this.serializeAttributionData(gCachedAttrData);
-        lazy.log.debug(`macOS attribution data serializes as "${code}"`);
-        await this.writeAttributionFile(code);
-      } catch (ex) {
-        lazy.log.debug(
-          `Caught exception writing "${attributionFile.path}"`,
-          ex
-        );
-        Services.telemetry
-          .getHistogramById("BROWSER_ATTRIBUTION_ERRORS")
-          .add("write_error");
-        return gCachedAttrData;
-      }
-
-      lazy.log.debug(
-        `Returning after successfully writing "${attributionFile.path}"`
-      );
-      return gCachedAttrData;
-    }
-
-    lazy.log.debug(
-      `getAttrDataAsync: !macOS || !exists("${attributionFile.path}")`
-    );
-
     let bytes;
     try {
       if (
         AppConstants.platform === "win" &&
         Services.sysinfo.getProperty("hasWinPackageId")
       ) {
-        // This comes out of windows-package-manager _not_ URL encoded or in an ArrayBuffer,
-        // but the parsing code wants it that way. It's easier to just provide that
-        // than have the parsing code support both.
-        lazy.log.debug(
-          `winPackageFamilyName is: ${Services.sysinfo.getProperty(
-            "winPackageFamilyName"
-          )}`
-        );
-        let encoder = new TextEncoder();
-        bytes = encoder.encode(encodeURIComponent(this.msixCampaignId));
+        lazy.log.debug("getAttrDataAsync: MSIX");
+        bytes = await this._getWindowsMSIXAttrDataAsync();
       } else {
-        bytes = await AttributionIOUtils.read(attributionFile.path);
+        lazy.log.debug("getAttrDataAsync: NSIS");
+        bytes = await this._getWindowsNSISAttrDataAsync();
       }
     } catch (ex) {
       if (DOMException.isInstance(ex) && ex.name == "NotFoundError") {
@@ -430,12 +364,15 @@ export var AttributionCode = {
    * or if the file couldn't be deleted (the promise is never rejected).
    */
   async deleteFileAsync() {
-    try {
-      await IOUtils.remove(this.attributionFile.path);
-    } catch (ex) {
-      // The attribution file may already have been deleted,
-      // or it may have never been installed at all;
-      // failure to delete it isn't an error.
+    // There is no cache file on macOS
+    if (AppConstants.platform == "win") {
+      try {
+        await IOUtils.remove(this.attributionFile.path);
+      } catch (ex) {
+        // The attribution file may already have been deleted,
+        // or it may have never been installed at all;
+        // failure to delete it isn't an error.
+      }
     }
   },
 

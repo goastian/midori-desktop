@@ -12,6 +12,9 @@ DIRS += [
 ]
 
 EXTRA_JS_MODULES += [
+    "ActionsProvider.sys.mjs",
+    "ActionsProviderContextualSearch.sys.mjs",
+    "ActionsProviderQuickActions.sys.mjs",
     "MerinoClient.sys.mjs",
     "QuickActionsLoaderDefault.sys.mjs",
     "QuickSuggest.sys.mjs",
@@ -25,8 +28,7 @@ EXTRA_JS_MODULES += [
     "UrlbarProviderAutofill.sys.mjs",
     "UrlbarProviderBookmarkKeywords.sys.mjs",
     "UrlbarProviderCalculator.sys.mjs",
-    "UrlbarProviderContextualSearch.sys.mjs",
-    "UrlbarProviderExtension.sys.mjs",
+    "UrlbarProviderClipboard.sys.mjs",
     "UrlbarProviderHeuristicFallback.sys.mjs",
     "UrlbarProviderHistoryUrlHeuristic.sys.mjs",
     "UrlbarProviderInputHistory.sys.mjs",
@@ -34,10 +36,10 @@ EXTRA_JS_MODULES += [
     "UrlbarProviderOmnibox.sys.mjs",
     "UrlbarProviderOpenTabs.sys.mjs",
     "UrlbarProviderPlaces.sys.mjs",
-    "UrlbarProviderPreloadedSites.sys.mjs",
     "UrlbarProviderPrivateSearch.sys.mjs",
-    "UrlbarProviderQuickActions.sys.mjs",
     "UrlbarProviderQuickSuggest.sys.mjs",
+    "UrlbarProviderQuickSuggestContextualOptIn.sys.mjs",
+    "UrlbarProviderRecentSearches.sys.mjs",
     "UrlbarProviderRemoteTabs.sys.mjs",
     "UrlbarProviderSearchSuggestions.sys.mjs",
     "UrlbarProviderSearchTips.sys.mjs",
@@ -62,26 +64,31 @@ EXTRA_JS_MODULES["urlbar/private"] += [
     "private/BaseFeature.sys.mjs",
     "private/BlockedSuggestions.sys.mjs",
     "private/ImpressionCaps.sys.mjs",
-    "private/QuickSuggestRemoteSettings.sys.mjs",
+    "private/MDNSuggestions.sys.mjs",
+    "private/PocketSuggestions.sys.mjs",
+    "private/SuggestBackendJs.sys.mjs",
+    "private/SuggestBackendRust.sys.mjs",
     "private/Weather.sys.mjs",
+    "private/YelpSuggestions.sys.mjs",
 ]
 
 TESTING_JS_MODULES += [
     "tests/quicksuggest/MerinoTestUtils.sys.mjs",
     "tests/quicksuggest/QuickSuggestTestUtils.sys.mjs",
+    "tests/quicksuggest/RemoteSettingsServer.sys.mjs",
     "tests/UrlbarTestUtils.sys.mjs",
 ]
 BROWSER_CHROME_MANIFESTS += [
-    "tests/browser-tips/browser.ini",
-    "tests/browser-updateResults/browser.ini",
-    "tests/browser/browser.ini",
-    "tests/engagementTelemetry/browser/browser.ini",
-    "tests/ext/browser/browser.ini",
-    "tests/quicksuggest/browser/browser.ini",
+    "tests/browser-tips/browser.toml",
+    "tests/browser-tips/suppress-tips/browser.toml",
+    "tests/browser-updateResults/browser.toml",
+    "tests/browser/browser.toml",
+    "tests/engagementTelemetry/browser/browser.toml",
+    "tests/quicksuggest/browser/browser.toml",
 ]
 XPCSHELL_TESTS_MANIFESTS += [
-    "tests/quicksuggest/unit/xpcshell.ini",
-    "tests/unit/xpcshell.ini",
+    "tests/quicksuggest/unit/xpcshell.toml",
+    "tests/unit/xpcshell.toml",
 ]
 
 SPHINX_TREES["/browser/urlbar"] = "docs"

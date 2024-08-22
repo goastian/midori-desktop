@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const lazy = {};
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BookmarkHTMLUtils: "resource://gre/modules/BookmarkHTMLUtils.sys.mjs",
@@ -13,7 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://browser/content/migration/migration-wizard-constants.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
+ChromeUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
   return new Localization([
     "branding/brand.ftl",
     "browser/migrationWizard.ftl",
@@ -139,11 +138,10 @@ export class FileMigratorBase {
    * from the native file picker. This will not be called if the user
    * chooses to cancel the native file picker.
    *
-   * @param {string} filePath
+   * @param {string} _filePath
    *   The path that the user selected from the native file picker.
    */
-  // eslint-disable-next-line no-unused-vars
-  async migrate(filePath) {
+  async migrate(_filePath) {
     throw new Error("FileMigrator.migrate must be overridden.");
   }
 }
@@ -212,33 +210,49 @@ export class PasswordFileMigrator extends FileMigratorBase {
   }
 
   async migrate(filePath) {
-    let summary = await lazy.LoginCSVImport.importFromCSV(filePath);
-    let newEntries = 0;
-    let updatedEntries = 0;
-    for (let entry of summary) {
-      if (entry.result == "added") {
-        newEntries++;
-      } else if (entry.result == "modified") {
-        updatedEntries++;
+    try {
+      let summary = await lazy.LoginCSVImport.importFromCSV(filePath);
+      let newEntries = 0;
+      let updatedEntries = 0;
+      for (let entry of summary) {
+        if (entry.result == "added") {
+          newEntries++;
+        } else if (entry.result == "modified") {
+          updatedEntries++;
+        }
       }
-    }
-    let [newMessage, updatedMessage] = await lazy.gFluentStrings.formatValues([
-      {
-        id: "migration-wizard-progress-success-new-passwords",
-        args: { newEntries },
-      },
-      {
-        id: "migration-wizard-progress-success-updated-passwords",
-        args: { updatedEntries },
-      },
-    ]);
+      let [newMessage, updatedMessage] = await lazy.gFluentStrings.formatValues(
+        [
+          {
+            id: "migration-wizard-progress-success-new-passwords",
+            args: { newEntries },
+          },
+          {
+            id: "migration-wizard-progress-success-updated-passwords",
+            args: { updatedEntries },
+          },
+        ]
+      );
 
-    return {
-      [lazy.MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES
-        .PASSWORDS_NEW]: newMessage,
-      [lazy.MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES
-        .PASSWORDS_UPDATED]: updatedMessage,
-    };
+      Services.prefs.setBoolPref(
+        "browser.migrate.interactions.csvpasswords",
+        true
+      );
+
+      return {
+        [lazy.MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES
+          .PASSWORDS_NEW]: newMessage,
+        [lazy.MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES
+          .PASSWORDS_UPDATED]: updatedMessage,
+      };
+    } catch (e) {
+      console.error(e);
+
+      let errorMessage = await lazy.gFluentStrings.formatValue(
+        "migration-passwords-from-file-no-valid-data"
+      );
+      throw new Error(errorMessage);
+    }
   }
 }
 
@@ -307,23 +321,38 @@ export class BookmarksFileMigrator extends FileMigratorBase {
   }
 
   async migrate(filePath) {
-    let pathCheck = filePath.toLowerCase();
-    let importedCount;
+    try {
+      let pathCheck = filePath.toLowerCase();
+      let importedCount;
 
-    if (pathCheck.endsWith("html")) {
-      importedCount = await lazy.BookmarkHTMLUtils.importFromFile(filePath);
-    } else if (pathCheck.endsWith("json") || pathCheck.endsWith("jsonlz4")) {
-      importedCount = await lazy.BookmarkJSONUtils.importFromFile(filePath);
-    }
-    let importedMessage = await lazy.gFluentStrings.formatValue(
-      "migration-wizard-progress-success-new-bookmarks",
-      {
-        newEntries: importedCount,
+      if (pathCheck.endsWith("html")) {
+        importedCount = await lazy.BookmarkHTMLUtils.importFromFile(filePath);
+      } else if (pathCheck.endsWith("json") || pathCheck.endsWith("jsonlz4")) {
+        importedCount = await lazy.BookmarkJSONUtils.importFromFile(filePath);
       }
-    );
-    return {
-      [lazy.MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES
-        .BOOKMARKS_FROM_FILE]: importedMessage,
-    };
+
+      if (!importedCount) {
+        // The catch will cause us to show a default error message.
+        throw new Error();
+      }
+
+      let importedMessage = await lazy.gFluentStrings.formatValue(
+        "migration-wizard-progress-success-new-bookmarks",
+        {
+          newEntries: importedCount,
+        }
+      );
+      return {
+        [lazy.MigrationWizardConstants.DISPLAYED_FILE_RESOURCE_TYPES
+          .BOOKMARKS_FROM_FILE]: importedMessage,
+      };
+    } catch (e) {
+      console.error(e);
+
+      let errorMessage = await lazy.gFluentStrings.formatValue(
+        "migration-bookmarks-from-file-no-valid-data"
+      );
+      throw new Error(errorMessage);
+    }
   }
 }

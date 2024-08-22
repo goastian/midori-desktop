@@ -24,8 +24,7 @@ static const uint32_t ACTIVITY_STREAM_FLAGS =
     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::ENABLE_INDEXED_DB |
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
     nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_UNSANITIZED_CONTENT;
+    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT;
 
 struct RedirEntry {
   const char* id;
@@ -45,22 +44,27 @@ struct RedirEntry {
     browser/components/about/components.conf
 */
 static const RedirEntry kRedirMap[] = {
+    {"asrouter", "chrome://browser/content/asrouter/asrouter-admin.html",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
+         nsIAboutModule::URI_MUST_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"blocked", "chrome://browser/content/blockedSite.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
    // Floorp Contributor
-    {"contributors", "chrome://browser/skin/contributors.html",
+    {"contributors", "chrome://floorp/content/contributors.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::IS_SECURE_CHROME_UI},
-    {"certerror", "chrome://global/content/aboutNetError.xhtml",
+    {"certerror", "chrome://global/content/aboutNetError.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
-       // Floorp dino
-    {"dino", "chrome://browser/skin/dino.html",
+    // Floorp dino
+    {"dino", "chrome://floorp/content/dino/dino.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -107,7 +111,15 @@ static const RedirEntry kRedirMap[] = {
     {"sessionrestore", "chrome://browser/content/aboutSessionRestore.xhtml",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT |
          nsIAboutModule::IS_SECURE_CHROME_UI},
-    {"setup", "chrome://browser/content/welcome/welcome.html",
+    {"shoppingsidebar", "chrome://browser/content/shopping/shopping.html",
+     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
+         nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT |
+         nsIAboutModule::IS_SECURE_CHROME_UI},
+    {"search", "chrome://floorp/content/floorp-search/search-result.html",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
+    {"setup", "chrome://floorp/content/welcome/welcome.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
     {"tabcrashed", "chrome://browser/content/aboutTabCrashed.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -119,6 +131,11 @@ static const RedirEntry kRedirMap[] = {
     // creation
     {"home", "about:blank", ACTIVITY_STREAM_FLAGS},
     {"newtab", "chrome://browser/content/blanktab.html", ACTIVITY_STREAM_FLAGS},
+    {"welcome", "about:blank",
+     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
+         nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::ALLOW_SCRIPT},
     {"messagepreview",
      "chrome://browser/content/messagepreview/messagepreview.html",
      nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
@@ -144,6 +161,9 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
+    {"settings", "chrome://browser/content/preferences/preferences.xhtml",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"preferences", "chrome://browser/content/preferences/preferences.xhtml",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
     {"downloads",
@@ -163,6 +183,11 @@ static const RedirEntry kRedirMap[] = {
     {"ion", "chrome://browser/content/ion.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT |
          nsIAboutModule::IS_SECURE_CHROME_UI},
+    {"profilemanager", "chrome://browser/content/profiles/profiles.html",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_MUST_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
 };
 
 static nsAutoCString GetAboutModuleName(nsIURI* aURI) {

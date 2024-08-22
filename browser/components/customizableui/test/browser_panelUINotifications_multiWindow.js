@@ -15,7 +15,7 @@ add_task(async function testDoesNotShowDoorhangerForBackgroundWindow() {
     url: "about:blank",
   };
 
-  await BrowserTestUtils.withNewTab(options, async function (browser) {
+  await BrowserTestUtils.withNewTab(options, async function () {
     let win = await BrowserTestUtils.openNewBrowserWindow();
     await SimpleTest.promiseFocus(win);
     let mainActionCalled = false;
@@ -36,13 +36,15 @@ add_task(async function testDoesNotShowDoorhangerForBackgroundWindow() {
       "The background window has a badge."
     );
 
+    let popupShown = BrowserTestUtils.waitForEvent(
+      PanelUI.notificationPanel,
+      "popupshown"
+    );
+
     await BrowserTestUtils.closeWindow(win);
     await SimpleTest.promiseFocus(window);
-    isnot(
-      PanelUI.notificationPanel.state,
-      "closed",
-      "update-manual doorhanger is showing."
-    );
+    await popupShown;
+
     let notifications = [...PanelUI.notificationPanel.children].filter(
       n => !n.hidden
     );
@@ -59,6 +61,12 @@ add_task(async function testDoesNotShowDoorhangerForBackgroundWindow() {
     );
 
     let button = doorhanger.button;
+
+    Assert.equal(
+      PanelUI.notificationPanel.state,
+      "open",
+      "Expect panel state to be open when clicking panel buttons"
+    );
     button.click();
 
     ok(mainActionCalled, "Main action callback was called");
@@ -87,7 +95,7 @@ add_task(
       url: "about:blank",
     };
 
-    await BrowserTestUtils.withNewTab(options, async function (browser) {
+    await BrowserTestUtils.withNewTab(options, async function () {
       let win = await BrowserTestUtils.openNewBrowserWindow();
       await SimpleTest.promiseFocus(win);
       AppMenuNotifications.showNotification("update-manual", { callback() {} });
@@ -132,7 +140,7 @@ add_task(
       url: "about:blank",
     };
 
-    await BrowserTestUtils.withNewTab(options, async function (browser) {
+    await BrowserTestUtils.withNewTab(options, async function () {
       let win = await BrowserTestUtils.openNewBrowserWindow();
       await SimpleTest.promiseFocus(win);
       AppMenuNotifications.showNotification("update-manual", { callback() {} });

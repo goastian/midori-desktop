@@ -1,11 +1,8 @@
 "use strict";
 
-var FormAutofillContent;
-add_task(async function () {
-  ({ FormAutofillContent } = ChromeUtils.importESModule(
-    "resource://autofill/FormAutofillContent.sys.mjs"
-  ));
-});
+const { FormStateManager } = ChromeUtils.importESModule(
+  "resource://gre/modules/shared/FormStateManager.sys.mjs"
+);
 
 const TESTCASES = [
   {
@@ -154,7 +151,7 @@ function inputDetailAssertion(detail, expected) {
   Assert.equal(detail.addressType, expected.addressType);
   Assert.equal(detail.contactType, expected.contactType);
   Assert.equal(detail.fieldName, expected.fieldName);
-  Assert.equal(detail.elementWeakRef.get(), expected.elementWeakRef.get());
+  Assert.equal(detail.element, expected.elementWeakRef.deref());
 }
 
 TESTCASES.forEach(testcase => {
@@ -168,16 +165,16 @@ TESTCASES.forEach(testcase => {
 
     for (let i in testcase.targetInput) {
       let input = doc.getElementById(testcase.targetInput[i]);
-      FormAutofillContent.identifyAutofillFields(input);
-      FormAutofillContent.updateActiveInput(input);
+      const fsm = new FormStateManager();
+      fsm.updateActiveInput(input);
+      fsm.identifyAutofillFields(input);
 
       // Put the input element reference to `element` to make sure the result of
       // `activeFieldDetail` contains the same input element.
-      testcase.expectedResult[i].input.elementWeakRef =
-        Cu.getWeakReference(input);
+      testcase.expectedResult[i].input.elementWeakRef = new WeakRef(input);
 
       inputDetailAssertion(
-        FormAutofillContent.activeFieldDetail,
+        fsm.activeFieldDetail,
         testcase.expectedResult[i].input
       );
 
@@ -191,12 +188,10 @@ TESTCASES.forEach(testcase => {
           " > *[autocomplete=" +
           formDetail.fieldName +
           "]";
-        formDetail.elementWeakRef = Cu.getWeakReference(
-          doc.querySelector(queryString)
-        );
+        formDetail.elementWeakRef = new WeakRef(doc.querySelector(queryString));
       }
 
-      FormAutofillContent.activeFormDetails.forEach((detail, index) => {
+      fsm.activeFormDetails.forEach((detail, index) => {
         inputDetailAssertion(detail, formDetails[index]);
       });
     }

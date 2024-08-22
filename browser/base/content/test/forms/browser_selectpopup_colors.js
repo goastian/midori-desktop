@@ -255,7 +255,7 @@ function rgbaToString(parsedColor) {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
-function testOptionColors(test, index, item, menulist) {
+function testOptionColors(test, index, item) {
   // The label contains a JSON string of the expected colors for
   // `color` and `background-color`.
   let expected = JSON.parse(item.label);
@@ -793,7 +793,7 @@ add_task(async function test_scrollbar_props() {
   BrowserTestUtils.removeTab(tab);
 });
 
-if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+if (AppConstants.platform == "win") {
   add_task(async function test_darkmode() {
     let lightSelectColor = rgbaToString(
       InspectorUtils.colorToRGBA("MenuText", document)

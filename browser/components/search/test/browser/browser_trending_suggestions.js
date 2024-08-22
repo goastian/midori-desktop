@@ -22,6 +22,65 @@ const CONFIG_DEFAULT = [
   },
 ];
 
+const CONFIG_V2 = [
+  {
+    recordType: "engine",
+    identifier: "basic",
+    base: {
+      name: "basic",
+      urls: {
+        search: {
+          base: "https://example.com",
+          searchTermParamName: "q",
+        },
+        trending: {
+          base: "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
+          method: "GET",
+        },
+      },
+      aliases: ["basic"],
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "engine",
+    identifier: "private",
+    base: {
+      name: "private",
+      urls: {
+        search: {
+          base: "https://example.com",
+          searchTermParamName: "q",
+        },
+        suggestions: {
+          base: "https://example.com",
+          method: "GET",
+          searchTermParamName: "search",
+        },
+      },
+      aliases: ["private"],
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    globalDefault: "basic",
+    specificDefaults: [],
+  },
+  {
+    recordType: "engineOrders",
+    orders: [],
+  },
+];
+
 SearchTestUtils.init(this);
 
 add_setup(async () => {
@@ -31,11 +90,18 @@ add_setup(async () => {
   await SearchTestUtils.useMochitestEngines(searchExtensions);
 
   await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.suggest.searches", true]],
+    set: [
+      ["browser.urlbar.recentsearches.featureGate", false],
+      ["browser.urlbar.suggest.searches", true],
+      ["browser.urlbar.suggest.trending", true],
+    ],
   });
 
   SearchTestUtils.useMockIdleService();
-  await SearchTestUtils.updateRemoteSettingsConfig(CONFIG_DEFAULT);
+  await SearchTestUtils.updateRemoteSettingsConfig(
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG_DEFAULT
+  );
+  Services.telemetry.clearScalars();
 
   registerCleanupFunction(async () => {
     let settingsWritten = SearchTestUtils.promiseSearchNotification(
@@ -127,6 +193,53 @@ add_task(async function test_trending_telemetry() {
 
   let scalars = TelemetryTestUtils.getProcessScalars("parent", true, true);
   TelemetryTestUtils.assertKeyedScalar(scalars, "urlbar.picked.trending", 0, 1);
+});
+
+add_task(async function test_block_trending() {
+  Services.telemetry.clearScalars();
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.trending.featureGate", true],
+      ["browser.urlbar.trending.requireSearchMode", false],
+    ],
+  });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "",
+    waitForFocus: SimpleTest.waitForFocus,
+  });
+
+  Assert.equal(UrlbarTestUtils.getResultCount(window), 2);
+  let { result: trendingResult } = await UrlbarTestUtils.getDetailsOfResultAt(
+    window,
+    0
+  );
+  Assert.equal(trendingResult.payload.trending, true);
+
+  await UrlbarTestUtils.openResultMenuAndPressAccesskey(window, "D", {
+    resultIndex: 0,
+  });
+
+  await BrowserTestUtils.waitForCondition(
+    () => UrlbarTestUtils.getResultCount(window) == 1
+  );
+  let { result: heuristicResult } = await UrlbarTestUtils.getDetailsOfResultAt(
+    window,
+    0
+  );
+  Assert.notEqual(heuristicResult.payload.trending, true);
+
+  TelemetryTestUtils.assertScalar(
+    TelemetryTestUtils.getProcessScalars("parent", false, true),
+    "urlbar.trending.block",
+    1
+  );
+
+  await UrlbarTestUtils.promisePopupClose(window, () => {
+    EventUtils.synthesizeKey("KEY_Escape");
+  });
+  await SpecialPowers.popPrefEnv();
 });
 
 async function check_results({

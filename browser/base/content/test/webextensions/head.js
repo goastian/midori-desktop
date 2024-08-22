@@ -7,7 +7,7 @@ const BASE = getRootDirectory(gTestPath).replace(
   "https://example.com/"
 );
 
-XPCOMUtils.defineLazyGetter(this, "Management", () => {
+ChromeUtils.defineLazyGetter(this, "Management", () => {
   // eslint-disable-next-line no-shadow
   const { Management } = ChromeUtils.importESModule(
     "resource://gre/modules/Extension.sys.mjs"
@@ -302,7 +302,7 @@ function checkNotification(panel, checkIcon, permissions, sideloaded) {
  *
  * @returns {Promise}
  */
-async function testInstallMethod(installFn, telemetryBase) {
+async function testInstallMethod(installFn) {
   const PERMS_XPI = "browser_webext_permissions.xpi";
   const NO_PERMS_XPI = "browser_webext_nopermissions.xpi";
   const ID = "permissions@test.mozilla.org";
@@ -431,6 +431,7 @@ async function testInstallMethod(installFn, telemetryBase) {
 // updates applied automatically or not.
 async function interactiveUpdateTest(autoUpdate, checkFn) {
   AddonTestUtils.initMochitest(this);
+  Services.fog.testResetFOG();
 
   const ID = "update2@tests.mozilla.org";
   const FAKE_INSTALL_SOURCE = "fake-install-source";
@@ -494,7 +495,10 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
 
   // Navigate away from the starting page to force about:addons to load
   // in a new tab during the tests below.
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:mozilla");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:mozilla"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   // Install version 1.0 of the test extension
@@ -504,7 +508,7 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
   ok(addon, "Addon was installed");
   is(addon.version, "1.0", "Version 1 of the addon is installed");
 
-  let win = await BrowserOpenAddonsMgr("addons://list/extension");
+  let win = await BrowserAddonUI.openAddonsMgr("addons://list/extension");
 
   await waitAboutAddonsViewLoaded(win.document);
 
@@ -516,7 +520,8 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
   // Click the cancel button, wait to see the cancel event
   let cancelPromise = promiseInstallEvent(addon, "onInstallCancelled");
   panel.secondaryButton.click();
-  await cancelPromise;
+  const cancelledByUser = await cancelPromise;
+  is(cancelledByUser, true, "Install cancelled by user");
 
   addon = await AddonManager.getAddonByID(ID);
   is(addon.version, "1.0", "Should still be running the old version");
@@ -548,23 +553,34 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
     }
   );
 
+  const expectedSteps = [
+    // First update is cancelled on the permission prompt.
+    "started",
+    "download_started",
+    "download_completed",
+    "permissions_prompt",
+    "cancelled",
+    // Second update is expected to be completed.
+    "started",
+    "download_started",
+    "download_completed",
+    "permissions_prompt",
+    "completed",
+  ];
+
   Assert.deepEqual(
+    expectedSteps,
     collectedUpdateEvents.map(evt => evt.extra.step),
-    [
-      // First update is cancelled on the permission prompt.
-      "started",
-      "download_started",
-      "download_completed",
-      "permissions_prompt",
-      "cancelled",
-      // Second update is expected to be completed.
-      "started",
-      "download_started",
-      "download_completed",
-      "permissions_prompt",
-      "completed",
-    ],
     "Got the expected sequence on update telemetry events"
+  );
+
+  let gleanEvents = AddonTestUtils.getAMGleanEvents("update");
+  Services.fog.testResetFOG();
+
+  Assert.deepEqual(
+    expectedSteps,
+    gleanEvents.map(e => e.step),
+    "Got the expected sequence on update Glean events."
   );
 
   ok(
@@ -583,6 +599,19 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
     collectedUpdateEvents.every(evt => evt.extra.updated_from === "user"),
     "Every update telemetry event should have the update_from extra var 'user'"
   );
+
+  for (let e of gleanEvents) {
+    is(e.addon_id, ID, "Glean event has the expected addon_id.");
+    is(e.source, FAKE_INSTALL_SOURCE, "Glean event has the expected source.");
+    is(e.updated_from, "user", "Glean event has the expected updated_from.");
+
+    if (e.step === "permissions_prompt") {
+      Assert.greater(parseInt(e.num_strings), 0, "Expected num_strings.");
+    }
+    if (e.step === "download_completed") {
+      Assert.greater(parseInt(e.download_time), 0, "Valid download_time.");
+    }
+  }
 
   let hasPermissionsExtras = collectedUpdateEvents
     .filter(evt => {

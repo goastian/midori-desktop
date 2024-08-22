@@ -41,7 +41,7 @@ add_setup(async function () {
 add_task(async function test() {
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:blank" },
-    async browser => {
+    async () => {
       await checkOpensOnFocus();
     }
   );
@@ -81,7 +81,7 @@ add_task(async function newtabAndHome() {
         // After example.com closes, about:newtab/home is selected again.
         await checkOpensOnFocus();
         // Load example.com in the same tab.
-        BrowserTestUtils.loadURIString(
+        BrowserTestUtils.startLoadingURIString(
           gBrowser.selectedBrowser,
           "http://example.com/"
         );

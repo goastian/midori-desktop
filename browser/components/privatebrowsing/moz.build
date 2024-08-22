@@ -5,10 +5,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser.ini",
+    "test/browser/browser.toml",
 ]
 
 JAR_MANIFESTS += ["jar.mn"]
+
+EXTRA_JS_MODULES += [
+    "ResetPBMPanel.sys.mjs",
+]
 
 with Files("**"):
     BUG_COMPONENT = ("Firefox", "Private Browsing")

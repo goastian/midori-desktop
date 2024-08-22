@@ -19,7 +19,7 @@ registerCleanupFunction(() => {
 
 function promiseBrowserStateRestored() {
   return new Promise(resolve => {
-    Services.obs.addObserver(function observer(aSubject, aTopic) {
+    Services.obs.addObserver(function observer() {
       Services.obs.removeObserver(
         observer,
         "sessionstore-browser-state-restored"
@@ -39,7 +39,7 @@ add_task(async function test_privateMode() {
     private: true,
   });
   await BrowserTestUtils.firstBrowserLoaded(privateWin);
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     privateWin.gBrowser.selectedBrowser,
     "https://example.com/"
   );

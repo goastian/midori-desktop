@@ -12,7 +12,7 @@ const TEST_PROVIDER_INFO = [
     telemetryId: "example",
     searchPageRegexp:
       /^https:\/\/example.com\/browser\/browser\/components\/search\/test\/browser\/searchTelemetry(?:Ad)?.html/,
-    queryParamName: "s",
+    queryParamNames: ["s"],
     codeParamName: "abc",
     taggedCodes: ["ff"],
     followOnParamNames: ["a"],
@@ -85,7 +85,7 @@ add_task(async function test_search() {
   info("Load about:newtab in new window");
   const newtab = "about:newtab";
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, newtab);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, newtab);
   await BrowserTestUtils.browserStopped(tab.linkedBrowser, newtab);
 
   info("Focus on search input in newtab content");

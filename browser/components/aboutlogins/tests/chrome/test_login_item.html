@@ -9,8 +9,10 @@ Test the login-item component
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
   <script type="module" src="chrome://browser/content/aboutlogins/components/login-item.mjs"></script>
+  <script type="module" src="chrome://browser/content/aboutlogins/components/login-command-button.mjs"></script>
   <script type="module" src="chrome://browser/content/aboutlogins/components/confirmation-dialog.mjs"></script>
   <script type="module" src="chrome://browser/content/aboutlogins/components/login-timeline.mjs"></script>
+  <script type="module" src="chrome://browser/content/aboutlogins/components/login-alert.mjs"></script>
   <script src="aboutlogins_common.js"></script>
 
   <link rel="stylesheet" href="/tests/SimpleTest/test.css"/>
@@ -49,6 +51,16 @@ const TEST_LOGIN_2 = {
   timeCreated: "2000",
   timePasswordChanged: "4000",
   timeLastUsed: "8000",
+};
+
+const TEST_LOGIN_3 = {
+  guid: "987654321",
+  origin: "https://example.com",
+  username: "user2",
+  password: "pass2",
+  timeCreated: "4000",
+  timePasswordChanged: "4000",
+  timeLastUsed: "4000",
 };
 
 const TEST_BREACH = {
@@ -130,27 +142,20 @@ add_task(async function test_set_login() {
   is(passwordDisplayInput.value, CONCEALED_PASSWORD_TEXT, "password display should be populated");
   ok(!isHidden(passwordDisplayInput), "Password display input should be visible");
 
-  let timeline = getLoginTimeline(gLoginItem);
-  ok(!isHidden(timeline), "Timeline should be visible");
-  let actions = timeline.shadowRoot.querySelectorAll(".action");
-  verifyTimelineActions(actions, [
-    "login-item-timeline-action-created",
-    "login-item-timeline-action-updated",
-    "login-item-timeline-action-used",
-  ]);
-
   let copyButtons = [...gLoginItem.shadowRoot.querySelectorAll(".copy-button")];
   ok(copyButtons.every(button => !isHidden(button)), "The copy buttons should be visible when viewing a login");
 
   let loginNoUsername = Object.assign({}, TEST_LOGIN_1, {username: ""});
   gLoginItem.setLogin(loginNoUsername);
+  await asyncElementRendered();
+
   ok(!gLoginItem.dataset.editing, "loginItem should not be in 'edit' mode");
   is(document.l10n.getAttributes(usernameInput).id, "about-logins-login-item-username", "username field should have default placeholder when username is not present and not editing");
-  let copyUsernameButton = gLoginItem.shadowRoot.querySelector(".copy-username-button");
+  let copyUsernameButton = gLoginItem.shadowRoot.querySelector("copy-username-button");
   ok(copyUsernameButton.disabled, "The copy-username-button should be disabled if there is no username");
 
   usernameInput.placeholder = "dummy placeholder";
-  gLoginItem.shadowRoot.querySelector(".edit-button").click();
+  gLoginItem.shadowRoot.querySelector("edit-button").click();
   await asyncElementRendered();
   is(
     document.l10n.getAttributes(usernameInput).id,
@@ -165,10 +170,10 @@ add_task(async function test_update_breaches() {
   gLoginItem.setBreaches(TEST_BREACHES_MAP);
   await asyncElementRendered();
 
-  let breachAlert = gLoginItem.shadowRoot.querySelector(".breach-alert");
+  let breachAlert = gLoginItem.shadowRoot.querySelector("login-breach-alert");
   ok(!isHidden(breachAlert), "Breach alert should be visible");
-  is(breachAlert.querySelector(".alert-link").href, TEST_LOGIN_1.origin + "/", "Link in the text should point to the login origin");
-  let vulernableAlert = gLoginItem.shadowRoot.querySelector(".vulnerable-alert");
+  is(breachAlert.hostname, TEST_LOGIN_1.origin, "Link in the text should point to the login origin");
+  let vulernableAlert = gLoginItem.shadowRoot.querySelector("login-vulnerable-password-alert");
   ok(isHidden(vulernableAlert), "Vulnerable alert should not be visible on a non-vulnerable login.");
 });
 
@@ -177,9 +182,9 @@ add_task(async function test_breach_alert_is_correctly_hidden() {
   gLoginItem.setBreaches(TEST_BREACHES_MAP);
   await asyncElementRendered();
 
-  let breachAlert = gLoginItem.shadowRoot.querySelector(".breach-alert");
+  let breachAlert = gLoginItem.shadowRoot.querySelector("login-breach-alert");
   ok(isHidden(breachAlert), "Breach alert should not be visible on login without an associated breach.");
-  let vulernableAlert = gLoginItem.shadowRoot.querySelector(".vulnerable-alert");
+  let vulernableAlert = gLoginItem.shadowRoot.querySelector("login-vulnerable-password-alert");
   ok(isHidden(vulernableAlert), "Vulnerable alert should not be visible on a non-vulnerable login.");
 });
 
@@ -188,11 +193,11 @@ add_task(async function test_update_vulnerable() {
   gLoginItem.setVulnerableLogins(TEST_VULNERABLE_MAP);
   await asyncElementRendered();
 
-  let breachAlert = gLoginItem.shadowRoot.querySelector(".breach-alert");
+  let breachAlert = gLoginItem.shadowRoot.querySelector("login-breach-alert");
   ok(isHidden(breachAlert), "Breach alert should not be visible on login without an associated breach.");
-  let vulernableAlert = gLoginItem.shadowRoot.querySelector(".vulnerable-alert");
+  let vulernableAlert = gLoginItem.shadowRoot.querySelector("login-vulnerable-password-alert");
   ok(!isHidden(vulernableAlert), "Vulnerable alert should be visible");
-  is(vulernableAlert.querySelector(".alert-link").href, TEST_LOGIN_2.origin + "/", "Link in the text should point to the login origin");
+  is(vulernableAlert.shadowRoot.querySelector(".alert-link").href, TEST_LOGIN_2.origin + "/", "Link in the text should point to the login origin");
 });
 
 add_task(async function test_vulnerable_alert_is_correctly_hidden() {
@@ -201,9 +206,9 @@ add_task(async function test_vulnerable_alert_is_correctly_hidden() {
   gLoginItem.setBreaches(new Map());
   await asyncElementRendered();
 
-  let breachAlert = gLoginItem.shadowRoot.querySelector(".breach-alert");
+  let breachAlert = gLoginItem.shadowRoot.querySelector("login-breach-alert");
   ok(isHidden(breachAlert), "Breach alert should not be visible on login without an associated breach.");
-  let vulernableAlert = gLoginItem.shadowRoot.querySelector(".vulnerable-alert");
+  let vulernableAlert = gLoginItem.shadowRoot.querySelector("login-vulnerable-password-alert");
   ok(isHidden(vulernableAlert), "Vulnerable alert should not be visible on a non-vulnerable login.");
 });
 
@@ -211,14 +216,14 @@ add_task(async function test_edit_login() {
   gLoginItem.setLogin(TEST_LOGIN_1);
   let usernameInput = gLoginItem.shadowRoot.querySelector("input[name='username']");
   usernameInput.placeholder = "dummy placeholder";
-  gLoginItem.shadowRoot.querySelector(".edit-button").click();
+  gLoginItem.shadowRoot.querySelector("edit-button").click();
   await asyncElementRendered();
   await asyncElementRendered();
 
   ok(gLoginItem.dataset.editing, "loginItem should be in 'edit' mode");
-  ok(isHidden(gLoginItem.shadowRoot.querySelector(".edit-button")), "edit button should be hidden in 'edit' mode");
+  ok(isHidden(gLoginItem.shadowRoot.querySelector("edit-button")), "edit button should be hidden in 'edit' mode");
   ok(!gLoginItem.dataset.isNewLogin, "loginItem should not be in 'isNewLogin' mode");
-  let deleteButton = gLoginItem.shadowRoot.querySelector(".delete-button");
+  let deleteButton = gLoginItem.shadowRoot.querySelector("delete-button");
   ok(!deleteButton.disabled, "Delete button should be enabled when editing a login");
   ok(isHidden(gLoginItem._originInput), "Origin input should be hidden in edit mode");
   ok(!isHidden(gLoginItem._originDisplayInput), "Origin display link should be visible in edit mode");
@@ -257,9 +262,59 @@ add_task(async function test_edit_login() {
   ok(updateEventDispatched, "Clicking the .save-changes-button should dispatch the AboutLoginsUpdateLogin event");
 });
 
+add_task(async function test_edit_login_keyboard_shortcut() {
+  gLoginItem.setLogin(TEST_LOGIN_1);
+  let usernameInput = gLoginItem.shadowRoot.querySelector("input[name='username']");
+  usernameInput.placeholder = "dummy placeholder";
+  const ev = new KeyboardEvent("keydown", { altKey:true, key:"Enter" });
+  window.dispatchEvent(ev);
+  await asyncElementRendered();
+
+  ok(gLoginItem.dataset.editing, "loginItem should be in 'edit' mode");
+  ok(isHidden(gLoginItem.shadowRoot.querySelector("edit-button")), "edit button should be hidden in 'edit' mode");
+  ok(!gLoginItem.dataset.isNewLogin, "loginItem should not be in 'isNewLogin' mode");
+  let deleteButton = gLoginItem.shadowRoot.querySelector("delete-button");
+  ok(!deleteButton.disabled, "Delete button should be enabled when editing a login");
+  ok(isHidden(gLoginItem._originInput), "Origin input should be hidden in edit mode");
+  ok(!isHidden(gLoginItem._originDisplayInput), "Origin display link should be visible in edit mode");
+  is(gLoginItem.shadowRoot.querySelector("a[name='origin']").getAttribute("href"), TEST_LOGIN_1.origin, "origin should be populated");
+  is(usernameInput.value, TEST_LOGIN_1.username, "username should be populated");
+  is(usernameInput, document.activeElement?.shadowRoot?.activeElement, "username is focused");
+  is(usernameInput.selectionStart, 0, "username value is selected from start");
+  is(usernameInput.selectionEnd, usernameInput.value.length, "username value is selected to the end");
+  is(
+    document.l10n.getAttributes(usernameInput).id,
+    null,
+    "there should be no placeholder id on the username input in edit mode"
+  );
+  is(usernameInput.placeholder, "", "there should be no placeholder on the username input in edit mode");
+  is(gLoginItem._passwordInput.value, TEST_LOGIN_1.password, "password should be populated");
+  is(gLoginItem._passwordDisplayInput.value, CONCEALED_PASSWORD_TEXT, "password display should be populated");
+
+  let timeline = getLoginTimeline(gLoginItem);
+  ok(!isHidden(timeline), "Timeline should be visible");
+
+  let copyButtons = [...gLoginItem.shadowRoot.querySelectorAll(".copy-button")];
+  ok(copyButtons.every(button => isHidden(button)), "The copy buttons should be hidden when editing a login");
+
+  usernameInput.value = "newUsername";
+  gLoginItem._passwordInput.value = "newPassword";
+
+  let updateEventDispatched = false;
+  document.addEventListener("AboutLoginsUpdateLogin", event => {
+    is(event.detail.guid, TEST_LOGIN_1.guid, "event should include guid");
+    is(event.detail.origin, TEST_LOGIN_1.origin, "event should include origin");
+    is(event.detail.username, "newUsername", "event should include new username");
+    is(event.detail.password, "newPassword", "event should include new password");
+    updateEventDispatched = true;
+  }, {once: true});
+  gLoginItem.shadowRoot.querySelector(".save-changes-button").click();
+  ok(updateEventDispatched, "Clicking the .save-changes-button should dispatch the AboutLoginsUpdateLogin event");
+})
+
 add_task(async function test_edit_login_cancel() {
   gLoginItem.setLogin(TEST_LOGIN_1);
-  gLoginItem.shadowRoot.querySelector(".edit-button").click();
+  gLoginItem.shadowRoot.querySelector("edit-button").click();
   await asyncElementRendered();
 
   ok(gLoginItem.dataset.editing, "loginItem should be in 'edit' mode");
@@ -267,6 +322,29 @@ add_task(async function test_edit_login_cancel() {
      "loginItem should not be in 'isNewLogin' mode");
 
   gLoginItem.shadowRoot.querySelector(".cancel-button").click();
+  gConfirmationDialog.shadowRoot.querySelector(".confirm-button").click();
+
+  await SimpleTest.promiseWaitForCondition(
+    () => gConfirmationDialog.hidden,
+    "waiting for confirmation dialog to hide"
+  );
+
+  ok(!gLoginItem.dataset.editing, "loginItem should not be in 'edit' mode");
+  ok(!gLoginItem.dataset.isNewLogin, "loginItem should not be in 'isNewLogin' mode");
+});
+
+add_task(async function test_edit_login_cancel_keyboard_shortcut() {
+  gLoginItem.setLogin(TEST_LOGIN_1);
+  gLoginItem.shadowRoot.querySelector("edit-button").click();
+  await asyncElementRendered();
+
+  ok(gLoginItem.dataset.editing, "loginItem should be in 'edit' mode");
+  is(!!gLoginItem.dataset.isNewLogin, false,
+     "loginItem should not be in 'isNewLogin' mode");
+
+  const ev = new KeyboardEvent("keydown", { key: "Escape" });
+  window.dispatchEvent(ev);
+
   gConfirmationDialog.shadowRoot.querySelector(".confirm-button").click();
 
   await SimpleTest.promiseWaitForCondition(
@@ -292,7 +370,7 @@ add_task(async function test_reveal_password_change_selected_login() {
   is(passwordInput.type, "text", "Password should be unmasked when checkbox is clicked");
   ok(!isHidden(passwordInput), "Password input should be visible");
 
-  let editButton = gLoginItem.shadowRoot.querySelector(".edit-button");
+  let editButton = gLoginItem.shadowRoot.querySelector("edit-button");
   editButton.click();
   await asyncElementRendered();
   ok(!isHidden(passwordInput), "Password input should still be visible");
@@ -314,9 +392,9 @@ add_task(async function test_set_login_empty() {
   await asyncElementRendered();
 
   ok(gLoginItem.dataset.editing, "loginItem should be in 'edit' mode");
-  ok(isHidden(gLoginItem.shadowRoot.querySelector(".edit-button")), "edit button should be hidden in 'edit' mode");
+  ok(isHidden(gLoginItem.shadowRoot.querySelector("edit-button")), "edit button should be hidden in 'edit' mode");
   ok(gLoginItem.dataset.isNewLogin, "loginItem should be in 'isNewLogin' mode");
-  let deleteButton = gLoginItem.shadowRoot.querySelector(".delete-button");
+  let deleteButton = gLoginItem.shadowRoot.querySelector("delete-button");
   ok(deleteButton.disabled, "Delete button should be disabled when creating a login");
   ok(!isHidden(gLoginItem._originInput), "Origin input should be visible in new login edit mode");
   ok(isHidden(gLoginItem._originDisplayInput), "Origin display should be hidden in new login edit mode");
@@ -334,7 +412,7 @@ add_task(async function test_set_login_empty() {
   ok(copyButtons.every(button => isHidden(button)), "The copy buttons should be hidden when creating a login");
 
   let createEventDispatched = false;
-  document.addEventListener("AboutLoginsCreateLogin", event => {
+  document.addEventListener("AboutLoginsCreateLogin", (_e) => {
     createEventDispatched = true;
   }, {once: true});
   gLoginItem.shadowRoot.querySelector(".save-changes-button").click();
@@ -431,7 +509,7 @@ add_task(async function test_login_removed() {
 add_task(async function test_login_long_username_scrollLeft_reset() {
   let loginLongUsername = Object.assign({}, TEST_LOGIN_1, {username: "user2longnamelongnamelongnamelongnamelongname"});
   gLoginItem.setLogin(loginLongUsername);
-  gLoginItem.shadowRoot.querySelector(".edit-button").click();
+  gLoginItem.shadowRoot.querySelector("edit-button").click();
   await asyncElementRendered();
   await asyncElementRendered();
   let usernameInput = gLoginItem.shadowRoot.querySelector("input[name='username']");
@@ -444,36 +522,54 @@ add_task(async function test_copy_button_state() {
   gLoginItem.setLogin(TEST_LOGIN_1);
   await asyncElementRendered();
 
-  let copyUsernameButton = gLoginItem.shadowRoot.querySelector(".copy-username-button");
+  let copyUsernameButton = gLoginItem.shadowRoot.querySelector("copy-username-button");
   ok(!copyUsernameButton.disabled, "The copy-username-button should be enabled");
 
-  let copyPasswordButton = gLoginItem.shadowRoot.querySelector(".copy-password-button");
-  ok(!copyPasswordButton.disabled, "The copy-passwoed-button should be enabled");
+  let copyPasswordButton = gLoginItem.shadowRoot.querySelector("copy-password-button");
+  ok(!copyPasswordButton.disabled, "The copy-password-button should be enabled");
 
   copyUsernameButton.click();
-  ok(copyUsernameButton.disabled, "The copy-username-button should be disabled when it is clicked");
-  ok(!copyPasswordButton.disabled, "The copy-passwoed-button should be enabled when the copy-username-button is clicked");
+  await asyncElementRendered();
 
   copyPasswordButton.click();
-  await SimpleTest.promiseWaitForCondition(() => copyPasswordButton.disabled,
-  "waiting for copy-password-button to become disabled after checking for primary password");
-
-  ok(copyPasswordButton.disabled, "The copy-passwoed-button should be disabled when it is clicked");
-  ok(!copyUsernameButton.disabled, "The copy-username-button should be enabled when the copy-password-button is clicked");
+  await asyncElementRendered();
 
   let loginNoUsername = Object.assign({}, TEST_LOGIN_2, {username: ""});
   gLoginItem.setLogin(loginNoUsername);
+  await asyncElementRendered();
 
   ok(copyUsernameButton.disabled, "The copy-username-button should be disabled when the username is empty");
-  ok(!copyPasswordButton.disabled, "The copy-passwoed-button should be enabled");
+  ok(!copyPasswordButton.disabled, "The copy-password-button should be enabled");
 
   copyPasswordButton.click();
-  await SimpleTest.promiseWaitForCondition(() => copyPasswordButton.disabled,
-  "waiting for copy-password-button to become disabled after checking for primary password");
+  });
 
-  ok(copyPasswordButton.disabled, "The copy-passwoed-button should be disabled when it is clicked");
-  ok(copyUsernameButton.disabled, "The copy-username-button should still be disabled after clicking the password button when the username is empty");
-});
+  add_task(async function test_login_timeline_state() {
+    gLoginItem.setLogin(TEST_LOGIN_1);
+    await asyncElementRendered();
+
+    let timeline = getLoginTimeline(gLoginItem);
+    ok(!isHidden(timeline), "Timeline should be visible");
+    is(timeline.history.length, 3, "All 3 timestamps (created, updated, used) must be shown")
+    let actions = timeline.shadowRoot.querySelectorAll(".action");
+    verifyTimelineActions(actions, [
+      "login-item-timeline-action-created",
+      "login-item-timeline-action-updated",
+      "login-item-timeline-action-used",
+    ]);
+
+    gLoginItem.setLogin(TEST_LOGIN_3);
+    await asyncElementRendered();
+
+    timeline = getLoginTimeline(gLoginItem);
+    ok(!isHidden(timeline), "Timeline should be visible");
+    is(timeline.history.length, 2, "Created and Last Used must be shown only")
+    actions = timeline.shadowRoot.querySelectorAll(".action");
+    verifyTimelineActions(actions, [
+      "login-item-timeline-action-created",
+      "login-item-timeline-action-used",
+    ]);
+  });
 
 </script>
 

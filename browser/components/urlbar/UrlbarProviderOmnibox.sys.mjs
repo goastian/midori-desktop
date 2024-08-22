@@ -90,12 +90,10 @@ class ProviderOmnibox extends UrlbarProvider {
   /**
    * Gets the provider's priority.
    *
-   * @param {UrlbarQueryContext} queryContext
-   *   The query context object.
    * @returns {number}
    *   The provider's priority for the given query.
    */
-  getPriority(queryContext) {
+  getPriority() {
     return 0;
   }
 
@@ -180,15 +178,11 @@ class ProviderOmnibox extends UrlbarProvider {
     );
   }
 
-  onEngagement(isPrivate, state, queryContext, details) {
+  onEngagement(queryContext, controller, details) {
     let { result } = details;
-    if (result?.providerName != this.name) {
-      return;
-    }
-
     if (details.selType == "dismiss" && result.payload.isBlockable) {
       lazy.ExtensionSearchHandler.handleInputDeleted(result.payload.title);
-      queryContext.view.controller.removeResult(result);
+      controller.removeResult(result);
     }
   }
 }

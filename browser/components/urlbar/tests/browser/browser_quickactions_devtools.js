@@ -17,7 +17,7 @@ add_setup(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.urlbar.quickactions.enabled", true],
-      ["browser.urlbar.suggest.quickactions", true],
+      ["browser.urlbar.secondaryActions.featureGate", true],
       ["browser.urlbar.shortcuts.quickactions", true],
     ],
   });
@@ -25,21 +25,14 @@ add_setup(async function setup() {
 
 const assertActionButtonStatus = async (name, expectedEnabled, description) => {
   await BrowserTestUtils.waitForCondition(() =>
-    window.document.querySelector(`[data-key=${name}]`)
+    window.document.querySelector(`[data-action=${name}]`)
   );
-  const target = window.document.querySelector(`[data-key=${name}]`);
+  const target = window.document.querySelector(`[data-action=${name}]`);
   Assert.equal(!target.hasAttribute("disabled"), expectedEnabled, description);
 };
 
-async function hasQuickActions(win) {
-  for (let i = 0, count = UrlbarTestUtils.getResultCount(win); i < count; i++) {
-    const { result } = await UrlbarTestUtils.getDetailsOfResultAt(win, i);
-    if (result.providerName === "quickactions") {
-      return true;
-    }
-  }
-  return false;
-}
+const hasQuickActions = win =>
+  !!win.document.querySelector(".urlbarView-action-btn");
 
 add_task(async function test_inspector() {
   const testData = [
@@ -114,7 +107,7 @@ add_task(async function test_inspector() {
 
     info("Check the button status");
     const onLoad = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-    BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, page);
+    BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, page);
     await onLoad;
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
@@ -129,7 +122,7 @@ add_task(async function test_inspector() {
       );
     } else {
       Assert.equal(
-        await hasQuickActions(window),
+        hasQuickActions(window),
         false,
         "Result for quick actions is not shown since the inspector tool is disabled"
       );
@@ -142,13 +135,13 @@ add_task(async function test_inspector() {
     }
 
     info("Do inspect action");
-    EventUtils.synthesizeKey("KEY_ArrowDown", {}, window);
+    EventUtils.synthesizeKey("KEY_Tab", {}, window);
     EventUtils.synthesizeKey("KEY_Enter", {}, window);
     await BrowserTestUtils.waitForCondition(
       () => DevToolsShim.hasToolboxForTab(gBrowser.selectedTab),
       "Wait for opening inspector for current selected tab"
     );
-    const toolbox = await DevToolsShim.getToolboxForTab(gBrowser.selectedTab);
+    const toolbox = DevToolsShim.getToolboxForTab(gBrowser.selectedTab);
     await BrowserTestUtils.waitForCondition(
       () => toolbox.getPanel("inspector"),
       "Wait until the inspector is ready"
@@ -160,7 +153,7 @@ add_task(async function test_inspector() {
       value: "inspector",
     });
     Assert.equal(
-      await hasQuickActions(window),
+      hasQuickActions(window),
       false,
       "Result for quick actions is not shown since the inspector is already opening"
     );

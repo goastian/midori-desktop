@@ -39,7 +39,7 @@ add_task(async function contextMenu_removeExtension_panel() {
   const url = "data:text/html,<h1>A Page</h1>";
   let win = await BrowserTestUtils.openNewBrowserWindow();
   await SimpleTest.promiseFocus(win);
-  BrowserTestUtils.loadURIString(win.gBrowser, url);
+  BrowserTestUtils.startLoadingURIString(win.gBrowser, url);
   await BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
 
   info("Shrink the window if necessary, check the meatball menu is visible");
@@ -52,7 +52,7 @@ add_task(async function contextMenu_removeExtension_panel() {
   await promiseAnimationFrame(win);
 
   let meatballButton = win.document.getElementById("pageActionButton");
-  Assert.ok(BrowserTestUtils.is_visible(meatballButton));
+  Assert.ok(BrowserTestUtils.isVisible(meatballButton));
 
   // Open the panel.
   await promisePageActionPanelOpen(win);
@@ -243,7 +243,7 @@ add_task(async function contextMenu_removeExtension_disabled_in_panel() {
   const url = "data:text/html,<h1>A Page</h1>";
   let win = await BrowserTestUtils.openNewBrowserWindow();
   await SimpleTest.promiseFocus(win);
-  BrowserTestUtils.loadURIString(win.gBrowser, url);
+  BrowserTestUtils.startLoadingURIString(win.gBrowser, url);
   await BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
 
   info("Shrink the window if necessary, check the meatball menu is visible");
@@ -256,7 +256,7 @@ add_task(async function contextMenu_removeExtension_disabled_in_panel() {
   await promiseAnimationFrame(win);
 
   let meatballButton = win.document.getElementById("pageActionButton");
-  Assert.ok(BrowserTestUtils.is_visible(meatballButton));
+  Assert.ok(BrowserTestUtils.isVisible(meatballButton));
 
   // Open the panel.
   await promisePageActionPanelOpen(win);

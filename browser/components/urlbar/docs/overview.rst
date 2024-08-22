@@ -22,8 +22,7 @@ The UrlbarQueryContext
 The *UrlbarQueryContext* object describes a single instance of a search.
 It is augmented as it progresses through the system, with various information:
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   UrlbarQueryContext {
     allowAutofill; // {boolean} If true, providers are allowed to return
@@ -71,7 +70,7 @@ The Model
 
 The *Model* is the component responsible for retrieving search results based on
 the user's input, and sorting them accordingly to their importance.
-At the core is the `UrlbarProvidersManager <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarProvidersManager.jsm>`_,
+At the core is the `UrlbarProvidersManager <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarProvidersManager.sys.mjs>`_,
 a component tracking all the available search providers, and managing searches
 across them.
 
@@ -91,7 +90,7 @@ Queries can be canceled.
   terminating any running and future SQL query, unless a query is running inside
   a *runInCriticalSection* task.
 
-The *searchString* gets tokenized by the `UrlbarTokenizer <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarTokenizer.jsm>`_
+The *searchString* gets tokenized by the `UrlbarTokenizer <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarTokenizer.sys.mjs>`_
 component into tokens, some of these tokens have a special meaning and can be
 used by the user to restrict the search to specific result type (See the
 *UrlbarTokenizer::TYPE* enum).
@@ -101,8 +100,7 @@ used by the user to restrict the search to specific result type (See the
   The tokenizer uses heuristics to determine each token's type, as such the
   consumer may want to check the value before applying filters.
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   UrlbarProvidersManager {
     registerProvider(providerObj);
@@ -120,7 +118,7 @@ UrlbarProvider
 
 A provider is specialized into searching and returning results from different
 information sources. Internal providers are usually implemented in separate
-*jsm* modules with a *UrlbarProvider* name prefix. External providers can be
+*sys.mjs* modules with a *UrlbarProvider* name prefix. External providers can be
 registered as *Objects* through the *UrlbarProvidersManager*.
 Each provider is independent and must satisfy a base API, while internal
 implementation details may vary deeply among different providers.
@@ -135,8 +133,7 @@ implementation details may vary deeply among different providers.
   Internal providers can access the Places database through the
   *PlacesUtils.promiseLargeCacheDBConnection* utility.
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   class UrlbarProvider {
     /**
@@ -213,8 +210,7 @@ indicated by the UrlbarQueryContext.muxer property.
   The Muxer is a replaceable component, as such what is described here is a
   reference for the default View, but may not be valid for other implementations.
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   class UrlbarMuxer {
     /**
@@ -239,7 +235,7 @@ indicated by the UrlbarQueryContext.muxer property.
 The Controller
 --------------
 
-`UrlbarController <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarController.jsm>`_
+`UrlbarController <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarController.sys.mjs>`_
 is the component responsible for reacting to user's input, by communicating
 proper course of action to the Model (e.g. starting/stopping a query) and the
 View (e.g. showing/hiding a panel). It is also responsible for reporting Telemetry.
@@ -248,8 +244,7 @@ View (e.g. showing/hiding a panel). It is also responsible for reporting Telemet
 
   Each *View* has a different *Controller* instance.
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   UrlbarController {
     async startQuery(queryContext);
@@ -273,13 +268,12 @@ user and handling their input.
   The View is a replaceable component, as such what is described here is a
   reference for the default View, but may not be valid for other implementations.
 
-`UrlbarInput.jsm <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarInput.jsm>`_
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+`UrlbarInput.sys.mjs <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarInput.sys.mjs>`_
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Implements an input box *View*, owns an *UrlbarView*.
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   UrlbarInput {
     constructor(options = { textbox, panel });
@@ -318,13 +312,12 @@ Implements an input box *View*, owns an *UrlbarView*.
     value;
   }
 
-`UrlbarView.jsm <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarView.jsm>`_
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+`UrlbarView.sys.mjs <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarView.sys.mjs>`_
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Represents the base *View* implementation, communicates with the *Controller*.
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
   UrlbarView {
     // Manage View visibility.
@@ -349,7 +342,7 @@ Represents the base *View* implementation, communicates with the *Controller*.
 UrlbarResult
 ------------
 
-An `UrlbarResult <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarResult.jsm>`_
+An `UrlbarResult <https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarResult.sys.mjs>`_
 instance represents a single search result with a result type, that
 identifies specific kind of results.
 Each kind has its own properties, that the *View* may support, and a few common
@@ -359,7 +352,7 @@ properties, supported by all of the results.
 
   Result types are also enumerated by *UrlbarUtils.RESULT_TYPE*.
 
-.. code-block::
+.. code-block:: JavaScript
 
   UrlbarResult {
     constructor(resultType, payload);
@@ -384,8 +377,7 @@ properties, supported by all of the results.
 
 The following RESULT_TYPEs are supported:
 
-.. highlight:: JavaScript
-.. code::
+.. code:: JavaScript
 
     // An open tab.
     // Payload: { icon, url, userContextId }
@@ -408,6 +400,6 @@ The following RESULT_TYPEs are supported:
     // An actionable message to help the user with their query.
     // Payload: { buttons, helpL10n, helpUrl, icon, titleL10n, type }
     TIP: 7,
-    // A type of result created at runtime, for example by an extension.
+    // A type of result which layout is defined at runtime.
     // Payload: { dynamicType }
     DYNAMIC: 8,

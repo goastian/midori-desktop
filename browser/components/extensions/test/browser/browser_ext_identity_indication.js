@@ -19,7 +19,7 @@ function confirmDefaults() {
 
   let label = document.getElementById("identity-icon-label");
   ok(
-    BrowserTestUtils.is_hidden(label),
+    BrowserTestUtils.isHidden(label),
     "No label should be used before the extension is started"
   );
 }
@@ -56,7 +56,7 @@ function confirmExtensionPage() {
     "Extension (Test Extension)",
     "The correct label should be used"
   );
-  ok(BrowserTestUtils.is_visible(label), "No label should be visible");
+  ok(BrowserTestUtils.isVisible(label), "No label should be visible");
 }
 
 add_task(async function testIdentityIndication() {

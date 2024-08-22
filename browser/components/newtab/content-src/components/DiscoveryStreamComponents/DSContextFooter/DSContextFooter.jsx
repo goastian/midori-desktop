@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { cardContextTypes } from "../../Card/types.js";
+import { cardContextTypes } from "../../Card/types.mjs";
+import { SponsoredContentHighlight } from "../FeatureHighlight/SponsoredContentHighlight";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 import { FluentOrText } from "../../FluentOrText/FluentOrText.jsx";
 import React from "react";
@@ -75,8 +76,16 @@ export const SponsorLabel = ({
 
 export class DSContextFooter extends React.PureComponent {
   render() {
-    const { context, context_type, sponsor, sponsored_by_override } =
-      this.props;
+    const {
+      context,
+      context_type,
+      sponsor,
+      sponsored_by_override,
+      cta_button_variant,
+      source,
+      spocMessageVariant,
+      dispatch,
+    } = this.props;
 
     const sponsorLabel = SponsorLabel({
       sponsored_by_override,
@@ -88,10 +97,37 @@ export class DSContextFooter extends React.PureComponent {
       context_type,
     });
 
+    if (cta_button_variant === "variant-a") {
+      return (
+        <div className="story-footer">
+          {/* this button is decorative only */}
+          <button aria-hidden="true" className="story-cta-button">
+            Shop Now
+          </button>
+          {sponsorLabel}
+        </div>
+      );
+    }
+
+    if (cta_button_variant === "variant-b") {
+      return (
+        <div className="story-footer">
+          {sponsorLabel}
+          <span className="source clamp cta-footer-source">{source}</span>
+        </div>
+      );
+    }
+
     if (sponsorLabel || dsMessageLabel) {
       return (
         <div className="story-footer">
           {sponsorLabel}
+          {sponsorLabel && spocMessageVariant === "variant-b" && (
+            <SponsoredContentHighlight
+              dispatch={dispatch}
+              position="inset-block-end inset-inline-start"
+            />
+          )}
           {dsMessageLabel}
         </div>
       );

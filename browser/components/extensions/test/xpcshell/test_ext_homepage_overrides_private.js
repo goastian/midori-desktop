@@ -5,7 +5,9 @@
 const { AddonTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/AddonTestUtils.sys.mjs"
 );
-const { HomePage } = ChromeUtils.import("resource:///modules/HomePage.jsm");
+const { HomePage } = ChromeUtils.importESModule(
+  "resource:///modules/HomePage.sys.mjs"
+);
 const { ExtensionPermissions } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionPermissions.sys.mjs"
 );
@@ -30,7 +32,7 @@ AddonTestUtils.overrideCertDB();
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 
 function promisePrefChange(pref) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     Services.prefs.addObserver(pref, function observer() {
       Services.prefs.removeObserver(pref, observer);
       resolve(arguments);

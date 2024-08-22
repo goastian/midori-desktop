@@ -18,7 +18,7 @@ const SETTINGS_LIST = [
 
 add_task(async function testSettingsProperties() {
   function background() {
-    browser.test.onMessage.addListener(msg => {
+    browser.test.onMessage.addListener(() => {
       browser.browsingData.settings().then(settings => {
         browser.test.sendMessage("settings", settings);
       });
@@ -108,7 +108,7 @@ add_task(async function testSettingsSince() {
   };
 
   function background() {
-    browser.test.onMessage.addListener(msg => {
+    browser.test.onMessage.addListener(() => {
       browser.browsingData.settings().then(settings => {
         browser.test.sendMessage("settings", settings);
       });
@@ -136,8 +136,9 @@ add_task(async function testSettingsSince() {
 
     // Because it is based on the current timestamp, we cannot know the exact
     // value to expect for since, so allow a 10s variance.
-    ok(
-      Math.abs(settings.options.since - TEST_DATA[timespan]) < 10000,
+    Assert.less(
+      Math.abs(settings.options.since - TEST_DATA[timespan]),
+      10000,
       "settings.options contains the expected since value."
     );
   }

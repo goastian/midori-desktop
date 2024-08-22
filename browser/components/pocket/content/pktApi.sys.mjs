@@ -47,7 +47,6 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   IndexedDB: "resource://gre/modules/IndexedDB.sys.mjs",
-  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -291,12 +290,12 @@ export var pktApi = (function () {
         "extensions.pocket.oAuthConsumerKey"
       );
     } else {
-      baseAPIUrl = `https://${lazy.NimbusFeatures.saveToPocket.getVariable(
-        "bffApi"
+      baseAPIUrl = `https://${Services.prefs.getStringPref(
+        "extensions.pocket.bffApi"
       )}/desktop/v1`;
 
-      oAuthConsumerKey = lazy.NimbusFeatures.saveToPocket.getVariable(
-        "oAuthConsumerKeyBff"
+      oAuthConsumerKey = Services.prefs.getStringPref(
+        "extensions.pocket.oAuthConsumerKeyBff"
       );
     }
 
@@ -309,7 +308,7 @@ export var pktApi = (function () {
     data.locale_lang = Services.locale.appLocaleAsBCP47;
     data.consumer_key = oAuthConsumerKey;
 
-    var request = new XMLHttpRequest();
+    var request = new XMLHttpRequest({ mozAnon: false });
 
     if (!useBFF) {
       request.open("POST", url, true);
@@ -317,7 +316,7 @@ export var pktApi = (function () {
       request.open("GET", url, true);
     }
 
-    request.onreadystatechange = function (e) {
+    request.onreadystatechange = function () {
       if (request.readyState == 4) {
         // "done" is a completed XHR regardless of success/error:
         if (options.done) {
@@ -475,30 +474,6 @@ export var pktApi = (function () {
   }
 
   /**
-   * Gets a list of related recommendations for the item
-   * @param  {string} itemId Item id of item
-   * @param {Object | undefined} options Can provide a string-based title, a
-   *                                     `success` callback and an `error` callback.
-   * @return {Boolean} Returns Boolean whether the api call started sucessfully
-   */
-  function getRecsForItem(itemId, options) {
-    return apiRequest({
-      path: "/discover/recIt",
-      data: {
-        item_id: itemId,
-        module: "ff_plugin",
-        count: 3,
-      },
-      success(data) {
-        if (options.success) {
-          options.success.apply(options, Array.apply(null, arguments));
-        }
-      },
-      error: options.error,
-    });
-  }
-
-  /**
    * Get a preview for saved URL
    * @param {string} url     URL of the link
    * @param {Object | undefined} options Can provide a `success` callback and an `error` callback.
@@ -511,7 +486,7 @@ export var pktApi = (function () {
         access_token: getAccessToken(),
         url,
       },
-      success(data) {
+      success() {
         if (options.success) {
           options.success.apply(options, Array.apply(null, arguments));
         }
@@ -532,7 +507,7 @@ export var pktApi = (function () {
       data: {
         access_token: getAccessToken(),
       },
-      success(data) {
+      success() {
         if (options.success) {
           options.success.apply(options, Array.apply(null, arguments));
         }
@@ -785,8 +760,9 @@ export var pktApi = (function () {
       access_token: getAccessToken(),
     });
 
-    const useBFF =
-      lazy.NimbusFeatures.saveToPocket.getVariable("bffRecentSaves");
+    const useBFF = Services.prefs.getBoolPref(
+      "extensions.pocket.bffRecentSaves"
+    );
 
     return apiRequest(
       {
@@ -840,8 +816,9 @@ export var pktApi = (function () {
       { count: 4 },
       {
         success(data) {
-          const useBFF =
-            lazy.NimbusFeatures.saveToPocket.getVariable("bffRecentSaves");
+          const useBFF = Services.prefs.getBoolPref(
+            "extensions.pocket.bffRecentSaves"
+          );
 
           // Don't try to parse bad or missing data
           if (
@@ -907,7 +884,6 @@ export var pktApi = (function () {
     isUserLoggedIn,
     clearUserData,
     addLink,
-    getRecsForItem,
     deleteItem,
     archiveItem,
     addTagsToItem,

@@ -46,11 +46,8 @@ var gSetBackground = {
         multiMonitors = monitors.length > 1;
       }
 
-      if (
-        !multiMonitors ||
-        AppConstants.isPlatformAndVersionAtMost("win", 6.1)
-      ) {
-        // Hide span option if < Win8 since that's when it was introduced.
+      if (!multiMonitors) {
+        // Hide span option on single monitor systems.
         document.getElementById("spanPosition").hidden = true;
       }
     }
@@ -237,7 +234,7 @@ if (AppConstants.platform != "macosx") {
     );
   };
 } else {
-  gSetBackground.observe = function (aSubject, aTopic, aData) {
+  gSetBackground.observe = function (aSubject, aTopic) {
     if (aTopic == "shell:desktop-background-changed") {
       document.getElementById("setDesktopBackground").hidden = true;
       document.getElementById("showDesktopPreferences").hidden = false;

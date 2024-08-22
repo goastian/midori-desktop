@@ -205,7 +205,7 @@ export class ContextMenuChild extends JSWindowActorChild {
             return escape(aName + "=" + aValue);
           }
 
-          return escape(aName) + "=" + escape(aValue);
+          return encodeURIComponent(aName) + "=" + encodeURIComponent(aValue);
         }
         let formData = new this.contentWindow.FormData(node.form);
         formData.delete(node.name);
@@ -371,7 +371,7 @@ export class ContextMenuChild extends JSWindowActorChild {
   }
 
   // Returns true if clicked-on link targets a resource that can be saved.
-  _isLinkSaveable(aLink) {
+  _isLinkSaveable() {
     // We don't do the Right Thing for news/snews yet, so turn them off
     // until we do.
     return (
@@ -471,17 +471,6 @@ export class ContextMenuChild extends JSWindowActorChild {
     return this.contentWindow.HTMLTextAreaElement.isInstance(node);
   }
 
-  /**
-   * Check if we are in the parent process and the current iframe is the RDM iframe.
-   */
-  _isTargetRDMFrame(node) {
-    return (
-      Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT &&
-      node.tagName === "iframe" &&
-      node.hasAttribute("mozbrowser")
-    );
-  }
-
   _isSpellCheckEnabled(aNode) {
     // We can always force-enable spellchecking on textboxes
     if (this._isTargetATextBox(aNode)) {
@@ -545,13 +534,24 @@ export class ContextMenuChild extends JSWindowActorChild {
       return;
     }
 
-    if (this._isTargetRDMFrame(aEvent.composedTarget)) {
-      // The target is in the DevTools RDM iframe, a proper context menu event
-      // will be created from the RDM browser.
-      return;
-    }
-
     let doc = aEvent.composedTarget.ownerDocument;
+    if (!doc && Cu.isInAutomation) {
+      // doc has been observed to be null for many years, causing intermittent
+      // test failures all over the place (bug 1478596). The rate of failures
+      // is too low to debug locally, but frequent enough to be a nuisance.
+      // TODO bug 1478596: use these diagnostic logs to resolve the bug.
+      dump(
+        `doc is unexpectedly null (bug 1478596), composedTarget=${aEvent.composedTarget}\n`
+      );
+      // A potential fix is to fall back to aEvent.target.ownerDocument, per
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1478596#c1
+      // Let's print potentially viable alternatives to see what we should use.
+      for (let k of ["target", "originalTarget", "explicitOriginalTarget"]) {
+        dump(
+          ` Alternative: ${k}=${aEvent[k]} and its doc=${aEvent[k]?.ownerDocument}\n`
+        );
+      }
+    }
     let {
       mozDocumentURIIfNotForErrorPages: docLocation,
       characterSet: charSet,
@@ -648,8 +648,8 @@ export class ContextMenuChild extends JSWindowActorChild {
     // Set the event target first as the copy image command needs it to
     // determine what was context-clicked on. Then, update the state of the
     // commands on the context menu.
-    this.docShell.contentViewer
-      .QueryInterface(Ci.nsIContentViewerEdit)
+    this.docShell.docViewer
+      .QueryInterface(Ci.nsIDocumentViewerEdit)
       .setCommandNode(aEvent.composedTarget);
     aEvent.composedTarget.ownerGlobal.updateCommands("contentcontextmenu");
 
@@ -713,7 +713,7 @@ export class ContextMenuChild extends JSWindowActorChild {
    * - link
    * - linkURI
    */
-  _cleanContext(aEvent) {
+  _cleanContext() {
     const context = this.context;
     const cleanTarget = Object.create(null);
 
@@ -770,7 +770,7 @@ export class ContextMenuChild extends JSWindowActorChild {
     context.timeStamp = aEvent.timeStamp;
     context.screenXDevPx = aEvent.screenX * this.contentWindow.devicePixelRatio;
     context.screenYDevPx = aEvent.screenY * this.contentWindow.devicePixelRatio;
-    context.mozInputSource = aEvent.mozInputSource;
+    context.inputSource = aEvent.inputSource;
 
     let node = aEvent.composedTarget;
 
@@ -944,7 +944,11 @@ export class ContextMenuChild extends JSWindowActorChild {
         currentSrc: context.target.currentSrc,
         width: context.target.width,
         height: context.target.height,
-        imageText: context.target.title || context.target.alt,
+        imageText: this.contentWindow.ImageDocument.isInstance(
+          context.target.ownerDocument
+        )
+          ? undefined
+          : context.target.title || context.target.alt,
       };
       const { SVGAnimatedLength } = context.target.ownerGlobal;
       if (SVGAnimatedLength.isInstance(context.imageInfo.height)) {

@@ -1,6 +1,6 @@
 "use strict";
 
-// This is a test for PageActions.jsm, specifically the generalized parts that
+// This is a test for PageActions.sys.mjs, specifically the generalized parts that
 // add and remove page actions and toggle them in the urlbar.  This does not
 // test the built-in page actions; browser_page_action_menu.js does that.
 
@@ -578,7 +578,7 @@ add_task(async function withIframe() {
       pinnedToUrlbar: true,
       title: "Test iframe",
       wantsIframe: true,
-      onCommand(event, buttonNode) {
+      onCommand() {
         onCommandCallCount++;
       },
       onIframeShowing(iframeNode, panelNode) {
@@ -1171,10 +1171,10 @@ add_task(async function transient() {
       id: "test-transient",
       title: "Test transient",
       _transient: true,
-      onPlacedInPanel(buttonNode) {
+      onPlacedInPanel() {
         onPlacedInPanelCount++;
       },
-      onBeforePlacedInWindow(win) {
+      onBeforePlacedInWindow() {
         onBeforePlacedInWindowCount++;
       },
     })

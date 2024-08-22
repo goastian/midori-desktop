@@ -27,9 +27,6 @@ const position = index + 1;
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      // `bestMatch.enabled` must be set to show nav suggestions with the best
-      // match UI treatment.
-      ["browser.urlbar.bestMatch.enabled", true],
       // Disable tab-to-search since like best match it's also shown with
       // `suggestedIndex` = 1.
       ["browser.urlbar.suggest.engines", false],
@@ -294,12 +291,12 @@ async function doTest({
     recordNavigationalSuggestionTelemetry: true,
   },
 }) {
+  await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
   MerinoTestUtils.server.response.body.suggestions = suggestion
     ? [suggestion]
     : [];
 
   Services.telemetry.clearEvents();
-  let { spy, spyCleanup } = QuickSuggestTestUtils.createTelemetryPingSpy();
 
   await QuickSuggestTestUtils.withExperiment({
     valueOverrides,
@@ -344,10 +341,6 @@ async function doTest({
   info("Checking events");
   QuickSuggestTestUtils.assertEvents(events);
 
-  info("Checking pings");
-  QuickSuggestTestUtils.assertPings(spy, []);
-
-  await spyCleanup();
   await PlacesUtils.history.clear();
   MerinoTestUtils.server.response.body.suggestions = [MERINO_SUGGESTION];
 }

@@ -21,9 +21,9 @@ add_task(async function () {
   // Add an element with an accesskey to the chrome and press its accesskey while the chrome is focused.
   let newButton = document.createXULElement("button");
   newButton.id = "chromebutton";
+  newButton.setAttribute("aria-label", "chromebutton");
   newButton.setAttribute("accesskey", "z");
   document.documentElement.appendChild(newButton);
-
   Services.focus.clearFocus(window);
 
   newButton.getBoundingClientRect(); // Accesskey registration happens during frame construction.
@@ -122,7 +122,7 @@ add_task(async function () {
 function performAccessKey(browser, key) {
   return new Promise(resolve => {
     let removeFocus, removeKeyDown, removeKeyUp;
-    function callback(eventName, result) {
+    function callback() {
       removeFocus();
       removeKeyUp();
       removeKeyDown();
@@ -190,7 +190,7 @@ function performAccessKey(browser, key) {
 }
 
 // This version is used when a chrome element is expected to be found for an accesskey.
-async function performAccessKeyForChrome(key, inChild) {
+async function performAccessKeyForChrome(key) {
   let waitFocusChangePromise = BrowserTestUtils.waitForEvent(
     document,
     "focus",

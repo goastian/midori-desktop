@@ -47,11 +47,18 @@ async function waitForDialogAndDragNDropURL(crossDomain) {
     ._tabDialogManager._topDialog;
   let dialogDocument = dialog._frame.contentDocument;
 
-  let urlbar = document.getElementById("urlbar-input");
+  let urlbar = gURLBar.inputField;
   let dataTran = new DataTransfer();
   let urlEvent = new DragEvent("dragstart", { dataTransfer: dataTran });
-  let urlBarContainer = document.getElementById("urlbar-input-container");
+  let urlBarContainer = gURLBar.querySelector(".urlbar-input-container");
+  // We intentionally turn off a11y_checks for the following click, because
+  // it is send to prepare the URL Bar for the mouse-specific action - for a
+  // drag event, while there are other ways are accessible for users of
+  // assistive technology and keyboards, therefore this test can be excluded
+  // from the accessibility tests.
+  AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
   urlBarContainer.click();
+  AccessibilityUtils.resetEnv();
   // trigger a drag event in the gUrlBar
   urlbar.dispatchEvent(urlEvent);
   // this should set some propperties on our event, like the url we are dragging

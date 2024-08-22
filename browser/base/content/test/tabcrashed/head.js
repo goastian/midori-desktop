@@ -78,6 +78,16 @@ function promiseCrashReport(expectedExtra = {}) {
   })();
 }
 
+function promiseCrashReportFail() {
+  return (async function () {
+    info("Starting wait on crash-report-status");
+    await TestUtils.topicObserved("crash-report-status", (unused, data) => {
+      return data == "failed";
+    });
+    info("Topic observed!");
+  })();
+}
+
 /**
  * For an nsIPropertyBag, returns the value for a given
  * key.
@@ -117,7 +127,7 @@ async function setupLocalCrashReportServer() {
   // reports.  This test needs them enabled.  The test also needs a mock
   // report server, and fortunately one is already set up by toolkit/
   // crashreporter/test/Makefile.in.  Assign its URL to MOZ_CRASHREPORTER_URL,
-  // which CrashSubmit.jsm uses as a server override.
+  // which CrashSubmit.sys.mjs uses as a server override.
   let noReport = Services.env.get("MOZ_CRASHREPORTER_NO_REPORT");
   let serverUrl = Services.env.get("MOZ_CRASHREPORTER_URL");
   Services.env.set("MOZ_CRASHREPORTER_NO_REPORT", "");
@@ -135,7 +145,7 @@ async function setupLocalCrashReportServer() {
  */
 function prepareNoDump() {
   let originalGetDumpID = TabCrashHandler.getDumpID;
-  TabCrashHandler.getDumpID = function (browser) {
+  TabCrashHandler.getDumpID = function () {
     return null;
   };
   registerCleanupFunction(() => {
@@ -156,11 +166,11 @@ function unsetBuildidMatchDontSendEnv() {
 }
 
 function getEventPromise(eventName, eventKind) {
-  return new Promise(function (resolve, reject) {
+  return new Promise(function (resolve) {
     info("Installing event listener (" + eventKind + ")");
     window.addEventListener(
       eventName,
-      event => {
+      () => {
         ok(true, "Received " + eventName + " (" + eventKind + ") event");
         info("Call resolve() for " + eventKind + " event");
         resolve();
@@ -169,15 +179,6 @@ function getEventPromise(eventName, eventKind) {
     );
     info("Installed event listener (" + eventKind + ")");
   });
-}
-
-async function ensureBuildID() {
-  let profD = Services.dirsvc.get("GreD", Ci.nsIFile);
-  let platformIniOrig = await IOUtils.readUTF8(
-    PathUtils.join(profD.path, "platform.ini")
-  );
-  let buildID = Services.appinfo.platformBuildID;
-  return platformIniOrig.indexOf(buildID) > 0;
 }
 
 async function openNewTab(forceCrash) {
@@ -234,5 +235,9 @@ async function forceCleanProcesses() {
   const currPrefValue = SpecialPowers.getBoolPref(
     "dom.ipc.processPrelaunch.enabled"
   );
-  ok(currPrefValue === origPrefValue, "processPrelaunch properly re-enabled");
+  Assert.strictEqual(
+    currPrefValue,
+    origPrefValue,
+    "processPrelaunch properly re-enabled"
+  );
 }

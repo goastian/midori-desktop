@@ -30,7 +30,7 @@ let _cache = null;
 // are found.
 const RECENT_REMOTE_TAB_THRESHOLD_MS = 72 * 60 * 60 * 1000; // 72 hours.
 
-XPCOMUtils.defineLazyGetter(lazy, "weaveXPCService", function () {
+ChromeUtils.defineLazyGetter(lazy, "weaveXPCService", function () {
   try {
     return Cc["@mozilla.org/weave/service;1"].getService(
       Ci.nsISupports
@@ -167,7 +167,7 @@ class ProviderRemoteTabs extends UrlbarProvider {
         );
 
         // We want to return the most relevant remote tabs and thus the most
-        // recent ones. While SyncedTabs.jsm returns tabs that are sorted by
+        // recent ones. While SyncedTabs.sys.mjs returns tabs that are sorted by
         // most recent client, then most recent tab, we can do better. For
         // example, the most recent client might have one recent tab and then
         // many very stale tabs. Those very stale tabs will push out more recent

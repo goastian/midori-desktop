@@ -321,17 +321,6 @@ const AVAILABLE_SHIMS = [
     onlyIfBlockedByETP: true,
   },
   {
-    id: "PBMWebAPIFixes",
-    platform: "all",
-    name: "Private Browsing Web APIs",
-    bug: "1773110",
-    runFirst: "private-browsing-web-api-fixes.js",
-    matches: [
-      "*://*.imgur.io/js/vendor.*.js", // Mobile: imgur.io (bug 1742344); desktop: imgur.com (unaffected)
-    ],
-    onlyIfPrivateBrowsing: true,
-  },
-  {
     id: "Eluminate",
     platform: "all",
     name: "Eluminate",
@@ -684,6 +673,8 @@ const AVAILABLE_SHIMS = [
       ["*://teams.microsoft.com/*", "*://login.microsoftonline.com/*"],
       ["*://*.teams.microsoft.us/*", "*://login.microsoftonline.us/*"],
       ["*://www.msn.com/*", "*://login.microsoftonline.com/*"],
+      ["*://support.microsoft.com/*", "*://login.microsoftonline.com/*"],
+      ["*://answers.microsoft.com/*", "*://login.microsoftonline.com/*"],
     ],
     contentScripts: [
       {
@@ -693,6 +684,8 @@ const AVAILABLE_SHIMS = [
           "*://teams.microsoft.com/*",
           "*://*.teams.microsoft.us/*",
           "*://www.msn.com/*",
+          "*://support.microsoft.com/*",
+          "*://answers.microsoft.com/*",
         ],
         runAt: "document_start",
       },

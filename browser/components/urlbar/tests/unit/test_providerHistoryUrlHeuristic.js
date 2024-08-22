@@ -5,7 +5,7 @@
 
 // Test for the behavior of UrlbarProviderHistoryUrlHeuristic.
 
-add_task(async function setup() {
+add_setup(async function () {
   Services.prefs.setBoolPref("browser.urlbar.autoFill", false);
   registerCleanupFunction(() => {
     Services.prefs.clearUserPref("browser.urlbar.autoFill");
@@ -185,8 +185,10 @@ add_task(async function test_unsupported_protocol() {
         title: "Robots!",
       }),
       makeVisitResult(context, {
+        source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "about:robots",
         title: "about:robots",
+        iconUri: "page-icon:about:robots",
         tags: null,
         providerName: "AboutPages",
       }),

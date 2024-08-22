@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { BackgroundsSection } from "content-src/components/CustomizeMenu/BackgroundsSection/BackgroundsSection";
 import { ContentSection } from "content-src/components/CustomizeMenu/ContentSection/ContentSection";
 import { connect } from "react-redux";
 import React from "react";
@@ -56,23 +55,27 @@ export class _CustomizeMenu extends React.PureComponent {
             role="dialog"
             data-l10n-id="newtab-personalize-dialog-label"
           >
-            <button
-              onClick={() => this.props.onClose()}
-              className="close-button"
-              data-l10n-id="newtab-custom-close-button"
-              ref={c => (this.closeButton = c)}
-            />
-            <BackgroundsSection />
+            <div className="close-button-wrapper">
+              <button
+                onClick={() => this.props.onClose()}
+                className="close-button"
+                data-l10n-id="newtab-custom-close-button"
+                ref={c => (this.closeButton = c)}
+              />
+            </div>
             <ContentSection
               openPreferences={this.props.openPreferences}
               setPref={this.props.setPref}
               enabledSections={this.props.enabledSections}
+              wallpapersEnabled={this.props.wallpapersEnabled}
+              wallpapersV2Enabled={this.props.wallpapersV2Enabled}
+              activeWallpaper={this.props.activeWallpaper}
               pocketRegion={this.props.pocketRegion}
               mayHaveSponsoredTopSites={this.props.mayHaveSponsoredTopSites}
-              mayHaveSponsoredStories={
-                this.props.DiscoveryStream.config.show_spocs
-              }
+              mayHaveSponsoredStories={this.props.mayHaveSponsoredStories}
               mayHaveRecentSaves={this.props.DiscoveryStream.recentSavesEnabled}
+              mayHaveWeather={this.props.mayHaveWeather}
+              spocMessageVariant={this.props.spocMessageVariant}
               dispatch={this.props.dispatch}
             />
           </div>

@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setTimeout } from "resource://gre/modules/Timer.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 // Create a new instance of the ConsoleAPI so we can control the maxLogLevel with a pref.
 // See LOG_LEVELS in Console.sys.mjs. Common examples: "All", "Info", "Warn", &
 // "Error".
 const PREF_LOG_LEVEL = "extensions.mozscreenshots@mozilla.org.loglevel";
 const lazy = {};
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -96,7 +95,7 @@ export var Screenshot = {
   },
 
   async _screenshotOSX(filename) {
-    let screencapture = (windowID = null) => {
+    let screencapture = () => {
       return new Promise((resolve, reject) => {
         // Get the screencapture executable
         let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
@@ -176,7 +175,7 @@ export var Screenshot = {
 
   _processObserver(resolve, reject) {
     return {
-      observe(subject, topic, data) {
+      observe(subject, topic) {
         switch (topic) {
           case "process-finished":
             try {

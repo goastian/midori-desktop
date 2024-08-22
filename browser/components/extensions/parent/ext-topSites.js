@@ -7,13 +7,10 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
+  AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   getSearchProvider: "resource://activity-stream/lib/SearchShortcuts.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  AboutNewTab: "resource:///modules/AboutNewTab.jsm",
-  shortURL: "resource://activity-stream/lib/ShortURL.jsm",
+  shortURL: "resource://activity-stream/lib/ShortURL.sys.mjs",
 });
 
 const SHORTCUTS_PREF =
@@ -22,7 +19,7 @@ const TOPSITES_FEED_PREF =
   "browser.newtabpage.activity-stream.feeds.system.topsites";
 
 this.topSites = class extends ExtensionAPI {
-  getAPI(context) {
+  getAPI() {
     return {
       topSites: {
         get: async function (options) {

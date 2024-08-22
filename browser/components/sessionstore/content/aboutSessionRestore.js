@@ -8,6 +8,7 @@ const { AppConstants } = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
 ChromeUtils.defineESModuleGetters(this, {
+  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
 });
 
@@ -107,15 +108,11 @@ async function initTreeView() {
       var entry = aTabData.entries[aTabData.index - 1] || {
         url: "about:blank",
       };
-      var iconURL = aTabData.image || null;
       // don't initiate a connection just to fetch a favicon (see bug 462863)
-      if (/^https?:/.test(iconURL)) {
-        iconURL = "moz-anno:favicon:" + iconURL;
-      }
       return {
         label: entry.title || entry.url,
         checked: true,
-        src: iconURL,
+        src: PlacesUIUtils.getImageURL(aTabData.image),
         parent: winState,
       };
     });
@@ -207,7 +204,7 @@ function startNewSession() {
       ),
     });
   } else {
-    getBrowserWindow().BrowserHome();
+    getBrowserWindow().BrowserCommands.home();
   }
 }
 
@@ -328,31 +325,31 @@ var treeView = {
   setTree(treeBox) {
     this.treeBox = treeBox;
   },
-  getCellText(idx, column) {
+  getCellText(idx) {
     return gTreeData[idx].label;
   },
   isContainer(idx) {
     return "open" in gTreeData[idx];
   },
-  getCellValue(idx, column) {
+  getCellValue(idx) {
     return gTreeData[idx].checked;
   },
   isContainerOpen(idx) {
     return gTreeData[idx].open;
   },
-  isContainerEmpty(idx) {
+  isContainerEmpty() {
     return false;
   },
-  isSeparator(idx) {
+  isSeparator() {
     return false;
   },
   isSorted() {
     return false;
   },
-  isEditable(idx, column) {
+  isEditable() {
     return false;
   },
-  canDrop(idx, orientation, dt) {
+  canDrop() {
     return false;
   },
   getLevel(idx) {
@@ -441,10 +438,10 @@ var treeView = {
     return null;
   },
 
-  cycleHeader(column) {},
-  cycleCell(idx, column) {},
+  cycleHeader() {},
+  cycleCell() {},
   selectionChanged() {},
-  getColumnProperties(column) {
+  getColumnProperties() {
     return "";
   },
 };

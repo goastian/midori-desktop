@@ -49,7 +49,9 @@ add_task(async function test_query_parameter_filter() {
 
     await ContentTaskUtils.waitForCondition(() => {
       const selectedLoginItem = Cu.waiveXrays(
-        loginList.shadowRoot.querySelector("li[aria-selected='true']")
+        loginList.shadowRoot.querySelector(
+          "login-list-item[aria-selected='true']"
+        )
       );
       return selectedLoginItem.dataset.guid === logins[0].guid;
     }, "Waiting for TEST_LOGIN1 to be selected for the login-item view");
@@ -59,12 +61,12 @@ add_task(async function test_query_parameter_filter() {
     );
 
     Assert.ok(
-      ContentTaskUtils.is_visible(loginItem),
+      ContentTaskUtils.isVisible(loginItem),
       "login-item should be visible when a login is selected"
     );
     const loginIntro = content.document.querySelector("login-intro");
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginIntro),
+      ContentTaskUtils.isHidden(loginIntro),
       "login-intro should be hidden when a login is selected"
     );
 
@@ -87,12 +89,13 @@ add_task(async function test_query_parameter_filter() {
       "the actual input inside of login-filter should be focused"
     );
 
-    let hiddenLoginListItems = loginList.shadowRoot.querySelectorAll(
-      ".login-list-item[hidden]"
-    );
+    let hiddenLoginListItems =
+      loginList.shadowRoot.querySelectorAll(".list-item[hidden]");
+
     let visibleLoginListItems = loginList.shadowRoot.querySelectorAll(
-      ".login-list-item:not([hidden])"
+      ".list-item:not([hidden])"
     );
+
     Assert.equal(
       visibleLoginListItems.length,
       1,
@@ -109,9 +112,9 @@ add_task(async function test_query_parameter_filter() {
       "One saved login and one blank login should be hidden"
     );
     Assert.equal(
-      hiddenLoginListItems[0].id,
-      "new-login-list-item",
-      "#new-login-list-item should be hidden"
+      hiddenLoginListItems[0].tagName,
+      "NEW-LIST-ITEM",
+      "new-list-item should be hidden"
     );
     Assert.equal(
       hiddenLoginListItems[1].dataset.guid,
@@ -151,24 +154,24 @@ add_task(async function test_query_parameter_filter_no_logins_for_site() {
     );
 
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginList._list),
+      ContentTaskUtils.isHidden(loginList._list),
       "the login list should be hidden when there is a search with no results"
     );
     let intro = loginList.shadowRoot.querySelector(".intro");
     Assert.ok(
-      ContentTaskUtils.is_hidden(intro),
+      ContentTaskUtils.isHidden(intro),
       "the intro should be hidden when there is a search with no results"
     );
     let emptySearchMessage = loginList.shadowRoot.querySelector(
       ".empty-search-message"
     );
     Assert.ok(
-      ContentTaskUtils.is_visible(emptySearchMessage),
+      ContentTaskUtils.isVisible(emptySearchMessage),
       "the empty search message should be visible when there is a search with no results"
     );
 
     let visibleLoginListItems = loginList.shadowRoot.querySelectorAll(
-      ".login-list-item:not([hidden])"
+      "login-list-item:not([hidden])"
     );
     Assert.equal(visibleLoginListItems.length, 0, "No login should be visible");
 
@@ -181,12 +184,12 @@ add_task(async function test_query_parameter_filter_no_logins_for_site() {
     Assert.ok(!loginItem.dataset.isNewLogin, "should not be in create mode");
     Assert.ok(!loginItem.dataset.editing, "should not be in edit mode");
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginItem),
+      ContentTaskUtils.isHidden(loginItem),
       "login-item should be hidden when a login is not selected and we're not in create mode"
     );
     let loginIntro = content.document.querySelector("login-intro");
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginIntro),
+      ContentTaskUtils.isHidden(loginIntro),
       "login-intro should be hidden when a login is not selected and we're not in create mode"
     );
 
@@ -195,11 +198,11 @@ add_task(async function test_query_parameter_filter_no_logins_for_site() {
     Assert.ok(loginItem.dataset.isNewLogin, "should be in create mode");
     Assert.ok(loginItem.dataset.editing, "should be in edit mode");
     Assert.ok(
-      ContentTaskUtils.is_visible(loginItem),
+      ContentTaskUtils.isVisible(loginItem),
       "login-item should be visible in create mode"
     );
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginIntro),
+      ContentTaskUtils.isHidden(loginIntro),
       "login-intro should be hidden in create mode"
     );
   });
@@ -231,7 +234,7 @@ add_task(async function test_query_parameter_filter_no_login_until_backspace() {
     );
 
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginList._list),
+      ContentTaskUtils.isHidden(loginList._list),
       "the login list should be hidden when there is a search with no results"
     );
 
@@ -241,19 +244,19 @@ add_task(async function test_query_parameter_filter_no_login_until_backspace() {
 
     let intro = loginList.shadowRoot.querySelector(".intro");
     Assert.ok(
-      ContentTaskUtils.is_hidden(intro),
+      ContentTaskUtils.isHidden(intro),
       "the intro should be hidden when there is no selection"
     );
     let emptySearchMessage = loginList.shadowRoot.querySelector(
       ".empty-search-message"
     );
     Assert.ok(
-      ContentTaskUtils.is_hidden(emptySearchMessage),
+      ContentTaskUtils.isHidden(emptySearchMessage),
       "the empty search message should be hidden when there is matching logins"
     );
 
     let visibleLoginListItems = loginList.shadowRoot.querySelectorAll(
-      ".login-list-item:not([hidden])"
+      "login-list-item:not([hidden])"
     );
     Assert.equal(
       visibleLoginListItems.length,
@@ -270,12 +273,12 @@ add_task(async function test_query_parameter_filter_no_login_until_backspace() {
     Assert.ok(!loginItem.dataset.isNewLogin, "should not be in create mode");
     Assert.ok(!loginItem.dataset.editing, "should not be in edit mode");
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginItem),
+      ContentTaskUtils.isHidden(loginItem),
       "login-item should be hidden when a login is not selected and we're not in create mode"
     );
     let loginIntro = content.document.querySelector("login-intro");
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginIntro),
+      ContentTaskUtils.isHidden(loginIntro),
       "login-intro should be hidden when a login is not selected and we're not in create mode"
     );
 
@@ -284,11 +287,11 @@ add_task(async function test_query_parameter_filter_no_login_until_backspace() {
     Assert.ok(loginItem.dataset.isNewLogin, "should be in create mode");
     Assert.ok(loginItem.dataset.editing, "should be in edit mode");
     Assert.ok(
-      ContentTaskUtils.is_visible(loginItem),
+      ContentTaskUtils.isVisible(loginItem),
       "login-item should be visible in create mode"
     );
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginIntro),
+      ContentTaskUtils.isHidden(loginIntro),
       "login-intro should be hidden in create mode"
     );
   });

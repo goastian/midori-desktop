@@ -11,11 +11,6 @@
   <script type="module" src="chrome://browser/content/firefoxview/fxview-tab-list.mjs"></script>
 </head>
 <body>
-  <style>
-    fxview-tab-list.history::part(secondary-button) {
-      background-image: url("chrome://global/skin/icons/more.svg");
-    }
-  </style>
 <p id="display"></p>
 <div id="content" style="max-width: 750px">
   <fxview-tab-list class="history" .dateTimeFormat="relative" .hasPopup="menu">
@@ -39,14 +34,11 @@
     this
   );
 
-  const { BrowserTestUtils } = ChromeUtils.import(
-    "resource://testing-common/BrowserTestUtils.jsm"
+  const { BrowserTestUtils } = ChromeUtils.importESModule(
+    "resource://testing-common/BrowserTestUtils.sys.mjs"
   );
   const { PlacesQuery } = ChromeUtils.importESModule(
     "resource://gre/modules/PlacesQuery.sys.mjs"
-  );
-  const { PromiseUtils } = ChromeUtils.importESModule(
-    "resource://gre/modules/PromiseUtils.sys.mjs"
   );
   const { PlacesUtils } = ChromeUtils.importESModule(
     "resource://gre/modules/PlacesUtils.sys.mjs"
@@ -56,9 +48,6 @@
   );
   const { PlacesTestUtils } = ChromeUtils.importESModule(
     "resource://testing-common/PlacesTestUtils.sys.mjs"
-  );
-  const { TestUtils } = ChromeUtils.import(
-    "resource://testing-common/TestUtils.jsm"
   );
 
   const fxviewTabList = document.querySelector("fxview-tab-list");
@@ -83,7 +72,7 @@
       title: "Example Domain 1",
       visits: [{ date: now }],
     });
-    let historyUpdated = PromiseUtils.defer();
+    let historyUpdated = Promise.withResolvers();
     placesQuery.observeHistory(newHistory => {
       history = newHistory;
       historyUpdated.resolve();
@@ -94,7 +83,7 @@
       visits: [{ date: now }],
     });
     await historyUpdated.promise;
-    historyUpdated = PromiseUtils.defer();
+    historyUpdated = Promise.withResolvers();
     placesQuery.observeHistory(newHistory => {
       history = newHistory;
       historyUpdated.resolve();
@@ -105,7 +94,7 @@
       visits: [{ date: now }],
     });
     await historyUpdated.promise;
-    historyUpdated = PromiseUtils.defer();
+    historyUpdated = Promise.withResolvers();
     placesQuery.observeHistory(newHistory => {
       history = newHistory;
       historyUpdated.resolve();
@@ -117,22 +106,23 @@
     });
     await historyUpdated.promise;
 
-    let normalized = normalizeHistoryData(history);
-    fxviewTabList.tabItems = normalized;
+    fxviewTabList.tabItems = Array.from(history.values()).flat().map(visit => ({
+      ...visit,
+      time: visit.date.getTime(),
+      title: visit.title || visit.url,
+      icon: `page-icon:${visit.url}`,
+      primaryL10nId: "fxviewtabrow-tabs-list-tab",
+      primaryL10nArgs: JSON.stringify({
+        targetURI: visit.url,
+      }),
+      secondaryL10nId: "fxviewtabrow-options-menu-button",
+      secondaryL10nArgs: JSON.stringify({
+        tabTitle: visit.title || visit.url,
+      }),
+    }));
 
     await fxviewTabList.getUpdateComplete();
     tabItems = Array.from(fxviewTabList.rowEls);
-  }
-
-  function normalizeHistoryData(history) {
-    history.forEach(historyItem => {
-      historyItem.time = historyItem.date.getTime();
-      historyItem.icon = `page-icon:${historyItem.url}`;
-      historyItem.primaryL10nId = "fxviewtabrow-tabs-list-tab";
-      historyItem.primaryL10nArgs = JSON.stringify({ targetURI: historyItem.url });
-      historyItem.secondaryL10nId = "fxviewtabrow-open-menu-button";
-    });
-    return history;
   }
 
   function getCurrentDisplayDate() {
@@ -161,6 +151,7 @@
   add_setup(function setup() {
     fxviewTabList.addEventListener("fxview-tab-list-primary-action", onPrimaryAction);
     fxviewTabList.addEventListener("fxview-tab-list-secondary-action", onSecondaryAction);
+    fxviewTabList.updatesPaused = false;
   });
 
   /**
@@ -230,7 +221,7 @@
       title: "Internet for people, not profits - Mozilla",
       visits: [{ date: now }],
     });
-    let historyUpdated = PromiseUtils.defer();
+    let historyUpdated = Promise.withResolvers();
     placesQuery.observeHistory(newHistory => {
       history = newHistory;
       historyUpdated.resolve();
@@ -238,13 +229,12 @@
     await historyUpdated.promise;
 
     ok(
-      history.length === 5,
+      [...history.values()].reduce((acc, {length}) => acc + length, 0) === 5,
       "Five total history items after inserting another node"
     );
 
     // Update fxview-tab-list component with latest history data
-    let normalized = normalizeHistoryData(history);
-    fxviewTabList.tabItems = normalized;
+    fxviewTabList.tabItems = [...history.values()].flat();
     await fxviewTabList.getUpdateComplete();
     tabItems = Array.from(fxviewTabList.rowEls);
 
@@ -326,12 +316,12 @@
     );
     await arrowRight();
     ok(
-      isActiveElement(tabItems[0].buttonEl),
+      isActiveElement(tabItems[0].secondaryButtonEl),
       "Focus should be on the first row's context menu button element of the list"
     );
     await arrowDown();
     ok(
-      isActiveElement(tabItems[1].buttonEl),
+      isActiveElement(tabItems[1].secondaryButtonEl),
       "Focus should be on the second row's context menu button element of the list"
     );
     await arrowLeft();

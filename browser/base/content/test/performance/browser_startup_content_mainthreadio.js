@@ -24,6 +24,10 @@ const kDumpAllStacks = false;
 const LINUX = AppConstants.platform == "linux";
 const WIN = AppConstants.platform == "win";
 const MAC = AppConstants.platform == "macosx";
+const FORK_SERVER = Services.prefs.getBoolPref(
+  "dom.ipc.forkserver.enable",
+  false
+);
 
 /* This is an object mapping string process types to lists of known cases
  * of IO happening on the main thread. Ideally, IO should not be on the main
@@ -70,13 +74,17 @@ const processes = {
   "Web Content": [
     {
       path: "GreD:omni.ja",
-      condition: !WIN, // Visible on Windows with an open marker
+      // Visible on Windows with an open marker.
+      // The fork server preloads the omnijars.
+      condition: !WIN && !FORK_SERVER,
       stat: 1,
     },
     {
       // bug 1376994
       path: "XCurProcD:omni.ja",
-      condition: !WIN, // Visible on Windows with an open marker
+      // Visible on Windows with an open marker.
+      // The fork server preloads the omnijars.
+      condition: !WIN && !FORK_SERVER,
       stat: 1,
     },
     {
@@ -102,13 +110,17 @@ const processes = {
   "Privileged Content": [
     {
       path: "GreD:omni.ja",
-      condition: !WIN, // Visible on Windows with an open marker
+      // Visible on Windows with an open marker.
+      // The fork server preloads the omnijars.
+      condition: !WIN && !FORK_SERVER,
       stat: 1,
     },
     {
       // bug 1376994
       path: "XCurProcD:omni.ja",
-      condition: !WIN, // Visible on Windows with an open marker
+      // Visible on Windows with an open marker.
+      // The fork server preloads the omnijars.
+      condition: !WIN && !FORK_SERVER,
       stat: 1,
     },
     {
@@ -121,13 +133,17 @@ const processes = {
   WebExtensions: [
     {
       path: "GreD:omni.ja",
-      condition: !WIN, // Visible on Windows with an open marker
+      // Visible on Windows with an open marker.
+      // The fork server preloads the omnijars.
+      condition: !WIN && !FORK_SERVER,
       stat: 1,
     },
     {
       // bug 1376994
       path: "XCurProcD:omni.ja",
-      condition: !WIN, // Visible on Windows with an open marker
+      // Visible on Windows with an open marker.
+      // The fork server preloads the omnijars.
+      condition: !WIN && !FORK_SERVER,
       stat: 1,
     },
     {
@@ -135,6 +151,13 @@ const processes = {
       path: "XCurProcD:",
       condition: WIN,
       stat: 1,
+    },
+    {
+      // We should remove this in bug 1882427
+      path: "*screenshots@mozilla.org.xpi",
+      condition: true,
+      ignoreIfUnused: true,
+      close: 1,
     },
   ],
 };
@@ -373,20 +396,22 @@ add_task(async function () {
     if (!knownIOList.length) {
       continue;
     }
-    // The I/O interposer is disabled if !RELEASE_OR_BETA, so we expect to have
-    // no I/O marker in that case, but it's good to keep the test running to check
-    // that we are still able to produce startup profiles.
-    is(
-      !!markers.length,
-      !AppConstants.RELEASE_OR_BETA,
-      procName +
-        " startup profiles should have IO markers in builds that are not RELEASE_OR_BETA"
-    );
-    if (!markers.length) {
-      // If a profile unexpectedly contains no I/O marker, it's better to return
-      // early to avoid having a lot of of confusing "no main thread IO when we
-      // expected some" failures.
-      continue;
+    if (knownIOList.some(io => !io.ignoreIfUnused)) {
+      // The I/O interposer is disabled if RELEASE_OR_BETA, so we expect to have
+      // no I/O marker in that case, but it's good to keep the test running to check
+      // that we are still able to produce startup profiles.
+      is(
+        !!markers.length,
+        !AppConstants.RELEASE_OR_BETA,
+        procName +
+          " startup profiles should have IO markers in builds that are not RELEASE_OR_BETA"
+      );
+      if (!markers.length) {
+        // If a profile unexpectedly contains no I/O marker, it's better to return
+        // early to avoid having a lot of confusing "no main thread IO when we
+        // expected some" failures.
+        continue;
+      }
     }
 
     for (let entry of knownIOList) {
@@ -410,7 +435,11 @@ add_task(async function () {
         } else {
           message += `${entry[op] * -1} more times than expected`;
         }
-        ok(entry[op] >= 0, `${message} in ${procName} process`);
+        Assert.greaterOrEqual(
+          entry[op],
+          0,
+          `${message} in ${procName} process`
+        );
       }
       if (!("_used" in entry) && !entry.ignoreIfUnused) {
         ok(
@@ -427,12 +456,19 @@ add_task(async function () {
   } else {
     const filename = "profile_startup_content_mainthreadio.json";
     let path = Services.env.get("MOZ_UPLOAD_DIR");
-    let profilePath = PathUtils.join(path, filename);
-    await IOUtils.writeJSON(profilePath, startupRecorder.data.profile);
+    let helpString;
+    if (path) {
+      let profilePath = PathUtils.join(path, filename);
+      await IOUtils.writeJSON(profilePath, startupRecorder.data.profile);
+      helpString = `open the ${filename} artifact in the Firefox Profiler to see what happened`;
+    } else {
+      helpString =
+        "set the MOZ_UPLOAD_DIR environment variable to record a profile";
+    }
     ok(
       false,
       "Unexpected main thread I/O behavior during child process startup; " +
-        `open the ${filename} artifact in the Firefox Profiler to see what happened`
+        helpString
     );
   }
 });

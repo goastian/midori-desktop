@@ -28,13 +28,16 @@ add_task(
       "Untracked URI, no pref set"
     );
 
-    let dir1 = FileUtils.getDir("TmpD", ["dir1"], true);
+    let dir1 = FileUtils.getDir("TmpD", ["dir1"]);
+    dir1.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
     let uri1 = Services.io.newURI("https://test1.moz.org");
     downloadLastDir.setFile(uri1, dir1);
-    let dir2 = FileUtils.getDir("TmpD", ["dir2"], true);
+    let dir2 = FileUtils.getDir("TmpD", ["dir2"]);
+    dir2.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
     let uri2 = Services.io.newURI("https://test2.moz.org");
     downloadLastDir.setFile(uri2, dir2);
-    let dir3 = FileUtils.getDir("TmpD", ["dir3"], true);
+    let dir3 = FileUtils.getDir("TmpD", ["dir3"]);
+    dir3.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
     downloadLastDir.setFile(null, dir3);
     Assert.equal(
       (await downloadLastDir.getFileAsync(uri1)).path,
@@ -76,7 +79,8 @@ add_task(
     // file: URIs should all point to the same folder.
     let fileUri1 = Services.io.newURI("file:///c:/test.txt");
     downloadLastDir.setFile(uri1, dir3);
-    let dir4 = FileUtils.getDir("TmpD", ["dir4"], true);
+    let dir4 = FileUtils.getDir("TmpD", ["dir4"]);
+    dir4.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
     let fileUri2 = Services.io.newURI("file:///d:/test.png");
     downloadLastDir.setFile(uri1, dir4);
     Assert.equal(
@@ -135,6 +139,39 @@ add_task(
       (await downloadLastDir.getFileAsync(dataUri4)).path,
       dir1.path,
       "Data URI didn't change"
+    );
+
+    info("blob: URIs should point to a folder based on their origin.");
+    let blobUri1 = Services.io.newURI(
+      "blob:https://chat.mozilla.org/35d6a992-6e18-4957-8216-070c53b9bc83"
+    );
+    let blobOriginUri1 = Services.io.newURI("https://chat.mozilla.org/");
+    downloadLastDir.setFile(blobUri1, dir1);
+    Assert.equal(
+      (await downloadLastDir.getFileAsync(blobUri1)).path,
+      (await downloadLastDir.getFileAsync(blobOriginUri1)).path,
+      "Check blob URI"
+    );
+    // While we are no longer supposed to store pdf.js URLs like this, this
+    // test remains to cover resource origins.
+    info("Test blob: URIs to local resouce.");
+    let blobUri2 = Services.io.newURI(
+      "blob:resource://pdf.js/ed645567-3eea-4ff1-94fd-efb04812afe0"
+    );
+    let blobOriginUri2 = Services.io.newURI("resource://pdf.js/");
+    downloadLastDir.setFile(blobUri2, dir2);
+    Assert.equal(
+      (await downloadLastDir.getFileAsync(blobUri2)).path,
+      (await downloadLastDir.getFileAsync(blobOriginUri2)).path,
+      "Check blob URI"
+    );
+    info("Test an empty blob:");
+    let noOriginBlobUri = Services.io.newURI("blob:");
+    downloadLastDir.setFile(blobUri2, dir3);
+    Assert.equal(
+      (await downloadLastDir.getFileAsync(noOriginBlobUri)).path,
+      dir3.path,
+      "Check blob URI"
     );
   }
 );

@@ -72,10 +72,14 @@ function checkPanelClosed() {
   let pocketButton = document.getElementById("save-to-pocket-button");
   // Something should have closed the Pocket panel, icon should no longer be red.
   is(pocketButton.open, false, "Pocket button is closed");
-  is(pocketButton.getAttribute("pocketed"), "", "Pocket item is not pocketed");
+  is(
+    pocketButton.getAttribute("pocketed"),
+    null,
+    "Pocket item is not pocketed"
+  );
 }
 
-test_runner(async function test_pocketButtonState_changeTabs({ sandbox }) {
+test_runner(async function test_pocketButtonState_changeTabs() {
   let tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser,
     "https://example.com/browser/browser/components/pocket/test/test.html"
@@ -101,7 +105,7 @@ test_runner(async function test_pocketButtonState_changeTabs({ sandbox }) {
   BrowserTestUtils.removeTab(tab);
 });
 
-test_runner(async function test_pocketButtonState_changeLocation({ sandbox }) {
+test_runner(async function test_pocketButtonState_changeLocation() {
   let tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser,
     "https://example.com/browser/browser/components/pocket/test/test.html"
@@ -120,7 +124,7 @@ test_runner(async function test_pocketButtonState_changeLocation({ sandbox }) {
   // Simulate a location change, and check the panel state.
   let browser = gBrowser.selectedBrowser;
   let loaded = BrowserTestUtils.browserLoaded(browser);
-  BrowserTestUtils.loadURIString(browser, "about:robots");
+  BrowserTestUtils.startLoadingURIString(browser, "about:robots");
   await loaded;
   await pocketPanelHidden;
 

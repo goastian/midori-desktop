@@ -38,13 +38,9 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 ChromeUtils.defineESModuleGetters(this, {
   DownloadsViewUI: "resource:///modules/DownloadsViewUI.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
 
 const { Integration } = ChromeUtils.importESModule(
   "resource://gre/modules/Integration.sys.mjs"
@@ -71,28 +67,11 @@ var DownloadsPanel = {
    */
   _delayTimeout: null,
 
-  /**
-   * Internal state of the downloads panel, based on one of the kState
-   * constants.  This is not the same state as the XUL panel element.
-   */
-  _state: 0,
-
   /** The panel is not linked to downloads data yet. */
-  get kStateUninitialized() {
-    return 0;
-  },
-  /** This object is linked to data, but the panel is invisible. */
-  get kStateHidden() {
-    return 1;
-  },
-  /** The panel will be shown as soon as possible. */
-  get kStateWaitingData() {
-    return 2;
-  },
-  /** The panel is open. */
-  get kStateShown() {
-    return 3;
-  },
+  _initialized: false,
+
+  /** The panel will be shown as soon as data is available. */
+  _waitingDataForOpen: false,
 
   /**
    * Starts loading the download data in background, without opening the panel.
@@ -110,13 +89,16 @@ var DownloadsPanel = {
       );
     }
 
-    if (this._state != this.kStateUninitialized) {
+    if (this._initialized) {
       DownloadsCommon.log("DownloadsPanel is already initialized.");
       return;
     }
-    this._state = this.kStateHidden;
+    this._initialized = true;
 
     window.addEventListener("unload", this.onWindowUnload);
+    document
+      .getElementById("downloadPanelCommands")
+      .addEventListener("command", this);
 
     // Load and resume active downloads if required.  If there are downloads to
     // be shown in the panel, they will be loaded asynchronously.
@@ -148,7 +130,7 @@ var DownloadsPanel = {
    */
   terminate() {
     DownloadsCommon.log("Attempting to terminate DownloadsPanel for a window.");
-    if (this._state == this.kStateUninitialized) {
+    if (!this._initialized) {
       DownloadsCommon.log(
         "DownloadsPanel was never initialized. Nothing to do."
       );
@@ -156,6 +138,9 @@ var DownloadsPanel = {
     }
 
     window.removeEventListener("unload", this.onWindowUnload);
+    document
+      .getElementById("downloadPanelCommands")
+      .removeEventListener("command", this);
 
     // Ensure that the panel is closed before shutting down.
     this.hidePanel();
@@ -172,7 +157,7 @@ var DownloadsPanel = {
       DownloadIntegration.downloadSpamProtection.unregister(window);
     }
 
-    this._state = this.kStateUninitialized;
+    this._initialized = false;
 
     DownloadsSummary.active = false;
     DownloadsCommon.log("DownloadsPanel terminated.");
@@ -218,7 +203,7 @@ var DownloadsPanel = {
     setTimeout(() => this._openPopupIfDataReady(), 0);
 
     DownloadsCommon.log("Waiting for the downloads panel to appear.");
-    this._state = this.kStateWaitingData;
+    this._waitingDataForOpen = true;
   },
 
   /**
@@ -234,25 +219,24 @@ var DownloadsPanel = {
     }
 
     PanelMultiView.hidePopup(this.panel);
-
-    // Ensure that we allow the panel to be reopened.  Note that, if the popup
-    // was open, then the onPopupHidden event handler has already updated the
-    // current state, otherwise we must update the state ourselves.
-    this._state = this.kStateHidden;
     DownloadsCommon.log("Downloads panel is now closed.");
   },
 
   /**
-   * Indicates whether the panel is shown or will be shown.
+   * Indicates whether the panel is showing.
+   * @note this includes the hiding state.
    */
   get isPanelShowing() {
-    return (
-      this._state == this.kStateWaitingData || this._state == this.kStateShown
-    );
+    return this._waitingDataForOpen || this.panel.state != "closed";
   },
 
   handleEvent(aEvent) {
     switch (aEvent.type) {
+      case "command":
+        // Handle the commands defined in downloadsPanel.inc.xhtml.
+        // Every command "id" is also its corresponding command.
+        goDoCommand(aEvent.target.id);
+        break;
       case "mousemove":
         if (
           !DownloadsView.contextMenuOpen &&
@@ -303,7 +287,6 @@ var DownloadsPanel = {
     }
 
     DownloadsCommon.log("Downloads panel has shown.");
-    this._state = this.kStateShown;
 
     // Since at most one popup is open at any given time, we can set globally.
     DownloadsCommon.getIndicatorData(window).attentionSuppressed |=
@@ -340,9 +323,6 @@ var DownloadsPanel = {
 
     // Allow the anchor to be hidden.
     DownloadsButton.releaseAnchor();
-
-    // Allow the panel to be reopened.
-    this._state = this.kStateHidden;
   },
 
   // Related operations
@@ -356,7 +336,7 @@ var DownloadsPanel = {
     // to the browser window when the panel closes automatically.
     this.hidePanel();
 
-    BrowserDownloadsUI();
+    BrowserCommands.downloadsUI();
   },
 
   // Internal functions
@@ -509,7 +489,7 @@ var DownloadsPanel = {
    */
   _focusPanel() {
     // We may be invoked while the panel is still waiting to be shown.
-    if (this._state != this.kStateShown) {
+    if (this.panel.state != "open") {
       return;
     }
 
@@ -557,7 +537,10 @@ var DownloadsPanel = {
   },
 
   _startWatchingForSpammyDownloadActivation() {
-    Services.els.addSystemEventListener(window, "keydown", this, true);
+    window.addEventListener("keydown", this, {
+      capture: true,
+      mozSystemGroup: true,
+    });
   },
 
   _lastBeepTime: 0,
@@ -575,7 +558,10 @@ var DownloadsPanel = {
   },
 
   _stopWatchingForSpammyDownloadActivation() {
-    Services.els.removeSystemEventListener(window, "keydown", this, true);
+    window.removeEventListener("keydown", this, {
+      capture: true,
+      mozSystemGroup: true,
+    });
   },
 
   /**
@@ -584,16 +570,16 @@ var DownloadsPanel = {
   _openPopupIfDataReady() {
     // We don't want to open the popup if we already displayed it, or if we are
     // still loading data.
-    if (this._state != this.kStateWaitingData || DownloadsView.loading) {
+    if (!this._waitingDataForOpen || DownloadsView.loading) {
       return;
     }
+    this._waitingDataForOpen = false;
 
     // At this point, if the window is minimized, opening the panel could fail
     // without any notification, and there would be no way to either open or
     // close the panel any more.  To prevent this, check if the window is
     // minimized and in that case force the panel to the closed state.
     if (window.windowState == window.STATE_MINIMIZED) {
-      this._state = this.kStateHidden;
       return;
     }
 
@@ -603,7 +589,6 @@ var DownloadsPanel = {
 
     if (!anchor) {
       DownloadsCommon.error("Downloads button cannot be found.");
-      this._state = this.kStateHidden;
       return;
     }
 
@@ -633,14 +618,11 @@ var DownloadsPanel = {
         0,
         false,
         null
-      ).catch(e => {
-        console.error(e);
-        this._state = this.kStateHidden;
-      });
-
-      if (!this._openedManually) {
-        this._delayPopupItems();
-      }
+      ).then(() => {
+        if (!this._openedManually) {
+          this._delayPopupItems();
+        }
+      }, console.error);
     }, 0);
   },
 };
@@ -895,7 +877,7 @@ var DownloadsView = {
       } else if (aEvent.shiftKey || aEvent.ctrlKey || aEvent.metaKey) {
         // We adjust the command for supported modifiers to suggest where the download
         // may be opened
-        let openWhere = target.ownerGlobal.whereToOpenLink(aEvent, false, true);
+        let openWhere = BrowserUtils.whereToOpenLink(aEvent, false, true);
         if (["tab", "window", "tabshifted"].includes(openWhere)) {
           command += ":" + openWhere;
         }
@@ -1491,7 +1473,7 @@ var DownloadsSummary = {
    * @param aEvent
    *        The click event being handled.
    */
-  onClick(aEvent) {
+  onClick() {
     DownloadsPanel.showDownloadsHistory();
   },
 
@@ -1705,13 +1687,13 @@ var DownloadsBlockedSubview = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(DownloadsBlockedSubview, "panelMultiView", () =>
+ChromeUtils.defineLazyGetter(DownloadsBlockedSubview, "panelMultiView", () =>
   document.getElementById("downloadsPanel-multiView")
 );
-XPCOMUtils.defineLazyGetter(DownloadsBlockedSubview, "mainView", () =>
+ChromeUtils.defineLazyGetter(DownloadsBlockedSubview, "mainView", () =>
   document.getElementById("downloadsPanel-mainView")
 );
-XPCOMUtils.defineLazyGetter(DownloadsBlockedSubview, "subview", () =>
+ChromeUtils.defineLazyGetter(DownloadsBlockedSubview, "subview", () =>
   document.getElementById("downloadsPanel-blockedSubview")
 );
 

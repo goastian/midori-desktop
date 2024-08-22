@@ -8,12 +8,22 @@ add_task(async function test() {
     new UrlbarResult(
       UrlbarUtils.RESULT_TYPE.URL,
       UrlbarUtils.RESULT_SOURCE.HISTORY,
-      { url: "http://mozilla.org/1" }
+      {
+        url: "http://mozilla.org/1",
+        helpUrl: "http://example.com/",
+        isBlockable: true,
+        blockL10n: { id: "urlbar-result-menu-remove-from-history" },
+      }
     ),
     new UrlbarResult(
       UrlbarUtils.RESULT_TYPE.URL,
       UrlbarUtils.RESULT_SOURCE.HISTORY,
-      { url: "http://mozilla.org/2" }
+      {
+        url: "http://mozilla.org/2",
+        helpUrl: "http://example.com/",
+        isBlockable: true,
+        blockL10n: { id: "urlbar-result-menu-remove-from-history" },
+      }
     ),
     new UrlbarResult(
       UrlbarUtils.RESULT_TYPE.TIP,
@@ -38,7 +48,7 @@ add_task(async function test() {
   let provider = new UrlbarTestUtils.TestProvider({
     results,
     priority: 1,
-    onSelection: (result, element) => {
+    onSelection: () => {
       selectionCount++;
     },
   });
@@ -50,7 +60,7 @@ add_task(async function test() {
   });
 
   EventUtils.synthesizeKey("KEY_Tab", {
-    repeat: UrlbarPrefs.get("resultMenu") ? 5 : 3,
+    repeat: 5,
   });
   EventUtils.synthesizeKey("KEY_ArrowDown");
   ok(
@@ -58,10 +68,6 @@ add_task(async function test() {
     "a one off button is selected"
   );
 
-  Assert.equal(
-    selectionCount,
-    UrlbarPrefs.get("resultMenu") ? 6 : 4,
-    "Number of elements selected in the view."
-  );
+  Assert.equal(selectionCount, 6, "Number of elements selected in the view.");
   UrlbarProvidersManager.unregisterProvider(provider);
 });

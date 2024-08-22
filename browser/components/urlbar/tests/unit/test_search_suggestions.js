@@ -49,7 +49,6 @@ function setSuggestionsFn(fn) {
 
 async function cleanup() {
   Services.prefs.clearUserPref("browser.urlbar.autoFill");
-  Services.prefs.clearUserPref("browser.urlbar.autoFill.searchEngines");
   Services.prefs.clearUserPref(SUGGEST_PREF);
   Services.prefs.clearUserPref(SUGGEST_ENABLED_PREF);
   await PlacesUtils.bookmarks.eraseEverything();
@@ -129,7 +128,7 @@ function setResultGroups(groups) {
   });
 }
 
-add_task(async function setup() {
+add_setup(async function () {
   sandbox = lazy.sinon.createSandbox();
 
   let engine = await addTestSuggestionsEngine(searchStr => {
@@ -431,7 +430,7 @@ add_task(async function remoteSuggestionsDupeSearchString() {
 add_task(async function queryIsNotASubstring() {
   Services.prefs.setBoolPref(SUGGEST_PREF, true);
 
-  setSuggestionsFn(searchStr => {
+  setSuggestionsFn(() => {
     return ["aaa", "bbb"];
   });
 
@@ -1551,7 +1550,7 @@ add_task(async function restrict_remote_suggestions_after_no_results() {
   // maxCharsForSearchSuggestions returns 0 results. We set it to 4 here to
   // avoid constructing a 100+ character string.
   Services.prefs.setIntPref("browser.urlbar.maxCharsForSearchSuggestions", 4);
-  setSuggestionsFn(searchStr => {
+  setSuggestionsFn(() => {
     return [];
   });
 

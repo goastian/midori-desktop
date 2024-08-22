@@ -112,7 +112,7 @@ async function promisePopupShown(popup) {
     if (popup.state == "open") {
       resolve();
     } else {
-      let onPopupShown = event => {
+      let onPopupShown = () => {
         popup.removeEventListener("popupshown", onPopupShown);
         resolve();
       };
@@ -129,7 +129,7 @@ function awaitBrowserLoaded(browser) {
     return Promise.resolve();
   }
   return new Promise(resolve => {
-    const listener = ev => {
+    const listener = () => {
       if (browser.currentURI.spec === "about:blank") {
         return;
       }
@@ -198,7 +198,7 @@ async function removeTab(tab) {
   BrowserTestUtils.removeTab(tab);
 }
 
-// These metods are exported so that they can be used in head.js but are
+// These methods are exported so that they can be used in head.js but are
 // *not* part of the AppUiTestDelegate API.
 export var AppUiTestInternals = {
   awaitBrowserLoaded,
@@ -213,8 +213,9 @@ export var AppUiTestInternals = {
   showBrowserAction,
 };
 
-// These methods are part of the TestDelegate API and need to be compatible
-// with the `mobile` AppUiTestDelegate counterpart.
+// These methods are part of the AppUiTestDelegate API. All implementations need
+// to be kept in sync. For details, see:
+// testing/specialpowers/content/AppTestDelegateParent.sys.mjs
 export var AppUiTestDelegate = {
   awaitExtensionPanel,
   clickBrowserAction,

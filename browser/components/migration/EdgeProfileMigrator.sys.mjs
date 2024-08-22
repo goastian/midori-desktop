@@ -2,10 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { MigrationUtils } from "resource:///modules/MigrationUtils.sys.mjs";
 import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
 import { MSMigrationUtils } from "resource:///modules/MSMigrationUtils.sys.mjs";
@@ -25,7 +21,7 @@ const kEdgeRegistryRoot =
   "microsoft.microsoftedge_8wekyb3d8bbwe\\MicrosoftEdge";
 const kEdgeDatabasePath = "AC\\MicrosoftEdge\\User\\Default\\DataStore\\Data\\";
 
-XPCOMUtils.defineLazyGetter(lazy, "gEdgeDatabase", function () {
+ChromeUtils.defineLazyGetter(lazy, "gEdgeDatabase", function () {
   let edgeDir = MSMigrationUtils.getEdgeLocalDataFolder();
   if (!edgeDir) {
     return null;
@@ -58,8 +54,8 @@ XPCOMUtils.defineLazyGetter(lazy, "gEdgeDatabase", function () {
  *
  * @param {string}            tableName the name of the table to read.
  * @param {string[]|Function} columns   a list of column specifiers
- *                                      (see ESEDBReader.jsm) or a function that
- *                                      generates them based on the database
+ *                                      (see ESEDBReader.sys.mjs) or a function
+ *                                      that generates them based on the database
  *                                      reference once opened.
  * @param {nsIFile}           dbFile    the database file to use. Defaults to
  *                                      the main Edge database.
@@ -336,7 +332,7 @@ EdgeReadingListMigrator.prototype = {
   async _ensureReadingListFolder(parentGuid) {
     if (!this.__readingListFolderGuid) {
       let folderTitle = await MigrationUtils.getLocalizedString(
-        "imported-edge-reading-list"
+        "migration-imported-edge-reading-list"
       );
       let folderSpec = {
         type: lazy.PlacesUtils.bookmarks.TYPE_FOLDER,
@@ -576,14 +572,11 @@ export class EdgeProfileMigrator extends MigratorBase {
 
   /**
    * @returns {Array|null}
-   *   Somewhat counterintuitively, this returns:
-   *   - |null| to indicate "There is only 1 (default) profile" (on win10+)
-   *   - |[]| to indicate "There are no profiles" (on <=win8.1) which will avoid
-   *     using this migrator.
+   *   Somewhat counterintuitively, this returns
+   *   |null| to indicate "There is only 1 (default) profile".
    *   See MigrationUtils.sys.mjs for slightly more info on how sourceProfiles is used.
    */
   getSourceProfiles() {
-    let isWin10OrHigher = AppConstants.isPlatformAndVersionAtLeast("win", "10");
-    return isWin10OrHigher ? null : [];
+    return null;
   }
 }

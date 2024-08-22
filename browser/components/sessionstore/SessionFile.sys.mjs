@@ -18,6 +18,7 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  sessionStoreLogger: "resource:///modules/sessionstore/SessionLogger.sys.mjs",
   RunState: "resource:///modules/sessionstore/RunState.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
   SessionWriter: "resource:///modules/sessionstore/SessionWriter.sys.mjs",
@@ -194,6 +195,7 @@ var SessionFileInternal = {
   },
 
   async _readInternal(useOldExtension) {
+    Services.telemetry.setEventRecordingEnabled("session_restore", true);
     let result;
     let noFilesFound = true;
     this._usingOldExtension = useOldExtension;
@@ -233,7 +235,7 @@ var SessionFileInternal = {
             // 1546847. Just in case there are problems in the format of
             // the parsed data, continue on. Favicons might be broken, but
             // the session will at least be recovered
-            console.error(e);
+            lazy.sessionStoreLogger.error(e);
           }
         }
 
@@ -246,10 +248,22 @@ var SessionFileInternal = {
           )
         ) {
           // Skip sessionstore files that we don't understand.
-          console.error(
+          lazy.sessionStoreLogger.warn(
             "Cannot extract data from Session Restore file ",
             path,
             ". Wrong format/version: " + JSON.stringify(parsed.version) + "."
+          );
+          Services.telemetry.recordEvent(
+            "session_restore",
+            "backup_can_be_loaded",
+            "session_file",
+            null,
+            {
+              can_load: "false",
+              path_key: key,
+              loadfail_reason:
+                "Wrong format/version: " + JSON.stringify(parsed.version) + ".",
+            }
           );
           continue;
         }
@@ -259,32 +273,84 @@ var SessionFileInternal = {
           parsed,
           useOldExtension,
         };
+        Services.telemetry.recordEvent(
+          "session_restore",
+          "backup_can_be_loaded",
+          "session_file",
+          null,
+          {
+            can_load: "true",
+            path_key: key,
+            loadfail_reason: "N/A",
+          }
+        );
         Services.telemetry
           .getHistogramById("FX_SESSION_RESTORE_CORRUPT_FILE")
           .add(false);
         Services.telemetry
           .getHistogramById("FX_SESSION_RESTORE_READ_FILE_MS")
           .add(Date.now() - startMs);
+        lazy.sessionStoreLogger.debug(`Successful file read of ${key} file`);
         break;
       } catch (ex) {
         if (DOMException.isInstance(ex) && ex.name == "NotFoundError") {
           exists = false;
+          Services.telemetry.recordEvent(
+            "session_restore",
+            "backup_can_be_loaded",
+            "session_file",
+            null,
+            {
+              can_load: "false",
+              path_key: key,
+              loadfail_reason: "File doesn't exist.",
+            }
+          );
+          // A file not existing can be normal and expected.
+          lazy.sessionStoreLogger.debug(
+            `Can't read session file which doesn't exist: ${key}`
+          );
         } else if (
           DOMException.isInstance(ex) &&
           ex.name == "NotAllowedError"
         ) {
           // The file might be inaccessible due to wrong permissions
           // or similar failures. We'll just count it as "corrupted".
-          console.error("Could not read session file ", ex);
+          lazy.sessionStoreLogger.error(
+            `NotAllowedError when reading session file: ${key}`,
+            ex
+          );
           corrupted = true;
+          Services.telemetry.recordEvent(
+            "session_restore",
+            "backup_can_be_loaded",
+            "session_file",
+            null,
+            {
+              can_load: "false",
+              path_key: key,
+              loadfail_reason: ` ${ex.name}: Could not read session file`,
+            }
+          );
         } else if (ex instanceof SyntaxError) {
-          console.error(
+          lazy.sessionStoreLogger.error(
             "Corrupt session file (invalid JSON found) ",
             ex,
             ex.stack
           );
           // File is corrupted, try next file
           corrupted = true;
+          Services.telemetry.recordEvent(
+            "session_restore",
+            "backup_can_be_loaded",
+            "session_file",
+            null,
+            {
+              can_load: "false",
+              path_key: key,
+              loadfail_reason: ` ${ex.name}: Corrupt session file (invalid JSON found)`,
+            }
+          );
         }
       } finally {
         if (exists) {
@@ -292,6 +358,17 @@ var SessionFileInternal = {
           Services.telemetry
             .getHistogramById("FX_SESSION_RESTORE_CORRUPT_FILE")
             .add(corrupted);
+          Services.telemetry.recordEvent(
+            "session_restore",
+            "backup_can_be_loaded",
+            "session_file",
+            null,
+            {
+              can_load: (!corrupted).toString(),
+              path_key: key,
+              loadfail_reason: "N/A",
+            }
+          );
         }
       }
     }
@@ -317,6 +394,9 @@ var SessionFileInternal = {
 
     if (!result) {
       // If everything fails, start with an empty session.
+      lazy.sessionStoreLogger.warn(
+        "No readable session files found to restore, starting with empty session"
+      );
       result = {
         origin: "empty",
         source: "",

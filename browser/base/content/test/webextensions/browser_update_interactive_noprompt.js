@@ -24,7 +24,10 @@ async function testUpdateNoPrompt(
   updateVersion = "2.0"
 ) {
   // Navigate away to ensure that BrowserOpenAddonMgr() opens a new tab
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:mozilla");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:mozilla"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   // Install initial version of the test extension
@@ -33,7 +36,7 @@ async function testUpdateNoPrompt(
   is(addon.version, initialVersion, "Version 1 of the addon is installed");
 
   // Go to Extensions in about:addons
-  let win = await BrowserOpenAddonsMgr("addons://list/extension");
+  let win = await BrowserAddonUI.openAddonsMgr("addons://list/extension");
 
   await waitAboutAddonsViewLoaded(win.document);
 

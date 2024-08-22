@@ -13,20 +13,6 @@ ChromeUtils.defineESModuleGetters(this, {
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
 });
 
-// Inherit color scheme overrides from parent window. This is to inherit the
-// color scheme of dark themed PBM windows.
-{
-  let openerColorSchemeOverride =
-    window.opener?.browsingContext?.top.prefersColorSchemeOverride;
-  if (
-    openerColorSchemeOverride &&
-    window.browsingContext == window.browsingContext.top
-  ) {
-    window.browsingContext.prefersColorSchemeOverride =
-      openerColorSchemeOverride;
-  }
-}
-
 // define a js object to implement nsITreeView
 function pageInfoTreeView(treeid, copycol) {
   // copycol is the index number for the column that we want to add to
@@ -61,7 +47,7 @@ pageInfoTreeView.prototype = {
     return this.data[row][column.index] || "";
   },
 
-  setCellValue(row, column, value) {},
+  setCellValue() {},
 
   setCellText(row, column, value) {
     this.data[row][column.index] = value;
@@ -126,52 +112,52 @@ pageInfoTreeView.prototype = {
     this.sortcol = treecol.index;
   },
 
-  getRowProperties(row) {
+  getRowProperties() {
     return "";
   },
-  getCellProperties(row, column) {
+  getCellProperties() {
     return "";
   },
-  getColumnProperties(column) {
+  getColumnProperties() {
     return "";
   },
-  isContainer(index) {
+  isContainer() {
     return false;
   },
-  isContainerOpen(index) {
+  isContainerOpen() {
     return false;
   },
-  isSeparator(index) {
+  isSeparator() {
     return false;
   },
   isSorted() {
     return this.sortcol > -1;
   },
-  canDrop(index, orientation) {
+  canDrop() {
     return false;
   },
-  drop(row, orientation) {
+  drop() {
     return false;
   },
-  getParentIndex(index) {
+  getParentIndex() {
     return 0;
   },
-  hasNextSibling(index, after) {
+  hasNextSibling() {
     return false;
   },
-  getLevel(index) {
+  getLevel() {
     return 0;
   },
-  getImageSrc(row, column) {},
+  getImageSrc() {},
   getCellValue(row, column) {
     let col = column != null ? column : this.copycol;
     return row < 0 || col < 0 ? "" : this.data[row][col] || "";
   },
-  toggleOpenState(index) {},
-  cycleHeader(col) {},
+  toggleOpenState() {},
+  cycleHeader() {},
   selectionChanged() {},
-  cycleCell(row, column) {},
-  isEditable(row, column) {
+  cycleCell() {},
+  isEditable() {
     return false;
   },
 };
@@ -188,6 +174,7 @@ const COL_IMAGE_ALT = 3;
 const COL_IMAGE_COUNT = 4;
 const COL_IMAGE_NODE = 5;
 const COL_IMAGE_BG = 6;
+const COL_IMAGE_RAWSIZE = 7;
 
 // column number to copy from, second argument to pageInfoTreeView's constructor
 const COPYCOL_NONE = -1;
@@ -227,6 +214,11 @@ gImageView.onPageMediaSort = function (columnname) {
     comparator = function numComparator(a, b) {
       return a - b;
     };
+
+    // COL_IMAGE_SIZE contains the localized string, compare raw numbers.
+    if (index == COL_IMAGE_SIZE) {
+      index = COL_IMAGE_RAWSIZE;
+    }
   } else {
     comparator = function textComparator(a, b) {
       return (a || "").toLowerCase().localeCompare((b || "").toLowerCase());
@@ -271,11 +263,7 @@ const cacheService = Cc[
   "@mozilla.org/netwerk/cache-storage-service;1"
 ].getService(nsICacheStorageService);
 
-var loadContextInfo = Services.loadContextInfo.fromLoadContext(
-  window.docShell.QueryInterface(Ci.nsILoadContext),
-  false
-);
-var diskStorage = cacheService.diskCacheStorage(loadContextInfo);
+var diskStorage = null;
 
 const nsICookiePermission = Ci.nsICookiePermission;
 
@@ -464,6 +452,20 @@ async function loadTab(args) {
   let browsingContext = args?.browsingContext;
   let browser = args?.browser;
 
+  // Check if diskStorage has not be created yet if it has not been, get
+  // partitionKey from content process and create diskStorage with said partitionKey
+  if (!diskStorage) {
+    let oaWithPartitionKey = await getOaWithPartitionKey(
+      browsingContext,
+      browser
+    );
+    let loadContextInfo = Services.loadContextInfo.custom(
+      false,
+      oaWithPartitionKey
+    );
+    diskStorage = cacheService.diskCacheStorage(loadContextInfo);
+  }
+
   /* Load the page info */
   await loadPageInfo(browsingContext, imageElement, browser);
 
@@ -479,10 +481,10 @@ async function loadTab(args) {
 
 function openCacheEntry(key, cb) {
   var checkCacheListener = {
-    onCacheEntryCheck(entry) {
+    onCacheEntryCheck() {
       return Ci.nsICacheEntryOpenCallback.ENTRY_WANTED;
     },
-    onCacheEntryAvailable(entry, isNew, status) {
+    onCacheEntryAvailable(entry) {
       cb(entry);
     },
   };
@@ -584,21 +586,30 @@ async function addImage({ url, type, alt, altNotProvided, element, isBg }) {
   }
   if (!gImageHash[url][type].hasOwnProperty(alt)) {
     gImageHash[url][type][alt] = gImageView.data.length;
-    var row = [url, MEDIA_STRINGS[type], SIZE_UNKNOWN, alt, 1, element, isBg];
+    var row = [
+      url,
+      MEDIA_STRINGS[type],
+      SIZE_UNKNOWN,
+      alt,
+      1,
+      element,
+      isBg,
+      -1,
+    ];
     gImageView.addRow(row);
 
     // Fill in cache data asynchronously
     openCacheEntry(url, function (cacheEntry) {
-      // The data at row[2] corresponds to the data size.
       if (cacheEntry) {
         let value = cacheEntry.dataSize;
         // If value is not -1 then replace with actual value, else keep as "unknown"
         if (value != -1) {
+          row[COL_IMAGE_RAWSIZE] = value;
           let kbSize = Number(Math.round((value / 1024) * 100) / 100);
           document.l10n
             .formatValue("media-file-size", { size: kbSize })
             .then(function (response) {
-              row[2] = response;
+              row[COL_IMAGE_SIZE] = response;
               // Invalidate the row to trigger a repaint.
               gImageView.tree.invalidateRow(gImageView.data.indexOf(row));
             });
@@ -690,7 +701,7 @@ async function selectSaveFolder(aCallback) {
     }
   };
 
-  fp.init(window, titleText, nsIFilePicker.modeGetFolder);
+  fp.init(window.browsingContext, titleText, nsIFilePicker.modeGetFolder);
   fp.appendFilters(nsIFilePicker.filterAll);
   try {
     let initialDir = Services.prefs.getComplexValue(
@@ -736,15 +747,20 @@ function saveMedia() {
       let cookieJarSettings = E10SUtils.deserializeCookieJarSettings(
         gDocInfo.cookieJarSettings
       );
-      saveURL(
+      internalSave(
         url,
         null,
         null,
+        null,
+        null,
+        item.mimeType,
+        false,
         titleKey,
-        false,
-        false,
+        null,
         referrerInfo,
         cookieJarSettings,
+        null,
+        false,
         null,
         gDocInfo.isContentWindowPrivate,
         gDocInfo.principal
@@ -1084,7 +1100,7 @@ let treeController = {
     return command == "cmd_copy" || command == "cmd_selectAll";
   },
 
-  isCommandEnabled(command) {
+  isCommandEnabled() {
     return true; // not worth checking for this
   },
 
@@ -1169,4 +1185,17 @@ function checkProtocol(img) {
     /^data:image\//i.test(url) ||
     /^(https?|file|about|chrome|resource):/.test(url)
   );
+}
+
+async function getOaWithPartitionKey(browsingContext, browser) {
+  browser = browser || window.opener.gBrowser.selectedBrowser;
+  browsingContext = browsingContext || browser.browsingContext;
+
+  let actor = browsingContext.currentWindowGlobal.getActor("PageInfo");
+  let partitionKeyFromChild = await actor.sendQuery("PageInfo:getPartitionKey");
+
+  let oa = browser.contentPrincipal.originAttributes;
+  oa.partitionKey = partitionKeyFromChild.partitionKey;
+
+  return oa;
 }

@@ -36,6 +36,9 @@ ToolbarKeyboardNavigator = {
   kSearchClearTimeout: 1000,
 
   _isButton(aElem) {
+    if (aElem.getAttribute("keyNav") === "false") {
+      return false;
+    }
     return (
       aElem.tagName == "toolbarbutton" || aElem.getAttribute("role") == "button"
     );
@@ -134,7 +137,7 @@ ToolbarKeyboardNavigator = {
   },
 
   // CustomizableUI event handler
-  onWidgetAdded(aWidgetId, aArea, aPosition) {
+  onWidgetAdded(aWidgetId, aArea) {
     if (!this.kToolbars.includes(aArea)) {
       return;
     }

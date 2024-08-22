@@ -1,5 +1,9 @@
 "use strict";
 
+const { ManageAddresses } = ChromeUtils.importESModule(
+  "chrome://formautofill/content/manageDialog.mjs"
+);
+
 const { OSKeyStore } = ChromeUtils.importESModule(
   "resource://gre/modules/OSKeyStore.sys.mjs"
 );
@@ -10,6 +14,36 @@ const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
 const { FormAutofillParent } = ChromeUtils.importESModule(
   "resource://autofill/FormAutofillParent.sys.mjs"
 );
+
+const { AutofillDoorhanger, AddressEditDoorhanger, AddressSaveDoorhanger } =
+  ChromeUtils.importESModule(
+    "resource://autofill/FormAutofillPrompter.sys.mjs"
+  );
+
+const { FormAutofillNameUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/shared/FormAutofillNameUtils.sys.mjs"
+);
+
+const { FormAutofillUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/shared/FormAutofillUtils.sys.mjs"
+);
+
+let { sinon } = ChromeUtils.importESModule(
+  "resource://testing-common/Sinon.sys.mjs"
+);
+
+// Always pretend OS Auth is enabled in this dir.
+if (
+  gTestPath.includes("browser/creditCard") &&
+  OSKeyStoreTestUtils.canTestOSKeyStoreLogin() &&
+  OSKeyStore.canReauth()
+) {
+  info("Stubbing out getOSAuthEnabled so it always returns true");
+  sinon.stub(FormAutofillUtils, "getOSAuthEnabled").returns(true);
+  registerCleanupFunction(() => {
+    sinon.restore();
+  });
+}
 
 const MANAGE_ADDRESSES_DIALOG_URL =
   "chrome://formautofill/content/manageAddresses.xhtml";
@@ -32,6 +66,12 @@ const ADDRESS_FORM_WITHOUT_AUTOCOMPLETE_URL =
   "https://example.org" +
   HTTP_TEST_PATH +
   "address/without_autocomplete_address_basic.html";
+const ADDRESS_FORM_WITH_PAGE_NAVIGATION_BUTTONS =
+  "https://example.org" +
+  HTTP_TEST_PATH +
+  "address/capture_address_on_page_navigation.html";
+const FORM_IFRAME_SANDBOXED_URL =
+  "https://example.org" + HTTP_TEST_PATH + "autocomplete_iframe_sandboxed.html";
 const CREDITCARD_FORM_URL =
   "https://example.org" +
   HTTP_TEST_PATH +
@@ -48,9 +88,12 @@ const CREDITCARD_FORM_WITHOUT_AUTOCOMPLETE_URL =
   "https://example.org" +
   HTTP_TEST_PATH +
   "creditCard/without_autocomplete_creditcard_basic.html";
+const CREDITCARD_FORM_WITH_PAGE_NAVIGATION_BUTTONS =
+  "https://example.org" +
+  HTTP_TEST_PATH +
+  "creditCard/capture_creditCard_on_page_navigation.html";
 const EMPTY_URL = "https://example.org" + HTTP_TEST_PATH + "empty.html";
 
-const FTU_PREF = "extensions.formautofill.firstTimeUse";
 const ENABLED_AUTOFILL_ADDRESSES_PREF =
   "extensions.formautofill.addresses.enabled";
 const ENABLED_AUTOFILL_ADDRESSES_CAPTURE_PREF =
@@ -186,6 +229,10 @@ const TEST_CREDIT_CARD_5 = {
 const MAIN_BUTTON = "button";
 const SECONDARY_BUTTON = "secondaryButton";
 const MENU_BUTTON = "menubutton";
+const EDIT_ADDRESS_BUTTON = "edit";
+const ADDRESS_MENU_BUTTON = "addressMenuButton";
+const ADDRESS_MENU_LEARN_MORE = "learnMore";
+const ADDRESS_MENU_PREFENCE = "preference";
 
 /**
  * Collection of timeouts that are used to ensure something should not happen.
@@ -193,6 +240,7 @@ const MENU_BUTTON = "menubutton";
 const TIMEOUT_ENSURE_PROFILE_NOT_SAVED = 1000;
 const TIMEOUT_ENSURE_CC_DIALOG_NOT_CLOSED = 500;
 const TIMEOUT_ENSURE_AUTOCOMPLETE_NOT_SHOWN = 1000;
+const TIMEOUT_ENSURE_DOORHANGER_NOT_SHOWN = 1000;
 
 async function ensureCreditCardDialogNotClosed(win) {
   const unloadHandler = () => {
@@ -229,7 +277,16 @@ async function ensureNoAutocompletePopup(browser) {
     setTimeout(resolve, TIMEOUT_ENSURE_AUTOCOMPLETE_NOT_SHOWN)
   );
   const items = getDisplayedPopupItems(browser);
-  ok(!items.length, "Should not found autocomplete items");
+  ok(!items.length, "Should not find autocomplete items");
+}
+
+async function ensureNoDoorhanger() {
+  await new Promise(resolve =>
+    setTimeout(resolve, TIMEOUT_ENSURE_DOORHANGER_NOT_SHOWN)
+  );
+
+  let notifications = PopupNotifications.panel.childNodes;
+  ok(!notifications.length, "Should not find a doorhanger");
 }
 
 /**
@@ -286,7 +343,7 @@ async function waitForAutofill(target, selector, value) {
  * @returns {Promise} resolves when the sub dialog is loaded
  */
 function waitForSubDialogLoad(win, dialogUrl) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     win.gSubDialog._dialogStack.addEventListener(
       "dialogopen",
       async function dialogopen(evt) {
@@ -365,6 +422,14 @@ async function focusUpdateSubmitForm(target, args, submit = true) {
       element = form.querySelector(selector);
       if (content.HTMLInputElement.isInstance(element)) {
         element.setUserInput(value);
+      } else if (
+        content.HTMLSelectElement.isInstance(element) &&
+        Array.isArray(value)
+      ) {
+        element.multiple = true;
+        [...element.options].forEach(option => {
+          option.selected = value.includes(option.value);
+        });
       } else {
         element.value = value;
       }
@@ -376,6 +441,7 @@ async function focusUpdateSubmitForm(target, args, submit = true) {
   if (alreadyFocused) {
     // If the element is already focused, assume the FieldsIdentified message
     // was sent before.
+    FormAutofillParent.removeMessageObserver(fieldsIdentifiedObserver);
     fieldsIdentifiedPromiseResolver();
   }
 
@@ -494,25 +560,6 @@ async function runAndWaitForAutocompletePopupOpen(browser, taskFn) {
   await taskFn();
 
   await popupShown;
-  await BrowserTestUtils.waitForMutationCondition(
-    browser.autoCompletePopup.richlistbox,
-    { childList: true, subtree: true, attributes: true },
-    () => {
-      const listItemElems = getDisplayedPopupItems(browser);
-      return (
-        !![...listItemElems].length &&
-        [...listItemElems].every(item => {
-          return (
-            (item.getAttribute("originaltype") == "autofill-profile" ||
-              item.getAttribute("originaltype") == "autofill-insecureWarning" ||
-              item.getAttribute("originaltype") == "autofill-clear-button" ||
-              item.getAttribute("originaltype") == "autofill-footer") &&
-            item.hasAttribute("formautofillattached")
-          );
-        })
-      );
-    }
-  );
 }
 
 async function waitForPopupEnabled(browser) {
@@ -554,7 +601,7 @@ function waitPopupStateInChild(bc, messageName) {
 async function openPopupOn(browser, selector) {
   let childNotifiedPromise = waitPopupStateInChild(
     browser,
-    "FormAutoComplete:PopupOpened"
+    "AutoComplete:PopupOpened"
   );
   await SimpleTest.promiseFocus(browser);
 
@@ -572,7 +619,7 @@ async function openPopupOn(browser, selector) {
 async function openPopupOnSubframe(browser, frameBrowsingContext, selector) {
   let childNotifiedPromise = waitPopupStateInChild(
     frameBrowsingContext,
-    "FormAutoComplete:PopupOpened"
+    "AutoComplete:PopupOpened"
   );
 
   await SimpleTest.promiseFocus(browser);
@@ -596,7 +643,7 @@ async function closePopup(browser) {
 
   let childNotifiedPromise = waitPopupStateInChild(
     browser,
-    "FormAutoComplete:PopupClosed"
+    "AutoComplete:PopupClosed"
   );
   let popupClosePromise = BrowserTestUtils.waitForPopupEvent(
     browser.autoCompletePopup,
@@ -614,7 +661,7 @@ async function closePopup(browser) {
 async function closePopupForSubframe(browser, frameBrowsingContext) {
   let childNotifiedPromise = waitPopupStateInChild(
     browser,
-    "FormAutoComplete:PopupClosed"
+    "AutoComplete:PopupClosed"
   );
 
   let popupClosePromise = BrowserTestUtils.waitForPopupEvent(
@@ -640,7 +687,9 @@ function emulateMessageToBrowser(name, data) {
 
 function getRecords(data) {
   info(`expecting record retrievals: ${data.collectionName}`);
-  return emulateMessageToBrowser("FormAutofill:GetRecords", data);
+  return emulateMessageToBrowser("FormAutofill:GetRecords", data).then(
+    result => result.records
+  );
 }
 
 function getAddresses() {
@@ -704,37 +753,65 @@ function waitForPopupShown() {
 /**
  * Clicks the popup notification button and wait for popup hidden.
  *
- * @param {string} button The button type in popup notification.
+ * @param {string} buttonType The button type in popup notification.
  * @param {number} index The action's index in menu list.
  */
-async function clickDoorhangerButton(button, index) {
+async function clickDoorhangerButton(buttonType, index = 0) {
   let popuphidden = BrowserTestUtils.waitForEvent(
     PopupNotifications.panel,
     "popuphidden"
   );
 
-  if (button == MAIN_BUTTON || button == SECONDARY_BUTTON) {
-    EventUtils.synthesizeMouseAtCenter(getNotification()[button], {});
-  } else if (button == MENU_BUTTON) {
+  let button;
+  if (buttonType == MAIN_BUTTON || buttonType == SECONDARY_BUTTON) {
+    button = getNotification()[buttonType];
+  } else if (buttonType == MENU_BUTTON) {
     // Click the dropmarker arrow and wait for the menu to show up.
     info("expecting notification menu button present");
     await BrowserTestUtils.waitForCondition(() => getNotification().menubutton);
     await sleep(2000); // menubutton needs extra time for binding
     let notification = getNotification();
+
     ok(notification.menubutton, "notification menupopup displayed");
     let dropdownPromise = BrowserTestUtils.waitForEvent(
       notification.menupopup,
       "popupshown"
     );
-    await EventUtils.synthesizeMouseAtCenter(notification.menubutton, {});
+
+    notification.menubutton.click();
     info("expecting notification popup show up");
     await dropdownPromise;
 
-    let actionMenuItem = notification.querySelectorAll("menuitem")[index];
-    await EventUtils.synthesizeMouseAtCenter(actionMenuItem, {});
+    button = notification.querySelectorAll("menuitem")[index];
   }
+
+  button.click();
   info("expecting notification popup hidden");
   await popuphidden;
+}
+
+async function clickAddressDoorhangerButton(buttonType, subType) {
+  const notification = getNotification();
+  let button;
+  if (buttonType == EDIT_ADDRESS_BUTTON) {
+    button = AddressSaveDoorhanger.editButton(notification);
+  } else if (buttonType == ADDRESS_MENU_BUTTON) {
+    const menu = AutofillDoorhanger.menuButton(notification);
+    const menupopup = AutofillDoorhanger.menuPopup(notification);
+    const promise = BrowserTestUtils.waitForEvent(menupopup, "popupshown");
+    menu.click();
+    await promise;
+    if (subType == ADDRESS_MENU_PREFENCE) {
+      button = AutofillDoorhanger.preferenceButton(notification);
+    } else if (subType == ADDRESS_MENU_LEARN_MORE) {
+      button = AutofillDoorhanger.learnMoreButton(notification);
+    }
+  } else {
+    await clickDoorhangerButton(buttonType);
+    return;
+  }
+
+  EventUtils.synthesizeMouseAtCenter(button, {});
 }
 
 function getDoorhangerCheckbox() {
@@ -770,7 +847,7 @@ async function removeAllRecords() {
 async function waitForFocusAndFormReady(win) {
   return Promise.all([
     new Promise(resolve => waitForFocus(resolve, win)),
-    BrowserTestUtils.waitForEvent(win, "FormReady"),
+    BrowserTestUtils.waitForEvent(win, "FormReadyForTests"),
   ]);
 }
 
@@ -779,14 +856,8 @@ async function expectWarningText(browser, expectedText) {
   const {
     autoCompletePopup: { richlistbox: itemsBox },
   } = browser;
-  let warningBox = itemsBox.querySelector(
-    ".autocomplete-richlistitem:last-child"
-  );
-
-  while (warningBox.collapsed) {
-    warningBox = warningBox.previousSibling;
-  }
-  warningBox = warningBox._warningTextBox;
+  let warningBox = itemsBox.querySelector(".ac-status");
+  ok(warningBox.parentNode.disabled, "Got warning box and is disabled");
 
   await BrowserTestUtils.waitForMutationCondition(
     warningBox,
@@ -809,9 +880,12 @@ async function testDialog(url, testFn, arg = undefined) {
       "cc-number": await OSKeyStore.decrypt(arg.record["cc-number-encrypted"]),
     });
   }
-  let win = window.openDialog(url, null, "width=600,height=600", arg);
+  const win = window.openDialog(url, null, "width=600,height=600", {
+    ...arg,
+    l10nStrings: ManageAddresses.getAddressL10nStrings(),
+  });
   await waitForFocusAndFormReady(win);
-  let unloadPromise = BrowserTestUtils.waitForEvent(win, "unload");
+  const unloadPromise = BrowserTestUtils.waitForEvent(win, "unload");
   await testFn(win);
   return unloadPromise;
 }
@@ -845,7 +919,7 @@ function verifySectionAutofillResult(sections, expectedSectionsInfo) {
 
       Assert.equal(
         field.element.value,
-        expeceted.autofill,
+        expeceted.autofill ?? "",
         `Autofilled value for element(id=${field.element.id}, field name=${field.fieldName}) should be equal`
       );
     });
@@ -881,15 +955,20 @@ function verifySectionFieldDetails(sections, expectedSectionsInfo) {
           section: "",
           contactType: "",
           addressType: "",
+          credentialType: "",
         },
         ...expectedSection.default,
         ...expectedFieldDetail,
       };
 
       const keys = new Set([...Object.keys(field), ...Object.keys(expected)]);
-      ["autofill", "elementWeakRef", "confidence", "part"].forEach(k =>
-        keys.delete(k)
-      );
+      [
+        "identifier",
+        "autofill",
+        "elementWeakRef",
+        "confidence",
+        "part",
+      ].forEach(k => keys.delete(k));
 
       for (const key of keys) {
         const expectedValue = expected[key];
@@ -909,6 +988,23 @@ function verifySectionFieldDetails(sections, expectedSectionsInfo) {
     );
   });
 }
+
+/**
+ * Discards all recorded Glean telemetry in parent and child processes
+ * and resets FOG and the Glean SDK.
+ *
+ * @param {boolean} onlyInParent Whether we only discard the metric data in the parent process
+ *
+ * Since the current method Services.fog.testResetFOG only discards metrics recorded in the parent process,
+ * we would like to keep this option in our method as well.
+ */
+async function clearGleanTelemetry(onlyInParent = false) {
+  if (!onlyInParent) {
+    await Services.fog.testFlushAllChildren();
+  }
+  Services.fog.testResetFOG();
+}
+
 /**
  * Runs heuristics test for form autofill on given patterns.
  *
@@ -1056,6 +1152,10 @@ async function add_heuristic_tests(
 
           if (obj.verifyAutofill) {
             for (const section of sections) {
+              if (!section.isValidSection()) {
+                continue;
+              }
+
               section.focusedInput = section.fieldDetails[0].element;
               await section.autofillFields(
                 section.getAdaptedProfiles([obj.testPattern.profile])[0]
@@ -1082,6 +1182,82 @@ async function add_heuristic_tests(
 
 async function add_autofill_heuristic_tests(patterns, fixturePathPrefix = "") {
   add_heuristic_tests(patterns, fixturePathPrefix, { testAutofill: true });
+}
+
+function fillEditDoorhanger(record) {
+  const notification = getNotification();
+
+  for (const [key, value] of Object.entries(record)) {
+    const id = AddressEditDoorhanger.getInputId(key);
+    const element = notification.querySelector(`#${id}`);
+    element.value = value;
+  }
+}
+
+// TODO: This function should be removed. We should make normalizeFields in
+// FormAutofillStorageBase.sys.mjs static and using it directly
+function normalizeAddressFields(record) {
+  let normalized = { ...record };
+
+  if (normalized.name != undefined) {
+    let nameParts = FormAutofillNameUtils.splitName(normalized.name);
+    normalized["given-name"] = nameParts.given;
+    normalized["additional-name"] = nameParts.middle;
+    normalized["family-name"] = nameParts.family;
+    delete normalized.name;
+  }
+  return normalized;
+}
+
+async function verifyConfirmationHint(
+  browser,
+  forceClose,
+  anchorID = "identity-icon-box"
+) {
+  let hintElem = browser.ownerGlobal.ConfirmationHint._panel;
+  await BrowserTestUtils.waitForPopupEvent(hintElem, "shown");
+  try {
+    Assert.equal(hintElem.state, "open", "hint popup is open");
+    Assert.ok(
+      BrowserTestUtils.isVisible(hintElem.anchorNode),
+      "hint anchorNode is visible"
+    );
+    Assert.equal(
+      hintElem.anchorNode.id,
+      anchorID,
+      "Hint should be anchored on the expected notification icon"
+    );
+    info("verifyConfirmationHint, hint is shown and has its anchorNode");
+    if (forceClose) {
+      await closePopup(hintElem);
+    } else {
+      info("verifyConfirmationHint, assertion ok, wait for poopuphidden");
+      await BrowserTestUtils.waitForPopupEvent(hintElem, "hidden");
+      info("verifyConfirmationHint, hintElem popup is hidden");
+    }
+  } catch (ex) {
+    Assert.ok(false, "Confirmation hint not shown: " + ex.message);
+  } finally {
+    info("verifyConfirmationHint promise finalized");
+  }
+}
+
+async function showAddressDoorhanger(browser, values = null) {
+  const defaultValues = {
+    "#given-name": "John",
+    "#family-name": "Doe",
+    "#organization": "Mozilla",
+    "#street-address": "123 Sesame Street",
+  };
+
+  const onPopupShown = waitForPopupShown();
+  const promise = BrowserTestUtils.browserLoaded(browser);
+  await focusUpdateSubmitForm(browser, {
+    focusSelector: "#given-name",
+    newValues: values ?? defaultValues,
+  });
+  await promise;
+  await onPopupShown;
 }
 
 add_setup(function () {

@@ -6,9 +6,15 @@
 
 class PictureInPictureVideoWrapper {
   constructor(video) {
-    this.player = video.closest("#movie_player")?.wrappedJSObject;
+    // Use shorts player only if video is from YouTube Shorts.
+    let shortsPlayer = video.closest("#shorts-player")?.wrappedJSObject;
+    let isYTShorts = !!(video.baseURI.includes("shorts") && shortsPlayer);
+
+    this.player = isYTShorts
+      ? shortsPlayer
+      : video.closest("#movie_player")?.wrappedJSObject;
   }
-  isLive(video) {
+  isLive() {
     return !!document.querySelector(".ytp-live");
   }
   setMuted(video, shouldMute) {
@@ -33,7 +39,7 @@ class PictureInPictureVideoWrapper {
 
     if (container) {
       updateCaptionsFunction("");
-      const callback = function (mutationsList, observer) {
+      const callback = function (mutationsList) {
         // eslint-disable-next-line no-unused-vars
         for (const mutation of mutationsList) {
           let textNodeList = container

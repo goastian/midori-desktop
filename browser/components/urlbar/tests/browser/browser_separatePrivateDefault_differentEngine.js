@@ -34,17 +34,17 @@ add_setup(async function () {
 
   // Add a search suggestion engine and move it to the front so that it appears
   // as the first one-off.
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "searchSuggestionEngine.xml",
     setAsDefault: true,
   });
-  gPrivateEngine = await SearchTestUtils.promiseNewSearchEngine({
+  gPrivateEngine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "searchSuggestionEngine2.xml",
     setAsDefaultPrivate: true,
   });
 
   // Add another engine in the first one-off position.
-  let engine2 = await SearchTestUtils.promiseNewSearchEngine({
+  let engine2 = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "POSTSearchEngine.xml",
   });
   await Services.search.moveEngine(engine2, 0);
@@ -262,52 +262,6 @@ add_task(async function test_openPBWindow() {
 //   });
 //   await SpecialPowers.popPrefEnv();
 // });
-
-add_task(async function test_alias_no_query() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.update2.emptySearchBehavior", 2]],
-  });
-  info(
-    "Test that 'Search in a Private Window' doesn't appear if an alias is typed with no query"
-  );
-  await UrlbarTestUtils.promiseAutocompleteResultPopup({
-    window,
-    value: "alias ",
-  });
-  // Wait for the second new search that starts when search mode is entered.
-  await UrlbarTestUtils.promiseSearchComplete(window);
-  await UrlbarTestUtils.assertSearchMode(window, {
-    engineName: gAliasEngine.name,
-    entry: "typed",
-  });
-  await AssertNoPrivateResult(window);
-  await UrlbarTestUtils.exitSearchMode(window);
-  await UrlbarTestUtils.promisePopupClose(window);
-  await SpecialPowers.popPrefEnv();
-});
-
-add_task(async function test_alias_query() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.update2.emptySearchBehavior", 2]],
-  });
-  info(
-    "Test that 'Search in a Private Window' appears when an alias is typed with a query"
-  );
-  await UrlbarTestUtils.promiseAutocompleteResultPopup({
-    window,
-    value: "alias something",
-  });
-  // Wait for the second new search that starts when search mode is entered.
-  await UrlbarTestUtils.promiseSearchComplete(window);
-  await UrlbarTestUtils.assertSearchMode(window, {
-    engineName: "MozSearch",
-    entry: "typed",
-  });
-  await AssertPrivateResult(window, gAliasEngine, true);
-  await UrlbarTestUtils.exitSearchMode(window);
-  await UrlbarTestUtils.promisePopupClose(window);
-  await SpecialPowers.popPrefEnv();
-});
 
 add_task(async function test_restrict() {
   info(

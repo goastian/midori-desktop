@@ -26,6 +26,19 @@ export const MigrationWizardConstants = Object.freeze({
   }),
 
   /**
+   * A mapping of a progress value string. These are used by
+   * MigrationWizard.#onShowingProgress to update the UI accordingly.
+   *
+   * @type {Object<string, number>}
+   */
+  PROGRESS_VALUE: Object.freeze({
+    LOADING: 1,
+    SUCCESS: 2,
+    WARNING: 3,
+    INFO: 4,
+  }),
+
+  /**
    * Returns a mapping of a resource type to a string used to identify
    * the associated resource group in the wizard via a data-resource-type
    * attribute. The keys are used to set which items should be shown and
@@ -47,8 +60,11 @@ export const MigrationWizardConstants = Object.freeze({
     PASSWORDS: "PASSWORDS",
     BOOKMARKS: "BOOKMARKS",
     PAYMENT_METHODS: "PAYMENT_METHODS",
+    EXTENSIONS: "EXTENSIONS",
 
-    // We don't yet show OTHERDATA or SESSION resources.
+    COOKIES: "COOKIES",
+    SESSION: "SESSION",
+    OTHERDATA: "OTHERDATA",
   }),
 
   DISPLAYED_FILE_RESOURCE_TYPES: Object.freeze({
@@ -64,6 +80,20 @@ export const MigrationWizardConstants = Object.freeze({
   }),
 
   /**
+   * Returns a mapping of a resource type to a string used to identify
+   * the associated resource group in the wizard via a data-resource-type
+   * attribute. The keys are for resource types that are only ever shown
+   * for profile resets.
+   *
+   * @type {Object<string, string>}
+   */
+  PROFILE_RESET_ONLY_RESOURCE_TYPES: Object.freeze({
+    COOKIES: "COOKIES",
+    SESSION: "SESSION",
+    OTHERDATA: "OTHERDATA",
+  }),
+
+  /**
    * The set of keys that maps to migrators that use the term "favorites"
    * in the place of "bookmarks". This tends to be browsers from Microsoft.
    */
@@ -73,4 +103,22 @@ export const MigrationWizardConstants = Object.freeze({
     "edge",
     "ie",
   ]),
+
+  /**
+   * The values that are set on the extension extra key for the
+   * migration_finished telemetry event. The definition of that event
+   * defines it as:
+   *
+   * "3" if all extensions were matched after import. "2" if only some
+   * extensions were matched. "1" if none were matched, and "0" if extensions
+   * weren't selected for import.
+   *
+   * @type {Object<string, string>}
+   */
+  EXTENSIONS_IMPORT_RESULT: Object.freeze({
+    NOT_IMPORTED: "0",
+    NONE_MATCHED: "1",
+    PARTIAL_MATCH: "2",
+    ALL_MATCHED: "3",
+  }),
 });

@@ -68,7 +68,7 @@ nsMacShellService::IsDefaultBrowser(bool aForAllTypes,
 }
 
 NS_IMETHODIMP
-nsMacShellService::SetDefaultBrowser(bool aClaimAllTypes, bool aForAllUsers) {
+nsMacShellService::SetDefaultBrowser(bool aForAllUsers) {
   // Note: We don't support aForAllUsers on Mac OS X.
 
   CFStringRef firefoxID = ::CFBundleGetIdentifier(::CFBundleGetMainBundle());
@@ -83,11 +83,9 @@ nsMacShellService::SetDefaultBrowser(bool aClaimAllTypes, bool aForAllUsers) {
     return NS_ERROR_FAILURE;
   }
 
-  if (aClaimAllTypes) {
-    if (::LSSetDefaultRoleHandlerForContentType(kUTTypeHTML, kLSRolesAll,
-                                                firefoxID) != noErr) {
-      return NS_ERROR_FAILURE;
-    }
+  if (::LSSetDefaultRoleHandlerForContentType(kUTTypeHTML, kLSRolesAll,
+                                              firefoxID) != noErr) {
+    return NS_ERROR_FAILURE;
   }
 
   nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
@@ -278,4 +276,71 @@ nsMacShellService::ShowSecurityPreferences(const nsACString& aPaneID) {
     ::CFRelease(paneID);
   }
   return rv;
+}
+
+nsString ConvertCFStringToNSString(CFStringRef aSrc) {
+  nsString aDest;
+  auto len = ::CFStringGetLength(aSrc);
+  aDest.SetLength(len);
+  ::CFStringGetCharacters(aSrc, ::CFRangeMake(0, len),
+                          (UniChar*)aDest.BeginWriting());
+  return aDest;
+}
+
+NS_IMETHODIMP
+nsMacShellService::GetAvailableApplicationsForProtocol(
+    const nsACString& protocol, nsTArray<nsTArray<nsString>>& aHandlerPaths) {
+  class CFTypeRefAutoDeleter {
+   public:
+    explicit CFTypeRefAutoDeleter(CFTypeRef ref) : mRef(ref) {}
+    ~CFTypeRefAutoDeleter() {
+      if (mRef != NULL) ::CFRelease(mRef);
+    }
+
+   private:
+    CFTypeRef mRef;
+  };
+
+  aHandlerPaths.Clear();
+  nsCString protocolSep = protocol + "://"_ns;
+  CFStringRef cfProtocol = ::CFStringCreateWithBytes(
+      kCFAllocatorDefault, (const UInt8*)protocolSep.BeginReading(),
+      protocolSep.Length(), kCFStringEncodingUTF8, false);
+  CFTypeRefAutoDeleter cfProtocolAuto((CFTypeRef)cfProtocol);
+  if (cfProtocol == NULL) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+  CFURLRef protocolURL =
+      ::CFURLCreateWithString(kCFAllocatorDefault, cfProtocol, NULL);
+  CFTypeRefAutoDeleter cfProtocolURLAuto((CFTypeRef)protocolURL);
+  if (protocolURL == NULL) {
+    return NS_ERROR_MALFORMED_URI;
+  }
+  CFArrayRef appURLs = ::LSCopyApplicationURLsForURL(protocolURL, kLSRolesAll);
+  CFTypeRefAutoDeleter cfAppURLsAuto((CFTypeRef)appURLs);
+  if (appURLs == NULL) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  for (CFIndex i = 0; i < ::CFArrayGetCount(appURLs); i++) {
+    CFURLRef appURL = (CFURLRef)::CFArrayGetValueAtIndex(appURLs, i);
+    CFBundleRef appBundle = ::CFBundleCreate(kCFAllocatorDefault, appURL);
+    CFTypeRefAutoDeleter cfAppBundleAuto((CFTypeRef)appBundle);
+    if (appBundle == NULL) {
+      continue;
+    }
+    CFDictionaryRef appInfo = ::CFBundleGetInfoDictionary(appBundle);
+    if (appInfo == NULL) {
+      continue;
+    }
+    CFStringRef displayName =
+        (CFStringRef)::CFDictionaryGetValue(appInfo, kCFBundleNameKey);
+    if (displayName == NULL) {
+      continue;
+    }
+    CFStringRef appPath = ::CFURLGetString(appURL);
+    nsTArray<nsString> handlerPath = {ConvertCFStringToNSString(displayName),
+                                      ConvertCFStringToNSString(appPath)};
+    aHandlerPaths.AppendElement(handlerPath.Clone());
+  }
+  return NS_OK;
 }

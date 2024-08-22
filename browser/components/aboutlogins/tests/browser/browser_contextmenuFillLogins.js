@@ -32,8 +32,10 @@ if (OSKeyStoreTestUtils.canTestOSKeyStoreLogin()) {
   gTests[gTests.length] = {
     name: "test contextmenu on password field in edit login view",
     async setup(browser) {
-      let osAuthDialogShown = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
-
+      let osAuthDialogShown = Promise.resolve();
+      if (OSKeyStore.canReauth()) {
+        osAuthDialogShown = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
+      }
       // load up the edit login view
       await SpecialPowers.spawn(
         browser,
@@ -41,7 +43,7 @@ if (OSKeyStoreTestUtils.canTestOSKeyStoreLogin()) {
         async login => {
           let loginList = content.document.querySelector("login-list");
           let loginListItem = loginList.shadowRoot.querySelector(
-            ".login-list-item[data-guid]:not([hidden])"
+            "login-list-item[data-guid]:not([hidden])"
           );
           info("Clicking on the first login");
 
@@ -55,7 +57,7 @@ if (OSKeyStoreTestUtils.canTestOSKeyStoreLogin()) {
               loginItem._login.guid == login.guid
             );
           }, "Waiting for login item to get populated");
-          let editButton = loginItem.shadowRoot.querySelector(".edit-button");
+          let editButton = loginItem.shadowRoot.querySelector("edit-button");
           editButton.click();
         }
       );

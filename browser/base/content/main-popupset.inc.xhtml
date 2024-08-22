@@ -36,10 +36,10 @@
     <menuitem id="context_bookmarkSelectedTabs"
               hidden="true"
               data-lazy-l10n-id="bookmark-selected-tabs"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"/>
+              oncommand="PlacesCommandHook.bookmarkTabs(gBrowser.selectedTabs);"/>
     <menuitem id="context_bookmarkTab"
               data-lazy-l10n-id="tab-context-bookmark-tab"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.getUniquePages([TabContextMenu.contextTab]));"/>
+              oncommand="PlacesCommandHook.bookmarkTabs([TabContextMenu.contextTab]);"/>
     <menu id="context_moveTabOptions"
           data-lazy-l10n-id="tab-context-move-tabs"
           data-l10n-args='{"tabCount": 1}'>
@@ -77,13 +77,16 @@
               data-lazy-l10n-id="tab-context-close-n-tabs"
               data-l10n-args='{"tabCount": 1}'
               oncommand="TabContextMenu.closeContextTabs();"/>
+    <menuitem id="context_closeDuplicateTabs"
+              data-lazy-l10n-id="tab-context-close-duplicate-tabs"
+              oncommand="gBrowser.removeDuplicateTabs(TabContextMenu.contextTab);"/>
     <menu id="context_closeTabOptions"
           data-lazy-l10n-id="tab-context-close-multiple-tabs">
       <menupopup id="closeTabOptions">
         <menuitem id="context_closeTabsToTheStart" data-lazy-l10n-id="close-tabs-to-the-start"
-                  oncommand="gBrowser.removeTabsToTheStartFrom(TabContextMenu.contextTab, {animate: true});"/>
+                  oncommand="gBrowser.removeTabsToTheStartFrom(TabContextMenu.contextTab);"/>
         <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"
-                  oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
+                  oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab);"/>
         <menuitem id="context_closeOtherTabs" data-lazy-l10n-id="close-other-tabs"
                   oncommand="gBrowser.removeAllTabsBut(TabContextMenu.contextTab);"/>
       </menupopup>
@@ -100,7 +103,7 @@
               oncommand="FullScreen.setAutohide();"/>
     <menuitem contexttype="fullscreen"
               data-lazy-l10n-id="full-screen-exit"
-              oncommand="BrowserFullScreen();"/>
+              oncommand="BrowserCommands.fullScreen();"/>
   </menupopup>
 
   <!-- bug 415444/582485: event.stopPropagation is here for the cloned version
@@ -109,7 +112,7 @@
   -->
   <menupopup id="backForwardMenu"
              onpopupshowing="return FillHistoryMenu(event.target);"
-             oncommand="gotoHistoryIndex(event); event.stopPropagation();"/>
+             oncommand="BrowserCommands.gotoHistoryIndex(event); event.stopPropagation();"/>
   <tooltip id="aHTMLTooltip" page="true"/>
   <tooltip id="remoteBrowserTooltip"/>
 
@@ -145,16 +148,9 @@
   </html:template>
 
   <html:template id="screenshotsPagePanelTemplate">
-    <panel id="screenshotsPagePanel"
-           type="arrow"
-           orient="vertical"
-           norolluponanchor="true"
-           consumeoutsideclicks="never"
-           level="parent"
-           noautohide="true"
-           tabspecific="true">
-           <screenshots-buttons></screenshots-buttons>
-    </panel>
+    <box id="screenshotsPagePanel" hidden="true">
+      <screenshots-buttons></screenshots-buttons>
+    </box>
   </html:template>
 
   <html:template id="invalidFormTemplate">
@@ -180,13 +176,6 @@
       </box>
       <toolbarseparator id="editBookmarkHeaderSeparator"></toolbarseparator>
       <vbox class="panel-subview-body">
-        <html:div id="editBookmarkPanelInfoArea">
-          <html:div id="editBookmarkPanelFaviconContainer">
-            <html:img id="editBookmarkPanelFavicon"/>
-          </html:div>
-          <html:div id="editBookmarkPanelImage"></html:div>
-        </html:div>
-        <toolbarseparator id="editBookmarkSeparator"></toolbarseparator>
 #include ../../components/places/content/editBookmarkPanel.inc.xhtml
         <vbox id="editBookmarkPanelBottomContent"
               flex="1">
@@ -194,30 +183,19 @@
                     data-l10n-id="bookmark-panel-show-editor-checkbox"
                     oncommand="StarUI.onShowForNewBookmarksCheckboxCommand();"/>
         </vbox>
-        <hbox id="editBookmarkPanelBottomButtons"
+        <html:moz-button-group
               class="panel-footer"
               data-l10n-id="bookmark-panel"
               data-l10n-attrs="style">
-#ifndef XP_UNIX
           <button id="editBookmarkPanelDoneButton"
-                  class="editBookmarkPanelBottomButton"
+                  class="footer-button"
                   data-l10n-id="bookmark-panel-save-button"
                   default="true"
                   oncommand="StarUI.panel.hidePopup();"/>
           <button id="editBookmarkPanelRemoveButton"
-                  class="editBookmarkPanelBottomButton"
+                  class="footer-button"
                   oncommand="StarUI.removeBookmarkButtonCommand();"/>
-#else
-          <button id="editBookmarkPanelRemoveButton"
-                  class="editBookmarkPanelBottomButton"
-                  oncommand="StarUI.removeBookmarkButtonCommand();"/>
-          <button id="editBookmarkPanelDoneButton"
-                  class="editBookmarkPanelBottomButton"
-                  data-l10n-id="bookmark-panel-save-button"
-                  default="true"
-                  oncommand="StarUI.panel.hidePopup();"/>
-#endif
-        </hbox>
+        </html:moz-button-group>
       </vbox>
     </panel>
   </html:template>
@@ -271,39 +249,43 @@
     </stack>
   </html:template>
 
-  <panel id="sidebarMenu-popup"
-         class="cui-widget-panel"
-         role="group"
-         type="arrow"
-         hidden="true"
-         flip="slide"
-         orient="vertical"
-         position="bottomleft topleft">
-    <toolbarbutton id="sidebar-switcher-bookmarks"
-                   data-l10n-id="sidebar-menu-bookmarks"
-                   class="subviewbutton"
-                   key="viewBookmarksSidebarKb"
-                   oncommand="SidebarUI.show('viewBookmarksSidebar');"/>
-    <toolbarbutton id="sidebar-switcher-history"
-                   data-l10n-id="sidebar-menu-history"
-                   class="subviewbutton"
-                   key="key_gotoHistory"
-                   oncommand="SidebarUI.show('viewHistorySidebar');"/>
-    <toolbarbutton id="sidebar-switcher-tabs"
-                   data-l10n-id="sidebar-menu-synced-tabs"
-                   class="subviewbutton sync-ui-item"
-                   oncommand="SidebarUI.show('viewTabsSidebar');"/>
-    <toolbarseparator/>
+  <menupopup id="sidebarMenu-popup"
+             class="toolbar-menupopup"
+             hidden="true"
+             position="bottomleft topleft">
+    <menuitem id="sidebar-switcher-bookmarks"
+              data-l10n-id="sidebar-menu-bookmarks"
+              key="viewBookmarksSidebarKb"
+              oncommand="SidebarController.show('viewBookmarksSidebar');"/>
+    <menuitem id="sidebar-switcher-history"
+              data-l10n-id="sidebar-menu-history"
+              key="key_gotoHistory"
+              oncommand="SidebarController.show('viewHistorySidebar');"/>
+    <menuitem id="sidebar-switcher-tabs"
+              data-l10n-id="sidebar-menu-synced-tabs"
+              class="sync-ui-item"
+              oncommand="SidebarController.show('viewTabsSidebar');"/>
+    <menuseparator/>
     <!-- Extension toolbarbuttons go here. -->
-    <toolbarseparator id="sidebar-extensions-separator"/>
-    <toolbarbutton id="sidebar-reverse-position"
-                   class="subviewbutton"
-                   oncommand="SidebarUI.reversePosition()"/>
-    <toolbarseparator/>
-    <toolbarbutton data-l10n-id="sidebar-menu-close"
-                   class="subviewbutton"
-                   oncommand="SidebarUI.hide()"/>
-  </panel>
+    <menuseparator id="sidebar-extensions-separator"/>
+    <menuitem id="sidebar-reverse-position"
+              oncommand="SidebarController.reversePosition()"/>
+    <menuseparator/>
+    <menuitem data-l10n-id="sidebar-menu-close"
+              oncommand="SidebarController.hide()"/>
+  </menupopup>
+
+  <menupopup id="sidebar-context-menu">
+    <menuitem data-l10n-id="sidebar-context-menu-manage-extension"
+              id="sidebar-context-menu-manage-extension"
+              contexttype="extension-action"/>
+    <menuitem data-l10n-id="sidebar-context-menu-remove-extension"
+              id="sidebar-context-menu-remove-extension"
+              contexttype="extension-action"/>
+    <menuitem data-l10n-id="sidebar-context-menu-report-extension"
+              id="sidebar-context-menu-report-extension"
+              contexttype="extension-action"/>
+  </menupopup>
 
   <menupopup id="toolbar-context-menu"
              onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateDownloadsAlwaysOpenPanel(this); ToolbarContextMenu.updateExtension(this, event)">
@@ -359,11 +341,11 @@
               data-lazy-l10n-id="toolbar-context-menu-reload-selected-tabs"/>
     <menuitem id="toolbar-context-bookmarkSelectedTab"
               contexttype="tabbar"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"
+              oncommand="PlacesCommandHook.bookmarkTabs(gBrowser.selectedTabs);"
               data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tab"/>
     <menuitem id="toolbar-context-bookmarkSelectedTabs"
               contexttype="tabbar"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"
+              oncommand="PlacesCommandHook.bookmarkTabs(gBrowser.selectedTabs);"
               data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tabs"/>
     <menuitem id="toolbar-context-selectAllTabs"
               contexttype="tabbar"
@@ -393,7 +375,7 @@
               oncommand="FullScreen.setAutohide();"/>
     <menuitem contexttype="fullscreen"
               data-lazy-l10n-id="full-screen-exit"
-              oncommand="BrowserFullScreen();"/>
+              oncommand="BrowserCommands.fullScreen();"/>
   </menupopup>
 
   <menupopup id="blockedPopupOptions"
@@ -412,6 +394,8 @@
   </menupopup>
 
   <menupopup id="contentAreaContextMenu"
+# read by macOS cocoa code to enable the "services" menu here:
+             showservicesmenu="true"
              onpopupshowing="if (event.target != this)
                                return true;
                              gContextMenu = new nsContextMenu(this, event.shiftKey);
@@ -441,6 +425,25 @@
   <panel id="ctrlTab-panel" hidden="true" norestorefocus="true" level="top" orient="vertical">
     <hbox id="ctrlTab-previews"/>
     <hbox id="ctrlTab-showAll-container" pack="center"/>
+  </panel>
+
+  <!-- TODO: create lazily? -->
+  <panel id="tab-preview-panel"
+         type="arrow"
+         orient="vertical"
+         noautofocus="true"
+         norolluponanchor="true"
+         rolluponmousewheel="true"
+         consumeoutsideclicks="false">
+    <html:div class="tab-preview-text-container">
+      <html:div class="tab-preview-title"></html:div>
+      <html:div class="tab-preview-uri"></html:div>
+      <html:div class="tab-preview-pid-activeness">
+        <html:div class="tab-preview-pid"></html:div>
+        <html:div class="tab-preview-activeness"></html:div>
+      </html:div>
+    </html:div>
+    <html:div class="tab-preview-thumbnail-container"></html:div>
   </panel>
 
   <html:template id="pageActionPanelTemplate">
@@ -525,9 +528,9 @@
 #include ../../components/controlcenter/content/permissionPanel.inc.xhtml
 #include ../../components/controlcenter/content/protectionsPanel.inc.xhtml
 #include ../../components/downloads/content/downloadsPanel.inc.xhtml
-#include ../../components/translations/content/translationsPanel.inc.xhtml
-#include ../../../devtools/startup/enableDevToolsPopup.inc.xhtml
-#include browser-allTabsMenu.inc.xhtml
+#include ../../components/translations/content/selectTranslationsPanel.inc.xhtml
+#include ../../components/translations/content/fullPageTranslationsPanel.inc.xhtml
+#include ../../components/tabbrowser/content/browser-allTabsMenu.inc.xhtml
 
   <tooltip id="dynamic-shortcut-tooltip"
            onpopupshowing="UpdateDynamicShortcutTooltipText(this);"/>
@@ -626,7 +629,7 @@
     </panel>
   </html:template>
 
-  #include ../../../toolkit/components/pictureinpicture/content/pictureInPicturePanel.xhtml
+  #include ../../../toolkit/components/pictureinpicture/content/pictureInPicturePanel.inc.xhtml
 
   <menupopup id="unified-extensions-context-menu"
              onpopupshowing="gUnifiedExtensions.updateContextMenu(this, event)"
@@ -651,5 +654,51 @@
     <menuitem data-lazy-l10n-id="unified-extensions-context-menu-report-extension"
               class="unified-extensions-context-menu-report-extension"
               oncommand="gUnifiedExtensions.reportExtension(this.parentElement)" />
+  </menupopup>
+
+  <menupopup id="full-page-translations-panel-settings-menupopup"
+             onpopupshown="FullPageTranslationsPanel.handleSettingsPopupShownEvent()"
+             onpopuphidden="FullPageTranslationsPanel.handleSettingsPopupHiddenEvent()">
+    <menuitem class="always-offer-translations-menuitem"
+              data-l10n-id="translations-panel-settings-always-offer-translation"
+              type="checkbox"
+              checked="false"
+              autocheck="false"
+              oncommand="FullPageTranslationsPanel.onAlwaysOfferTranslations()"/>
+    <menuitem class="always-translate-language-menuitem"
+              data-l10n-id="translations-panel-settings-always-translate-unknown-language"
+              type="checkbox"
+              checked="false"
+              autocheck="false"
+              oncommand="FullPageTranslationsPanel.onAlwaysTranslateLanguage()"/>
+    <menuitem class="never-translate-language-menuitem"
+              data-l10n-id="translations-panel-settings-never-translate-unknown-language"
+              type="checkbox"
+              checked="false"
+              autocheck="false"
+              oncommand="FullPageTranslationsPanel.onNeverTranslateLanguage()"/>
+    <menuseparator/>
+    <menuitem class="never-translate-site-menuitem"
+              data-l10n-id="translations-panel-settings-never-translate-site"
+              type="checkbox"
+              checked="false"
+              autocheck="false"
+              oncommand="FullPageTranslationsPanel.onNeverTranslateSite()"/>
+    <menuseparator/>
+    <menuitem class="manage-languages-menuitem"
+              data-l10n-id="translations-panel-settings-manage-languages"
+              oncommand="FullPageTranslationsPanel.openManageLanguages()"/>
+    <menuitem data-l10n-id="translations-panel-settings-about2"
+              oncommand="FullPageTranslationsPanel.onAboutTranslations()"/>
+  </menupopup>
+
+  <menupopup id="select-translations-panel-settings-menupopup">
+    <menuitem id="select-translations-panel-open-settings-page-menuitem"
+              class="manage-languages-menuitem"
+              data-l10n-id="select-translations-panel-open-translations-settings-menuitem"
+              oncommand="SelectTranslationsPanel.openTranslationsSettingsPage()"/>
+    <menuitem id="select-translations-panel-about-translations-menuitem"
+              data-l10n-id="translations-panel-settings-about2"
+              oncommand="SelectTranslationsPanel.onAboutTranslations()"/>
   </menupopup>
 </popupset>

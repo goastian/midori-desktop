@@ -11,11 +11,6 @@ const PREF_FOCUS_SOURCE = "media.getusermedia.window.focus_source.enabled";
 const STATE_CAPTURE_ENABLED = Ci.nsIMediaManagerService.STATE_CAPTURE_ENABLED;
 const STATE_CAPTURE_DISABLED = Ci.nsIMediaManagerService.STATE_CAPTURE_DISABLED;
 
-const USING_LEGACY_INDICATOR = Services.prefs.getBoolPref(
-  "privacy.webrtc.legacyGlobalIndicator",
-  false
-);
-
 const ALLOW_SILENCING_NOTIFICATIONS = Services.prefs.getBoolPref(
   "privacy.webrtc.allowSilencingNotifications",
   false
@@ -26,9 +21,14 @@ const SHOW_GLOBAL_MUTE_TOGGLES = Services.prefs.getBoolPref(
   false
 );
 
-const INDICATOR_PATH = USING_LEGACY_INDICATOR
-  ? "chrome://browser/content/webrtcLegacyIndicator.xhtml"
-  : "chrome://browser/content/webrtcIndicator.xhtml";
+let IsIndicatorDisabled =
+  AppConstants.isPlatformAndVersionAtLeast("macosx", 14.0) &&
+  !Services.prefs.getBoolPref(
+    "privacy.webrtc.showIndicatorsOnMacos14AndAbove",
+    false
+  );
+
+const INDICATOR_PATH = "chrome://browser/content/webrtcIndicator.xhtml";
 
 const IS_MAC = AppConstants.platform == "macosx";
 
@@ -63,11 +63,6 @@ function whenDelayedStartupFinished(aWindow) {
 function promiseIndicatorWindow() {
   let startTime = performance.now();
 
-  // We don't show the legacy indicator window on Mac.
-  if (USING_LEGACY_INDICATOR && IS_MAC) {
-    return Promise.resolve();
-  }
-
   return new Promise(resolve => {
     Services.obs.addObserver(function obs(win) {
       win.addEventListener(
@@ -94,7 +89,9 @@ function promiseIndicatorWindow() {
 }
 
 async function assertWebRTCIndicatorStatus(expected) {
-  let ui = ChromeUtils.import("resource:///modules/webrtcUI.jsm").webrtcUI;
+  let ui = ChromeUtils.importESModule(
+    "resource:///modules/webrtcUI.sys.mjs"
+  ).webrtcUI;
   let expectedState = expected ? "visible" : "hidden";
   let msg = "WebRTC indicator " + expectedState;
   if (!expected && ui.showGlobalIndicator) {
@@ -110,7 +107,7 @@ async function assertWebRTCIndicatorStatus(expected) {
   let expectVideo = false,
     expectAudio = false,
     expectScreen = "";
-  if (expected) {
+  if (expected && !IsIndicatorDisabled) {
     if (expected.video) {
       expectVideo = true;
     }
@@ -146,14 +143,10 @@ async function assertWebRTCIndicatorStatus(expected) {
     );
   }
 
-  if (USING_LEGACY_INDICATOR && IS_MAC) {
-    return;
-  }
-
   if (!expected) {
     let win = Services.wm.getMostRecentWindow("Browser:WebRTCGlobalIndicator");
     if (win) {
-      await new Promise((resolve, reject) => {
+      await new Promise(resolve => {
         win.addEventListener("unload", function listener(e) {
           if (e.target == win.document) {
             win.removeEventListener("unload", listener);
@@ -190,11 +183,7 @@ async function assertWebRTCIndicatorStatus(expected) {
       });
     }
 
-    if (
-      !USING_LEGACY_INDICATOR &&
-      expected.screen &&
-      expected.screen.startsWith("Window")
-    ) {
+    if (expected.screen && expected.screen.startsWith("Window")) {
       // These tests were originally written to express window sharing by
       // having expected.screen start with "Window". This meant that the
       // legacy indicator is expected to have the "sharingscreen" attribute
@@ -208,7 +197,7 @@ async function assertWebRTCIndicatorStatus(expected) {
       expected.window = true;
     }
 
-    if (!USING_LEGACY_INDICATOR && !SHOW_GLOBAL_MUTE_TOGGLES) {
+    if (!SHOW_GLOBAL_MUTE_TOGGLES) {
       expected.video = false;
       expected.audio = false;
 
@@ -224,11 +213,7 @@ async function assertWebRTCIndicatorStatus(expected) {
     for (let item of ["video", "audio", "screen", "window", "browserwindow"]) {
       let expectedValue;
 
-      if (USING_LEGACY_INDICATOR) {
-        expectedValue = expected && expected[item] ? "true" : "";
-      } else {
-        expectedValue = expected && expected[item] ? "true" : null;
-      }
+      expectedValue = expected && expected[item] ? "true" : null;
 
       is(
         docElt.getAttribute("sharing" + item),
@@ -323,7 +308,7 @@ function expectObserverCalledOnClose(
       {
         topic: aTopic,
         count: 1,
-        filterFunctionSource: ((subject, topic, data) => {
+        filterFunctionSource: ((subject, topic) => {
           Services.cpmm.sendAsyncMessage("WebRTCTest:ObserverCalled", {
             topic,
           });
@@ -556,9 +541,9 @@ async function getMediaCaptureState() {
   if (screen != Ci.nsIMediaManagerService.STATE_NOCAPTURE) {
     result.screen = "Screen";
   } else if (window != Ci.nsIMediaManagerService.STATE_NOCAPTURE) {
-    result.screen = "Window";
+    result.window = true;
   } else if (browser != Ci.nsIMediaManagerService.STATE_NOCAPTURE) {
-    result.screen = "Browser";
+    result.browserwindow = true;
   }
 
   ChromeUtils.addProfilerMarker("getMediaCaptureState", {
@@ -866,7 +851,10 @@ function checkDeviceSelectors(aExpectedTypes, aWindow = window) {
       continue;
     }
     ok(!selector.hidden, `${type} selector visible`);
-    let selectorList = document.getElementById(`webRTC-select${type}-menulist`);
+    let tagName = type == "Speaker" ? "richlistbox" : "menulist";
+    let selectorList = document.getElementById(
+      `webRTC-select${type}-${tagName}`
+    );
     let label = document.getElementById(
       `webRTC-select${type}-single-device-label`
     );
@@ -875,9 +863,13 @@ function checkDeviceSelectors(aExpectedTypes, aWindow = window) {
     if (selectorList.itemCount == 1) {
       ok(selectorList.hidden, `${type} selector list should be hidden.`);
       ok(!label.hidden, `${type} selector label should not be hidden.`);
+      let itemLabel =
+        tagName == "richlistbox"
+          ? selectorList.selectedItem.firstElementChild.getAttribute("value")
+          : selectorList.selectedItem.getAttribute("label");
       is(
         label.value,
-        selectorList.selectedItem.getAttribute("label"),
+        itemLabel,
         `${type} label should be showing the lone device label.`
       );
       expectedDescribedBy += ` webRTC-select${type}-icon webRTC-select${type}-single-device-label`;
@@ -926,15 +918,15 @@ async function checkSharingUI(
   let webrtcSharingIcon = doc.getElementById("webrtc-sharing-icon");
   ok(webrtcSharingIcon.hasAttribute("sharing"), "sharing attribute is set");
   let sharing = webrtcSharingIcon.getAttribute("sharing");
-  if (aExpected.screen) {
+  if (aExpected.screen && !IsIndicatorDisabled) {
     is(sharing, "screen", "showing screen icon in the identity block");
-  } else if (aExpected.video == STATE_CAPTURE_ENABLED) {
+  } else if (aExpected.video == STATE_CAPTURE_ENABLED && !IsIndicatorDisabled) {
     is(sharing, "camera", "showing camera icon in the identity block");
-  } else if (aExpected.audio == STATE_CAPTURE_ENABLED) {
+  } else if (aExpected.audio == STATE_CAPTURE_ENABLED && !IsIndicatorDisabled) {
     is(sharing, "microphone", "showing mic icon in the identity block");
-  } else if (aExpected.video) {
+  } else if (aExpected.video && !IsIndicatorDisabled) {
     is(sharing, "camera", "showing camera icon in the identity block");
-  } else if (aExpected.audio) {
+  } else if (aExpected.audio && !IsIndicatorDisabled) {
     is(sharing, "microphone", "showing mic icon in the identity block");
   }
 
@@ -1069,7 +1061,7 @@ async function promiseReloadFrame(aFrameId, aBrowsingContext) {
   let loadedPromise = BrowserTestUtils.browserLoaded(
     gBrowser.selectedBrowser,
     true,
-    arg => {
+    () => {
       return true;
     }
   );

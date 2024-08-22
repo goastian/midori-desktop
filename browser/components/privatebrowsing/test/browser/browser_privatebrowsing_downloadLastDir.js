@@ -17,14 +17,14 @@ function test() {
     source: Services.io.newURI("http://test1.com/file"),
   };
 
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   MockFilePicker.returnValue = Ci.nsIFilePicker.returnOK;
 
   let prefs = Services.prefs.getBranch("browser.download.");
   let launcherDialog = Cc["@mozilla.org/helperapplauncherdialog;1"].getService(
     Ci.nsIHelperAppLauncherDialog
   );
-  let tmpDir = FileUtils.getDir("TmpD", [], true);
+  let tmpDir = FileUtils.getDir("TmpD", []);
   let dir1 = newDirectory();
   let dir2 = newDirectory();
   let dir3 = newDirectory();

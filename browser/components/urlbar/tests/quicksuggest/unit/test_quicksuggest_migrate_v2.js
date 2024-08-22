@@ -39,7 +39,7 @@ const DEFAULT_PREFS = {
 // added, set this to an object like the one in test_quicksuggest_migrate_v1.js.
 const TEST_OVERRIDES = undefined;
 
-add_task(async function init() {
+add_setup(async () => {
   await UrlbarTestUtils.initNimbusFeature();
 });
 
@@ -1330,26 +1330,18 @@ add_task(async function () {
 });
 
 async function withOnlineExperiment(callback) {
-  let { enrollmentPromise, doExperimentCleanup } =
-    ExperimentFakes.enrollmentHelper(
-      ExperimentFakes.recipe("firefox-suggest-offline-vs-online", {
-        active: true,
-        branches: [
-          {
-            slug: "treatment",
-            features: [
-              {
-                featureId: NimbusFeatures.urlbar.featureId,
-                value: {
-                  enabled: true,
-                },
-              },
-            ],
-          },
-        ],
-      })
-    );
-  await enrollmentPromise;
+  const doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: NimbusFeatures.urlbar.featureId,
+      value: {
+        enabled: true,
+      },
+    },
+    {
+      slug: "firefox-suggest-offline-vs-online",
+      branchSlug: "treatment",
+    }
+  );
   await callback();
-  await doExperimentCleanup();
+  doExperimentCleanup();
 }

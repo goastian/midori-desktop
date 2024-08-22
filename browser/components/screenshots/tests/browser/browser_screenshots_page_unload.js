@@ -12,17 +12,10 @@ add_task(async function test() {
   await BrowserTestUtils.withNewTab(
     {
       gBrowser,
-      url: TEST_PAGE,
+      url: SHORT_TEST_PAGE,
     },
     async browser => {
       await clearAllTelemetryEvents();
-      await SpecialPowers.spawn(browser, [TEST_PAGE], url => {
-        let a = content.document.createElement("a");
-        a.id = "clickMe";
-        a.href = url;
-        a.textContent = "Click me to unload page";
-        content.document.querySelector("body").appendChild(a);
-      });
 
       let helper = new ScreenshotsHelper(browser);
 
@@ -31,7 +24,7 @@ add_task(async function test() {
       await helper.waitForOverlay();
 
       await SpecialPowers.spawn(browser, [], () => {
-        content.document.querySelector("#clickMe").click();
+        content.location.reload();
       });
 
       await helper.waitForOverlayClosed();

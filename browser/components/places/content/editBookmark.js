@@ -18,7 +18,6 @@ ChromeUtils.defineESModuleGetters(this, {
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
   PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
 });
 
 var gEditItemOverlay = {
@@ -52,9 +51,8 @@ var gEditItemOverlay = {
     // Since there's no true UI for folder shortcuts (they show up just as their target
     // folders), when the pane shows for them it's opened in read-only mode, showing the
     // properties of the target folder.
-    let itemId = node ? node.itemId : -1;
     let itemGuid = node ? PlacesUtils.getConcreteItemGuid(node) : null;
-    let isItem = itemId != -1;
+    let isItem = !!itemGuid;
     let isFolderShortcut =
       isItem &&
       node.type == Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER_SHORTCUT;
@@ -78,16 +76,15 @@ var gEditItemOverlay = {
     let parentGuid = null;
 
     if (node && isItem) {
-      if (
-        !node.parent ||
-        (node.parent.itemId > 0 && !node.parent.bookmarkGuid)
-      ) {
+      if (!node.parent) {
         throw new Error(
           "Cannot use an incomplete node to initialize the edit bookmark panel"
         );
       }
       let parent = node.parent;
       isParentReadOnly = !PlacesUtils.nodeIsFolder(parent);
+      // Note this may be an empty string, that'd the case for the root node
+      // of a search, or a virtual root node, like the Library left pane.
       parentGuid = parent.bookmarkGuid;
     }
 
@@ -95,7 +92,6 @@ var gEditItemOverlay = {
     let onPanelReady = aInitInfo.onPanelReady;
 
     return (this._paneInfo = {
-      itemId,
       itemGuid,
       parentGuid,
       isItem,
@@ -120,16 +116,21 @@ var gEditItemOverlay = {
     return this._paneInfo != null;
   },
 
-  // Backwards-compatibility getters
-  get itemId() {
+  /**
+   * The concrete bookmark GUID is either the bookmark one or, for folder
+   * shortcuts, the target one.
+   *
+   * @returns {string} GUID of the loaded bookmark, or null if not a bookmark.
+   */
+  get concreteGuid() {
     if (
       !this.initialized ||
       this._paneInfo.isTag ||
       this._paneInfo.bulkTagging
     ) {
-      return -1;
+      return null;
     }
-    return this._paneInfo.itemId;
+    return this._paneInfo.itemGuid;
   },
 
   get uri() {
@@ -246,7 +247,7 @@ var gEditItemOverlay = {
    *   Either a result node or a node-like object representing the item to be edited.
    *   A node-like object must have the following properties (with values that
    *   match exactly those a result node would have):
-   *   itemId, bookmarkGuid, uri, title, type.
+   *   bookmarkGuid, uri, title, type, …
    * @param {nsIURI[]} [aInfo.uris]
    *   If aInfo.node is not specified, this must be specified.
    *   An array of uris for bulk tagging.
@@ -255,7 +256,7 @@ var gEditItemOverlay = {
    *   "title", "location", "keyword", "folderPicker".
    */
   async initPanel(aInfo) {
-    const deferred = (this._initPanelDeferred = PromiseUtils.defer());
+    const deferred = (this._initPanelDeferred = Promise.withResolvers());
     try {
       if (typeof aInfo != "object" || aInfo === null) {
         throw new Error("aInfo must be an object.");
@@ -351,7 +352,7 @@ var gEditItemOverlay = {
       }
 
       // Collapse the tag selector if the item does not accept tags.
-      if (showOrCollapse("tagsRow", isURI || bulkTagging, "tags")) {
+      if (showOrCollapse("tagsRow", isBookmark || bulkTagging, "tags")) {
         this._initTagsField();
       } else if (!this._element("tagsSelectorRow").hidden) {
         this.toggleTagsSelector().catch(console.error);
@@ -396,6 +397,7 @@ var gEditItemOverlay = {
         // Note: since all controls are hidden by default, we don't get the
         // default XUL dialog behavior, that selects the first control, so we set
         // the focus explicitly.
+
         let elt;
         if (focusedElement === "preferred") {
           elt = this._element(
@@ -403,9 +405,16 @@ var gEditItemOverlay = {
               "browser.bookmarks.editDialog.firstEditField"
             )
           );
-        } else if (focusedElement === "first") {
-          elt = document.querySelector('input:not([hidden="true"])');
+          if (elt.parentNode.hidden) {
+            focusedElement = "first";
+          }
         }
+        if (focusedElement === "first") {
+          elt = document
+            .getElementById("editBookmarkPanelContent")
+            .querySelector('input:not([hidden="true"])');
+        }
+
         if (elt) {
           elt.focus({ preventScroll: true });
           elt.select();
@@ -687,7 +696,7 @@ var gEditItemOverlay = {
    * Handle tag list updates from the input field or selector box.
    */
   async _updateTags() {
-    const deferred = (this._updateTagsDeferred = PromiseUtils.defer());
+    const deferred = (this._updateTagsDeferred = Promise.withResolvers());
     try {
       const inputTags = this._getTagsArrayFromTagsInputField();
       const isLibraryWindow =
@@ -808,9 +817,9 @@ var gEditItemOverlay = {
     expander.classList.toggle("expander-up", wasHidden);
     expander.classList.toggle("expander-down", !wasHidden);
     if (!wasHidden) {
-      expander.setAttribute(
-        "tooltiptext",
-        expander.getAttribute("tooltiptextdown")
+      document.l10n.setAttributes(
+        expander,
+        "bookmark-overlay-folders-expander2"
       );
       folderTreeRow.hidden = true;
       this._element("chooseFolderSeparator").hidden = this._element(
@@ -823,9 +832,9 @@ var gEditItemOverlay = {
       // want to pay for live updates while the view is not visible.
       this._folderTree.view = null;
     } else {
-      expander.setAttribute(
-        "tooltiptext",
-        expander.getAttribute("tooltiptextup")
+      document.l10n.setAttributes(
+        expander,
+        "bookmark-overlay-folders-expander-hide"
       );
       folderTreeRow.hidden = false;
 
@@ -840,7 +849,7 @@ var gEditItemOverlay = {
       this._element("chooseFolderSeparator").hidden = this._element(
         "chooseFolderMenuItem"
       ).hidden = true;
-      this._folderTree.selectItems([this._paneInfo.parentGuid]);
+      this._folderTree.selectItems([this._bookmarkState.parentGuid]);
       this._folderTree.focus();
     }
   },
@@ -900,10 +909,7 @@ var gEditItemOverlay = {
 
     // Move the item
     let containerGuid = this._folderMenuList.selectedItem.folderGuid;
-    if (
-      this._bookmarkState._originalState.parentGuid != containerGuid &&
-      this._bookmarkState._originalState.title != containerGuid
-    ) {
+    if (this._bookmarkState.parentGuid != containerGuid) {
       this._bookmarkState._parentGuidChanged(containerGuid);
 
       // Auto-show the bookmarks toolbar when adding / moving an item there.
@@ -1032,9 +1038,9 @@ var gEditItemOverlay = {
     expander.classList.toggle("expander-up", tagsSelectorRow.hidden);
     expander.classList.toggle("expander-down", !tagsSelectorRow.hidden);
     if (tagsSelectorRow.hidden) {
-      expander.setAttribute(
-        "tooltiptext",
-        expander.getAttribute("tooltiptextup")
+      document.l10n.setAttributes(
+        expander,
+        "bookmark-overlay-tags-expander-hide"
       );
       tagsSelectorRow.hidden = false;
       await this._rebuildTagsSelectorList();
@@ -1043,10 +1049,7 @@ var gEditItemOverlay = {
       tagsSelector.addEventListener("mousedown", this);
       tagsSelector.addEventListener("keypress", this);
     } else {
-      expander.setAttribute(
-        "tooltiptext",
-        expander.getAttribute("tooltiptextdown")
-      );
+      document.l10n.setAttributes(expander, "bookmark-overlay-tags-expander2");
       tagsSelectorRow.hidden = true;
 
       // This is a no-op if we've removed the listener.
@@ -1211,7 +1214,7 @@ var gEditItemOverlay = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(gEditItemOverlay, "_folderTree", () => {
+ChromeUtils.defineLazyGetter(gEditItemOverlay, "_folderTree", () => {
   if (!customElements.get("places-tree")) {
     Services.scriptloader.loadSubScript(
       "chrome://browser/content/places/places-tree.js",
@@ -1223,6 +1226,7 @@ XPCOMUtils.defineLazyGetter(gEditItemOverlay, "_folderTree", () => {
     <tree id="editBMPanel_folderTree"
           class="placesTree"
           is="places-tree"
+          data-l10n-id="bookmark-overlay-folders-tree"
           editable="true"
           onselect="gEditItemOverlay.onFolderTreeSelect();"
           disableUserActions="true"
@@ -1245,7 +1249,7 @@ for (let elt of [
   "tagsField",
 ]) {
   let eltScoped = elt;
-  XPCOMUtils.defineLazyGetter(gEditItemOverlay, `_${eltScoped}`, () =>
+  ChromeUtils.defineLazyGetter(gEditItemOverlay, `_${eltScoped}`, () =>
     gEditItemOverlay._element(eltScoped)
   );
 }

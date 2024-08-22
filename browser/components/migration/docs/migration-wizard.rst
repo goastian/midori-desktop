@@ -4,11 +4,6 @@ Migration Wizard Reference
 
 The migration wizard is the piece of UI that allows users to migrate from other browsers to Firefox.
 
-  .. note::
-    Firefox has had a legacy migration wizard for many years, and this has historically been a top-level XUL dialog window. **This documentation is not for the legacy migration wizard**, but is instead for an in-progress replacement migration wizard.
-
-    The new migration wizard can be enabled by setting ``browser.migrate.content-modal.enabled`` to ``true``.
-
 The migration wizard can be embedded in the following contexts:
 
 1. In a top level stand-alone dialog window
@@ -33,9 +28,28 @@ After binding to the document, if the ``MigrationWizard`` has the ``auto-request
 
 If the ``auto-request-state`` attribute is not set, calling ``requestState()`` on the ``MigrationWizard`` will perform the above step. This is useful in situations where the ``MigrationWizard`` element is being constructed dynamically and the callers wants finer-grain control over when the state will be requested.
 
+There are also a handful of attributes that can be set to customize the experience that the ``MigrationWizard`` provides.
+* ``option-expander-title-string``: The string of the label that is displayed next to the button that expands or hides the resource list on the selection page will be overwritten with the value of this attribute, if it is set.
+* ``hide-option-expander-subtitle``: When set to true, this attribute hides the subtitle that is displayed underneath the resource list expander.
+* ``import-button-string``: The string on the primary action button on the selection page is overridden with the value of this attribute when set.
+* ``import-button-class``: When set, the value of this attribute will be added to the class list on the primary action button on the selection page.
+* ``checkbox-margin-inline``: When set, the value of this attribute will be used to override the ``margin-inline`` of the labels in the resource list on the selection page.
+* ``checkbox-margin-block``: When set, the value of this attribute will be used to override the ``margin-block`` of the labels in the resource list on the selection page.
+* ``selection-header-string``: When set, overrides the text content of the header on the selection page with the set string.
+* ``selection-subheader-string``: When set, presents a subheader on the selection page with the set string.
+* ``data-import-complete-success-string``: When set, this attribute will be used to override the text content of the header of the import complete screen when the import was successful.
+* ``header-font-size``: Overrides the default ``font-size`` of all headers with the value of this string.
+* ``header-font-weight``: Overrides the default ``font-weight`` of all headers with the value of this string.
+* ``header-margin-block``: Overrides the default ``margin-block`` of all headers with the value of this string.
+* ``subheader-font-size``: When used with ``selection-subheader-string``, overrides the default ``font-size`` of the selection page subheader with the value in this string. This has no effect when used alone.
+* ``subheader-font-weight``: When used with ``selection-subheader-string``, overrides the default ``font-weight`` of the selection page subheader with the value in this string. This has no effect when used alone.
+* ``subheader-margin-block``: When used with ``selection-subheader-string``, overrides the default ``margin-block`` of the selection page subheader with the value in this string. This has no effect when used alone.
+
 Notably, the ``MigrationWizard`` does not contain any internal logic or privileged code to perform any migrations or to directly interact with the migration mechanisms. Its sole function is to accept input from the user and emit that input as events. The associated ``MigrationWizardChild`` will listen for those events, and take care of calling into the ``MigrationWizard`` to update the state of the reusable component. This means that the reusable component can be embedded in unprivileged contexts and have its states presented in a tool like Storybook.
 
 If the ``MigrationWizard`` is embedded in a dialog, it should have the ``dialog-mode`` attribute set on it so that dialog-appropriate buttons and styles are applied.
+
+If the ``MigrationWizard`` is used in a messaging system surface that uses the same underlying component as ``about:welcome`` such as the Spotlight modal or Feature Callout, it should have the ``is-aboutwelcome-bundle`` attribute set so that anchor click events are appropriately captured and handled.
 
 ``MigrationWizardConstants``
 ============================

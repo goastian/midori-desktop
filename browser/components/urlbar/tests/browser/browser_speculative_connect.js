@@ -42,7 +42,7 @@ add_setup(async function () {
     },
   ]);
 
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
     setAsDefault: true,
   });
@@ -132,7 +132,7 @@ add_task(async function test_autofill() {
     let connectionNumber = server.connectionNumber;
     let searchString = serverInfo.host;
     info(`Searching for '${searchString}'`);
-
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
       value: searchString,
@@ -162,7 +162,7 @@ add_task(async function test_autofill_privateContext() {
     let connectionNumber = server.connectionNumber;
     let searchString = serverInfo.host;
     info(`Searching for '${searchString}'`);
-
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window: privateWin,
       value: searchString,
@@ -188,7 +188,7 @@ add_task(async function test_no_heuristic_result() {
       value: "",
       fireInputEvent: true,
     });
-    ok(UrlbarTestUtils.getResultCount(window) > 0, "Has results");
+    Assert.greater(UrlbarTestUtils.getResultCount(window), 0, "Has results");
     let result = await UrlbarTestUtils.getSelectedRow(window);
     Assert.strictEqual(result, null, `Should have no selection`);
     await UrlbarTestUtils.promiseSpeculativeConnections(

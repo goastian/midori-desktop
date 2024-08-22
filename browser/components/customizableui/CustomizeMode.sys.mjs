@@ -26,15 +26,11 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
   DragPositionManager: "resource:///modules/DragPositionManager.sys.mjs",
   URILoadingHelper: "resource:///modules/URILoadingHelper.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "BrowserUsageTelemetry",
-  "resource:///modules/BrowserUsageTelemetry.jsm"
-);
-XPCOMUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
   const kUrl =
     "chrome://browser/locale/customizableui/customizableWidgets.properties";
   return Services.strings.createBundle(kUrl);
@@ -47,7 +43,7 @@ XPCOMUtils.defineLazyServiceGetter(
 );
 
 let gDebug;
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -66,14 +62,14 @@ var gTab;
 function closeGlobalTab() {
   let win = gTab.ownerGlobal;
   if (win.gBrowser.browsers.length == 1) {
-    win.BrowserOpenTab();
+    win.BrowserCommands.openTab();
   }
   win.gBrowser.removeTab(gTab, { animate: true });
   gTab = null;
 }
 
 var gTabsProgressListener = {
-  onLocationChange(aBrowser, aWebProgress, aRequest, aLocation, aFlags) {
+  onLocationChange(aBrowser, aWebProgress, aRequest, aLocation) {
     // Tear down customize mode when the customize mode tab loads some other page.
     // Customize mode will be re-entered if "about:blank" is loaded again, so
     // don't tear down in this case.
@@ -359,7 +355,7 @@ CustomizeMode.prototype = {
 
       let customizer = document.getElementById("customization-container");
       let browser = document.getElementById("browser");
-      browser.collapsed = true;
+      browser.hidden = true;
       customizer.hidden = false;
 
       this._wrapToolbarItemSync(CustomizableUI.AREA_TABSTRIP);
@@ -491,7 +487,7 @@ CustomizeMode.prototype = {
     let customizer = document.getElementById("customization-container");
     let browser = document.getElementById("browser");
     customizer.hidden = true;
-    browser.collapsed = false;
+    browser.hidden = false;
 
     window.gNavToolbox.removeEventListener("toolbarvisibilitychange", this);
 
@@ -665,7 +661,7 @@ CustomizeMode.prototype = {
     });
   },
 
-  async addToToolbar(aNode, aReason) {
+  async addToToolbar(aNode) {
     aNode = this._getCustomizableChildForNode(aNode);
     if (aNode.localName == "toolbarpaletteitem" && aNode.firstElementChild) {
       aNode = aNode.firstElementChild;
@@ -1284,15 +1280,15 @@ CustomizeMode.prototype = {
     this._onUIChange();
   },
 
-  onWidgetMoved(aWidgetId, aArea, aOldPosition, aNewPosition) {
+  onWidgetMoved() {
     this._onUIChange();
   },
 
-  onWidgetAdded(aWidgetId, aArea, aPosition) {
+  onWidgetAdded() {
     this._onUIChange();
   },
 
-  onWidgetRemoved(aWidgetId, aArea) {
+  onWidgetRemoved() {
     this._onUIChange();
   },
 
@@ -1380,7 +1376,7 @@ CustomizeMode.prototype = {
   },
 
   openAddonsManagerThemes() {
-    this.window.BrowserOpenAddonsMgr("addons://list/theme");
+    this.window.BrowserAddonUI.openAddonsMgr("addons://list/theme");
   },
 
   getMoreThemes(aEvent) {
@@ -1465,9 +1461,8 @@ CustomizeMode.prototype = {
       }
     }
 
-    // Add menu items for automatically switching to Touch mode in Windows Tablet Mode,
-    // which is only available in Windows 10.
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+    // Add menu items for automatically switching to Touch mode in Windows Tablet Mode.
+    if (AppConstants.platform == "win") {
       let spacer = doc.getElementById("customization-uidensity-touch-spacer");
       let checkbox = doc.getElementById(
         "customization-uidensity-autotouchmode-checkbox"
@@ -1652,7 +1647,7 @@ CustomizeMode.prototype = {
     delete this.paletteDragHandler;
   },
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     switch (aTopic) {
       case "nsPref:changed":
         this._updateResetButton();
@@ -2332,7 +2327,7 @@ CustomizeMode.prototype = {
     }
   },
 
-  _setGridDragActive(aDragOverNode, aDraggedItem, aValue) {
+  _setGridDragActive(aDragOverNode, aDraggedItem) {
     let targetArea = this._getCustomizableParent(aDragOverNode);
     let draggedWrapper = this.$("wrapper-" + aDraggedItem.id);
     let originArea = this._getCustomizableParent(draggedWrapper);
@@ -2431,7 +2426,7 @@ CustomizeMode.prototype = {
     return aElement.closest(areas.map(a => "#" + CSS.escape(a)).join(","));
   },
 
-  _getDragOverNode(aEvent, aAreaElement, aAreaType, aDraggedItemId) {
+  _getDragOverNode(aEvent, aAreaElement, aAreaType) {
     let expectedParent =
       CustomizableUI.getCustomizationTarget(aAreaElement) || aAreaElement;
     if (!expectedParent.contains(aEvent.target)) {

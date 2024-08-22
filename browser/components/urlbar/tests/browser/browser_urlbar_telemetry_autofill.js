@@ -7,11 +7,6 @@
 
 "use strict";
 
-ChromeUtils.defineESModuleGetters(this, {
-  UrlbarProviderPreloadedSites:
-    "resource:///modules/UrlbarProviderPreloadedSites.sys.mjs",
-});
-
 const SCALAR_URLBAR = "browser.engagement.navigation.urlbar";
 
 function assertSearchTelemetryEmpty(search_hist) {
@@ -163,13 +158,21 @@ if (AppConstants.platform == "macosx") {
 }
 
 add_setup(async function () {
-  await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesUtils.history.clear();
   await PlacesTestUtils.clearInputHistory();
 
   // Enable local telemetry recording for the duration of the tests.
   const originalCanRecord = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
+
+  // Make sure autofill is tested without upgrading pages to https
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.security.https_first", false],
+      ["dom.security.https_first_schemeless", false],
+    ],
+  });
 
   registerCleanupFunction(async () => {
     Services.telemetry.canRecordExtended = originalCanRecord;
@@ -287,6 +290,7 @@ add_task(async function history() {
     for (const { uri, input } of inputHistory) {
       await UrlbarUtils.addToInputHistory(uri, input);
     }
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
 
     UrlbarPrefs.set("autoFill.adaptiveHistory.enabled", useAdaptiveHistory);
 
@@ -320,30 +324,6 @@ add_task(async function about() {
   );
 
   await PlacesUtils.history.clear();
-});
-
-// Checks preloaded sites autofill.
-add_task(async function preloaded() {
-  UrlbarPrefs.set("usepreloadedtopurls.enabled", true);
-  UrlbarPrefs.set("usepreloadedtopurls.expire_days", 100);
-  UrlbarProviderPreloadedSites.populatePreloadedSiteStorage([
-    ["http://example.com/", "Example"],
-  ]);
-
-  let histograms = snapshotHistograms();
-  await triggerAutofillAndPickResult("example", "example.com/");
-
-  assertSearchTelemetryEmpty(histograms.search_hist);
-  assertTelemetryResults(
-    histograms,
-    "autofill_preloaded",
-    0,
-    UrlbarTestUtils.SELECTED_RESULT_METHODS.enter
-  );
-
-  await PlacesUtils.history.clear();
-  UrlbarPrefs.clear("usepreloadedtopurls.enabled");
-  UrlbarPrefs.clear("usepreloadedtopurls.expire_days");
 });
 
 // Checks the "other" fallback, which shouldn't normally happen.
@@ -463,22 +443,6 @@ add_task(async function impression() {
       autofilled: "about:about",
     },
     {
-      description: "Preloaded site autofill and pick it",
-      usePreloadedSite: true,
-      preloadedSites: [["http://example.com/", "Example"]],
-      userInput: "exa",
-      autofilled: "example.com/",
-      expected: "autofill_preloaded",
-    },
-    {
-      description: "Preloaded site autofill but not pick any result",
-      unpickResult: true,
-      usePreloadedSite: true,
-      preloadedSites: [["http://example.com/", "Example"]],
-      userInput: "exa",
-      autofilled: "example.com/",
-    },
-    {
       description: "Other provider's autofill and pick it",
       useOtherProvider: true,
       userInput: "example",
@@ -497,12 +461,10 @@ add_task(async function impression() {
   for (const {
     description,
     useAdaptiveHistory = false,
-    usePreloadedSite = false,
     useOtherProvider = false,
     unpickResult = false,
     visitHistory,
     inputHistory,
-    preloadedSites,
     userInput,
     select,
     autofilled,
@@ -511,10 +473,6 @@ add_task(async function impression() {
     info(description);
 
     UrlbarPrefs.set("autoFill.adaptiveHistory.enabled", useAdaptiveHistory);
-    if (usePreloadedSite) {
-      UrlbarPrefs.set("usepreloadedtopurls.enabled", true);
-      UrlbarPrefs.set("usepreloadedtopurls.expire_days", 100);
-    }
     let otherProvider;
     if (useOtherProvider) {
       otherProvider = createOtherAutofillProvider(userInput, autofilled);
@@ -529,10 +487,7 @@ add_task(async function impression() {
         await UrlbarUtils.addToInputHistory(uri, input);
       }
     }
-    if (preloadedSites) {
-      UrlbarProviderPreloadedSites.populatePreloadedSiteStorage(preloadedSites);
-    }
-
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     await triggerAutofillAndPickResult(
       userInput,
       autofilled,
@@ -567,8 +522,6 @@ add_task(async function impression() {
     }
 
     UrlbarPrefs.clear("autoFill.adaptiveHistory.enabled");
-    UrlbarPrefs.clear("usepreloadedtopurls.enabled");
-    UrlbarPrefs.clear("usepreloadedtopurls.expire_days");
 
     if (otherProvider) {
       UrlbarProvidersManager.unregisterProvider(otherProvider);
@@ -582,6 +535,7 @@ add_task(async function impression() {
 // Checks autofill deletion telemetry.
 add_task(async function deletion() {
   await PlacesTestUtils.addVisits(["http://example.com/"]);
+  await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
 
   info("Delete autofilled value by DELETE key");
   await doDeletionTest({

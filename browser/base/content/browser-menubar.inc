@@ -140,20 +140,7 @@
                   </menupopup>
                 </menu>
                 <menu id="viewSidebarMenuMenu" data-l10n-id="menu-view-sidebar">
-                  <menupopup id="viewSidebarMenu">
-                    <menuitem id="menu_bookmarksSidebar"
-                              type="checkbox"
-                              key="viewBookmarksSidebarKb"
-                              oncommand="SidebarUI.toggle('viewBookmarksSidebar');" data-l10n-id="menu-view-bookmarks"/>
-                    <menuitem id="menu_historySidebar"
-                              type="checkbox"
-                              key="key_gotoHistory"
-                              oncommand="SidebarUI.toggle('viewHistorySidebar');" data-l10n-id="menu-view-history-button"/>
-                    <menuitem id="menu_tabsSidebar"
-                              type="checkbox"
-                              class="sync-ui-item"
-                              oncommand="SidebarUI.toggle('viewTabsSidebar');" data-l10n-id="menu-view-synced-tabs-sidebar"/>
-                  </menupopup>
+                  <menupopup id="viewSidebarMenu"/>
                 </menu>
                 <menuseparator/>
                 <menu id="viewFullZoomMenu" data-l10n-id="menu-view-full-zoom">
@@ -189,7 +176,7 @@
                 </menu>
                 <menuitem id="repair-text-encoding"
                           disabled="true"
-                          oncommand="BrowserForceEncodingDetection();"
+                          oncommand="BrowserCommands.forceEncodingDetection();"
                           data-l10n-id="menu-view-repair-text-encoding"/>
                 <menuseparator/>
 #ifdef XP_MACOSX
@@ -250,6 +237,9 @@
                 <menuitem id="hiddenTabsMenu"
                           oncommand="gTabsPanel.showHiddenTabsPanel(event, 'hidden-tabs-menuitem');"
                           hidden="true" data-l10n-id="menu-history-hidden-tabs"/>
+                <menuitem id="menu_searchHistory"
+                          command="History:SearchHistory"
+                          data-l10n-id="menu-history-search"/>
                 <menu id="historyUndoMenu"
                       disabled="true" data-l10n-id="menu-history-undo-menu">
                   <menupopup id="historyUndoPopup"
@@ -312,6 +302,9 @@
                 command="Browser:AddBookmarkAs"
                 key="addBookmarkAsKb"
                 data-l10n-id="menu-bookmark-tab"/>
+      <menuitem id="menu_searchBookmarks"
+                command="Browser:SearchBookmarks"
+                data-l10n-id="menu-bookmarks-search"/>
       <menuitem id="menu_bookmarkAllTabs"
                 class="show-only-for-keyboard"
                 command="Browser:BookmarkAllTabs"
@@ -466,6 +459,11 @@
 #else
                           />
 #endif
+                <menuitem id="help_reportBrokenSite"
+                          command="cmd_reportBrokenSite"
+                          data-l10n-id="menu-report-broken-site"
+                          hidden="true"
+                          appmenu-data-l10n-id="menu-report-broken-site"/>
                 <menuitem id="feedbackPage"
                           oncommand="openFeedbackPage()"
                           data-l10n-id="menu-help-share-ideas"

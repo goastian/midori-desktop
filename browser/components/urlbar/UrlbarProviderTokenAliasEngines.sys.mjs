@@ -98,8 +98,8 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
 
     // If the user is typing a potential engine name, autofill it.
     if (lazy.UrlbarPrefs.get("autoFill") && queryContext.allowAutofill) {
-      let result = this._getAutofillResult(queryContext);
-      if (result) {
+      let result = await this._getAutofillResult(queryContext);
+      if (result && instance == this.queryInstance) {
         this._autofillData = { result, instance };
         return true;
       }
@@ -127,6 +127,7 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
       addCallback(this, this._autofillData.result);
     }
 
+    let instance = this.queryInstance;
     for (let { engine, tokenAliases } of this._engines) {
       if (
         tokenAliases[0].startsWith(queryContext.trimmedSearchString) &&
@@ -139,10 +140,13 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
             engine: [engine.name, UrlbarUtils.HIGHLIGHT.TYPED],
             keyword: [tokenAliases[0], UrlbarUtils.HIGHLIGHT.TYPED],
             query: ["", UrlbarUtils.HIGHLIGHT.TYPED],
-            icon: engine.iconURI?.spec,
+            icon: await engine.getIconURL(),
             providesSearchMode: true,
           })
         );
+        if (instance != this.queryInstance) {
+          break;
+        }
         addCallback(this, result);
       }
     }
@@ -153,26 +157,23 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
   /**
    * Gets the provider's priority.
    *
-   * @param {UrlbarQueryContext} queryContext The query context object
    * @returns {number} The provider's priority for the given query.
    */
-  getPriority(queryContext) {
+  getPriority() {
     return this.PRIORITY;
   }
 
   /**
    * Cancels a running query.
-   *
-   * @param {object} queryContext The query context object
    */
-  cancelQuery(queryContext) {
+  cancelQuery() {
     if (this._autofillData?.instance == this.queryInstance) {
       this._autofillData = null;
     }
   }
 
-  _getAutofillResult(queryContext) {
-    let lowerCaseSearchString = queryContext.searchString.toLowerCase();
+  async _getAutofillResult(queryContext) {
+    let { lowerCaseSearchString } = queryContext;
 
     // The user is typing a specific engine. We should show a heuristic result.
     for (let { engine, tokenAliases } of this._engines) {
@@ -206,7 +207,7 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
                 engine: [engine.name, UrlbarUtils.HIGHLIGHT.TYPED],
                 keyword: [aliasPreservingUserCase, UrlbarUtils.HIGHLIGHT.TYPED],
                 query: ["", UrlbarUtils.HIGHLIGHT.TYPED],
-                icon: engine.iconURI?.spec,
+                icon: await engine.getIconURL(),
                 providesSearchMode: true,
               }
             )

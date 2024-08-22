@@ -37,8 +37,6 @@
  * The schema for this object is defined in policies-schema.json.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -47,14 +45,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const PREF_LOGLEVEL = "browser.policies.loglevel";
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
   return new ConsoleAPI({
-    prefix: "BookmarksPolicies.jsm",
+    prefix: "BookmarksPolicies",
     // tip: set maxLogLevel to "debug" and use log.debug() to create detailed
-    // messages during development. See LOG_LEVELS in Console.jsm for details.
+    // messages during development. See LOG_LEVELS in Console.sys.mjs for details.
     maxLogLevel: "error",
     maxLogLevelPref: PREF_LOGLEVEL,
   });
@@ -201,56 +199,46 @@ async function insertBookmark(bookmark) {
   });
 
   if (bookmark.Favicon) {
-    setFaviconForBookmark(bookmark);
+    try {
+      setFaviconForBookmark(bookmark);
+    } catch (e) {
+      lazy.log.warn(e);
+    }
   }
 }
 
 function setFaviconForBookmark(bookmark) {
-  let faviconURI;
-  let nullPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
-
   switch (bookmark.Favicon.protocol) {
-    case "data:":
-      // data urls must first call replaceFaviconDataFromDataURL, using a
-      // fake URL. Later, it's needed to call setAndFetchFaviconForPage
-      // with the same URL.
-      faviconURI = Services.io.newURI("fake-favicon-uri:" + bookmark.URL.href);
-
-      lazy.PlacesUtils.favicons.replaceFaviconDataFromDataURL(
-        faviconURI,
-        bookmark.Favicon.href,
-        0 /* max expiration length */,
-        nullPrincipal
-      );
-      break;
-
-    case "http:":
-    case "https:":
-      faviconURI = Services.io.newURI(bookmark.Favicon.href);
-      break;
-
-    default:
-      lazy.log.error(
-        `Bad URL given for favicon on bookmark "${bookmark.Title}"`
+    case "data:": {
+      lazy.PlacesUtils.favicons.setFaviconForPage(
+        bookmark.URL.URI,
+        Services.io.newURI("fake-favicon-uri:" + bookmark.URL.href),
+        bookmark.Favicon.URI
       );
       return;
+    }
+    case "http:":
+    case "https:": {
+      lazy.PlacesUtils.favicons.setAndFetchFaviconForPage(
+        bookmark.URL.URI,
+        bookmark.Favicon.URI,
+        false /* forceReload */,
+        lazy.PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
+        null,
+        Services.scriptSecurityManager.createNullPrincipal({})
+      );
+      return;
+    }
   }
 
-  lazy.PlacesUtils.favicons.setAndFetchFaviconForPage(
-    Services.io.newURI(bookmark.URL.href),
-    faviconURI,
-    false /* forceReload */,
-    lazy.PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-    null,
-    nullPrincipal
-  );
+  lazy.log.error(`Bad URL given for favicon on bookmark "${bookmark.Title}"`);
 }
 
 // Cache of folder names to guids to be used by the getParentGuid
 // function. The name consists in the parentGuid (which should always
 // be the menuGuid or the toolbarGuid) + the folder title. This is to
 // support having the same folder name in both the toolbar and menu.
-XPCOMUtils.defineLazyGetter(lazy, "gFoldersMapPromise", () => {
+ChromeUtils.defineLazyGetter(lazy, "gFoldersMapPromise", () => {
   return new Promise(resolve => {
     let foldersMap = new Map();
     return lazy.PlacesUtils.bookmarks

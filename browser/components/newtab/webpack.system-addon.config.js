@@ -8,8 +8,6 @@ const { ResourceUriPlugin } = require("./tools/resourceUriPlugin");
 
 const absolute = relPath => path.join(__dirname, relPath);
 
-const resourcePathRegEx = /^resource:\/\/activity-stream\//;
-
 module.exports = (env = {}) => ({
   mode: "none",
   entry: absolute("content-src/activity-stream.jsx"),
@@ -22,9 +20,15 @@ module.exports = (env = {}) => ({
   devtool: env.development ? "inline-source-map" : false,
   plugins: [
     // The ResourceUriPlugin handles translating resource URIs in import
-    // statements in .mjs files, in a similar way to what babel-jsm-to-commonjs
-    // does for jsm files.
-    new ResourceUriPlugin({ resourcePathRegEx }),
+    // statements in .mjs files to paths on the filesystem.
+    new ResourceUriPlugin({
+      resourcePathRegExes: [
+        [
+          new RegExp("^resource://activity-stream/"),
+          path.join(__dirname, "./"),
+        ],
+      ],
+    }),
     new webpack.BannerPlugin(
       `THIS FILE IS AUTO-GENERATED: ${path.basename(__filename)}`
     ),
@@ -38,36 +42,14 @@ module.exports = (env = {}) => ({
         loader: "babel-loader",
         options: {
           presets: ["@babel/preset-react"],
-          plugins: ["@babel/plugin-proposal-optional-chaining"],
-        },
-      },
-      {
-        test: /\.jsm$/,
-        exclude: /node_modules/,
-        loader: "babel-loader",
-        // Converts .jsm files into common-js modules
-        options: {
-          plugins: [
-            [
-              "./tools/babel-jsm-to-commonjs.js",
-              {
-                basePath: resourcePathRegEx,
-                removeOtherImports: true,
-                replace: true,
-              },
-            ],
-          ],
         },
       },
     ],
   },
-  // This resolve config allows us to import with paths relative to the root directory, e.g. "lib/ActivityStream.jsm"
+  // This resolve config allows us to import with paths relative to the root directory, e.g. "lib/ActivityStream.sys.mjs"
   resolve: {
-    extensions: [".js", ".jsx"],
+    extensions: [".js", ".jsx", ".mjs"],
     modules: ["node_modules", "."],
-    fallback: {
-      stream: require.resolve("stream-browserify"),
-    },
   },
   externals: {
     "prop-types": "PropTypes",

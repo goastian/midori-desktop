@@ -148,7 +148,7 @@ add_task(async function test_devtools_inspectedWindow_eval_bindings() {
       }
 
       return (
-        selectedLocation.sourceId.includes(sourceFilename) &&
+        selectedLocation.source.id.includes(sourceFilename) &&
         selectedLocation.line == sourceLine
       );
     };
@@ -220,14 +220,18 @@ add_task(async function test_devtools_inspectedWindow_eval_bindings() {
     const [oi] = objectInspectors;
     let nodes = oi.querySelectorAll(".node");
 
-    ok(nodes.length >= 1, "The object preview is rendered as expected");
+    Assert.greaterOrEqual(
+      nodes.length,
+      1,
+      "The object preview is rendered as expected"
+    );
 
     // The tree can still be collapsed since the properties are fetched asynchronously.
     if (nodes.length === 1) {
       info("Waiting for the object properties to be displayed");
       // If this is the case, we wait for the properties to be fetched and displayed.
       await new Promise(resolve => {
-        const observer = new MutationObserver(mutations => {
+        const observer = new MutationObserver(() => {
           resolve();
           observer.disconnect();
         });

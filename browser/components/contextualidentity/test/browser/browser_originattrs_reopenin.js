@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* import-globals-from ../../../../base/content/test/tabs/helper_origin_attrs_testing.js */
+/* import-globals-from ../../../tabbrowser/test/browser/tabs/helper_origin_attrs_testing.js */
 loadTestSubscript(
-  "../../../../base/content/test/tabs/helper_origin_attrs_testing.js"
+  "../../../tabbrowser/test/browser/tabs/helper_origin_attrs_testing.js"
 );
 
 const PATH =
@@ -106,7 +106,7 @@ add_task(async function testReopen() {
       false,
       uri
     );
-    await BrowserTestUtils.loadURIString(regularPage.tab.linkedBrowser, uri);
+    BrowserTestUtils.startLoadingURIString(regularPage.tab.linkedBrowser, uri);
     await loaded;
     info(`Start Opened ${uri} in a regular tab`);
     currRemoteType = regularPage.tab.linkedBrowser.remoteType;

@@ -58,7 +58,7 @@ add_task(async function test_login_item() {
     await SpecialPowers.spawn(browser, [], async () => {
       let loginList = content.document.querySelector("login-list");
       let loginListItem = loginList.shadowRoot.querySelector(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       );
       info("Clicking on the first login");
       loginListItem.click();
@@ -71,12 +71,15 @@ add_task(async function test_login_item() {
       }, "Waiting for login item to get populated");
       Assert.ok(loginItemPopulated, "The login item should get populated");
     });
-    let reauthObserved = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
+    let reauthObserved = Promise.resolve();
+    if (OSKeyStore.canReauth()) {
+      reauthObserved = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
+    }
     await SpecialPowers.spawn(browser, [], async () => {
       let loginItem = Cu.waiveXrays(
         content.document.querySelector("login-item")
       );
-      let editButton = loginItem.shadowRoot.querySelector(".edit-button");
+      let editButton = loginItem.shadowRoot.querySelector("edit-button");
       editButton.click();
     });
     await reauthObserved;
@@ -91,7 +94,7 @@ add_task(async function test_login_item() {
       usernameInput.value += "-undone";
       passwordInput.value += "-undone";
 
-      let deleteButton = loginItem.shadowRoot.querySelector(".delete-button");
+      let deleteButton = loginItem.shadowRoot.querySelector("delete-button");
       deleteButton.click();
 
       let confirmDeleteDialog = Cu.waiveXrays(
@@ -107,7 +110,7 @@ add_task(async function test_login_item() {
     return SpecialPowers.spawn(browser, [], async () => {
       let loginList = content.document.querySelector("login-list");
       let loginListItem = loginList.shadowRoot.querySelector(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       );
       info("Clicking on the first login");
       loginListItem.click();
@@ -120,7 +123,7 @@ add_task(async function test_login_item() {
       }, "Waiting for login item to get populated");
       Assert.ok(loginItemPopulated, "The login item should get populated");
 
-      let deleteButton = loginItem.shadowRoot.querySelector(".delete-button");
+      let deleteButton = loginItem.shadowRoot.querySelector("delete-button");
       deleteButton.click();
 
       let confirmDeleteDialog = Cu.waiveXrays(

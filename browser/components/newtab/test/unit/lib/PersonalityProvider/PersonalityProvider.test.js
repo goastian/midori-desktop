@@ -1,5 +1,5 @@
 import { GlobalOverrider } from "test/unit/utils";
-import { PersonalityProvider } from "lib/PersonalityProvider/PersonalityProvider.jsm";
+import { PersonalityProvider } from "lib/PersonalityProvider/PersonalityProvider.sys.mjs";
 
 describe("Personality Provider", () => {
   let instance;
@@ -19,7 +19,7 @@ describe("Personality Provider", () => {
     RemoteSettingsOffStub = sandbox.stub().returns();
     RemoteSettingsGetStub = sandbox.stub().returns([]);
 
-    RemoteSettingsStub = name => ({
+    RemoteSettingsStub = () => ({
       get: RemoteSettingsGetStub,
       on: RemoteSettingsOnStub,
       off: RemoteSettingsOffStub,
@@ -142,7 +142,7 @@ describe("Personality Provider", () => {
         },
       ]);
       sinon.spy(instance, "getAttachment");
-      RemoteSettingsStub = name => ({
+      RemoteSettingsStub = () => ({
         get: RemoteSettingsGetStub,
         on: RemoteSettingsOnStub,
         off: RemoteSettingsOffStub,

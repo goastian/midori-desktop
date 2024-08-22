@@ -8,10 +8,7 @@ import { DSDismiss } from "content-src/components/DiscoveryStreamComponents/DSDi
 import { TopicsWidget } from "../TopicsWidget/TopicsWidget.jsx";
 import { SafeAnchor } from "../SafeAnchor/SafeAnchor";
 import { FluentOrText } from "../../FluentOrText/FluentOrText.jsx";
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { connect, useSelector } from "react-redux";
 const PREF_ONBOARDING_EXPERIENCE_DISMISSED =
@@ -31,11 +28,7 @@ export function DSSubHeader({ children }) {
   );
 }
 
-export function OnboardingExperience({
-  children,
-  dispatch,
-  windowObj = global,
-}) {
+export function OnboardingExperience({ dispatch, windowObj = globalThis }) {
   const [dismissed, setDismissed] = useState(false);
   const [maxHeight, setMaxHeight] = useState(null);
   const heightElement = useRef(null);
@@ -328,6 +321,9 @@ export class _CardGrid extends React.PureComponent {
       essentialReadsHeader,
       editorsPicksHeader,
       onboardingExperience,
+      ctaButtonSponsors,
+      ctaButtonVariant,
+      spocMessageVariant,
       widgets,
       recentSavesEnabled,
       hideDescriptions,
@@ -362,17 +358,24 @@ export class _CardGrid extends React.PureComponent {
             url={rec.url}
             id={rec.id}
             shim={rec.shim}
+            fetchTimestamp={rec.fetchTimestamp}
             type={this.props.type}
             context={rec.context}
             sponsor={rec.sponsor}
             sponsored_by_override={rec.sponsored_by_override}
             dispatch={this.props.dispatch}
             source={rec.domain}
+            publisher={rec.publisher}
             pocket_id={rec.pocket_id}
             context_type={rec.context_type}
             bookmarkGuid={rec.bookmarkGuid}
             is_collection={this.props.is_collection}
             saveToPocketCard={saveToPocketCard}
+            ctaButtonSponsors={ctaButtonSponsors}
+            ctaButtonVariant={ctaButtonVariant}
+            spocMessageVariant={spocMessageVariant}
+            recommendation_id={rec.recommendation_id}
+            firstVisibleTimestamp={this.props.firstVisibleTimestamp}
           />
         )
       );

@@ -53,24 +53,46 @@ export class BaseFeature {
 
   /**
    * @returns {Array}
-   *   If the subclass's `shouldEnable` implementation depends on preferences
-   *   instead of Nimbus variables, the subclass should override this getter and
-   *   return their names in this array so that `enable()` can be called when
-   *   they change. Names should be in the same format that `UrlbarPrefs.get()`
-   *   expects.
+   *   If the subclass's `shouldEnable` implementation depends on any prefs that
+   *   are not fallbacks for Nimbus variables, the subclass should override this
+   *   getter and return their names in this array so that `update()` can be
+   *   called when they change. Names should be relative to `browser.urlbar.`.
+   *   It doesn't hurt to include prefs that are fallbacks for Nimbus variables,
+   *   it's just not necessary because `QuickSuggest` will update all features
+   *   whenever a `urlbar` Nimbus variable or its fallback pref changes.
    */
   get enablingPreferences() {
     return null;
   }
 
   /**
+   * @returns {string}
+   *   If the feature manages suggestions served by Merino, the subclass should
+   *   override this getter and return the name of the specific Merino provider
+   *   that serves them.
+   */
+  get merinoProvider() {
+    return "";
+  }
+
+  /**
+   * @returns {Array}
+   *   If the feature manages one or more types of suggestions served by the
+   *   Suggest Rust component, the subclass should override this getter and
+   *   return an array of the type names as defined in `suggest.udl`.
+   */
+  get rustSuggestionTypes() {
+    return [];
+  }
+
+  /**
    * This method should initialize or uninitialize any state related to the
    * feature.
    *
-   * @param {boolean} enabled
+   * @param {boolean} _enabled
    *   Whether the feature should be enabled or not.
    */
-  enable(enabled) {}
+  enable(_enabled) {}
 
   /**
    * If the feature manages suggestions from remote settings that should be
@@ -78,12 +100,12 @@ export class BaseFeature {
    * method. It should return remote settings suggestions matching the given
    * search string.
    *
-   * @param {string} searchString
+   * @param {string} _searchString
    *   The search string.
    * @returns {Array}
    *   An array of matching suggestions, or null if not implemented.
    */
-  async queryRemoteSettings(searchString) {
+  async queryRemoteSettings(_searchString) {
     return null;
   }
 
@@ -92,28 +114,62 @@ export class BaseFeature {
    * override this method. It should fetch the data and build whatever data
    * structures are necessary to support the feature.
    *
-   * @param {RemoteSettings} rs
+   * @param {RemoteSettings} _rs
    *   The `RemoteSettings` client object.
    */
-  async onRemoteSettingsSync(rs) {}
+  async onRemoteSettingsSync(_rs) {}
+
+  /**
+   * If the feature manages suggestions that either aren't served by Merino or
+   * whose telemetry type is different from `merinoProvider`, the subclass
+   * should override this method. It should return the telemetry type for the
+   * given suggestion. A telemetry type uniquely identifies a type of suggestion
+   * as well as the kind of `UrlbarResult` instances created from it.
+   *
+   * @param {object} _suggestion
+   *   A suggestion from either remote settings or Merino.
+   * @returns {string}
+   *   The suggestion's telemetry type.
+   */
+  getSuggestionTelemetryType(_suggestion) {
+    return this.merinoProvider;
+  }
+
+  /**
+   * If the feature manages more than one type of suggestion served by the
+   * Suggest Rust component, the subclass should override this method and return
+   * true if the given suggestion type is enabled and false otherwise. Ideally a
+   * feature manages at most one type of Rust suggestion, and in that case it's
+   * fine to rely on the default implementation here because the suggestion type
+   * will be enabled iff the feature itself is enabled.
+   *
+   * @param {string} _type
+   *   A Rust suggestion type name as defined in `suggest.udl`. See also
+   *   `rustSuggestionTypes`.
+   * @returns {boolean}
+   *   Whether the suggestion type is enabled.
+   */
+  isRustSuggestionTypeEnabled(_type) {
+    return true;
+  }
 
   /**
    * If the feature corresponds to a type of suggestion, the subclass should
    * override this method. It should return a new `UrlbarResult` for a given
    * suggestion, which can come from either remote settings or Merino.
    *
-   * @param {UrlbarQueryContext} queryContext
+   * @param {UrlbarQueryContext} _queryContext
    *   The query context.
-   * @param {object} suggestion
+   * @param {object} _suggestion
    *   The suggestion from either remote settings or Merino.
-   * @param {string} searchString
+   * @param {string} _searchString
    *   The search string that was used to fetch the suggestion. It may be
    *   different from `queryContext.searchString` due to trimming, lower-casing,
    *   etc. This is included as a param in case it's useful.
    * @returns {UrlbarResult}
    *   A new result for the suggestion.
    */
-  async makeResult(queryContext, suggestion, searchString) {
+  async makeResult(_queryContext, _suggestion, _searchString) {
     return null;
   }
 

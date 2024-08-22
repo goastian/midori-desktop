@@ -55,7 +55,7 @@ async function testFileCreationPositive(args, path) {
   }
 
   let info = await IOUtils.stat(path);
-  ok(info.size > 0, "Screenshot should not be an empty file");
+  Assert.greater(info.size, 0, "Screenshot should not be an empty file");
   await IOUtils.remove(path);
 }
 
@@ -89,7 +89,7 @@ async function testWindowSizePositive(width, height) {
   }
 
   let data = await IOUtils.read(screenshotPath);
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     let blob = new Blob([data], { type: "image/png" });
     let reader = new FileReader();
     reader.onloadend = function () {
@@ -126,7 +126,7 @@ async function testGreen(url, path) {
   }
 
   let data = await IOUtils.read(path);
-  let image = await new Promise((resolve, reject) => {
+  let image = await new Promise(resolve => {
     let blob = new Blob([data], { type: "image/png" });
     let reader = new FileReader();
     reader.onloadend = function () {

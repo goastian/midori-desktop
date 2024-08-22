@@ -1,8 +1,8 @@
 const { Region } = ChromeUtils.importESModule(
   "resource://gre/modules/Region.sys.mjs"
 );
-const { ASRouter } = ChromeUtils.import(
-  "resource://activity-stream/lib/ASRouter.jsm"
+const { ASRouter } = ChromeUtils.importESModule(
+  "resource:///modules/asrouter/ASRouter.sys.mjs"
 );
 
 const initialHomeRegion = Region._home;

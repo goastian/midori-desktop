@@ -10,11 +10,13 @@ async function installFile(filename) {
   file.leafName = filename;
 
   let MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   MockFilePicker.setFiles([file]);
   MockFilePicker.afterOpenCallback = MockFilePicker.cleanup;
 
-  let { document } = await BrowserOpenAddonsMgr("addons://list/extension");
+  let { document } = await BrowserAddonUI.openAddonsMgr(
+    "addons://list/extension"
+  );
 
   // Do the install...
   await waitAboutAddonsViewLoaded(document);
@@ -32,8 +34,21 @@ add_task(async function test_install_extension_from_local_file() {
     },
   });
 
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      // This test asserts that the extension icon is in the install dialog
+      // and so it requires the signature checks to be enabled (otherwise the
+      // extension icon is expected to be replaced by a warning icon) and the
+      // two test extension used by this test (browser_webext_nopermissions.xpi
+      // and browser_webext_permissions.xpi) are signed using AMO stage signatures.
+      ["xpinstall.signatures.dev-root", true],
+    ],
+  });
+
   // Install the add-ons.
   await testInstallMethod(installFile, "installLocal");
+
+  await SpecialPowers.popPrefEnv();
 
   // Check we got an installId.
   ok(

@@ -1,6 +1,5 @@
 ChromeUtils.defineESModuleGetters(this, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
 });
 
 // Various tests in this directory may define gTestBrowser, to use as the
@@ -54,7 +53,7 @@ function promiseTabLoadEvent(tab, url) {
   let loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, handle);
 
   if (url) {
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, url);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url);
   }
 
   return loaded;
@@ -148,7 +147,7 @@ function promiseWaitForFocus(aWindow) {
  * @return Promise
  */
 function waitForNotificationBar(notificationID, browser, callback) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let notification;
     let notificationBox = gBrowser.getNotificationBox(browser);
     waitForCondition(
@@ -190,7 +189,7 @@ function waitForNotificationShown(notification, callback) {
   }
   PopupNotifications.panel.addEventListener(
     "popupshown",
-    function (e) {
+    function () {
       callback();
     },
     { once: true }

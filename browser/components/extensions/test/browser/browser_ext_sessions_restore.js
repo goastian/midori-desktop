@@ -27,13 +27,13 @@ add_task(async function test_sessions_restore() {
         });
       } else if (msg == "restore-reject") {
         browser.sessions.restore("not-a-valid-session-id").then(
-          sessions => {
+          () => {
             browser.test.fail("restore rejected with an invalid sessionId");
           },
           error => {
             browser.test.assertTrue(
               error.message.includes(
-                "Could not restore object using sessionId not-a-valid-session-id."
+                "Invalid sessionId: not-a-valid-session-id."
               )
             );
             browser.test.sendMessage("restore-rejected");
@@ -81,7 +81,10 @@ add_task(async function test_sessions_restore() {
   await extension.awaitMessage("ready");
 
   let win = await BrowserTestUtils.openNewBrowserWindow();
-  BrowserTestUtils.loadURIString(win.gBrowser.selectedBrowser, "about:config");
+  BrowserTestUtils.startLoadingURIString(
+    win.gBrowser.selectedBrowser,
+    "about:config"
+  );
   await BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
   for (let url of ["about:robots", "about:mozilla"]) {
     await BrowserTestUtils.openNewForegroundTab(win.gBrowser, url);
@@ -212,7 +215,10 @@ add_task(async function test_sessions_event_page() {
   // test events waken background
   await extension.terminateBackground();
   let win = await BrowserTestUtils.openNewBrowserWindow();
-  BrowserTestUtils.loadURIString(win.gBrowser.selectedBrowser, "about:config");
+  BrowserTestUtils.startLoadingURIString(
+    win.gBrowser.selectedBrowser,
+    "about:config"
+  );
   await BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
   for (let url of ["about:robots", "about:mozilla"]) {
     await BrowserTestUtils.openNewForegroundTab(win.gBrowser, url);

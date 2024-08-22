@@ -5,121 +5,76 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  UrlbarProviderQuickActions:
-    "resource:///modules/UrlbarProviderQuickActions.sys.mjs",
+  ActionsProviderQuickActions:
+    "resource:///modules/ActionsProviderQuickActions.sys.mjs",
 });
 
-let expectedMatch = (key, inputLength) => ({
-  type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-  source: UrlbarUtils.RESULT_SOURCE.ACTIONS,
-  heuristic: false,
-  payload: {
-    results: [{ key }],
-    dynamicType: "quickactions",
-    helpUrl: UrlbarProviderQuickActions.helpUrl,
-    inputLength,
-  },
-});
-
-testEngine_setup();
-
-add_task(async function init() {
+add_setup(async () => {
   UrlbarPrefs.set("quickactions.enabled", true);
-  UrlbarPrefs.set("suggest.quickactions", true);
 
-  UrlbarProviderQuickActions.addAction("newaction", {
+  ActionsProviderQuickActions.addAction("newaction", {
     commands: ["newaction"],
   });
 
   registerCleanupFunction(async () => {
     UrlbarPrefs.clear("quickactions.enabled");
-    UrlbarPrefs.clear("suggest.quickactions");
-    UrlbarProviderQuickActions.removeAction("newaction");
+    ActionsProviderQuickActions.removeAction("newaction");
   });
 });
 
 add_task(async function nomatch() {
-  let context = createContext("this doesnt match", {
-    providers: [UrlbarProviderQuickActions.name],
-    isPrivate: false,
-  });
-  await check_results({
-    context,
-    matches: [],
-  });
-});
-
-add_task(async function quickactions_disabled() {
-  UrlbarPrefs.set("suggest.quickactions", false);
-  let context = createContext("new", {
-    providers: [UrlbarProviderQuickActions.name],
-    isPrivate: false,
-  });
-  await check_results({
-    context,
-    matches: [],
-  });
+  let context = createContext("this doesnt match", {});
+  let result = await ActionsProviderQuickActions.queryAction(context);
+  Assert.ok(result === null, "there were no matches");
 });
 
 add_task(async function quickactions_match() {
-  UrlbarPrefs.set("suggest.quickactions", true);
-  let context = createContext("new", {
-    providers: [UrlbarProviderQuickActions.name],
-    isPrivate: false,
-  });
-  await check_results({
-    context,
-    matches: [expectedMatch("newaction", 3)],
-  });
+  let context = createContext("new", {});
+  let result = await ActionsProviderQuickActions.queryAction(context);
+  Assert.ok(result.key == "newaction", "Matched the new action");
 });
 
 add_task(async function duplicate_matches() {
-  UrlbarProviderQuickActions.addAction("testaction", {
+  ActionsProviderQuickActions.addAction("testaction", {
     commands: ["testaction", "test"],
   });
 
-  let context = createContext("testaction", {
-    providers: [UrlbarProviderQuickActions.name],
-    isPrivate: false,
-  });
+  let context = createContext("test", {});
+  let result = await ActionsProviderQuickActions.queryAction(context);
 
-  await check_results({
-    context,
-    matches: [expectedMatch("testaction", 10)],
-  });
+  Assert.ok(result.key == "testaction", "Matched the test action");
 
-  UrlbarProviderQuickActions.removeAction("testaction");
+  ActionsProviderQuickActions.removeAction("testaction");
 });
 
 add_task(async function remove_action() {
-  UrlbarProviderQuickActions.addAction("testaction", {
+  ActionsProviderQuickActions.addAction("testaction", {
     commands: ["testaction"],
   });
-  UrlbarProviderQuickActions.removeAction("testaction");
+  ActionsProviderQuickActions.removeAction("testaction");
 
-  let context = createContext("test", {
-    providers: [UrlbarProviderQuickActions.name],
-    isPrivate: false,
-  });
+  let context = createContext("test", {});
+  let result = await ActionsProviderQuickActions.queryAction(context);
 
-  await check_results({
-    context,
-    matches: [],
-  });
+  Assert.ok(result === null, "there were no matches");
 });
 
 add_task(async function minimum_search_string() {
   let searchString = "newa";
-  for (let minimumSearchString of [0, 3]) {
+  for (let minimumSearchString of [3]) {
+    info(`Setting 'minimumSearchString' to ${minimumSearchString}`);
     UrlbarPrefs.set("quickactions.minimumSearchString", minimumSearchString);
     for (let i = 1; i < 4; i++) {
-      let context = createContext(searchString.substring(0, i), {
-        providers: [UrlbarProviderQuickActions.name],
-        isPrivate: false,
-      });
-      let matches =
-        i >= minimumSearchString ? [expectedMatch("newaction", i)] : [];
-      await check_results({ context, matches });
+      let context = createContext(searchString.substring(0, i), {});
+      let result = await ActionsProviderQuickActions.queryAction(context);
+      let isActive = ActionsProviderQuickActions.isActive(context);
+
+      if (i >= minimumSearchString) {
+        Assert.ok(result.key == "newaction", "Matched the new action");
+        Assert.equal(isActive, true, "Provider is active");
+      } else {
+        Assert.equal(isActive, false, "Provider is not active");
+      }
     }
   }
   UrlbarPrefs.clear("quickactions.minimumSearchString");

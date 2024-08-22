@@ -6,18 +6,6 @@ const { AttributionIOUtils } = ChromeUtils.importESModule(
 );
 
 add_task(async function test_parse_error() {
-  if (AppConstants.platform == "macosx") {
-    // On macOS, the underlying data is the OS-level quarantine
-    // database.  We need to start from nothing to isolate the cache.
-    const { MacAttribution } = ChromeUtils.importESModule(
-      "resource:///modules/MacAttribution.sys.mjs"
-    );
-    let attributionSvc = Cc["@mozilla.org/mac-attribution;1"].getService(
-      Ci.nsIMacAttributionService
-    );
-    attributionSvc.setReferrerUrl(MacAttribution.applicationPath, "", true);
-  }
-
   registerCleanupFunction(async () => {
     await AttributionCode.deleteFileAsync();
     AttributionCode._clearCache();
@@ -46,10 +34,7 @@ add_task(async function test_parse_error() {
   ) {
     await AttributionCode.deleteFileAsync();
     AttributionCode._clearCache();
-    // Empty string is valid on macOS.
-    await AttributionCode.writeAttributionFile(
-      AppConstants.platform == "macosx" ? "invalid" : ""
-    );
+    await AttributionCode.writeAttributionFile("");
     result = await AttributionCode.getAttrDataAsync();
     Assert.deepEqual(result, {}, "Should have failed to parse");
 
@@ -85,9 +70,17 @@ add_task(async function test_read_error() {
     throw new Error("read_error");
   };
 
+  // On MSIX builds, AttributionIOUtils.read is not used; AttributionCode.msixCampaignId is.
+  // Ensure we override that as well.
+  let oldMsixCampaignId = AttributionCode.msixCampaignId;
+  AttributionCode.msixCampaignId = async () => {
+    throw new Error("read_error");
+  };
+
   registerCleanupFunction(() => {
     AttributionIOUtils.exists = oldExists;
     AttributionIOUtils.read = oldRead;
+    AttributionCode.msixCampaignId = oldMsixCampaignId;
   });
 
   // Try to read the file

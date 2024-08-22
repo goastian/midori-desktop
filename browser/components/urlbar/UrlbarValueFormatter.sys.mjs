@@ -5,16 +5,11 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  BrowserUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
 });
-
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "BrowserUIUtils",
-  "resource:///modules/BrowserUIUtils.jsm"
-);
 
 /**
  * Applies URL highlighting and other styling to the text in the urlbar input,
@@ -80,7 +75,7 @@ export class UrlbarValueFormatter {
     this.urlbarInput.removeAttribute("domaindir");
     this.scheme.value = "";
 
-    if (!this.inputField.value) {
+    if (!this.urlbarInput.value) {
       return;
     }
 
@@ -138,21 +133,30 @@ export class UrlbarValueFormatter {
       return null;
     }
 
-    let inputValue = this.inputField.value;
+    let inputValue = this.urlbarInput.value;
     // getFixupURIInfo logs an error if the URL is empty. Avoid that by
     // returning early.
     if (!inputValue) {
       return null;
     }
     let browser = this.window.gBrowser.selectedBrowser;
+    let browserState = this.urlbarInput.getBrowserState(browser);
 
     // Since doing a full URIFixup and offset calculations is expensive, we
     // keep the metadata cached in the browser itself, so when switching tabs
     // we can skip most of this.
-    if (browser._urlMetaData && browser._urlMetaData.inputValue == inputValue) {
-      return browser._urlMetaData.data;
+    if (
+      browserState.urlMetaData &&
+      browserState.urlMetaData.inputValue == inputValue &&
+      browserState.urlMetaData.untrimmedValue == this.urlbarInput.untrimmedValue
+    ) {
+      return browserState.urlMetaData.data;
     }
-    browser._urlMetaData = { inputValue, data: null };
+    browserState.urlMetaData = {
+      inputValue,
+      untrimmedValue: this.urlbarInput.untrimmedValue,
+      data: null,
+    };
 
     // Get the URL from the fixup service:
     let flags =
@@ -180,20 +184,28 @@ export class UrlbarValueFormatter {
       return null;
     }
 
-    // If we trimmed off the http scheme, ensure we stick it back on before
-    // trying to figure out what domain we're accessing, so we don't get
-    // confused by user:pass@host http URLs. We later use
-    // trimmedLength to ensure we don't count the length of a trimmed protocol
-    // when determining which parts of the URL to highlight as "preDomain".
+    // We must ensure the protocol is present in the parsed string, so we don't
+    // get confused by user:pass@host. It may not have been present originally,
+    // or it may have been trimmed. We later use trimmedLength to ensure we
+    // don't count the length of a trimmed protocol when determining which parts
+    // of the input value to de-emphasize as `preDomain`.
     let url = inputValue;
     let trimmedLength = 0;
     let trimmedProtocol = lazy.BrowserUIUtils.trimURLProtocol;
     if (
-      uriInfo.fixedURI.spec.startsWith(trimmedProtocol) &&
+      this.urlbarInput.untrimmedValue.startsWith(trimmedProtocol) &&
       !inputValue.startsWith(trimmedProtocol)
     ) {
+      // The protocol has been trimmed, so we add it back.
       url = trimmedProtocol + inputValue;
       trimmedLength = trimmedProtocol.length;
+    } else if (uriInfo.wasSchemelessInput) {
+      // The original string didn't have a protocol, but it was identified as
+      // a URL. It's not important which scheme we use for parsing, so we'll
+      // just copy URIFixup.
+      let scheme = uriInfo.fixedURI.scheme + "://";
+      url = scheme + url;
+      trimmedLength = scheme.length;
     }
 
     // This RegExp is not a perfect match, and for specially crafted URLs it may
@@ -233,7 +245,7 @@ export class UrlbarValueFormatter {
       }
     }
 
-    return (browser._urlMetaData.data = {
+    return (browserState.urlMetaData.data = {
       domain,
       origin: uriInfo.fixedURI.host,
       preDomain,
@@ -268,14 +280,35 @@ export class UrlbarValueFormatter {
    */
   _formatURL() {
     let urlMetaData = this._getUrlMetaData();
-    if (!urlMetaData) {
+    if (!urlMetaData || this.window.gBrowser.selectedBrowser.searchTerms) {
       return false;
     }
 
     let { domain, origin, preDomain, schemeWSlashes, trimmedLength, url } =
       urlMetaData;
-    // We strip http, so we should not show the scheme box for it.
-    if (!lazy.UrlbarPrefs.get("trimURLs") || schemeWSlashes != "http://") {
+
+    let isMixedContent =
+      schemeWSlashes == "https://" &&
+      this.urlbarInput.value.startsWith("https://") &&
+      this.urlbarInput.getAttribute("pageproxystate") == "valid" &&
+      this.window.gBrowser.securityUI.state &
+        Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT;
+    let isUnformattedMixedContent =
+      isMixedContent && !lazy.UrlbarPrefs.get("formatting.enabled");
+
+    // When RTL domains cause the address bar to overflow to the left, the
+    // protocol may get hidden, if it was not trimmed. We then set the
+    // `--urlbar-scheme-size` property to show the protocol in a floating box.
+    // We don't show the floating protocol box if:
+    //  - The protocol was trimmed.
+    //  - We're in mixed mode, but formatting is disabled. The not struck out
+    //    box may make the user think the connection is fully secure.
+    //  - The insecure label is active. The label is a sufficient indicator.
+    if (
+      this.urlbarInput.value.startsWith(schemeWSlashes) &&
+      !isUnformattedMixedContent &&
+      !lazy.UrlbarPrefs.get("security.insecure_connection_text.enabled")
+    ) {
       this.scheme.value = schemeWSlashes;
       this.inputField.style.setProperty(
         "--urlbar-scheme-size",
@@ -296,13 +329,9 @@ export class UrlbarValueFormatter {
 
     let textNode = editor.rootElement.firstChild;
 
-    // Strike out the "https" part if mixed active content is loaded.
-    if (
-      this.urlbarInput.getAttribute("pageproxystate") == "valid" &&
-      url.startsWith("https:") &&
-      this.window.gBrowser.securityUI.state &
-        Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT
-    ) {
+    // Strike out the "https" part if mixed active content is loaded and https
+    // is not trimmed.
+    if (isMixedContent) {
       let range = this.document.createRange();
       range.setStart(textNode, 0);
       range.setEnd(textNode, 5);

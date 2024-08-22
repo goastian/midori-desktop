@@ -11,10 +11,15 @@
   preview/ion.ftl                                  (../components/ion/content/ion.ftl)
   preview/protections.ftl                          (../components/protections/content/protections.ftl)
   preview/interventions.ftl                        (../components/urlbar/content/interventions.ftl)
-  preview/firefoxSuggest.ftl                       (../components/urlbar/content/firefoxSuggest.ftl)
-  preview/identityCredentialNotification.ftl       (../components/credentialmanager/identityCredentialNotification.ftl)
-  preview/stripOnShare.ftl                         (../components/urlbar/content/stripOnShare.ftl)
+  preview/enUS-searchFeatures.ftl                  (../components/urlbar/content/enUS-searchFeatures.ftl)
+  preview/shopping.ftl                             (../components/shopping/content/shopping.ftl)
+  preview/sidebar.ftl                              (../components/sidebar/sidebar.ftl)
+  preview/onboarding.ftl                           (../components/aboutwelcome/content/onboarding.ftl)
+  preview/genai.ftl                                (../locales-preview/genai.ftl)
+  preview/translations.ftl                         (../locales-preview/translations.ftl)
   browser                                          (%browser/**/*.ftl)
+  preview/profiles.ftl                             (../components/profiles/content/profiles.ftl)
+  preview/backupSettings.ftl                       (../locales-preview/backupSettings.ftl)
 
 @AB_CD@.jar:
 % locale browser @AB_CD@ %locale/browser/

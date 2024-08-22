@@ -11,36 +11,26 @@
       <html:h1 data-l10n-id="pane-search-title"/>
     </hbox>
 
-    <groupbox id="searchbarGroup" data-category="paneSearch" hidden="true">
-      <label control="searchBarVisibleGroup"><html:h2 data-l10n-id="search-bar-header"/></label>
-      <radiogroup id="searchBarVisibleGroup" preference="browser.search.widget.inNavBar" align="start">
-        <radio id="searchBarHiddenRadio" value="false" data-l10n-id="search-bar-hidden"/>
-        <image class="searchBarImage searchBarHiddenImage" role="presentation"/>
-        <checkbox id="searchShowSearchTermCheckbox"
-                  data-l10n-id="search-show-search-term-option"
-                  preference="browser.urlbar.showSearchTerms.enabled"
-                  hidden="true" />
-        <radio id="searchBarShownRadio" value="true" data-l10n-id="search-bar-shown"/>
-        <image class="searchBarImage searchBarShownImage" role="presentation"/>
-      </radiogroup>
-    </groupbox>
-
     <!-- Default Search Engine -->
     <groupbox id="defaultEngineGroup" data-category="paneSearch" hidden="true">
-      <label><html:h2 data-l10n-id="search-engine-default-header" /></label>
-      <description data-l10n-id="search-engine-default-desc-2" />
+      <label><html:h2 data-l10n-id="search-engine-default-header" id="search-engine-default-header" /></label>
+      <description class="description-deemphasized" data-l10n-id="search-engine-default-desc-2" id="search-engine-default-desc-2" />
       <hbox>
-        <menulist id="defaultEngine">
+        <menulist id="defaultEngine" aria-labelledby="search-engine-default-header" aria-describedby="search-engine-default-desc-2">
           <menupopup/>
         </menulist>
       </hbox>
+      <checkbox id="searchShowSearchTermCheckbox"
+                data-l10n-id="search-show-search-term-option"
+                preference="browser.urlbar.showSearchTerms.enabled"
+                hidden="true" />
       <checkbox id="browserSeparateDefaultEngine"
                 data-l10n-id="search-separate-default-engine"
                 hidden="true"/>
       <vbox id="browserPrivateEngineSelection" class="indent" hidden="true">
-        <description data-l10n-id="search-engine-default-private-desc-2" />
+        <description data-l10n-id="search-engine-default-private-desc-2" id="search-engine-default-private-desc-2" />
         <hbox>
-          <menulist id="defaultPrivateEngine">
+          <menulist id="defaultPrivateEngine" aria-labelledby="search-engine-default-private-desc-2">
             <menupopup/>
           </menulist>
         </hbox>
@@ -50,11 +40,11 @@
     <groupbox id="searchSuggestionsGroup" data-category="paneSearch" hidden="true">
       <label><html:h2 data-l10n-id="search-suggestions-header" /></label>
       <description id="searchSuggestionsDesc"
+                   class="description-deemphasized"
                    data-l10n-id="search-suggestions-desc" />
 
       <checkbox id="suggestionsInSearchFieldsCheckbox"
-                data-l10n-id="search-suggestions-option"
-                preference="browser.search.suggest.enabled"/>
+                data-l10n-id="search-show-suggestions-option" />
       <vbox class="indent">
         <checkbox id="urlBarSuggestion" data-l10n-id="search-show-suggestions-url-bar-option" />
         <checkbox id="showSearchSuggestionsFirstCheckbox"
@@ -62,18 +52,119 @@
                   preference="browser.urlbar.showSearchSuggestionsFirst"/>
         <checkbox id="showSearchSuggestionsPrivateWindows"
                   data-l10n-id="search-show-suggestions-private-windows"/>
+        <hbox align="center" id="showTrendingSuggestionsBox">
+          <checkbox id="showTrendingSuggestions" data-l10n-id="search-show-trending-suggestions" preference="browser.urlbar.suggest.trending" class="tail-with-learn-more" />
+          <html:a is="moz-support-link" support-page="google-trending-searches-on-awesomebar" />
+        </hbox>
         <hbox id="urlBarSuggestionPermanentPBLabel"
               align="center" class="indent">
           <label flex="1" data-l10n-id="search-suggestions-cant-show" />
         </hbox>
       </vbox>
-      <label id="openLocationBarPrivacyPreferences" is="text-link"
-             data-l10n-id="suggestions-addressbar-settings-generic2"/>
+      <checkbox id="enableRecentSearches" data-l10n-id="addressbar-locbar-showrecentsearches-option" hidden="true"
+            preference="browser.urlbar.suggest.recentsearches" />
+    </groupbox>
+
+    <!-- Address Bar -->
+    <groupbox id="locationBarGroup"
+              data-category="paneSearch"
+              hidden="true"
+              data-subcategory="locationBar">
+      <label><html:h2 id="locationBarGroupHeader" data-l10n-id="addressbar-header"/></label>
+      <label id="locationBarSuggestionLabel" class="description-deemphasized" data-l10n-id="addressbar-suggest"/>
+      <checkbox id="historySuggestion" data-l10n-id="addressbar-locbar-history-option"
+                preference="browser.urlbar.suggest.history"/>
+      <checkbox id="bookmarkSuggestion" data-l10n-id="addressbar-locbar-bookmarks-option"
+                preference="browser.urlbar.suggest.bookmark"/>
+      <checkbox id="clipboardSuggestion" data-l10n-id="addressbar-locbar-clipboard-option" hidden="true"
+                preference="browser.urlbar.suggest.clipboard"/>
+      <checkbox id="openpageSuggestion" data-l10n-id="addressbar-locbar-openpage-option"
+                preference="browser.urlbar.suggest.openpage"/>
+      <checkbox id="topSitesSuggestion"
+                data-l10n-id="addressbar-locbar-shortcuts-option"
+                preference="browser.urlbar.suggest.topsites"/>
+      <checkbox id="enginesSuggestion" data-l10n-id="addressbar-locbar-engines-option"
+                preference="browser.urlbar.suggest.engines"/>
+      <hbox id="quickActionsBox" align="center" hidden="true">
+        <checkbox id="enableQuickActions"
+                  class="tail-with-learn-more"
+                  data-l10n-id="addressbar-locbar-quickactions-option"
+                  preference="browser.urlbar.suggest.quickactions" />
+        <html:a is="moz-support-link"
+                id="quickActionsLink"
+                data-l10n-id="addressbar-quickactions-learn-more"
+                support-page="quick-actions-firefox-search-bar"
+        />
+      </hbox>
+      <vbox id="firefoxSuggestContainer" hidden="true">
+        <checkbox id="firefoxSuggestNonsponsored"
+                  data-l10n-id="addressbar-firefox-suggest-nonsponsored"
+                  preference="browser.urlbar.suggest.quicksuggest.nonsponsored"
+        />
+        <description class="indent tip-caption"
+                      data-l10n-id="addressbar-firefox-suggest-nonsponsored-desc"
+        />
+        <checkbox id="firefoxSuggestSponsored"
+                  data-l10n-id="addressbar-firefox-suggest-sponsored"
+                  preference="browser.urlbar.suggest.quicksuggest.sponsored"
+        />
+        <description class="indent tip-caption"
+                      data-l10n-id="addressbar-firefox-suggest-sponsored-desc"
+        />
+        <hbox id="firefoxSuggestInfoBox" class="info-box-container smaller-font-size" align="start"
+              hidden="true">
+          <html:img class="info-icon"/>
+          <description flex="1">
+            <html:span id="firefoxSuggestInfoText" class="tail-with-learn-more"/>
+            <html:a is="moz-support-link"
+                    id="firefoxSuggestInfoBoxLearnMore"
+                    class="learnMore firefoxSuggestLearnMore"
+                    data-l10n-id="addressbar-locbar-firefox-suggest-learn-more"
+                    support-page="firefox-suggest"
+            />
+          </description>
+        </hbox>
+        <vbox class="firefoxSuggestOptionBox">
+            <html:moz-toggle id="firefoxSuggestDataCollectionSearchToggle"
+                             preference="browser.urlbar.quicksuggest.dataCollection.enabled"
+                             data-l10n-id="addressbar-firefox-suggest-data-collection"
+                             data-l10n-attrs="label, description">
+              <html:a slot="support-link"
+                      is="moz-support-link"
+                      id="firefoxSuggestDataCollectionLearnMoreSearch"
+                      class="learnMore firefoxSuggestLearnMore"
+                      data-l10n-id="addressbar-locbar-firefox-suggest-learn-more"
+                      support-page="firefox-suggest"
+              />
+            </html:moz-toggle>
+        </vbox>
+        <hbox id="dismissedSuggestions" align="center">
+          <vbox flex="1">
+            <label data-l10n-id="addressbar-dismissed-suggestions-label"/>
+            <description class="tip-caption">
+              <html:span id="dismissedSuggestionsDescription"
+                        class="tail-with-learn-more"
+                        data-l10n-id="addressbar-restore-dismissed-suggestions-description"/>
+              <html:a is="moz-support-link"
+                      id="dismissedSuggestionsLearnMore"
+                      class="learnMore firefoxSuggestLearnMore"
+                      data-l10n-id="addressbar-restore-dismissed-suggestions-learn-more"
+                      support-page="firefox-suggest"
+              />
+            </description>
+          </vbox>
+          <button id="restoreDismissedSuggestions"
+                  is="highlightable-button"
+                  class="accessory-button"
+                  data-l10n-id="addressbar-restore-dismissed-suggestions-button"
+                  aria-describedby="dismissedSuggestionsDescription"/>
+        </hbox>
+      </vbox>
     </groupbox>
 
     <groupbox id="oneClickSearchProvidersGroup" data-category="paneSearch" hidden="true">
       <label><html:h2 data-l10n-id="search-one-click-header2" /></label>
-      <description data-l10n-id="search-one-click-desc" />
+      <description class="description-deemphasized" data-l10n-id="search-one-click-desc" />
 
       <tree id="engineList" flex="1" rows="11" hidecolumnpicker="true" editable="true"
             seltype="single" allowunderflowscroll="true">

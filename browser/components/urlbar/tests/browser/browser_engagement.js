@@ -110,29 +110,22 @@ async function doTest({
   let provider = new TestProvider();
   UrlbarProvidersManager.registerProvider(provider);
 
-  let startPromise = provider.promiseEngagement();
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window: win,
     value: "test",
     fireInputEvent: true,
   });
 
-  let [isPrivate, state, queryContext, details] = await startPromise;
-  Assert.equal(isPrivate, expectedIsPrivate, "Start isPrivate");
-  Assert.equal(state, "start", "Start state");
-
-  // `queryContext` isn't always defined for `start`, and `onEngagement`
-  // shouldn't rely on it being defined on start, but there's no good reason to
-  // assert that it's not defined here.
-
-  // Similarly, `details` is never defined for `start`, but there's no good
-  // reason to assert that it's not defined.
-
   let endPromise = provider.promiseEngagement();
   let { result, element } = (await endEngagement()) ?? {};
 
-  [isPrivate, state, queryContext, details] = await endPromise;
-  Assert.equal(isPrivate, expectedIsPrivate, "End isPrivate");
+  let [state, queryContext, controller, details] = await endPromise;
+
+  Assert.ok(
+    ["engagement", "abandonment"].includes(state),
+    "State should be either 'engagement' or 'abandonment'"
+  );
+  Assert.equal(controller.input.isPrivate, expectedIsPrivate, "End isPrivate");
   Assert.equal(state, expectedEndState, "End state");
   Assert.ok(queryContext, "End queryContext");
   Assert.equal(
@@ -163,13 +156,13 @@ async function doTest({
     );
     expectedEndDetails.result = result;
     expectedEndDetails.element = element;
-  }
 
-  Assert.deepEqual(
-    details,
-    Object.assign(detailsDefaults, expectedEndDetails),
-    "End details"
-  );
+    Assert.deepEqual(
+      details,
+      Object.assign(detailsDefaults, expectedEndDetails),
+      "End details"
+    );
+  }
 
   UrlbarProvidersManager.unregisterProvider(provider);
 }
@@ -193,10 +186,17 @@ class TestProvider extends UrlbarTestUtils.TestProvider {
     });
   }
 
-  onEngagement(...args) {
+  onEngagement(queryContext, controller, details) {
     let resolve = this._resolves.shift();
     if (resolve) {
-      resolve(args);
+      resolve(["engagement", queryContext, controller, details]);
+    }
+  }
+
+  onAbandonment(queryContext, controller) {
+    let resolve = this._resolves.shift();
+    if (resolve) {
+      resolve(["abandonment", queryContext, controller, undefined]);
     }
   }
 

@@ -5,7 +5,7 @@
 const TEST_PAGE =
   "http://mochi.test:8888/browser/browser/components/" +
   "originattributes/test/browser/file_firstPartyBasic.html";
-const SCRIPT_WORKER_BLOBIFY = "worker_blobify.js";
+const SCRIPT_WORKER_BLOBIFY = "blobify.worker.js";
 
 function page_blobify(browser, input) {
   return SpecialPowers.spawn(browser, [input], function (contentInput) {
@@ -114,7 +114,7 @@ for (let blobify of [page_blobify, worker_blobify]) {
 async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["privacy.partition.bloburl_per_agent_cluster", false],
+      ["privacy.partition.bloburl_per_partition_key", false],
       ["dom.security.https_first", false],
     ],
   });

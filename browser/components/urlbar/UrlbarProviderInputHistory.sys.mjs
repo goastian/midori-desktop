@@ -23,33 +23,29 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
 });
 
-// Sqlite result row index constants.
-const QUERYINDEX = {
-  URL: 0,
-  TITLE: 1,
-  BOOKMARKED: 2,
-  BOOKMARKTITLE: 3,
-  TAGS: 4,
-  SWITCHTAB: 8,
-};
-
-// This SQL query fragment provides the following:
-//   - whether the entry is bookmarked (QUERYINDEX_BOOKMARKED)
-//   - the bookmark title, if it is a bookmark (QUERYINDEX_BOOKMARKTITLE)
-//   - the tags associated with a bookmarked entry (QUERYINDEX_TAGS)
-const SQL_BOOKMARK_TAGS_FRAGMENT = `EXISTS(SELECT 1 FROM moz_bookmarks WHERE fk = h.id) AS bookmarked,
-   ( SELECT title FROM moz_bookmarks WHERE fk = h.id AND title NOTNULL
-     ORDER BY lastModified DESC LIMIT 1
-   ) AS btitle,
-   ( SELECT GROUP_CONCAT(t.title, ', ')
-     FROM moz_bookmarks b
-     JOIN moz_bookmarks t ON t.id = +b.parent AND t.parent = :parent
-     WHERE b.fk = h.id
-   ) AS tags`;
+// Constants to support an alternative frecency algorithm.
+const PAGES_USE_ALT_FRECENCY = Services.prefs.getBoolPref(
+  "places.frecency.pages.alternative.featureGate",
+  false
+);
+const PAGES_FRECENCY_FIELD = PAGES_USE_ALT_FRECENCY
+  ? "alt_frecency"
+  : "frecency";
 
 const SQL_ADAPTIVE_QUERY = `/* do not warn (bug 487789) */
-   SELECT h.url, h.title, ${SQL_BOOKMARK_TAGS_FRAGMENT}, h.visit_count,
-          h.typed, h.id, t.open_count, h.frecency
+   SELECT h.url,
+          h.title,
+          EXISTS(SELECT 1 FROM moz_bookmarks WHERE fk = h.id) AS bookmarked,
+          ( SELECT title FROM moz_bookmarks WHERE fk = h.id AND title NOTNULL
+            ORDER BY lastModified DESC LIMIT 1
+          ) AS bookmark_title,
+          ( SELECT GROUP_CONCAT(t.title ORDER BY t.title)
+            FROM moz_bookmarks b
+            JOIN moz_bookmarks t ON t.id = +b.parent AND t.parent = :parent
+            WHERE b.fk = h.id
+          ) AS tags,
+          t.open_count,
+          t.userContextId
    FROM (
      SELECT ROUND(MAX(use_count) * (1 + (input = :search_string)), 1) AS rank,
             place_id
@@ -60,14 +56,14 @@ const SQL_ADAPTIVE_QUERY = `/* do not warn (bug 487789) */
    JOIN moz_places h ON h.id = i.place_id
    LEFT JOIN moz_openpages_temp t
           ON t.url = h.url
-         AND t.userContextId = :userContextId
+          AND (t.userContextId = :userContextId OR (t.userContextId <> -1 AND :userContextId IS NULL))
    WHERE AUTOCOMPLETE_MATCH(NULL, h.url,
-                            IFNULL(btitle, h.title), tags,
+                            IFNULL(bookmark_title, h.title), tags,
                             h.visit_count, h.typed, bookmarked,
                             t.open_count,
                             :matchBehavior, :searchBehavior,
                             NULL)
-   ORDER BY rank DESC, h.frecency DESC
+   ORDER BY rank DESC, ${PAGES_FRECENCY_FIELD} DESC
    LIMIT :maxResults`;
 
 /**
@@ -133,14 +129,14 @@ class ProviderInputHistory extends UrlbarProvider {
     }
 
     for (let row of rows) {
-      const url = row.getResultByIndex(QUERYINDEX.URL);
-      const openPageCount = row.getResultByIndex(QUERYINDEX.SWITCHTAB) || 0;
-      const historyTitle = row.getResultByIndex(QUERYINDEX.TITLE) || "";
-      const bookmarked = row.getResultByIndex(QUERYINDEX.BOOKMARKED);
+      const url = row.getResultByName("url");
+      const openPageCount = row.getResultByName("open_count") || 0;
+      const historyTitle = row.getResultByName("title") || "";
+      const bookmarked = row.getResultByName("bookmarked");
       const bookmarkTitle = bookmarked
-        ? row.getResultByIndex(QUERYINDEX.BOOKMARKTITLE)
+        ? row.getResultByName("bookmark_title")
         : null;
-      const tags = row.getResultByIndex(QUERYINDEX.TAGS) || "";
+      const tags = row.getResultByName("tags") || "";
 
       let resultTitle = historyTitle;
       if (openPageCount > 0 && lazy.UrlbarPrefs.get("suggest.openpage")) {
@@ -148,14 +144,27 @@ class ProviderInputHistory extends UrlbarProvider {
           // Don't suggest switching to the current page.
           continue;
         }
-        let result = new lazy.UrlbarResult(
-          UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
-          UrlbarUtils.RESULT_SOURCE.TABS,
-          ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
+        let payload = lazy.UrlbarResult.payloadAndSimpleHighlights(
+          queryContext.tokens,
+          {
             url: [url, UrlbarUtils.HIGHLIGHT.TYPED],
             title: [resultTitle, UrlbarUtils.HIGHLIGHT.TYPED],
             icon: UrlbarUtils.getIconForUrl(url),
-          })
+            userContextId: row.getResultByName("userContextId") || 0,
+          }
+        );
+        if (
+          lazy.UrlbarPrefs.getScotchBonnetPref("secondaryActions.featureGate")
+        ) {
+          payload[0].action = {
+            key: "tabswitch",
+            l10nId: "urlbar-result-action-switch-tab",
+          };
+        }
+        let result = new lazy.UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+          UrlbarUtils.RESULT_SOURCE.TABS,
+          ...payload
         );
         addCallback(this, result);
         continue;
@@ -171,16 +180,14 @@ class ProviderInputHistory extends UrlbarProvider {
         continue;
       }
 
-      let resultTags = tags
-        .split(",")
-        .map(t => t.trim())
-        .filter(tag => {
-          let lowerCaseTag = tag.toLocaleLowerCase();
-          return queryContext.tokens.some(token =>
-            lowerCaseTag.includes(token.lowerCaseValue)
-          );
-        })
-        .sort();
+      let resultTags = tags.split(",").filter(tag => {
+        let lowerCaseTag = tag.toLocaleLowerCase();
+        return queryContext.tokens.some(token =>
+          lowerCaseTag.includes(token.lowerCaseValue)
+        );
+      });
+
+      let isBlockable = resultSource == UrlbarUtils.RESULT_SOURCE.HISTORY;
 
       let result = new lazy.UrlbarResult(
         UrlbarUtils.RESULT_TYPE.URL,
@@ -190,10 +197,37 @@ class ProviderInputHistory extends UrlbarProvider {
           title: [resultTitle, UrlbarUtils.HIGHLIGHT.TYPED],
           tags: [resultTags, UrlbarUtils.HIGHLIGHT.TYPED],
           icon: UrlbarUtils.getIconForUrl(url),
+          isBlockable,
+          blockL10n: isBlockable
+            ? { id: "urlbar-result-menu-remove-from-history" }
+            : undefined,
+          helpUrl: isBlockable
+            ? Services.urlFormatter.formatURLPref("app.support.baseURL") +
+              "awesome-bar-result-menu"
+            : undefined,
         })
       );
 
       addCallback(this, result);
+    }
+  }
+
+  onEngagement(queryContext, controller, details) {
+    let { result } = details;
+    if (
+      details.selType == "dismiss" &&
+      result.type == UrlbarUtils.RESULT_TYPE.URL
+    ) {
+      // Even if removing history normally also removes input history, that
+      // doesn't happen if the page is bookmarked, so we do remove input history
+      // regardless for this specific search term.
+      UrlbarUtils.removeInputHistory(
+        result.payload.url,
+        queryContext.searchString
+      ).catch(console.error);
+      // Remove browsing history for the page.
+      lazy.PlacesUtils.history.remove(result.payload.url).catch(console.error);
+      controller.removeResult(result);
     }
   }
 
@@ -210,14 +244,15 @@ class ProviderInputHistory extends UrlbarProvider {
       SQL_ADAPTIVE_QUERY,
       {
         parent: lazy.PlacesUtils.tagsFolderId,
-        search_string: queryContext.searchString.toLowerCase(),
+        search_string: queryContext.lowerCaseSearchString,
         matchBehavior: Ci.mozIPlacesAutoComplete.MATCH_ANYWHERE,
         searchBehavior: lazy.UrlbarPrefs.get("defaultBehavior"),
-        userContextId:
-          lazy.UrlbarProviderOpenTabs.getUserContextIdForOpenPagesTable(
-            queryContext.userContextId,
-            queryContext.isPrivate
-          ),
+        userContextId: lazy.UrlbarPrefs.get("switchTabs.searchAllContainers")
+          ? lazy.UrlbarProviderOpenTabs.getUserContextIdForOpenPagesTable(
+              null,
+              queryContext.isPrivate
+            )
+          : queryContext.userContextId,
         maxResults: queryContext.maxResults,
       },
     ];

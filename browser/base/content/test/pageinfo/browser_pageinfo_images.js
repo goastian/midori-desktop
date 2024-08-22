@@ -10,7 +10,7 @@ add_task(async function test_all_images_mentioned() {
   await BrowserTestUtils.withNewTab(
     TEST_PATH + "all_images.html",
     async function () {
-      let pageInfo = BrowserPageInfo(
+      let pageInfo = BrowserCommands.pageInfo(
         gBrowser.selectedBrowser.currentURI.spec,
         "mediaTab"
       );
@@ -21,8 +21,9 @@ add_task(async function test_all_images_mentioned() {
 
       ok(imageTree, "Image tree is null (media tab is broken)");
 
-      ok(
-        imageRowsNum == 7,
+      Assert.equal(
+        imageRowsNum,
+        7,
         "Number of images listed: " + imageRowsNum + ", should be 7"
       );
 
@@ -88,6 +89,25 @@ add_task(async function test_view_image_info() {
         "selected image is the correct"
       );
       await BrowserTestUtils.closeWindow(pageInfo);
+    }
+  );
+});
+
+add_task(async function test_image_size() {
+  await BrowserTestUtils.withNewTab(
+    TEST_PATH + "all_images.html",
+    async function () {
+      let pageInfo = BrowserCommands.pageInfo(
+        gBrowser.selectedBrowser.currentURI.spec,
+        "mediaTab"
+      );
+      await BrowserTestUtils.waitForEvent(pageInfo, "page-info-init");
+
+      let imageSize = pageInfo.document.getElementById("imagesizetext");
+
+      Assert.notEqual("media-unknown-not-cached", imageSize.value);
+
+      pageInfo.close();
     }
   );
 });

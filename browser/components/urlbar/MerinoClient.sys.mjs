@@ -2,12 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   SkippableTimer: "resource:///modules/UrlbarUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
@@ -46,7 +43,7 @@ export class MerinoClient {
    */
   constructor(name = "anonymous") {
     this.#name = name;
-    XPCOMUtils.defineLazyGetter(this, "logger", () =>
+    ChromeUtils.defineLazyGetter(this, "logger", () =>
       lazy.UrlbarUtils.getLogger({ prefix: `MerinoClient [${name}]` })
     );
   }
@@ -120,6 +117,9 @@ export class MerinoClient {
    * @param {string} options.extraResponseHistogram
    *   If specified, the fetch's response will be recorded in this histogram in
    *   addition to the usual Merino response histogram.
+   * @param {object} options.otherParams
+   *   If specified, the otherParams will be added as a query params. Currently
+   *   used for accuweather's location autocomplete endpoint
    * @returns {Array}
    *   The Merino suggestions or null if there's an error or unexpected
    *   response.
@@ -130,6 +130,7 @@ export class MerinoClient {
     timeoutMs = lazy.UrlbarPrefs.get("merinoTimeoutMs"),
     extraLatencyHistogram = null,
     extraResponseHistogram = null,
+    otherParams = {},
   }) {
     this.logger.info(`Fetch starting with query: "${query}"`);
 
@@ -193,6 +194,11 @@ export class MerinoClient {
     // `if (providersString)` here.
     if (typeof providersString == "string") {
       url.searchParams.set(SEARCH_PARAMS.PROVIDERS, providersString);
+    }
+
+    // if otherParams are present add them to the url
+    for (const [param, value] of Object.entries(otherParams)) {
+      url.searchParams.set(param, value);
     }
 
     let details = { query, providers, timeoutMs, url };
@@ -350,7 +356,7 @@ export class MerinoClient {
    */
   waitForNextResponse() {
     if (!this.#nextResponseDeferred) {
-      this.#nextResponseDeferred = lazy.PromiseUtils.defer();
+      this.#nextResponseDeferred = Promise.withResolvers();
     }
     return this.#nextResponseDeferred.promise;
   }
@@ -363,7 +369,7 @@ export class MerinoClient {
    */
   waitForNextSessionReset() {
     if (!this.#nextSessionResetDeferred) {
-      this.#nextSessionResetDeferred = lazy.PromiseUtils.defer();
+      this.#nextSessionResetDeferred = Promise.withResolvers();
     }
     return this.#nextSessionResetDeferred.promise;
   }

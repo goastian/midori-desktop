@@ -734,8 +734,10 @@ var gHomePane = {
       ]);
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
 
-      fp.init(window, title, Ci.nsIFilePicker.modeGetFolder);
+      fp.init(window.browsingContext, title, Ci.nsIFilePicker.modeGetFolder);
       fp.appendFilters(Ci.nsIFilePicker.filterAll);
+
+
       fp.displayDirectory = FileUtils.File(PathUtils.join(Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder","") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages"),"a").slice( 0, -1 ))
       let result = await new Promise(resolve => fp.open(resolve));
       if (result != Ci.nsIFilePicker.returnOK) {
@@ -752,8 +754,9 @@ var gHomePane = {
       ]);
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
 
-      fp.init(window, title, Ci.nsIFilePicker.modeOpen);
+      fp.init(window.browsingContext, title, Ci.nsIFilePicker.filterImages);
       fp.appendFilters(Ci.nsIFilePicker.filterAll);
+
       const imgPath = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.image.path","")
       if(imgPath){
         fp.displayDirectory =FileUtils.File(PathUtils.parent(imgPath))

@@ -17,15 +17,10 @@ EXTRA_JS_MODULES += [
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser.ini",
+    "test/browser/browser.toml",
 ]
 
 toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]
-
-if toolkit == "windows":
-    EXTRA_JS_MODULES += [
-        "Windows8WindowFrameColor.sys.mjs",
-    ]
 
 if toolkit == "cocoa":
     DIRS += ["osx"]

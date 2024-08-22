@@ -73,7 +73,11 @@ export class FormValidationChild extends JSWindowActorChild {
       if (element.isFormAssociatedCustomElements) {
         // For element that are form-associated custom elements, user agents
         // should use their validation anchor instead.
-        element = element.internals.validationAnchor;
+        // It is not clear how constraint validation should work for FACE in
+        // spec if the validation anchor is null, see
+        // https://github.com/whatwg/html/issues/10155. Blink seems fallback to
+        // FACE itself when validation anchor is null, which looks reasonable.
+        element = element.internals.validationAnchor || element;
       }
 
       if (!element || !Services.focus.elementIsFocusable(element, 0)) {
@@ -134,7 +138,7 @@ export class FormValidationChild extends JSWindowActorChild {
    * Blur event handler in which we disconnect from the form element and
    * hide the popup.
    */
-  _onBlur(aEvent) {
+  _onBlur() {
     if (this._element) {
       this._element.removeEventListener("input", this);
       this._element.removeEventListener("blur", this);

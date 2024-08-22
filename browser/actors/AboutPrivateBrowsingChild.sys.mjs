@@ -27,14 +27,14 @@ export class AboutPrivateBrowsingChild extends RemotePageChild {
         defineAs: "PrivateBrowsingShouldHideDefault",
       }
     );
-    Cu.exportFunction(this.PrivateBrowsingEnableNewLogo.bind(this), window, {
-      defineAs: "PrivateBrowsingEnableNewLogo",
-    });
     Cu.exportFunction(
-      this.PrivateBrowsingExposureTelemetry.bind(this),
+      this.PrivateBrowsingPromoExposureTelemetry.bind(this),
       window,
-      { defineAs: "PrivateBrowsingExposureTelemetry" }
+      { defineAs: "PrivateBrowsingPromoExposureTelemetry" }
     );
+    Cu.exportFunction(this.FeltPrivacyExposureTelemetry.bind(this), window, {
+      defineAs: "FeltPrivacyExposureTelemetry",
+    });
   }
 
   PrivateBrowsingRecordClick(source) {
@@ -52,13 +52,11 @@ export class AboutPrivateBrowsingChild extends RemotePageChild {
     return config?.content?.hideDefault;
   }
 
-  PrivateBrowsingEnableNewLogo() {
-    return lazy.NimbusFeatures.majorRelease2022.getVariable(
-      "feltPrivacyPBMNewLogo"
-    );
+  PrivateBrowsingPromoExposureTelemetry() {
+    lazy.NimbusFeatures.pbNewtab.recordExposureEvent({ once: false });
   }
 
-  PrivateBrowsingExposureTelemetry() {
-    lazy.NimbusFeatures.pbNewtab.recordExposureEvent({ once: false });
+  FeltPrivacyExposureTelemetry() {
+    lazy.NimbusFeatures.feltPrivacy.recordExposureEvent({ once: true });
   }
 }

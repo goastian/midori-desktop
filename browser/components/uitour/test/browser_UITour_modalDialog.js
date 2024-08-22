@@ -39,7 +39,7 @@ var observer = SpecialPowers.wrapCallbackObject({
     return this;
   },
 
-  observe(subject, topic, data) {
+  observe() {
     var doc = getDialogDoc();
     if (doc) {
       handleDialog(doc);
@@ -65,7 +65,7 @@ function getDialogDoc() {
       if (childDocShell.busyFlags != Ci.nsIDocShell.BUSY_FLAGS_NONE) {
         continue;
       }
-      var childDoc = childDocShell.contentViewer.DOMDocument;
+      var childDoc = childDocShell.docViewer.DOMDocument;
 
       // ok(true, "Got window: " + childDoc.location.href);
       if (

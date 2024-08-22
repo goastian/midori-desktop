@@ -23,18 +23,19 @@
 #customization-container {
   background-color: var(--toolbar-non-lwt-bgcolor);
   color: var(--toolbar-color);
-}
+  color-scheme: var(--toolbar-color-scheme);
 
-#customization-container:-moz-lwtheme {
-  /* Ensure this displays on top of the non-lwt bgcolor, to make sure it's not
-   * semi-transparent */
-  background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor));
-}
+  :root[lwtheme] & {
+    /* Ensure this displays on top of the non-lwt bgcolor, to make sure it's not
+     * semi-transparent */
+    background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor));
+  }
 
-:root[lwtheme-image] #customization-container {
-  background-image: none;
-  color: var(--toolbar-non-lwt-textcolor);
-  text-shadow: none;
+  :root[lwtheme-image] & {
+    background-image: none;
+    color: var(--toolbar-non-lwt-textcolor);
+    text-shadow: none;
+  }
 }
 
 :root[lwtheme-image] #customization-palette .toolbarbutton-1 {
@@ -59,98 +60,12 @@
 #customization-footer {
   border-top: 1px solid rgba(0,0,0,.15);
   padding: 10px;
-}
 
-@media (-moz-platform: macos),
-  (-moz-platform: windows) {
-  @media not (prefers-contrast) {
-    .customizationmode-button {
-      border: 1px solid #b1b1b1;
-      border-radius: 2px;
-      background-color: #fcfcfd;
-      appearance: none;
-    }
-
-    .customizationmode-checkbox,
-    .customizationmode-button {
-      margin: 6px 10px;
-      padding: 2px 5px;
-    }
-
-    .customizationmode-checkbox:not(:-moz-lwtheme, [disabled]),
-    .customizationmode-button {
-      color: rgb(71, 71, 71);
-    }
-
-    .customizationmode-checkbox[disabled]:-moz-lwtheme {
-      color: inherit;
-      opacity: var(--toolbarbutton-disabled-opacity);
-    }
-
-    #customization-reset-button,
-    #customization-undo-reset-button,
-    #customization-done-button {
-      min-width: 10em;
-    }
-
-    #customization-done-button {
-      color: #fff !important;
-      font-weight: 700;
-      border-color: #0060df;
-      background-color: #0a84ff;
-    }
-
-    .customizationmode-button > .box-inherit {
-      border-width: 0;
-      padding: 3px 0;
-    }
-
-    /* We use a smaller padding to ensure images don't have padding.
-     * We can't detect whether a button has an image. This button doesn't
-     * so it needs more padding, so we unfortunately hardcode the extra
-     * padding in here:
-     */
-    #customization-toolbar-visibility-button {
-      padding-inline-start: 8px;
-    }
-
-    .customizationmode-button[type=menu] > .box-inherit > .box-inherit > .button-text {
-      padding-inline-end: 10px;
-    }
-
-    .customizationmode-button > .button-icon {
-      margin-inline-start: 0;
-    }
-
-    .customizationmode-button:not([type=menu]) > .button-text {
-      margin-inline-end: 0;
-    }
-
-    .customizationmode-button > .box-inherit > .button-menu-dropmarker {
-      margin-inline-end: 0;
-      padding-inline-end: 0;
-      list-style-image: url(chrome://global/skin/icons/arrow-down.svg);
-    }
-
-    .customizationmode-button:is(:active,:hover):not([disabled]),
-    .customizationmode-button[open],
-    .customizationmode-button[checked] {
-      background-color: #e1e1e5;
-    }
-
-    #customization-done-button:is(:active,:hover):not([disabled]) {
-      background-color: #0060df;
-    }
-
-    .customizationmode-button[disabled="true"] {
-      opacity: var(--toolbarbutton-disabled-opacity);
-    }
+  > .footer-button,
+  > .customization-checkbox,
+  > .customization-link {
+    margin-block: 0;
   }
-}
-
-#customization-lwtheme-link {
-  display: flex;
-  align-items: center;
 }
 
 #widget-overflow-fixed-list > toolbarpaletteitem:not([notransition])[place="panel"],
@@ -178,10 +93,6 @@ toolbarpaletteitem:not([notransition])[place="panel"] {
 
 #customization-palette[showing="true"] {
   opacity: 1;
-}
-
-#customization-palette #firefox-view-button[attention] {
-  background-position: center bottom 8%;
 }
 
 toolbarpaletteitem toolbarbutton[disabled] {
@@ -312,7 +223,6 @@ toolbarpaletteitem > #search-container > #searchbar > .searchbar-textbox {
 
 #customization-uidensity-menu {
   font: menu;
-  margin-inline: 0;
 
   /* Make the panel padding uniform across all platforms due to the
      styling of the section headers and footer. */
@@ -399,17 +309,6 @@ toolbarpaletteitem > #search-container > #searchbar > .searchbar-textbox {
   margin-bottom: -1px;
 }
 
-/* Special-case the overflow and the hamburger button so they show up disabled
-   in customize mode. */
-:is(#nav-bar-overflow-button, #PanelUI-menu-button)[disabled] {
-  fill-opacity: var(--toolbarbutton-disabled-opacity);
-}
-
-/* The overflow button should look both disabled and open. */
-#nav-bar[customizing] > #nav-bar-overflow-button > .toolbarbutton-icon {
-  background-color: var(--toolbarbutton-active-background);
-}
-
 #customization-panelWrapper > .panel-arrowbox > .panel-arrow[side="top"] {
   list-style-image: url("chrome://global/skin/arrow/panelarrow-vertical.svg");
   -moz-context-properties: fill, stroke;
@@ -463,7 +362,10 @@ toolbarpaletteitem > #search-container > #searchbar > .searchbar-textbox {
 #customization-panelHolder > #widget-overflow-fixed-list::before {
   display: block;
   content: "";
-  background-image: url("chrome://browser/skin/customizableui/empty-overflow-panel.png");
+  background-image: image-set(
+    url("chrome://browser/skin/customizableui/empty-overflow-panel.png"),
+    url("chrome://browser/skin/customizableui/empty-overflow-panel@2x.png") 2x
+  );
   background-position: center bottom 10px;
   background-size: 218px 134px;
   background-repeat: no-repeat;
@@ -472,12 +374,6 @@ toolbarpaletteitem > #search-container > #searchbar > .searchbar-textbox {
   padding-bottom: 154px; /* 154 = 134 for the image, 10px space on either side. */
   margin-bottom: -154px; /* don't affect positioning of the actual contents */
   pointer-events: none;
-}
-
-@media (min-resolution: 1.1dppx) {
-  #customization-panelHolder > #widget-overflow-fixed-list::before {
-    background-image: url("chrome://browser/skin/customizableui/empty-overflow-panel@2x.png");
-  }
 }
 
 #customization-panelHolder > #widget-overflow-fixed-list:empty::before {

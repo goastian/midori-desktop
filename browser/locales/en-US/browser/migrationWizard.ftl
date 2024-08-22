@@ -45,6 +45,30 @@ migration-wizard-migrator-display-name-opera-gx = Opera GX
 migration-wizard-migrator-display-name-safari = Safari
 migration-wizard-migrator-display-name-vivaldi = Vivaldi
 
+migration-source-name-ie = Internet Explorer
+migration-source-name-edge = Microsoft Edge
+migration-source-name-chrome = Google Chrome
+
+migration-imported-safari-reading-list = Reading List (From Safari)
+migration-imported-edge-reading-list = Reading List (From Edge)
+
+## These strings are shown if the selected browser data directory is unreadable.
+## In practice, this tends to only occur on Linux when Firefox
+## is installed as a Snap.
+
+migration-no-permissions-message = { -brand-short-name } does not have access to other browsers’ profiles installed on this device.
+
+migration-no-permissions-instructions = To continue importing data from another browser, grant { -brand-short-name } access to its profile folder.
+
+migration-no-permissions-instructions-step1 = Select “Continue”
+
+# The second step in getting permissions to read data for the selected
+# browser type.
+#
+# Variables:
+#  $permissionsPath (String): the file system path that the user will need to grant read permission to.
+migration-no-permissions-instructions-step2 = In the file picker, navigate to <code>{ $permissionsPath }</code> and choose “Select”
+
 ## These strings will be displayed based on how many resources are selected to import
 
 migration-all-available-data-label = Import all available data
@@ -60,16 +84,21 @@ migration-bookmarks-option-label = Bookmarks
 # Edge, as this is the terminology for bookmarks on those browsers.
 migration-favorites-option-label = Favorites
 
-migration-logins-and-passwords-option-label = Saved logins and passwords
+migration-passwords-option-label = Saved passwords
 migration-history-option-label = Browsing history
+migration-extensions-option-label = Extensions
 migration-form-autofill-option-label = Form autofill data
 migration-payment-methods-option-label = Payment methods
+migration-cookies-option-label = Cookies
+migration-session-option-label = Windows and tabs
+migration-otherdata-option-label = Other data
 
 migration-passwords-from-file-progress-header = Import Passwords File
 migration-passwords-from-file-success-header = Passwords Imported Successfully
 migration-passwords-from-file = Checking file for passwords
 migration-passwords-new = New passwords
 migration-passwords-updated = Existing passwords
+migration-passwords-from-file-no-valid-data = The file doesn’t include any valid password data. Pick another file.
 
 migration-passwords-from-file-picker-title = Import Passwords File
 # A description for the .csv file format that may be shown as the file type
@@ -113,6 +142,7 @@ migration-bookmarks-from-file-picker-title = Import Bookmarks File
 migration-bookmarks-from-file-progress-header = Importing Bookmarks
 migration-bookmarks-from-file = Bookmarks
 migration-bookmarks-from-file-success-header = Bookmarks Imported Successfully
+migration-bookmarks-from-file-no-valid-data = The file doesn’t include any bookmark data. Pick another file.
 
 # A description for the .html file format that may be shown as the file type
 # filter by the operating system.
@@ -160,13 +190,24 @@ migration-list-bookmark-label = bookmarks
 migration-list-favorites-label = favorites
 migration-list-password-label = passwords
 migration-list-history-label = history
+migration-list-extensions-label = extensions
 migration-list-autofill-label = autofill data
 migration-list-payment-methods-label = payment methods
 
 ##
 
 migration-wizard-progress-header = Importing Data
+
+# This header appears in the final page of the migration wizard only if
+# all resources were imported successfully.
 migration-wizard-progress-done-header = Data Imported Successfully
+
+# This header appears in the final page of the migration wizard if only
+# some of the resources were imported successfully. This is meant to be
+# distinct from migration-wizard-progress-done-header, which is only shown
+# if all resources were imported successfully.
+migration-wizard-progress-done-with-warnings-header = Data Import Complete
+
 migration-wizard-progress-icon-in-progress =
   .aria-label = Importing…
 migration-wizard-progress-icon-completed =
@@ -205,6 +246,38 @@ migration-wizard-progress-success-favorites =
         [one] { $quantity } favorite
        *[other] { $quantity } favorites
     }
+
+## The import process identifies extensions installed in other supported
+## browsers and installs the corresponding (matching) extensions compatible
+## with Firefox, if available.
+
+# Shown in the migration wizard after importing all matched extensions
+# from supported browsers.
+#
+# Variables:
+#   $quantity (Number): the number of successfully imported extensions
+migration-wizard-progress-success-extensions =
+    { $quantity ->
+        [one] { $quantity } extension
+       *[other] { $quantity } extensions
+    }
+
+# Shown in the migration wizard after importing a partial amount of
+# matched extensions from supported browsers.
+#
+# Variables:
+#   $matched (Number): the number of matched imported extensions
+#   $quantity (Number): the number of total extensions found during import
+migration-wizard-progress-partial-success-extensions = { $matched } of { $quantity } extensions
+
+migration-wizard-progress-extensions-support-link = Learn how { -brand-product-name } matches extensions
+# Shown in the migration wizard if there are no matched extensions
+# on import from supported browsers.
+migration-wizard-progress-no-matched-extensions = No matching extensions
+
+migration-wizard-progress-extensions-addons-link = Browse extensions for { -brand-short-name }
+
+##
 
 # Shown in the migration wizard after importing passwords from another
 # browser has completed.

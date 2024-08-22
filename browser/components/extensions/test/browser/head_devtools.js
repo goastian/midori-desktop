@@ -15,7 +15,7 @@ ChromeUtils.defineESModuleGetters(this, {
   loader: "resource://devtools/shared/loader/Loader.sys.mjs",
   DevToolsShim: "chrome://devtools-startup/content/DevToolsShim.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(this, "gDevTools", () => {
+ChromeUtils.defineLazyGetter(this, "gDevTools", () => {
   const { gDevTools } = loader.require("devtools/client/framework/devtools");
   return gDevTools;
 });
@@ -100,7 +100,7 @@ function assertDevToolsExtensionEnabled(uuid, enabled) {
  * @returns {Promise} A promise that resolves when the page has fully loaded.
  */
 async function navigateToWithDevToolsOpen(tab, uri, isErrorPage = false) {
-  const toolbox = await gDevTools.getToolboxForTab(tab);
+  const toolbox = gDevTools.getToolboxForTab(tab);
   const target = toolbox.target;
 
   // If we're switching origins, we need to wait for the 'switched-target'
@@ -128,7 +128,7 @@ async function navigateToWithDevToolsOpen(tab, uri, isErrorPage = false) {
     null,
     isErrorPage
   );
-  BrowserTestUtils.loadURIString(browser, uri);
+  BrowserTestUtils.startLoadingURIString(browser, uri);
 
   info(`Waiting for page to be loaded…`);
   await onBrowserLoaded;

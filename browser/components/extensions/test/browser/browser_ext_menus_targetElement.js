@@ -29,7 +29,7 @@ async function loadExtensionAndTab() {
   }
 
   async function background() {
-    browser.menus.onShown.addListener(async (info, tab) => {
+    browser.menus.onShown.addListener(async info => {
       browser.test.sendMessage("onShownMenu", info.targetElementId);
     });
     await browser.tabs.executeScript({ file: "contentScript.js" });
@@ -79,7 +79,7 @@ add_task(async function required_permission() {
   // Load another extension to verify that the permission from the first
   // extension does not enable the "targetElementId" parameter.
   function background() {
-    browser.contextMenus.onShown.addListener((info, tab) => {
+    browser.contextMenus.onShown.addListener(info => {
       browser.test.assertEq(
         undefined,
         info.targetElementId,
@@ -308,6 +308,14 @@ add_task(async function independentMenusInDifferentTabs() {
   gBrowser.selectedTab = tab2;
 
   let targetElementId2 = await extension.openAndCloseMenu("#editabletext");
+  if (targetElementId === targetElementId2) {
+    // targetElementId is only guaranteed to be unique within a tab, so odds are
+    // that by unlucky coincidence, that the discovered ID accidentally overlaps
+    // with the actual ID.
+    info(`Got same targetElementId ${targetElementId}, retrying for a new one`);
+    targetElementId2 = await extension.openAndCloseMenu("#editabletext");
+  }
+  Assert.notEqual(targetElementId, targetElementId2, "targetElementId differ");
 
   await extension.checkIsValid(
     targetElementId2,

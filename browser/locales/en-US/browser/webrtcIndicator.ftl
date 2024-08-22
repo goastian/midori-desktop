@@ -6,8 +6,6 @@
 ## enumerate/look for window titles. It is not normally visible anywhere.
 
 webrtc-indicator-title = { -brand-short-name } — Sharing Indicator
-webrtc-indicator-window =
-    .title = { -brand-short-name } — Sharing Indicator
 
 ## Used as list items in sharing menu
 
@@ -58,23 +56,6 @@ webrtc-microphone-system-menu =
     .label = You are sharing your microphone. Click to control sharing.
 webrtc-screen-system-menu =
     .label = You are sharing a window or a screen. Click to control sharing.
-
-## Tooltips used by the legacy global sharing indicator
-
-webrtc-indicator-sharing-camera-and-microphone =
-    .tooltiptext = Your camera and microphone are being shared. Click to control sharing.
-webrtc-indicator-sharing-camera =
-    .tooltiptext = Your camera is being shared. Click to control sharing.
-webrtc-indicator-sharing-microphone =
-    .tooltiptext = Your microphone is being shared. Click to control sharing.
-webrtc-indicator-sharing-application =
-    .tooltiptext = An application is being shared. Click to control sharing.
-webrtc-indicator-sharing-screen =
-    .tooltiptext = Your screen is being shared. Click to control sharing.
-webrtc-indicator-sharing-window =
-    .tooltiptext = A window is being shared. Click to control sharing.
-webrtc-indicator-sharing-browser =
-    .tooltiptext = A tab is being shared. Click to control sharing.
 
 ## These strings are only used on Mac for menus attached to icons
 ## near the clock on the mac menubar.
@@ -158,6 +139,20 @@ webrtc-allow-share-camera-and-audio-capture = Allow { $origin } to use your came
 webrtc-allow-share-screen-and-microphone = Allow { $origin } to use your microphone and see your screen?
 webrtc-allow-share-screen-and-audio-capture = Allow { $origin } to listen to this tab’s audio and see your screen?
 
+## Special phrasing for sharing devices when the origin is a file url.
+
+webrtc-allow-share-audio-capture-with-file = Allow this local file to listen to this tab’s audio?
+webrtc-allow-share-camera-with-file = Allow this local file to use your camera?
+webrtc-allow-share-microphone-with-file = Allow this local file to use your microphone?
+webrtc-allow-share-screen-with-file = Allow this local file to see your screen?
+# "Speakers" is used in a general sense that might include headphones or
+# another audio output connection.
+webrtc-allow-share-speaker-with-file = Allow this local file to use other speakers?
+webrtc-allow-share-camera-and-microphone-with-file = Allow this local file to use your camera and microphone?
+webrtc-allow-share-camera-and-audio-capture-with-file = Allow this local file to use your camera and listen to this tab’s audio?
+webrtc-allow-share-screen-and-microphone-with-file = Allow this local file to use your microphone and see your screen?
+webrtc-allow-share-screen-and-audio-capture-with-file = Allow this local file to listen to this tab’s audio and see your screen?
+
 ## Variables:
 ##   $origin (String): the first party origin.
 ##   $thirdParty (String): the third party origin.
@@ -213,6 +208,9 @@ webrtc-action-not-now =
 ##
 
 webrtc-remember-allow-checkbox = Remember this decision
+webrtc-remember-allow-checkbox-camera = Remember for all cameras
+webrtc-remember-allow-checkbox-microphone = Remember for all microphones
+webrtc-remember-allow-checkbox-camera-and-microphone = Remember for all cameras and microphones
 webrtc-mute-notifications-checkbox = Mute website notifications while sharing
 
 webrtc-reason-for-no-permanent-allow-screen = { -brand-short-name } can not allow permanent access to your screen.

@@ -1,4 +1,4 @@
 ;!@Install@!UTF-8!
-Title="Midori Browser"
+Title="Ablaze Floorp"
 RunProgram="setup.exe"
 ;!@InstallEnd@!

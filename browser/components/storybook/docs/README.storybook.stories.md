@@ -1,8 +1,10 @@
 # Storybook for Firefox
 
-[Storybook](https://storybook.js.org/) is a component library to document our
-design system, reusable components, and any specific components you might want
-to test with dummy data. [Take a look at our Storybook instance!](https://firefoxux.github.io/firefox-desktop-components/?path=/story/docs-reusable-widgets--page)
+[Storybook](https://storybook.js.org/) is an interactive tool that creates a
+playground for UI components. We use Storybook to document our design system,
+reusable components, and any specific components you might want to test with
+dummy data. [Take a look at our Storybook
+instance!](https://firefoxux.github.io/firefox-desktop-components/)
 
 ## Background
 
@@ -27,7 +29,8 @@ commands, or with your personal npm/node that happens to be compatible.
 This is the recommended approach for installing dependencies and running
 Storybook locally.
 
-To install dependencies and start Storybook, just run:
+To install dependencies, start the Storybook server, and launch the Storybook
+site in a local build of Firefox, just run:
 
 ```sh
 # This uses npm ci under the hood to install the package-lock.json exactly.
@@ -35,22 +38,42 @@ To install dependencies and start Storybook, just run:
 ```
 
 This single command will first install any missing dependencies then start the
-local Storybook server. You should run your local build to test in Storybook
-since `chrome://` URLs are currently being pulled from the running browser, so any
-changes to common-shared.css for example will come from your build.
+local Storybook server. It will also start your local browser and point it to
+`http://localhost:5703` while enabling certain preferences to ensure components
+display as expected (specifically `svg.context-properties.content.enabled` and
+`layout.css.light-dark.enabled`).
+
+It's necessary to use your local build to test in Storybook since `chrome://`
+URLs are currently being pulled from the running browser, so any changes to
+common-shared.css for example will come from your build.
 
 The Storybook server will continue running and will watch for component file
-changes. To access your local Storybook preview you can use the `launch`
-subcommand:
+changes.
+
+#### Alternative mach commands
+
+Although running `./mach storybook` is the most convenient way to interact with
+Storybook locally it is also possible to run separate commands to start the
+Storybook server and run your local build with the necessary prefs.
+
+If you only want to start the Storybook server - for example in cases where you
+already have a local build running - you can pass a `--no-open` flag to `./mach
+storybook`:
+
+```sh
+# Start the storybook server without launching a local Firefox build.
+./mach storybook --no-open
+```
+
+If you just want to spin up a local build of Firefox with the required prefs
+enabled you can use the `launch` subcommand:
 
 ```sh
 # In another terminal:
 ./mach storybook launch
 ```
 
-This will run your local browser and point it at `http://localhost:5703`. The
-`launch` subcommand will also enable SVG context-properties so the `fill` CSS
-property works in storybook.
+This will run your local browser and point it at `http://localhost:5703`.
 
 Alternatively, you can simply navigate to `http://localhost:5703/` or run:
 
@@ -59,9 +82,8 @@ Alternatively, you can simply navigate to `http://localhost:5703/` or run:
 ./mach run http://localhost:5703/
 ```
 
-although with these options SVG context-properties won't be enabled, so what's
-displayed in Storybook may not exactly reflect how components will look when
-used in Firefox.
+although with this option certain prefs won't be enabled, so what's displayed in
+Storybook may not exactly reflect how components will look when used in Firefox.
 
 ### Personal npm
 
@@ -95,10 +117,9 @@ components, also known as UI widgets.
 As long as you used `./mach addwidget` correctly, there is no additional setup needed to view your newly created story in Storybook.
 
 Stories in `browser/components/storybook/stories` are used for non-design system components, also called domain-specific UI widgets.
-The easiest way to use Storybook for non-design system elements is
-to add a new `.stories.mjs` file to `browser/components/storybook/stories`.
-You will also need to set the title of your widget to be: `Domain-specific UI Widgets/<team-or-project-name>/<widget-name>` in the default exported object.
-[See the Credential Management/Timeline widget for an example.](https://searchfox.org/mozilla-central/rev/2c11f18f89056a806c299a9d06bfa808718c2e84/browser/components/storybook/stories/credential-management.stories.mjs#11)
+The easiest way to use Storybook for non-design system element is to use `./mach addstory new-component "Your Project"`.
+You can also use `./mach addstory new-component "Your Project" --path browser/components/new-component.mjs` where `--path` is the path to your new components' source.
+[See the Credential Management/Timeline widget for an example.](https://searchfox.org/mozilla-central/rev/2c11f18f89056a806c299a9d06bfa808718c2e84/browser/components/storybook/stories/login-timeline.stories.mjs#11)
 
 If you want to colocate your story with the code it is documenting you will need
 to add to the `stories` array in the `.storybook/main.js` [configuration
@@ -119,7 +140,7 @@ For example, the name `moz-support-link` informs us that this widget is design s
 
 Storybook can also be used to help document and prototype widgets that are specific to a part of the codebase and not intended for more global use.
 Stories for these types of widgets live under the "Domain-Specific UI Widgets" category, while the code can live in any appropriate folder in `mozilla-central`.
-[See the Credential Management folder as an example of a domain specific folder](https://firefoxux.github.io/firefox-desktop-components/?path=/docs/domain-specific-ui-widgets-credential-management-timeline--empty-timeline) and [see the credential-management.stories.mjs for how to make a domain specific folder in Storybook](https://searchfox.org/mozilla-central/source/browser/components/storybook/stories/credential-management.stories.mjs).
+[See the Credential Management folder as an example of a domain specific folder](https://firefoxux.github.io/firefox-desktop-components/?path=/docs/domain-specific-ui-widgets-credential-management-timeline--empty-timeline) and [see the login-timeline.stories.mjs for how to make a domain specific folder in Storybook](https://searchfox.org/mozilla-central/source/browser/components/storybook/stories/login-timeline.stories.mjs).
 [To add a non-team specific widget to the "Domain-specific UI Widgets" section, see the migration-wizard.stories.mjs file](https://searchfox.org/mozilla-central/source/browser/components/storybook/stories/migration-wizard.stories.mjs).
 
 Creating and documenting domain specific UI widgets allows other teams to be aware of and take inspiration from existing UI patterns.

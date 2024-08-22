@@ -27,7 +27,6 @@ XPCOMUtils.defineLazyServiceGetter(
 
 ChromeUtils.defineESModuleGetters(lazy, {
   DoHConfigController: "resource:///modules/DoHConfig.sys.mjs",
-  Preferences: "resource://gre/modules/Preferences.sys.mjs",
 });
 
 const GLOBAL_CANARY = "use-application-dns.net.";
@@ -53,7 +52,6 @@ export const Heuristics = {
       youtube: safeSearchChecks.youtube,
       zscalerCanary: zscaler,
       canary,
-      modifiedRoots: await modifiedRoots(),
       browserParent: await parentalControls(),
       thirdPartyRoots: await thirdPartyRoots(),
       policy: await enterprisePolicy(),
@@ -104,6 +102,54 @@ export const Heuristics = {
       return value;
     }
     return Ci.nsITRRSkipReason.TRR_FAILED;
+  },
+
+  // Keep this in sync with the description of networking.doh_heuristics_result
+  // defined in Scalars.yaml
+  Telemetry: {
+    incomplete: 0,
+    pass: 1,
+    optOut: 2,
+    manuallyDisabled: 3,
+    manuallyEnabled: 4,
+    enterpriseDisabled: 5,
+    enterprisePresent: 6,
+    enterpriseEnabled: 7,
+    vpn: 8,
+    proxy: 9,
+    nrpt: 10,
+    browserParent: 11,
+    modifiedRoots: 12,
+    thirdPartyRoots: 13,
+    google: 14,
+    youtube: 15,
+    zscalerCanary: 16,
+    canary: 17,
+    ignored: 18,
+
+    heuristicNames() {
+      return [
+        "google",
+        "youtube",
+        "zscalerCanary",
+        "canary",
+        "browserParent",
+        "thirdPartyRoots",
+        "policy",
+        "vpn",
+        "proxy",
+        "nrpt",
+      ];
+    },
+
+    fromResults(results) {
+      for (let label of Heuristics.Telemetry.heuristicNames()) {
+        if (results[label] == Heuristics.DISABLE_DOH) {
+          return Heuristics.Telemetry[label];
+        }
+      }
+      return Heuristics.Telemetry.pass;
+    },
   },
 };
 
@@ -198,20 +244,6 @@ async function globalCanary() {
       Services.io.hostnameIsLocalIPAddress(Services.io.newURI(`http://${addr}`))
     )
   ) {
-    return "disable_doh";
-  }
-
-  return "enable_doh";
-}
-
-async function modifiedRoots() {
-  // Check for presence of enterprise_roots cert pref. If enabled, disable DoH
-  let rootsEnabled = lazy.Preferences.get(
-    "security.enterprise_roots.enabled",
-    false
-  );
-
-  if (rootsEnabled) {
     return "disable_doh";
   }
 

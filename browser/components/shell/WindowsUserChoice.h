@@ -8,7 +8,9 @@
 
 #include <windows.h>
 
+#include "ErrorList.h"  // for nsresult
 #include "mozilla/UniquePtr.h"
+#include "nsString.h"
 
 /*
  * Check the UserChoice Hashes for https, http, .html, .htm
@@ -60,6 +62,15 @@ CheckUserChoiceHashResult CheckUserChoiceHash(const wchar_t* aExt,
 mozilla::UniquePtr<wchar_t[]> GetAssociationKeyPath(const wchar_t* aExt);
 
 /*
+ * Appends the registry path for the given association, file extension or
+ * protocol to the parameter string.
+ *
+ * @param aExt      File extension or protocol association to return path to.
+ * @param aOutput   String to append registry path to.
+ */
+void AppendAssociationKeyPath(const wchar_t* aExt, nsAString& aOutput);
+
+/*
  * Get the current user's SID
  *
  * @return String SID for the user of the current process, nullptr on failure.
@@ -99,5 +110,18 @@ mozilla::UniquePtr<wchar_t[]> FormatProgID(const wchar_t* aProgIDBase,
  * @return true if it could be opened for reading, false otherwise.
  */
 bool CheckProgIDExists(const wchar_t* aProgID);
+
+/*
+ * Get the ProgID registered by Windows for the given association.
+ *
+ * The MSIX `AppManifest.xml` declares supported protocols and file
+ * type associations.  Upon installation, Windows generates
+ * corresponding ProgIDs for them, of the form `AppX*`.  This function
+ * retrieves those generated ProgIDs (from the Windows registry).
+ *
+ * @return ProgID.
+ */
+nsresult GetMsixProgId(const wchar_t* assoc,
+                       mozilla::UniquePtr<wchar_t[]>& aProgId);
 
 #endif  // SHELL_WINDOWSUSERCHOICE_H__

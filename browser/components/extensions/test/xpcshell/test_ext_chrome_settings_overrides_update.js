@@ -8,13 +8,9 @@ const { AddonTestUtils } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
+  HomePage: "resource:///modules/HomePage.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  HomePage: "resource:///modules/HomePage.jsm",
 });
 
 AddonTestUtils.init(this);
@@ -30,7 +26,7 @@ AddonTestUtils.createAppInfo(
 // Similar to TestUtils.topicObserved, but returns a deferred promise that
 // can be resolved
 function topicObservable(topic, checkFn) {
-  let deferred = PromiseUtils.defer();
+  let deferred = Promise.withResolvers();
   function observer(subject, topic, data) {
     try {
       if (checkFn && !checkFn(subject, data)) {
@@ -105,7 +101,11 @@ add_task(async function test_overrides_update_removal() {
 
   let defaultHomepageURL = HomePage.get();
   let defaultEngineName = (await Services.search.getDefault()).name;
-  ok(defaultEngineName !== "DuckDuckGo", "Default engine is not DuckDuckGo.");
+  Assert.notStrictEqual(
+    defaultEngineName,
+    "DuckDuckGo",
+    "Default engine is not DuckDuckGo."
+  );
 
   let prefPromise = promisePrefChanged(HOMEPAGE_URI);
 
@@ -113,7 +113,7 @@ add_task(async function test_overrides_update_removal() {
   // that is the default, we do not prompt for default.
   let deferredPrompt = topicObservable(
     "webextension-defaultsearch-prompt",
-    (subject, message) => {
+    subject => {
       if (subject.wrappedJSObject.id == extension.id) {
         ok(false, "default override should not prompt");
       }
@@ -198,7 +198,11 @@ add_task(async function test_overrides_update_adding() {
 
   let defaultHomepageURL = HomePage.get();
   let defaultEngineName = (await Services.search.getDefault()).name;
-  ok(defaultEngineName !== "DuckDuckGo", "Home page url is not DuckDuckGo.");
+  Assert.notStrictEqual(
+    defaultEngineName,
+    "DuckDuckGo",
+    "Home page url is not DuckDuckGo."
+  );
 
   await extension.startup();
 
@@ -239,7 +243,7 @@ add_task(async function test_overrides_update_adding() {
 
   let deferredUpgradePrompt = topicObservable(
     "webextension-defaultsearch-prompt",
-    (subject, message) => {
+    subject => {
       if (subject.wrappedJSObject.id == extension.id) {
         ok(false, "should not prompt on update");
       }
@@ -347,7 +351,7 @@ async function withHandlingDefaultSearchPrompt({ extensionId, respond }, cb) {
   );
   const prompted = TestUtils.topicObserved(
     "webextension-defaultsearch-prompt",
-    (subject, message) => {
+    subject => {
       if (subject.wrappedJSObject.id == extensionId) {
         return subject.wrappedJSObject.respond(respond);
       }
@@ -360,7 +364,7 @@ async function withHandlingDefaultSearchPrompt({ extensionId, respond }, cb) {
 async function assertUpdateDoNotPrompt(extension, updateExtensionInfo) {
   let deferredUpgradePrompt = topicObservable(
     "webextension-defaultsearch-prompt",
-    (subject, message) => {
+    subject => {
       if (subject.wrappedJSObject.id == extension.id) {
         ok(false, "should not prompt on update");
       }
@@ -414,7 +418,7 @@ add_task(async function test_default_search_prompts() {
   let extension = ExtensionTestUtils.loadExtension(extensionInfo);
 
   let defaultEngineName = (await Services.search.getDefault()).name;
-  ok(defaultEngineName !== "Example", "Search is not Example.");
+  Assert.notStrictEqual(defaultEngineName, "Example", "Search is not Example.");
 
   // Mock a response from the default search prompt where we
   // say no to setting this as the default when installing.

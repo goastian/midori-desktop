@@ -12,7 +12,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsITrackingDBService"
 );
 
-XPCOMUtils.defineLazyGetter(this, "TRACK_DB_PATH", function () {
+ChromeUtils.defineLazyGetter(this, "TRACK_DB_PATH", function () {
   return PathUtils.join(PathUtils.profileDir, "protections.sqlite");
 });
 
@@ -25,6 +25,22 @@ var { UrlClassifierTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/UrlClassifierTestUtils.sys.mjs"
 );
 
+async function waitForProtectionsPanelToast() {
+  await BrowserTestUtils.waitForEvent(
+    gProtectionsHandler._protectionsPopup,
+    "popupshown"
+  );
+  Assert.ok(
+    gProtectionsHandler._protectionsPopup.hasAttribute("toast"),
+    "Protections panel toast is shown."
+  );
+
+  await BrowserTestUtils.waitForEvent(
+    gProtectionsHandler._protectionsPopup,
+    "popuphidden"
+  );
+}
+
 async function openProtectionsPanel(toast, win = window) {
   let popupShownPromise = BrowserTestUtils.waitForEvent(
     win,
@@ -34,6 +50,13 @@ async function openProtectionsPanel(toast, win = window) {
   );
   let shieldIconContainer = win.document.getElementById(
     "tracking-protection-icon-container"
+  );
+
+  // Register a promise to wait for the tooltip to be shown.
+  let tooltip = win.document.getElementById("tracking-protection-icon-tooltip");
+  let tooltipShownPromise = BrowserTestUtils.waitForPopupEvent(
+    tooltip,
+    "shown"
   );
 
   // Move out than move over the shield icon to trigger the hover event in
@@ -52,6 +75,9 @@ async function openProtectionsPanel(toast, win = window) {
     },
     win
   );
+
+  // Wait for the tooltip to be shown.
+  await tooltipShownPromise;
 
   if (!toast) {
     EventUtils.synthesizeMouseAtCenter(shieldIconContainer, {}, win);
@@ -172,7 +198,7 @@ function promiseTabLoadEvent(tab, url) {
   let loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, handle);
 
   if (url) {
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, url);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url);
   }
 
   return loaded;

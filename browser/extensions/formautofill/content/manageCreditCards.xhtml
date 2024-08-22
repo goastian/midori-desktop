@@ -9,19 +9,19 @@
   data-l10n-attrs="style"
 >
   <head>
-    <title data-l10n-id="autofill-manage-credit-cards-title"></title>
+    <title data-l10n-id="autofill-manage-payment-methods-title"></title>
     <link rel="localization" href="browser/preferences/formAutofill.ftl" />
+    <link rel="localization" href="toolkit/formautofill/formAutofill.ftl" />
     <link rel="localization" href="toolkit/payments/payments.ftl" />
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
     <link
       rel="stylesheet"
       href="chrome://formautofill/content/manageDialog.css"
     />
-    <script src="chrome://formautofill/content/manageDialog.js"></script>
   </head>
   <body>
     <fieldset>
-      <legend data-l10n-id="autofill-manage-credit-cards-list-header" />
+      <legend data-l10n-id="autofill-manage-cards-list-header" />
       <select id="credit-cards" size="9" multiple="multiple" />
     </fieldset>
     <div id="controls-container">
@@ -40,9 +40,12 @@
         data-l10n-id="autofill-manage-edit-button"
       />
     </div>
-    <script>
-      "use strict";
-      /* global ManageCreditCards */
+    <!-- eslint-disable -->
+    <!-- For some reason eslint complains here about import only available for sourceType: "module" -->
+    <!-- eventhough type is set to module -->
+    <script type="module">
+      import { ManageCreditCards } from "chrome://formautofill/content/manageDialog.mjs";
+
       new ManageCreditCards({
         records: document.getElementById("credit-cards"),
         controlsContainer: document.getElementById("controls-container"),
@@ -51,5 +54,6 @@
         edit: document.getElementById("edit"),
       });
     </script>
+    <!-- eslint-enable -->
   </body>
 </html>

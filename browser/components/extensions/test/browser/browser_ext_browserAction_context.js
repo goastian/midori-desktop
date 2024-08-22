@@ -184,7 +184,11 @@ async function runTests(options) {
     is(getListStyleImage(button), details.icon, "icon URL is correct");
     is(button.getAttribute("tooltiptext"), title, "image title is correct");
     is(button.getAttribute("label"), title, "image label is correct");
-    is(button.getAttribute("badge"), details.badge, "badge text is correct");
+    is(
+      button.getAttribute("badge") || "",
+      details.badge,
+      "badge text is correct"
+    );
     is(
       button.getAttribute("disabled") == "true",
       !details.enabled,
@@ -258,7 +262,7 @@ let tabSwitchTestData = {
     "2.png": imageBuffer,
   },
 
-  getTests: function (tabs, windows) {
+  getTests: function (tabs) {
     let manifest = browser.runtime.getManifest();
     let { manifest_version } = manifest;
     const action = manifest_version < 3 ? "browserAction" : "action";
@@ -491,7 +495,7 @@ add_task(async function testDefaultTitle() {
       "icon.png": imageBuffer,
     },
 
-    getTests: function (tabs, windows) {
+    getTests: function (tabs) {
       let details = [
         {
           title: "Foo Extension",

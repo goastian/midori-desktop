@@ -1,12 +1,6 @@
 async function test() {
   waitForExplicitFinish();
 
-  let EventUtils = {};
-  Services.scriptloader.loadSubScript(
-    "chrome://mochikit/content/tests/SimpleTest/EventUtils.js",
-    EventUtils
-  );
-
   // ---- Test dragging the proxy icon ---
   var value = content.location.href;
   var urlString = value + "\n" + content.document.title;
@@ -28,7 +22,7 @@ async function test() {
     },
     expected
   );
-  ok(result === true, "dragging dataTransfer should be expected");
+  Assert.strictEqual(result, true, "dragging dataTransfer should be expected");
   gURLBar.setPageProxyState(oldstate);
   // Now, the identity information panel is opened by the proxy icon click.
   // We need to close it for next tests.

@@ -55,12 +55,6 @@ function triggerClickOn(target, options) {
   return promise;
 }
 
-async function add_new_tab(URL) {
-  let tab = BrowserTestUtils.addTab(gBrowser, URL);
-  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
-  return tab;
-}
-
 add_task(async function aria_attributes() {
   let win = await BrowserTestUtils.openNewBrowserWindow();
   is(
@@ -84,7 +78,7 @@ add_task(async function aria_attributes() {
     "true",
     'Firefox View button should have `aria-pressed="true"` upon selecting it'
   );
-  win.BrowserOpenTab();
+  win.BrowserCommands.openTab();
   is(
     win.FirefoxViewHandler.button.getAttribute("aria-pressed"),
     "false",
@@ -124,8 +118,8 @@ add_task(async function homepage_new_tab() {
       win.gBrowser.tabContainer,
       "TabOpen"
     );
-    win.BrowserHome();
-    info("Waiting for BrowserHome() to open a new tab");
+    win.BrowserCommands.home();
+    info("Waiting for BrowserCommands.home() to open a new tab");
     await newTabOpened;
     assertFirefoxViewTab(win);
     ok(
@@ -210,9 +204,9 @@ add_task(async function test_firefoxview_view_count() {
 
   let tab = await openFirefoxViewTab(window);
 
-  ok(
-    SpecialPowers.getIntPref("browser.firefox-view.view-count") ===
-      startViews + 1,
+  Assert.strictEqual(
+    SpecialPowers.getIntPref("browser.firefox-view.view-count"),
+    startViews + 1,
     "View count pref value is incremented when tab is selected"
   );
 
@@ -305,4 +299,66 @@ add_task(async function testFxViewNotMultiselect() {
 
     BrowserTestUtils.removeTab(tab2);
   });
+});
+
+add_task(async function testFxViewEntryPointsInPrivateBrowsing() {
+  async function checkMenu(win, expectedEnabled) {
+    await SimpleTest.promiseFocus(win);
+    const toolsMenu = win.document.getElementById("tools-menu");
+    const fxViewMenuItem = toolsMenu.querySelector("#menu_openFirefoxView");
+    const menuShown = BrowserTestUtils.waitForEvent(toolsMenu, "popupshown");
+
+    toolsMenu.openMenu(true);
+    await menuShown;
+    Assert.equal(
+      BrowserTestUtils.isVisible(fxViewMenuItem),
+      expectedEnabled,
+      `Firefox view menu item is ${expectedEnabled ? "enabled" : "hidden"}`
+    );
+    const menuHidden = BrowserTestUtils.waitForEvent(toolsMenu, "popuphidden");
+    toolsMenu.menupopup.hidePopup();
+    await menuHidden;
+  }
+
+  async function checkEntryPointsInWindow(win, expectedVisible) {
+    const fxViewBtn = win.document.getElementById("firefox-view-button");
+
+    if (AppConstants.platform != "macosx") {
+      await checkMenu(win, expectedVisible);
+    }
+    // check the tab button
+    Assert.equal(
+      BrowserTestUtils.isVisible(fxViewBtn),
+      expectedVisible,
+      `#${fxViewBtn.id} is ${
+        expectedVisible ? "visible" : "hidden"
+      } as expected`
+    );
+  }
+
+  info("Check permanent private browsing");
+  // Setting permanent private browsing normally requires a restart.
+  // We'll emulate by manually setting the attribute it controls manually
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.privatebrowsing.autostart", true]],
+  });
+  const newWin = await BrowserTestUtils.openNewBrowserWindow();
+  newWin.document.documentElement.setAttribute(
+    "privatebrowsingmode",
+    "permanent"
+  );
+  await checkEntryPointsInWindow(newWin, false);
+  await BrowserTestUtils.closeWindow(newWin);
+  await SpecialPowers.popPrefEnv();
+
+  info("Check defaults (non-private)");
+  await SimpleTest.promiseFocus(window);
+  await checkEntryPointsInWindow(window, true);
+
+  info("Check private (temporary) browsing");
+  const privateWin = await BrowserTestUtils.openNewBrowserWindow({
+    private: true,
+  });
+  await checkEntryPointsInWindow(privateWin, false);
+  await BrowserTestUtils.closeWindow(privateWin);
 });

@@ -47,6 +47,7 @@ Object.defineProperty(document, "l10n", {
   writable: true,
   value: {
     connectRoot() {},
+    disconnectRoot() {},
     translateElements() {
       return Promise.resolve();
     },
@@ -79,7 +80,7 @@ Object.defineProperty(window, "AboutLoginsUtils", {
     setFocus(element) {
       return element.focus();
     },
-    async promptForPrimaryPassword(resolve, messageId) {
+    async promptForPrimaryPassword(resolve, _messageId) {
       resolve(true);
     },
     doLoginsMatch(login1, login2) {

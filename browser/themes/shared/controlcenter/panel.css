@@ -43,6 +43,7 @@
 #identity-popup[connection=secure] [when-connection~=secure],
 #identity-popup[connection=chrome] [when-connection~=chrome],
 #identity-popup[connection=file] [when-connection~=file],
+#identity-popup[connection=associated] [when-connection~=associated],
 #identity-popup[connection=extension] [when-connection~=extension],
 #identity-popup[connection=cert-error-page] [when-connection~=cert-error-page],
 #identity-popup[connection=net-error-page] [when-connection~=net-error-page],
@@ -55,7 +56,7 @@
 #identity-popup[mixedcontent~=active-blocked]:not([mixedcontent~=passive-loaded]) [when-mixedcontent=active-blocked],
 /* Show the right elements when there is mixed passive content loaded and active blocked. */
 #identity-popup[mixedcontent~=active-blocked][mixedcontent~=passive-loaded] [when-mixedcontent~=active-blocked][when-mixedcontent~=passive-loaded],
-/* HTTPS-Only Mode */
+/* HTTPS-Only and HTTPS-First Mode */
 #identity-popup[httpsonlystatus=exception] [when-httpsonlystatus~=exception],
 #identity-popup[httpsonlystatus=upgraded] [when-httpsonlystatus~=upgraded],
 #identity-popup[httpsonlystatus=failed-top] [when-httpsonlystatus~=failed-top],
@@ -140,7 +141,7 @@
 
 #protections-popup .panel-header > h1 > span {
   /* The protections popup panel header text needs a different calculation because it contains an info button.
-   * icon-full-width and icon-margin are included twice to compensate for the margin-inline-start of the text,
+   * icon-full-width is included twice to compensate for the margin-inline-start of the text,
    * used to center it even if the header includes a info button. See .panel-header-with-info-button */
   max-width: calc(var(--popup-width)
                   - var(--arrowpanel-menuitem-margin-inline) * 2
@@ -213,6 +214,10 @@
 
 #identity-popup[connection=file] .identity-popup-security-connection {
   list-style-image: url(chrome://global/skin/icons/page-portrait.svg);
+}
+
+#identity-popup[connection=associated] .identity-popup-security-connection {
+  list-style-image: url(chrome://global/skin/icons/info.svg);
 }
 
 #identity-popup[connection^=secure] .identity-popup-security-connection {
@@ -292,36 +297,6 @@
 
 /* CONTENT BLOCKING / TRACKING PROTECTION */
 
-#protections-popup-sendReportView-heading,
-#protections-popup-sendReportView-body,
-#protections-popup-siteNotWorkingView-body {
-  padding: var(--vertical-section-padding) var(--horizontal-padding);
-}
-
-.protections-popup-sendReportView-collection-section {
-  margin-bottom: 16px;
-}
-
-#protections-popup-sendReportView-collection-url {
-  appearance: none;
-  border: none;
-  margin: 4px 0;
-}
-
-#protections-popup-sendReportView-collection-comments {
-  height: 120px;
-  resize: vertical;
-}
-
-.protections-popup-sendReportView-collection-section label {
-  margin-bottom: 2px;
-}
-
-#protections-popup-sendReportView-report-error {
-  margin-bottom: 24px;
-  color: #d74345;
-}
-
 #protections-popup-not-blocking-section-why:hover,
 #protections-popup-show-report-stack:hover > .protections-popup-footer-button {
   background-color: var(--panel-item-hover-bgcolor);
@@ -393,43 +368,42 @@
 
 /* Content Blocking categories */
 
-#protections-popup-no-trackers-found-description {
-  margin: 4.85em 7.25em;
-  font-size: 1.1em;
-  text-align: center;
-  color: var(--text-color-deemphasized);
+#tracking-protection-container {
+  #protections-popup:not([detected]) & {
+    flex: 0 1 10em;
+    margin-block: var(--space-medium);
+  }
+
+  > tooltip {
+    max-width: var(--popup-width);
+  }
 }
 
 .protections-popup-section-header {
   color: var(--text-color-deemphasized);
+
+  :root[uidensity="compact"] & {
+    margin-block: 4px;
+  }
 }
 
-:root[uidensity="compact"] .protections-popup-section-header {
-  margin-block: 4px;
-}
+#protections-popup-no-trackers-found-description {
+  margin: auto 7.25em;
+  font-size: 1.1em;
+  text-align: center;
+  color: var(--text-color-deemphasized);
 
-#tracking-protection-container > tooltip {
-  max-width: var(--popup-width);
-}
-/*
- * The category list is split into two sections: "Blocking" and "Not Blocking",
- * with five different category items distributed between them at runtime.
- * To achieve this, we use a grid layout with 12 rows: one row for each header
- * label and five rows in each section for the items.
- * Items with the "blocked" class are assigned rows 2-6, and those without
- * are assigned rows 8-12, with the headers taking rows 1 and 7.
- */
-
-#protections-popup-no-trackers-found-description:not([hidden]) ~ #protections-popup-content {
-  display: none;
+  &:not([hidden]) ~ #protections-popup-content {
+    display: none;
+  }
 }
 
 #protections-popup-not-blocking-section-why {
   border-radius: 2px;
-}
 
-#protections-popup-not-blocking-section-why:hover {
-  outline: 4px solid var(--panel-item-hover-bgcolor);
+  &:hover {
+    outline: 4px solid var(--panel-item-hover-bgcolor);
+  }
 }
 
 .trackers-icon {
@@ -546,11 +520,6 @@
   background-color: var(--button-active-bgcolor)
 }
 
-#protections-popup[hasException] .protections-popup-tp-switch-on-header,
-#protections-popup:not([hasException]) .protections-popup-tp-switch-off-header {
-  display: none;
-}
-
 #protections-popup-cookie-banner-section[hasException] .protections-popup-cookie-banner-switch-on-header,
 #protections-popup-cookie-banner-section:not([hasException]) .protections-popup-cookie-banner-switch-off-header {
   display: none;
@@ -566,71 +535,8 @@
   display: revert;
 }
 
-.protections-popup-tp-switch-label-box,
-.protections-popup-tp-switch-box {
-  justify-content: center;
-}
-
-.protections-popup-switch-section-header {
-  min-height: 40px;
-}
-
 .protections-popup-switch-header {
   font-weight: 600;
-}
-
-.protections-popup-tp-switch {
-  appearance: none;
-  box-sizing: border-box;
-  min-width: 30px;
-  border-radius: 10px;
-  background-color: var(--button-bgcolor);
-  border: 1px solid hsla(210,4%,10%,.14);
-  margin-block: 4px;
-  margin-inline-start: 1px;
-  padding: 2px;
-  padding-inline-end: 0;
-  transition: padding .2s ease;
-}
-
-.protections-popup-tp-switch::before {
-  position: relative;
-  display: block;
-  content: "";
-  width: 10px;
-  height: 10px;
-  border-radius: 10px;
-  background: white;
-  outline: 1px solid var(--panel-separator-color);
-}
-
-.protections-popup-tp-switch[enabled] {
-  background-color: var(--button-primary-bgcolor);
-  border-color: var(--button-primary-hover-bgcolor);
-  /* Push the toggle to the right. */
-  padding-inline-start: 16px;
-}
-
-.protections-popup-tp-switch[enabled]:hover {
-  background-color: var(--button-primary-hover-bgcolor);
-  border-color: var(--button-primary-active-bgcolor);
-}
-
-.protections-popup-tp-switch[enabled]:hover:active {
-  background-color: var(--button-primary-active-bgcolor);
-  border-color: var(--button-primary-active-bgcolor);
-}
-
-.protections-popup-tp-switch:not([enabled]):hover {
-  background-color: var(--button-hover-bgcolor);
-}
-
-.protections-popup-tp-switch:not([enabled]):hover:active {
-  background-color: var(--button-active-bgcolor);
-}
-
-#protections-popup-siteNotWorkingView-body-issue-list {
-  padding-inline-start: 1em;
 }
 
 /* Protection popup footer categories */
@@ -736,11 +642,16 @@
 
 #permission-popup-menulist {
   padding-inline: 12px 6px;
+  margin: 0;
+
+  &,
+  > menupopup {
+    min-width: 6.5em;
+  }
 }
 
 .protections-popup-section-header,
-.protections-popup-switch-section-header,
-#protections-popup-siteNotWorkingView-header {
+.protections-popup-switch-section-header {
   padding: var(--arrowpanel-menuitem-padding);
   margin: var(--arrowpanel-menuitem-margin);
 }
@@ -755,11 +666,6 @@
   .permission-popup-permission-remove-button > .button-box {
     appearance: none;
   }
-}
-
-.protections-popup-tp-switch:focus-visible {
-  outline: var(--focus-outline);
-  outline-offset: var(--focus-outline-offset);
 }
 
 #blocked-popup-indicator-item,
@@ -787,7 +693,7 @@
   background-repeat: no-repeat;
   background-position: center;
 
-  fill: #0090ED;
+  fill: light-dark(#0090ED, #80EBFF);
 }
 
 .protections-popup-shim-allow-hint-icon {
@@ -800,11 +706,6 @@
 
 .protections-popup-list-host-shim-allow-indicator {
   width: 16px;
-}
-
-:root[lwt-popup-brighttext] .protections-popup-shim-allow-hint-icon,
-:root[lwt-popup-brighttext] .protections-popup-list-host-shim-allow-indicator {
-  fill: #80EBFF;
 }
 
 .protections-popup-shim-allow-hint-icon {

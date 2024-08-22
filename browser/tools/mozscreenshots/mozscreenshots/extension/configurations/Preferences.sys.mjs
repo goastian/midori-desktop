@@ -8,7 +8,7 @@
 import { TestUtils } from "resource://testing-common/TestUtils.sys.mjs";
 
 export var Preferences = {
-  init(libDir) {
+  init() {
     let panes = [
       ["paneGeneral"],
       ["paneGeneral", browsingGroup],
@@ -19,7 +19,6 @@ export var Preferences = {
       ["panePrivacy", clearRecentHistoryDialog],
       ["panePrivacy", certManager],
       ["panePrivacy", deviceManager],
-      ["panePrivacy", DNTDialog],
       ["paneSync"],
     ];
 
@@ -74,7 +73,7 @@ let prefHelper = async function (primary, customFn = null) {
       // We're already on the correct pane.
       readyPromise = Promise.resolve();
     } else {
-      readyPromise = paintPromise(browserWindow);
+      readyPromise = new Promise(r => browserWindow.requestAnimationFrame(r));
     }
   } else {
     readyPromise = TestUtils.topicObserved("sync-pane-loaded");
@@ -121,23 +120,6 @@ async function cacheGroup(aBrowser) {
     [],
     async function () {
       content.document.getElementById("cacheGroup").scrollIntoView();
-    }
-  );
-}
-
-async function DNTDialog(aBrowser) {
-  return aBrowser.ownerGlobal.SpecialPowers.spawn(
-    aBrowser,
-    [],
-    async function () {
-      const button = content.document.getElementById("doNotTrackSettings");
-      if (!button) {
-        return {
-          todo: "The dialog may have exited before we could click the button",
-        };
-      }
-      button.click();
-      return undefined;
     }
   );
 }

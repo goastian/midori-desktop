@@ -38,9 +38,13 @@ add_task(async function check_autocomplete_on_autofocus_field() {
   await setupAddressStorage();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({primary: address.organization, secondary: address["street-address"]})
-  ));
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
+      primary: address.organization,
+      secondary: address["street-address"],
+      status: "Also autofills address, phone"
+    })
+  ), 2);
 });
 
 </script>

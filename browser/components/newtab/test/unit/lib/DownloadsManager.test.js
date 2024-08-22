@@ -1,5 +1,5 @@
-import { actionTypes as at } from "common/Actions.sys.mjs";
-import { DownloadsManager } from "lib/DownloadsManager.jsm";
+import { actionTypes as at } from "common/Actions.mjs";
+import { DownloadsManager } from "lib/DownloadsManager.sys.mjs";
 import { GlobalOverrider } from "test/unit/utils";
 
 describe("Downloads Manager", () => {
@@ -27,6 +27,10 @@ describe("Downloads Manager", () => {
       deleteDownload: sinon.stub().returns(Promise.resolve()),
       openDownload: sinon.stub(),
       showDownloadedFile: sinon.stub(),
+    });
+
+    globals.set("BrowserUtils", {
+      whereToOpenLink: sinon.stub().returns("current"),
     });
 
     downloadsManager = new DownloadsManager();

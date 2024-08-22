@@ -76,41 +76,20 @@ module.exports = function (config) {
           functions: 100,
           branches: 66,
           overrides: {
-            "lib/AboutPreferences.jsm": {
+            "lib/AboutPreferences.sys.mjs": {
               statements: 98,
               lines: 98,
               functions: 94,
               branches: 66,
             },
-            "lib/ASRouter.jsm": {
-              statements: 75,
-              lines: 75,
-              functions: 64,
-              branches: 66,
-            },
-            "lib/ASRouterDefaultConfig.jsm": {
-              statements: 0,
-              lines: 0,
-              functions: 0,
+            /**
+             * TelemetryFeed.sys.mjs is tested via an xpcshell test
+             */
+            "lib/TelemetryFeed.sys.mjs": {
+              statements: 10,
+              lines: 10,
+              functions: 9,
               branches: 0,
-            },
-            "content-src/asrouter/asrouter-utils.js": {
-              statements: 66,
-              lines: 66,
-              functions: 78,
-              branches: 63,
-            },
-            "lib/TelemetryFeed.jsm": {
-              statements: 99,
-              lines: 99,
-              functions: 100,
-              branches: 95,
-            },
-            "lib/ASRouterParentProcessMessageHandler.jsm": {
-              statements: 98,
-              lines: 98,
-              functions: 100,
-              branches: 88,
             },
             "content-src/lib/init-store.js": {
               statements: 98,
@@ -118,17 +97,26 @@ module.exports = function (config) {
               functions: 100,
               branches: 100,
             },
-            "lib/ActivityStreamStorage.jsm": {
+            "lib/ActivityStreamStorage.sys.mjs": {
               statements: 100,
               lines: 100,
               functions: 100,
               branches: 83,
             },
-            "lib/PlacesFeed.jsm": {
-              statements: 98,
-              lines: 98,
+            "lib/DownloadsManager.sys.mjs": {
+              statements: 100,
+              lines: 100,
               functions: 100,
-              branches: 84,
+              branches: 78,
+            },
+            /**
+             * PlacesFeed.sys.mjs is tested via an xpcshell test
+             */
+            "lib/PlacesFeed.sys.mjs": {
+              statements: 7,
+              lines: 7,
+              functions: 8,
+              branches: 0,
             },
             "lib/UTEventReporting.sys.mjs": {
               statements: 100,
@@ -136,24 +124,62 @@ module.exports = function (config) {
               functions: 100,
               branches: 75,
             },
-            "lib/TopSitesFeed.jsm": {
-              statements: 70,
-              lines: 75,
-              functions: 80,
-              branches: 60,
-            },
-            "lib/Screenshots.jsm": {
+            "lib/Screenshots.sys.mjs": {
               statements: 94,
               lines: 94,
               functions: 75,
               branches: 84,
             },
-            "lib/*.jsm": {
-              statements: 100,
-              lines: 100,
-              functions: 99,
-              branches: 84,
+            /**
+             * Store.sys.mjs is tested via an xpcshell test
+             */
+            "lib/Store.sys.mjs": {
+              statements: 8,
+              lines: 8,
+              functions: 0,
+              branches: 0,
             },
+            /**
+             * TopSitesFeed.sys.mjs is tested via an xpcshell test
+             */
+            "lib/TopSitesFeed.sys.mjs": {
+              statements: 9,
+              lines: 9,
+              functions: 5,
+              branches: 0,
+            },
+            /**
+             * TopStoresFeed.sys.mjs is not tested in automation and is slated
+             * for eventual removal.
+             */
+            "lib/TopStoriesFeed.sys.mjs": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            /**
+             * WallpaperFeed.sys.mjs is tested via an xpcshell test
+             */
+            "lib/WallpaperFeed.sys.mjs": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/Base/Base.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/DiscoveryStreamComponents/FeatureHighlight/WallpaperFeatureHighlight.jsx":
+              {
+                statements: 0,
+                lines: 0,
+                functions: 0,
+                branches: 0,
+              },
             "content-src/components/DiscoveryStreamComponents/**/*.jsx": {
               statements: 90.48,
               lines: 90.48,
@@ -166,7 +192,25 @@ module.exports = function (config) {
               functions: 60,
               branches: 50,
             },
-            "content-src/components/ASRouterAdmin/*.jsx": {
+            /**
+             * WallpaperSection.jsx is tested via an xpcshell test
+             */
+            "content-src/components/WallpapersSection/*.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            /**
+             * Weather.jsx is tested via an xpcshell test
+             */
+            "content-src/components/Weather/*.jsx": {
+              statements: 0,
+              lines: 0,
+              functions: 0,
+              branches: 0,
+            },
+            "content-src/components/DiscoveryStreamAdmin/*.jsx": {
               statements: 0,
               lines: 0,
               functions: 0,
@@ -184,38 +228,11 @@ module.exports = function (config) {
               functions: 0,
               branches: 0,
             },
-            "content-src/lib/aboutwelcome-utils.js": {
-              statements: 50,
-              lines: 50,
-              functions: 50,
-              branches: 0,
-            },
             "content-src/lib/link-menu-options.js": {
               statements: 96,
               lines: 96,
               functions: 96,
               branches: 70,
-            },
-            "content-src/aboutwelcome/components/LanguageSwitcher.jsx": {
-              // This file is covered by the mochitest: browser_aboutwelcome_multistage_languageSwitcher.js
-              statements: 0,
-              lines: 0,
-              functions: 0,
-              branches: 0,
-            },
-            "content-src/aboutwelcome/components/EmbeddedMigrationWizard.jsx": {
-              // This file is covered by the mochitest: browser_aboutwelcome_multistage_mr.js
-              // Can't be unit tested because it relies on the migration-wizard custom element
-              statements: 0,
-              lines: 0,
-              functions: 0,
-              branches: 0,
-            },
-            "content-src/aboutwelcome/**/*.jsx": {
-              statements: 62,
-              lines: 60,
-              functions: 50,
-              branches: 50,
             },
             "content-src/components/**/*.jsx": {
               statements: 51.1,
@@ -232,25 +249,24 @@ module.exports = function (config) {
     webpack: {
       mode: "none",
       devtool: "inline-source-map",
-      // This loader allows us to override required files in tests
-      resolveLoader: {
-        alias: { inject: path.join(__dirname, "loaders/inject-loader") },
-      },
-      // This resolve config allows us to import with paths relative to the root directory, e.g. "lib/ActivityStream.jsm"
+      // This resolve config allows us to import with paths relative to the root directory, e.g. "lib/ActivityStream.sys.mjs"
       resolve: {
-        extensions: [".js", ".jsx"],
+        extensions: [".js", ".jsx", ".mjs"],
         modules: [PATHS.moduleResolveDirectory, "node_modules"],
-        fallback: {
-          stream: require.resolve("stream-browserify"),
-          buffer: require.resolve("buffer"),
+        alias: {
+          asrouter: path.join(__dirname, "../asrouter"),
         },
       },
       plugins: [
         // The ResourceUriPlugin handles translating resource URIs in import
-        // statements in .mjs files, in a similar way to what
-        // babel-jsm-to-commonjs does for jsm files.
+        // statements in .mjs files to paths on the filesystem.
         new ResourceUriPlugin({
-          resourcePathRegEx: PATHS.resourcePathRegEx,
+          resourcePathRegExes: [
+            [
+              new RegExp("^resource://activity-stream/"),
+              path.join(__dirname, "./"),
+            ],
+          ],
         }),
         new webpack.DefinePlugin({
           "process.env.NODE_ENV": JSON.stringify("development"),
@@ -265,41 +281,10 @@ module.exports = function (config) {
       },
       module: {
         rules: [
-          // This rule rewrites importing/exporting in .jsm files to be compatible with esmodules
-          {
-            test: /\.jsm$/,
-            exclude: [/node_modules/],
-            use: [
-              {
-                loader: "babel-loader", // require("babel-core")
-                options: {
-                  plugins: [
-                    // Converts .jsm files into common-js modules
-                    [
-                      "./tools/babel-jsm-to-commonjs.js",
-                      {
-                        basePath: PATHS.resourcePathRegEx,
-                        removeOtherImports: true,
-                        replace: true,
-                      },
-                    ],
-                    "@babel/plugin-proposal-nullish-coalescing-operator",
-                    "@babel/plugin-proposal-optional-chaining",
-                    "@babel/plugin-proposal-class-properties",
-                  ],
-                },
-              },
-            ],
-          },
           {
             test: /\.js$/,
             exclude: [/node_modules\/(?!@fluent\/).*/, /test/],
             loader: "babel-loader",
-            options: {
-              // This is a workaround for bug 1787278. It can be removed once
-              // that bug is fixed.
-              plugins: ["@babel/plugin-proposal-optional-chaining"],
-            },
           },
           {
             test: /\.jsx$/,
@@ -307,10 +292,6 @@ module.exports = function (config) {
             loader: "babel-loader",
             options: {
               presets: ["@babel/preset-react"],
-              plugins: [
-                "@babel/plugin-proposal-nullish-coalescing-operator",
-                "@babel/plugin-proposal-optional-chaining",
-              ],
             },
           },
           {
@@ -319,7 +300,7 @@ module.exports = function (config) {
           },
           {
             enforce: "post",
-            test: /\.js[mx]?$/,
+            test: /\.js[x]?$/,
             loader: "@jsdevtools/coverage-istanbul-loader",
             options: { esModules: true },
             include: [
@@ -327,15 +308,7 @@ module.exports = function (config) {
               path.resolve("lib"),
               path.resolve("common"),
             ],
-            exclude: [
-              path.resolve("test"),
-              path.resolve("vendor"),
-              path.resolve("lib/ASRouterTargeting.jsm"),
-              path.resolve("lib/ASRouterTriggerListeners.jsm"),
-              path.resolve("lib/OnboardingMessageProvider.jsm"),
-              path.resolve("lib/CFRMessageProvider.sys.mjs"),
-              path.resolve("lib/CFRPageActions.jsm"),
-            ],
+            exclude: [path.resolve("test"), path.resolve("vendor")],
           },
         ],
       },

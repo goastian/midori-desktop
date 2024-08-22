@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
@@ -14,13 +12,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.UrlbarUtils.getLogger({ prefix: "EventBufferer" })
 );
-
-// Maximum time events can be deferred for. In automation providers can be quite
-// slow, thus we need a longer timeout to avoid intermittent failures.
-const DEFERRING_TIMEOUT_MS = Cu.isInAutomation ? 1000 : 300;
 
 // Array of keyCodes to defer.
 const DEFERRED_KEY_CODES = new Set([
@@ -33,7 +27,7 @@ const DEFERRED_KEY_CODES = new Set([
 const QUERY_STATUS = {
   UKNOWN: 0,
   RUNNING: 1,
-  RUNNING_GOT_RESULTS: 2,
+  RUNNING_GOT_ALL_HEURISTIC_RESULTS: 2,
   COMPLETE: 3,
 };
 
@@ -52,6 +46,12 @@ const QUERY_STATUS = {
  * until more results arrive, at which time they're replayed.
  */
 export class UrlbarEventBufferer {
+  // Maximum time events can be deferred for. In automation providers can be
+  // quite slow, thus we need a longer timeout to avoid intermittent failures.
+  // Note: to avoid handling events too early, this timer should be larger than
+  // UrlbarProvidersManager.CHUNK_RESULTS_DELAY_MS.
+  static DEFERRING_TIMEOUT_MS = Cu.isInAutomation ? 1500 : 300;
+
   /**
    * Initialises the class.
    *
@@ -102,16 +102,19 @@ export class UrlbarEventBufferer {
     }
   }
 
-  onQueryCancelled(queryContext) {
+  onQueryCancelled() {
     this._lastQuery.status = QUERY_STATUS.COMPLETE;
   }
 
-  onQueryFinished(queryContext) {
+  onQueryFinished() {
     this._lastQuery.status = QUERY_STATUS.COMPLETE;
   }
 
   onQueryResults(queryContext) {
-    this._lastQuery.status = QUERY_STATUS.RUNNING_GOT_RESULTS;
+    if (queryContext.pendingHeuristicProviders.size) {
+      return;
+    }
+    this._lastQuery.status = QUERY_STATUS.RUNNING_GOT_ALL_HEURISTIC_RESULTS;
     // Ensure this runs after other results handling code.
     Services.tm.dispatchToMainThread(() => {
       this.replayDeferredEvents(true);
@@ -183,7 +186,7 @@ export class UrlbarEventBufferer {
 
     if (!this._deferringTimeout) {
       let elapsed = Cu.now() - this._lastQuery.startDate;
-      let remaining = DEFERRING_TIMEOUT_MS - elapsed;
+      let remaining = UrlbarEventBufferer.DEFERRING_TIMEOUT_MS - elapsed;
       this._deferringTimeout = lazy.setTimeout(() => {
         this.replayDeferredEvents(false);
         this._deferringTimeout = null;
@@ -260,7 +263,10 @@ export class UrlbarEventBufferer {
 
     // This is an event that we'd defer, but if enough time has passed since the
     // start of the search, we don't want to block the user's workflow anymore.
-    if (this._lastQuery.startDate + DEFERRING_TIMEOUT_MS <= Cu.now()) {
+    if (
+      this._lastQuery.startDate + UrlbarEventBufferer.DEFERRING_TIMEOUT_MS <=
+      Cu.now()
+    ) {
       return false;
     }
 
@@ -308,29 +314,31 @@ export class UrlbarEventBufferer {
    */
   isSafeToPlayDeferredEvent(event) {
     if (
-      this._lastQuery.status != QUERY_STATUS.RUNNING &&
-      this._lastQuery.status != QUERY_STATUS.RUNNING_GOT_RESULTS
+      this._lastQuery.status == QUERY_STATUS.COMPLETE ||
+      this._lastQuery.status == QUERY_STATUS.UKNOWN
     ) {
       // The view can't get any more results, so there's no need to further
       // defer events.
       return true;
     }
-    let waitingFirstResult = this._lastQuery.status == QUERY_STATUS.RUNNING;
+    let waitingHeuristicResults =
+      this._lastQuery.status == QUERY_STATUS.RUNNING;
     if (event.keyCode == KeyEvent.DOM_VK_RETURN) {
       // Check if we're waiting for providers that requested deferring.
       if (this.waitingDeferUserSelectionProviders) {
         return false;
       }
       // Play a deferred Enter if the heuristic result is not selected, or we
-      // are not waiting for the first results yet.
+      // are not waiting for heuristic results yet.
       let selectedResult = this.input.view.selectedResult;
       return (
-        (selectedResult && !selectedResult.heuristic) || !waitingFirstResult
+        (selectedResult && !selectedResult.heuristic) ||
+        !waitingHeuristicResults
       );
     }
 
     if (
-      waitingFirstResult ||
+      waitingHeuristicResults ||
       !this.input.view.isOpen ||
       this.waitingDeferUserSelectionProviders
     ) {

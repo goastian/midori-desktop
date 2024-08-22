@@ -9,8 +9,9 @@ html.private {
   --in-content-page-color: white;
   --in-content-text-color: white;
   --in-content-page-background: #25003e;
-  --in-content-link-color-hover: white;
-  --in-content-link-color-active: white;
+  --link-color: white;
+  --link-color-hover: white;
+  --link-color-active: white;
   --in-content-banner-background: #f9f9fe;
   --in-content-banner-text-color: #0c0c0d;
   --in-content-button-background-hover: rgba(12,12,13,.1);
@@ -32,13 +33,18 @@ body.showBanner {
   padding: 40px 48px 0;
 }
 
-a:link {
+a:link,
+.text-link {
   color: inherit;
   text-decoration: underline;
-}
 
-a:link:hover {
-  color: inherit;
+  &:hover {
+    color: inherit;
+
+    &:active {
+      text-decoration: none;
+    }
+  }
 }
 
 .container {
@@ -57,28 +63,11 @@ p {
 }
 
 .logo {
-  /* The new private browsing logo, shown for
-  "browser.privatebrowsing.enable-new-logo" == true */
-  background: url("chrome://branding/content/about-logo-private.png") no-repeat center center;
+  background: image-set(url("chrome://branding/content/about-logo-private.png"), url('chrome://branding/content/about-logo-private@2x.png') 2x) no-repeat center center;
   background-size: 96px;
   display: inline-block;
   height: 96px;
   width: 96px;
-}
-
-.logo[legacy] {
-  /* The legacy private browsing logo, shown for
-  "browser.privatebrowsing.enable-new-logo" == false */
-  background-image: url("chrome://branding/content/about-logo.png");
-}
-
-@media (min-resolution: 2x) {
-  .logo {
-    background-image: url('chrome://branding/content/about-logo-private@2x.png');
-  }
-  .logo[legacy] {
-    background-image: url('chrome://branding/content/about-logo@2x.png');
-  }
 }
 
 .wordmark {
@@ -97,6 +86,14 @@ p {
   height: 48px;
   padding: 0 22px;
   min-width: 70vw;
+}
+
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+  .search-inner-wrapper {
+    height: 52px;
+    padding: 0;
+  }
 }
 
 .promo-image-large {
@@ -253,6 +250,69 @@ p {
   }
 }
 
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+  .search-handoff-button,
+  .search-handoff-button:hover:not(.focused),
+  .search-handoff-button:active,
+  .search-handoff-button:enabled:hover:active {
+    border: 3px solid ButtonText;
+    border-radius: 6px;
+    box-shadow: none;
+
+    @media not (prefers-contrast) {
+      border-color: #952bb9;
+    }
+  }
+
+  .search-handoff-button,
+  .search-handoff-button:hover:not(.focused),
+  .search-handoff-button:active,
+  .search-handoff-button:enabled:hover:active,
+  .search-inner-wrapper .search-handoff-button:hover,
+  .search-inner-wrapper .search-handoff-button:hover:active {
+    background-color: ButtonFace;
+    background-image: url(chrome://global/skin/icons/search-glass.svg);
+    background-repeat: no-repeat;
+    background-size: 16px;
+    fill: ButtonText;
+
+    @media (prefers-contrast) {
+      border-color: ButtonText;
+      color: ButtonText;
+    }
+
+    @media not (prefers-contrast) {
+      background-color: #321c64;
+      fill: rgb(251, 251, 254);
+    }
+  }
+
+  .search-handoff-button.focused:not(.disabled) {
+    border-width: 3px;
+
+    @media (prefers-contrast) {
+      outline: 2px solid SelectedItem;
+    }
+  }
+
+  .fake-textbox {
+    color: ButtonText;
+    font-size: 0.87em;
+    opacity: 1;
+
+    @media not (prefers-contrast) {
+      color: #fbfbfe;
+    }
+  }
+
+  @media not (prefers-contrast) {
+    .fake-caret {
+      background-color: #fbfbfe;
+    }
+  }
+}
+
 .search-banner {
   width: 100%;
   background-color: var(--in-content-banner-background);
@@ -316,12 +376,48 @@ p {
 
 .info p {
   margin-top: 0;
-  font-size: 15px;
-  line-height: 25px;
+  line-height: 1.67;
 }
 
-.info #info-title + p {
+.info #info-title:not([hidden]) + p {
   margin-top: 15px;
+}
+
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+  .info-border {
+    border-radius: 8px;
+    margin-top: 64px;
+    padding: 17px;
+
+    @media not (prefers-contrast) {
+      box-shadow: 0 2px 6px 0 rgba(58, 57, 68, 0.20);
+      background: rgba(149, 43, 185, 0.5);
+    }
+  }
+
+  .info {
+    background-image: none;
+    border-radius: 6px;
+    font-size: 0.93em;
+    margin: 0;
+    padding-inline-start: 20px;
+    padding-block-end: 25px;
+
+    @media not (prefers-contrast) {
+      background-color: #321c64;
+      box-shadow: 0 2px 6px 0 rgba(58, 57, 68, 0.20);
+    }
+  }
+
+  #info-title:not([hidden]) + #info-body {
+    margin-block: 0;
+  }
+
+  #info-title {
+    font-size: 1em;
+    margin-block: 0;
+  }
 }
 
 .search-banner-close-button {
@@ -359,28 +455,28 @@ p {
 
 .promo-dismiss {
   padding: 10px;
-  min-width: 16px;
-  min-height: 16px;
+  min-width: 28px;
+  min-height: 28px;
   display: inline flow-root;
   background: url("chrome://global/skin/icons/close.svg") center no-repeat;
   cursor: pointer;
   -moz-context-properties: fill;
   fill: currentColor;
   position: relative;
-  top: -90px;
-}
+  align-self: start;
+  top: -11px;
+  inset-inline-end: -11px;
 
-@media not (prefers-contrast) {
-  .promo-dismiss {
+  @media not (prefers-contrast) {
     opacity: 0.6;
-  }
 
-  .promo-dismiss:hover {
-    background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
-  }
+    &:hover {
+      background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
+    }
 
-  .promo-dismiss:hover:active {
-    background-color: color-mix(in srgb, currentColor 20%, transparent) !important;
+    &:hover:active {
+      background-color: color-mix(in srgb, currentColor 20%, transparent) !important;
+    }
   }
 }
 
@@ -472,8 +568,20 @@ p {
 }
 
 .promo.below-search {
-  padding: 25px 22px 10px;
+  padding: 22px;
   margin-top: 25px;
+
+  #promo-header {
+    margin-block: 0 1em;
+  }
+
+  #private-browsing-promo-text {
+    margin-block: 0;
+  }
+
+  #private-browsing-promo-link:not(.text-link) {
+    margin-block: 1.5em 0;
+  }
 }
 
 .promo.bottom {
@@ -494,7 +602,21 @@ p {
 
 .promo-link {
   margin: 0;
-  cursor: pointer;
-  color: var(--in-content-link-color-active);
-  text-decoration: underline;
+}
+
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+  .promo.below-search.promo-visible {
+    margin-block: 0 25px;
+
+    @media not (prefers-contrast) {
+      background-color: #321c64;
+    }
+  }
+
+  @media not (prefers-contrast) {
+    html.private {
+      background: linear-gradient(45deg, #722291 0%, #45278D 50%, #393473 100%);
+    }
+  }
 }

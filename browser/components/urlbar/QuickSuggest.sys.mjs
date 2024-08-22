@@ -2,18 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
+  rawSuggestionUrlMatches: "resource://gre/modules/RustSuggest.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
 });
 
 // Quick suggest features. On init, QuickSuggest creates an instance of each and
@@ -25,7 +21,15 @@ const FEATURES = {
   BlockedSuggestions:
     "resource:///modules/urlbar/private/BlockedSuggestions.sys.mjs",
   ImpressionCaps: "resource:///modules/urlbar/private/ImpressionCaps.sys.mjs",
+  MDNSuggestions: "resource:///modules/urlbar/private/MDNSuggestions.sys.mjs",
+  PocketSuggestions:
+    "resource:///modules/urlbar/private/PocketSuggestions.sys.mjs",
+  SuggestBackendJs:
+    "resource:///modules/urlbar/private/SuggestBackendJs.sys.mjs",
+  SuggestBackendRust:
+    "resource:///modules/urlbar/private/SuggestBackendRust.sys.mjs",
   Weather: "resource:///modules/urlbar/private/Weather.sys.mjs",
+  YelpSuggestions: "resource:///modules/urlbar/private/YelpSuggestions.sys.mjs",
 };
 
 const TIMESTAMP_TEMPLATE = "%YYYYMMDDHH%";
@@ -99,6 +103,32 @@ class _QuickSuggest {
   }
 
   /**
+   * @returns {SuggestBackendJs|SuggestBackendRust}
+   *   The currently active backend.
+   */
+  get backend() {
+    return lazy.UrlbarPrefs.get("quickSuggestRustEnabled")
+      ? this.rustBackend
+      : this.jsBackend;
+  }
+
+  /**
+   * @returns {SuggestBackendRust}
+   *   The Rust backend. Not used when the JS backend is enabled.
+   */
+  get rustBackend() {
+    return this.#features.SuggestBackendRust;
+  }
+
+  /**
+   * @returns {SuggestBackendJs}
+   *   The JS backend. Not used when the Rust backend is enabled.
+   */
+  get jsBackend() {
+    return this.#features.SuggestBackendJs;
+  }
+
+  /**
    * @returns {BlockedSuggestions}
    *   The blocked suggestions feature.
    */
@@ -120,6 +150,16 @@ class _QuickSuggest {
    */
   get weather() {
     return this.#features.Weather;
+  }
+
+  /**
+   * @returns {Map}
+   *   A map from the name of each registered Rust suggestion type to the
+   *   feature that manages that type. This mapping is determined by each
+   *   feature's `rustSuggestionTypes`.
+   */
+  get featuresByRustSuggestionType() {
+    return this.#featuresByRustSuggestionType;
   }
 
   get logger() {
@@ -144,6 +184,12 @@ class _QuickSuggest {
       let { [name]: ctor } = ChromeUtils.importESModule(uri);
       let feature = new ctor();
       this.#features[name] = feature;
+      if (feature.merinoProvider) {
+        this.#featuresByMerinoProvider.set(feature.merinoProvider, feature);
+      }
+      for (let type of feature.rustSuggestionTypes) {
+        this.#featuresByRustSuggestionType.set(type, feature);
+      }
 
       // Update the map from enabling preferences to features.
       let prefs = feature.enablingPreferences;
@@ -174,6 +220,36 @@ class _QuickSuggest {
    */
   getFeature(name) {
     return this.#features[name];
+  }
+
+  /**
+   * Returns a quick suggest feature by the name of the Merino provider that
+   * serves its suggestions (as defined by `feature.merinoProvider`). Not all
+   * features correspond to a Merino provider.
+   *
+   * @param {string} provider
+   *   The name of a Merino provider.
+   * @returns {BaseFeature}
+   *   The feature object, an instance of a subclass of `BaseFeature`, or null
+   *   if no feature corresponds to the Merino provider.
+   */
+  getFeatureByMerinoProvider(provider) {
+    return this.#featuresByMerinoProvider.get(provider);
+  }
+
+  /**
+   * Returns a Suggest feature by the type of Rust suggestion it manages (as
+   * defined by `feature.rustSuggestionTypes`). Not all features correspond to a
+   * Rust suggestion type.
+   *
+   * @param {string} type
+   *   The name of a Rust suggestion type.
+   * @returns {BaseFeature}
+   *   The feature object, an instance of a subclass of `BaseFeature`, or null
+   *   if no feature corresponds to the type.
+   */
+  getFeatureByRustSuggestionType(type) {
+    return this.#featuresByRustSuggestionType.get(type);
   }
 
   /**
@@ -255,6 +331,11 @@ class _QuickSuggest {
       return false;
     }
 
+    if (result.payload.source == "rust") {
+      // The Rust implementation has its own equivalence function.
+      return lazy.rawSuggestionUrlMatches(result.payload.originalUrl, url);
+    }
+
     // If the result URL doesn't have a timestamp, then do a straight string
     // comparison.
     let { urlTimestampIndex } = result.payload;
@@ -327,23 +408,6 @@ class _QuickSuggest {
   }
 
   /**
-   * Records the Nimbus exposure event if it hasn't already been recorded during
-   * the app session. This method actually queues the recording on idle because
-   * it's potentially an expensive operation.
-   */
-  ensureExposureEventRecorded() {
-    // `recordExposureEvent()` makes sure only one event is recorded per app
-    // session even if it's called many times, but since it may be expensive, we
-    // also keep `_recordedExposureEvent`.
-    if (!this._recordedExposureEvent) {
-      this._recordedExposureEvent = true;
-      Services.tm.idleDispatchToMainThread(() =>
-        lazy.NimbusFeatures.urlbar.recordExposureEvent({ once: true })
-      );
-    }
-  }
-
-  /**
    * An onboarding dialog can be shown to the users who are enrolled into
    * the QuickSuggest experiments or rollouts. This behavior is controlled
    * by the pref `browser.urlbar.quicksuggest.shouldShowOnboardingDialog`
@@ -390,11 +454,10 @@ class _QuickSuggest {
       return false;
     }
 
-    if (lazy.UrlbarPrefs.get("experimentType") === "modal") {
-      this.ensureExposureEventRecorded();
-    }
-
-    if (!lazy.UrlbarPrefs.get("quickSuggestShouldShowOnboardingDialog")) {
+    if (
+      !lazy.UrlbarPrefs.get("quickSuggestShouldShowOnboardingDialog") ||
+      lazy.UrlbarPrefs.get("quicksuggest.contextualOptIn")
+    ) {
       return false;
     }
 
@@ -471,8 +534,14 @@ class _QuickSuggest {
     );
   }
 
-  // Maps from quick suggest feature class names to feature instances.
+  // Maps from Suggest feature class names to feature instances.
   #features = {};
+
+  // Maps from Merino provider names to Suggest feature instances.
+  #featuresByMerinoProvider = new Map();
+
+  // Maps from Rust suggestion types to Suggest feature instances.
+  #featuresByRustSuggestionType = new Map();
 
   // Maps from preference names to the `Set` of feature instances they enable.
   #featuresByEnablingPrefs = new Map();

@@ -8,41 +8,48 @@
 // This is loaded into chrome windows with the subscript loader. Wrap in
 // a block to prevent accidentally leaking globals onto `window`.
 {
+  ChromeUtils.defineESModuleGetters(this, {
+    ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
+  });
+
   class ScreenshotsButtons extends MozXULElement {
+    static #template = null;
+
     static get markup() {
       return `
-      <html:link rel="stylesheet" href="chrome://global/skin/in-content/common.css"/>
-      <html:link rel="stylesheet" href="chrome://browser/content/screenshots/screenshots-buttons.css"/>
-      <html:div id="screenshots-buttons" class="all-buttons-container">
-        <html:button class="visible-page" data-l10n-id="screenshots-save-visible-button"></html:button>
-        <html:button class="full-page" data-l10n-id="screenshots-save-page-button"></html:button>
-      </html:div>
+        <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+        <html:link rel="stylesheet" href="chrome://browser/content/screenshots/screenshots-buttons.css" />
+        <html:moz-button-group>
+          <html:button id="visible-page" class="screenshot-button footer-button" data-l10n-id="screenshots-save-visible-button"></html:button>
+          <html:button id="full-page" class="screenshot-button footer-button primary" data-l10n-id="screenshots-save-page-button"></html:button>
+        </html:moz-button-group>
+
       `;
+    }
+
+    static get fragment() {
+      if (!ScreenshotsButtons.#template) {
+        ScreenshotsButtons.#template = MozXULElement.parseXULToFragment(
+          ScreenshotsButtons.markup
+        );
+      }
+      return ScreenshotsButtons.#template;
     }
 
     connectedCallback() {
       const shadowRoot = this.attachShadow({ mode: "open" });
       document.l10n.connectRoot(shadowRoot);
 
-      let fragment = MozXULElement.parseXULToFragment(this.constructor.markup);
-      this.shadowRoot.append(fragment);
+      this.shadowRoot.append(ScreenshotsButtons.fragment);
 
-      let button1 = shadowRoot.querySelector(".visible-page");
-      button1.onclick = function () {
-        Services.obs.notifyObservers(
-          gBrowser.ownerGlobal,
-          "screenshots-take-screenshot",
-          "visible"
-        );
+      let visibleButton = shadowRoot.getElementById("visible-page");
+      visibleButton.onclick = function () {
+        ScreenshotsUtils.doScreenshot(gBrowser.selectedBrowser, "visible");
       };
 
-      let button2 = shadowRoot.querySelector(".full-page");
-      button2.onclick = function () {
-        Services.obs.notifyObservers(
-          gBrowser.ownerGlobal,
-          "screenshots-take-screenshot",
-          "full-page"
-        );
+      let fullpageButton = shadowRoot.getElementById("full-page");
+      fullpageButton.onclick = function () {
+        ScreenshotsUtils.doScreenshot(gBrowser.selectedBrowser, "full_page");
       };
     }
 
@@ -50,10 +57,33 @@
       document.l10n.disconnectRoot(this.shadowRoot);
     }
 
-    focusFirst(focusOptions) {
-      this.shadowRoot.querySelector("button:enabled").focus(focusOptions);
+    /**
+     * Focus the last used button.
+     * This will default to the visible page button.
+     * @param {String} buttonToFocus
+     */
+    async focusButton(buttonToFocus) {
+      await this.shadowRoot.querySelector("moz-button-group").updateComplete;
+      if (buttonToFocus === "fullpage") {
+        this.shadowRoot
+          .getElementById("full-page")
+          .focus({ focusVisible: true });
+      } else if (buttonToFocus === "first") {
+        this.shadowRoot
+          .querySelector("moz-button-group")
+          .firstElementChild.focus({ focusVisible: true });
+      } else if (buttonToFocus === "last") {
+        this.shadowRoot
+          .querySelector("moz-button-group")
+          .lastElementChild.focus({ focusVisible: true });
+      } else {
+        this.shadowRoot
+          .getElementById("visible-page")
+          .focus({ focusVisible: true });
+      }
     }
   }
+
   customElements.define("screenshots-buttons", ScreenshotsButtons, {
     extends: "toolbar",
   });

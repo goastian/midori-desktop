@@ -16,8 +16,6 @@
   padding: 0 16px 16px;
   border-bottom: 1px solid var(--in-content-border-color);
   background-color: var(--in-content-box-background);
-  color: var(--text-color-deemphasized);
-  font-size: 0.8em;
 }
 
 .meta > label > span {
@@ -25,12 +23,9 @@
 }
 
 #login-sort {
-  background-color: transparent;
+  --logical-padding: 0px;
   margin: 0;
-  padding-inline: 0 16px;
-  min-height: initial;
-  font: inherit;
-  font-weight: 600;
+  background-color: transparent;
   color: var(--in-content-text-color) !important;
 }
 
@@ -39,7 +34,7 @@
 }
 
 #login-sort > option {
-  font-weight: normal;
+  font-weight: var(--font-weight);
 }
 
 .count {
@@ -98,16 +93,6 @@ ol {
   scroll-padding-top: 24px; /* there is the section header that is sticky to the top */
 }
 
-.create-login-button {
-  margin: 0;
-  min-width: auto;
-  background-repeat: no-repeat;
-  background-image: url("chrome://global/skin/icons/plus.svg");
-  background-position: center;
-  -moz-context-properties: fill;
-  fill: currentColor;
-}
-
 .login-list-item {
   display: flex;
   align-items: center;
@@ -122,7 +107,7 @@ ol {
   position: sticky;
   top: 0;
   font-size: .85em;
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
   padding: 4px 16px;
   border-bottom: 1px solid var(--in-content-border-color);
   background-color: var(--in-content-box-background);
@@ -151,7 +136,7 @@ ol {
 }
 
 .login-list-item.selected .title {
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
 }
 
 .labels {
@@ -161,14 +146,6 @@ ol {
   display: flex;
   flex-direction: column;
   justify-content: center;
-}
-
-.title,
-.username {
-  display: block;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .favicon {
@@ -183,20 +160,4 @@ ol {
 .username {
   font-size: 0.85em;
   color: var(--text-color-deemphasized);
-}
-
-.alert-icon {
-  min-width: 16px;
-  width: 16px;
-  margin-inline-start: 12px;
-  -moz-context-properties: fill, fill-opacity;
-  fill: currentColor;
-  fill-opacity: 0.75;
-}
-
-@media not (prefers-contrast) {
-  .breached > .alert-icon {
-    fill: var(--red-60);
-    fill-opacity: 1;
-  }
 }

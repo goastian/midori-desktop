@@ -1,5 +1,5 @@
 /**
- * Tests PhoneNumber.jsm and PhoneNumberNormalizer.jsm.
+ * Tests PhoneNumber.sys.mjs and PhoneNumberNormalizer.sys.mjs.
  */
 
 "use strict";
@@ -7,10 +7,10 @@
 var PhoneNumber, PhoneNumberNormalizer;
 add_setup(async () => {
   ({ PhoneNumber } = ChromeUtils.importESModule(
-    "resource://autofill/phonenumberutils/PhoneNumber.sys.mjs"
+    "resource://gre/modules/shared/PhoneNumber.sys.mjs"
   ));
   ({ PhoneNumberNormalizer } = ChromeUtils.importESModule(
-    "resource://autofill/phonenumberutils/PhoneNumberNormalizer.sys.mjs"
+    "resource://gre/modules/shared/PhoneNumberNormalizer.sys.mjs"
   ));
 });
 

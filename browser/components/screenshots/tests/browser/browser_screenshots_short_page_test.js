@@ -24,15 +24,16 @@ add_task(async function test_overlay() {
 
       await helper.dragOverlay(10, 10, 500, 500);
 
-      let dimensions = await helper.getSelectionLayerDimensions();
+      let { scrollWidth, scrollHeight } =
+        await helper.getScreenshotsOverlayDimensions();
       Assert.equal(
-        dimensions.scrollWidth,
+        scrollWidth,
         contentInfo.clientWidth,
         "The overlay spans the width of the window"
       );
 
       Assert.equal(
-        dimensions.scrollHeight,
+        scrollHeight,
         contentInfo.clientHeight,
         "The overlay spans the height of the window"
       );
@@ -57,40 +58,21 @@ add_task(async function test_window_resize() {
       const BIG_WINDOW_SIZE = 920;
       const SMALL_WINDOW_SIZE = 620;
 
-      window.resizeTo(SMALL_WINDOW_SIZE, SMALL_WINDOW_SIZE);
-      await TestUtils.waitForCondition(() => {
-        info(
-          `Got ${window.outerWidth}x${
-            window.outerHeight
-          }. Expecting ${SMALL_WINDOW_SIZE}. ${
-            window.outerHeight === SMALL_WINDOW_SIZE
-          } ${window.outerWidth === SMALL_WINDOW_SIZE}`
-        );
-        return (
-          window.outerHeight === SMALL_WINDOW_SIZE &&
-          window.outerWidth === SMALL_WINDOW_SIZE
-        );
-      }, "Waiting for window to resize");
+      await helper.resizeContentWindow(SMALL_WINDOW_SIZE, SMALL_WINDOW_SIZE);
 
       helper.triggerUIFromToolbar();
       await helper.waitForOverlay();
       await helper.dragOverlay(10, 10, 100, 100);
 
-      let dimensions = await helper.getSelectionLayerDimensions();
+      let dimensions = await helper.getScreenshotsOverlayDimensions();
       let oldWidth = dimensions.scrollWidth;
       let oldHeight = dimensions.scrollHeight;
 
-      window.resizeTo(BIG_WINDOW_SIZE, BIG_WINDOW_SIZE);
-      await TestUtils.waitForCondition(
-        () =>
-          window.outerHeight === BIG_WINDOW_SIZE &&
-          window.outerWidth === BIG_WINDOW_SIZE,
-        "Waiting for window to resize"
-      );
+      await helper.resizeContentWindow(BIG_WINDOW_SIZE, BIG_WINDOW_SIZE);
       await helper.waitForSelectionLayerDimensionChange(oldWidth, oldHeight);
 
       contentInfo = await helper.getContentDimensions();
-      dimensions = await helper.getSelectionLayerDimensions();
+      dimensions = await helper.getScreenshotsOverlayDimensions();
       Assert.equal(
         dimensions.scrollWidth,
         contentInfo.clientWidth,
@@ -105,17 +87,11 @@ add_task(async function test_window_resize() {
       oldWidth = dimensions.scrollWidth;
       oldHeight = dimensions.scrollHeight;
 
-      window.resizeTo(SMALL_WINDOW_SIZE, SMALL_WINDOW_SIZE);
-      await TestUtils.waitForCondition(
-        () =>
-          window.outerHeight === SMALL_WINDOW_SIZE &&
-          window.outerWidth === SMALL_WINDOW_SIZE,
-        "Waiting for window to resize"
-      );
+      await helper.resizeContentWindow(SMALL_WINDOW_SIZE, SMALL_WINDOW_SIZE);
       await helper.waitForSelectionLayerDimensionChange(oldWidth, oldHeight);
 
       contentInfo = await helper.getContentDimensions();
-      dimensions = await helper.getSelectionLayerDimensions();
+      dimensions = await helper.getScreenshotsOverlayDimensions();
       Assert.equal(
         dimensions.scrollWidth,
         contentInfo.clientWidth,
@@ -127,21 +103,20 @@ add_task(async function test_window_resize() {
         "The overlay spans the height of the window"
       );
 
-      ok(
-        dimensions.scrollWidth < BIG_WINDOW_SIZE,
+      Assert.less(
+        dimensions.scrollWidth,
+        BIG_WINDOW_SIZE,
         "Screenshots overlay is smaller than the big window width"
       );
-      ok(
-        dimensions.scrollHeight < BIG_WINDOW_SIZE,
+      Assert.less(
+        dimensions.scrollHeight,
+        BIG_WINDOW_SIZE,
         "Screenshots overlay is smaller than the big window height"
       );
 
-      window.resizeTo(originalWindowWidth, originalWindowHeight);
-      await TestUtils.waitForCondition(
-        () =>
-          window.outerHeight === originalWindowHeight &&
-          window.outerWidth === originalWindowWidth,
-        "Waiting for window to resize"
+      await helper.resizeContentWindow(
+        originalWindowWidth,
+        originalWindowHeight
       );
     }
   );

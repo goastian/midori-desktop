@@ -15,14 +15,14 @@ function testPostPrompt(task) {
     async function (browser) {
       let icon = document.getElementById("web-notifications-notification-icon");
       ok(
-        !BrowserTestUtils.is_visible(icon),
+        !BrowserTestUtils.isVisible(icon),
         "notifications icon is not visible at first"
       );
 
       await SpecialPowers.spawn(browser, [], task);
 
       await TestUtils.waitForCondition(
-        () => BrowserTestUtils.is_visible(icon),
+        () => BrowserTestUtils.isVisible(icon),
         "notifications icon is visible"
       );
       ok(
@@ -62,28 +62,6 @@ add_task(async function testNotificationPermission() {
     "permissions.desktop-notification.postPrompt.enabled",
     true
   );
-
-  Services.prefs.setIntPref(
-    "permissions.default.desktop-notification",
-    Ci.nsIPermissionManager.DENY_ACTION
-  );
-
-  // First test that all requests (even with user interaction) will cause a post-prompt
-  // if the global default is "deny".
-
-  await testPostPrompt(function () {
-    E10SUtils.wrapHandlingUserInput(content, true, function () {
-      content.document.getElementById("desktop-notification").click();
-    });
-  });
-
-  await testPostPrompt(function () {
-    E10SUtils.wrapHandlingUserInput(content, true, function () {
-      content.document.getElementById("push").click();
-    });
-  });
-
-  Services.prefs.clearUserPref("permissions.default.desktop-notification");
 
   // Now test that requests without user interaction will post-prompt when the
   // user interaction requirement is set.

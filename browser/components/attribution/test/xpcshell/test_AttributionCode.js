@@ -20,6 +20,8 @@ add_task(async () => {
  * to make sure we reject bad ones and accept good ones.
  */
 add_task(async function testValidAttrCodes() {
+  let msixCampaignIdStub = sinon.stub(AttributionCode, "msixCampaignId");
+
   let currentCode = null;
   for (let entry of validAttrCodes) {
     currentCode = entry.code;
@@ -36,14 +38,20 @@ add_task(async function testValidAttrCodes() {
       // In real life, the attribution codes returned from Microsoft APIs
       // are not URI encoded, and the AttributionCode code that deals with
       // them expects that - so we have to simulate that as well.
-      sinon
-        .stub(AttributionCode, "msixCampaignId")
-        .get(() => decodeURIComponent(currentCode));
+      msixCampaignIdStub.callsFake(async () => decodeURIComponent(currentCode));
+    } else if (AppConstants.platform === "macosx") {
+      const { MacAttribution } = ChromeUtils.importESModule(
+        "resource:///modules/MacAttribution.sys.mjs"
+      );
+
+      await MacAttribution.setAttributionString(currentCode);
     } else {
+      // non-msix windows
       await AttributionCode.writeAttributionFile(currentCode);
     }
     AttributionCode._clearCache();
     let result = await AttributionCode.getAttrDataAsync();
+
     Assert.deepEqual(
       result,
       entry.parsed,
@@ -51,13 +59,18 @@ add_task(async function testValidAttrCodes() {
     );
   }
   AttributionCode._clearCache();
+
+  // Restore the msixCampaignId stub so that other tests don't fail stubbing it
+  msixCampaignIdStub.restore();
 });
 
 /**
  * Make sure codes with various formatting errors are not seen as valid.
  */
 add_task(async function testInvalidAttrCodes() {
+  let msixCampaignIdStub = sinon.stub(AttributionCode, "msixCampaignId");
   let currentCode = null;
+
   for (let code of invalidAttrCodes) {
     currentCode = code;
 
@@ -73,10 +86,15 @@ add_task(async function testInvalidAttrCodes() {
         continue;
       }
 
-      sinon
-        .stub(AttributionCode, "msixCampaignId")
-        .get(() => decodeURIComponent(currentCode));
+      msixCampaignIdStub.callsFake(async () => decodeURIComponent(currentCode));
+    } else if (AppConstants.platform === "macosx") {
+      const { MacAttribution } = ChromeUtils.importESModule(
+        "resource:///modules/MacAttribution.sys.mjs"
+      );
+
+      await MacAttribution.setAttributionString(currentCode);
     } else {
+      // non-msix windows
       await AttributionCode.writeAttributionFile(currentCode);
     }
     AttributionCode._clearCache();
@@ -88,6 +106,9 @@ add_task(async function testInvalidAttrCodes() {
     );
   }
   AttributionCode._clearCache();
+
+  // Restore the msixCampaignId stub so that other tests don't fail stubbing it
+  msixCampaignIdStub.restore();
 });
 
 /**
@@ -95,11 +116,12 @@ add_task(async function testInvalidAttrCodes() {
  * and making sure we still get the expected code.
  */
 let condition = {
-  // MSIX attribution codes are not cached by us, thus this test is
+  // macOS and MSIX attribution codes are not cached by us, thus this test is
   // unnecessary for those builds.
   skip_if: () =>
-    AppConstants.platform === "win" &&
-    Services.sysinfo.getProperty("hasWinPackageId"),
+    (AppConstants.platform === "win" &&
+      Services.sysinfo.getProperty("hasWinPackageId")) ||
+    AppConstants.platform === "macosx",
 };
 add_task(condition, async function testDeletedFile() {
   // Set up the test by clearing the cache and writing a valid file.

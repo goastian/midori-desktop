@@ -10,19 +10,12 @@
  * the result types.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   JsonSchemaValidator:
     "resource://gre/modules/components-utils/JsonSchemaValidator.sys.mjs",
-  UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  BrowserUIUtils: "resource:///modules/BrowserUIUtils.jsm",
 });
 
 /**
@@ -197,7 +190,8 @@ export class UrlbarResult {
     let result = lazy.JsonSchemaValidator.validate(payload, schema, {
       allowExplicitUndefinedProperties: true,
       allowNullAsUndefinedProperties: true,
-      allowExtraProperties: this.type == lazy.UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      allowAdditionalProperties:
+        this.type == lazy.UrlbarUtils.RESULT_TYPE.DYNAMIC,
     });
     if (!result.valid) {
       throw result.error;
@@ -256,24 +250,16 @@ export class UrlbarResult {
         lazy.UrlbarUtils.HIGHLIGHT.TYPED,
       ];
       try {
-        payloadInfo.title[0] = new URL(payloadInfo.url[0]).host;
+        payloadInfo.title[0] = new URL(payloadInfo.url[0]).URI.displayHostPort;
       } catch (e) {}
     }
 
     if (payloadInfo.url) {
       // For display purposes we need to unescape the url.
-      payloadInfo.displayUrl = [...payloadInfo.url];
-      let url = payloadInfo.displayUrl[0];
-      if (url && lazy.UrlbarPrefs.get("trimURLs")) {
-        url = lazy.BrowserUIUtils.removeSingleTrailingSlashFromURL(url);
-        if (url.startsWith("https://")) {
-          url = url.substring(8);
-          if (url.startsWith("www.")) {
-            url = url.substring(4);
-          }
-        }
-      }
-      payloadInfo.displayUrl[0] = lazy.UrlbarUtils.unEscapeURIForUI(url);
+      payloadInfo.displayUrl = [
+        lazy.UrlbarUtils.prepareUrlForDisplay(payloadInfo.url[0]),
+        payloadInfo.url[1],
+      ];
     }
 
     // For performance reasons limit excessive string lengths, to reduce the

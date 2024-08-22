@@ -24,7 +24,6 @@ ManifestDPIAware true
 
 !addplugindir ./
 
-Var CheckboxSetAsDefault
 Var CheckboxShortcuts
 Var CheckboxSendPing
 Var CheckboxInstallMaintSvc
@@ -41,7 +40,6 @@ Var ExistingTopDir
 Var SpaceAvailableBytes
 Var InitialInstallDir
 Var HandleDownload
-Var CanSetAsDefault
 Var InstallCounterStep
 Var InstallTotalSteps
 Var ProgressCompleted
@@ -67,6 +65,9 @@ Var EndPreInstallPhaseTickCount
 Var EndInstallPhaseTickCount
 Var EndFinishPhaseTickCount
 
+Var DistributionID
+Var DistributionVersion
+
 Var InitialInstallRequirementsCode
 Var ExistingProfile
 Var ExistingVersion
@@ -90,7 +91,7 @@ Var ArchToInstall
 ; the stub installer
 ;!define STUB_DEBUG
 
-!define StubURLVersion "v8"
+!define StubURLVersion "v9"
 
 ; Successful install exit code
 !define ERR_SUCCESS 0
@@ -154,11 +155,11 @@ Var ArchToInstall
 ; This might not be enough when installing on a slow network drive so it will
 ; fallback to downloading the full installer if it reaches this number.
 
-; Approximately 200 seconds with a 100 millisecond timer.
-!define InstallCleanTotalSteps 2000
+; Approximately 240 seconds with a 100 millisecond timer.
+!define InstallCleanTotalSteps 2400
 
-; Approximately 215 seconds with a 100 millisecond timer.
-!define InstallPaveOverTotalSteps 2150
+; Approximately 255 seconds with a 100 millisecond timer.
+!define InstallPaveOverTotalSteps 2550
 
 ; Blurb duty cycle
 !define BlurbDisplayMS 19500
@@ -244,7 +245,6 @@ Var ArchToInstall
 !include "common.nsh"
 
 !insertmacro CopyPostSigningData
-!insertmacro CopyProvenanceData
 !insertmacro ElevateUAC
 !insertmacro GetLongPath
 !insertmacro GetPathFromString
@@ -295,8 +295,8 @@ Function .onInit
   ; SSE2 instruction set is available.
   System::Call "kernel32::IsProcessorFeaturePresent(i 10)i .R7"
 
-  ; Windows NT 6.0 (Vista/Server 2008) and lower are not supported.
-  ${Unless} ${AtLeastWin7}
+  ; Windows 8.1/Server 2012 R2 and lower are not supported.
+  ${Unless} ${AtLeastWin10}
     ${If} "$R7" == "0"
       strCpy $R7 "$(WARN_MIN_SUPPORTED_OSVER_CPU_MSG)"
     ${Else}
@@ -352,21 +352,6 @@ Function .onInit
 
   ; Used to determine if the default installation directory was used.
   StrCpy $InitialInstallDir "$INSTDIR"
-
-  ClearErrors
-  WriteRegStr HKLM "Software\Astian" "${BrandShortName}InstallerTest" \
-                   "Write Test"
-
-  ; Only display set as default when there is write access to HKLM and on Win7
-  ; and below.
-  ${If} ${Errors}
-  ${OrIf} ${AtLeastWin8}
-    StrCpy $CanSetAsDefault "false"
-  ${Else}
-    DeleteRegValue HKLM "Software\Astian" "${BrandShortName}InstallerTest"
-    StrCpy $CanSetAsDefault "true"
-  ${EndIf}
-  StrCpy $CheckboxSetAsDefault "0"
 
   ; Initialize the majority of variables except those that need to be reset
   ; when a page is displayed.
@@ -848,8 +833,8 @@ Function OnDownload
         ; Use a timer so the UI has a chance to update
         ${StartTimer} ${InstallIntervalMS} DisplayDownloadError
       ${Else}
-       CertCheck::CheckPETrustAndInfoAsync "$PLUGINSDIR\download.exe" \
-          "Open Source Developer, Ryosuke Asano" "Certum Code Signing 2021 CA"
+        CertCheck::CheckPETrustAndInfoAsync "$PLUGINSDIR\download.exe" \
+          "${CertNameDownload}" "${CertIssuerDownload}"
         ${StartTimer} ${DownloadIntervalMS} OnCertCheck
       ${EndIf}
     ${Else}
@@ -908,8 +893,6 @@ Function LaunchFullInstaller
   ; install in case it needs to perform operations that the stub doesn't
   ; know about.
   WriteINIStr "$PLUGINSDIR\${CONFIG_INI}" "Install" "InstallDirectoryPath" "$INSTDIR"
-  ; Don't create the QuickLaunch or Taskbar shortcut from the launched installer
-  WriteINIStr "$PLUGINSDIR\${CONFIG_INI}" "Install" "QuickLaunchShortcut" "false"
 
   ; Always create a start menu shortcut, so the user always has some way
   ; to access the application.
@@ -1062,6 +1045,15 @@ Function SendPing
       StrCpy $R6 "0"
     ${EndIf}
 
+    ; Capture the distribution ID and version if it exists.
+    ${If} ${FileExists} "$INSTDIR\distribution\distribution.ini"
+      ReadINIStr $DistributionID "$INSTDIR\distribution\distribution.ini" "Global" "id"
+      ReadINIStr $DistributionVersion "$INSTDIR\distribution\distribution.ini" "Global" "version"
+    ${Else}
+      StrCpy $DistributionID "0"
+      StrCpy $DistributionVersion "0"
+    ${EndIf}
+
     ; Whether installed into the default installation directory
     ${GetLongPath} "$INSTDIR" $R7
     ${GetLongPath} "$InitialInstallDir" $R8
@@ -1128,19 +1120,7 @@ Function SendPing
       ${EndIf}
     ${EndIf}
 
-    ${If} $CanSetAsDefault == "true"
-      ${If} $CheckboxSetAsDefault == "1"
-        StrCpy $R3 "2"
-      ${Else}
-        StrCpy $R3 "3"
-      ${EndIf}
-    ${Else}
-      ${If} ${AtLeastWin8}
-        StrCpy $R3 "1"
-      ${Else}
-        StrCpy $R3 "0"
-      ${EndIf}
-    ${EndIf}
+    StrCpy $R3 "1"
 
 !ifdef STUB_DEBUG
     MessageBox MB_OK "${BaseURLStubPing} \
@@ -1182,14 +1162,16 @@ Function SendPing
                       $\nDownload Server IP = $DownloadServerIP \
                       $\nPost-Signing Data = $PostSigningData \
                       $\nProfile cleanup prompt shown = $ProfileCleanupPromptType \
-                      $\nDid profile cleanup = $CheckboxCleanupProfile"
+                      $\nDid profile cleanup = $CheckboxCleanupProfile \
+                      $\nDistribution ID = $DistributionID \
+                      $\nDistribution Version = $DistributionVersion"
     ; The following will exit the installer
     SetAutoClose true
     StrCpy $R9 "2"
     Call RelativeGotoPage
 !else
     ${StartTimer} ${DownloadIntervalMS} OnPing
-    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData/$ProfileCleanupPromptType/$CheckboxCleanupProfile" \
+    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData/$ProfileCleanupPromptType/$CheckboxCleanupProfile/$DistributionID/$DistributionVersion" \
                   "$PLUGINSDIR\_temp" /END
 !endif
   ${Else}
@@ -1284,8 +1266,6 @@ Function FinishInstall
 
   ${CopyPostSigningData}
   Pop $PostSigningData
-
-  ${CopyProvenanceData}
 
   Call LaunchApp
 FunctionEnd
@@ -1749,7 +1729,7 @@ Function GetDownloadURL
   ${If} $ArchToInstall == ${ARCH_AMD64}
     StrCpy $0 "${URLStubDownloadAMD64}${URLStubDownloadAppend}"
   ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
-  
+    StrCpy $0 "${URLStubDownloadAArch64}${URLStubDownloadAppend}"
   ${Else}
     StrCpy $0 "${URLStubDownloadX86}${URLStubDownloadAppend}"
   ${EndIf}

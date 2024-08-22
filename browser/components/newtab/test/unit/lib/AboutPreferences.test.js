@@ -2,11 +2,8 @@
 import {
   AboutPreferences,
   PREFERENCES_LOADED_EVENT,
-} from "lib/AboutPreferences.jsm";
-import {
-  actionTypes as at,
-  actionCreators as ac,
-} from "common/Actions.sys.mjs";
+} from "lib/AboutPreferences.sys.mjs";
+import { actionTypes as at, actionCreators as ac } from "common/Actions.mjs";
 import { GlobalOverrider } from "test/unit/utils";
 
 describe("AboutPreferences Feed", () => {
@@ -57,17 +54,21 @@ describe("AboutPreferences Feed", () => {
       instance.onAction(action);
       assert.calledOnce(action._target.browser.ownerGlobal.openPreferences);
     });
-    it("should call .BrowserOpenAddonsMgr with the extension id on OPEN_WEBEXT_SETTINGS", () => {
+    it("should call .BrowserAddonUI.openAddonsMgr with the extension id on OPEN_WEBEXT_SETTINGS", () => {
       const action = {
         type: at.OPEN_WEBEXT_SETTINGS,
         data: "foo",
         _target: {
-          browser: { ownerGlobal: { BrowserOpenAddonsMgr: sinon.spy() } },
+          browser: {
+            ownerGlobal: {
+              BrowserAddonUI: { openAddonsMgr: sinon.spy() },
+            },
+          },
         },
       };
       instance.onAction(action);
       assert.calledWith(
-        action._target.browser.ownerGlobal.BrowserOpenAddonsMgr,
+        action._target.browser.ownerGlobal.BrowserAddonUI.openAddonsMgr,
         "addons://detail/foo"
       );
     });
@@ -125,8 +126,9 @@ describe("AboutPreferences Feed", () => {
       const [, structure] = stub.firstCall.args;
       assert.equal(structure[0].id, "search");
       assert.equal(structure[1].id, "topsites");
-      assert.equal(structure[2].id, "topstories");
-      assert.isEmpty(structure[2].rowsPref);
+      assert.equal(structure[2].id, "weather");
+      assert.equal(structure[3].id, "topstories");
+      assert.isEmpty(structure[3].rowsPref);
     });
   });
   describe("#renderPreferences", () => {
@@ -146,7 +148,7 @@ describe("AboutPreferences Feed", () => {
               },
             },
             createProcessingInstruction: sandbox.stub(),
-            createElementNS: sandbox.stub().callsFake((NS, el) => node),
+            createElementNS: sandbox.stub().callsFake(() => node),
             getElementById: sandbox.stub().returns(node),
             insertBefore: sandbox.stub().returnsArg(0),
             querySelector: sandbox

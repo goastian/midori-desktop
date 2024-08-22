@@ -15,10 +15,16 @@
 
   <panelmultiview id="identity-popup-multiView"
                   mainViewId="identity-popup-mainView">
-    <panelview id="identity-popup-mainView" class="PanelUI-subView" role="document" showheader="true">
+    <panelview id="identity-popup-mainView"
+               class="PanelUI-subView"
+               role="document"
+               mainview-with-header="true">
+      <!-- The panel header text value changes dynamically by browser-siteIdentity.js,
+         - that's why the panel header box needs to remain hardcoded in the markup.
+         - instead of being handled by PanelMultiView.sys.mjs. -->
       <box id="identity-popup-mainView-panel-header" class="panel-header">
         <html:h1>
-          <html:span id="identity-popup-mainView-panel-header-span" role="heading" aria-level="1"/>
+          <html:span id="identity-popup-mainView-panel-header-span"/>
         </html:h1>
       </box>
       <toolbarseparator/>
@@ -36,6 +42,7 @@
                         when-connection="net-error-page" data-l10n-id="identity-connection-failure"></label>
             <label when-connection="chrome" data-l10n-id="identity-connection-internal"></label>
             <label when-connection="file" data-l10n-id="identity-connection-file"></label>
+            <label when-connection="associated" data-l10n-id="identity-connection-associated"></label>
             <label when-connection="extension" data-l10n-id="identity-extension-page"></label>
             <label class="identity-popup-connection-secure upgraded" when-httpsonlystatus="upgraded failed-sub"
               data-l10n-id="identity-https-only-connection-upgraded"></label>
@@ -63,20 +70,20 @@
             </vbox>
 
             <vbox id="identity-popup-security-httpsonlymode" when-httpsonlystatus="exception upgraded failed-top failed-sub">
-              <label flex="1" data-l10n-id="identity-https-only-label"></label>
+              <label flex="1" data-l10n-id="identity-https-only-label2"></label>
               <menulist id="identity-popup-security-httpsonlymode-menulist"
                         oncommand="gIdentityHandler.changeHttpsOnlyPermission();" sizetopopup="none">
                 <menupopup>
                   <menuitem value="0" data-l10n-id="identity-https-only-dropdown-on" />
-                  <menuitem value="1" data-l10n-id="identity-https-only-dropdown-off" />
-                  <menuitem value="2" id="identity-popup-security-menulist-tempitem"
-                            data-l10n-id="identity-https-only-dropdown-off-temporarily" />
+                  <menuitem value="1" data-l10n-id="identity-https-only-dropdown-off"
+                            id="identity-popup-security-menulist-off-item" />
+                  <menuitem value="2" data-l10n-id="identity-https-only-dropdown-off-temporarily" />
                 </menupopup>
               </menulist>
               <vbox id="identity-popup-security-httpsonlymode-info">
-                <description when-httpsonlystatus="exception" flex="1" data-l10n-id="identity-https-only-info-turn-on2">
+                <description when-httpsonlystatus="exception" flex="1" data-l10n-id="identity-https-only-info-turn-on3">
                 </description>
-                <description when-httpsonlystatus="failed-sub" flex="1" data-l10n-id="identity-https-only-info-turn-off2">
+                <description when-httpsonlystatus="failed-sub" flex="1" data-l10n-id="identity-https-only-info-turn-off3">
                 </description>
                 <description when-httpsonlystatus="failed-top" flex="1" data-l10n-id="identity-https-only-info-no-upgrade">
                 </description>

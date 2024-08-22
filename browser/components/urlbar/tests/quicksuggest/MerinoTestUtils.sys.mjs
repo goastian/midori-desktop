@@ -4,13 +4,12 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
 });
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+import { HttpServer } from "resource://testing-common/httpd.sys.mjs";
 
 // The following properties and methods are copied from the test scope to the
 // test utils object so they can be easily accessed. Be careful about assuming a
@@ -59,6 +58,8 @@ const WEATHER_KEYWORD = "weather";
 
 const WEATHER_RS_DATA = {
   keywords: [WEATHER_KEYWORD],
+  min_keyword_length: 3,
+  score: "0.29",
 };
 
 const WEATHER_SUGGESTION = {
@@ -86,6 +87,21 @@ const WEATHER_SUGGESTION = {
 // We set the weather suggestion fetch interval to an absurdly large value so it
 // absolutely will not fire during tests.
 const WEATHER_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const GEOLOCATION_DATA = {
+  provider: "geolocation",
+  title: "",
+  url: "https://merino.services.mozilla.com/",
+  is_sponsored: false,
+  score: 0,
+  custom_details: {
+    geolocation: {
+      country: "Japan",
+      region: "Kanagawa",
+      city: "Yokohama",
+    },
+  },
+};
 
 /**
  * Test utils for Merino.
@@ -151,6 +167,14 @@ class _MerinoTestUtils {
    */
   get SEARCH_PARAMS() {
     return SEARCH_PARAMS;
+  }
+
+  /**
+   * @returns {object}
+   *   Mock geolocation data.
+   */
+  get GEOLOCATION() {
+    return { ...GEOLOCATION_DATA.custom_details.geolocation };
   }
 
   /**
@@ -296,14 +320,21 @@ class _MerinoTestUtils {
     }
 
     // Check the latency stopwatch.
-    this.Assert.equal(
-      TelemetryStopwatch.running(
-        HISTOGRAM_LATENCY,
-        client._test_latencyStopwatchInstance
-      ),
-      latencyStopwatchRunning,
-      "Latency stopwatch running as expected"
-    );
+    if (!client) {
+      this.Assert.ok(
+        !latencyStopwatchRunning,
+        "Client is null, latency stopwatch should not be expected to be running"
+      );
+    } else {
+      this.Assert.equal(
+        TelemetryStopwatch.running(
+          HISTOGRAM_LATENCY,
+          client._test_latencyStopwatchInstance
+        ),
+        latencyStopwatchRunning,
+        "Latency stopwatch running as expected"
+      );
+    }
 
     // Clear histograms.
     for (let histogramArray of Object.values(histograms)) {
@@ -317,29 +348,37 @@ class _MerinoTestUtils {
    * Initializes the quick suggest weather feature and mock Merino server.
    */
   async initWeather() {
+    this.info("MockMerinoServer initializing weather, starting server");
     await this.server.start();
+    this.info("MockMerinoServer initializing weather, server now started");
     this.server.response.body.suggestions = [WEATHER_SUGGESTION];
 
     lazy.QuickSuggest.weather._test_fetchIntervalMs = WEATHER_FETCH_INTERVAL_MS;
 
-    // Enabling weather will trigger a fetch. Wait for it to finish so the
-    // suggestion is ready when this function returns.
-    let fetchPromise = lazy.QuickSuggest.weather.waitForFetches();
+    // Enabling weather will trigger a fetch. Queue another fetch and await it
+    // so no fetches are ongoing when this function returns.
+    this.info("MockMerinoServer initializing weather, setting prefs");
     lazy.UrlbarPrefs.set("weather.featureGate", true);
     lazy.UrlbarPrefs.set("suggest.weather", true);
-    await fetchPromise;
-
-    this.Assert.equal(
-      lazy.QuickSuggest.weather._test_pendingFetchCount,
-      0,
-      "No pending fetches after awaiting initial fetch"
+    this.info(
+      "MockMerinoServer initializing weather, done setting prefs, starting fetch"
     );
+    await lazy.QuickSuggest.weather._test_fetch();
+    this.info("MockMerinoServer initializing weather, done awaiting fetch");
 
     this.registerCleanupFunction?.(async () => {
       lazy.UrlbarPrefs.clear("weather.featureGate");
       lazy.UrlbarPrefs.clear("suggest.weather");
       lazy.QuickSuggest.weather._test_fetchIntervalMs = -1;
     });
+  }
+
+  /**
+   * Initializes the mock Merino geolocation server.
+   */
+  async initGeolocation() {
+    await this.server.start();
+    this.server.response.body.suggestions = [GEOLOCATION_DATA];
   }
 
   #initDepth = 0;
@@ -510,14 +549,15 @@ class MockMerinoServer {
         suggestions: [
           {
             provider: "adm",
-            full_keyword: "full_keyword",
-            title: "title",
-            url: "url",
+            full_keyword: "amp",
+            title: "Amp Suggestion",
+            url: "http://example.com/amp",
             icon: null,
-            impression_url: "impression_url",
-            click_url: "click_url",
+            impression_url: "http://example.com/amp-impression",
+            click_url: "http://example.com/amp-click",
             block_id: 1,
-            advertiser: "advertiser",
+            advertiser: "Amp",
+            iab_category: "22 - Shopping",
             is_sponsored: true,
             score: 1,
           },
@@ -644,7 +684,7 @@ class MockMerinoServer {
    */
   waitForNextRequest() {
     if (!this.#nextRequestDeferred) {
-      this.#nextRequestDeferred = lazy.PromiseUtils.defer();
+      this.#nextRequestDeferred = Promise.withResolvers();
     }
     return this.#nextRequestDeferred.promise;
   }
@@ -715,7 +755,7 @@ class MockMerinoServer {
         JSON.stringify({ delayedResponseID, delay: response.delay })
     );
 
-    let deferred = lazy.PromiseUtils.defer();
+    let deferred = Promise.withResolvers();
     let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     let record = { timer, resolve: deferred.resolve };
     this.#delayedResponseRecords.add(record);

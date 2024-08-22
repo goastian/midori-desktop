@@ -1,143 +1,34 @@
 "use strict";
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "ObjectUtils",
-  "resource://gre/modules/ObjectUtils.jsm"
-);
 ChromeUtils.defineESModuleGetters(this, {
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
+
+  DiscoveryStreamFeed:
+    "resource://activity-stream/lib/DiscoveryStreamFeed.sys.mjs",
+
+  FeatureCallout: "resource:///modules/asrouter/FeatureCallout.sys.mjs",
+
+  FeatureCalloutBroker:
+    "resource:///modules/asrouter/FeatureCalloutBroker.sys.mjs",
+
+  FeatureCalloutMessages:
+    "resource:///modules/asrouter/FeatureCalloutMessages.sys.mjs",
+
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
+  QueryCache: "resource:///modules/asrouter/ASRouterTargeting.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "QueryCache",
-  "resource://activity-stream/lib/ASRouterTargeting.jsm"
-);
-// eslint-disable-next-line no-unused-vars
-const { FxAccounts } = ChromeUtils.importESModule(
-  "resource://gre/modules/FxAccounts.sys.mjs"
-);
+
 // We import sinon here to make it available across all mochitest test files
-// eslint-disable-next-line no-unused-vars
 const { sinon } = ChromeUtils.importESModule(
   "resource://testing-common/Sinon.sys.mjs"
 );
-// Set the content pref to make it available across tests
-const ABOUT_WELCOME_OVERRIDE_CONTENT_PREF = "browser.aboutwelcome.screens";
-// Test differently for windows 7 as theme screens are removed.
-// eslint-disable-next-line no-unused-vars
-const win7Content = AppConstants.isPlatformAndVersionAtMost("win", "6.1");
 
 function popPrefs() {
   return SpecialPowers.popPrefEnv();
 }
 function pushPrefs(...prefs) {
   return SpecialPowers.pushPrefEnv({ set: prefs });
-}
-// eslint-disable-next-line no-unused-vars
-async function getAboutWelcomeParent(browser) {
-  let windowGlobalParent = browser.browsingContext.currentWindowGlobal;
-  return windowGlobalParent.getActor("AboutWelcome");
-}
-// eslint-disable-next-line no-unused-vars
-async function setAboutWelcomeMultiStage(value = "") {
-  return pushPrefs([ABOUT_WELCOME_OVERRIDE_CONTENT_PREF, value]);
-}
-
-/**
- * Setup functions to test welcome UI
- */
-// eslint-disable-next-line no-unused-vars
-async function test_screen_content(
-  browser,
-  experiment,
-  expectedSelectors = [],
-  unexpectedSelectors = []
-) {
-  await ContentTask.spawn(
-    browser,
-    { expectedSelectors, experiment, unexpectedSelectors },
-    async ({
-      expectedSelectors: expected,
-      experiment: experimentName,
-      unexpectedSelectors: unexpected,
-    }) => {
-      for (let selector of expected) {
-        await ContentTaskUtils.waitForCondition(
-          () => content.document.querySelector(selector),
-          `Should render ${selector} in ${experimentName}`
-        );
-      }
-      for (let selector of unexpected) {
-        ok(
-          !content.document.querySelector(selector),
-          `Should not render ${selector} in ${experimentName}`
-        );
-      }
-
-      if (experimentName === "home") {
-        Assert.equal(
-          content.document.location.href,
-          "about:home",
-          "Navigated to about:home"
-        );
-      } else {
-        Assert.equal(
-          content.document.location.href,
-          "about:welcome",
-          "Navigated to a welcome screen"
-        );
-      }
-    }
-  );
-}
-
-// eslint-disable-next-line no-unused-vars
-async function test_element_styles(
-  browser,
-  elementSelector,
-  expectedStyles = {},
-  unexpectedStyles = {}
-) {
-  await ContentTask.spawn(
-    browser,
-    [elementSelector, expectedStyles, unexpectedStyles],
-    async ([selector, expected, unexpected]) => {
-      const element = await ContentTaskUtils.waitForCondition(() =>
-        content.document.querySelector(selector)
-      );
-      const computedStyles = content.window.getComputedStyle(element);
-      Object.entries(expected).forEach(([attr, val]) =>
-        is(
-          computedStyles[attr],
-          val,
-          `${selector} should have computed ${attr} of ${val}`
-        )
-      );
-      Object.entries(unexpected).forEach(([attr, val]) =>
-        isnot(
-          computedStyles[attr],
-          val,
-          `${selector} should not have computed ${attr} of ${val}`
-        )
-      );
-    }
-  );
-}
-
-// eslint-disable-next-line no-unused-vars
-async function onButtonClick(browser, elementId) {
-  await ContentTask.spawn(
-    browser,
-    { elementId },
-    async ({ elementId: buttonId }) => {
-      let button = await ContentTaskUtils.waitForCondition(
-        () => content.document.querySelector(buttonId),
-        buttonId
-      );
-      button.click();
-    }
-  );
 }
 
 // Toggle the feed off and on as a workaround to read the new prefs.
@@ -152,7 +43,6 @@ async function toggleTopsitesPref() {
   ]);
 }
 
-// eslint-disable-next-line no-unused-vars
 async function setDefaultTopSites() {
   // The pref for TopSites is empty by default.
   await pushPrefs([
@@ -166,7 +56,6 @@ async function setDefaultTopSites() {
   ]);
 }
 
-// eslint-disable-next-line no-unused-vars
 async function setTestTopSites() {
   await pushPrefs([
     "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts",
@@ -181,30 +70,6 @@ async function setTestTopSites() {
   await toggleTopsitesPref();
 }
 
-// eslint-disable-next-line no-unused-vars
-async function setAboutWelcomePref(value) {
-  return pushPrefs(["browser.aboutwelcome.enabled", value]);
-}
-
-// eslint-disable-next-line no-unused-vars
-async function openMRAboutWelcome() {
-  await setAboutWelcomePref(true); // NB: Calls pushPrefs
-  let tab = await BrowserTestUtils.openNewForegroundTab(
-    gBrowser,
-    "about:welcome",
-    true
-  );
-
-  return {
-    browser: tab.linkedBrowser,
-    cleanup: async () => {
-      BrowserTestUtils.removeTab(tab);
-      await popPrefs(); // for setAboutWelcomePref()
-    },
-  };
-}
-
-// eslint-disable-next-line no-unused-vars
 async function clearHistoryAndBookmarks() {
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
@@ -228,17 +93,6 @@ async function waitForPreloaded(browser) {
 }
 
 /**
- * Helper function to navigate and wait for page to load
- * https://searchfox.org/mozilla-central/rev/b2716c233e9b4398fc5923cbe150e7f83c7c6c5b/testing/mochitest/BrowserTestUtils/BrowserTestUtils.jsm#383
- */
-// eslint-disable-next-line no-unused-vars
-async function waitForUrlLoad(url) {
-  let browser = gBrowser.selectedBrowser;
-  BrowserTestUtils.loadURIString(browser, url);
-  await BrowserTestUtils.browserLoaded(browser, false, url);
-}
-
-/**
  * Helper to force the HighlightsFeed to update.
  */
 function refreshHighlightsFeed() {
@@ -257,7 +111,6 @@ function refreshHighlightsFeed() {
  * Helper to populate the Highlights section with bookmark cards.
  * @param count Number of items to add.
  */
-// eslint-disable-next-line no-unused-vars
 async function addHighlightsBookmarks(count) {
   const bookmarks = new Array(count).fill(null).map((entry, i) => ({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
@@ -316,7 +169,6 @@ function addContentHelpers() {
  * @param browserURL {optional String}
  *   {String} This parameter is used to explicitly specify URL opened in new tab
  */
-// eslint-disable-next-line no-unused-vars
 function test_newtab(testInfo, browserURL = "about:newtab") {
   // Extract any test parts or default to just the single content task
   let { before, test: contentTask, after } = testInfo;
@@ -381,8 +233,8 @@ function test_newtab(testInfo, browserURL = "about:newtab") {
       await after(contentResult);
     } finally {
       // Clean up for next tests
-      await scopedPopPrefs();
       BrowserTestUtils.removeTab(tab);
+      await scopedPopPrefs();
     }
   };
 

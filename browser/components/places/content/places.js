@@ -435,6 +435,11 @@ var PlacesOrganizer = {
     if (!ContentArea.currentViewOptions.showDetailsPane) {
       return;
     }
+    // _fillDetailsPane is only invoked when the activeElement is a tree,
+    // there's no other case where we need to update the details pane. This
+    // means it's not possible that while some input field in the panel is
+    // focused we try to update the panel contents causing potential dataloss
+    // of the user's input.
     let view = PlacesUIUtils.getViewForNode(document.activeElement);
     if (view) {
       let selectedNodes = view.selectedNode
@@ -495,7 +500,7 @@ var PlacesOrganizer = {
     };
 
     fp.init(
-      window,
+      window.browsingContext,
       PlacesUIUtils.promptLocalization.formatValueSync(
         "places-bookmarks-import"
       ),
@@ -520,7 +525,7 @@ var PlacesOrganizer = {
     };
 
     fp.init(
-      window,
+      window.browsingContext,
       PlacesUIUtils.promptLocalization.formatValueSync(
         "places-bookmarks-export"
       ),
@@ -633,7 +638,7 @@ var PlacesOrganizer = {
         "places-bookmarks-restore-title",
         "places-bookmarks-restore-filter-name",
       ]);
-    fp.init(window, title, Ci.nsIFilePicker.modeOpen);
+    fp.init(window.browsingContext, title, Ci.nsIFilePicker.modeOpen);
     fp.appendFilter(filterName, RESTORE_FILEPICKER_FILTER_EXT);
     fp.appendFilters(Ci.nsIFilePicker.filterAll);
     fp.displayDirectory = backupsDir;
@@ -706,7 +711,7 @@ var PlacesOrganizer = {
         "places-bookmarks-backup-title",
         "places-bookmarks-restore-filter-name",
       ]);
-    fp.init(window, title, Ci.nsIFilePicker.modeSave);
+    fp.init(window.browsingContext, title, Ci.nsIFilePicker.modeSave);
     fp.appendFilter(filterName, RESTORE_FILEPICKER_FILTER_EXT);
     fp.defaultString = PlacesBackups.getFilenameForDate();
     fp.defaultExtension = "json";
@@ -725,32 +730,19 @@ var PlacesOrganizer = {
 
     let selectedNode = aNodeList.length == 1 ? aNodeList[0] : null;
 
-    // If an input within a panel is focused, force-blur it so its contents
-    // are saved
-    if (gEditItemOverlay.itemId != -1) {
-      var focusedElement = document.commandDispatcher.focusedElement;
-      if (
-        (HTMLInputElement.isInstance(focusedElement) ||
-          HTMLTextAreaElement.isInstance(focusedElement)) &&
-        /^editBMPanel.*/.test(focusedElement.parentNode.parentNode.id)
-      ) {
-        focusedElement.blur();
-      }
-
-      // don't update the panel if we are already editing this node unless we're
-      // in multi-edit mode
-      if (selectedNode) {
-        let concreteGuid = PlacesUtils.getConcreteItemGuid(selectedNode);
-        var nodeIsSame =
-          gEditItemOverlay.itemId == selectedNode.itemId ||
-          gEditItemOverlay._paneInfo.itemGuid == concreteGuid ||
-          (selectedNode.itemId == -1 &&
-            gEditItemOverlay.uri &&
-            gEditItemOverlay.uri == selectedNode.uri);
-        if (nodeIsSame && !infoBox.hidden && !gEditItemOverlay.multiEdit) {
-          return;
-        }
-      }
+    // Don't update the panel if it's already editing this node, unless we're
+    // in multi-edit mode.
+    if (
+      selectedNode &&
+      !gEditItemOverlay.multiEdit &&
+      ((gEditItemOverlay.concreteGuid &&
+        gEditItemOverlay.concreteGuid ==
+          PlacesUtils.getConcreteItemGuid(selectedNode)) ||
+        (!selectedNode.bookmarkGuid &&
+          gEditItemOverlay.uri &&
+          gEditItemOverlay.uri == selectedNode.uri))
+    ) {
+      return;
     }
 
     // Clean up the panel before initing it again.
@@ -1176,7 +1168,7 @@ var ViewMenu = {
         menuitem.setAttribute("type", "radio");
         menuitem.setAttribute("name", "columns");
         // This column is the sort key. Its item is checked.
-        if (column.getAttribute("sortDirection") != "") {
+        if (column.hasAttribute("sortDirection")) {
           menuitem.setAttribute("checked", "true");
         }
       } else if (type == "checkbox") {

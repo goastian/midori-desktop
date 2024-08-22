@@ -16,7 +16,7 @@ export class StartupContentSubframeParent extends JSWindowActorParent {
 }
 
 export class StartupContentSubframeChild extends JSWindowActorChild {
-  async handleEvent(event) {
+  async handleEvent() {
     // When the remote subframe is loaded, an event will be fired to this actor,
     // which will cause us to send the `LoadedScripts` message to the parent
     // process.
@@ -31,19 +31,19 @@ export class StartupContentSubframeChild extends JSWindowActorChild {
     );
     let collectStacks = AppConstants.NIGHTLY_BUILD || AppConstants.DEBUG;
 
-    let modules = {};
+    let modules = new Map();
     for (let module of Cu.loadedJSModules) {
-      modules[module] = collectStacks ? Cu.getModuleImportStack(module) : "";
+      modules.set(module, collectStacks ? Cu.getModuleImportStack(module) : "");
     }
     for (let module of Cu.loadedESModules) {
-      modules[module] = collectStacks ? Cu.getModuleImportStack(module) : "";
+      modules.set(module, collectStacks ? Cu.getModuleImportStack(module) : "");
     }
 
-    let services = {};
+    let services = new Map();
     for (let contractID of Object.keys(Cc)) {
       try {
         if (Cm.isServiceInstantiatedByContractID(contractID, Ci.nsISupports)) {
-          services[contractID] = "";
+          services.set(contractID, "");
         }
       } catch (e) {}
     }

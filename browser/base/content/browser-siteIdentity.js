@@ -91,6 +91,10 @@ var gIdentityHandler = {
     );
   },
 
+  get _isAssociatedIdentity() {
+    return this._state & Ci.nsIWebProgressListener.STATE_IDENTITY_ASSOCIATED;
+  },
+
   get _isMixedActiveContentLoaded() {
     return (
       this._state & Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT
@@ -119,6 +123,13 @@ var gIdentityHandler = {
     return (
       this._state &
       Ci.nsIWebProgressListener.STATE_HTTPS_ONLY_MODE_UPGRADE_FAILED
+    );
+  },
+
+  get _isContentHttpsFirstModeUpgraded() {
+    return (
+      this._state &
+      Ci.nsIWebProgressListener.STATE_HTTPS_ONLY_MODE_UPGRADED_FIRST
     );
   },
 
@@ -166,7 +177,6 @@ var gIdentityHandler = {
 
   _popupInitialized: false,
   _initializePopup() {
-    window.ensureCustomElements("moz-support-link");
     if (!this._popupInitialized) {
       let wrapper = document.getElementById("template-identity-popup");
       wrapper.replaceWith(wrapper.content);
@@ -221,16 +231,22 @@ var gIdentityHandler = {
       "identity-popup-securityView"
     ));
   },
+  get _identityPopupHttpsOnlyMode() {
+    delete this._identityPopupHttpsOnlyMode;
+    return (this._identityPopupHttpsOnlyMode = document.getElementById(
+      "identity-popup-security-httpsonlymode"
+    ));
+  },
   get _identityPopupHttpsOnlyModeMenuList() {
     delete this._identityPopupHttpsOnlyModeMenuList;
     return (this._identityPopupHttpsOnlyModeMenuList = document.getElementById(
       "identity-popup-security-httpsonlymode-menulist"
     ));
   },
-  get _identityPopupHttpsOnlyModeMenuListTempItem() {
-    delete this._identityPopupHttpsOnlyModeMenuListTempItem;
-    return (this._identityPopupHttpsOnlyModeMenuListTempItem =
-      document.getElementById("identity-popup-security-menulist-tempitem"));
+  get _identityPopupHttpsOnlyModeMenuListOffItem() {
+    delete this._identityPopupHttpsOnlyModeMenuListOffItem;
+    return (this._identityPopupHttpsOnlyModeMenuListOffItem =
+      document.getElementById("identity-popup-security-menulist-off-item"));
   },
   get _identityPopupSecurityEVContentOwner() {
     delete this._identityPopupSecurityEVContentOwner;
@@ -291,25 +307,6 @@ var gIdentityHandler = {
       "identity-popup-clear-sitedata-footer"
     ));
   },
-
-  get _insecureConnectionIconEnabled() {
-    delete this._insecureConnectionIconEnabled;
-    XPCOMUtils.defineLazyPreferenceGetter(
-      this,
-      "_insecureConnectionIconEnabled",
-      "security.insecure_connection_icon.enabled"
-    );
-    return this._insecureConnectionIconEnabled;
-  },
-  get _insecureConnectionIconPBModeEnabled() {
-    delete this._insecureConnectionIconPBModeEnabled;
-    XPCOMUtils.defineLazyPreferenceGetter(
-      this,
-      "_insecureConnectionIconPBModeEnabled",
-      "security.insecure_connection_icon.pbmode.enabled"
-    );
-    return this._insecureConnectionIconPBModeEnabled;
-  },
   get _insecureConnectionTextEnabled() {
     delete this._insecureConnectionTextEnabled;
     XPCOMUtils.defineLazyPreferenceGetter(
@@ -328,16 +325,6 @@ var gIdentityHandler = {
     );
     return this._insecureConnectionTextPBModeEnabled;
   },
-  get _protectionsPanelEnabled() {
-    delete this._protectionsPanelEnabled;
-    XPCOMUtils.defineLazyPreferenceGetter(
-      this,
-      "_protectionsPanelEnabled",
-      "browser.protections_panel.enabled",
-      false
-    );
-    return this._protectionsPanelEnabled;
-  },
   get _httpsOnlyModeEnabled() {
     delete this._httpsOnlyModeEnabled;
     XPCOMUtils.defineLazyPreferenceGetter(
@@ -355,6 +342,54 @@ var gIdentityHandler = {
       "dom.security.https_only_mode_pbm"
     );
     return this._httpsOnlyModeEnabledPBM;
+  },
+  get _httpsFirstModeEnabled() {
+    delete this._httpsFirstModeEnabled;
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "_httpsFirstModeEnabled",
+      "dom.security.https_first"
+    );
+    return this._httpsFirstModeEnabled;
+  },
+  get _httpsFirstModeEnabledPBM() {
+    delete this._httpsFirstModeEnabledPBM;
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "_httpsFirstModeEnabledPBM",
+      "dom.security.https_first_pbm"
+    );
+    return this._httpsFirstModeEnabledPBM;
+  },
+  get _schemelessHttpsFirstModeEnabled() {
+    delete this._schemelessHttpsFirstModeEnabled;
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "_schemelessHttpsFirstModeEnabled",
+      "dom.security.https_first_schemeless"
+    );
+    return this._schemelessHttpsFirstModeEnabled;
+  },
+
+  _isHttpsOnlyModeActive(isWindowPrivate) {
+    return (
+      this._httpsOnlyModeEnabled ||
+      (isWindowPrivate && this._httpsOnlyModeEnabledPBM)
+    );
+  },
+  _isHttpsFirstModeActive(isWindowPrivate) {
+    return (
+      !this._isHttpsOnlyModeActive(isWindowPrivate) &&
+      (this._httpsFirstModeEnabled ||
+        (isWindowPrivate && this._httpsFirstModeEnabledPBM))
+    );
+  },
+  _isSchemelessHttpsFirstModeActive(isWindowPrivate) {
+    return (
+      !this._isHttpsOnlyModeActive(isWindowPrivate) &&
+      !this._isHttpsFirstModeActive(isWindowPrivate) &&
+      this._schemelessHttpsFirstModeEnabled
+    );
   },
 
   /**
@@ -420,7 +455,9 @@ var gIdentityHandler = {
     );
 
     // Reload the page with the content unblocked
-    BrowserReloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
+    BrowserCommands.reloadWithFlags(
+      Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE
+    );
     if (this._popupInitialized) {
       PanelMultiView.hidePopup(this._identityPopup);
     }
@@ -439,7 +476,7 @@ var gIdentityHandler = {
       "mixed-content"
     );
     if (reload) {
-      BrowserReload();
+      BrowserCommands.reload();
     }
     if (this._popupInitialized) {
       PanelMultiView.hidePopup(this._identityPopup);
@@ -460,7 +497,7 @@ var gIdentityHandler = {
       port,
       gBrowser.contentPrincipal.originAttributes
     );
-    BrowserReloadSkipCache();
+    BrowserCommands.reloadSkipCache();
     if (this._popupInitialized) {
       PanelMultiView.hidePopup(this._identityPopup);
     }
@@ -468,11 +505,24 @@ var gIdentityHandler = {
 
   /**
    * Gets the current HTTPS-Only mode permission for the current page.
-   * Values are the same as in #identity-popup-security-httpsonlymode-menulist
+   * Values are the same as in #identity-popup-security-httpsonlymode-menulist,
+   * -1 indicates a incompatible scheme on the current URI.
    */
   _getHttpsOnlyPermission() {
+    let uri = gBrowser.currentURI;
+    if (uri instanceof Ci.nsINestedURI) {
+      uri = uri.QueryInterface(Ci.nsINestedURI).innermostURI;
+    }
+    if (!uri.schemeIs("http") && !uri.schemeIs("https")) {
+      return -1;
+    }
+    uri = uri.mutate().setScheme("http").finalize();
+    const principal = Services.scriptSecurityManager.createContentPrincipal(
+      uri,
+      gBrowser.contentPrincipal.originAttributes
+    );
     const { state } = SitePermissions.getForPrincipal(
-      gBrowser.contentPrincipal,
+      principal,
       "https-only-load-insecure"
     );
     switch (state) {
@@ -493,6 +543,13 @@ var gIdentityHandler = {
     // Note: value and permission association is laid out
     //       in _getHttpsOnlyPermission
     const oldValue = this._getHttpsOnlyPermission();
+    if (oldValue < 0) {
+      console.error(
+        "Did not update HTTPS-Only permission since scheme is incompatible"
+      );
+      return;
+    }
+
     let newValue = parseInt(
       this._identityPopupHttpsOnlyModeMenuList.selectedItem.value,
       10
@@ -503,26 +560,18 @@ var gIdentityHandler = {
       return;
     }
 
-    // Permissions set in PMB get deleted anyway, but to make sure, let's make
-    // the permission session-only.
-    if (newValue === 1 && PrivateBrowsingUtils.isWindowPrivate(window)) {
-      newValue = 2;
+    // We always want to set the exception for the HTTP version of the current URI,
+    // since when we check wether we should upgrade a request, we are checking permissons
+    // for the HTTP principal (Bug 1757297).
+    let newURI = gBrowser.currentURI;
+    if (newURI instanceof Ci.nsINestedURI) {
+      newURI = newURI.QueryInterface(Ci.nsINestedURI).innermostURI;
     }
-
-    // Usually we want to set the permission for the current site and therefore
-    // the current principal...
-    let principal = gBrowser.contentPrincipal;
-    // ...but if we're on the HTTPS-Only error page, the content-principal is
-    // for HTTPS but. We always want to set the exception for HTTP. (Code should
-    // be almost identical to the one in AboutHttpsOnlyErrorParent.sys.mjs)
-    let newURI;
-    if (this._isAboutHttpsOnlyErrorPage) {
-      newURI = gBrowser.currentURI.mutate().setScheme("http").finalize();
-      principal = Services.scriptSecurityManager.createContentPrincipal(
-        newURI,
-        gBrowser.contentPrincipal.originAttributes
-      );
-    }
+    newURI = newURI.mutate().setScheme("http").finalize();
+    const principal = Services.scriptSecurityManager.createContentPrincipal(
+      newURI,
+      gBrowser.contentPrincipal.originAttributes
+    );
 
     // Set or remove the permission
     if (newValue === 0) {
@@ -563,7 +612,7 @@ var gIdentityHandler = {
     // Because "off" is 1 and "off temporarily" is 2, we can just check if the
     // sum of newValue and oldValue is 3.
     if (newValue + oldValue !== 3) {
-      BrowserReloadSkipCache();
+      BrowserCommands.reloadSkipCache();
       if (this._popupInitialized) {
         PanelMultiView.hidePopup(this._identityPopup);
       }
@@ -744,13 +793,7 @@ var gIdentityHandler = {
    * built-in (returns false) or imported (returns true).
    */
   _hasCustomRoot() {
-    let issuerCert = null;
-    issuerCert =
-      this._secInfo.succeededCertChain[
-        this._secInfo.succeededCertChain.length - 1
-      ];
-
-    return !issuerCert.isBuiltInRoot;
+    return !this._secInfo.isBuiltCertChainRootBuiltInRoot;
   },
 
   /**
@@ -773,6 +816,11 @@ var gIdentityHandler = {
   _refreshIdentityIcons() {
     let icon_label = "";
     let tooltip = "";
+
+    let warnTextOnInsecure =
+      this._insecureConnectionTextEnabled ||
+      (this._insecureConnectionTextPBModeEnabled &&
+        PrivateBrowsingUtils.isWindowPrivate(window));
 
     if (this._isSecureInternalUI) {
       // This is a secure internal Firefox page.
@@ -806,6 +854,10 @@ var gIdentityHandler = {
 
       if (this._isMixedActiveContentLoaded) {
         this._identityBox.classList.add("mixedActiveContent");
+        if (UrlbarPrefs.get("trimHttps") && warnTextOnInsecure) {
+          icon_label = gNavigatorBundle.getString("identity.notSecure.label");
+          this._identityBox.classList.add("notSecureText");
+        }
       } else if (this._isMixedActiveContentBlocked) {
         this._identityBox.classList.add(
           "mixedDisplayContentLoadedActiveBlocked"
@@ -824,28 +876,22 @@ var gIdentityHandler = {
     } else if (this._isAboutHttpsOnlyErrorPage) {
       // We show a not secure lock icon for 'about:httpsonlyerror' page.
       this._identityBox.className = "httpsOnlyErrorPage";
-    } else if (this._isAboutNetErrorPage || this._isAboutBlockedPage) {
-      // Network errors and blocked pages get a more neutral icon
+    } else if (
+      this._isAboutNetErrorPage ||
+      this._isAboutBlockedPage ||
+      this._isAssociatedIdentity
+    ) {
+      // Network errors, blocked pages, and pages associated
+      // with another page get a more neutral icon
       this._identityBox.className = "unknownIdentity";
     } else if (this._isPotentiallyTrustworthy) {
       // This is a local resource (and shouldn't be marked insecure).
       this._identityBox.className = "localResource";
     } else {
       // This is an insecure connection.
-      let warnOnInsecure =
-        this._insecureConnectionIconEnabled ||
-        (this._insecureConnectionIconPBModeEnabled &&
-          PrivateBrowsingUtils.isWindowPrivate(window));
-      let className = warnOnInsecure ? "notSecure" : "unknownIdentity";
+      let className = "notSecure";
       this._identityBox.className = className;
-      tooltip = warnOnInsecure
-        ? gNavigatorBundle.getString("identity.notSecure.tooltip")
-        : "";
-
-      let warnTextOnInsecure =
-        this._insecureConnectionTextEnabled ||
-        (this._insecureConnectionTextPBModeEnabled &&
-          PrivateBrowsingUtils.isWindowPrivate(window));
+      tooltip = gNavigatorBundle.getString("identity.notSecure.tooltip");
       if (warnTextOnInsecure) {
         icon_label = gNavigatorBundle.getString("identity.notSecure.label");
         this._identityBox.classList.add("notSecureText");
@@ -949,6 +995,8 @@ var gIdentityHandler = {
       connection = "not-secure";
     } else if (this._isAboutNetErrorPage) {
       connection = "net-error-page";
+    } else if (this._isAssociatedIdentity) {
+      connection = "associated";
     } else if (this._isPotentiallyTrustworthy) {
       connection = "file";
     }
@@ -1000,35 +1048,47 @@ var gIdentityHandler = {
 
     // If HTTPS-Only Mode is enabled, check the permission status
     const privateBrowsingWindow = PrivateBrowsingUtils.isWindowPrivate(window);
+    const isHttpsOnlyModeActive = this._isHttpsOnlyModeActive(
+      privateBrowsingWindow
+    );
+    const isHttpsFirstModeActive = this._isHttpsFirstModeActive(
+      privateBrowsingWindow
+    );
+    const isSchemelessHttpsFirstModeActive =
+      this._isSchemelessHttpsFirstModeActive(privateBrowsingWindow);
     let httpsOnlyStatus = "";
     if (
-      this._httpsOnlyModeEnabled ||
-      (privateBrowsingWindow && this._httpsOnlyModeEnabledPBM)
+      isHttpsFirstModeActive ||
+      isHttpsOnlyModeActive ||
+      isSchemelessHttpsFirstModeActive
     ) {
       // Note: value and permission association is laid out
       //       in _getHttpsOnlyPermission
       let value = this._getHttpsOnlyPermission();
 
-      // Because everything in PBM is temporary anyway, we don't need to make the distinction
-      if (privateBrowsingWindow) {
-        if (value === 2) {
-          value = 1;
-        }
-        // Hide "off temporarily" option
-        this._identityPopupHttpsOnlyModeMenuListTempItem.style.display = "none";
-      } else {
-        this._identityPopupHttpsOnlyModeMenuListTempItem.style.display = "";
-      }
+      // We do not want to display the exception ui for schemeless
+      // HTTPS-First, but we still want the "Upgraded to HTTPS" label.
+      this._identityPopupHttpsOnlyMode.hidden =
+        isSchemelessHttpsFirstModeActive;
+
+      this._identityPopupHttpsOnlyModeMenuListOffItem.hidden =
+        privateBrowsingWindow && value != 1;
 
       this._identityPopupHttpsOnlyModeMenuList.value = value;
 
       if (value > 0) {
         httpsOnlyStatus = "exception";
-      } else if (this._isAboutHttpsOnlyErrorPage) {
+      } else if (
+        this._isAboutHttpsOnlyErrorPage ||
+        (isHttpsFirstModeActive && this._isContentHttpsOnlyModeUpgradeFailed)
+      ) {
         httpsOnlyStatus = "failed-top";
       } else if (this._isContentHttpsOnlyModeUpgradeFailed) {
         httpsOnlyStatus = "failed-sub";
-      } else if (this._isContentHttpsOnlyModeUpgraded) {
+      } else if (
+        this._isContentHttpsOnlyModeUpgraded ||
+        this._isContentHttpsFirstModeUpgraded
+      ) {
         httpsOnlyStatus = "upgraded";
       }
     }
@@ -1101,6 +1161,14 @@ var gIdentityHandler = {
       }
     );
 
+    document.l10n.setAttributes(
+      this._identityPopupMainViewHeaderLabel,
+      "identity-site-information",
+      {
+        host,
+      }
+    );
+
     this._identityPopupSecurityEVContentOwner.textContent =
       gNavigatorBundle.getFormattedString("identity.ev.contentOwner2", [owner]);
 
@@ -1110,8 +1178,8 @@ var gIdentityHandler = {
   },
 
   setURI(uri) {
-    if (uri.schemeIs("view-source")) {
-      uri = Services.io.newURI(uri.spec.replace(/^view-source:/i, ""));
+    if (uri instanceof Ci.nsINestedURI) {
+      uri = uri.QueryInterface(Ci.nsINestedURI).innermostURI;
     }
     this._uri = uri;
 
@@ -1122,7 +1190,7 @@ var gIdentityHandler = {
       this._uriHasHost = false;
     }
 
-    if (uri.schemeIs("about")) {
+    if (uri.schemeIs("about") || uri.schemeIs("moz-safe-about")) {
       let module = E10SUtils.getAboutModule(uri);
       if (module) {
         let flags = module.getURIFlags(uri);
@@ -1134,24 +1202,7 @@ var gIdentityHandler = {
       this._isSecureInternalUI = false;
     }
     this._pageExtensionPolicy = WebExtensionPolicy.getByURI(uri);
-
-    // Create a channel for the sole purpose of getting the resolved URI
-    // of the request to determine if it's loaded from the file system.
-    this._isURILoadedFromFile = false;
-    let chanOptions = { uri: this._uri, loadUsingSystemPrincipal: true };
-    let resolvedURI;
-    try {
-      resolvedURI = NetUtil.newChannel(chanOptions).URI;
-      if (resolvedURI.schemeIs("jar")) {
-        // Given a URI "jar:<jar-file-uri>!/<jar-entry>"
-        // create a new URI using <jar-file-uri>!/<jar-entry>
-        resolvedURI = NetUtil.newURI(resolvedURI.pathQueryRef);
-      }
-      // Check the URI again after resolving.
-      this._isURILoadedFromFile = resolvedURI.schemeIs("file");
-    } catch (ex) {
-      // NetUtil's methods will throw for malformed URIs and the like
-    }
+    this._isURILoadedFromFile = uri.schemeIs("file");
   },
 
   /**
@@ -1210,7 +1261,7 @@ var gIdentityHandler = {
     }
   },
 
-  handleEvent(event) {
+  handleEvent() {
     let elem = document.activeElement;
     let position = elem.compareDocumentPosition(this._identityPopup);
 
@@ -1228,7 +1279,7 @@ var gIdentityHandler = {
     }
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "perm-changed": {
         // Exclude permissions which do not appear in the UI in order to avoid

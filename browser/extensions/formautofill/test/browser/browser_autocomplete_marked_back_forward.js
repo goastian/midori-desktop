@@ -8,7 +8,7 @@ const URL = BASE_URL + "autocomplete_basic.html";
 
 function checkPopup(autoCompletePopup) {
   let first = autoCompletePopup.view.results[0];
-  const { primary, secondary } = JSON.parse(first.label);
+  const { primary, secondary } = JSON.parse(first.comment);
   ok(
     primary.startsWith(TEST_ADDRESS_1["street-address"].split("\n")[0]),
     "Check primary label is street address"
@@ -36,7 +36,7 @@ add_task(async function test_back_forward() {
 
       // Now navigate forward and make sure autofill autocomplete results are still attached
       let loadPromise = BrowserTestUtils.browserLoaded(browser);
-      BrowserTestUtils.loadURIString(browser, `${URL}?load=2`);
+      BrowserTestUtils.startLoadingURIString(browser, `${URL}?load=2`);
       info("expecting browser loaded");
       await loadPromise;
 

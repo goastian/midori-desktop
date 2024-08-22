@@ -10,22 +10,14 @@ Services.scriptloader.loadSubScript(
   this
 );
 
-ChromeUtils.defineESModuleGetters(this, {
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
-});
-
 add_setup(async function () {
   makeProfileResettable();
 
-  Services.fog.setMetricsFeatureConfig(
-    JSON.stringify({ "urlbar.engagement": false })
-  );
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.quickactions.enabled", false]],
   });
 
   registerCleanupFunction(async function () {
-    Services.fog.setMetricsFeatureConfig("{}");
     await SpecialPowers.popPrefEnv();
   });
 });
@@ -51,7 +43,7 @@ add_task(async function selected_result_tip() {
   ];
 
   for (const { type, expected } of testData) {
-    const deferred = PromiseUtils.defer();
+    const deferred = Promise.withResolvers();
     const provider = new UrlbarTestUtils.TestProvider({
       results: [
         new UrlbarResult(
@@ -77,7 +69,7 @@ add_task(async function selected_result_tip() {
     });
     UrlbarProvidersManager.registerProvider(provider);
 
-    await doTest(async browser => {
+    await doTest(async () => {
       await openPopup("example");
       await selectRowByType(type);
       EventUtils.synthesizeKey("VK_RETURN");
@@ -96,10 +88,16 @@ add_task(async function selected_result_tip() {
 });
 
 add_task(async function selected_result_intervention_clear() {
+  let useOldClearHistoryDialog = Services.prefs.getBoolPref(
+    "privacy.sanitize.useOldClearHistoryDialog"
+  );
+  let dialogURL = useOldClearHistoryDialog
+    ? "chrome://browser/content/sanitize.xhtml"
+    : "chrome://browser/content/sanitize_v2.xhtml";
   await doInterventionTest(
     SEARCH_STRINGS.CLEAR,
     "intervention_clear",
-    "chrome://browser/content/sanitize.xhtml",
+    dialogURL,
     [
       {
         selected_result: "intervention_clear",
@@ -161,7 +159,7 @@ add_task(async function selected_result_intervention_update() {
 });
 
 async function doInterventionTest(keyword, type, dialog, expectedTelemetry) {
-  await doTest(async browser => {
+  await doTest(async () => {
     await openPopup(keyword);
     await selectRowByType(type);
     const onDialog = BrowserTestUtils.promiseAlertDialog("cancel", dialog, {

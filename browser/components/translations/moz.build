@@ -3,8 +3,8 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Firefox", "Translation")
+    BUG_COMPONENT = ("Firefox", "Translations")
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 JAR_MANIFESTS += ["jar.mn"]

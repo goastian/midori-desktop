@@ -5,10 +5,6 @@
 
 requestLongerTimeout(2);
 
-ChromeUtils.defineESModuleGetters(this, {
-  AbuseReporter: "resource://gre/modules/AbuseReporter.sys.mjs",
-});
-
 const { EnterprisePolicyTesting } = ChromeUtils.importESModule(
   "resource://testing-common/EnterprisePolicyTesting.sys.mjs"
 );
@@ -30,21 +26,6 @@ const promiseExtensionUninstalled = extensionId => {
     AddonManager.addAddonListener(listener);
   });
 };
-
-function waitClosedWindow(win) {
-  return new Promise(resolve => {
-    function onWindowClosed() {
-      if (win && !win.closed) {
-        // If a specific window reference has been passed, then check
-        // that the window is closed before resolving the promise.
-        return;
-      }
-      Services.obs.removeObserver(onWindowClosed, "xul-window-destroyed");
-      resolve();
-    }
-    Services.obs.addObserver(onWindowClosed, "xul-window-destroyed");
-  });
-}
 
 function assertVisibleContextMenuItems(contextMenu, expected) {
   let visibleItems = contextMenu.querySelectorAll(
@@ -124,12 +105,12 @@ async function assertMoveContextMenuItems(
   ok(moveDown, "expected 'move down' item in the context menu");
 
   is(
-    BrowserTestUtils.is_hidden(moveUp),
+    BrowserTestUtils.isHidden(moveUp),
     expectMoveUpHidden,
     `expected 'move up' item to be ${expectMoveUpHidden ? "hidden" : "visible"}`
   );
   is(
-    BrowserTestUtils.is_hidden(moveDown),
+    BrowserTestUtils.isHidden(moveDown),
     expectMoveDownHidden,
     `expected 'move down' item to be ${
       expectMoveDownHidden ? "hidden" : "visible"
@@ -143,6 +124,18 @@ async function assertMoveContextMenuItems(
   }
   await closeChromeContextMenu(contextMenu.id, null, win);
 }
+
+add_setup(async () => {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["extensions.abuseReport.enabled", true],
+      [
+        "extensions.abuseReport.amoFormURL",
+        "https://example.org/%LOCALE%/firefox/feedback/addon/%addonID%/",
+      ],
+    ],
+  });
+});
 
 add_task(async function test_context_menu() {
   const [extension] = createExtensions([{ name: "an extension" }]);
@@ -267,6 +260,8 @@ add_task(
     await closeExtensionsPanel();
 
     await extension.unload();
+
+    await SpecialPowers.popPrefEnv();
   }
 );
 
@@ -337,57 +332,49 @@ add_task(async function test_manage_extension() {
 });
 
 add_task(async function test_report_extension() {
-  SpecialPowers.pushPrefEnv({
-    set: [["extensions.abuseReport.enabled", true]],
-  });
+  function runReportTest(extension) {
+    return BrowserTestUtils.withNewTab({ gBrowser }, async () => {
+      // Open the extension panel, then open the context menu for the extension.
+      await openExtensionsPanel();
+      const contextMenu = await openUnifiedExtensionsContextMenu(extension.id);
 
-  const [extension] = createExtensions([{ name: "an extension" }]);
-  await extension.startup();
+      const reportButton = contextMenu.querySelector(
+        ".unified-extensions-context-menu-report-extension"
+      );
+      ok(reportButton, "expected report button");
 
-  await BrowserTestUtils.withNewTab({ gBrowser }, async () => {
-    // Open the extension panel, then open the context menu for the extension.
-    await openExtensionsPanel();
-    const contextMenu = await openUnifiedExtensionsContextMenu(extension.id);
+      // Click the "report extension" context menu item, and wait until the menu is
+      // closed and about:addons is open with the "abuse report dialog".
+      const hidden = BrowserTestUtils.waitForEvent(contextMenu, "popuphidden");
 
-    const reportButton = contextMenu.querySelector(
-      ".unified-extensions-context-menu-report-extension"
-    );
-    ok(reportButton, "expected report button");
+      const reportURL = Services.urlFormatter
+        .formatURLPref("extensions.abuseReport.amoFormURL")
+        .replace("%addonID%", extension.id);
 
-    // Click the "report extension" context menu item, and wait until the menu is
-    // closed and about:addons is open with the "abuse report dialog".
-    const hidden = BrowserTestUtils.waitForEvent(contextMenu, "popuphidden");
-    const abuseReportOpen = BrowserTestUtils.waitForCondition(
-      () => AbuseReporter.getOpenDialog(),
-      "wait for the abuse report dialog to have been opened"
-    );
-    contextMenu.activateItem(reportButton);
-    const [reportDialogWindow] = await Promise.all([abuseReportOpen, hidden]);
+      const promiseReportTab = BrowserTestUtils.waitForNewTab(
+        gBrowser,
+        reportURL,
+        /* waitForLoad */ false,
+        // Do not expect it to be the next tab opened
+        /* waitForAnyTab */ true
+      );
+      contextMenu.activateItem(reportButton);
+      const [reportTab] = await Promise.all([promiseReportTab, hidden]);
+      // Remove the report tab and expect the selected tab
+      // to become the about:addons tab.
+      BrowserTestUtils.removeTab(reportTab);
+      is(
+        gBrowser.selectedBrowser.currentURI.spec,
+        "about:blank",
+        "Expect about:addons tab to have not been opened"
+      );
+    });
+  }
 
-    const reportDialogParams = reportDialogWindow.arguments[0].wrappedJSObject;
-    is(
-      reportDialogParams.report.addon.id,
-      extension.id,
-      "abuse report dialog has the expected addon id"
-    );
-    is(
-      reportDialogParams.report.reportEntryPoint,
-      "unified_context_menu",
-      "abuse report dialog has the expected reportEntryPoint"
-    );
-
-    let promiseClosedWindow = waitClosedWindow();
-    reportDialogWindow.close();
-    // Wait for the report dialog window to be completely closed
-    // (to prevent an intermittent failure due to a race between
-    // the dialog window being closed and the test tasks that follows
-    // opening the unified extensions button panel to not lose the
-    // focus and be suddently closed before the task has done with
-    // its assertions, see Bug 1782304).
-    await promiseClosedWindow;
-  });
-
-  await extension.unload();
+  const [ext] = createExtensions([{ name: "an extension" }]);
+  await ext.startup();
+  await runReportTest(ext);
+  await ext.unload();
 });
 
 add_task(async function test_remove_extension() {
@@ -706,7 +693,12 @@ add_task(async function test_contextmenu_reorder_extensions() {
     { name: "ext2", browser_action: {} },
     { name: "ext3", browser_action: {} },
   ]);
-  await Promise.all([ext1.startup(), ext2.startup(), ext3.startup()]);
+  // Start the test extensions in sequence to reduce chance of
+  // intermittent failures when asserting the order of the
+  // entries in the panel in the rest of this test task.
+  await ext1.startup();
+  await ext2.startup();
+  await ext3.startup();
 
   await openExtensionsPanel();
 

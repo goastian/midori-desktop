@@ -38,19 +38,21 @@ add_task(async function refresh() {
 add_task(async function clear() {
   // Pick the tip, which should open the refresh dialog.  Click its cancel
   // button.
+  let useOldClearHistoryDialog = Services.prefs.getBoolPref(
+    "privacy.sanitize.useOldClearHistoryDialog"
+  );
+  let dialogURL = useOldClearHistoryDialog
+    ? "chrome://browser/content/sanitize.xhtml"
+    : "chrome://browser/content/sanitize_v2.xhtml";
   await checkIntervention({
     searchString: SEARCH_STRINGS.CLEAR,
     tip: UrlbarProviderInterventions.TIP_TYPE.CLEAR,
     title: "Clear your cache, cookies, history and more.",
     button: "Choose What to Clear…",
     awaitCallback() {
-      return BrowserTestUtils.promiseAlertDialog(
-        "cancel",
-        "chrome://browser/content/sanitize.xhtml",
-        {
-          isSubDialog: true,
-        }
-      );
+      return BrowserTestUtils.promiseAlertDialog("cancel", dialogURL, {
+        isSubDialog: true,
+      });
     },
   });
 });
@@ -79,8 +81,8 @@ add_task(async function clear_private() {
   await BrowserTestUtils.closeWindow(win);
 });
 
-// Tests that if multiple interventions of the same type are seen in the same
-// engagement, only one instance is recorded in Telemetry.
+// Tests that only the intervention visible at the time of abandonment or
+// engagement is registered in Telemetry.
 add_task(async function multipleInterventionsInOneEngagement() {
   Services.telemetry.clearScalars();
   let result = (await awaitTip(SEARCH_STRINGS.REFRESH, window))[0];
@@ -111,11 +113,12 @@ add_task(async function multipleInterventionsInOneEngagement() {
     `${UrlbarProviderInterventions.TIP_TYPE.REFRESH}-shown`,
     1
   );
-  TelemetryTestUtils.assertKeyedScalar(
-    scalars,
-    "urlbar.tips",
-    `${UrlbarProviderInterventions.TIP_TYPE.CLEAR}-shown`,
-    1
+  Assert.ok(
+    !scalars["urlbar.tips"][
+      `${UrlbarProviderInterventions.TIP_TYPE.CLEAR}-shown`
+    ],
+    `${UrlbarProviderInterventions.TIP_TYPE.CLEAR}-shown is not recorded as an
+     impression`
   );
 });
 

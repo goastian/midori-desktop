@@ -33,12 +33,12 @@ const permissionExceptionsL10n = {
     description: "permissions-exceptions-popup-desc",
   },
   "login-saving": {
-    window: "permissions-exceptions-saved-logins-window2",
-    description: "permissions-exceptions-saved-logins-desc",
+    window: "permissions-exceptions-saved-passwords-window",
+    description: "permissions-exceptions-saved-passwords-desc",
   },
   "https-only-load-insecure": {
     window: "permissions-exceptions-https-only-window2",
-    description: "permissions-exceptions-https-only-desc",
+    description: "permissions-exceptions-https-only-desc2",
   },
   install: {
     window: "permissions-exceptions-addons-window2",
@@ -63,12 +63,24 @@ var gPermissionManager = {
   _list: null,
   _removeButton: null,
   _removeAllButton: null,
+  _forcedHTTP: null,
 
   onLoad() {
     let params = window.arguments[0];
     document.mozSubdialogReady = this.init(params);
   },
 
+  /**
+   * @param {Object} params
+   * @param {string} params.permissionType Permission type for which the dialog should be shown
+   * @param {string} params.prefilledHost The value which the URL field should initially contain
+   * @param {boolean} params.blockVisible Display the "Block" button in the dialog
+   * @param {boolean} params.sessionVisible Display the "Allow for Session" button in the dialog (Only for Cookie & HTTPS-Only permissions)
+   * @param {boolean} params.allowVisible Display the "Allow" button in the dialog
+   * @param {boolean} params.disableETPVisible Display the "Add Exception" button in the dialog (Only for ETP permissions)
+   * @param {boolean} params.hideStatusColumn Hide the "Status" column in the dialog
+   * @param {boolean} params.forcedHTTP Save inputs whose URI has a HTTPS scheme with a HTTP scheme (Used by HTTPS-Only)
+   */
   async init(params) {
     if (!this._isObserving) {
       Services.obs.addObserver(this, "perm-changed");
@@ -104,6 +116,8 @@ var gPermissionManager = {
     this._urlField = document.getElementById("url");
     this._urlField.value = params.prefilledHost;
     this._urlField.hidden = !urlFieldVisible;
+
+    this._forcedHTTP = params.forcedHTTP;
 
     await document.l10n.translateElements([
       permissionsText,
@@ -293,6 +307,9 @@ var gPermissionManager = {
       // permissions from being entered by the user.
       try {
         let uri = Services.io.newURI(input_url);
+        if (this._forcedHTTP && uri.schemeIs("https")) {
+          uri = uri.mutate().setScheme("http").finalize();
+        }
         let principal = Services.scriptSecurityManager.createContentPrincipal(
           uri,
           {}
@@ -302,14 +319,25 @@ var gPermissionManager = {
         }
         principals.push(principal);
       } catch (ex) {
+        // If the `input_url` already starts with http:// or https://, it is
+        // definetely invalid here and can't be fixed by prefixing it with
+        // http:// or https://.
+        if (
+          input_url.startsWith("http://") ||
+          input_url.startsWith("https://")
+        ) {
+          throw ex;
+        }
         this._addNewPrincipalToList(
           principals,
           Services.io.newURI("http://" + input_url)
         );
-        this._addNewPrincipalToList(
-          principals,
-          Services.io.newURI("https://" + input_url)
-        );
+        if (!this._forcedHTTP) {
+          this._addNewPrincipalToList(
+            principals,
+            Services.io.newURI("https://" + input_url)
+          );
+        }
       }
     } catch (ex) {
       document.l10n

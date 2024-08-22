@@ -12,7 +12,10 @@ async function expectSavedAddresses(expectedCount) {
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
-    set: [["extensions.formautofill.addresses.capture.v2.enabled", true]],
+    set: [
+      ["extensions.formautofill.addresses.capture.enabled", true],
+      ["extensions.formautofill.addresses.supported", "on"],
+    ],
   });
 });
 
@@ -27,7 +30,8 @@ add_task(async function test_save_doorhanger_shown_no_profile() {
       await focusUpdateSubmitForm(browser, {
         focusSelector: "#given-name",
         newValues: {
-          "#given-name": "Test User",
+          "#given-name": "John",
+          "#family-name": "Doe",
           "#organization": "Sesame Street",
           "#street-address": "123 Sesame Street",
           "#tel": "1-345-345-3456",
@@ -55,7 +59,7 @@ add_task(async function test_save_doorhanger_shown_different_address() {
       await focusUpdateSubmitForm(browser, {
         focusSelector: "#given-name",
         newValues: {
-          "#given-name": TEST_ADDRESS_2["give-name"],
+          "#given-name": TEST_ADDRESS_2["given-name"],
           "#street-address": TEST_ADDRESS_2["street-address"],
           "#country": TEST_ADDRESS_2.country,
         },
@@ -82,7 +86,8 @@ add_task(
         await focusUpdateSubmitForm(browser, {
           focusSelector: "#given-name",
           newValues: {
-            "#given-name": "Cena",
+            "#given-name": "John",
+            "#family-name": "Doe",
             "#street-address": TEST_ADDRESS_1["street-address"],
             "#country": TEST_ADDRESS_1.country,
             "#email": TEST_ADDRESS_1.email,
@@ -137,11 +142,8 @@ add_task(async function test_doorhanger_not_shown_when_autofill_untouched() {
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: ADDRESS_FORM_URL },
     async function (browser) {
-      await sleep(1000);
       await openPopupOn(browser, "form #given-name");
-      await sleep(1000);
       await BrowserTestUtils.synthesizeKey("VK_DOWN", {}, browser);
-      await sleep(1000);
       await BrowserTestUtils.synthesizeKey("VK_RETURN", {}, browser);
       await waitForAutofill(
         browser,
@@ -154,7 +156,6 @@ add_task(async function test_doorhanger_not_shown_when_autofill_untouched() {
         form.querySelector("input[type=submit]").click();
       });
 
-      await sleep(1000);
       is(PopupNotifications.panel.state, "closed", "Doorhanger is hidden");
     }
   );
@@ -183,7 +184,6 @@ add_task(async function test_doorhanger_not_shown_when_fill_duplicate() {
         },
       });
 
-      await sleep(1000);
       is(PopupNotifications.panel.state, "closed", "Doorhanger is hidden");
     }
   );
@@ -228,7 +228,6 @@ add_task(
           },
         });
 
-        await sleep(1000);
         is(PopupNotifications.panel.state, "closed", "Doorhanger is hidden");
       }
     );
@@ -236,5 +235,102 @@ add_task(
 
     await expectSavedAddresses(2);
     await removeAllRecords();
+  }
+);
+
+add_task(
+  async function test_doorhanger_shown_when_contain_all_required_fields() {
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        [
+          "extensions.formautofill.addresses.capture.requiredFields",
+          "street-address,postal-code,address-level1,address-level2",
+        ],
+      ],
+    });
+
+    await BrowserTestUtils.withNewTab(
+      { gBrowser, url: ADDRESS_FORM_URL },
+      async function (browser) {
+        let onPopupShown = waitForPopupShown();
+
+        await focusUpdateSubmitForm(browser, {
+          focusSelector: "#street-address",
+          newValues: {
+            "#street-address": "32 Vassar Street\nMIT Room 32-G524",
+            "#postal-code": "02139",
+            "#address-level2": "Cambridge",
+            "#address-level1": "MA",
+          },
+        });
+
+        await onPopupShown;
+        await clickDoorhangerButton(MAIN_BUTTON, 0);
+      }
+    );
+
+    await expectSavedAddresses(1);
+    await SpecialPowers.popPrefEnv();
+  }
+);
+
+add_task(
+  async function test_doorhanger_not_shown_when_contain_required_invalid_fields() {
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        [
+          "extensions.formautofill.addresses.capture.requiredFields",
+          "street-address,postal-code,address-level1,address-level2",
+        ],
+      ],
+    });
+
+    await BrowserTestUtils.withNewTab(
+      { gBrowser, url: ADDRESS_FORM_URL },
+      async function (browser) {
+        await focusUpdateSubmitForm(browser, {
+          focusSelector: "#street-address",
+          newValues: {
+            "#street-address": "32 Vassar Street\nMIT Room 32-G524",
+            "#postal-code": "000", // postal-code is invalid
+            "#address-level2": "Cambridge",
+            "#address-level1": "MA",
+          },
+        });
+
+        is(PopupNotifications.panel.state, "closed", "Doorhanger is hidden");
+      }
+    );
+  }
+);
+
+add_task(
+  async function test_doorhanger_not_shown_when_not_contain_all_required_fields() {
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        [
+          "extensions.formautofill.addresses.capture.requiredFields",
+          "street-address,postal-code,address-level1,address-level2",
+        ],
+      ],
+    });
+
+    await BrowserTestUtils.withNewTab(
+      { gBrowser, url: ADDRESS_FORM_URL },
+      async function (browser) {
+        await focusUpdateSubmitForm(browser, {
+          focusSelector: "#street-address",
+          newValues: {
+            "#given-name": "John",
+            "#family-name": "Doe",
+            "#postal-code": "02139",
+            "#address-level2": "Cambridge",
+            "#address-level1": "MA",
+          },
+        });
+
+        is(PopupNotifications.panel.state, "closed", "Doorhanger is hidden");
+      }
+    );
   }
 );

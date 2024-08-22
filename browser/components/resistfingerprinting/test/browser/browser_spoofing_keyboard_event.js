@@ -163,8 +163,9 @@ const TEST_CASES_EN = [
     expectedKeyEvent: SHOULD_DELIVER_KEYDOWN,
     result: {
       key: "Meta",
-      code: "OSLeft",
+      code: "MetaLeft",
       charCode: 0,
+      // Don't let web apps know pressing Command key on macOS
       keyCode: KeyboardEvent.DOM_VK_WIN,
       location: KeyboardEvent.DOM_KEY_LOCATION_LEFT,
       altKey: false,
@@ -182,40 +183,9 @@ const TEST_CASES_EN = [
     expectedKeyEvent: SHOULD_DELIVER_KEYDOWN,
     result: {
       key: "Meta",
-      code: "OSRight",
+      code: "MetaRight",
       charCode: 0,
-      keyCode: KeyboardEvent.DOM_VK_WIN,
-      location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT,
-      altKey: false,
-      shiftKey: false,
-      ctrlKey: false,
-      altGraphKey: false,
-    },
-  },
-  {
-    key: "KEY_OS",
-    modifiers: { location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, osKey: true },
-    expectedKeyEvent: SHOULD_DELIVER_KEYDOWN,
-    result: {
-      key: "OS",
-      code: "OSLeft",
-      charCode: 0,
-      keyCode: KeyboardEvent.DOM_VK_WIN,
-      location: KeyboardEvent.DOM_KEY_LOCATION_LEFT,
-      altKey: false,
-      shiftKey: false,
-      ctrlKey: false,
-      altGraphKey: false,
-    },
-  },
-  {
-    key: "KEY_OS",
-    modifiers: { location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT, osKey: true },
-    expectedKeyEvent: SHOULD_DELIVER_KEYDOWN,
-    result: {
-      key: "OS",
-      code: "OSRight",
-      charCode: 0,
+      // Don't let web apps know pressing Command key on macOS
       keyCode: KeyboardEvent.DOM_VK_WIN,
       location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT,
       altKey: false,
@@ -2111,7 +2081,7 @@ async function testKeyEvent(aTab, aTestCase) {
         // a custom event 'resultAvailable' for informing the script to check the
         // result.
         await new Promise(resolve => {
-          function eventHandler(aEvent) {
+          function eventHandler() {
             verifyKeyboardEvent(
               JSON.parse(resElement.value),
               result,

@@ -284,7 +284,7 @@
                 hidden="true"
                 oncommand="gContextMenu.useRelayMask();"/>
       <menuitem id="manage-saved-logins"
-                data-l10n-id="main-context-menu-manage-logins2"
+                data-l10n-id="main-context-menu-manage-passwords"
                 hidden="true"
                 oncommand="gContextMenu.openPasswordManager();"/>
       <menuseparator id="passwordmgr-items-separator"/>
@@ -313,6 +313,9 @@
       <menuitem id="context-selectall"
                 data-l10n-id="text-action-select-all"
                 command="cmd_selectAll"/>
+      <menuitem id="context-pdfjs-highlight-selection"
+                data-l10n-id="text-action-highlight-selection"
+                oncommand="gContextMenu.pdfJSCmd('highlightSelection');"/>
       <menuitem id="context-reveal-password"
                 type="checkbox"
                 data-l10n-id="main-context-menu-reveal-password"
@@ -357,6 +360,11 @@
                 oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, this.usePrivate, this.principal, this.csp, event);"/>
       <menuitem id="context-searchselect-private"
                 oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, true, this.principal, this.csp, event);"/>
+      <menuitem id="context-translate-selection"
+                data-l10n-id="main-context-menu-translate-selection"
+                oncommand="gContextMenu.openSelectTranslationsPanel(event);"/>
+      <menu id="context-ask-chat"
+            oncommand="nsContextMenu.GenAI.handleAskChat(event)"/>
 
       <menuseparator id="frame-sep"/>
       <menu id="frame" data-l10n-id="main-context-menu-frame">
@@ -433,7 +441,7 @@
                 oncommand="gContextMenu.viewPartialSource();"/>
       <menuitem id="context-viewsource"
                 data-l10n-id="main-context-menu-view-page-source"
-                oncommand="BrowserViewSource(gContextMenu.browser);"/>
+                oncommand="BrowserCommands.viewSource(gContextMenu.browser);"/>
       <menuitem id="context-inspect-a11y"
                 hidden="true"
                 data-l10n-id="main-context-menu-inspect-a11y-properties"

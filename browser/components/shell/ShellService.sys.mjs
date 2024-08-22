@@ -9,9 +9,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
-  Subprocess: "resource://gre/modules/Subprocess.sys.mjs",
-  WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
-  setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -21,7 +19,14 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIXREDirProvider"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+XPCOMUtils.defineLazyServiceGetter(
+  lazy,
+  "BackgroundTasks",
+  "@mozilla.org/backgroundtasks;1",
+  "nsIBackgroundTasks"
+);
+
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -63,26 +68,6 @@ let ShellServiceInternal = {
     return false;
   },
 
-  isDefaultBrowserOptOut() {
-    if (AppConstants.platform == "win") {
-      let optOutValue = lazy.WindowsRegistry.readRegKey(
-        Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-        "Software\\Astian\\Midori",
-        "DefaultBrowserOptOut"
-      );
-      lazy.WindowsRegistry.removeRegKey(
-        Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-        "Software\\Astian\\Midori",
-        "DefaultBrowserOptOut"
-      );
-      if (optOutValue == "True") {
-        Services.prefs.setBoolPref("browser.shell.checkDefaultBrowser", false);
-        return true;
-      }
-    }
-    return false;
-  },
-
   /**
    * Used to determine whether or not to show a "Set Default Browser"
    * query dialog. This attribute is true if the application is starting
@@ -98,10 +83,6 @@ let ShellServiceInternal = {
     }
 
     if (!Services.prefs.getBoolPref("browser.shell.checkDefaultBrowser")) {
-      return false;
-    }
-
-    if (this.isDefaultBrowserOptOut()) {
       return false;
     }
 
@@ -126,20 +107,6 @@ let ShellServiceInternal = {
       return this.shellService.isDefaultBrowser(forAllTypes);
     }
     return false;
-  },
-
-  /*
-   * Invoke the Windows Default Browser agent with the given options.
-   *
-   * Separated for easy stubbing in tests.
-   */
-  _callExternalDefaultBrowserAgent(options = {}) {
-    const wdba = Services.dirsvc.get("XREExeF", Ci.nsIFile);
-    wdba.leafName = "default-browser-agent.exe";
-    return lazy.Subprocess.call({
-      ...options,
-      command: options.command || wdba.path,
-    });
   },
 
   /*
@@ -211,6 +178,7 @@ let ShellServiceInternal = {
   getDefaultPDFHandler() {
     const knownBrowserPrefixes = [
       "AppXq0fevzme2pys62n3e0fbqa7peapykr8v", // Edge before Blink, per https://stackoverflow.com/a/32724723.
+      "AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723", // Another pre-Blink Edge identifier. See Bug 1858729.
       "Brave", // For "BraveFile".
       "Chrome", // For "ChromeHTML".
       "Firefox", // For "FirefoxHTML-*" or "FirefoxPDF-*".  Need to take from other installations of Firefox!
@@ -267,13 +235,6 @@ let ShellServiceInternal = {
 
     lazy.log.info("Setting Firefox as default using UserChoice");
 
-    // We launch the WDBA to handle the registry writes, see
-    // SetDefaultBrowserUserChoice() in
-    // toolkit/mozapps/defaultagent/SetDefaultBrowser.cpp.
-    // This is external in case an overzealous antimalware product decides to
-    // quarrantine any program that writes UserChoice, though this has not
-    // occurred during extensive testing.
-
     let telemetryResult = "ErrOther";
 
     try {
@@ -289,22 +250,26 @@ let ShellServiceInternal = {
       const aumi = lazy.XreDirProvider.getInstallHash();
 
       telemetryResult = "ErrLaunchExe";
-      const exeArgs = ["set-default-browser-user-choice", aumi];
+      const extraFileExtensions = [];
       if (
         lazy.NimbusFeatures.shellService.getVariable("setDefaultPDFHandler")
       ) {
         if (this._shouldSetDefaultPDFHandler()) {
           lazy.log.info("Setting Firefox as default PDF handler");
-          exeArgs.push(".pdf", "FirefoxPDF");
+          extraFileExtensions.push(".pdf", "FirefoxPDF");
         } else {
           lazy.log.info("Not setting Firefox as default PDF handler");
         }
       }
-      const exeProcess = await this._callExternalDefaultBrowserAgent({
-        arguments: exeArgs,
-      });
-      telemetryResult = "ErrOther";
-      await this._handleWDBAResult(exeProcess);
+      try {
+        await this.defaultAgent.setDefaultBrowserUserChoiceAsync(
+          aumi,
+          extraFileExtensions
+        );
+      } catch (err) {
+        telemetryResult = "ErrOther";
+        this._handleWDBAResult(err.result || Cr.NS_ERROR_FAILURE);
+      }
       telemetryResult = "Success";
     } catch (ex) {
       if (ex instanceof WDBAError) {
@@ -327,22 +292,19 @@ let ShellServiceInternal = {
       throw new Error("Windows-only");
     }
 
-    // See comment in setAsDefaultUserChoice for an explanation of why we shell
-    // out to WDBA.
     let telemetryResult = "ErrOther";
 
     try {
       const aumi = lazy.XreDirProvider.getInstallHash();
-      const exeProcess = await this._callExternalDefaultBrowserAgent({
-        arguments: [
-          "set-default-extension-handlers-user-choice",
-          aumi,
+      try {
+        this.defaultAgent.setDefaultExtensionHandlersUserChoice(aumi, [
           ".pdf",
           "FirefoxPDF",
-        ],
-      });
-      telemetryResult = "ErrOther";
-      await this._handleWDBAResult(exeProcess);
+        ]);
+      } catch (err) {
+        telemetryResult = "ErrOther";
+        this._handleWDBAResult(err.result || Cr.NS_ERROR_FAILURE);
+      }
       telemetryResult = "Success";
     } catch (ex) {
       if (ex instanceof WDBAError) {
@@ -360,44 +322,55 @@ let ShellServiceInternal = {
     }
   },
 
-  // override nsIShellService.setDefaultBrowser() on the ShellService proxy.
-  setDefaultBrowser(claimAllTypes, forAllUsers) {
-    // On Windows 10, our best chance is to set UserChoice, so try that first.
+  async _maybeShowSetDefaultGuidanceNotification() {
     if (
-      AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
       lazy.NimbusFeatures.shellService.getVariable(
-        "setDefaultBrowserUserChoice"
-      )
+        "setDefaultGuidanceNotifications"
+      ) &&
+      // Do not show guidance if one-click set to default is enabled
+      !lazy.NimbusFeatures.shellService.getVariable(
+        "setDefaultBrowserUserChoiceRegRename"
+      ) &&
+      // Disable showing toast notification from Firefox Background Tasks.
+      !lazy.BackgroundTasks?.isBackgroundTaskMode
     ) {
-      // nsWindowsShellService::SetDefaultBrowser() kicks off several
-      // operations, but doesn't wait for their result. So we don't need to
-      // await the result of setAsDefaultUserChoice() here, either, we just need
-      // to fall back in case it fails.
-      this.setAsDefaultUserChoice().catch(err => {
-        console.error(err);
-        this.shellService.setDefaultBrowser(claimAllTypes, forAllUsers);
+      await lazy.ASRouter.waitForInitialized;
+      const win = Services.wm.getMostRecentBrowserWindow() ?? null;
+      lazy.ASRouter.sendTriggerMessage({
+        browser: win,
+        id: "deeplinkedToWindowsSettingsUI",
       });
-      return;
     }
-
-    this.shellService.setDefaultBrowser(claimAllTypes, forAllUsers);
   },
 
-  setAsDefault() {
-    let claimAllTypes = true;
-    let setAsDefaultError = false;
-    if (AppConstants.platform == "win") {
+  // override nsIShellService.setDefaultBrowser() on the ShellService proxy.
+  async setDefaultBrowser(forAllUsers) {
+    // On Windows, our best chance is to set UserChoice, so try that first.
+    if (
+      AppConstants.platform == "win" &&
+      Services.prefs.getBoolPref("browser.shell.setDefaultBrowserUserChoice")
+    ) {
       try {
-        // In Windows 8+, the UI for selecting default protocol is much
-        // nicer than the UI for setting file type associations. So we
-        // only show the protocol association screen on Windows 8+.
-        // Windows 8 is version 6.2.
-        let version = Services.sysinfo.getProperty("version");
-        claimAllTypes = parseFloat(version) < 6.2;
-      } catch (ex) {}
+        await this.setAsDefaultUserChoice();
+        return;
+      } catch (err) {
+        lazy.log.warn(
+          "Error thrown during setAsDefaultUserChoice. Full exception:",
+          err
+        );
+
+        // intentionally fall through to setting via the non-user choice pathway on error
+      }
     }
+
+    this.shellService.setDefaultBrowser(forAllUsers);
+    this._maybeShowSetDefaultGuidanceNotification();
+  },
+
+  async setAsDefault() {
+    let setAsDefaultError = false;
     try {
-      ShellService.setDefaultBrowser(claimAllTypes, false);
+      await ShellService.setDefaultBrowser(false);
     } catch (ex) {
       setAsDefaultError = true;
       console.error(ex);
@@ -419,7 +392,7 @@ let ShellServiceInternal = {
       return;
     }
 
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+    if (AppConstants.platform == "win") {
       this.setAsDefaultPDFHandlerUserChoice();
     }
   },
@@ -505,33 +478,14 @@ let ShellServiceInternal = {
     }
   },
 
-  async _handleWDBAResult(exeProcess, exeWaitTimeoutMs = 2000) {
-    // Exit codes, see toolkit/mozapps/defaultagent/SetDefaultBrowser.h
-    const S_OK = 0;
-    const STILL_ACTIVE = 0x103;
-    const MOZ_E_NO_PROGID = 0xa0000001;
-    const MOZ_E_HASH_CHECK = 0xa0000002;
-    const MOZ_E_REJECTED = 0xa0000003;
-    const MOZ_E_BUILD = 0xa0000004;
-
-    const exeWaitPromise = exeProcess.wait();
-    const timeoutPromise = new Promise(function (resolve) {
-      lazy.setTimeout(
-        () => resolve({ exitCode: STILL_ACTIVE }),
-        exeWaitTimeoutMs
-      );
-    });
-
-    const { exitCode } = await Promise.race([exeWaitPromise, timeoutPromise]);
-
-    if (exitCode != S_OK) {
+  _handleWDBAResult(exitCode) {
+    if (exitCode != Cr.NS_OK) {
       const telemetryResult =
         new Map([
-          [STILL_ACTIVE, "ErrExeTimeout"],
-          [MOZ_E_NO_PROGID, "ErrExeProgID"],
-          [MOZ_E_HASH_CHECK, "ErrExeHash"],
-          [MOZ_E_REJECTED, "ErrExeRejected"],
-          [MOZ_E_BUILD, "ErrBuild"],
+          [Cr.NS_ERROR_WDBA_NO_PROGID, "ErrExeProgID"],
+          [Cr.NS_ERROR_WDBA_HASH_CHECK, "ErrExeHash"],
+          [Cr.NS_ERROR_WDBA_REJECTED, "ErrExeRejected"],
+          [Cr.NS_ERROR_WDBA_BUILD, "ErrBuild"],
         ]).get(exitCode) ?? "ErrExeOther";
 
       throw new WDBAError(exitCode, telemetryResult);
@@ -540,6 +494,7 @@ let ShellServiceInternal = {
 };
 
 XPCOMUtils.defineLazyServiceGetters(ShellServiceInternal, {
+  defaultAgent: ["@mozilla.org/default-agent;1", "nsIDefaultAgent"],
   shellService: ["@mozilla.org/browser/shell-service;1", "nsIShellService"],
   macDockSupport: ["@mozilla.org/widget/macdocksupport;1", "nsIMacDockSupport"],
 });

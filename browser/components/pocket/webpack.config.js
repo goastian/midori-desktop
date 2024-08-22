@@ -1,12 +1,11 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
-/* eslint-env node */
 
 module.exports = {
   mode: "production",
   entry: {
-    main: "./content/panels/js/main.js",
+    main: "./content/panels/js/main.mjs",
   },
   output: {
     filename: "[name].bundle.js",
@@ -15,7 +14,7 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.jsx?$/,
+        test: /\.jsx$/,
         exclude: /node_modules/,
         loader: "babel-loader",
         options: {
@@ -25,7 +24,7 @@ module.exports = {
     ],
   },
   resolve: {
-    extensions: [".js", ".jsx"],
+    extensions: [".mjs", ".jsx"],
   },
   optimization: {
     minimize: false,

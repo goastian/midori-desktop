@@ -39,7 +39,8 @@ add_task(async function test_override_postupdate_page() {
     reloadUpdateManagerData(true);
   });
 
-  writeUpdatesToXMLFile(XML_UPDATE);
+  writeFile(XML_UPDATE, getActiveUpdateFile());
+  writeSuccessUpdateStatusFile();
   reloadUpdateManagerData(false);
 
   is(
@@ -72,7 +73,8 @@ function getPostUpdatePage() {
  * Removes the updates.xml file and returns the nsIFile for the
  * active-update.xml file.
  *
- * @return  The nsIFile for the active-update.xml file.
+ * @returns {nsIFile}
+ *   The nsIFile for the active-update.xml file.
  */
 function getActiveUpdateFile() {
   let updateRootDir = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
@@ -92,41 +94,53 @@ function getActiveUpdateFile() {
 /**
  * Reloads the update xml files.
  *
- * @param  skipFiles (optional)
- *         If true, the update xml files will not be read and the metadata will
- *         be reset. If false (the default), the update xml files will be read
- *         to populate the update metadata.
+ * @param {boolean} [skipFiles]
+ *   If true, the update xml files will not be read and the metadata will
+ *   be reset. If false (the default), the update xml files will be read
+ *   to populate the update metadata.
  */
 function reloadUpdateManagerData(skipFiles = false) {
   Cc["@mozilla.org/updates/update-manager;1"]
     .getService(Ci.nsIUpdateManager)
-    .QueryInterface(Ci.nsIObserver)
-    .observe(null, "um-reload-update-data", skipFiles ? "skip-files" : "");
+    .internal.reload(skipFiles);
 }
 
 /**
- * Writes the updates specified to the active-update.xml file.
+ * Writes the specified text to the specified file.
  *
- * @param  aText
- *         The updates represented as a string to write to the active-update.xml
- *         file.
+ * @param {string} aText
+ *   The string to write to the file.
+ * @param {nsIFile} aFile
+ *   The file to write to.
  */
-function writeUpdatesToXMLFile(aText) {
+function writeFile(aText, aFile) {
   const PERMS_FILE = 0o644;
 
   const MODE_WRONLY = 0x02;
   const MODE_CREATE = 0x08;
   const MODE_TRUNCATE = 0x20;
 
-  let activeUpdateFile = getActiveUpdateFile();
-  if (!activeUpdateFile.exists()) {
-    activeUpdateFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
+  if (!aFile.exists()) {
+    aFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
   }
   let fos = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(
     Ci.nsIFileOutputStream
   );
   let flags = MODE_WRONLY | MODE_CREATE | MODE_TRUNCATE;
-  fos.init(activeUpdateFile, flags, PERMS_FILE, 0);
+  fos.init(aFile, flags, PERMS_FILE, 0);
   fos.write(aText, aText.length);
   fos.close();
+}
+
+/**
+ * If we want the update system to treat the update we wrote out as one that it
+ * just installed, we need to make it think that the update state is
+ * "succeeded".
+ */
+function writeSuccessUpdateStatusFile() {
+  const statusFile = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
+  statusFile.append("updates");
+  statusFile.append("0");
+  statusFile.append("update.status");
+  writeFile("succeeded", statusFile);
 }

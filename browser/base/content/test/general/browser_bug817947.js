@@ -12,7 +12,7 @@ add_task(async () => {
 
   let tab = await preparePendingTab();
 
-  let deferredTab = PromiseUtils.defer();
+  let deferredTab = Promise.withResolvers();
 
   let win = gBrowser.replaceTabWithWindow(tab);
   win.addEventListener(
@@ -32,7 +32,7 @@ add_task(async () => {
   win.close();
 });
 
-async function preparePendingTab(aCallback) {
+async function preparePendingTab() {
   let tab = BrowserTestUtils.addTab(gBrowser, URL);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 

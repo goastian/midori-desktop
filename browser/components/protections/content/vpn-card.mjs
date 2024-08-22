@@ -68,12 +68,13 @@ export default class VPNCard {
       RPMSendQuery("FetchVPNSubStatus", {}).then(async hasVPN => {
         if (hasVPN) {
           vpnCard.classList.add("subscribed");
-          vpnCard
-            .querySelector(".card-title")
-            .setAttribute("data-l10n-id", "vpn-title-subscribed");
+          document.l10n.setAttributes(
+            vpnCard.querySelector(".card-title"),
+            "vpn-title-subscribed"
+          );
 
           // hide the promo banner if the user is already subscribed to vpn
-          await RPMSetBoolPref(
+          await RPMSetPref(
             "browser.contentblocking.report.hide_vpn_banner",
             true
           );
@@ -97,6 +98,6 @@ export default class VPNCard {
     vpnBanner.classList.remove("hidden");
     this.doc.sendTelemetryEvent("show", "vpn_banner");
     // VPN banner only shows on the first visit, flip a pref so it does not show again.
-    RPMSetBoolPref("browser.contentblocking.report.hide_vpn_banner", true);
+    RPMSetPref("browser.contentblocking.report.hide_vpn_banner", true);
   }
 }

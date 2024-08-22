@@ -1,11 +1,8 @@
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import {
   ActivityStreamMessageChannel,
   DEFAULT_OPTIONS,
-} from "lib/ActivityStreamMessageChannel.jsm";
+} from "lib/ActivityStreamMessageChannel.sys.mjs";
 import { addNumberReducer, GlobalOverrider } from "test/unit/utils";
 import { applyMiddleware, createStore } from "redux";
 
@@ -16,7 +13,7 @@ const OPTIONS = [
 ];
 
 // Create an object containing details about a tab as expected within
-// the loaded tabs map in ActivityStreamMessageChannel.jsm.
+// the loaded tabs map in ActivityStreamMessageChannel.sys.mjs.
 function getTabDetails(portID, url = "about:newtab", extraArgs = {}) {
   let actor = {
     portID,
@@ -65,6 +62,10 @@ describe("ActivityStreamMessageChannel", () => {
       reset: globals.sandbox.spy(),
     });
     globals.set("AboutHomeStartupCache", { onPreloadedNewTabMessage() {} });
+    globals.set("AboutNewTabParent", {
+      flushQueuedMessagesFromContent: globals.sandbox.stub(),
+    });
+
     dispatch = globals.sandbox.spy();
     mm = new ActivityStreamMessageChannel({ dispatch });
 
@@ -174,6 +175,15 @@ describe("ActivityStreamMessageChannel", () => {
         mm.loadedTabs.set(msg4.data.browser, msg4.data);
         mm.simulateMessagesForExistingTabs();
         assert.equal(msg4.data.browser.renderLayers, true);
+      });
+      it("should flush queued messages from content when doing the simulation", () => {
+        assert.notCalled(
+          global.AboutNewTabParent.flushQueuedMessagesFromContent
+        );
+        mm.simulateMessagesForExistingTabs();
+        assert.calledOnce(
+          global.AboutNewTabParent.flushQueuedMessagesFromContent
+        );
       });
     });
   });

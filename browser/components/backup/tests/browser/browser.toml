@@ -1,0 +1,8 @@
+[DEFAULT]
+prefs = [
+  "browser.backup.enabled=true",
+  "browser.backup.preferences.ui.enabled=true",
+  "browser.backup.scheduled.enabled=false",
+]
+
+["browser_settings.js"]

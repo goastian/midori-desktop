@@ -51,7 +51,7 @@ async function testContextMenu() {
         window,
         "sizemodechange",
         false,
-        e => window.fullScreen
+        () => window.fullScreen
       ),
       BrowserTestUtils.waitForPopupEvent(contextMenu, "hidden"),
     ]);
@@ -60,7 +60,8 @@ async function testContextMenu() {
     info("waiting for fullscreen");
     await onFullscreen;
     // make sure the toolbox is visible if it's autohidden
-    document.getElementById("Browser:OpenLocation").doCommand();
+    FullScreen.showNavToolbox();
+
     info("trigger the context menu");
     let contextMenu2 = await openContextMenu(panelUIMenuButton);
     info("context menu should be open, verify its menu items");
@@ -96,7 +97,7 @@ async function testContextMenu() {
         window,
         "sizemodechange",
         false,
-        e => !window.fullScreen
+        () => !window.fullScreen
       ),
       BrowserTestUtils.waitForPopupEvent(contextMenu2, "hidden"),
     ]);
@@ -109,7 +110,7 @@ async function testContextMenu() {
 function verifyContextMenu(contextMenu, itemSelectors) {
   // Ignore hidden nodes
   let items = Array.from(contextMenu.children).filter(n =>
-    BrowserTestUtils.is_visible(n)
+    BrowserTestUtils.isVisible(n)
   );
   let menuAsText = items
     .map(n => {

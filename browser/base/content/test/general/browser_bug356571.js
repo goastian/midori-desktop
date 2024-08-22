@@ -45,7 +45,7 @@ const kURIs = ["bad://www.mozilla.org/", kDummyPage, kDummyPage];
 
 var gProgressListener = {
   _runCount: 0,
-  onStateChange(aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
+  onStateChange(aBrowser, aWebProgress, aRequest, aStateFlags) {
     if ((aStateFlags & kCompleteState) == kCompleteState) {
       if (++this._runCount != kURIs.length) {
         return;
@@ -53,8 +53,9 @@ var gProgressListener = {
       // Check we failed on unknown protocol (received an alert from docShell)
       ok(didFail, "Correctly failed on unknown protocol");
       // Check we opened all tabs
-      ok(
-        gBrowser.tabs.length == kURIs.length,
+      Assert.equal(
+        gBrowser.tabs.length,
+        kURIs.length,
         "Correctly opened all expected tabs"
       );
       finishTest();

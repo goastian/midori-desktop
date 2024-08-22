@@ -84,7 +84,7 @@ add_task(async function checkReturnToPreviousPage() {
       tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, GOOD_PAGE);
       browser = tab.linkedBrowser;
 
-      BrowserTestUtils.loadURIString(browser, GOOD_PAGE_2);
+      BrowserTestUtils.startLoadingURIString(browser, GOOD_PAGE_2);
       await BrowserTestUtils.browserLoaded(browser, false, GOOD_PAGE_2);
       await injectErrorPageFrame(tab, BAD_CERT);
     } else {
@@ -93,7 +93,7 @@ add_task(async function checkReturnToPreviousPage() {
 
       info("Loading and waiting for the cert error");
       let certErrorLoaded = BrowserTestUtils.waitForErrorPage(browser);
-      BrowserTestUtils.loadURIString(browser, BAD_CERT);
+      BrowserTestUtils.startLoadingURIString(browser, BAD_CERT);
       await certErrorLoaded;
     }
 
@@ -121,7 +121,7 @@ add_task(async function checkReturnToPreviousPage() {
       "pageshow",
       true
     );
-    await SpecialPowers.spawn(bc, [useFrame], async function (subFrame) {
+    await SpecialPowers.spawn(bc, [useFrame], async function () {
       let returnButton = content.document.getElementById("returnButton");
       returnButton.click();
     });
@@ -193,7 +193,10 @@ add_task(async function checkAdvancedDetails() {
         return errorCode && errorCode.textContent != "";
       }, "error code has been set inside the advanced button panel");
 
-      return { textContent: errorCode.textContent, tagName: errorCode.tagName };
+      return {
+        textContent: errorCode.textContent,
+        tagName: errorCode.tagName.toLowerCase(),
+      };
     });
     is(
       message.textContent,
@@ -271,9 +274,9 @@ add_task(async function checkAdvancedDetailsForHSTS() {
       let cdl = doc.getElementById("cert_domain_link");
       return {
         ecTextContent: ec.textContent,
-        ecTagName: ec.tagName,
+        ecTagName: ec.tagName.toLowerCase(),
         cdlTextContent: cdl.textContent,
-        cdlTagName: cdl.tagName,
+        cdlTagName: cdl.tagName.toLowerCase(),
       };
     });
 
@@ -470,7 +473,7 @@ add_task(async function checkSandboxedIframe() {
       "Correct error message found"
     );
     is(
-      doc.getElementById("errorCode").tagName,
+      doc.getElementById("errorCode").tagName.toLowerCase(),
       "a",
       "Error message contains a link"
     );
@@ -499,7 +502,7 @@ add_task(async function checkViewSource() {
       "Correct error message found"
     );
     is(
-      doc.getElementById("errorCode").tagName,
+      doc.getElementById("errorCode").tagName.toLowerCase(),
       "a",
       "Error message contains a link"
     );
@@ -541,7 +544,7 @@ add_task(async function checkViewSource() {
   certOverrideService.clearValidityOverride("expired.example.com", -1, {});
 
   loaded = BrowserTestUtils.waitForErrorPage(browser);
-  BrowserReloadSkipCache();
+  BrowserCommands.reloadSkipCache();
   await loaded;
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);

@@ -12,18 +12,15 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   CLIENT_NOT_CONFIGURED: "resource://services-sync/constants.sys.mjs",
+  BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
+  OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.sys.mjs",
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   Weave: "resource://services-sync/main.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
-  OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.jsm",
 });
 
 const gInContentProcess =
@@ -45,8 +42,6 @@ let InternalFaviconLoader = {
    *   The options object containing:
    * @param {object} options.uri
    *   The URI of the favicon to cancel.
-   * @param {number} options.innerWindowID
-   *   The inner window ID of the window. Unused.
    * @param {number} options.timerID
    *   The timer ID of the timeout to be cancelled
    * @param {*} options.callback
@@ -54,7 +49,7 @@ let InternalFaviconLoader = {
    * @param {string} reason
    *   The reason for cancelling the request.
    */
-  _cancelRequest({ uri, innerWindowID, timerID, callback }, reason) {
+  _cancelRequest({ uri, timerID, callback }, reason) {
     // Break cycle
     let request = callback.request;
     delete callback.request;
@@ -64,11 +59,7 @@ let InternalFaviconLoader = {
       request.cancel();
     } catch (ex) {
       console.error(
-        "When cancelling a request for " +
-          uri.spec +
-          " because " +
-          reason +
-          ", it was already canceled!"
+        `When cancelling a request for ${uri.spec} because ${reason}, it was already canceled!`
       );
     }
   },
@@ -209,21 +200,24 @@ let InternalFaviconLoader = {
       win.addEventListener("unload", unloadHandler, true);
     }
 
+    let callback = this._makeCompletionCallback(win, innerWindowID);
+    if (iconURI?.schemeIs("data")) {
+      lazy.PlacesUtils.favicons.setFaviconForPage(
+        pageURI,
+        uri,
+        iconURI,
+        lazy.PlacesUtils.toPRTime(expiration),
+        () => {
+          callback.onComplete(uri);
+        }
+      );
+      return;
+    }
+
     // First we do the actual setAndFetch call:
     let loadType = lazy.PrivateBrowsingUtils.isWindowPrivate(win)
       ? lazy.PlacesUtils.favicons.FAVICON_LOAD_PRIVATE
       : lazy.PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE;
-    let callback = this._makeCompletionCallback(win, innerWindowID);
-
-    if (iconURI && iconURI.schemeIs("data")) {
-      expiration = lazy.PlacesUtils.toPRTime(expiration);
-      lazy.PlacesUtils.favicons.replaceFaviconDataFromDataURL(
-        uri,
-        iconURI.spec,
-        expiration,
-        principal
-      );
-    }
 
     let request = lazy.PlacesUtils.favicons.setAndFetchFaviconForPage(
       pageURI,
@@ -383,22 +377,29 @@ class BookmarkState {
    * @returns {string} The bookmark's GUID.
    */
   async _createBookmark() {
-    await lazy.PlacesTransactions.batch(async () => {
-      this._guid = await lazy.PlacesTransactions.NewBookmark({
-        parentGuid: this._newState.parentGuid ?? this._originalState.parentGuid,
+    let transactions = [
+      lazy.PlacesTransactions.NewBookmark({
+        parentGuid: this.parentGuid,
         tags: this._newState.tags,
         title: this._newState.title ?? this._originalState.title,
         url: this._newState.uri ?? this._originalState.uri,
         index: this._originalState.index,
-      }).transact();
-      if (this._newState.keyword) {
-        await lazy.PlacesTransactions.EditKeyword({
-          guid: this._guid,
+      }),
+    ];
+    if (this._newState.keyword) {
+      transactions.push(previousResults =>
+        lazy.PlacesTransactions.EditKeyword({
+          guid: previousResults[0],
           keyword: this._newState.keyword,
           postData: this._postData,
-        }).transact();
-      }
-    });
+        })
+      );
+    }
+    let results = await lazy.PlacesTransactions.batch(
+      transactions,
+      "BookmarkState::createBookmark"
+    );
+    this._guid = results?.[0];
     return this._guid;
   }
 
@@ -409,12 +410,16 @@ class BookmarkState {
    */
   async _createFolder() {
     this._guid = await lazy.PlacesTransactions.NewFolder({
-      parentGuid: this._newState.parentGuid ?? this._originalState.parentGuid,
+      parentGuid: this.parentGuid,
       title: this._newState.title ?? this._originalState.title,
       children: this._children,
       index: this._originalState.index,
     }).transact();
     return this._guid;
+  }
+
+  get parentGuid() {
+    return this._newState.parentGuid ?? this._originalState.parentGuid;
   }
 
   /**
@@ -463,7 +468,7 @@ class BookmarkState {
             })
           );
           break;
-        case "tags":
+        case "tags": {
           const newTags = value.filter(
             tag => !this._originalState.tags.includes(tag)
           );
@@ -487,6 +492,7 @@ class BookmarkState {
             );
           }
           break;
+        }
         case "keyword":
           transactions.push(
             lazy.PlacesTransactions.EditKeyword({
@@ -508,7 +514,7 @@ class BookmarkState {
       }
     }
     if (transactions.length) {
-      await lazy.PlacesTransactions.batch(transactions);
+      await lazy.PlacesTransactions.batch(transactions, "BookmarkState::save");
     }
 
     this._originalState = { ...this._originalState, ...this._newState };
@@ -562,7 +568,7 @@ export var PlacesUIUtils = {
    *                   undefined otherwise.
    */
   async showBookmarkDialog(aInfo, aParentWindow = null) {
-    this.lastBookmarkDialogDeferred = lazy.PromiseUtils.defer();
+    this.lastBookmarkDialogDeferred = Promise.withResolvers();
 
     let dialogURL = "chrome://browser/content/places/bookmarkProperties.xhtml";
     let features = "centerscreen,chrome,modal,resizable=no";
@@ -981,7 +987,7 @@ export var PlacesUIUtils = {
     // whereToOpenLink doesn't return "window" when there's no browser window
     // open (Bug 630255).
     var where = browserWindow
-      ? browserWindow.whereToOpenLink(aEvent, false, true)
+      ? lazy.BrowserUtils.whereToOpenLink(aEvent, false, true)
       : "window";
     if (where == "window") {
       // There is no browser window open, thus open a new one.
@@ -1072,14 +1078,13 @@ export var PlacesUIUtils = {
   openNodeWithEvent: function PUIU_openNodeWithEvent(aNode, aEvent) {
     let window = aEvent.target.ownerGlobal;
 
-    let browserWindow = getBrowserWindow(window);
-
-    let where = window.whereToOpenLink(aEvent, false, true);
+    let where = lazy.BrowserUtils.whereToOpenLink(aEvent, false, true);
     if (this.loadBookmarksInTabs && lazy.PlacesUtils.nodeIsBookmark(aNode)) {
       if (where == "current" && !aNode.uri.startsWith("javascript:")) {
         where = "tab";
       }
-      if (where == "tab" && browserWindow.gBrowser.selectedTab.isEmpty) {
+      let browserWindow = getBrowserWindow(window);
+      if (where == "tab" && browserWindow?.gBrowser.selectedTab.isEmpty) {
         where = "current";
       }
     }
@@ -1191,7 +1196,7 @@ export var PlacesUIUtils = {
   shouldShowTabsFromOtherComputersMenuitem() {
     let weaveOK =
       lazy.Weave.Status.checkSetup() != lazy.CLIENT_NOT_CONFIGURED &&
-      lazy.Weave.Svc.Prefs.get("firstSync", "") != "notReady";
+      lazy.Weave.Svc.PrefBranch.getCharPref("firstSync", "") != "notReady";
     return weaveOK;
   },
 
@@ -1230,8 +1235,8 @@ export var PlacesUIUtils = {
    * Helpers for consumers of editBookmarkOverlay which don't have a node as their input.
    *
    * Given a bookmark object for either a url bookmark or a folder, returned by
-   * Bookmarks.fetch (see Bookmark.jsm), this creates a node-like object suitable for
-   * initialising the edit overlay with it.
+   * Bookmarks.fetch (see Bookmark.sys.mjs), this creates a node-like object
+   * suitable for initialising the edit overlay with it.
    *
    * @param {object} aFetchInfo
    *        a bookmark object returned by Bookmarks.fetch.
@@ -1244,17 +1249,11 @@ export var PlacesUIUtils = {
     }
 
     let parent = {
-      itemId: await lazy.PlacesUtils.promiseItemId(aFetchInfo.parentGuid),
       bookmarkGuid: aFetchInfo.parentGuid,
       type: Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER,
     };
 
-    let itemId =
-      aFetchInfo.guid === lazy.PlacesUtils.bookmarks.unsavedGuid
-        ? undefined
-        : await lazy.PlacesUtils.promiseItemId(aFetchInfo.guid);
     return Object.freeze({
-      itemId,
       bookmarkGuid: aFetchInfo.guid,
       title: aFetchInfo.title,
       uri: aFetchInfo.url !== undefined ? aFetchInfo.url.href : "",
@@ -1296,11 +1295,11 @@ export var PlacesUIUtils = {
    *                                    count is lower than a threshold, then
    *                                    batching won't be set.
    * @param {Function} functionToWrap The function to
+   * @returns {object} forwards the functionToWrap return value.
    */
   async batchUpdatesForNode(resultNode, itemsBeingChanged, functionToWrap) {
     if (!resultNode) {
-      await functionToWrap();
-      return;
+      return functionToWrap();
     }
 
     if (itemsBeingChanged > ITEM_CHANGED_BATCH_NOTIFICATION_THRESHOLD) {
@@ -1308,7 +1307,7 @@ export var PlacesUIUtils = {
     }
 
     try {
-      await functionToWrap();
+      return await functionToWrap();
     } finally {
       if (itemsBeingChanged > ITEM_CHANGED_BATCH_NOTIFICATION_THRESHOLD) {
         resultNode.onEndUpdateBatch();
@@ -1354,27 +1353,15 @@ export var PlacesUIUtils = {
       return [];
     }
 
-    let guidsToSelect = [];
-    let resultForBatching = getResultForBatching(view);
+    let guidsToSelect = await this.batchUpdatesForNode(
+      getResultForBatching(view),
+      itemsCount,
+      async () =>
+        lazy.PlacesTransactions.batch(transactions, "handleTransferItems")
+    );
 
-    // If we're inserting into a tag, we don't get the guid, so we'll just
-    // pass the transactions direct to the batch function.
-    let batchingItem = transactions;
-    if (!insertionPoint.isTag) {
-      // If we're not a tag, then we need to get the ids of the items to select.
-      batchingItem = async () => {
-        for (let transaction of transactions) {
-          let result = await transaction.transact();
-          guidsToSelect = guidsToSelect.concat(result);
-        }
-      };
-    }
-
-    await this.batchUpdatesForNode(resultForBatching, itemsCount, async () => {
-      await lazy.PlacesTransactions.batch(batchingItem);
-    });
-
-    return guidsToSelect;
+    // If we're inserting into a tag, we don't get the resulting guids.
+    return insertionPoint.isTag ? [] : guidsToSelect.flat();
   },
 
   onSidebarTreeClick(event) {
@@ -1705,7 +1692,7 @@ export var PlacesUIUtils = {
     doCommand(command) {
       let window = this.triggerNode.ownerGlobal;
       switch (command) {
-        case "placesCmd_copy":
+        case "placesCmd_copy": {
           // This is a little hacky, but there is a lot of code in Places that handles
           // clipboard stuff, so it's easier to reuse.
           let node = {};
@@ -1750,6 +1737,7 @@ export var PlacesUIUtils = {
             Ci.nsIClipboard.kGlobalClipboard
           );
           break;
+        }
         case "placesCmd_open:privatewindow":
           window.openTrustedLinkIn(this.triggerNode.link, "window", {
             private: true,
@@ -1858,13 +1846,24 @@ export var PlacesUIUtils = {
     }
   },
 
+  /**
+   * Generates a cached-favicon: link for an icon URL, that will allow to fetch
+   * the icon from the local favicons cache, rather than from the network.
+   * If the icon URL is invalid, fallbacks to the default favicon URL.
+   *
+   * @param {string} icon The url of the icon to load from local cache.
+   * @returns {string} a "cached-favicon:" prefixed URL, unless the original
+   *   URL protocol refers to a local resource, then it will just pass-through
+   *   unchanged.
+   */
   getImageURL(icon) {
-    let iconURL = icon;
     // don't initiate a connection just to fetch a favicon (see bug 467828)
-    if (/^https?:/.test(iconURL)) {
-      iconURL = "moz-anno:favicon:" + iconURL;
-    }
-    return iconURL;
+    try {
+      return lazy.PlacesUtils.favicons.getFaviconLinkForIcon(
+        Services.io.newURI(icon)
+      ).spec;
+    } catch (ex) {}
+    return lazy.PlacesUtils.favicons.defaultFavicon.spec;
   },
 
   /**
@@ -1947,32 +1946,32 @@ PlacesUIUtils.canLoadToolbarContentPromise = new Promise(resolve => {
 });
 
 // These are lazy getters to avoid importing PlacesUtils immediately.
-XPCOMUtils.defineLazyGetter(PlacesUIUtils, "PLACES_FLAVORS", () => {
+ChromeUtils.defineLazyGetter(PlacesUIUtils, "PLACES_FLAVORS", () => {
   return [
     lazy.PlacesUtils.TYPE_X_MOZ_PLACE_CONTAINER,
     lazy.PlacesUtils.TYPE_X_MOZ_PLACE_SEPARATOR,
     lazy.PlacesUtils.TYPE_X_MOZ_PLACE,
   ];
 });
-XPCOMUtils.defineLazyGetter(PlacesUIUtils, "URI_FLAVORS", () => {
+ChromeUtils.defineLazyGetter(PlacesUIUtils, "URI_FLAVORS", () => {
   return [
     lazy.PlacesUtils.TYPE_X_MOZ_URL,
     TAB_DROP_TYPE,
     lazy.PlacesUtils.TYPE_PLAINTEXT,
   ];
 });
-XPCOMUtils.defineLazyGetter(PlacesUIUtils, "SUPPORTED_FLAVORS", () => {
+ChromeUtils.defineLazyGetter(PlacesUIUtils, "SUPPORTED_FLAVORS", () => {
   return [...PlacesUIUtils.PLACES_FLAVORS, ...PlacesUIUtils.URI_FLAVORS];
 });
 
-XPCOMUtils.defineLazyGetter(PlacesUIUtils, "ellipsis", function () {
+ChromeUtils.defineLazyGetter(PlacesUIUtils, "ellipsis", function () {
   return Services.prefs.getComplexValue(
     "intl.ellipsis",
     Ci.nsIPrefLocalizedString
   ).data;
 });
 
-XPCOMUtils.defineLazyGetter(PlacesUIUtils, "promptLocalization", () => {
+ChromeUtils.defineLazyGetter(PlacesUIUtils, "promptLocalization", () => {
   return new Localization(
     ["browser/placesPrompts.ftl", "branding/brand.ftl"],
     true

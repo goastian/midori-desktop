@@ -54,7 +54,7 @@ add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.suggest.searches", false]],
   });
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "searchSuggestionEngine.xml",
     setAsDefault: true,
   });
@@ -83,7 +83,7 @@ add_task(async function test_display_keyword_without_query() {
   );
   Assert.equal(
     result.displayed.title,
-    "https://example.com/browser/browser/components/urlbar/tests/browser/print_postdata.sjs?q=",
+    "example.com/browser/browser/components/urlbar/tests/browser/print_postdata.sjs?q=",
     "Node should contain the url of the bookmark"
   );
   let [action] = await document.l10n.formatValues([
@@ -203,10 +203,10 @@ add_task(async function test_keyword_with_question_mark() {
   let result = await promise_first_result("question?");
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.SEARCH,
-    "Result should be a search"
+    UrlbarUtils.RESULT_TYPE.KEYWORD,
+    "Result should be a keyword"
   );
-  Assert.equal(result.searchParams.query, "question?", "Check search query");
+  Assert.equal(result.keyword, "question?", "Check search query");
 
   result = await promise_first_result("question? something");
   Assert.equal(
@@ -219,20 +219,16 @@ add_task(async function test_keyword_with_question_mark() {
   result = await promise_first_result("?question");
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.SEARCH,
-    "Result should be a search"
+    UrlbarUtils.RESULT_TYPE.KEYWORD,
+    "Result should be a keyword"
   );
-  Assert.equal(result.searchParams.query, "question", "Check search query");
+  Assert.equal(result.keyword, "?question", "Check search query");
 
   result = await promise_first_result("?question something");
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.SEARCH,
-    "Result should be a search"
+    UrlbarUtils.RESULT_TYPE.KEYWORD,
+    "Result should be a keyword"
   );
-  Assert.equal(
-    result.searchParams.query,
-    "question something",
-    "Check search query"
-  );
+  Assert.equal(result.keyword, "?question", "Check search query");
 });

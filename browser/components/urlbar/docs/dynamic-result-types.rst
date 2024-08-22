@@ -152,8 +152,8 @@ aren't relevant to dynamic result types, and you should choose values
 appropriate to your use case.
 
 If any elements created in the view for your results can be picked with the
-keyboard or mouse, then be sure to implement your provider's ``onEngagement``
-method.
+keyboard or mouse, then be sure to implement your provider's
+``onLegacyEngagement`` method.
 
 For help on implementing providers in general, see the address bar's
 `Architecture Overview`__.
@@ -616,7 +616,7 @@ URL Navigation
 
 If a result's payload includes a string ``url`` property and a boolean
 ``shouldNavigate: true`` property, then picking the result will navigate to the
-URL. The ``onEngagement`` method of the result's provider will still be called
+URL. The ``onLegacyEngagement`` method of the result's provider will still be called
 before navigation.
 
 Text Highlighting
@@ -707,100 +707,3 @@ types.
 __ https://github.com/0c0w3/dynamic-result-type-extension
 __ https://github.com/mozilla-extensions/firefox-quick-suggest-weather/blob/master/src/background.js
 __ https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarProviderTabToSearch.sys.mjs
-
-Appendix B: Using the WebExtensions API Directly
-------------------------------------------------
-
-If you're developing an extension, the recommended way of using dynamic result
-types is to use the shim_, which abstracts away the differences between writing
-internal address bar code and extensions code. The `implementation steps`_ above
-apply to extensions as long as you're using the shim.
-
-For completeness, in this section we'll document the WebExtensions APIs that the
-shim is built on. If you don't use the shim for some reason, then follow these
-steps instead. You'll see that each step above using the shim has an analogous
-step here.
-
-The WebExtensions API schema is declared in `schema.json`_ and implemented in
-`api.js`_.
-
-.. _schema.json: https://github.com/0c0w3/dynamic-result-type-extension/blob/master/src/experiments/urlbar/schema.json
-.. _api.js: https://github.com/0c0w3/dynamic-result-type-extension/blob/master/src/experiments/urlbar/api.js
-
-1. Register the dynamic result type
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-First, register the new dynamic result type:
-
-.. code-block:: javascript
-
-    browser.experiments.urlbar.addDynamicResultType(name, type);
-
-``name`` is a string identifier for the new type. See step 1 in `Implementation
-Steps`_ for a description, which applies here, too.
-
-``type`` is an object with metadata for the new type. Currently no metadata is
-supported, so this should be an empty object, which is the default value.
-
-2. Register the view template
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Next, add the view template for the new type:
-
-.. code-block:: javascript
-
-    browser.experiments.urlbar.addDynamicViewTemplate(name, viewTemplate);
-
-See step 2 above for a description of the parameters.
-
-3. Add WebExtension event listeners
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Add all the WebExtension event listeners you normally would in an address bar
-extension, including the two required listeners, ``onBehaviorRequested`` and
-and ``onResultsRequested``.
-
-.. code-block:: javascript
-
-    browser.urlbar.onBehaviorRequested.addListener(query => {
-      return "active";
-    }, providerName);
-
-    browser.urlbar.onResultsRequested.addListener(query => {
-      let results = [
-        // ...
-      ];
-      return results;
-    }, providerName);
-
-See the address bar extensions__ document for help on the urlbar WebExtensions
-API.
-
-__ https://firefox-source-docs.mozilla.org/browser/urlbar/experiments.html
-
-4. Add an onViewUpdateRequested event listener
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``onViewUpdateRequested`` is a WebExtensions event particular to dynamic result
-types. It's analogous to the ``getViewUpdate`` provider method described
-earlier.
-
-.. code-block:: javascript
-
-    browser.experiments.urlbar.onViewUpdateRequested.addListener((payload, idsByName) => {
-      let viewUpdate = {
-        // ...
-      };
-      return viewUpdate;
-    });
-
-Note that unlike ``getViewUpdate``, here the listener's first parameter is a
-result payload, not the result itself.
-
-The listener should return a view update object.
-
-5. Style the results
-~~~~~~~~~~~~~~~~~~~~
-
-This step is the same as step 5 above. Bundle a CSS file in your extension and
-declare it in the top-level ``stylesheet`` property of your view template.

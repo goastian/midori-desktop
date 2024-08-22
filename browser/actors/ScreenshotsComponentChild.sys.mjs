@@ -7,62 +7,151 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
-  ScreenshotsOverlayChild:
-    "resource:///modules/ScreenshotsOverlayChild.sys.mjs",
+  ScreenshotsOverlay: "resource:///modules/ScreenshotsOverlayChild.sys.mjs",
 });
 
+const SCREENSHOTS_PREVENT_CONTENT_EVENTS_PREF =
+  "screenshots.browser.component.preventContentEvents";
+
 export class ScreenshotsComponentChild extends JSWindowActorChild {
+  #resizeTask;
+  #scrollTask;
+  #overlay;
+  #preventableEventsAdded = false;
+
+  static OVERLAY_EVENTS = [
+    "click",
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "keyup",
+    "keydown",
+  ];
+
+  // The following events are only listened to so we can prevent them from
+  // reaching the content page. The events in OVERLAY_EVENTS are also prevented.
+  static PREVENTABLE_EVENTS = [
+    "mousemove",
+    "mousedown",
+    "mouseup",
+    "touchstart",
+    "touchmove",
+    "touchend",
+    "dblclick",
+    "auxclick",
+    "keypress",
+    "contextmenu",
+  ];
+
+  get overlay() {
+    return this.#overlay;
+  }
+
   receiveMessage(message) {
     switch (message.name) {
       case "Screenshots:ShowOverlay":
         return this.startScreenshotsOverlay();
       case "Screenshots:HideOverlay":
-        return this.endScreenshotsOverlay();
+        return this.endScreenshotsOverlay(message.data);
       case "Screenshots:isOverlayShowing":
-        return this._overlay?._initialized;
+        return this.overlay?.initialized;
       case "Screenshots:getFullPageBounds":
         return this.getFullPageBounds();
       case "Screenshots:getVisibleBounds":
         return this.getVisibleBounds();
       case "Screenshots:getDocumentTitle":
-        return this.getTitle();
+        return this.getDocumentTitle();
+      case "Screenshots:GetMethodsUsed":
+        return this.getMethodsUsed();
+      case "Screenshots:RemoveEventListeners":
+        return this.removeEventListeners();
+      case "Screenshots:AddEventListeners":
+        return this.addEventListeners();
+      case "Screenshots:MoveFocusToContent":
+        return this.focusOverlay();
+      case "Screenshots:ClearFocus":
+        Services.focus.clearFocus(this.contentWindow);
+        return null;
     }
     return null;
   }
 
   handleEvent(event) {
+    if (!event.isTrusted) {
+      return;
+    }
+
+    // Handle overlay events here
+    if (
+      [
+        ...ScreenshotsComponentChild.OVERLAY_EVENTS,
+        ...ScreenshotsComponentChild.PREVENTABLE_EVENTS,
+        "selectionchange",
+      ].includes(event.type)
+    ) {
+      if (!this.overlay?.initialized) {
+        return;
+      }
+
+      // Preventing a pointerdown event throws an error in debug builds.
+      // See https://searchfox.org/mozilla-central/rev/b41bb321fe4bd7d03926083698ac498ebec0accf/widget/WidgetEventImpl.cpp#566-572
+      // Don't prevent the default context menu.
+      if (!["contextmenu", "pointerdown"].includes(event.type)) {
+        event.preventDefault();
+      }
+
+      event.stopImmediatePropagation();
+      this.overlay.handleEvent(event);
+      return;
+    }
+
     switch (event.type) {
-      case "keydown":
-        if (event.key === "Escape") {
-          this.requestCancelScreenshot("escape");
-        }
-        break;
       case "beforeunload":
         this.requestCancelScreenshot("navigation");
         break;
       case "resize":
-        if (!this._resizeTask && this._overlay?._initialized) {
-          this._resizeTask = new lazy.DeferredTask(() => {
-            this._overlay.updateScreenshotsSize("resize");
+        if (!this.#resizeTask && this.overlay?.initialized) {
+          this.#resizeTask = new lazy.DeferredTask(() => {
+            this.overlay.updateScreenshotsOverlayDimensions("resize");
           }, 16);
         }
-        this._resizeTask.arm();
+        this.#resizeTask.arm();
         break;
       case "scroll":
-        if (!this._scrollTask && this._overlay?._initialized) {
-          this._scrollTask = new lazy.DeferredTask(() => {
-            this._overlay.updateScreenshotsSize("scroll");
+        if (!this.#scrollTask && this.overlay?.initialized) {
+          this.#scrollTask = new lazy.DeferredTask(() => {
+            this.overlay.updateScreenshotsOverlayDimensions("scroll");
           }, 16);
         }
-        this._scrollTask.arm();
+        this.#scrollTask.arm();
         break;
-      case "visibilitychange":
-        if (
-          event.target.visibilityState === "hidden" &&
-          this._overlay?.stateHandler.getState() === "crosshairs"
-        ) {
-          this.requestCancelScreenshot("navigation");
-        }
+      case "Screenshots:Close":
+        this.requestCancelScreenshot(event.detail.reason);
+        break;
+      case "Screenshots:Copy":
+        this.requestCopyScreenshot(event.detail.region);
+        break;
+      case "Screenshots:Download":
+        this.requestDownloadScreenshot(event.detail.region);
+        break;
+      case "Screenshots:OverlaySelection": {
+        let { hasSelection, overlayState } = event.detail;
+        this.sendOverlaySelection({ hasSelection, overlayState });
+        break;
+      }
+      case "Screenshots:RecordEvent": {
+        let { eventName, reason, args } = event.detail;
+        this.recordTelemetryEvent(eventName, reason, args);
+        break;
+      }
+      case "Screenshots:ShowPanel":
+        this.sendAsyncMessage("Screenshots:ShowPanel");
+        break;
+      case "Screenshots:HidePanel":
+        this.sendAsyncMessage("Screenshots:HidePanel");
+        break;
+      case "Screenshots:FocusPanel":
+        this.sendAsyncMessage("Screenshots:MoveFocusToParent", event.detail);
         break;
     }
   }
@@ -78,36 +167,46 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     this.endScreenshotsOverlay();
   }
 
-  requestCopyScreenshot(box) {
-    box.devicePixelRatio = this.contentWindow.devicePixelRatio;
-    this.sendAsyncMessage("Screenshots:CopyScreenshot", box);
-    this.endScreenshotsOverlay();
+  /**
+   * Send a request to copy the screenshots
+   * @param {Object} region The region dimensions of the screenshot to be copied
+   */
+  requestCopyScreenshot(region) {
+    region.devicePixelRatio = this.contentWindow.devicePixelRatio;
+    this.sendAsyncMessage("Screenshots:CopyScreenshot", { region });
+    this.endScreenshotsOverlay({ doNotResetMethods: true });
   }
 
-  requestDownloadScreenshot(box) {
-    box.devicePixelRatio = this.contentWindow.devicePixelRatio;
+  /**
+   * Send a request to download the screenshots
+   * @param {Object} region The region dimensions of the screenshot to be downloaded
+   */
+  requestDownloadScreenshot(region) {
+    region.devicePixelRatio = this.contentWindow.devicePixelRatio;
     this.sendAsyncMessage("Screenshots:DownloadScreenshot", {
-      title: this.getTitle(),
-      downloadBox: box,
+      title: this.getDocumentTitle(),
+      region,
     });
-    this.endScreenshotsOverlay();
+    this.endScreenshotsOverlay({ doNotResetMethods: true });
   }
 
-  showPanel() {
-    this.sendAsyncMessage("Screenshots:ShowPanel");
-  }
-
-  hidePanel() {
-    this.sendAsyncMessage("Screenshots:HidePanel");
-  }
-
-  getTitle() {
+  getDocumentTitle() {
     return this.document.title;
   }
 
-  scrollWindow(x, y) {
-    this.contentWindow.scrollBy(x, y);
-    this._overlay.updateScreenshotsSize("scroll");
+  sendOverlaySelection(data) {
+    this.sendAsyncMessage("Screenshots:OverlaySelection", data);
+  }
+
+  getMethodsUsed() {
+    let methodsUsed = this.#overlay.methodsUsed;
+    this.#overlay.resetMethodsUsed();
+    return methodsUsed;
+  }
+
+  focusOverlay() {
+    this.contentWindow.focus();
+    this.#overlay.focus();
   }
 
   /**
@@ -146,6 +245,30 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     });
   }
 
+  addEventListeners() {
+    this.contentWindow.addEventListener("beforeunload", this);
+    this.contentWindow.addEventListener("resize", this);
+    this.contentWindow.addEventListener("scroll", this);
+    this.addOverlayEventListeners();
+  }
+
+  addOverlayEventListeners() {
+    let chromeEventHandler = this.docShell.chromeEventHandler;
+    for (let event of ScreenshotsComponentChild.OVERLAY_EVENTS) {
+      chromeEventHandler.addEventListener(event, this, true);
+    }
+
+    this.document.addEventListener("selectionchange", this);
+
+    if (Services.prefs.getBoolPref(SCREENSHOTS_PREVENT_CONTENT_EVENTS_PREF)) {
+      for (let event of ScreenshotsComponentChild.PREVENTABLE_EVENTS) {
+        chromeEventHandler.addEventListener(event, this, true);
+      }
+
+      this.#preventableEventsAdded = true;
+    }
+  }
+
   /**
    * Wait until the document is ready and then show the screenshots overlay
    *
@@ -161,41 +284,52 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     }
     await this.documentIsReady();
     let overlay =
-      this._overlay ||
-      (this._overlay = new lazy.ScreenshotsOverlayChild.AnonymousContentOverlay(
-        this.document,
-        this
-      ));
-    this.document.addEventListener("keydown", this);
-    this.document.ownerGlobal.addEventListener("beforeunload", this);
-    this.contentWindow.addEventListener("resize", this);
-    this.contentWindow.addEventListener("scroll", this);
-    this.contentWindow.addEventListener("visibilitychange", this);
+      this.overlay ||
+      (this.#overlay = new lazy.ScreenshotsOverlay(this.document));
+    this.addEventListeners();
+
     overlay.initialize();
     return true;
   }
 
-  /**
-   * Remove the screenshots overlay.
-   *
-   * @returns {Boolean}
-   *   true when the overlay has been removed otherwise false
-   */
-  endScreenshotsOverlay() {
-    this.document.removeEventListener("keydown", this);
-    this.document.ownerGlobal.removeEventListener("beforeunload", this);
+  removeEventListeners() {
+    this.contentWindow.removeEventListener("beforeunload", this);
     this.contentWindow.removeEventListener("resize", this);
     this.contentWindow.removeEventListener("scroll", this);
-    this.contentWindow.removeEventListener("visibilitychange", this);
-    this._overlay?.tearDown();
-    this._resizeTask?.disarm();
-    this._scrollTask?.disarm();
-    return true;
+    this.removeOverlayEventListeners();
+  }
+
+  removeOverlayEventListeners() {
+    let chromeEventHandler = this.docShell.chromeEventHandler;
+    for (let event of ScreenshotsComponentChild.OVERLAY_EVENTS) {
+      chromeEventHandler.removeEventListener(event, this, true);
+    }
+
+    this.document.removeEventListener("selectionchange", this);
+
+    if (this.#preventableEventsAdded) {
+      for (let event of ScreenshotsComponentChild.PREVENTABLE_EVENTS) {
+        chromeEventHandler.removeEventListener(event, this, true);
+      }
+    }
+
+    this.#preventableEventsAdded = false;
+  }
+
+  /**
+   * Removes event listeners and the screenshots overlay.
+   */
+  endScreenshotsOverlay(options = {}) {
+    this.removeEventListeners();
+
+    this.overlay?.tearDown(options);
+    this.#resizeTask?.disarm();
+    this.#scrollTask?.disarm();
   }
 
   didDestroy() {
-    this._resizeTask?.disarm();
-    this._scrollTask?.disarm();
+    this.#resizeTask?.disarm();
+    this.#scrollTask?.disarm();
   }
 
   /**
@@ -221,13 +355,21 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
    *        The scroll height of the content window.
    */
   getFullPageBounds() {
-    let doc = this.document.documentElement;
+    let {
+      scrollMinX,
+      scrollMinY,
+      scrollWidth,
+      scrollHeight,
+      devicePixelRatio,
+    } = this.#overlay.windowDimensions.dimensions;
     let rect = {
-      x1: doc.clientLeft,
-      y1: doc.clientTop,
-      width: doc.scrollWidth,
-      height: doc.scrollHeight,
-      devicePixelRatio: this.contentWindow.devicePixelRatio,
+      left: scrollMinX,
+      top: scrollMinY,
+      right: scrollMinX + scrollWidth,
+      bottom: scrollMinY + scrollHeight,
+      width: scrollWidth,
+      height: scrollHeight,
+      devicePixelRatio,
     };
     return rect;
   }
@@ -256,18 +398,26 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
    *        The height of the content window.
    */
   getVisibleBounds() {
-    let doc = this.document.documentElement;
+    let {
+      pageScrollX,
+      pageScrollY,
+      clientWidth,
+      clientHeight,
+      devicePixelRatio,
+    } = this.#overlay.windowDimensions.dimensions;
     let rect = {
-      x1: doc.scrollLeft,
-      y1: doc.scrollTop,
-      width: doc.clientWidth,
-      height: doc.clientHeight,
-      devicePixelRatio: this.contentWindow.devicePixelRatio,
+      left: pageScrollX,
+      top: pageScrollY,
+      right: pageScrollX + clientWidth,
+      bottom: pageScrollY + clientHeight,
+      width: clientWidth,
+      height: clientHeight,
+      devicePixelRatio,
     };
     return rect;
   }
 
-  recordTelemetryEvent(type, object, args) {
+  recordTelemetryEvent(type, object, args = {}) {
     Services.telemetry.recordEvent("screenshots", type, object, null, args);
   }
 }

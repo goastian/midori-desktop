@@ -80,45 +80,49 @@ add_task(async function check_menu_when_both_existed() {
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
       primary: address.organization,
       secondary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
+      status: "Also autofills address, phone"
     })
-  ));
+  ), 2);
 
   await setInput("#street-address", "");
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
       primary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
       secondary: address.organization,
+      status: "Also autofills organization, phone"
     })
-  ));
+  ), 2);
 
   await setInput("#tel", "");
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
       primary: address.tel,
       secondary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
+      status: "Also autofills address, organization"
     })
-  ));
+  ), 2);
 
   await setInput("#address-line1", "");
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
       primary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
       secondary: address.organization,
+      status: "Also autofills organization, phone"
     })
-  ));
+  ), 2);
 });
 
 // Display history search result if no matched data in addresses.
@@ -151,12 +155,13 @@ add_task(async function check_fields_after_form_autofill() {
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
       primary: address.organization,
       secondary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
+      status: "Also autofills address, phone"
     })
-  ).slice(1));
+  ).slice(1), 2);
   synthesizeKey("KEY_ArrowDown");
   await triggerAutofillAndCheckProfile(MOCK_STORAGE[1]);
   synthesizeKey("KEY_Escape");
@@ -179,12 +184,13 @@ add_task(async function check_form_autofill_resume() {
   document.querySelector("#form1").reset();
   await setInput("#tel", "");
   await triggerPopupAndHoverItem("#tel", 0);
-  checkMenuEntries(MOCK_STORAGE.map(address =>
-    JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
       primary: address.tel,
       secondary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
+      status: "Also autofills address, organization"
     })
-  ));
+  ), 2);
   await triggerAutofillAndCheckProfile(MOCK_STORAGE[0]);
 });
 

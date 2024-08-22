@@ -284,7 +284,7 @@ var PointerLock = {
   get isActive() {
     return this._isActive;
   },
-  
+
   entered(originNoSuffix) {
     this._isActive = true;
     Services.obs.notifyObservers(null, "pointer-lock-entered");
@@ -365,26 +365,19 @@ var FullScreen = {
       passive: true,
     });
 
-    if (enterFS) {
-      gNavToolbox.setAttribute("inFullscreen", true);
-      document.documentElement.setAttribute("inFullscreen", true);
-      let alwaysUsesNativeFullscreen =
+    document.documentElement.toggleAttribute("inFullscreen", enterFS);
+    document.documentElement.toggleAttribute(
+      "macOSNativeFullscreen",
+      enterFS &&
         AppConstants.platform == "macosx" &&
-        Services.prefs.getBoolPref("full-screen-api.macos-native-full-screen");
-      if (
-        (alwaysUsesNativeFullscreen || !document.fullscreenElement) &&
-        AppConstants.platform == "macosx"
-      ) {
-        document.documentElement.setAttribute("macOSNativeFullscreen", true);
-      }
-    } else {
-      gNavToolbox.removeAttribute("inFullscreen");
-      document.documentElement.removeAttribute("inFullscreen");
-      document.documentElement.removeAttribute("macOSNativeFullscreen");
-    }
+        (Services.prefs.getBoolPref(
+          "full-screen-api.macos-native-full-screen"
+        ) ||
+          !document.fullscreenElement)
+    );
 
     if (!document.fullscreenElement) {
-      this._updateToolbars(enterFS);
+      ToolbarIconColor.inferFromText("fullscreen", enterFS);
     }
 
     if (enterFS) {
@@ -427,10 +420,17 @@ var FullScreen = {
     // shiftSize is sent from Cocoa widget code as a very precise double. We
     // don't need that kind of precision in our CSS.
     shiftSize = shiftSize.toFixed(2);
-    let toolbox = document.getElementById("navigator-toolbox");
+    let toolbox = gNavToolbox;
     if (shiftSize > 0) {
       toolbox.style.setProperty("transform", `translateY(${shiftSize}px)`);
       toolbox.style.setProperty("z-index", "2");
+
+      // If the mouse tracking missed our fullScreenToggler, then the toolbox
+      // might not have been shown before the menubar is animated down. Make
+      // sure it is shown now.
+      if (!this.fullScreenToggler.hidden) {
+        this.showNavToolbox();
+      }
     } else {
       toolbox.style.removeProperty("transform");
       toolbox.style.removeProperty("z-index");
@@ -562,6 +562,8 @@ var FullScreen = {
       }
     }
     document.documentElement.setAttribute("inDOMFullscreen", true);
+
+    XULBrowserWindow.onEnterDOMFullscreen();
 
     if (gFindBarInitialized) {
       gFindBar.close(true);
@@ -939,25 +941,9 @@ var FullScreen = {
 
     MousePosTracker.removeListener(this);
   },
-
-  _updateToolbars(aEnterFS) {
-    for (let el of document.querySelectorAll(
-      "toolbar[fullscreentoolbar=true]"
-    )) {
-      // Set the inFullscreen attribute to allow specific styling
-      // in fullscreen mode
-      if (aEnterFS) {
-        el.setAttribute("inFullscreen", true);
-      } else {
-        el.removeAttribute("inFullscreen");
-      }
-    }
-
-    ToolbarIconColor.inferFromText("fullscreen", aEnterFS);
-  },
 };
 
-XPCOMUtils.defineLazyGetter(FullScreen, "_permissionNotificationIDs", () => {
+ChromeUtils.defineLazyGetter(FullScreen, "_permissionNotificationIDs", () => {
   let { PermissionUI } = ChromeUtils.importESModule(
     "resource:///modules/PermissionUI.sys.mjs"
   );

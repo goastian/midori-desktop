@@ -69,7 +69,6 @@ async function checkIsFormCleared(patch = {}) {
     const expectedValue = patch[elem.id] || "";
     checkFieldValue(elem, expectedValue);
     await checkFieldHighlighted(elem, false);
-    await checkFieldPreview(elem, "");
   }
 }
 
@@ -125,6 +124,12 @@ add_task(async function simple_clear() {
   await triggerPopupAndHoverItem("#tel", 0);
   await confirmClear("#tel");
   await checkIsFormCleared();
+
+  // Ensure the correctness of the autocomplete popup after the form is cleared
+  synthesizeKey("KEY_ArrowDown");
+  await expectPopup();
+
+  is(4, getMenuEntries().labels.length, `Checking length of expected menu`);
 });
 
 add_task(async function clear_adapted_record() {
@@ -155,7 +160,10 @@ add_task(async function clear_distinct_section() {
 
   document.getElementById("form1").reset();
   await triggerPopupAndHoverItem("#cc-name", 0);
-  let osKeyStoreLoginShown = waitForOSKeyStoreLogin(true);
+  let osKeyStoreLoginShown = Promise.resolve();
+  if(OSKeyStore.canReauth()) {
+    osKeyStoreLoginShown = waitForOSKeyStoreLogin(true);
+  }
   await triggerAutofillAndCheckProfile(MOCK_CC_STORAGE_EXPECTED_FILL[0]);
   await osKeyStoreLoginShown;
 
@@ -176,6 +184,8 @@ add_task(async function clear_distinct_section() {
   await triggerPopupAndHoverItem("#cc-name", 0);
   await confirmClear("#cc-name");
   await checkIsFormCleared();
+  // Enforcing this since it is unable to change back in chaos mode.
+  SpecialPowers.clearUserPref("toolkit.osKeyStore.unofficialBuildOnlyLogin");
 });
 
 </script>

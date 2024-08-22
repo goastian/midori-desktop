@@ -5,10 +5,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser.ini",
+    "test/browser/browser.toml",
 ]
 
-MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
 
 with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Security")

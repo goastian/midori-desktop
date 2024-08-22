@@ -10,7 +10,10 @@ add_task(async function () {
   let notificationValue = "Protocol Registration: web+testprotocol";
   let testURI = TEST_PATH + "browser_registerProtocolHandler_notification.html";
 
-  BrowserTestUtils.loadURIString(window.gBrowser.selectedBrowser, testURI);
+  BrowserTestUtils.startLoadingURIString(
+    window.gBrowser.selectedBrowser,
+    testURI
+  );
   await TestUtils.waitForCondition(
     function () {
       // Do not start until the notification is up
@@ -37,16 +40,9 @@ add_task(async function () {
     "info",
     "We expect this notification to have the type of 'info'."
   );
-
-  // Make sure the CSS is fully loaded...
-  ok(
-    await TestUtils.waitForCondition(
-      () =>
-        notification.ownerGlobal.getComputedStyle(
-          notification.messageImage,
-          "::after"
-        ).content == 'url("chrome://global/skin/icons/info-filled.svg")'
-    ),
+  is(
+    notification.messageImage.getAttribute("src"),
+    "chrome://global/skin/icons/info-filled.svg",
     "We expect this notification to have an icon."
   );
 

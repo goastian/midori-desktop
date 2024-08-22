@@ -28,10 +28,12 @@ const known_scripts = {
     "resource://gre/modules/XPCOMUtils.sys.mjs",
 
     // Logging related
+    // eslint-disable-next-line mozilla/use-console-createInstance
     "resource://gre/modules/Log.sys.mjs",
 
     // Browser front-end
     "resource:///actors/AboutReaderChild.sys.mjs",
+    "resource:///actors/InteractionsChild.sys.mjs",
     "resource:///actors/LinkHandlerChild.sys.mjs",
     "resource:///actors/SearchSERPTelemetryChild.sys.mjs",
     "resource://gre/actors/ContentMetaChild.sys.mjs",
@@ -55,11 +57,6 @@ const known_scripts = {
   ]),
 };
 
-if (AppConstants.NIGHTLY_BUILD) {
-  // Browser front-end.
-  known_scripts.modules.add("resource:///actors/InteractionsChild.sys.mjs");
-}
-
 // Items on this list *might* load when creating the process, as opposed to
 // items in the main list, which we expect will always load.
 const intermittently_loaded_scripts = {
@@ -68,14 +65,11 @@ const intermittently_loaded_scripts = {
 
     // Translations code which may be preffed on.
     "resource://gre/actors/TranslationsChild.sys.mjs",
+    "resource://gre/modules/translation/LanguageDetector.sys.mjs",
     "resource://gre/modules/ConsoleAPIStorage.sys.mjs", // Logging related.
 
     // Session store.
     "resource://gre/modules/sessionstore/SessionHistory.sys.mjs",
-
-    // Webcompat about:config front-end. This is part of a system add-on which
-    // may not load early enough for the test.
-    "resource://webcompat/AboutCompat.jsm",
 
     // Cookie banner handling.
     "resource://gre/actors/CookieBannerChild.sys.mjs",
@@ -91,11 +85,7 @@ const intermittently_loaded_scripts = {
     "resource://testing-common/WrapPrivileged.sys.mjs",
   ]),
   frameScripts: new Set([]),
-  processScripts: new Set([
-    // Webcompat about:config front-end. This is presently nightly-only and
-    // part of a system add-on which may not load early enough for the test.
-    "resource://webcompat/aboutPageProcessScript.js",
-  ]),
+  processScripts: new Set([]),
 };
 
 const forbiddenScripts = {
@@ -122,7 +112,8 @@ add_task(async function () {
   let mm = gBrowser.selectedBrowser.messageManager;
   let promise = BrowserTestUtils.waitForMessage(mm, "Test:LoadedScripts");
 
-  // Load a custom frame script to avoid using ContentTask which loads Task.jsm
+  // Load a custom frame script to avoid using SpecialPowers.spawn which may
+  // load other modules.
   mm.loadFrameScript(
     "data:text/javascript,(" +
       function () {
@@ -133,24 +124,26 @@ add_task(async function () {
           "resource://gre/modules/AppConstants.sys.mjs"
         );
         let collectStacks = AppConstants.NIGHTLY_BUILD || AppConstants.DEBUG;
-        let modules = {};
+        let modules = new Map();
         for (let module of Cu.loadedJSModules) {
-          modules[module] = collectStacks
-            ? Cu.getModuleImportStack(module)
-            : "";
+          modules.set(
+            module,
+            collectStacks ? Cu.getModuleImportStack(module) : ""
+          );
         }
         for (let module of Cu.loadedESModules) {
-          modules[module] = collectStacks
-            ? Cu.getModuleImportStack(module)
-            : "";
+          modules.set(
+            module,
+            collectStacks ? Cu.getModuleImportStack(module) : ""
+          );
         }
-        let services = {};
+        let services = new Map();
         for (let contractID of Object.keys(Cc)) {
           try {
             if (
               Cm.isServiceInstantiatedByContractID(contractID, Ci.nsISupports)
             ) {
-              services[contractID] = "";
+              services.set(contractID, "");
             }
           } catch (e) {}
         }
@@ -166,15 +159,15 @@ add_task(async function () {
   let loadedInfo = await promise;
 
   // Gather loaded frame scripts.
-  loadedInfo.frameScripts = {};
+  loadedInfo.frameScripts = new Map();
   for (let [uri] of Services.mm.getDelayedFrameScripts()) {
-    loadedInfo.frameScripts[uri] = "";
+    loadedInfo.frameScripts.set(uri, "");
   }
 
   // Gather loaded process scripts.
-  loadedInfo.processScripts = {};
+  loadedInfo.processScripts = new Map();
   for (let [uri] of Services.ppmm.getDelayedProcessScripts()) {
-    loadedInfo.processScripts[uri] = "";
+    loadedInfo.processScripts.set(uri, "");
   }
 
   await checkLoadedScripts({

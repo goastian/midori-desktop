@@ -14,104 +14,100 @@
     <stringbundle id="bundle_shell" src="chrome://browser/locale/shellservice.properties"/>
   </stringbundleset>
 
+  <!-- The event listeners are defined by _initCommandSet in browser-init.js -->
   <commandset id="mainCommandSet">
-    <command id="cmd_newNavigator" oncommand="OpenBrowserWindow()"/>
-    <command id="cmd_handleBackspace" oncommand="BrowserHandleBackspace();" />
-    <command id="cmd_handleShiftBackspace" oncommand="BrowserHandleShiftBackspace();" />
+    <command id="cmd_newNavigator" />
+    <command id="cmd_handleBackspace" />
+    <command id="cmd_handleShiftBackspace" />
 
-    <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab({ event });"/>
-    <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();"/>
-    <command id="Browser:OpenFile"  oncommand="BrowserOpenFileWindow();"/>
-    <command id="Browser:SavePage" oncommand="saveBrowser(gBrowser.selectedBrowser);"/>
+    <command id="cmd_newNavigatorTab" />
+    <command id="cmd_newNavigatorTabNoEvent" />
+    <command id="Browser:OpenFile" />
+    <command id="Browser:SavePage" />
 
-    <command id="Browser:SendLink"
-             oncommand="MailIntegration.sendLinkForBrowser(gBrowser.selectedBrowser);"/>
+    <command id="Browser:SendLink" />
 
-    <command id="cmd_pageSetup" oncommand="PrintUtils.showPageSetup();"/>
-    <command id="cmd_print" oncommand="PrintUtils.startPrintWindow(gBrowser.selectedBrowser.browsingContext);"/>
-    <command id="cmd_printPreviewToggle" oncommand="PrintUtils.togglePrintPreview(gBrowser.selectedBrowser.browsingContext);"/>
-    <command id="cmd_file_importFromAnotherBrowser" oncommand="MigrationUtils.showMigrationWizard(window, { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU });"/>
-    <command id="cmd_help_importFromAnotherBrowser" oncommand="MigrationUtils.showMigrationWizard(window, { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.HELP_MENU });"/>
-    <command id="cmd_close" oncommand="BrowserCloseTabOrWindow(event);"/>
-    <command id="cmd_closeWindow" oncommand="BrowserTryToCloseWindow(event)"/>
-    <command id="cmd_toggleMute" oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(gBrowser.selectedTab)"/>
-    <command id="cmd_CustomizeToolbars" oncommand="gCustomizeMode.enter()"/>
-    <command id="cmd_toggleOfflineStatus" oncommand="BrowserOffline.toggleOfflineStatus();"/>
-    <command id="cmd_quitApplication" oncommand="goQuitApplication(event)"/>
+    <command id="cmd_pageSetup" />
+    <command id="cmd_print" />
+    <command id="cmd_printPreviewToggle" />
+    <command id="cmd_file_importFromAnotherBrowser" />
+    <command id="cmd_help_importFromAnotherBrowser" />
+    <command id="cmd_close" />
+    <command id="cmd_closeWindow" />
+    <command id="cmd_toggleMute" />
+    <command id="cmd_CustomizeToolbars" oncommand="gCustomizeMode.enter();" />
+    <command id="cmd_toggleOfflineStatus" />
+    <command id="cmd_quitApplication" />
 
-    <command id="View:AboutProcesses" oncommand="switchToTabHavingURI('about:processes', true)"/>
-    <command id="View:PageSource" oncommand="BrowserViewSource(window.gBrowser.selectedBrowser);"/>
-    <command id="View:PageInfo" oncommand="BrowserPageInfo();"/>
-    <command id="View:FullScreen" oncommand="BrowserFullScreen();"/>
-    <command id="View:ReaderView" oncommand="AboutReaderParent.toggleReaderMode(event);"/>
-    <command id="View:PictureInPicture" oncommand="PictureInPicture.onCommand(event);"/>
-    <command id="cmd_find" oncommand="gLazyFindCommand('onFindCommand')"/>
-    <command id="cmd_findAgain" oncommand="gLazyFindCommand('onFindAgainCommand', false)"/>
-    <command id="cmd_findPrevious" oncommand="gLazyFindCommand('onFindAgainCommand', true)"/>
+    <command id="View:AboutProcesses" />
+    <command id="View:PageSource" />
+    <command id="View:PageInfo" />
+    <command id="View:FullScreen" oncommand="BrowserCommands.fullScreen();" />
+    <command id="View:ReaderView" oncommand="AboutReaderParent.toggleReaderMode(event);" />
+    <command id="View:PictureInPicture" />
+    <command id="cmd_find" />
+    <command id="cmd_findAgain" />
+    <command id="cmd_findPrevious" />
 #ifdef XP_MACOSX
-    <command id="cmd_findSelection" oncommand="gLazyFindCommand('onFindSelectionCommand')"/>
+    <command id="cmd_findSelection" />
 #endif
-    <command id="cmd_translate" oncommand="TranslationsPanel.open(event);"/>
+    <command id="cmd_reportBrokenSite" oncommand="ReportBrokenSite.open(event);" />
+    <command id="cmd_translate" />
     <!-- work-around bug 392512 -->
-    <command id="Browser:AddBookmarkAs"
-             oncommand="PlacesCommandHook.bookmarkPage();"/>
-    <command id="Browser:BookmarkAllTabs"
-             oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueCurrentPages);"/>
-    <command id="Browser:Back"    oncommand="BrowserBack();" disabled="true"/>
-    <command id="Browser:BackOrBackDuplicate" oncommand="BrowserBack(event);" disabled="true">
+    <command id="Browser:AddBookmarkAs" />
+    <command id="Browser:SearchBookmarks" />
+    <command id="Browser:BookmarkAllTabs"/>
+    <command id="Browser:Back" disabled="true" />
+    <command id="Browser:BackOrBackDuplicate" disabled="true">
       <observes element="Browser:Back" attribute="disabled"/>
     </command>
-    <command id="Browser:Forward" oncommand="BrowserForward();" disabled="true"/>
-    <command id="Browser:ForwardOrForwardDuplicate" oncommand="BrowserForward(event);" disabled="true">
+    <command id="Browser:Forward" disabled="true" />
+    <command id="Browser:ForwardOrForwardDuplicate" disabled="true">
       <observes element="Browser:Forward" attribute="disabled"/>
     </command>
-    <command id="Browser:Stop"    oncommand="BrowserStop();" disabled="true"/>
-    <command id="Browser:Reload"  oncommand="if (event.shiftKey) BrowserReloadSkipCache(); else BrowserReload()" disabled="true"/>
-    <command id="Browser:ReloadOrDuplicate" oncommand="BrowserReloadOrDuplicate(event)" disabled="true">
+    <command id="Browser:Stop" disabled="true" />
+    <command id="Browser:Reload" disabled="true" />
+    <command id="Browser:ReloadOrDuplicate" disabled="true">
       <observes element="Browser:Reload" attribute="disabled"/>
     </command>
-    <command id="Browser:ReloadSkipCache" oncommand="BrowserReloadSkipCache()" disabled="true">
+    <command id="Browser:ReloadSkipCache" disabled="true">
       <observes element="Browser:Reload" attribute="disabled"/>
     </command>
-    <command id="Browser:NextTab" oncommand="gBrowser.tabContainer.advanceSelectedTab(1, true);"/>
-    <command id="Browser:PrevTab" oncommand="gBrowser.tabContainer.advanceSelectedTab(-1, true);"/>
-    <command id="Browser:ShowAllTabs" oncommand="gTabsPanel.showAllTabsPanel();"/>
-    <command id="cmd_fullZoomReduce"  oncommand="FullZoom.reduce()"/>
-    <command id="cmd_fullZoomEnlarge" oncommand="FullZoom.enlarge()"/>
-    <command id="cmd_fullZoomReset"   oncommand="FullZoom.reset(); FullZoom.resetScalingZoom();"/>
-    <command id="cmd_fullZoomToggle"  oncommand="ZoomManager.toggleZoom();"/>
-    <command id="cmd_gestureRotateLeft" oncommand="gGestureSupport.rotate(event.sourceEvent)"/>
-    <command id="cmd_gestureRotateRight" oncommand="gGestureSupport.rotate(event.sourceEvent)"/>
-    <command id="cmd_gestureRotateEnd" oncommand="gGestureSupport.rotateEnd()"/>
-    <command id="Browser:OpenLocation" oncommand="openLocation(event);"/>
-    <command id="Browser:RestoreLastSession" oncommand="SessionStore.restoreLastSession();" disabled="true"/>
-    <command id="Browser:NewUserContextTab" oncommand="openNewUserContextTab(event.sourceEvent);"/>
-    <command id="Browser:OpenAboutContainers" oncommand="openPreferences('paneContainers');"/>
-    <command id="Tools:Search" oncommand="BrowserSearch.webSearch();"/>
-    <command id="Tools:Downloads" oncommand="BrowserDownloadsUI();"/>
-    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr();"/>
-    <command id="Tools:Sanitize" oncommand="Sanitizer.showUI(window);"/>
-    <command id="Tools:PrivateBrowsing"
-      oncommand="OpenBrowserWindow({private: true});"/>
-    <command id="Browser:Screenshot" oncommand="ScreenshotsUtils.notify(window, 'shortcut')"/>
-    <command id="History:UndoCloseTab" oncommand="undoCloseTab();" data-l10n-args='{"tabCount": 1}'/>
-    <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
+    <command id="Browser:NextTab" />
+    <command id="Browser:PrevTab" />
+    <command id="Browser:ShowAllTabs" />
+    <command id="cmd_fullZoomReduce" />
+    <command id="cmd_fullZoomEnlarge" />
+    <command id="cmd_fullZoomReset" />
+    <command id="cmd_fullZoomToggle" />
+    <command id="cmd_gestureRotateLeft" />
+    <command id="cmd_gestureRotateRight" />
+    <command id="cmd_gestureRotateEnd" />
+    <command id="Browser:OpenLocation" />
+    <command id="Browser:RestoreLastSession" disabled="true"/>
+    <command id="Browser:NewUserContextTab" />
+    <command id="Browser:OpenAboutContainers" />
+    <command id="Tools:Search" />
+    <command id="Tools:Downloads" />
+    <command id="Tools:Addons" />
+    <command id="Tools:Sanitize" />
+    <command id="Tools:PrivateBrowsing" />
+    <command id="Browser:Screenshot" />
+    <command id="History:UndoCloseTab" oncommand="undoCloseTab();" data-l10n-args='{"tabCount": 1}' />
+    <command id="History:UndoCloseWindow" />
+    <command id="History:RestoreLastClosedTabOrWindowOrSession" />
+    <command id="History:SearchHistory" />
 
-    <command id="wrCaptureCmd" oncommand="gGfxUtils.webrenderCapture();" disabled="true"/>
-    <command id="wrToggleCaptureSequenceCmd" oncommand="gGfxUtils.toggleWebrenderCaptureSequence();" disabled="true"/>
+    <command id="wrCaptureCmd" disabled="true"/>
+    <command id="wrToggleCaptureSequenceCmd" disabled="true"/>
 #ifdef NIGHTLY_BUILD
-    <command id="windowRecordingCmd" oncommand="gGfxUtils.toggleWindowRecording();"/>
+    <command id="windowRecordingCmd" />
 #endif
 #ifdef XP_MACOSX
-    <command id="minimizeWindow"
-             data-l10n-id="window-minimize-command"
-             oncommand="window.minimize();" />
-    <command id="zoomWindow"
-             data-l10n-id="window-zoom-command"
-             oncommand="zoomWindow();" />
+    <command id="minimizeWindow" data-l10n-id="window-minimize-command" />
+    <command id="zoomWindow" data-l10n-id="window-zoom-command" />
 #endif
   </commandset>
-
 #include ../../components/places/content/placesCommands.inc.xhtml
 
   <keyset id="mainKeyset">
@@ -211,7 +207,7 @@
     <key id="goBackKb2" data-l10n-id="nav-back-shortcut-alt" command="Browser:Back" modifiers="accel"/>
     <key id="goForwardKb2" data-l10n-id="nav-fwd-shortcut-alt" command="Browser:Forward" modifiers="accel"/>
 #endif
-    <key id="goHome" keycode="VK_HOME" oncommand="BrowserHome();" modifiers="alt"/>
+    <key id="goHome" keycode="VK_HOME" oncommand="BrowserCommands.home();" modifiers="alt"/>
     <key keycode="VK_F5" command="Browser:Reload"/>
 #ifndef XP_MACOSX
     <key id="showAllHistoryKb" data-l10n-id="history-show-all-shortcut" command="Browser:ShowAllHistory" modifiers="accel,shift"/>
@@ -265,13 +261,13 @@
     <key id="addBookmarkAsKb" data-l10n-id="bookmark-this-page-shortcut" command="Browser:AddBookmarkAs" modifiers="accel"/>
     <key id="bookmarkAllTabsKb"
          data-l10n-id="bookmark-this-page-shortcut"
-         oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueCurrentPages);"
+         oncommand="PlacesCommandHook.bookmarkTabs();"
          modifiers="accel,shift"/>
     <key id="manBookmarkKb" data-l10n-id="bookmark-show-library-shortcut" command="Browser:ShowAllBookmarks" modifiers="accel,shift"/>
     <key id="viewBookmarksSidebarKb"
          data-l10n-id="bookmark-show-sidebar-shortcut"
          modifiers="accel"
-         oncommand="SidebarUI.toggle('viewBookmarksSidebar');"/>
+         oncommand="SidebarController.toggle('viewBookmarksSidebar');"/>
     <key id="viewBookmarksToolbarKb"
          data-l10n-id="bookmark-show-toolbar-shortcut"
          oncommand="BookmarkingUI.toggleBookmarksToolbar('shortcut');"
@@ -290,7 +286,7 @@
 #else
          modifiers="accel"
 #endif
-         oncommand="SidebarUI.toggle('viewHistorySidebar');"/>
+         oncommand="SidebarController.toggle('viewHistorySidebar');"/>
 
     <key id="key_fullZoomReduce" data-l10n-id="full-zoom-reduce-shortcut" command="cmd_fullZoomReduce"  modifiers="accel"/>
     <key                         data-l10n-id="full-zoom-reduce-shortcut-alt-a" command="cmd_fullZoomReduce"  modifiers="accel"/>
@@ -328,7 +324,7 @@
 #endif
          reserved="true"/>
 
-    <key id="key_undoCloseTab" command="History:UndoCloseTab" data-l10n-id="tab-new-shortcut" modifiers="accel,shift"/>
+    <key id="key_restoreLastClosedTabOrWindowOrSession" command="History:RestoreLastClosedTabOrWindowOrSession" data-l10n-id="tab-new-shortcut" modifiers="accel,shift"/>
     <key id="key_undoCloseWindow" command="History:UndoCloseWindow" data-l10n-id="window-new-shortcut" modifiers="accel,shift"/>
 
 #ifdef XP_GNOME

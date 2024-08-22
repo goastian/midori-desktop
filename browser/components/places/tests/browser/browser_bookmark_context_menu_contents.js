@@ -55,7 +55,7 @@ let OptionItemExists = (elementId, doc = document) => {
 
   Assert.ok(optionItem, `Context menu contains the menuitem ${elementId}`);
   Assert.ok(
-    BrowserTestUtils.is_visible(optionItem),
+    BrowserTestUtils.isVisible(optionItem),
     `Context menu option ${elementId} is visible`
   );
 };
@@ -64,7 +64,7 @@ let OptionsMatchExpected = (contextMenu, expectedOptionItems) => {
   let idList = [];
   for (let elem of contextMenu.children) {
     if (
-      BrowserTestUtils.is_visible(elem) &&
+      BrowserTestUtils.isVisible(elem) &&
       elem.localName !== "menuseparator"
     ) {
       idList.push(elem.id);
@@ -131,14 +131,14 @@ let checkContextMenu = async (cbfunc, optionItems, doc = document) => {
     if (expectedOptionItems.includes("placesContext_open")) {
       Assert.equal(
         doc.getElementById("placesContext_open").getAttribute("default"),
-        loadBookmarksInNewTab ? "" : "true",
+        loadBookmarksInNewTab ? null : "true",
         `placesContext_open has the correct "default" attribute when loadBookmarksInTabs = ${loadBookmarksInNewTab}`
       );
     }
     if (expectedOptionItems.includes("placesContext_open:newtab")) {
       Assert.equal(
         doc.getElementById("placesContext_open:newtab").getAttribute("default"),
-        loadBookmarksInNewTab ? "true" : "",
+        loadBookmarksInNewTab ? "true" : null,
         `placesContext_open:newtab has the correct "default" attribute when loadBookmarksInTabs = ${loadBookmarksInNewTab}`
       );
     }
@@ -377,7 +377,7 @@ add_task(async function test_sidebar_folder_contextmenu_contents() {
 
   await withSidebarTree("bookmarks", async tree => {
     await checkContextMenu(
-      async bookmark => {
+      async () => {
         let folder = await PlacesUtils.bookmarks.insert({
           parentGuid: PlacesUtils.bookmarks.toolbarGuid,
           title: "folder",
@@ -386,7 +386,9 @@ add_task(async function test_sidebar_folder_contextmenu_contents() {
         tree.selectItems([folder.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -396,7 +398,7 @@ add_task(async function test_sidebar_folder_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -416,7 +418,7 @@ add_task(async function test_sidebar_multiple_folders_contextmenu_contents() {
 
   await withSidebarTree("bookmarks", async tree => {
     await checkContextMenu(
-      async bookmark => {
+      async () => {
         let folder1 = await PlacesUtils.bookmarks.insert({
           parentGuid: PlacesUtils.bookmarks.toolbarGuid,
           title: "folder 1",
@@ -430,7 +432,9 @@ add_task(async function test_sidebar_multiple_folders_contextmenu_contents() {
         tree.selectItems([folder1.guid, folder2.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -440,7 +444,7 @@ add_task(async function test_sidebar_multiple_folders_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -473,7 +477,9 @@ add_task(async function test_sidebar_bookmark_contextmenu_contents() {
         tree.selectItems([bookmark.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -483,7 +489,7 @@ add_task(async function test_sidebar_bookmark_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -513,13 +519,17 @@ add_task(async function test_sidebar_bookmark_search_contextmenu_contents() {
         info("Checking bookmark sidebar menu contents in search context");
         // Perform a search first
         let searchBox =
-          SidebarUI.browser.contentDocument.getElementById("search-box");
+          SidebarController.browser.contentDocument.getElementById(
+            "search-box"
+          );
         searchBox.value = SECOND_BOOKMARK_TITLE;
         searchBox.doCommand();
         tree.selectItems([bookmark.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -529,7 +539,7 @@ add_task(async function test_sidebar_bookmark_search_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -556,7 +566,7 @@ add_task(async function test_library_bookmark_contextmenu_contents() {
     );
   }
 
-  await withLibraryWindow("BookmarksToolbar", async ({ left, right }) => {
+  await withLibraryWindow("BookmarksToolbar", async ({ right }) => {
     await checkContextMenu(
       async bookmark => {
         let contextMenu = right.ownerDocument.getElementById("placesContext");
@@ -594,7 +604,7 @@ add_task(async function test_library_bookmark_search_contextmenu_contents() {
     );
   }
 
-  await withLibraryWindow("BookmarksToolbar", async ({ left, right }) => {
+  await withLibraryWindow("BookmarksToolbar", async ({ right }) => {
     await checkContextMenu(
       async bookmark => {
         info("Checking bookmark library menu contents in search context");
@@ -641,7 +651,9 @@ add_task(async function test_sidebar_mixedselection_contextmenu_contents() {
         tree.selectItems([bookmark.guid, folder.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -651,7 +663,7 @@ add_task(async function test_sidebar_mixedselection_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -679,7 +691,9 @@ add_task(async function test_sidebar_multiple_bookmarks_contextmenu_contents() {
         tree.selectItems([bookmark.guid, bookmark2.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -689,7 +703,7 @@ add_task(async function test_sidebar_multiple_bookmarks_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -704,7 +718,7 @@ add_task(async function test_sidebar_multiple_links_contextmenu_contents() {
 
   await withSidebarTree("history", async tree => {
     await checkContextMenu(
-      async bookmark => {
+      async () => {
         await PlacesTestUtils.addVisits([
           "http://example-1.com/",
           "http://example-2.com/",
@@ -714,7 +728,9 @@ add_task(async function test_sidebar_multiple_links_contextmenu_contents() {
         tree.selectAll();
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -724,7 +740,7 @@ add_task(async function test_sidebar_multiple_links_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -750,7 +766,9 @@ add_task(async function test_sidebar_mixed_bookmarks_contextmenu_contents() {
         tree.selectItems([bookmark.guid, folder.guid]);
 
         let contextMenu =
-          SidebarUI.browser.contentDocument.getElementById("placesContext");
+          SidebarController.browser.contentDocument.getElementById(
+            "placesContext"
+          );
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,
           "popupshown"
@@ -760,7 +778,7 @@ add_task(async function test_sidebar_mixed_bookmarks_contextmenu_contents() {
         return contextMenu;
       },
       optionItems,
-      SidebarUI.browser.contentDocument
+      SidebarController.browser.contentDocument
     );
   });
 });
@@ -774,9 +792,9 @@ add_task(async function test_library_noselection_contextmenu_contents() {
     "placesContext_paste",
   ];
 
-  await withLibraryWindow("BookmarksToolbar", async ({ left, right }) => {
+  await withLibraryWindow("BookmarksToolbar", async ({ right }) => {
     await checkContextMenu(
-      async bookmark => {
+      async () => {
         let contextMenu = right.ownerDocument.getElementById("placesContext");
         let popupShownPromise = BrowserTestUtils.waitForEvent(
           contextMenu,

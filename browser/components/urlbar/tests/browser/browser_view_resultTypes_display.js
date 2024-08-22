@@ -44,7 +44,7 @@ add_setup(async function () {
     ],
   });
 
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
     setAsDefault: true,
   });
@@ -169,7 +169,7 @@ add_task(async function test_keyword_result() {
     // Because only the keyword is typed, we show the bookmark url.
     assertElementsDisplayed(details, {
       separator: true,
-      title: TEST_URL + "?q=",
+      title: TEST_URL.substring("https://".length) + "?q=",
       type: UrlbarUtils.RESULT_TYPE.KEYWORD,
     });
 
@@ -195,18 +195,18 @@ add_task(async function test_omnibox_result() {
       omnibox: {
         keyword: "omniboxtest",
       },
+    },
 
-      background() {
-        /* global browser */
-        browser.omnibox.setDefaultSuggestion({
-          description: "doit",
-        });
-        // Just do nothing for this test.
-        browser.omnibox.onInputEntered.addListener(() => {});
-        browser.omnibox.onInputChanged.addListener((text, suggest) => {
-          suggest([]);
-        });
-      },
+    background() {
+      /* global browser */
+      browser.omnibox.setDefaultSuggestion({
+        description: "doit",
+      });
+      // Just do nothing for this test.
+      browser.omnibox.onInputEntered.addListener(() => {});
+      browser.omnibox.onInputChanged.addListener((text, suggest) => {
+        suggest([]);
+      });
     },
   });
 
@@ -223,7 +223,7 @@ add_task(async function test_omnibox_result() {
 
     assertElementsDisplayed(details, {
       separator: true,
-      title: "Generated extension",
+      title: "doit",
       type: UrlbarUtils.RESULT_TYPE.OMNIBOX,
     });
   });

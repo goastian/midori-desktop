@@ -44,17 +44,17 @@ function AddOldMenuSideButtons() {
   CustomizableUI.addWidgetToArea(
     "library-button",
     "nav-bar",
-    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 2
+    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 3
   );
   CustomizableUI.addWidgetToArea(
     "sidebar-button",
     "nav-bar",
-    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 2
+    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 3
   );
   CustomizableUI.addWidgetToArea(
     "unified-extensions-button",
     "nav-bar",
-    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 2
+    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 3
   );
 }
 
@@ -117,7 +117,7 @@ add_setup(async function () {
   let bookmarks = new Array(BOOKMARKS_COUNT);
   for (let i = 0; i < BOOKMARKS_COUNT; ++i) {
     // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-    bookmarks[i] = { url: `http://test.places.${i}/` };
+    bookmarks[i] = { url: `http://test.places.${i}y/` };
   }
   await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.toolbarGuid,
@@ -315,7 +315,7 @@ add_task(async function testArrowsDisabledButtons() {
         "ArrowLeft on Reload button when prior buttons disabled does nothing"
       );
 
-      BrowserTestUtils.loadURIString(aBrowser, "https://example.com/2");
+      BrowserTestUtils.startLoadingURIString(aBrowser, "https://example.com/2");
       await BrowserTestUtils.browserLoaded(aBrowser);
       await waitUntilReloadEnabled();
       startFromUrlBar();
@@ -366,8 +366,7 @@ add_task(async function testArrowsOverflowButton() {
 add_task(async function testArrowsInPanelMultiView() {
   AddOldMenuSideButtons();
   let button = document.getElementById("library-button");
-  forceFocus(button);
-  EventUtils.synthesizeKey(" ");
+  await focusAndActivateElement(button, () => EventUtils.synthesizeKey(" "));
   let view = document.getElementById("appMenu-libraryView");
   let focused = BrowserTestUtils.waitForEvent(view, "focus", true);
   let focusEvt = await focused;
@@ -427,8 +426,9 @@ add_task(async function testArrowsBookmarksOverflowButton() {
     }
     lastVisible = item;
   }
-  forceFocus(lastVisible);
-  await expectFocusAfterKey("ArrowRight", "PlacesChevron");
+  await focusAndActivateElement(lastVisible, () =>
+    expectFocusAfterKey("ArrowRight", "PlacesChevron")
+  );
   setToolbarVisibility(toolbar, false, true, false);
 });
 
@@ -530,10 +530,9 @@ add_task(async function testCharacterNavigation() {
 add_task(async function testCharacterInPanelMultiView() {
   AddOldMenuSideButtons();
   let button = document.getElementById("library-button");
-  forceFocus(button);
   let view = document.getElementById("appMenu-libraryView");
   let focused = BrowserTestUtils.waitForEvent(view, "focus", true);
-  EventUtils.synthesizeKey(" ");
+  await focusAndActivateElement(button, () => EventUtils.synthesizeKey(" "));
   let focusEvt = await focused;
   ok(true, "Focus inside Library menu after toolbar button pressed");
   EventUtils.synthesizeKey("s");
@@ -555,6 +554,9 @@ add_task(async function testTabStopsAfterSearchBarAdded() {
     await expectFocusAfterKey("Tab", "searchbar", true);
     await expectFocusAfterKey("Tab", afterUrlBarButton);
     await expectFocusAfterKey("ArrowRight", "library-button");
+    await expectFocusAfterKey("ArrowLeft", afterUrlBarButton);
+    await expectFocusAfterKey("Shift+Tab", "searchbar", true);
+    await expectFocusAfterKey("Shift+Tab", gURLBar.inputField);
   });
   await SpecialPowers.popPrefEnv();
   RemoveOldMenuSideButtons();

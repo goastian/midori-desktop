@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <hbox class="titlebar-buttonbox-container" skipintoolbarset="true">
-  <hbox class="titlebar-buttonbox titlebar-color">
+  <hbox class="titlebar-buttonbox">
     <toolbarbutton class="titlebar-button titlebar-min"
                    oncommand="window.minimize();"
                    data-l10n-id="browser-window-minimize-button"
@@ -13,7 +13,7 @@
                    data-l10n-id="browser-window-maximize-button"
                    />
     <toolbarbutton class="titlebar-button titlebar-restore"
-                   oncommand="window.fullScreen ? BrowserFullScreen() : window.restore();"
+                   oncommand="window.fullScreen ? BrowserCommands.fullScreen() : window.restore();"
                    data-l10n-id="browser-window-restore-down-button"
                    />
     <toolbarbutton class="titlebar-button titlebar-close"

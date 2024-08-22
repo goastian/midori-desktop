@@ -40,7 +40,7 @@ var gDataNotificationInfoBar = {
     return gNotificationBox.getNotificationWithValue(name);
   },
 
-  _displayDataPolicyInfoBar(request) {
+  async _displayDataPolicyInfoBar(request) {
     if (this._getDataReportingNotification()) {
       return;
     }
@@ -59,7 +59,7 @@ var gDataNotificationInfoBar = {
     ];
 
     this._log.info("Creating data reporting policy notification.");
-    gNotificationBox.appendNotification(
+    await gNotificationBox.appendNotification(
       this._DATA_REPORTING_NOTIFICATION,
       {
         label: {
@@ -92,7 +92,7 @@ var gDataNotificationInfoBar = {
     }
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "datareporting:notify-data-policy:request":
         let request = subject.wrappedJSObject.object;

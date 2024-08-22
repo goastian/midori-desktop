@@ -95,9 +95,7 @@ add_task(async function test() {
   mpDialogShown = forceAuthTimeoutAndWaitForMPDialog("cancel");
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {
     let loginItem = content.document.querySelector("login-item");
-    let copyButton = loginItem.shadowRoot.querySelector(
-      ".copy-password-button"
-    );
+    let copyButton = loginItem.shadowRoot.querySelector("copy-password-button");
     copyButton.click();
   });
   await mpDialogShown;
@@ -106,21 +104,12 @@ add_task(async function test() {
   info("Clicking copy password button again");
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {
     let loginItem = content.document.querySelector("login-item");
-    let copyButton = loginItem.shadowRoot.querySelector(
-      ".copy-password-button"
-    );
+    let copyButton = loginItem.shadowRoot.querySelector("copy-password-button");
     copyButton.click();
   });
   await mpDialogShown;
   info("Primary Password dialog shown and authenticated");
   await SpecialPowers.spawn(browser, [], async function () {
-    let loginItem = content.document.querySelector("login-item");
-    let copyButton = loginItem.shadowRoot.querySelector(
-      ".copy-password-button"
-    );
-    await ContentTaskUtils.waitForCondition(() => {
-      return copyButton.disabled;
-    }, "Waiting for copy button to be disabled");
     info("Password was copied to clipboard");
   });
 
@@ -170,7 +159,7 @@ add_task(async function test() {
   await SpecialPowers.spawn(browser, [], async function createNewToggle() {
     let createButton = content.document
       .querySelector("login-list")
-      .shadowRoot.querySelector(".create-login-button");
+      .shadowRoot.querySelector("create-login-button");
     createButton.click();
 
     let loginItem = Cu.waiveXrays(content.document.querySelector("login-item"));
@@ -180,15 +169,16 @@ add_task(async function test() {
     let revealCheckbox = loginItem.shadowRoot.querySelector(
       ".reveal-password-checkbox"
     );
-    Assert.ok(ContentTaskUtils.is_visible(revealCheckbox), "Toggle visible");
-    Assert.ok(!revealCheckbox.checked, "Not revealed initially");
+    Assert.ok(
+      !ContentTaskUtils.isVisible(revealCheckbox),
+      "Toggle should not be visible"
+    );
     Assert.equal(passwordField.type, "password", "type is password");
-    revealCheckbox.click();
+    passwordField.focus();
 
     await ContentTaskUtils.waitForCondition(() => {
       return passwordField.type == "text";
     }, "Waiting for type='text'");
-    Assert.ok(revealCheckbox.checked, "Not revealed after click");
 
     let cancelButton = loginItem.shadowRoot.querySelector(".cancel-button");
     cancelButton.click();
@@ -205,7 +195,7 @@ add_task(async function test() {
     loginFilter.value = "pass1";
     Assert.equal(
       loginList._list.querySelectorAll(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       ).length,
       1,
       "login-list should show corresponding result when primary password is enabled"
@@ -213,7 +203,7 @@ add_task(async function test() {
     loginFilter.value = "";
     Assert.equal(
       loginList._list.querySelectorAll(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       ).length,
       1,
       "login-list should show all results since the filter is empty"
@@ -231,7 +221,7 @@ add_task(async function test() {
     loginFilter.value = "pass1";
     Assert.equal(
       loginList._list.querySelectorAll(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       ).length,
       1,
       "login-list should show login with matching password since MP is disabled"

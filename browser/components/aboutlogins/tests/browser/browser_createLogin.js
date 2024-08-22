@@ -54,75 +54,96 @@ add_task(async function test_create_login() {
       (_, data) => data == "addLogin"
     );
 
-    await SpecialPowers.spawn(
-      browser,
-      [[originTuple, i]],
-      async ([aOriginTuple, index]) => {
-        let loginList = Cu.waiveXrays(
-          content.document.querySelector("login-list")
-        );
-        let createButton = loginList._createLoginButton;
-        Assert.ok(
-          ContentTaskUtils.is_hidden(loginList._blankLoginListItem),
-          "the blank login list item should be hidden initially"
-        );
-        Assert.ok(
-          !createButton.disabled,
-          "Create button should not be disabled initially"
-        );
+    await SpecialPowers.spawn(browser, [originTuple], async aOriginTuple => {
+      let loginList = Cu.waiveXrays(
+        content.document.querySelector("login-list")
+      );
+      let createButton = loginList._createLoginButton;
+      Assert.ok(
+        ContentTaskUtils.isHidden(loginList._blankLoginListItem),
+        "the blank login list item should be hidden initially"
+      );
+      Assert.ok(
+        !createButton.disabled,
+        "Create button should not be disabled initially"
+      );
 
-        let loginItem = Cu.waiveXrays(
-          content.document.querySelector("login-item")
-        );
-        let usernameInput = loginItem.shadowRoot.querySelector(
-          "input[name='username']"
-        );
-        usernameInput.placeholder = "dummy placeholder";
+      let loginItem = Cu.waiveXrays(
+        content.document.querySelector("login-item")
+      );
+      let usernameInput = loginItem.shadowRoot.querySelector(
+        "input[name='username']"
+      );
+      usernameInput.placeholder = "dummy placeholder";
 
-        createButton.click();
+      createButton.click();
 
-        Assert.ok(
-          ContentTaskUtils.is_visible(loginList._blankLoginListItem),
-          "the blank login list item should be visible after clicking on the create button"
-        );
-        Assert.ok(
-          createButton.disabled,
-          "Create button should be disabled after being clicked"
-        );
+      Assert.ok(
+        ContentTaskUtils.isVisible(loginList._blankLoginListItem),
+        "the blank login list item should be visible after clicking on the create button"
+      );
+      Assert.ok(
+        createButton.disabled,
+        "Create button should be disabled after being clicked"
+      );
 
-        let cancelButton = loginItem.shadowRoot.querySelector(".cancel-button");
-        Assert.ok(
-          ContentTaskUtils.is_visible(cancelButton),
-          "cancel button should be visible in create mode with no logins saved"
-        );
+      let cancelButton = loginItem.shadowRoot.querySelector(".cancel-button");
+      Assert.ok(
+        ContentTaskUtils.isVisible(cancelButton),
+        "cancel button should be visible in create mode with no logins saved"
+      );
 
-        let originInput = loginItem.shadowRoot.querySelector(
-          "input[name='origin']"
-        );
-        let passwordInput = loginItem.shadowRoot.querySelector(
-          "input[name='password']"
-        );
+      let originInput = loginItem.shadowRoot.querySelector(
+        "input[name='origin']"
+      );
+      let passwordInput = loginItem.shadowRoot.querySelector(
+        "input[name='password']"
+      );
 
-        Assert.equal(
-          content.document.l10n.getAttributes(usernameInput).id,
-          null,
-          "there should be no placeholder id on the username input in edit mode"
-        );
-        Assert.equal(
-          usernameInput.placeholder,
-          "",
-          "there should be no placeholder on the username input in edit mode"
-        );
-        originInput.value = aOriginTuple[0];
-        usernameInput.value = "testuser1";
-        passwordInput.value = "testpass1";
+      // Upon clicking create-login-button, the origin input field is automatically focused.
+      Assert.ok(
+        ContentTaskUtils.isVisible(loginItem._originWarning),
+        "The origin warning should be visible"
+      );
 
-        let saveChangesButton = loginItem.shadowRoot.querySelector(
-          ".save-changes-button"
-        );
-        saveChangesButton.click();
-      }
-    );
+      // At this moment, the password input field is not focused so no warning should be displayed.
+      Assert.ok(
+        ContentTaskUtils.isHidden(loginItem._passwordWarning),
+        "The password warning should not be visible if the password input field is not focused"
+      );
+
+      Assert.equal(
+        content.document.l10n.getAttributes(usernameInput).id,
+        null,
+        "there should be no placeholder id on the username input in edit mode"
+      );
+      Assert.equal(
+        usernameInput.placeholder,
+        "",
+        "there should be no placeholder on the username input in edit mode"
+      );
+
+      originInput.value = aOriginTuple[0];
+      usernameInput.value = "testuser1";
+
+      passwordInput.focus();
+      Assert.ok(
+        ContentTaskUtils.isVisible(loginItem._passwordWarning),
+        "The password warning should not visible"
+      );
+      passwordInput.value = "testpass1";
+
+      // Since the password field is focused, the origin warning should not be displayed.
+      Assert.ok(
+        ContentTaskUtils.isHidden(loginItem._originWarning),
+        "The origin warning should not be visible if the origin input field is not focused"
+      );
+
+      let saveChangesButton = loginItem.shadowRoot.querySelector(
+        ".save-changes-button"
+      );
+      saveChangesButton.click();
+    });
 
     info("waiting for login to get added to storage");
     await storageChangedPromised;
@@ -153,7 +174,7 @@ add_task(async function test_create_login() {
         "login-list should no longer be in no logins view"
       );
       Assert.ok(
-        ContentTaskUtils.is_hidden(loginList._blankLoginListItem),
+        ContentTaskUtils.isHidden(loginList._blankLoginListItem),
         "the blank login list item should be hidden after adding new login"
       );
       Assert.ok(
@@ -211,21 +232,24 @@ add_task(async function test_create_login() {
       continue;
     }
 
-    let reauthObserved = forceAuthTimeoutAndWaitForOSKeyStoreLogin({
-      loginResult: true,
-    });
-    await SpecialPowers.spawn(browser, [originTuple], async aOriginTuple => {
+    let reauthObserved = Promise.resolve();
+    if (OSKeyStore.canReauth()) {
+      reauthObserved = forceAuthTimeoutAndWaitForOSKeyStoreLogin({
+        loginResult: true,
+      });
+    }
+    await SpecialPowers.spawn(browser, [], async () => {
       let loginItem = Cu.waiveXrays(
         content.document.querySelector("login-item")
       );
-      let editButton = loginItem.shadowRoot.querySelector(".edit-button");
+      let editButton = loginItem.shadowRoot.querySelector("edit-button");
       info("clicking on edit button");
       editButton.click();
     });
     info("waiting for oskeystore auth");
     await reauthObserved;
 
-    await SpecialPowers.spawn(browser, [originTuple], async aOriginTuple => {
+    await SpecialPowers.spawn(browser, [], async () => {
       let loginItem = Cu.waiveXrays(
         content.document.querySelector("login-item")
       );
@@ -293,20 +317,14 @@ add_task(async function test_create_login() {
     });
   }
 
-  await SpecialPowers.spawn(
-    browser,
-    [testCases.length],
-    async testCasesLength => {
-      let loginList = Cu.waiveXrays(
-        content.document.querySelector("login-list")
-      );
-      Assert.equal(
-        loginList._loginGuidsSortedOrder.length,
-        5,
-        "login list should have a login per testcase"
-      );
-    }
-  );
+  await SpecialPowers.spawn(browser, [], async () => {
+    let loginList = Cu.waiveXrays(content.document.querySelector("login-list"));
+    Assert.equal(
+      loginList._loginGuidsSortedOrder.length,
+      5,
+      "login list should have a login per testcase"
+    );
+  });
 });
 
 add_task(async function test_cancel_create_login() {
@@ -318,13 +336,11 @@ add_task(async function test_cancel_create_login() {
       "there should be a selected guid before create mode"
     );
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginList._blankLoginListItem),
+      ContentTaskUtils.isHidden(loginList._blankLoginListItem),
       "the blank login list item should be hidden before create mode"
     );
 
-    let createButton = content.document
-      .querySelector("login-list")
-      .shadowRoot.querySelector(".create-login-button");
+    let createButton = loginList._createLoginButton;
     createButton.click();
 
     Assert.ok(
@@ -332,7 +348,7 @@ add_task(async function test_cancel_create_login() {
       "there should be no selected guid when in create mode"
     );
     Assert.ok(
-      ContentTaskUtils.is_visible(loginList._blankLoginListItem),
+      ContentTaskUtils.isVisible(loginList._blankLoginListItem),
       "the blank login list item should be visible in create mode"
     );
 
@@ -345,7 +361,7 @@ add_task(async function test_cancel_create_login() {
       "there should be a selected guid after canceling create mode"
     );
     Assert.ok(
-      ContentTaskUtils.is_hidden(loginList._blankLoginListItem),
+      ContentTaskUtils.isHidden(loginList._blankLoginListItem),
       "the blank login list item should be hidden after canceling create mode"
     );
   });
@@ -365,13 +381,13 @@ add_task(
       loginFilter.value = "bugzilla.mozilla.org";
       Assert.equal(
         loginList._list.querySelectorAll(
-          ".login-list-item[data-guid]:not([hidden])"
+          "login-list-item[data-guid]:not([hidden])"
         ).length,
         1,
         "filter should have one login showing"
       );
       let visibleLoginGuid = loginList.shadowRoot.querySelectorAll(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       )[0].dataset.guid;
 
       let createButton = loginList._createLoginButton;
@@ -382,7 +398,7 @@ add_task(
       );
       let cancelButton = loginItem.shadowRoot.querySelector(".cancel-button");
       Assert.ok(
-        ContentTaskUtils.is_visible(cancelButton),
+        ContentTaskUtils.isVisible(cancelButton),
         "cancel button should be visible in create mode with one login showing"
       );
       cancelButton.click();
@@ -394,7 +410,7 @@ add_task(
       );
       Assert.equal(
         loginList.shadowRoot.querySelectorAll(
-          ".login-list-item[data-guid]:not([hidden])"
+          "login-list-item[data-guid]:not([hidden])"
         )[0].dataset.guid,
         visibleLoginGuid,
         "the same login should still be visible"
@@ -416,7 +432,7 @@ add_task(async function test_cancel_create_login_with_logins_filtered_out() {
     await Promise.resolve();
     Assert.equal(
       loginList._list.querySelectorAll(
-        ".login-list-item[data-guid]:not([hidden])"
+        "login-list-item[data-guid]:not([hidden])"
       ).length,
       0,
       "filter should have no logins showing"
@@ -428,7 +444,7 @@ add_task(async function test_cancel_create_login_with_logins_filtered_out() {
     let loginItem = Cu.waiveXrays(content.document.querySelector("login-item"));
     let cancelButton = loginItem.shadowRoot.querySelector(".cancel-button");
     Assert.ok(
-      ContentTaskUtils.is_visible(cancelButton),
+      ContentTaskUtils.isVisible(cancelButton),
       "cancel button should be visible in create mode with no logins showing"
     );
     cancelButton.click();
@@ -440,7 +456,7 @@ add_task(async function test_cancel_create_login_with_logins_filtered_out() {
       "login-filter should be cleared if there were no logins in the list"
     );
     let visibleLoginItems = loginList.shadowRoot.querySelectorAll(
-      ".login-list-item[data-guid]:not([hidden])"
+      "login-list-item[data-guid]:not([hidden])"
     );
     Assert.equal(
       visibleLoginItems.length,

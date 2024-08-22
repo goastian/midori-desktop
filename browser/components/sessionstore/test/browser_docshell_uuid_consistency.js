@@ -33,7 +33,7 @@ add_task(async function contentToChromeNavigate() {
   is(sh.getEntryAtIndex(0).docshellID.toString(), historyID.toString());
 
   // Force the browser to navigate to the chrome process.
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, "about:config");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, "about:config");
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   // Check to be sure that we're in the chrome process.

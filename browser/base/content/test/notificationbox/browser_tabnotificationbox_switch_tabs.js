@@ -15,8 +15,9 @@ function assertNotificationBoxHidden(reason, browser) {
   ok(name, `Notification box has a name ${reason}`);
 
   let { selectedViewName } = notificationBox._stack.parentElement;
-  ok(
-    selectedViewName != name,
+  Assert.notEqual(
+    selectedViewName,
+    name,
     `Box is not shown ${reason} ${selectedViewName} != ${name}`
   );
 }
@@ -32,9 +33,9 @@ function assertNotificationBoxShown(reason, browser) {
   is(selectedViewName, name, `Box is shown ${reason}`);
 }
 
-function createNotification({ browser, label, value, priority }) {
+async function createNotification({ browser, label, value, priority }) {
   let notificationBox = gBrowser.getNotificationBox(browser);
-  let notification = notificationBox.appendNotification(value, {
+  let notification = await notificationBox.appendNotification(value, {
     label,
     priority: notificationBox[priority],
   });
@@ -52,7 +53,7 @@ add_task(async function testNotificationInBackgroundTab() {
     gBrowser.selectedTab = firstTab;
     assertNotificationBoxHidden("initial first tab");
 
-    createNotification({
+    await createNotification({
       browser,
       label: "My notification body",
       value: "test-notification",
@@ -69,7 +70,7 @@ add_task(async function testNotificationInActiveTab() {
   await BrowserTestUtils.withNewTab("about:blank", async browser => {
     ok(!gBrowser.readNotificationBox(browser), "No notifications for new tab");
 
-    createNotification({
+    await createNotification({
       browser,
       label: "Notification!",
       value: "test-notification",
@@ -108,7 +109,7 @@ add_task(async function testNotificationMultipleTabs() {
   assertNotificationBoxHidden("after open", browserTwo);
   assertNotificationBoxHidden("after open", browserThree);
 
-  createNotification({
+  await createNotification({
     browser: browserTwo,
     label: "Test blank",
     value: "blank",
@@ -121,7 +122,7 @@ add_task(async function testNotificationMultipleTabs() {
   assertNotificationBoxHidden("hidden create", browserTwo);
   assertNotificationBoxHidden("other create", browserThree);
 
-  createNotification({
+  await createNotification({
     browser: browserThree,
     label: "Test active tab",
     value: "active",

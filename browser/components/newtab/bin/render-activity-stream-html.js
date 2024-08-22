@@ -6,11 +6,15 @@
 const fs = require("fs");
 const { mkdir } = require("shelljs");
 const path = require("path");
+const { pathToFileURL } = require("url");
+const chalk = require("chalk");
 
-// Note: DEFAULT_OPTIONS.baseUrl should match BASE_URL in aboutNewTabService.js
-//       in mozilla-central.
 const DEFAULT_OPTIONS = {
+  // Glob leading from CWD to the parent of the intended prerendered directory.
+  // Starting in newtab/bin/ and we want to write to newtab/prerendered/ so we
+  // go up one level.
   addonPath: "..",
+  // depends on the registration in browser/components/newtab/jar.mn
   baseUrl: "resource://activity-stream/",
 };
 
@@ -26,7 +30,7 @@ const DEFAULT_OPTIONS = {
  */
 function templateHTML(options) {
   const debugString = options.debug ? "-dev" : "";
-  // This list must match any similar ones in AboutNewTabService.jsm.
+  // This list must match any similar ones in AboutNewTabChild.sys.mjs
   const scripts = [
     "chrome://browser/content/contentSearchUI.js",
     "chrome://browser/content/contentSearchHandoffUI.js",
@@ -56,8 +60,12 @@ function templateHTML(options) {
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="utf-8">
-        <meta name="color-scheme" content="light dark">
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; object-src 'none'; script-src resource: chrome:; connect-src https:; img-src https: data: blob: chrome: resource: file:; style-src 'unsafe-inline';"
+    />
+    <meta name="color-scheme" content="light dark" />
     <title data-l10n-id="newtab-page-title"></title>
     <link
       rel="icon"
@@ -69,35 +77,24 @@ function templateHTML(options) {
     <link rel="localization" href="browser/newtab/newtab.ftl" />
     <link
       rel="stylesheet"
+      href="chrome://global/skin/design-system/tokens-brand.css"
+    />
+    <link
+      rel="stylesheet"
       href="chrome://browser/content/contentSearchUI.css"
     />
     <link
       rel="stylesheet"
       href="chrome://activity-stream/content/css/activity-stream.css"
     />
-<!-- Matomo -->
-<script nonce="938479237498237">
-  var _paq = window._paq = window._paq || [];
-  /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
-  _paq.push(['trackPageView']);
-  _paq.push(['enableLinkTracking']);
-  (function() {
-    var u="https://analytics.astian.org/";
-    _paq.push(['setTrackerUrl', u+'matomo.php']);
-    _paq.push(['setSiteId', '1']);
-    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-  })();
-</script>
-<noscript><p><img src="https://analytics.astian.org/matomo.php?idsite=1&amp;rec=1" style="border:0;" alt="" /></p></noscript>
-<!-- End Matomo Code -->
-
   </head>
   <body class="activity-stream">
-    <div id="root"></div>
-    <div id="footer-asrouter-container" role="presentation"></div>${
-      options.noscripts ? "" : scriptRender
-    }
+    <div id="root"></div>${options.noscripts ? "" : scriptRender}
+    <script
+      async
+      type="module"
+      src="chrome://global/content/elements/moz-toggle.mjs"
+    ></script>
   </body>
 </html>
 `.trimLeft();
@@ -114,7 +111,7 @@ function templateHTML(options) {
 function writeFiles(destPath, filesMap, options) {
   for (const [file, templater] of filesMap) {
     fs.writeFileSync(path.join(destPath, file), templater({ options }));
-    console.log("\x1b[32m", `✓ ${file}`, "\x1b[0m");
+    console.log(chalk.green(`✓ ${file}`));
   }
 }
 
@@ -135,19 +132,51 @@ const STATIC_FILES = new Map([
  * main - Parses command line arguments, generates html and js with templates,
  *        and writes files to their specified locations.
  */
-function main() {
-  // eslint-disable-line max-statements
-  // This code parses command line arguments passed to this script.
-  // Note: process.argv.slice(2) is necessary because the first two items in
-  // process.argv are paths
-  const args = require("minimist")(process.argv.slice(2), {
-    alias: {
-      addonPath: "a",
-      baseUrl: "b",
-    },
-  });
+async function main() {
+  const { default: meow } = await import("meow");
+  const fileUrl = pathToFileURL(__filename);
+  const cli = meow(
+    `
+    Usage
+      $ node ./bin/render-activity-stream-html.js [options]
 
-  const options = Object.assign({ debug: false }, DEFAULT_OPTIONS, args || {});
+    Options
+      -a PATH, --addon-path PATH   Path to the parent of the target directory.
+                                   default: "${DEFAULT_OPTIONS.addonPath}"
+      -b URL, --base-url URL       Base URL for assets.
+                                   default: "${DEFAULT_OPTIONS.baseUrl}"
+      --help                       Show this help message.
+`,
+    {
+      description: false,
+      // `pkg` is a tiny optimization. It prevents meow from looking for a package
+      // that doesn't technically exist. meow searches for a package and changes
+      // the process name to the package name. It resolves to the newtab
+      // package.json, which would give a confusing name and be wasteful.
+      pkg: {
+        name: "render-activity-stream-html",
+        version: "0.0.0",
+      },
+      // `importMeta` is required by meow 10+. It was added to support ESM, but
+      // meow now requires it, and no longer supports CJS style imports. But it
+      // only uses import.meta.url, which can be polyfilled like this:
+      importMeta: { url: fileUrl },
+      flags: {
+        addonPath: {
+          type: "string",
+          alias: "a",
+          default: DEFAULT_OPTIONS.addonPath,
+        },
+        baseUrl: {
+          type: "string",
+          alias: "b",
+          default: DEFAULT_OPTIONS.baseUrl,
+        },
+      },
+    }
+  );
+
+  const options = Object.assign({ debug: false }, cli.flags || {});
   const addonPath = path.resolve(__dirname, options.addonPath);
   const prerenderedPath = path.join(addonPath, "prerendered");
   console.log(`Writing prerendered files to ${prerenderedPath}:`);

@@ -227,8 +227,9 @@ var gTests = [
 
       const menulist = document.getElementById("webRTC-selectWindow-menulist");
       const count = menulist.itemCount;
-      ok(
-        count >= 4,
+      Assert.greaterOrEqual(
+        count,
+        4,
         "There should be the 'Select Window or Screen' item, a separator and at least one window and one screen"
       );
 
@@ -786,7 +787,6 @@ var gTests = [
 add_task(async function test() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["permissions.delegation.enabled", true],
       ["dom.security.featurePolicy.header.enabled", true],
       ["dom.security.featurePolicy.webidl.enabled", true],
     ],

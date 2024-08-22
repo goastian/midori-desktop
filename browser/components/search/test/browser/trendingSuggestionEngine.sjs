@@ -1,8 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.importGlobalProperties(["TextEncoder"]);
-
 let gTimer;
 
 function handleRequest(req, resp) {
@@ -24,14 +22,19 @@ function handleRequest(req, resp) {
 }
 
 function writeResponse(params, resp) {
-  // Echoes back 15 results, query0, query1, query2 etc.
-  let suffixes = [...Array(15).keys()];
+  // Echoes back 15 results, query, query0, query1, query2 etc.
   let query = params.query || "";
-  let data = [query, suffixes.map(s => query + s)];
+  let suffixes = [...Array(15).keys()].map(s => query + s);
+  // If we have a query, echo it back (to help test deduplication)
+  if (query) {
+    suffixes.unshift(query);
+  }
+  let data = [query, suffixes];
+
   if (params?.richsuggestions) {
     data.push([]);
     data.push({
-      "google:suggestdetail": suffixes.map(s => ({
+      "google:suggestdetail": data[1].map(() => ({
         a: "Extended title",
         dc: "#FFFFFF",
         i: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",

@@ -46,9 +46,9 @@ add_task(async function () {
     false,
     testURL
   );
-  BrowserTestUtils.loadURIString(deletedURLTab.linkedBrowser, testURL);
-  BrowserTestUtils.loadURIString(fullURLTab.linkedBrowser, testURL);
-  BrowserTestUtils.loadURIString(partialURLTab.linkedBrowser, testURL);
+  BrowserTestUtils.startLoadingURIString(deletedURLTab.linkedBrowser, testURL);
+  BrowserTestUtils.startLoadingURIString(fullURLTab.linkedBrowser, testURL);
+  BrowserTestUtils.startLoadingURIString(partialURLTab.linkedBrowser, testURL);
   await Promise.all([loaded1, loaded2, loaded3]);
 
   testURL = BrowserUIUtils.trimURL(testURL);
@@ -90,7 +90,7 @@ add_task(async function () {
   }
 
   function urlbarBackspace(removeAll) {
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       gBrowser.selectedBrowser.focus();
       gURLBar.addEventListener(
         "input",

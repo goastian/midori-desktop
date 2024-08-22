@@ -8,21 +8,20 @@
 
 // `UrlbarProviderQuickSuggest.#merino` is lazily created on the first Merino
 // fetch, so it's easiest to create `gClient` lazily too.
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   this,
   "gClient",
   () => UrlbarProviderQuickSuggest._test_merino
 );
 
-add_task(async function init() {
-  UrlbarPrefs.set("quicksuggest.enabled", true);
-  UrlbarPrefs.set("suggest.quicksuggest.sponsored", true);
-  UrlbarPrefs.set("merino.enabled", true);
-  UrlbarPrefs.set("quicksuggest.remoteSettings.enabled", false);
-  UrlbarPrefs.set("quicksuggest.dataCollection.enabled", true);
-
+add_setup(async () => {
   await MerinoTestUtils.server.start();
-  await QuickSuggestTestUtils.ensureQuickSuggestInit();
+  await QuickSuggestTestUtils.ensureQuickSuggestInit({
+    prefs: [
+      ["suggest.quicksuggest.sponsored", true],
+      ["quicksuggest.dataCollection.enabled", true],
+    ],
+  });
 });
 
 // In a single engagement, all requests should use the same session ID and the
@@ -50,7 +49,7 @@ add_task(async function singleEngagement() {
   }
 
   // End the engagement to reset the session for the next test.
-  endEngagement();
+  endEngagement({ controller });
 });
 
 // New engagements should not use the same session ID as previous engagements
@@ -86,7 +85,7 @@ async function doManyEngagementsTest(state) {
       },
     ]);
 
-    endEngagement(context, state);
+    endEngagement({ context, state, controller });
   }
 }
 
@@ -146,19 +145,19 @@ add_task(async function canceledQueries() {
   }
 
   // End the engagement to reset the session for the next test.
-  endEngagement();
+  endEngagement({ controller });
 });
 
-function endEngagement(context = null, state = "engagement") {
-  UrlbarProviderQuickSuggest.onEngagement(
-    false,
+function endEngagement({ controller, context = null, state = "engagement" }) {
+  UrlbarProviderQuickSuggest.onLegacyEngagement(
     state,
     context ||
       createContext("endEngagement", {
         providers: [UrlbarProviderQuickSuggest.name],
         isPrivate: false,
       }),
-    { selIndex: -1 }
+    { selIndex: -1 },
+    controller
   );
 
   Assert.strictEqual(

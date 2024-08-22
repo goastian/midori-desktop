@@ -38,7 +38,7 @@ const FIXTURE = [
         title:
           "Firefox for iOS — Mobile Web browser for your iPhone, iPad and iPod touch — Mozilla",
         url: "https://www.mozilla.org/en-US/firefox/ios/?utm_source=firefox-browser&utm_medium=firefox-browser&utm_campaign=synced-tabs-sidebar",
-        icon: "moz-anno:favicon:https://www.mozilla.org/media/img/firefox/favicon.dc6635050bf5.ico",
+        icon: "cached-favicon:https://www.mozilla.org/media/img/firefox/favicon.dc6635050bf5.ico",
         client: "2xU5h-4bkWqA",
         lastUsed: 1451519425,
       },
@@ -46,7 +46,7 @@ const FIXTURE = [
         type: "tab",
         title: "Firefox Nightly First Run Page",
         url: "https://www.mozilla.org/en-US/firefox/nightly/firstrun/?oldversion=45.0a1",
-        icon: "moz-anno:favicon:https://www.mozilla.org/media/img/firefox/favicon-nightly.560395bbb2e1.png",
+        icon: "cached-favicon:https://www.mozilla.org/media/img/firefox/favicon-nightly.560395bbb2e1.png",
         client: "2xU5h-4bkWqA",
         lastUsed: 1451519420,
       },
@@ -55,7 +55,7 @@ const FIXTURE = [
         type: "tab",
         title: "Mozilla Developer Network",
         url: "https://developer.mozilla.org/en-US/",
-        icon: "moz-anno:favicon:https://developer.cdn.mozilla.net/static/img/favicon32.e02854fdcf73.png",
+        icon: "cached-favicon:https://developer.cdn.mozilla.net/static/img/favicon32.e02854fdcf73.png",
         client: "2xU5h-4bkWqA",
         lastUsed: 1451519725,
       },
@@ -91,28 +91,28 @@ function setupSyncedTabsStubs({
 async function testClean() {
   sinon.restore();
   await new Promise(resolve => {
-    window.SidebarUI.browser.contentWindow.addEventListener(
+    window.SidebarController.browser.contentWindow.addEventListener(
       "unload",
       function () {
         resolve();
       },
       { once: true }
     );
-    SidebarUI.hide();
+    SidebarController.hide();
   });
 }
 
 add_task(async function testSyncedTabsSidebarList() {
-  await SidebarUI.show("viewTabsSidebar");
+  await SidebarController.show("viewTabsSidebar");
 
   Assert.equal(
-    SidebarUI.currentID,
+    SidebarController.currentID,
     "viewTabsSidebar",
     "Sidebar should have SyncedTabs loaded"
   );
 
   let syncedTabsDeckComponent =
-    SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
+    SidebarController.browser.contentWindow.syncedTabsDeckComponent;
 
   Assert.ok(syncedTabsDeckComponent, "component exists");
 
@@ -172,9 +172,9 @@ add_task(async function testSyncedTabsSidebarList() {
 add_task(testClean);
 
 add_task(async function testSyncedTabsSidebarFilteredList() {
-  await SidebarUI.show("viewTabsSidebar");
+  await SidebarController.show("viewTabsSidebar");
   let syncedTabsDeckComponent =
-    window.SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
+    window.SidebarController.browser.contentWindow.syncedTabsDeckComponent;
 
   Assert.ok(syncedTabsDeckComponent, "component exists");
 
@@ -244,9 +244,9 @@ add_task(async function testSyncedTabsSidebarFilteredList() {
 add_task(testClean);
 
 add_task(async function testSyncedTabsSidebarStatus() {
-  await SidebarUI.show("viewTabsSidebar");
+  await SidebarController.show("viewTabsSidebar");
   let syncedTabsDeckComponent =
-    window.SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
+    window.SidebarController.browser.contentWindow.syncedTabsDeckComponent;
 
   Assert.ok(syncedTabsDeckComponent, "component exists");
 
@@ -377,9 +377,9 @@ add_task(async function testSyncedTabsSidebarStatus() {
 add_task(testClean);
 
 add_task(async function testSyncedTabsSidebarContextMenu() {
-  await SidebarUI.show("viewTabsSidebar");
+  await SidebarController.show("viewTabsSidebar");
   let syncedTabsDeckComponent =
-    window.SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
+    window.SidebarController.browser.contentWindow.syncedTabsDeckComponent;
 
   Assert.ok(syncedTabsDeckComponent, "component exists");
 
@@ -547,7 +547,8 @@ async function testContextMenu(
 
   let chromeWindow = triggerElement.ownerGlobal.top;
   let rect = triggerElement.getBoundingClientRect();
-  let contentRect = chromeWindow.SidebarUI.browser.getBoundingClientRect();
+  let contentRect =
+    chromeWindow.SidebarController.browser.getBoundingClientRect();
   // The offsets in `rect` are relative to the content window, but
   // `synthesizeMouseAtPoint` calls `nsIDOMWindowUtils.sendMouseEvent`,
   // which interprets the offsets relative to the containing *chrome* window.

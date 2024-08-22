@@ -27,9 +27,10 @@ XPCOMUtils.defineLazyServiceGetter(
  */
 
 /**
- * @param {string} input
+ * @param {object} options
+ * @param {string} options.input
  *   The value to be inserted in the Urlbar.
- * @param {UrlbarTokenizer.RESTRICT} token
+ * @param {UrlbarTokenizer.RESTRICT} options.token
  *   A restriction token corresponding to a Touch Bar button.
  */
 async function searchAndCheckState({ input, token }) {
@@ -142,7 +143,7 @@ add_task(async function clearURLs() {
   for (let { loadUrl, token } of tests) {
     let browser = win.gBrowser.selectedBrowser;
     let loadedPromise = BrowserTestUtils.browserLoaded(browser, false, loadUrl);
-    BrowserTestUtils.loadURIString(browser, loadUrl);
+    BrowserTestUtils.startLoadingURIString(browser, loadUrl);
     await loadedPromise;
     if (win.gURLBar.getAttribute("pageproxystate") != "valid") {
       await TestUtils.waitForCondition(

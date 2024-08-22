@@ -41,6 +41,7 @@ const known_scripts = {
     "resource://gre/modules/XPCOMUtils.sys.mjs",
 
     // Logging related
+    // eslint-disable-next-line mozilla/use-console-createInstance
     "resource://gre/modules/Log.sys.mjs",
 
     // Telemetry
@@ -135,9 +136,9 @@ add_task(async function () {
   BrowserTestUtils.removeTab(tab);
 
   // Gather loaded process scripts.
-  loadedInfo.processScripts = {};
+  loadedInfo.processScripts = new Map();
   for (let [uri] of Services.ppmm.getDelayedProcessScripts()) {
-    loadedInfo.processScripts[uri] = "";
+    loadedInfo.processScripts.set(uri, "");
   }
 
   await checkLoadedScripts({

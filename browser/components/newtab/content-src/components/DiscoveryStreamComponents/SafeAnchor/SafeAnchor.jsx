@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import React from "react";
 
 export class SafeAnchor extends React.PureComponent {
@@ -55,9 +52,14 @@ export class SafeAnchor extends React.PureComponent {
   }
 
   render() {
-    const { url, className } = this.props;
+    const { url, className, title } = this.props;
     return (
-      <a href={this.safeURI(url)} className={className} onClick={this.onClick}>
+      <a
+        href={this.safeURI(url)}
+        title={title}
+        className={className}
+        onClick={this.onClick}
+      >
         {this.props.children}
       </a>
     );

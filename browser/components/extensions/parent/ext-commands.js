@@ -13,8 +13,13 @@ ChromeUtils.defineESModuleGetters(this, {
 this.commands = class extends ExtensionAPIPersistent {
   PERSISTENT_EVENTS = {
     onCommand({ fire }) {
+      const { extension } = this;
+      const { tabManager } = extension;
+
       let listener = (eventName, commandName) => {
-        fire.async(commandName);
+        let nativeTab = tabTracker.activeTab;
+        tabManager.addActiveTabPermission(nativeTab);
+        fire.async(commandName, tabManager.convert(nativeTab));
       };
       this.on("command", listener);
       return {
@@ -42,7 +47,7 @@ this.commands = class extends ExtensionAPIPersistent {
     return ExtensionShortcuts.removeCommandsFromStorage(extensionId);
   }
 
-  async onManifestEntry(entryName) {
+  async onManifestEntry() {
     let shortcuts = new ExtensionShortcuts({
       extension: this.extension,
       onCommand: name => this.emit("command", name),

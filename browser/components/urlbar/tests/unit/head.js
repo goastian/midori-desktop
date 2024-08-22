@@ -13,9 +13,9 @@ var { UrlbarMuxer, UrlbarProvider, UrlbarQueryContext, UrlbarUtils } =
 
 ChromeUtils.defineESModuleGetters(this, {
   AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
   UrlbarController: "resource:///modules/UrlbarController.sys.mjs",
@@ -28,11 +28,7 @@ ChromeUtils.defineESModuleGetters(this, {
   sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  HttpServer: "resource://testing-common/httpd.js",
-});
-
-XPCOMUtils.defineLazyGetter(this, "QuickSuggestTestUtils", () => {
+ChromeUtils.defineLazyGetter(this, "QuickSuggestTestUtils", () => {
   const { QuickSuggestTestUtils: module } = ChromeUtils.importESModule(
     "resource://testing-common/QuickSuggestTestUtils.sys.mjs"
   );
@@ -40,7 +36,7 @@ XPCOMUtils.defineLazyGetter(this, "QuickSuggestTestUtils", () => {
   return module;
 });
 
-XPCOMUtils.defineLazyGetter(this, "MerinoTestUtils", () => {
+ChromeUtils.defineLazyGetter(this, "MerinoTestUtils", () => {
   const { MerinoTestUtils: module } = ChromeUtils.importESModule(
     "resource://testing-common/MerinoTestUtils.sys.mjs"
   );
@@ -56,7 +52,7 @@ ChromeUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
   return module;
 });
 
-XPCOMUtils.defineLazyGetter(this, "PlacesFrecencyRecalculator", () => {
+ChromeUtils.defineLazyGetter(this, "PlacesFrecencyRecalculator", () => {
   return Cc["@mozilla.org/places/frecency-recalculator;1"].getService(
     Ci.nsIObserver
   ).wrappedJSObject;
@@ -127,15 +123,6 @@ function createContext(searchString = "foo", properties = {}) {
       properties
     )
   );
-  context.view = {
-    get visibleResults() {
-      return context.results;
-    },
-    controller: {
-      removeResult() {},
-    },
-    acknowledgeDismissal() {},
-  };
   UrlbarTokenizer.tokenize(context);
   return context;
 }
@@ -193,7 +180,7 @@ class TestProvider extends UrlbarTestUtils.TestProvider {
     Assert.ok(context, "context is passed-in");
     Assert.equal(typeof add, "function", "add is a callback");
     this._context = context;
-    for (const result of this._results) {
+    for (const result of this.results) {
       add(this, result);
     }
   }
@@ -202,9 +189,7 @@ class TestProvider extends UrlbarTestUtils.TestProvider {
     if (this._context) {
       Assert.equal(this._context, context, "cancelQuery: context is the same");
     }
-    if (this._onCancel) {
-      this._onCancel();
-    }
+    this._onCancel?.();
   }
 }
 
@@ -246,11 +231,18 @@ function makeTestServer(port = -1) {
  * onto the search query.
  *
  * @param {Function} suggestionsFn
- *        A function that returns an array of suggestion strings given a
- *        search string.  If not given, a default function is used.
+ *   A function that returns an array of suggestion strings given a
+ *   search string.  If not given, a default function is used.
+ * @param {object} options
+ *   Options for the check.
+ * @param {string} [options.name]
+ *   The name of the engine to install.
  * @returns {nsISearchEngine} The new engine.
  */
-async function addTestSuggestionsEngine(suggestionsFn = null) {
+async function addTestSuggestionsEngine(
+  suggestionsFn = null,
+  { name = SUGGESTIONS_ENGINE_NAME } = {}
+) {
   // This port number should match the number in engine-suggestions.xml.
   let server = makeTestServer();
   server.registerPathHandler("/suggest", (req, resp) => {
@@ -264,14 +256,14 @@ async function addTestSuggestionsEngine(suggestionsFn = null) {
     resp.write(JSON.stringify(data));
   });
   await SearchTestUtils.installSearchExtension({
-    name: SUGGESTIONS_ENGINE_NAME,
+    name,
     search_url: `http://localhost:${server.identity.primaryPort}/search`,
     suggest_url: `http://localhost:${server.identity.primaryPort}/suggest`,
     suggest_url_get_params: "?q={searchTerms}",
     // test_search_suggestions_aliases.js uses the search form.
     search_form: `http://localhost:${server.identity.primaryPort}/search?q={searchTerms}`,
   });
-  let engine = Services.search.getEngineByName("Suggestions");
+  let engine = Services.search.getEngineByName(name);
   return engine;
 }
 
@@ -330,6 +322,43 @@ async function addTestTailSuggestionsEngine(suggestionsFn = null) {
   return engine;
 }
 
+/**
+ * Creates a function that can be provided to the new engine
+ * utility function to mimic a search engine that returns
+ * rich suggestions.
+ *
+ * @param {string} searchStr
+ *        The string being searched for.
+ *
+ * @returns {object}
+ *        A JSON object mimicing the data format returned by
+ *        a search engine.
+ */
+function defaultRichSuggestionsFn(searchStr) {
+  let suffixes = ["toronto", "tunisia", "tacoma", "taipei"];
+  return [
+    "what time is it in t",
+    suffixes.map(s => searchStr + s.slice(1)),
+    [],
+    {
+      "google:irrelevantparameter": [],
+      "google:suggestdetail": suffixes.map((suffix, i) => {
+        // Set every other suggestion as a rich suggestion so we can
+        // test how they are handled and ordered when interleaved.
+        if (i % 2) {
+          return {};
+        }
+        return {
+          a: "description",
+          dc: "#FFFFFF",
+          i: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
+          t: "Title",
+        };
+      }),
+    },
+  ];
+}
+
 async function addOpenPages(uri, count = 1, userContextId = 0) {
   for (let i = 0; i < count; i++) {
     await UrlbarProviderOpenTabs.registerOpenTab(
@@ -356,7 +385,7 @@ async function removeOpenPages(aUri, aCount = 1, aUserContextId = 0) {
  * suggestions.
  */
 function testEngine_setup() {
-  add_task(async function setup() {
+  add_setup(async () => {
     await cleanupPlaces();
     let engine = await addTestSuggestionsEngine();
     let oldDefaultEngine = await Services.search.getDefault();
@@ -386,7 +415,6 @@ function testEngine_setup() {
 
 async function cleanupPlaces() {
   Services.prefs.clearUserPref("browser.urlbar.autoFill");
-  Services.prefs.clearUserPref("browser.urlbar.autoFill.searchEngines");
 
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
@@ -433,6 +461,17 @@ function makeBookmarkResult(
       icon: [typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`],
       title: [title, UrlbarUtils.HIGHLIGHT.TYPED],
       tags: [tags, UrlbarUtils.HIGHLIGHT.TYPED],
+      isBlockable:
+        source == UrlbarUtils.RESULT_SOURCE.HISTORY ? true : undefined,
+      blockL10n:
+        source == UrlbarUtils.RESULT_SOURCE.HISTORY
+          ? { id: "urlbar-result-menu-remove-from-history" }
+          : undefined,
+      helpUrl:
+        source == UrlbarUtils.RESULT_SOURCE.HISTORY
+          ? Services.urlFormatter.formatURLPref("app.support.baseURL") +
+            "awesome-bar-result-menu"
+          : undefined,
     })
   );
 
@@ -461,6 +500,11 @@ function makeFormHistoryResult(queryContext, { suggestion, engineName }) {
       engine: engineName,
       suggestion: [suggestion, UrlbarUtils.HIGHLIGHT.SUGGESTED],
       lowerCaseSuggestion: suggestion.toLocaleLowerCase(),
+      isBlockable: true,
+      blockL10n: { id: "urlbar-result-menu-remove-from-history" },
+      helpUrl:
+        Services.urlFormatter.formatURLPref("app.support.baseURL") +
+        "awesome-bar-result-menu",
     })
   );
 }
@@ -520,9 +564,14 @@ function makeOmniboxResult(
  *   The page title.
  * @param {string} [options.iconUri]
  *   A URI for the page icon.
+ * @param {number} [options.userContextId]
+ *   A id of the userContext in which the tab is located.
  * @returns {UrlbarResult}
  */
-function makeTabSwitchResult(queryContext, { uri, title, iconUri }) {
+function makeTabSwitchResult(
+  queryContext,
+  { uri, title, iconUri, userContextId }
+) {
   return new UrlbarResult(
     UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
     UrlbarUtils.RESULT_SOURCE.TABS,
@@ -531,6 +580,7 @@ function makeTabSwitchResult(queryContext, { uri, title, iconUri }) {
       title: [title, UrlbarUtils.HIGHLIGHT.TYPED],
       // Check against undefined so consumers can pass in the empty string.
       icon: typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`,
+      userContextId: [userContextId || 0],
     })
   );
 }
@@ -580,41 +630,6 @@ function makeKeywordSearchResult(
 }
 
 /**
- * Creates a UrlbarResult for a priority search result.
- *
- * @param {UrlbarQueryContext} queryContext
- *   The context that this result will be displayed in.
- * @param {object} options
- *   Options for the result.
- * @param {string} [options.engineName]
- *   The name of the engine providing the suggestion. Leave blank if there
- *   is no suggestion.
- * @param {string} [options.engineIconUri]
- *   A URI for the engine's icon.
- * @param {boolean} [options.heuristic]
- *   True if this is a heuristic result. Defaults to false.
- * @returns {UrlbarResult}
- */
-function makePrioritySearchResult(
-  queryContext,
-  { engineName, engineIconUri, heuristic }
-) {
-  let result = new UrlbarResult(
-    UrlbarUtils.RESULT_TYPE.SEARCH,
-    UrlbarUtils.RESULT_SOURCE.SEARCH,
-    ...UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
-      engine: [engineName, UrlbarUtils.HIGHLIGHT.TYPED],
-      icon: engineIconUri,
-    })
-  );
-
-  if (heuristic) {
-    result.heuristic = heuristic;
-  }
-  return result;
-}
-
-/**
  * Creates a UrlbarResult for a remote tab result.
  *
  * @param {UrlbarQueryContext} queryContext
@@ -642,10 +657,7 @@ function makeRemoteTabResult(
     url: [uri, UrlbarUtils.HIGHLIGHT.TYPED],
     device: [device, UrlbarUtils.HIGHLIGHT.TYPED],
     // Check against undefined so consumers can pass in the empty string.
-    icon:
-      typeof iconUri != "undefined"
-        ? iconUri
-        : `moz-anno:favicon:page-icon:${uri}`,
+    icon: typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`,
     lastUsed: lastUsed * 1000,
   };
 
@@ -744,7 +756,7 @@ function makeSearchResult(
 ) {
   // Tail suggestion common cases, handled here to reduce verbosity in tests.
   if (tail) {
-    if (!tailPrefix) {
+    if (!tailPrefix && !isRichSuggestion) {
       tailPrefix = "… ";
     }
     if (!tailOffsetIndex) {
@@ -798,7 +810,13 @@ function makeSearchResult(
     result.payload.lowerCaseSuggestion =
       result.payload.suggestion.toLocaleLowerCase();
     result.payload.trending = trending;
-    result.payload.isRichSuggestion = isRichSuggestion;
+    result.isRichSuggestion = isRichSuggestion;
+  }
+
+  if (isRichSuggestion) {
+    result.payload.icon =
+      "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+    result.payload.description = "description";
   }
 
   if (providerName) {
@@ -858,6 +876,19 @@ function makeVisitResult(
 
   if (fallbackTitle) {
     payload.fallbackTitle = [fallbackTitle, UrlbarUtils.HIGHLIGHT.TYPED];
+  }
+
+  if (
+    !heuristic &&
+    providerName != "AboutPages" &&
+    providerName != "PreloadedSites" &&
+    source == UrlbarUtils.RESULT_SOURCE.HISTORY
+  ) {
+    payload.isBlockable = true;
+    payload.blockL10n = { id: "urlbar-result-menu-remove-from-history" };
+    payload.helpUrl =
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "awesome-bar-result-menu";
   }
 
   if (iconUri) {
@@ -920,7 +951,7 @@ async function check_results({
   // updates.
   // This is not a problem in real life, but autocomplete tests should
   // return reliable resultsets, thus we have to wait.
-  await PlacesTestUtils.promiseAsyncUpdates();
+  await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
 
   const controller = UrlbarTestUtils.newMockController({
     input: {
@@ -936,6 +967,14 @@ async function check_results({
           href: AppConstants.BROWSER_CHROME_URL,
         },
       },
+    },
+  });
+  controller.setView({
+    get visibleResults() {
+      return context.results;
+    },
+    controller: {
+      removeResult() {},
     },
   });
 
@@ -1029,6 +1068,13 @@ async function check_results({
         `result.suggestedIndex at result index ${i}`
       );
     }
+    if (expected.hasOwnProperty("isSuggestedIndexRelativeToGroup")) {
+      Assert.equal(
+        !!actual.isSuggestedIndexRelativeToGroup,
+        expected.isSuggestedIndexRelativeToGroup,
+        `result.isSuggestedIndexRelativeToGroup at result index ${i}`
+      );
+    }
 
     if (expected.payload) {
       Assert.deepEqual(
@@ -1064,44 +1110,13 @@ async function getOriginFrecency(prefix, aHost) {
 }
 
 /**
- * Returns the origin frecency stats.
- *
- * @returns {object}
- *          An object { count, sum, squares }.
- */
-async function getOriginFrecencyStats() {
-  let db = await PlacesUtils.promiseDBConnection();
-  let rows = await db.execute(`
-    SELECT
-      IFNULL((SELECT value FROM moz_meta WHERE key = 'origin_frecency_count'), 0),
-      IFNULL((SELECT value FROM moz_meta WHERE key = 'origin_frecency_sum'), 0),
-      IFNULL((SELECT value FROM moz_meta WHERE key = 'origin_frecency_sum_of_squares'), 0)
-  `);
-  let count = rows[0].getResultByIndex(0);
-  let sum = rows[0].getResultByIndex(1);
-  let squares = rows[0].getResultByIndex(2);
-  return { count, sum, squares };
-}
-
-/**
  * Returns the origin autofill frecency threshold.
  *
  * @returns {number}
  *          The threshold.
  */
 async function getOriginAutofillThreshold() {
-  let { count, sum, squares } = await getOriginFrecencyStats();
-  if (!count) {
-    return 0;
-  }
-  if (count == 1) {
-    return sum;
-  }
-  let stddevMultiplier = UrlbarPrefs.get("autoFill.stddevMultiplier");
-  return (
-    sum / count +
-    stddevMultiplier * Math.sqrt((squares - (sum * sum) / count) / count)
-  );
+  return PlacesUtils.metadata.get("origin_frecency_threshold", 2.0);
 }
 
 /**

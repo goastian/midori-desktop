@@ -26,11 +26,12 @@ TESTING_JS_MODULES += [
 DIRS += ["schemas"]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser-private.ini",
-    "test/browser/browser.ini",
+    "test/browser/browser-private.toml",
+    "test/browser/browser.toml",
+    "test/browser/browser_legacy_recent_tabs.toml",
 ]
 
-MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/xpcshell/xpcshell.ini",
+    "test/xpcshell/xpcshell.toml",
 ]

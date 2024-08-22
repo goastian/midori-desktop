@@ -181,7 +181,10 @@ add_task(async function test_user_defined_commands() {
 
   // Create a window before the extension is loaded.
   let win1 = await BrowserTestUtils.openNewBrowserWindow();
-  BrowserTestUtils.loadURIString(win1.gBrowser.selectedBrowser, "about:robots");
+  BrowserTestUtils.startLoadingURIString(
+    win1.gBrowser.selectedBrowser,
+    "about:robots"
+  );
   await BrowserTestUtils.browserLoaded(win1.gBrowser.selectedBrowser);
 
   // We would have previously focused the window's content area after the
@@ -223,7 +226,16 @@ add_task(async function test_user_defined_commands() {
   }
 
   function background() {
-    browser.commands.onCommand.addListener(commandName => {
+    browser.commands.onCommand.addListener(async (commandName, tab) => {
+      let [expectedTab] = await browser.tabs.query({
+        currentWindow: true,
+        active: true,
+      });
+      browser.test.assertEq(
+        tab.id,
+        expectedTab.id,
+        "Expected onCommand listener to pass the current tab"
+      );
       browser.test.sendMessage("oncommand", commandName);
     });
     browser.test.sendMessage("ready");
@@ -266,7 +278,10 @@ add_task(async function test_user_defined_commands() {
 
   // Create another window after the extension is loaded.
   let win2 = await BrowserTestUtils.openNewBrowserWindow();
-  BrowserTestUtils.loadURIString(win2.gBrowser.selectedBrowser, "about:robots");
+  BrowserTestUtils.startLoadingURIString(
+    win2.gBrowser.selectedBrowser,
+    "about:robots"
+  );
   await BrowserTestUtils.browserLoaded(win2.gBrowser.selectedBrowser);
 
   // See comment above.
@@ -281,7 +296,7 @@ add_task(async function test_user_defined_commands() {
   // Confirm the keysets have been added to both windows.
   let keysetID = `ext-keyset-id-${makeWidgetId(extension.id)}`;
   let keyset = win1.document.getElementById(keysetID);
-  ok(keyset != null, "Expected keyset to exist");
+  Assert.notEqual(keyset, null, "Expected keyset to exist");
   is(
     keyset.children.length,
     expectedCommandsRegistered,
@@ -289,7 +304,7 @@ add_task(async function test_user_defined_commands() {
   );
 
   keyset = win2.document.getElementById(keysetID);
-  ok(keyset != null, "Expected keyset to exist");
+  Assert.notEqual(keyset, null, "Expected keyset to exist");
   is(
     keyset.children.length,
     expectedCommandsRegistered,
@@ -306,7 +321,7 @@ add_task(async function test_user_defined_commands() {
   let privateWin = await BrowserTestUtils.openNewBrowserWindow({
     private: true,
   });
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     privateWin.gBrowser.selectedBrowser,
     "about:robots"
   );
@@ -344,7 +359,7 @@ add_task(async function test_user_defined_commands() {
   keysetID = `ext-keyset-id-${makeWidgetId(extension.id)}`;
 
   keyset = win1.document.getElementById(keysetID);
-  ok(keyset != null, "Expected keyset to exist on win1");
+  Assert.notEqual(keyset, null, "Expected keyset to exist on win1");
   is(
     keyset.children.length,
     expectedCommandsRegistered,
@@ -352,7 +367,7 @@ add_task(async function test_user_defined_commands() {
   );
 
   keyset = win2.document.getElementById(keysetID);
-  ok(keyset != null, "Expected keyset to exist on win2");
+  Assert.notEqual(keyset, null, "Expected keyset to exist on win2");
   is(
     keyset.children.length,
     expectedCommandsRegistered,
@@ -360,7 +375,7 @@ add_task(async function test_user_defined_commands() {
   );
 
   keyset = privateWin.document.getElementById(keysetID);
-  ok(keyset != null, "Expected keyset was added to private windows");
+  Assert.notEqual(keyset, null, "Expected keyset was added to private windows");
   is(
     keyset.children.length,
     expectedCommandsRegistered,
@@ -402,8 +417,9 @@ add_task(async function test_commands_event_page() {
       },
     },
     background() {
-      browser.commands.onCommand.addListener(name => {
+      browser.commands.onCommand.addListener((name, tab) => {
         browser.test.assertEq(name, "toggle-feature", "command received");
+        browser.test.assertTrue(!!tab, "tab received");
         browser.test.sendMessage("onCommand");
       });
       browser.test.sendMessage("ready");

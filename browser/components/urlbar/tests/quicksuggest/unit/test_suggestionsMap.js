@@ -2,17 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Tests the chunking feature of `RemoteSettingsClient.#addResults()`.
+// Tests `SuggestionsMap`.
 
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  SuggestionsMap:
-    "resource:///modules/urlbar/private/QuickSuggestRemoteSettings.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
+  SuggestionsMap: "resource:///modules/urlbar/private/SuggestBackendJs.sys.mjs",
 });
 
 // This overrides `SuggestionsMap.chunkSize`. Testing the actual value can make
@@ -20,7 +16,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 // behavior doesn't depend on the chunk size.
 const TEST_CHUNK_SIZE = 100;
 
-add_task(async function init() {
+add_setup(async () => {
   // Sanity check the actual `chunkSize` value.
   Assert.equal(
     typeof SuggestionsMap.chunkSize,
@@ -200,17 +196,97 @@ add_task(async function mapKeywords() {
   };
 
   let map = new SuggestionsMap();
-  await map.add(suggestions, keyword => {
-    if (keyword == "f") {
-      return [keyword + "x", keyword + "y", keyword + "z"];
-    }
-    return [keyword + "x"];
+  await map.add(suggestions, {
+    mapKeyword: keyword => {
+      if (keyword == "f") {
+        return [keyword + "x", keyword + "y", keyword + "z"];
+      }
+      return [keyword + "x"];
+    },
   });
 
   for (let [keyword, indexes] of Object.entries(expectedIndexesByKeyword)) {
     Assert.deepEqual(
       map.get(keyword),
       indexes.map(i => suggestions[i]),
+      "get() with keyword: " + keyword
+    );
+  }
+});
+
+// Tests `keywordsProperty`.
+add_task(async function keywordsProperty() {
+  let suggestion = {
+    title: "suggestion",
+    keywords: ["should be ignored"],
+    foo: ["hello"],
+  };
+
+  let map = new SuggestionsMap();
+  await map.add([suggestion], {
+    keywordsProperty: "foo",
+  });
+
+  Assert.deepEqual(
+    map.get("hello"),
+    [suggestion],
+    "Keyword in `foo` should match"
+  );
+  Assert.deepEqual(
+    map.get("should be ignored"),
+    [],
+    "Keyword in `keywords` should not match"
+  );
+});
+
+// Tests `MAP_KEYWORD_PREFIXES_STARTING_AT_FIRST_WORD`.
+add_task(async function prefixesStartingAtFirstWord() {
+  let suggestion = {
+    title: "suggestion",
+    keywords: ["one two three", "four five six"],
+  };
+
+  // keyword passed to `get()` -> should match
+  let tests = {
+    o: false,
+    on: false,
+    one: true,
+    "one ": true,
+    "one t": true,
+    "one tw": true,
+    "one two": true,
+    "one two ": true,
+    "one two t": true,
+    "one two th": true,
+    "one two thr": true,
+    "one two thre": true,
+    "one two three": true,
+    "one two three ": false,
+    f: false,
+    fo: false,
+    fou: false,
+    four: true,
+    "four ": true,
+    "four f": true,
+    "four fi": true,
+    "four fiv": true,
+    "four five": true,
+    "four five ": true,
+    "four five s": true,
+    "four five si": true,
+    "four five six": true,
+    "four five six ": false,
+  };
+
+  let map = new SuggestionsMap();
+  await map.add([suggestion], {
+    mapKeyword: SuggestionsMap.MAP_KEYWORD_PREFIXES_STARTING_AT_FIRST_WORD,
+  });
+
+  for (let [keyword, shouldMatch] of Object.entries(tests)) {
+    Assert.deepEqual(
+      map.get(keyword),
+      shouldMatch ? [suggestion] : [],
       "get() with keyword: " + keyword
     );
   }

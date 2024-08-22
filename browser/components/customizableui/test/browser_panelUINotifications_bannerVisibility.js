@@ -24,7 +24,7 @@ add_task(async function testBannerVisibilityBeforeOpen() {
   menuButton.click();
   await shown;
 
-  let banner = newWin.document.getElementById("appMenu-proton-update-banner");
+  let banner = newWin.document.getElementById("appMenu-update-banner");
 
   let labelPromise = BrowserTestUtils.waitForMutationCondition(
     banner,
@@ -36,7 +36,11 @@ add_task(async function testBannerVisibilityBeforeOpen() {
 
   await labelPromise;
 
-  ok(banner.getAttribute("label") != "", "Update banner should contain text");
+  Assert.notEqual(
+    banner.getAttribute("label"),
+    "",
+    "Update banner should contain text"
+  );
 
   AppMenuNotifications.removeNotification(/.*/);
 
@@ -58,7 +62,7 @@ add_task(async function testBannerVisibilityDuringOpen() {
   menuButton.click();
   await shown;
 
-  let banner = newWin.document.getElementById("appMenu-proton-update-banner");
+  let banner = newWin.document.getElementById("appMenu-update-banner");
   ok(
     !banner.hasAttribute("label"),
     "Update banner shouldn't contain text before notification"
@@ -76,7 +80,11 @@ add_task(async function testBannerVisibilityDuringOpen() {
 
   await labelPromise;
 
-  ok(banner.getAttribute("label") != "", "Update banner should contain text");
+  Assert.notEqual(
+    banner.getAttribute("label"),
+    "",
+    "Update banner should contain text"
+  );
 
   AppMenuNotifications.removeNotification(/.*/);
 
@@ -101,7 +109,7 @@ add_task(async function testBannerVisibilityAfterClose() {
 
   ok(newWin.PanelUI.mainView.hasAttribute("visible"));
 
-  let banner = newWin.document.getElementById("appMenu-proton-update-banner");
+  let banner = newWin.document.getElementById("appMenu-update-banner");
 
   ok(banner.hidden, "Update banner should be hidden before notification");
   ok(
@@ -131,7 +139,11 @@ add_task(async function testBannerVisibilityAfterClose() {
 
   await labelPromise;
 
-  ok(banner.getAttribute("label") != "", "Update banner should contain text");
+  Assert.notEqual(
+    banner.getAttribute("label"),
+    "",
+    "Update banner should contain text"
+  );
 
   AppMenuNotifications.removeNotification(/.*/);
 

@@ -52,19 +52,17 @@ const EXPECTED_SPONSORED_URLBAR_RESULT = {
     sponsoredBlockId: 1,
     sponsoredAdvertiser: "TestAdvertiser",
     sponsoredIabCategory: "22 - Shopping",
+    descriptionL10n: { id: "urlbar-result-action-sponsored" },
     helpUrl: QuickSuggest.HELP_URL,
     helpL10n: {
-      id: UrlbarPrefs.get("resultMenu")
-        ? "urlbar-result-menu-learn-more-about-firefox-suggest"
-        : "firefox-suggest-urlbar-learn-more",
+      id: "urlbar-result-menu-learn-more-about-firefox-suggest",
     },
-    isBlockable: UrlbarPrefs.get("quickSuggestBlockingEnabled"),
+    isBlockable: true,
     blockL10n: {
-      id: UrlbarPrefs.get("resultMenu")
-        ? "urlbar-result-menu-dismiss-firefox-suggest"
-        : "firefox-suggest-urlbar-block",
+      id: "urlbar-result-menu-dismiss-firefox-suggest",
     },
     source: "remote-settings",
+    provider: "AdmWikipedia",
   },
 };
 
@@ -88,17 +86,14 @@ const EXPECTED_NONSPONSORED_URLBAR_RESULT = {
     sponsoredIabCategory: "5 - Education",
     helpUrl: QuickSuggest.HELP_URL,
     helpL10n: {
-      id: UrlbarPrefs.get("resultMenu")
-        ? "urlbar-result-menu-learn-more-about-firefox-suggest"
-        : "firefox-suggest-urlbar-learn-more",
+      id: "urlbar-result-menu-learn-more-about-firefox-suggest",
     },
-    isBlockable: UrlbarPrefs.get("quickSuggestBlockingEnabled"),
+    isBlockable: true,
     blockL10n: {
-      id: UrlbarPrefs.get("resultMenu")
-        ? "urlbar-result-menu-dismiss-firefox-suggest"
-        : "firefox-suggest-urlbar-block",
+      id: "urlbar-result-menu-dismiss-firefox-suggest",
     },
     source: "remote-settings",
+    provider: "AdmWikipedia",
   },
 };
 
@@ -106,23 +101,22 @@ let gSandbox;
 let gDateNowStub;
 let gStartupDateMsStub;
 
-add_task(async function init() {
-  UrlbarPrefs.set("quicksuggest.enabled", true);
-  UrlbarPrefs.set("quicksuggest.impressionCaps.sponsoredEnabled", true);
-  UrlbarPrefs.set("quicksuggest.impressionCaps.nonSponsoredEnabled", true);
-  UrlbarPrefs.set("suggest.quicksuggest.nonsponsored", true);
-  UrlbarPrefs.set("suggest.quicksuggest.sponsored", true);
-  UrlbarPrefs.set("bestMatch.enabled", false);
-
+add_setup(async () => {
   // Disable search suggestions so we don't hit the network.
   Services.prefs.setBoolPref("browser.search.suggest.enabled", false);
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
-    remoteSettingsResults: [
+    remoteSettingsRecords: [
       {
         type: "data",
         attachment: REMOTE_SETTINGS_RESULTS,
       },
+    ],
+    prefs: [
+      ["quicksuggest.impressionCaps.sponsoredEnabled", true],
+      ["quicksuggest.impressionCaps.nonSponsoredEnabled", true],
+      ["suggest.quicksuggest.nonsponsored", true],
+      ["suggest.quicksuggest.sponsored", true],
     ],
   });
 
@@ -3862,17 +3856,42 @@ async function checkSearch({ name, searchString, expectedResults }) {
 
   // Impression stats are updated only on engagement, so force one now.
   // `selIndex` doesn't really matter but since we're not trying to simulate a
-  // click on the suggestion, pass in -1 to ensure we don't record a click. Pass
-  // in true for `isPrivate` so we don't attempt to record the impression ping
-  // because otherwise the following PingCentre error is logged:
-  // "Structured Ingestion ping failure with error: undefined"
-  let isPrivate = true;
+  // click on the suggestion, pass in -1 to ensure we don't record a click.
   if (UrlbarProviderQuickSuggest._resultFromLastQuery) {
     UrlbarProviderQuickSuggest._resultFromLastQuery.isVisible = true;
   }
-  UrlbarProviderQuickSuggest.onEngagement(isPrivate, "engagement", context, {
-    selIndex: -1,
+  const controller = UrlbarTestUtils.newMockController({
+    input: {
+      isPrivate: true,
+      onFirstResult() {
+        return false;
+      },
+      getSearchSource() {
+        return "dummy-search-source";
+      },
+      window: {
+        location: {
+          href: AppConstants.BROWSER_CHROME_URL,
+        },
+      },
+    },
   });
+  controller.setView({
+    get visibleResults() {
+      return context.results;
+    },
+    controller: {
+      removeResult() {},
+    },
+  });
+  UrlbarProviderQuickSuggest.onLegacyEngagement(
+    "engagement",
+    context,
+    {
+      selIndex: -1,
+    },
+    controller
+  );
 }
 
 async function checkTelemetryEvents(expectedEvents) {

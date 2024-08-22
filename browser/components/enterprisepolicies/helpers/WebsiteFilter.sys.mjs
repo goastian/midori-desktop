@@ -24,15 +24,13 @@
  * way is to configure that with extensions or through a company firewall.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const LIST_LENGTH_LIMIT = 1000;
 
 const PREF_LOGLEVEL = "browser.policies.loglevel";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -107,7 +105,7 @@ export let WebsiteFilter = {
     Services.obs.addObserver(this, "http-on-examine-response", true);
   },
 
-  shouldLoad(contentLocation, loadInfo, mimeTypeGuess) {
+  shouldLoad(contentLocation, loadInfo) {
     let contentType = loadInfo.externalContentPolicyType;
     let url = contentLocation.spec;
     if (contentLocation.scheme == "view-source") {
@@ -132,10 +130,10 @@ export let WebsiteFilter = {
     }
     return Ci.nsIContentPolicy.ACCEPT;
   },
-  shouldProcess(contentLocation, loadInfo, mimeTypeGuess) {
+  shouldProcess() {
     return Ci.nsIContentPolicy.ACCEPT;
   },
-  observe(subject, topic, data) {
+  observe(subject) {
     try {
       let channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (

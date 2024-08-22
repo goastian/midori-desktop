@@ -2,23 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@namespace html url("http://www.w3.org/1999/xhtml");
-
 :root {
   --toolbarbutton-icon-fill-attention: AccentColor;
-  --warning-icon-bgcolor: #FFA436;
-}
-
-:root:-moz-lwtheme,
-:where(panel, toolbar, #urlbar, #searchbar):-moz-lwtheme {
-  --toolbarbutton-icon-fill-attention: var(--lwt-toolbarbutton-icon-fill-attention, rgb(0,97,224));
-}
-
-:root[lwt-popup-brighttext] panel,
-:root[lwt-toolbar-field-brighttext] :is(#urlbar, #searchbar),
-toolbar[brighttext]:-moz-lwtheme {
-  --toolbarbutton-icon-fill-attention: var(--lwt-toolbarbutton-icon-fill-attention, rgb(0,221,255));
-  --warning-icon-bgcolor: #FFBD4F;
+  --toolbarbutton-icon-fill-attention-text: AccentColorText;
+  --warning-icon-bgcolor: light-dark(#FFA436, #FFBD4F);
+  &[lwtheme] {
+    --toolbarbutton-icon-fill-attention: var(--lwt-toolbarbutton-icon-fill-attention, light-dark(rgb(0, 97, 224), rgb(0, 221, 255)));
+    /* FIXME(emilio): This could have poor contrast on some themes, maybe use
+     * contrast-color() once that's available, or compute a new variable in
+     * LightWeightThemeConsumer */
+    --toolbarbutton-icon-fill-attention-text: var(--toolbar-field-background-color);
+  }
 }
 
 .toolbarbutton-animatable-box,
@@ -120,13 +114,9 @@ toolbar[brighttext]:-moz-lwtheme {
   position: relative;
 }
 
-#nav-bar-customization-target :where(#reload-button, #stop-button) > .toolbarbutton-icon {
-  padding: calc(var(--toolbarbutton-inner-padding) + 1px) var(--toolbarbutton-inner-padding) calc(var(--toolbarbutton-inner-padding) - 1px ) !important; /* The animation is 18px but the other icons are 16px, lower it by 1px so it is vertically centered */
-}
-
 #reload-button > .toolbarbutton-animatable-box,
 #stop-button > .toolbarbutton-animatable-box {
-  top: calc(50% - 9px); /* Vertically center the 20px tall animatable image, which is 1px higher than other icons */
+  top: calc(50% - 10px); /* Vertically center the 20px tall animatable image */
   width: 20px; /* Width of each frame within the SVG sprite */
   height: 20px; /* Height of each frame within the SVG sprite */
 }
@@ -320,7 +310,7 @@ toolbar[brighttext]:-moz-lwtheme {
 }
 
 #zoom-out-button {
-  list-style-image: url("chrome://browser/skin/zoom-out.svg");
+  list-style-image: url("chrome://global/skin/icons/minus.svg");
 }
 
 #zoom-in-button {
@@ -332,48 +322,16 @@ toolbar[brighttext]:-moz-lwtheme {
   list-style-image: url("chrome://global/skin/icons/chevron.svg");
 }
 
-#nav-bar-overflow-button[animate] > .toolbarbutton-icon {
-  fill: transparent;
-}
-
-@keyframes overflow-animation {
-  from {
-    transform: translateX(0);
-  }
-  /* Bug 1831300 is on file for this. */
-  /* stylelint-disable-next-line keyframe-block-no-duplicate-selectors */
-  from {
-    transform: translateX(-832px);
-  }
-}
-
-#nav-bar-overflow-button > .toolbarbutton-animatable-box {
-  visibility: hidden;
-  top: calc(50% - 8px); /* Vertically center the 16px tall animatable image */
-  width: 16px; /* Width of each frame within the SVG sprite */
-  height: 16px; /* Height of each frame within the SVG sprite */
-  -moz-context-properties: fill, stroke;
-  fill: var(--toolbarbutton-icon-fill);
-  stroke: var(--toolbarbutton-icon-fill-attention);
-}
-#nav-bar-overflow-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  background-image: url("chrome://browser/skin/chevron-animation.svg");
-  width: 848px;
-  height: 16px;
-  transform: translateX(0);
-}
-
-#nav-bar-overflow-button[animate] > .toolbarbutton-animatable-box {
-  visibility: visible;
-}
-#nav-bar-overflow-button[animate] > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  animation-name: overflow-animation;
-  animation-timing-function: steps(52);
-  animation-duration: calc(52 * 16.667ms);
-}
-
 #unified-extensions-button {
   list-style-image: url("chrome://mozapps/skin/extensions/extension.svg");
+}
+
+#reset-pbm-toolbar-button {
+  list-style-image: url("chrome://browser/skin/flame.svg");
+
+  :root:not([privatebrowsingmode]) & {
+    display: none;
+  }
 }
 
 #email-link-button {
@@ -398,11 +356,7 @@ toolbar[brighttext]:-moz-lwtheme {
 }
 
 #panic-button[open] {
-  fill: rgb(213, 32, 20);
-}
-
-toolbar[brighttext] #panic-button[open] {
-  fill: #ff848b;
+  fill: light-dark(rgb(213, 32, 20), #ff848b);
 }
 
 #library-button {
@@ -417,7 +371,7 @@ toolbar[brighttext] #panic-button[open] {
 #save-to-pocket-button[open="true"],
 #save-to-pocket-button[pocketed="true"] {
   list-style-image: url("chrome://global/skin/icons/pocket.svg");
-  fill: #ef4056;
+  fill: var(--pocket-icon-fill);
 }
 
 /* ----- BOOKMARK BUTTONS ----- */
@@ -453,18 +407,28 @@ toolbarbutton.bookmark-item {
   list-style-image: url("chrome://global/skin/icons/folder.svg");
 }
 
-#whats-new-menu-button {
-  list-style-image: url("chrome://global/skin/icons/whatsnew.svg");
-}
-
 #ion-button {
   list-style-image: url("chrome://browser/skin/ion.svg");
+
+  toolbar[customizing] & {
+    display: none;
+  }
 }
 
 #import-button {
   list-style-image: url("chrome://browser/skin/import.svg");
 }
 
+#aboutwelcome-button {
+  list-style-image: url("chrome://browser/skin/circle-check-dotted.svg");
+}
+
 #firefox-view-button {
-  list-style-image: url("chrome://branding/content/icon32.png");
+  list-style-image: url("chrome://browser/skin/firefox-view.svg");
+}
+
+#content-analysis-indicator {
+  -moz-context-properties: fill, stroke;
+  stroke: var(--toolbarbutton-icon-fill);
+  list-style-image: url("chrome://global/skin/icons/content-analysis.svg");
 }

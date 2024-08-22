@@ -4,39 +4,25 @@
 
 module.exports = {
   // When adding items to this file please check for effects on sub-directories.
-  parserOptions: {
-    ecmaVersion: 2018,
-    ecmaFeatures: {
-      jsx: true,
-    },
-    sourceType: "module",
-  },
-  plugins: [
-    "import", // require("eslint-plugin-import")
-    "react", // require("eslint-plugin-react")
-    "jsx-a11y", // require("eslint-plugin-jsx-a11y")
-  ],
+  plugins: ["import", "react", "jsx-a11y"],
   settings: {
     react: {
       version: "16.2.0",
     },
   },
-  extends: [
-    "eslint:recommended",
-    "plugin:jsx-a11y/recommended", // require("eslint-plugin-jsx-a11y")
-    "plugin:mozilla/recommended", // require("eslint-plugin-mozilla") require("eslint-plugin-fetch-options") require("eslint-plugin-html") require("eslint-plugin-no-unsanitized")
-    "prettier", // require("eslint-config-prettier")
-  ],
+  extends: ["plugin:jsx-a11y/recommended"],
   overrides: [
+    {
+      // TODO: Bug 1773467 - Move these to .mjs or figure out a generic way
+      // to identify these as modules.
+      files: ["test/schemas/**/*.js", "test/unit/**/*.js"],
+      parserOptions: {
+        sourceType: "module",
+      },
+    },
     {
       // These files use fluent-dom to insert content
       files: [
-        "content-src/aboutwelcome/components/Zap.jsx",
-        "content-src/aboutwelcome/components/MultiStageAboutWelcome.jsx",
-        "content-src/aboutwelcome/components/MultiStageScreen.jsx",
-        "content-src/aboutwelcome/components/MultiStageProtonScreen.jsx",
-        "content-src/aboutwelcome/components/MultiSelect.jsx",
-        "content-src/aboutwelcome/components/ReturnToAMO.jsx",
         "content-src/asrouter/templates/OnboardingMessage/**",
         "content-src/asrouter/templates/FirstRun/**",
         "content-src/components/TopSites/**",
@@ -45,6 +31,7 @@ module.exports = {
         "content-src/components/DiscoveryStreamComponents/DSEmptyState/DSEmptyState.jsx",
         "content-src/components/DiscoveryStreamComponents/DSPrivacyModal/DSPrivacyModal.jsx",
         "content-src/components/CustomizeMenu/**",
+        "content-src/components/WallpapersSection/**",
       ],
       rules: {
         "jsx-a11y/anchor-has-content": "off",
@@ -57,7 +44,6 @@ module.exports = {
       files: [
         "bin/**",
         "content-src/**",
-        "./*.js",
         "loaders/**",
         "tools/**",
         "test/unit/**",
@@ -67,56 +53,48 @@ module.exports = {
       },
     },
     {
-      // Use a configuration that's more appropriate for JSMs
-      files: "**/*.jsm",
-      parserOptions: {
-        sourceType: "script",
-      },
+      // Use a configuration that's appropriate for modules, workers and
+      // non-production files.
+      files: ["lib/cache.worker.js", "test/**"],
       rules: {
         "no-implicit-globals": "off",
       },
     },
     {
-      files: "test/xpcshell/**",
-      extends: ["plugin:mozilla/xpcshell-test"],
-    },
-    {
-      files: "test/browser/**",
-      extends: ["plugin:mozilla/browser-test"],
-    },
-    {
-      // Exempt all files without a 'test' string in their path name since no-insecure-url
-      // is focussing on the test base
-      files: "*",
-      excludedFiles: ["**/test**", "**/test*/**", "Test*/**"],
+      files: ["content-src/**", "test/unit/**"],
       rules: {
-        "@microsoft/sdl/no-insecure-url": "off",
+        // Disallow commonjs in these directories.
+        "import/no-commonjs": 2,
       },
     },
     {
-      // That are all files in browser/component/newtab/test that produces warnings in the existing test infrastructure.
-      // Since our focus is that new tests won't use http without thinking twice we exempt
-      // these test files for now.
-      // TODO gradually check and remove from here bug 1758951.
-      files: [
-        "browser/components/newtab/test/browser/abouthomecache/browser_process_crash.js",
-        "browser/components/newtab/test/browser/browser_aboutwelcome_observer.js",
-        "browser/components/newtab/test/browser/browser_asrouter_cfr.js",
-        "browser/components/newtab/test/browser/browser_asrouter_group_frequency.js",
-        "browser/components/newtab/test/browser/browser_asrouter_group_userprefs.js",
-        "browser/components/newtab/test/browser/browser_trigger_listeners.js",
-      ],
+      // These tests simulate the browser environment.
+      files: "test/unit/**",
+      env: {
+        browser: true,
+        mocha: true,
+      },
+      globals: {
+        assert: true,
+        chai: true,
+        sinon: true,
+      },
+    },
+    {
+      files: "test/**",
       rules: {
-        "@microsoft/sdl/no-insecure-url": "off",
+        "func-name-matching": 0,
+        "lines-between-class-members": 0,
       },
     },
   ],
   rules: {
-    "fetch-options/no-fetch-credentials": "error",
-
     "react/jsx-boolean-value": ["error", "always"],
     "react/jsx-key": "error",
-    "react/jsx-no-bind": "error",
+    "react/jsx-no-bind": [
+      "error",
+      { allowArrowFunctions: true, allowFunctions: true },
+    ],
     "react/jsx-no-comment-textnodes": "error",
     "react/jsx-no-duplicate-props": "error",
     "react/jsx-no-target-blank": "error",
@@ -139,21 +117,13 @@ module.exports = {
     "block-scoped-var": "error",
     "consistent-this": ["error", "use-bind"],
     eqeqeq: "error",
-    "for-direction": "error",
     "func-name-matching": "error",
-    "getter-return": "error",
     "guard-for-in": "error",
-    "handle-callback-err": "error",
-    "lines-between-class-members": "error",
-    "max-depth": ["error", 4],
     "max-nested-callbacks": ["error", 4],
     "max-params": ["error", 6],
     "max-statements": ["error", 50],
-    "max-statements-per-line": ["error", { max: 2 }],
     "new-cap": ["error", { newIsCap: true, capIsNew: false }],
     "no-alert": "error",
-    "no-buffer-constructor": "error",
-    "no-console": ["error", { allow: ["error"] }],
     "no-div-regex": "error",
     "no-duplicate-imports": "error",
     "no-eq-null": "error",
@@ -162,16 +132,12 @@ module.exports = {
     "no-implicit-coercion": ["error", { allow: ["!!"] }],
     "no-implicit-globals": "error",
     "no-loop-func": "error",
-    "no-mixed-requires": "error",
     "no-multi-assign": "error",
     "no-multi-str": "error",
     "no-new": "error",
     "no-new-func": "error",
-    "no-new-require": "error",
     "no-octal-escape": "error",
     "no-param-reassign": "error",
-    "no-path-concat": "error",
-    "no-process-exit": "error",
     "no-proto": "error",
     "no-prototype-builtins": "error",
     "no-return-assign": ["error", "except-parens"],
@@ -202,7 +168,6 @@ module.exports = {
     "prefer-spread": "error",
     "prefer-template": "error",
     radix: ["error", "always"],
-    "require-await": "error",
     "sort-vars": "error",
     "symbol-description": "error",
     "vars-on-top": "error",

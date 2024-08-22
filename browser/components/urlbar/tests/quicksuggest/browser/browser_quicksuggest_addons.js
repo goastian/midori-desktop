@@ -5,6 +5,15 @@
 
 // Test for addon suggestions.
 
+// The expected index of the addon suggestion.
+const EXPECTED_RESULT_INDEX = 1;
+
+// Allow more time for TV runs.
+requestLongerTimeout(5);
+
+// TODO: Firefox no longer uses `rating` and `number_of_ratings` but they are
+// still present in Merino and RS suggestions, so they are included here for
+// greater accuracy. We should remove them from Merino, RS, and tests.
 const TEST_MERINO_SUGGESTIONS = [
   {
     provider: "amo",
@@ -71,13 +80,10 @@ const TEST_MERINO_SUGGESTIONS = [
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["browser.urlbar.quicksuggest.enabled", true],
-      ["browser.urlbar.quicksuggest.remoteSettings.enabled", false],
-      ["browser.urlbar.bestMatch.enabled", true],
+      // Disable search suggestions so we don't hit the network.
+      ["browser.search.suggest.enabled", false],
     ],
   });
-
-  await SearchTestUtils.installSearchExtension({}, { setAsDefault: true });
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
     merinoSuggestions: TEST_MERINO_SUGGESTIONS,
@@ -85,10 +91,6 @@ add_setup(async function () {
 });
 
 add_task(async function basic() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.addons.featureGate", true]],
-  });
-
   for (const merinoSuggestion of TEST_MERINO_SUGGESTIONS) {
     MerinoTestUtils.server.response.body.suggestions = [merinoSuggestion];
 
@@ -103,43 +105,31 @@ add_task(async function basic() {
       1
     );
     const row = element.row;
-    const icon = row.querySelector(".urlbarView-dynamic-addons-icon");
+    const icon = row.querySelector(".urlbarView-favicon");
     Assert.equal(icon.src, merinoSuggestion.icon);
-    const url = row.querySelector(".urlbarView-dynamic-addons-url");
-    Assert.equal(url.textContent, merinoSuggestion.url);
-    const title = row.querySelector(".urlbarView-dynamic-addons-title");
+    const url = row.querySelector(".urlbarView-url");
+    const expectedUrl = makeExpectedUrl(merinoSuggestion.url);
+    const displayUrl = expectedUrl.replace(/^https:\/\//, "");
+    Assert.equal(url.textContent, displayUrl);
+    const title = row.querySelector(".urlbarView-title");
     Assert.equal(title.textContent, merinoSuggestion.title);
-    const description = row.querySelector(
-      ".urlbarView-dynamic-addons-description"
-    );
+    const description = row.querySelector(".urlbarView-row-body-description");
     Assert.equal(description.textContent, merinoSuggestion.description);
-    const reviews = row.querySelector(".urlbarView-dynamic-addons-reviews");
-    Assert.equal(
-      reviews.textContent,
-      `${new Intl.NumberFormat().format(
-        Number(merinoSuggestion.custom_details.amo.number_of_ratings)
-      )} reviews`
+    const bottom = row.querySelector(".urlbarView-row-body-bottom");
+    Assert.equal(bottom.textContent, "Recommended");
+    Assert.ok(
+      BrowserTestUtils.isVisible(
+        row.querySelector(".urlbarView-title-separator")
+      ),
+      "The title separator should be visible"
     );
 
-    const isTopPick = merinoSuggestion.is_top_pick ?? true;
-    if (isTopPick) {
-      Assert.equal(result.suggestedIndex, 1);
-    } else if (merinoSuggestion.is_sponsored) {
-      Assert.equal(
-        result.suggestedIndex,
-        UrlbarPrefs.get("quickSuggestSponsoredIndex")
-      );
-    } else {
-      Assert.equal(
-        result.suggestedIndex,
-        UrlbarPrefs.get("quickSuggestNonSponsoredIndex")
-      );
-    }
+    Assert.equal(result.suggestedIndex, 1);
 
     const onLoad = BrowserTestUtils.browserLoaded(
       gBrowser.selectedBrowser,
       false,
-      merinoSuggestion.url
+      expectedUrl
     );
     EventUtils.synthesizeMouseAtCenter(row, {});
     await onLoad;
@@ -147,79 +137,6 @@ add_task(async function basic() {
 
     await PlacesUtils.history.clear();
   }
-
-  await SpecialPowers.popPrefEnv();
-});
-
-add_task(async function ratings() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.addons.featureGate", true]],
-  });
-
-  const testRating = [
-    "0",
-    "0.24",
-    "0.25",
-    "0.74",
-    "0.75",
-    "1",
-    "1.24",
-    "1.25",
-    "1.74",
-    "1.75",
-    "2",
-    "2.24",
-    "2.25",
-    "2.74",
-    "2.75",
-    "3",
-    "3.24",
-    "3.25",
-    "3.74",
-    "3.75",
-    "4",
-    "4.24",
-    "4.25",
-    "4.74",
-    "4.75",
-    "5",
-  ];
-  const baseMerinoSuggestion = JSON.parse(
-    JSON.stringify(TEST_MERINO_SUGGESTIONS[0])
-  );
-
-  for (const rating of testRating) {
-    baseMerinoSuggestion.custom_details.amo.rating = rating;
-    MerinoTestUtils.server.response.body.suggestions = [baseMerinoSuggestion];
-
-    await UrlbarTestUtils.promiseAutocompleteResultPopup({
-      window,
-      value: "only match the Merino suggestion",
-    });
-    Assert.equal(UrlbarTestUtils.getResultCount(window), 2);
-
-    const { element } = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
-
-    const ratingElements = element.row.querySelectorAll(
-      ".urlbarView-dynamic-addons-rating"
-    );
-    Assert.equal(ratingElements.length, 5);
-
-    for (let i = 0; i < ratingElements.length; i++) {
-      const ratingElement = ratingElements[i];
-
-      const distanceToFull = Number(rating) - i;
-      let fill = "full";
-      if (distanceToFull < 0.25) {
-        fill = "empty";
-      } else if (distanceToFull < 0.75) {
-        fill = "half";
-      }
-      Assert.equal(ratingElement.getAttribute("fill"), fill);
-    }
-  }
-
-  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function disable() {
@@ -249,19 +166,12 @@ add_task(async function disable() {
 
 add_task(async function resultMenu_showLessFrequently() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["browser.urlbar.addons.featureGate", true],
-      ["browser.urlbar.addons.showLessFrequentlyCount", 0],
-    ],
+    set: [["browser.urlbar.addons.showLessFrequentlyCount", 0]],
   });
 
-  const cleanUpNimbus = await UrlbarTestUtils.initNimbusFeature({
-    addonsShowLessFrequentlyCap: 3,
+  await QuickSuggestTestUtils.setConfig({
+    show_less_frequently_cap: 3,
   });
-
-  // Sanity check.
-  Assert.equal(UrlbarPrefs.get("addonsShowLessFrequentlyCap"), 3);
-  Assert.equal(UrlbarPrefs.get("addons.showLessFrequentlyCount"), 0);
 
   await doShowLessFrequently({
     input: "aaa b",
@@ -281,7 +191,10 @@ add_task(async function resultMenu_showLessFrequently() {
   });
   Assert.equal(UrlbarPrefs.get("addons.showLessFrequentlyCount"), 2);
 
+  // The cap will be reached this time. Keep the view open so we can make sure
+  // the command has been removed from the menu before it closes.
   await doShowLessFrequently({
+    keepViewOpen: true,
     input: "aaa b",
     expected: {
       isSuggestionShown: true,
@@ -289,6 +202,17 @@ add_task(async function resultMenu_showLessFrequently() {
     },
   });
   Assert.equal(UrlbarPrefs.get("addons.showLessFrequentlyCount"), 3);
+
+  // Make sure the command has been removed.
+  let menuitem = await UrlbarTestUtils.openResultMenuAndGetItem({
+    window,
+    command: "show_less_frequently",
+    resultIndex: EXPECTED_RESULT_INDEX,
+    openByMouse: true,
+  });
+  Assert.ok(!menuitem, "Menuitem should be absent before closing the view");
+  gURLBar.view.resultMenu.hidePopup(true);
+  await UrlbarTestUtils.promisePopupClose(window);
 
   await doShowLessFrequently({
     input: "aaa b",
@@ -311,71 +235,27 @@ add_task(async function resultMenu_showLessFrequently() {
     },
   });
 
-  await cleanUpNimbus();
+  await QuickSuggestTestUtils.setConfig(QuickSuggestTestUtils.DEFAULT_CONFIG);
   await SpecialPowers.popPrefEnv();
 });
 
 // Tests the "Not interested" result menu dismissal command.
 add_task(async function resultMenu_notInterested() {
-  await doDismissTest("not_interested");
+  await doDismissTest("not_interested", true);
 });
 
 // Tests the "Not relevant" result menu dismissal command.
-add_task(async function notRelevant() {
-  await doDismissTest("not_relevant");
+add_task(async function resultMenu_notRelevant() {
+  await doDismissTest("not_relevant", false);
 });
 
+// Tests the "Manage" result menu.
+add_task(async function resultMenu_manage() {
+  await doManageTest({ input: "only match the Merino suggestion", index: 1 });
+});
+
+// Tests the row/group label.
 add_task(async function rowLabel() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.addons.featureGate", true]],
-  });
-
-  const testCases = [
-    {
-      bestMatch: true,
-      expected: "Firefox extension",
-    },
-    {
-      bestMatch: false,
-      expected: "Firefox Suggest",
-    },
-  ];
-
-  for (const { bestMatch, expected } of testCases) {
-    await SpecialPowers.pushPrefEnv({
-      set: [["browser.urlbar.bestMatch.enabled", bestMatch]],
-    });
-
-    await UrlbarTestUtils.promiseAutocompleteResultPopup({
-      window,
-      value: "only match the Merino suggestion",
-    });
-    Assert.equal(UrlbarTestUtils.getResultCount(window), 2);
-
-    const { element } = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
-    const row = element.row;
-    Assert.equal(row.getAttribute("label"), expected);
-
-    await SpecialPowers.popPrefEnv();
-  }
-
-  await SpecialPowers.popPrefEnv();
-});
-
-add_task(async function treatmentB() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.addons.featureGate", true]],
-  });
-
-  const cleanUpNimbus = await UrlbarTestUtils.initNimbusFeature({
-    addonsUITreatment: "b",
-  });
-  // Sanity check.
-  Assert.equal(UrlbarPrefs.get("addonsUITreatment"), "b");
-
-  const merinoSuggestion = TEST_MERINO_SUGGESTIONS[0];
-  MerinoTestUtils.server.response.body.suggestions = [merinoSuggestion];
-
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: "only match the Merino suggestion",
@@ -384,54 +264,28 @@ add_task(async function treatmentB() {
 
   const { element } = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
   const row = element.row;
-  const icon = row.querySelector(".urlbarView-dynamic-addons-icon");
-  Assert.equal(icon.src, merinoSuggestion.icon);
-  const url = row.querySelector(".urlbarView-dynamic-addons-url");
-  Assert.equal(url.textContent, merinoSuggestion.url);
-  const title = row.querySelector(".urlbarView-dynamic-addons-title");
-  Assert.equal(title.textContent, merinoSuggestion.title);
-  const description = row.querySelector(
-    ".urlbarView-dynamic-addons-description"
-  );
-  Assert.equal(description.textContent, merinoSuggestion.description);
-  const ratingContainer = row.querySelector(
-    ".urlbarView-dynamic-addons-ratingContainer"
-  );
-  Assert.ok(BrowserTestUtils.is_hidden(ratingContainer));
-  const reviews = row.querySelector(".urlbarView-dynamic-addons-reviews");
-  Assert.equal(reviews.textContent, "Recommended");
+  Assert.equal(row.getAttribute("label"), "Firefox extension");
 
-  await cleanUpNimbus();
-  await SpecialPowers.popPrefEnv();
+  await UrlbarTestUtils.promisePopupClose(window);
 });
 
-async function doShowLessFrequently({ input, expected }) {
+async function doShowLessFrequently({ input, expected, keepViewOpen = false }) {
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: input,
   });
 
   if (!expected.isSuggestionShown) {
-    for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
-      const details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
-      Assert.notEqual(
-        details.result.payload.dynamicType,
-        "addons",
-        `Addons suggestion should be absent (checking index ${i})`
-      );
-    }
-
+    Assert.ok(
+      !(await getAddonResultDetails()),
+      "Addons suggestion should be absent"
+    );
     return;
   }
 
-  const resultIndex = 1;
-  const details = await UrlbarTestUtils.getDetailsOfResultAt(
-    window,
-    resultIndex
-  );
-  Assert.equal(
-    details.result.payload.dynamicType,
-    "addons",
+  const details = await getAddonResultDetails();
+  Assert.ok(
+    details,
     `Addons suggestion should be present at expected index after ${input} search`
   );
 
@@ -441,7 +295,7 @@ async function doShowLessFrequently({ input, expected }) {
       window,
       "show_less_frequently",
       {
-        resultIndex,
+        resultIndex: EXPECTED_RESULT_INDEX,
       }
     );
     Assert.ok(expected.isMenuItemShown);
@@ -465,27 +319,20 @@ async function doShowLessFrequently({ input, expected }) {
     );
   }
 
-  await UrlbarTestUtils.promisePopupClose(window);
+  if (!keepViewOpen) {
+    await UrlbarTestUtils.promisePopupClose(window);
+  }
 }
 
-async function doDismissTest(command) {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.addons.featureGate", true]],
-  });
-
+async function doDismissTest(command, allDismissed) {
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: "123",
   });
 
   const resultCount = UrlbarTestUtils.getResultCount(window);
-  const resultIndex = 1;
-  let details = await UrlbarTestUtils.getDetailsOfResultAt(window, resultIndex);
-  Assert.equal(
-    details.result.payload.dynamicType,
-    "addons",
-    "Addons suggestion should be present"
-  );
+  let details = await getAddonResultDetails();
+  Assert.ok(details, "Addons suggestion should be present");
 
   // Sanity check.
   Assert.ok(UrlbarPrefs.get("suggest.addons"));
@@ -494,12 +341,20 @@ async function doDismissTest(command) {
   await UrlbarTestUtils.openResultMenuAndClickItem(
     window,
     ["[data-l10n-id=firefox-suggest-command-dont-show-this]", command],
-    { resultIndex, openByMouse: true }
+    { resultIndex: EXPECTED_RESULT_INDEX, openByMouse: true }
   );
 
-  Assert.ok(
-    !UrlbarPrefs.get("suggest.addons"),
-    "suggest.addons pref should be set to false after dismissal"
+  Assert.equal(
+    UrlbarPrefs.get("suggest.addons"),
+    !allDismissed,
+    "suggest.addons should be true iff all suggestions weren't dismissed"
+  );
+  Assert.equal(
+    await QuickSuggest.blockedSuggestions.has(
+      details.result.payload.originalUrl
+    ),
+    !allDismissed,
+    "Suggestion URL should be blocked iff all suggestions weren't dismissed"
   );
 
   // The row should be a tip now.
@@ -509,7 +364,10 @@ async function doDismissTest(command) {
     resultCount,
     "The result count should not haved changed after dismissal"
   );
-  details = await UrlbarTestUtils.getDetailsOfResultAt(window, resultIndex);
+  details = await UrlbarTestUtils.getDetailsOfResultAt(
+    window,
+    EXPECTED_RESULT_INDEX
+  );
   Assert.equal(
     details.type,
     UrlbarUtils.RESULT_TYPE.TIP,
@@ -525,11 +383,20 @@ async function doDismissTest(command) {
     "Row should not have feedback acknowledgment after dismissal"
   );
 
+  // Check tip title.
+  let title = details.element.row.querySelector(".urlbarView-title");
+  let titleL10nId = title.dataset.l10nId;
+  if (allDismissed) {
+    Assert.equal(titleL10nId, "firefox-suggest-dismissal-acknowledgment-all");
+  } else {
+    Assert.equal(titleL10nId, "firefox-suggest-dismissal-acknowledgment-one");
+  }
+
   // Get the dismissal acknowledgment's "Got it" button and click it.
   let gotItButton = UrlbarTestUtils.getButtonForResultIndex(
     window,
-    "0",
-    resultIndex
+    0,
+    EXPECTED_RESULT_INDEX
   );
   Assert.ok(gotItButton, "Row should have a 'Got it' button");
   EventUtils.synthesizeMouseAtCenter(gotItButton, {}, window);
@@ -548,13 +415,34 @@ async function doDismissTest(command) {
     details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     Assert.ok(
       details.type != UrlbarUtils.RESULT_TYPE.TIP &&
-        details.result.payload.dynamicType !== "addons",
+        !isAddonResult(details.result),
       "Tip result and addon result should not be present"
     );
   }
 
   await UrlbarTestUtils.promisePopupClose(window);
 
-  await SpecialPowers.popPrefEnv();
   UrlbarPrefs.clear("suggest.addons");
+  await QuickSuggest.blockedSuggestions.clear();
+}
+
+function makeExpectedUrl(originalUrl) {
+  let url = new URL(originalUrl);
+  url.searchParams.set("utm_medium", "firefox-desktop");
+  url.searchParams.set("utm_source", "firefox-suggest");
+  return url.href;
+}
+
+async function getAddonResultDetails() {
+  for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
+    const details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
+    if (isAddonResult(details.result)) {
+      return details;
+    }
+  }
+  return null;
+}
+
+function isAddonResult(result) {
+  return ["AddonSuggestions", "amo"].includes(result.payload.provider);
 }

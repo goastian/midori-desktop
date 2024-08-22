@@ -12,7 +12,7 @@ add_task(async function test() {
 
   function promiseLocationChange() {
     return new Promise(resolve => {
-      Services.obs.addObserver(function onLocationChange(subj, topic, data) {
+      Services.obs.addObserver(function onLocationChange(subj, topic) {
         Services.obs.removeObserver(onLocationChange, topic);
         resolve();
       }, "browser-fullZoom:location-change");
@@ -26,7 +26,7 @@ add_task(async function test() {
     // update is done.  (See bug 856366 for details.)
 
     let browser = aWindow.gBrowser.selectedBrowser;
-    BrowserTestUtils.loadURIString(browser, "about:blank");
+    BrowserTestUtils.startLoadingURIString(browser, "about:blank");
     await Promise.all([
       BrowserTestUtils.browserLoaded(browser),
       promiseLocationChange(),
@@ -59,7 +59,7 @@ add_task(async function test() {
     );
   }
 
-  function testOnWindow(options, callback) {
+  function testOnWindow(options) {
     return BrowserTestUtils.openNewBrowserWindow(options).then(win => {
       windowsToClose.push(win);
       windowsToReset.push(win);

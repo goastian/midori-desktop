@@ -4,9 +4,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<?xml-stylesheet href="chrome://global/skin/global.css"?>
-<?xml-stylesheet href="chrome://browser/skin/preferences/preferences.css"?>
-
 <window
   type="child"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -23,6 +20,12 @@
   >
     <!-- Used for extension-controlled lockdown message -->
     <linkset>
+      <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+      <html:link
+        rel="stylesheet"
+        href="chrome://browser/skin/preferences/preferences.css"
+      />
+
       <html:link rel="localization" href="browser/preferences/connection.ftl" />
       <html:link
         rel="localization"
@@ -60,7 +63,11 @@
     </hbox>
 
     <groupbox>
-      <label><html:h2 data-l10n-id="connection-proxy-configure" /></label>
+      <label
+        ><html:h2
+          class="heading-medium"
+          data-l10n-id="connection-proxy-configure"
+      /></label>
 
       <radiogroup id="networkProxyType" preference="network.proxy.type">
         <radio value="0" data-l10n-id="connection-proxy-option-no" />
@@ -70,6 +77,14 @@
           data-l10n-id="connection-proxy-option-system"
           id="systemPref"
           hidden="true"
+        />
+        <checkbox
+          value="true"
+          data-l10n-id="connection-proxy-option-wpad"
+          id="systemWpad"
+          hidden="true"
+          preference="network.proxy.system_wpad"
+          class="indent"
         />
         <radio value="1" data-l10n-id="connection-proxy-option-manual" />
         <box id="proxy-grid" class="indent" flex="1">
@@ -232,12 +247,17 @@
     <separator class="thin" />
     <checkbox
       id="autologinProxy"
-      data-l10n-id="connection-proxy-autologin"
+      data-l10n-id="connection-proxy-autologin-checkbox"
       preference="signon.autologin.proxy"
     />
     <checkbox
-      id="networkProxySOCKSRemoteDNS"
+      id="networkProxySOCKS4RemoteDNS"
       preference="network.proxy.socks_remote_dns"
+      data-l10n-id="connection-proxy-socks4-remote-dns"
+    />
+    <checkbox
+      id="networkProxySOCKSRemoteDNS"
+      preference="network.proxy.socks5_remote_dns"
       data-l10n-id="connection-proxy-socks-remote-dns"
     />
   </dialog>

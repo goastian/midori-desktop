@@ -372,9 +372,7 @@ async function testWindowOpen(
   aTargetWidth,
   aTargetHeight,
   aMaxAvailWidth,
-  aMaxAvailHeight,
-  aPopupChromeUIWidth,
-  aPopupChromeUIHeight
+  aMaxAvailHeight
 ) {
   // If the target size is greater than the maximum available content size,
   // we set the target size to it.
@@ -651,8 +649,10 @@ const CROSS_ORIGIN_DOMAIN = "example.net";
 async function runActualTest(uri, testFunction, expectedResults, extraData) {
   let browserWin = gBrowser;
   let openedWin = null;
+  let pbmWindow =
+    "private_window" in extraData && extraData.private_window === true;
 
-  if ("private_window" in extraData) {
+  if (pbmWindow) {
     openedWin = await BrowserTestUtils.openNewBrowserWindow({
       private: true,
     });
@@ -685,7 +685,7 @@ async function runActualTest(uri, testFunction, expectedResults, extraData) {
   let filterExtraData = function (x) {
     let banned_keys = ["private_window", "etp_reload", "noopener", "await_uri"];
     return Object.fromEntries(
-      Object.entries(x).filter(([k, v]) => !banned_keys.includes(k))
+      Object.entries(x).filter(([k]) => !banned_keys.includes(k))
     );
   };
 
@@ -725,7 +725,7 @@ async function runActualTest(uri, testFunction, expectedResults, extraData) {
     ContentBlockingAllowList.remove(tab.linkedBrowser);
   }
   BrowserTestUtils.removeTab(tab);
-  if ("private_window" in extraData) {
+  if (pbmWindow) {
     await BrowserTestUtils.closeWindow(openedWin);
   }
 }
@@ -741,6 +741,30 @@ async function defaultsTest(
     extraData = {};
   }
   extraData.testDesc = extraData.testDesc || "default";
+  expectedResults.shouldRFPApply = false;
+  if (extraPrefs != undefined) {
+    await SpecialPowers.pushPrefEnv({
+      set: extraPrefs,
+    });
+  }
+  await runActualTest(uri, testFunction, expectedResults, extraData);
+  if (extraPrefs != undefined) {
+    await SpecialPowers.popPrefEnv();
+  }
+}
+
+async function defaultsPBMTest(
+  uri,
+  testFunction,
+  expectedResults,
+  extraData,
+  extraPrefs
+) {
+  if (extraData == undefined) {
+    extraData = {};
+  }
+  extraData.private_window = true;
+  extraData.testDesc = extraData.testDesc || "default PBM window";
   expectedResults.shouldRFPApply = false;
   if (extraPrefs != undefined) {
     await SpecialPowers.pushPrefEnv({
@@ -813,7 +837,10 @@ async function simpleFPPTest(
   await SpecialPowers.pushPrefEnv({
     set: [
       ["privacy.fingerprintingProtection", true],
-      ["privacy.fingerprintingProtection.overrides", "+NavigatorHWConcurrency"],
+      [
+        "privacy.fingerprintingProtection.overrides",
+        "+NavigatorHWConcurrency,+CanvasRandomization",
+      ],
     ].concat(extraPrefs || []),
   });
 
@@ -838,7 +865,74 @@ async function simplePBMFPPTest(
   await SpecialPowers.pushPrefEnv({
     set: [
       ["privacy.fingerprintingProtection.pbmode", true],
-      ["privacy.fingerprintingProtection.overrides", "+HardwareConcurrency"],
+      [
+        "privacy.fingerprintingProtection.overrides",
+        "+NavigatorHWConcurrency,+CanvasRandomization",
+      ],
+    ].concat(extraPrefs || []),
+  });
+
+  await runActualTest(uri, testFunction, expectedResults, extraData);
+
+  await SpecialPowers.popPrefEnv();
+}
+
+async function RFPPBMFPP_NormalMode_NoProtectionsTest(
+  uri,
+  testFunction,
+  expectedResults,
+  extraData,
+  extraPrefs
+) {
+  if (extraData == undefined) {
+    extraData = {};
+  }
+  extraData.private_window = false;
+  extraData.testDesc =
+    extraData.testDesc ||
+    "RFP Enabled in PBM and FPP enabled in Normal Browsing Mode, Protections Disabled";
+  expectedResults.shouldRFPApply = false;
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", true],
+      ["privacy.fingerprintingProtection", true],
+      [
+        "privacy.fingerprintingProtection.overrides",
+        "-NavigatorHWConcurrency,-CanvasRandomization",
+      ],
+    ].concat(extraPrefs || []),
+  });
+
+  await runActualTest(uri, testFunction, expectedResults, extraData);
+
+  await SpecialPowers.popPrefEnv();
+}
+
+async function RFPPBMFPP_NormalMode_ProtectionsTest(
+  uri,
+  testFunction,
+  expectedResults,
+  extraData,
+  extraPrefs
+) {
+  if (extraData == undefined) {
+    extraData = {};
+  }
+  extraData.private_window = false;
+  extraData.testDesc =
+    extraData.testDesc ||
+    "RFP Enabled in PBM and FPP enabled in Normal Browsing Mode, Protections Enabled";
+  expectedResults.shouldRFPApply = false;
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", true],
+      ["privacy.fingerprintingProtection", true],
+      [
+        "privacy.fingerprintingProtection.overrides",
+        "+NavigatorHWConcurrency,+CanvasRandomization",
+      ],
     ].concat(extraPrefs || []),
   });
 

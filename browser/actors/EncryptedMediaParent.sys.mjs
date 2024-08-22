@@ -2,23 +2,22 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
   return Services.strings.createBundle(
     "chrome://branding/locale/brand.properties"
   );
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gNavigatorBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gNavigatorBundle", function () {
   return Services.strings.createBundle(
     "chrome://browser/locale/browser.properties"
   );
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
+ChromeUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
   return new Localization(["branding/brand.ftl", "browser/browser.ftl"], true);
 });
 
@@ -60,7 +59,10 @@ export class EncryptedMediaParent extends JSWindowActorParent {
     ]);
   }
 
-  receiveMessage(aMessage) {
+  async receiveMessage(aMessage) {
+    if (!this.handledMessages) {
+      this.handledMessages = new Set();
+    }
     // The top level browsing context's embedding element should be a xul browser element.
     let browser = this.browsingContext.top.embedderElement;
 
@@ -77,6 +79,9 @@ export class EncryptedMediaParent extends JSWindowActorParent {
       return;
     }
     let { status, keySystem } = parsedData;
+    if (this.handledMessages.has(status)) {
+      return;
+    }
 
     // First, see if we need to do updates. We don't need to do anything for
     // hidden keysystems:
@@ -109,6 +114,7 @@ export class EncryptedMediaParent extends JSWindowActorParent {
 
       case "api-disabled":
       case "cdm-disabled":
+        this.handledMessages.add(status);
         notificationId = "drmContentDisabled";
         buttonCallback = () => {
           this.ensureEMEEnabled(browser, keySystem);
@@ -120,6 +126,7 @@ export class EncryptedMediaParent extends JSWindowActorParent {
         break;
 
       case "cdm-not-installed":
+        this.handledMessages.add(status);
         notificationId = "drmContentCDMInstalling";
         notificationMessage = this.getMessageWithBrandName(notificationId);
         break;
@@ -144,6 +151,7 @@ export class EncryptedMediaParent extends JSWindowActorParent {
 
     let notificationBox = browser.getTabBrowser().getNotificationBox(browser);
     if (notificationBox.getNotificationWithValue(notificationId)) {
+      this.handledMessages.delete(status);
       return;
     }
 
@@ -163,7 +171,7 @@ export class EncryptedMediaParent extends JSWindowActorParent {
     }
 
     let iconURL = "chrome://browser/skin/drm-icon.svg";
-    notificationBox.appendNotification(
+    await notificationBox.appendNotification(
       notificationId,
       {
         label: notificationMessage,
@@ -172,6 +180,7 @@ export class EncryptedMediaParent extends JSWindowActorParent {
       },
       buttons
     );
+    this.handledMessages.delete(status);
   }
 
   async showPopupNotificationForSuccess(aBrowser) {

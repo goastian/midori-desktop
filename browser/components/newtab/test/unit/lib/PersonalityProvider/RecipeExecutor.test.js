@@ -1,12 +1,12 @@
-import { RecipeExecutor } from "lib/PersonalityProvider/RecipeExecutor.jsm";
-import { tokenize } from "lib/PersonalityProvider/Tokenize.jsm";
+import { RecipeExecutor } from "lib/PersonalityProvider/RecipeExecutor.mjs";
+import { tokenize } from "lib/PersonalityProvider/Tokenize.mjs";
 
 class MockTagger {
   constructor(mode, tagScoreMap) {
     this.mode = mode;
     this.tagScoreMap = tagScoreMap;
   }
-  tagTokens(tokens) {
+  tagTokens() {
     if (this.mode === "nb") {
       // eslint-disable-next-line prefer-destructuring
       let tag = Object.keys(this.tagScoreMap)[0];

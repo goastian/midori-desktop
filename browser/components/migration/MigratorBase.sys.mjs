@@ -15,7 +15,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FirefoxProfileMigrator: "resource:///modules/FirefoxProfileMigrator.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   ResponsivenessMonitor: "resource://gre/modules/ResponsivenessMonitor.sys.mjs",
 });
 
@@ -111,11 +110,15 @@ export class MigratorBase {
    * - a |type| getter, returning any of the migration resource types (see
    *   MigrationUtils.resourceTypes).
    *
-   * - a |migrate| method, taking a single argument, aCallback(bool success),
-   *   for migrating the data for this resource.  It may do its job
-   *   synchronously or asynchronously.  Either way, it must call
-   *   aCallback(bool aSuccess) when it's done.  In the case of an exception
-   *   thrown from |migrate|, it's taken as if aCallback(false) is called.
+   * - a |migrate| method, taking two arguments,
+   *   aCallback(bool success, object details), for migrating the data for
+   *   this resource.  It may do its job synchronously or asynchronously.
+   *   Either way, it must call aCallback(bool aSuccess, object details)
+   *   when it's done.  In the case of an exception thrown from |migrate|,
+   *   it's taken as if aCallback(false, {}) is called. The details
+   *   argument is sometimes optional, but conditional on how the
+   *   migration wizard wants to display the migration state for the
+   *   resource.
    *
    *   Note: In the case of a simple asynchronous implementation, you may find
    *   MigrationUtils.wrapMigrateFunction handy for handling aCallback easily.
@@ -128,7 +131,7 @@ export class MigratorBase {
    *
    * Note that the importation of a particular migration type is reported as
    * successful if _any_ of its resources succeeded to import (that is, called,
-   * |aCallback(true)|).  However, completion-status for a particular migration
+   * |aCallback(true, {})|).  However, completion-status for a particular migration
    * type is reported to the UI only once all of its migrators have called
    * aCallback.
    *
@@ -138,7 +141,7 @@ export class MigratorBase {
    * bookmarks file exists.
    *
    * @abstract
-   * @param {object|string} aProfile
+   * @param {object|string} _aProfile
    *  The profile from which data may be imported, or an empty string
    *  in the case of a single-profile migrator.
    *  In the case of multiple-profiles migrator, it is guaranteed that
@@ -146,8 +149,7 @@ export class MigratorBase {
    *  above).
    * @returns {Promise<MigratorResource[]>|MigratorResource[]}
    */
-  // eslint-disable-next-line no-unused-vars
-  getResources(aProfile) {
+  getResources(_aProfile) {
     throw new Error("getResources must be overridden");
   }
 
@@ -220,15 +222,21 @@ export class MigratorBase {
    * to getPermissions resolves to true, that the MigratorBase will be able to
    * get read access to all of the resources it needs to do a migration.
    *
-   * @param {DOMWindow} win
+   * @param {DOMWindow} _win
    *   The top-level DOM window hosting the UI that is requesting the permission.
    *   This can be used to, for example, anchor a file picker window to the
    *   same window that is hosting the migration UI.
    * @returns {Promise<boolean>}
    */
-  // eslint-disable-next-line no-unused-vars
-  async getPermissions(win) {
+  async getPermissions(_win) {
     return Promise.resolve(true);
+  }
+
+  /**
+   * @returns {Promise<boolean|string>}
+   */
+  async canGetPermissions() {
+    return Promise.resolve(false);
   }
 
   /**
@@ -266,7 +274,9 @@ export class MigratorBase {
    * @param {Function|null} aProgressCallback
    *   An optional callback that will be fired once a resourceType has finished
    *   migrating. The callback will be passed the numeric representation of the
-   *   resource type.
+   *   resource type followed by a boolean indicating whether or not the resource
+   *   was migrated successfully and optionally an object containing additional
+   *   details.
    */
   async migrate(aItems, aStartup, aProfile, aProgressCallback = () => {}) {
     let resources = await this.#getMaybeCachedResources(aProfile);
@@ -425,8 +435,8 @@ export class MigratorBase {
 
         let itemSuccess = false;
         for (let res of itemResources) {
-          let completeDeferred = lazy.PromiseUtils.defer();
-          let resourceDone = function (aSuccess) {
+          let completeDeferred = Promise.withResolvers();
+          let resourceDone = function (aSuccess, details) {
             itemResources.delete(res);
             itemSuccess |= aSuccess;
             if (itemResources.size == 0) {
@@ -438,7 +448,7 @@ export class MigratorBase {
               );
               collectMigrationTelemetry(migrationType);
 
-              aProgressCallback(migrationType);
+              aProgressCallback(migrationType, itemSuccess, details);
 
               resourcesGroupedByItems.delete(migrationType);
 

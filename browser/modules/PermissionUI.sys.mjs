@@ -19,8 +19,8 @@
  * const { Integration } = ChromeUtils.importESModule(
  *   "resource://gre/modules/Integration.sys.mjs"
  * );
- * const { PermissionUI } = ChromeUtils.import(
- *   "resource:///modules/PermissionUI.jsm"
+ * const { PermissionUI } = ChromeUtils.importESModule(
+ *   "resource:///modules/PermissionUI.sys.mjs"
  * );
  *
  * const SoundCardIntegration = base => {
@@ -86,7 +86,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "@mozilla.org/content-pref/service;1",
   "nsIContentPrefService2"
 );
-XPCOMUtils.defineLazyGetter(lazy, "gBrowserBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gBrowserBundle", function () {
   return Services.strings.createBundle(
     "chrome://browser/locale/browser.properties"
   );
@@ -390,16 +390,6 @@ class PermissionPrompt {
       );
 
       if (state == lazy.SitePermissions.BLOCK) {
-        // If this block was done based on a global user setting, we want to show
-        // a post prompt to give the user some more granular control without
-        // annoying them too much.
-        if (
-          this.postPromptEnabled &&
-          lazy.SitePermissions.getDefault(this.permissionKey) ==
-            lazy.SitePermissions.BLOCK
-        ) {
-          this.postPrompt();
-        }
         this.cancel();
         return;
       }
@@ -540,7 +530,7 @@ class PermissionPrompt {
       let action = {
         label: promptAction.label,
         accessKey: promptAction.accessKey,
-        callback: state => {
+        callback: () => {
           if (promptAction.callback) {
             promptAction.callback();
           }
@@ -735,7 +725,7 @@ class SitePermsAddonInstallRequest extends PermissionPromptForRequest {
    * @param {Components.Exception} err
    * @returns {String} The error message
    */
-  getInstallErrorMessage(err) {
+  getInstallErrorMessage() {
     return null;
   }
 }
@@ -1298,20 +1288,33 @@ class MIDIPermissionPrompt extends SitePermsAddonInstallRequest {
 }
 
 class StorageAccessPermissionPrompt extends PermissionPromptForRequest {
+  #permissionKey;
+
   constructor(request) {
     super();
     this.request = request;
     this.siteOption = null;
+    this.#permissionKey = `3rdPartyStorage${lazy.SitePermissions.PERM_KEY_DELIMITER}${this.principal.origin}`;
 
     let types = this.request.types.QueryInterface(Ci.nsIArray);
     let perm = types.queryElementAt(0, Ci.nsIContentPermissionType);
     let options = perm.options.QueryInterface(Ci.nsIArray);
-    // If we have an option, we are in a call from requestStorageAccessUnderSite
-    // which means that the embedding principal is not the current top-level.
-    // Instead we have to grab the Site string out of the option and use that
-    // in the UI.
-    if (options.length) {
-      this.siteOption = options.queryElementAt(0, Ci.nsISupportsString).data;
+    // If we have an option, the permission request is different in some way.
+    // We may be in a call from requestStorageAccessUnderSite or a frame-scoped
+    // request, which means that the embedding principal is not the current top-level
+    // or the permission key is different.
+    if (options.length != 2) {
+      return;
+    }
+
+    let topLevelOption = options.queryElementAt(0, Ci.nsISupportsString).data;
+    if (topLevelOption) {
+      this.siteOption = topLevelOption;
+    }
+    let frameOption = options.queryElementAt(1, Ci.nsISupportsString).data;
+    if (frameOption) {
+      // We replace the permission key with a frame-specific one that only has a site after the delimiter
+      this.#permissionKey = `3rdPartyFrameStorage${lazy.SitePermissions.PERM_KEY_DELIMITER}${this.principal.siteOrigin}`;
     }
   }
 
@@ -1325,7 +1328,7 @@ class StorageAccessPermissionPrompt extends PermissionPromptForRequest {
 
   get permissionKey() {
     // Make sure this name is unique per each third-party tracker
-    return `3rdPartyStorage${lazy.SitePermissions.PERM_KEY_DELIMITER}${this.principal.origin}`;
+    return this.#permissionKey;
   }
 
   get temporaryPermissionURI() {
@@ -1394,7 +1397,7 @@ class StorageAccessPermissionPrompt extends PermissionPromptForRequest {
           "storageAccess1.Allow.accesskey"
         ),
         action: Ci.nsIPermissionManager.ALLOW_ACTION,
-        callback(state) {
+        callback() {
           self.allow({ "storage-access": "allow" });
         },
       },
@@ -1406,7 +1409,7 @@ class StorageAccessPermissionPrompt extends PermissionPromptForRequest {
           "storageAccess1.DontAllow.accesskey"
         ),
         action: Ci.nsIPermissionManager.DENY_ACTION,
-        callback(state) {
+        callback() {
           self.cancel();
         },
       },

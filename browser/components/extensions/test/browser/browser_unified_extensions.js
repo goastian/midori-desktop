@@ -44,6 +44,9 @@ add_setup(async function () {
   // panel, which could happen when a previous test file resizes the current
   // window.
   await ensureMaximizedWindow(window);
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.originControls.grantByDefault", false]],
+  });
 });
 
 add_task(async function test_button_enabled_by_pref() {
@@ -158,8 +161,9 @@ add_task(async function test_clicks_on_unified_extension_button() {
 
   info("open panel with primary click");
   await openExtensionsPanel();
-  ok(
-    panel.getAttribute("panelopen") === "true",
+  Assert.strictEqual(
+    panel.getAttribute("panelopen"),
+    "true",
     "expected panel to be visible"
   );
   await closeExtensionsPanel();
@@ -187,8 +191,9 @@ add_task(async function test_clicks_on_unified_extension_button() {
     const viewShown = BrowserTestUtils.waitForEvent(listView, "ViewShown");
     EventUtils.synthesizeMouseAtCenter(button, { ctrlKey: true });
     await viewShown;
-    ok(
-      panel.getAttribute("panelopen") === "true",
+    Assert.strictEqual(
+      panel.getAttribute("panelopen"),
+      "true",
       "expected panel to be visible"
     );
     await closeExtensionsPanel();
@@ -1220,7 +1225,11 @@ add_task(async function test_hover_message_when_button_updates_itself() {
 
   // Move cursor to the center of the entire browser UI to avoid issues with
   // other focus/hover checks. We do this to avoid intermittent test failures.
+  // We intentionally turn off this a11y check, because the following click
+  // is purposefully targeting a non-interactive content of the page.
+  AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
   EventUtils.synthesizeMouseAtCenter(document.documentElement, {});
+  AccessibilityUtils.resetEnv();
 
   await extension.unload();
 });

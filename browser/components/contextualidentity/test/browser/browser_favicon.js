@@ -2,7 +2,9 @@
  * Bug 1270678 - A test case to test does the favicon obey originAttributes.
  */
 
-let { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+let { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const USER_CONTEXTS = ["default", "personal", "work"];
 
@@ -18,26 +20,13 @@ function getIconFile() {
         loadUsingSystemPrincipal: true,
         contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE_FAVICON,
       },
-      function (inputStream, status) {
+      function (inputStream) {
         let size = inputStream.available();
         gFaviconData = NetUtil.readInputStreamToString(inputStream, size);
         resolve();
       }
     );
   });
-}
-
-async function openTabInUserContext(uri, userContextId) {
-  // open the tab in the correct userContextId
-  let tab = BrowserTestUtils.addTab(gBrowser, uri, { userContextId });
-
-  // select tab and make sure its browser is focused
-  gBrowser.selectedTab = tab;
-  tab.ownerGlobal.focus();
-
-  let browser = gBrowser.getBrowserForTab(tab);
-  await BrowserTestUtils.browserLoaded(browser);
-  return { tab, browser };
 }
 
 function loadIndexHandler(metadata, response) {

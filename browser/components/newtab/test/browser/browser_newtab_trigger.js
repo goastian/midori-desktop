@@ -3,8 +3,8 @@
 
 "use strict";
 
-const { ASRouter } = ChromeUtils.import(
-  "resource://activity-stream/lib/ASRouter.jsm"
+const { ASRouter } = ChromeUtils.importESModule(
+  "resource:///modules/asrouter/ASRouter.sys.mjs"
 );
 
 let sendTriggerMessageSpy;

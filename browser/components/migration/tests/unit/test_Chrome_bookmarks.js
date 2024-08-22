@@ -49,11 +49,16 @@ async function testBookmarks(migratorKey, subDirs) {
   }
 
   let target = rootDir.clone();
+
   // Pretend this is the default profile
-  subDirs.push("Default");
   while (subDirs.length) {
     target.append(subDirs.shift());
   }
+
+  let localStatePath = PathUtils.join(target.path, "Local State");
+  await IOUtils.writeJSON(localStatePath, []);
+
+  target.append("Default");
 
   await IOUtils.makeDirectory(target.path, {
     createAncestor: true,
@@ -66,11 +71,13 @@ async function testBookmarks(migratorKey, subDirs) {
   ).path;
   await IOUtils.copy(sourcePath, target.path);
 
-  // Get page url for each favicon
-  let faviconURIs = await MigrationUtils.getRowsFromDBWithoutLocks(
+  // Get page url and the image data for each favicon
+  let favicons = await MigrationUtils.getRowsFromDBWithoutLocks(
     sourcePath,
     "Chrome Bookmark Favicons",
-    `select page_url from icon_mapping`
+    `SELECT page_url, image_data FROM icon_mapping
+     INNER JOIN favicon_bitmaps ON (favicon_bitmaps.icon_id = icon_mapping.icon_id)
+    `
   );
 
   target.append("Bookmarks");
@@ -80,6 +87,7 @@ async function testBookmarks(migratorKey, subDirs) {
   await IOUtils.writeJSON(target.path, bookmarksData);
 
   let migrator = await MigrationUtils.getMigrator(migratorKey);
+  Assert.ok(await migrator.hasPermissions(), "Has permissions");
   // Sanity check for the source.
   Assert.ok(await migrator.isSourceAvailable());
 
@@ -165,10 +173,14 @@ async function testBookmarks(migratorKey, subDirs) {
     "Telemetry reporting correct."
   );
   Assert.ok(observerNotified, "The observer should be notified upon migration");
-  let pageUrls = Array.from(faviconURIs, f =>
-    Services.io.newURI(f.getResultByName("page_url"))
-  );
-  await assertFavicons(pageUrls);
+
+  for (const favicon of favicons) {
+    await assertFavicon(
+      favicon.getResultByName("page_url"),
+      favicon.getResultByName("image_data"),
+      "image/png"
+    );
+  }
 }
 
 add_task(async function test_Chrome() {

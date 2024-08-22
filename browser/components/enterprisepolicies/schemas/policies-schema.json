@@ -20,6 +20,10 @@
       "type": "string"
     },
 
+    "AllowFileSelectionDialogs": {
+      "type": "boolean"
+    },
+
     "AppAutoUpdate": {
       "type": "boolean"
     },
@@ -231,6 +235,45 @@
       }
     },
 
+    "ContentAnalysis": {
+      "type": "object",
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "PipePathName": {
+          "type": "string"
+        },
+        "AgentTimeout": {
+          "type": "number"
+        },
+        "AllowUrlRegexList": {
+          "type": "string"
+        },
+        "DenyUrlRegexList": {
+          "type": "string"
+        },
+        "AgentName": {
+          "type": "string"
+        },
+        "ClientSignature": {
+          "type": "string"
+        },
+        "IsPerUser": {
+          "type": "boolean"
+        },
+        "ShowBlockedResult": {
+          "type": "boolean"
+        },
+        "DefaultResult": {
+          "type": "number"
+        },
+        "BypassForSameTabOperations": {
+          "type": "boolean"
+        }
+      }
+    },
+
     "Cookies": {
       "type": "object",
       "properties": {
@@ -309,6 +352,10 @@
       "type": "string"
     },
 
+    "DisableAccounts": {
+      "type": "boolean"
+    },
+
     "DisableAppUpdate": {
       "type": "boolean"
     },
@@ -379,6 +426,10 @@
     },
 
     "DisableDeveloperTools": {
+      "type": "boolean"
+    },
+
+    "DisableEncryptedClientHello": {
       "type": "boolean"
     },
 
@@ -487,6 +538,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "Fallback": {
+          "type": "boolean"
         },
         "Locked": {
           "type": "boolean"
@@ -621,6 +675,9 @@
               "items": {
                 "type": "string"
               }
+            },
+            "temporarily_allow_weak_signatures": {
+              "type": "boolean"
             }
           }
         }
@@ -650,6 +707,9 @@
             "default_area": {
               "type": "string",
               "enum": ["navbar", "menupanel"]
+            },
+            "temporarily_allow_weak_signatures": {
+              "type": "boolean"
             }
           }
         }
@@ -777,6 +837,19 @@
           "enum": ["none", "homepage", "previous-session", "homepage-locked"]
         }
       }
+    },
+
+    "HttpAllowlist": {
+      "type": "array",
+      "strict": false,
+      "items": {
+        "type": "origin"
+      }
+    },
+
+    "HttpsOnlyMode": {
+      "type": "string",
+      "enum": ["allowed", "disallowed", "enabled", "force_enabled"]
     },
 
     "InstallAddonsPermission": {
@@ -1127,6 +1200,10 @@
       }
     },
 
+    "PostQuantumKeyAgreementEnabled": {
+      "type": "boolean"
+    },
+
     "Preferences": {
       "type": ["object", "JSON"],
       "patternProperties": {
@@ -1262,6 +1339,7 @@
     },
 
     "SearchEngines": {
+      "enterprise_only": true,
 
       "type": "object",
       "properties": {
@@ -1378,6 +1456,10 @@
         }
       },
       "required": ["Title", "URL"]
+    },
+
+    "TranslateEnabled": {
+      "type": "boolean"
     },
 
     "UserMessaging": {

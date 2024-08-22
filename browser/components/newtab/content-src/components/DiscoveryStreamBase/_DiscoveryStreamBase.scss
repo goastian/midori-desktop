@@ -41,10 +41,13 @@ $ds-width: 936px;
 
 .ds-header,
 .ds-layout .section-title span {
-  color: var(--newtab-text-primary-color);
+  color: var(--newtab-contextual-text-primary-color);
   font-size: $section-title-font-size;
   font-weight: 600;
   line-height: 20px;
+
+  // Contrast fix for users who have wallpapers set
+  @include wallpaper-contrast-fix;
 
   .icon {
     fill: var(--newtab-text-secondary-color);
@@ -54,8 +57,11 @@ $ds-width: 936px;
 .collapsible-section.ds-layout {
   margin: auto;
 
-  .section-top-bar {
-    .learn-more-link a {
+  .section-top-bar .learn-more-link {
+    // Contrast fix for users who have wallpapers set
+    @include wallpaper-contrast-fix;
+
+    a {
       color: var(--newtab-primary-action-background);
       font-weight: 500;
 

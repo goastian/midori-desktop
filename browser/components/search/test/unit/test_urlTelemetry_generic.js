@@ -1,28 +1,20 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
-);
-
 ChromeUtils.defineESModuleGetters(this, {
   BrowserSearchTelemetry: "resource:///modules/BrowserSearchTelemetry.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   SearchSERPTelemetry: "resource:///modules/SearchSERPTelemetry.sys.mjs",
   SearchSERPTelemetryUtils: "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 const TEST_PROVIDER_INFO = [
   {
     telemetryId: "example",
     searchPageRegexp: /^https:\/\/www\.example\.com\/search/,
-    queryParamName: "q",
+    queryParamNames: ["q"],
     codeParamName: "abc",
     taggedCodes: ["ff", "tb"],
     expectedOrganicCodes: ["baz"],
@@ -42,7 +34,7 @@ const TEST_PROVIDER_INFO = [
   {
     telemetryId: "example2",
     searchPageRegexp: /^https:\/\/www\.example2\.com\/search/,
-    queryParamName: "q",
+    queryParamNames: ["a", "q"],
     codeParamName: "abc",
     taggedCodes: ["ff", "tb"],
     expectedOrganicCodes: ["baz"],
@@ -70,9 +62,11 @@ const TESTS = [
       provider: "example",
       tagged: "true",
       partner_code: "ff",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -86,9 +80,11 @@ const TESTS = [
       provider: "example",
       tagged: "true",
       partner_code: "ff",
-      is_shopping_page: "true",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "true",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -102,9 +98,11 @@ const TESTS = [
       provider: "example",
       tagged: "true",
       partner_code: "tb",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -118,9 +116,11 @@ const TESTS = [
       provider: "example",
       tagged: "false",
       partner_code: "foo",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -134,9 +134,11 @@ const TESTS = [
       provider: "example",
       tagged: "false",
       partner_code: "other",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -150,9 +152,11 @@ const TESTS = [
       provider: "example",
       tagged: "false",
       partner_code: "other",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -166,9 +170,11 @@ const TESTS = [
       provider: "example",
       tagged: "false",
       partner_code: "",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -182,9 +188,11 @@ const TESTS = [
       provider: "example",
       tagged: "false",
       partner_code: "",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
   {
@@ -198,9 +206,11 @@ const TESTS = [
       provider: "example2",
       tagged: "false",
       partner_code: "",
-      is_shopping_page: "false",
-      shopping_tab_displayed: "false",
       source: "unknown",
+      is_shopping_page: "false",
+      is_private: "false",
+      shopping_tab_displayed: "false",
+      is_signed_in: "false",
     },
   },
 ];
@@ -256,11 +266,6 @@ async function testAdUrlClicked(serpUrl, adUrl, expectedAdKey) {
 do_get_profile();
 
 add_task(async function setup() {
-  Services.prefs.setBoolPref(SearchUtils.BROWSER_SEARCH_PREF + "log", true);
-  Services.prefs.setBoolPref(
-    SearchUtils.BROWSER_SEARCH_PREF + "serpEventTelemetry.enabled",
-    true
-  );
   Services.fog.initializeFOG();
   await SearchSERPTelemetry.init();
   SearchSERPTelemetry.overrideSearchTelemetryForTests(TEST_PROVIDER_INFO);
@@ -275,6 +280,14 @@ add_task(async function test_parsing_search_urls() {
     }
     let browser = {
       getTabBrowser: () => {},
+      // There is no concept of browsing in unit tests, so assume in tests that we
+      // are not in private browsing mode. We have browser tests that check when
+      // private browsing is used.
+      contentPrincipal: {
+        originAttributes: {
+          privateBrowsingId: 0,
+        },
+      },
     };
     SearchSERPTelemetry.updateTrackingStatus(browser, test.trackingUrl);
     SearchSERPTelemetry.reportPageImpression(

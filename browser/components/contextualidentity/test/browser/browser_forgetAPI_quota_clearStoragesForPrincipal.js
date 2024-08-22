@@ -16,19 +16,6 @@ const USER_CONTEXTS = ["default", "personal"];
 // Support functions.
 //
 
-async function openTabInUserContext(uri, userContextId) {
-  // Open the tab in the correct userContextId.
-  let tab = BrowserTestUtils.addTab(gBrowser, uri, { userContextId });
-
-  // Select tab and make sure its browser is focused.
-  gBrowser.selectedTab = tab;
-  tab.ownerGlobal.focus();
-
-  let browser = gBrowser.getBrowserForTab(tab);
-  await BrowserTestUtils.browserLoaded(browser);
-  return { tab, browser };
-}
-
 // Setup an entry for the indexedDB.
 async function setupIndexedDB(browser) {
   await SpecialPowers.spawn(
@@ -142,12 +129,7 @@ add_task(async function test_quota_clearStoragesForPrincipal() {
     httpURI,
     {}
   );
-  let clearRequest = Services.qms.clearStoragesForPrincipal(
-    httpPrincipal,
-    null,
-    null,
-    true
-  );
+  let clearRequest = Services.qms.clearStoragesForOriginPrefix(httpPrincipal);
   await new Promise(resolve => {
     clearRequest.callback = () => {
       resolve();

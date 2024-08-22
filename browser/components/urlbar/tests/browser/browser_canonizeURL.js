@@ -5,12 +5,20 @@
  * Tests turning non-url-looking values typed in the input field into proper URLs.
  */
 
+requestLongerTimeout(2);
+
 const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 
 add_task(async function checkCtrlWorks() {
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
     await UrlbarTestUtils.formHistory.clear();
+  });
+
+  // We do not want schemeless HTTPS-First interfering with this test,
+  // that interaction is already tested in dom/security/test/https-first/browser_schemeless.js
+  await SpecialPowers.pushPrefEnv({
+    set: [["dom.security.https_first_schemeless", false]],
   });
 
   let defaultEngine = await Services.search.getDefault();
@@ -61,9 +69,8 @@ add_task(async function checkCtrlWorks() {
       undefined,
       true
     );
-    win.gURLBar.focus();
-    win.gURLBar.inputField.value = inputValue.slice(0, -1);
-    EventUtils.sendString(inputValue.slice(-1), win);
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
+    await UrlbarTestUtils.inputIntoURLBar(win, inputValue);
     EventUtils.synthesizeKey("KEY_Enter", options, win);
     await Promise.all([promiseLoad, promiseStopped]);
   }
@@ -73,7 +80,7 @@ add_task(async function checkCtrlWorks() {
 
 add_task(async function checkPrefTurnsOffCanonize() {
   // Add a dummy search engine to avoid hitting the network.
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
     setAsDefault: true,
   });
@@ -103,8 +110,8 @@ add_task(async function checkPrefTurnsOffCanonize() {
 
   win.gURLBar.focus();
   win.gURLBar.selectionStart = win.gURLBar.selectionEnd =
-    win.gURLBar.inputField.value.length;
-  win.gURLBar.inputField.value = "exampl";
+    win.gURLBar.value.length;
+  win.gURLBar.value = "exampl";
   EventUtils.sendString("e", win);
   EventUtils.synthesizeKey("KEY_Enter", { ctrlKey: true }, win);
 
@@ -156,7 +163,7 @@ add_task(async function autofill() {
   await PlacesUtils.history.clear();
   await PlacesTestUtils.addVisits([
     {
-      uri: "http://example.com/",
+      uri: "https://example.com/",
       transition: PlacesUtils.history.TRANSITIONS.TYPED,
     },
   ]);
@@ -164,22 +171,22 @@ add_task(async function autofill() {
   let testcases = [
     ["ex", "https://www.ex.com/", { ctrlKey: true }],
     // Check that a direct load is not overwritten by a previous canonization.
-    ["ex", "http://example.com/", {}],
+    ["ex", "https://example.com/", {}],
     // search alias
     ["@goo", "https://www.goo.com/", { ctrlKey: true }],
   ];
-
-  function promiseAutofill() {
-    return BrowserTestUtils.waitForEvent(win.gURLBar.inputField, "select");
-  }
 
   for (let [inputValue, expectedURL, options] of testcases) {
     let promiseLoad = BrowserTestUtils.waitForDocLoadAndStopIt(
       expectedURL,
       win.gBrowser.selectedBrowser
     );
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     win.gURLBar.select();
-    let autofillPromise = promiseAutofill();
+    let autofillPromise = BrowserTestUtils.waitForEvent(
+      win.gURLBar.inputField,
+      "select"
+    );
     EventUtils.sendString(inputValue, win);
     await autofillPromise;
     EventUtils.synthesizeKey("KEY_Enter", options, win);

@@ -5,8 +5,16 @@
 
 /* import-globals-from head.js */
 
+ChromeUtils.defineESModuleGetters(this, {
+  CUSTOM_SEARCH_SHORTCUTS:
+    "resource://activity-stream/lib/SearchShortcuts.sys.mjs",
+  NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
+  SEARCH_SHORTCUTS: "resource://activity-stream/lib/SearchShortcuts.sys.mjs",
+  SearchService: "resource://gre/modules/SearchService.sys.mjs",
+});
+
 async function doTopsitesTest({ trigger, assert }) {
-  await doTest(async browser => {
+  await doTest(async () => {
     await addTopSites("https://example.com/");
 
     await showResultByArrowDown();
@@ -17,8 +25,102 @@ async function doTopsitesTest({ trigger, assert }) {
   });
 }
 
-async function doTypedTest({ trigger, assert }) {
+async function doTopsitesSearchTest({ trigger, assert }) {
   await doTest(async browser => {
+    let extension = await SearchTestUtils.installSearchExtension(
+      {
+        name: "MozSearch",
+        keyword: "@test",
+        search_url: "https://example.com/",
+        search_url_get_params: "q={searchTerms}",
+      },
+      { skipUnload: true }
+    );
+
+    // Fresh profiles come with an empty set of pinned websites (pref doesn't
+    // exist). Search shortcut topsites make this test more complicated because
+    // the feature pins a new website on startup. Behaviour can vary when running
+    // with --verify so it's more predictable to clear pins entirely.
+    Services.prefs.clearUserPref("browser.newtabpage.pinned");
+    NewTabUtils.pinnedLinks.resetCache();
+
+    let entry = {
+      keyword: "@test",
+      shortURL: "example",
+      url: "https://example.com/",
+    };
+
+    // The array is used to identify sites that should be converted to
+    // a Top Site.
+    let searchShortcuts = JSON.parse(JSON.stringify(SEARCH_SHORTCUTS));
+    SEARCH_SHORTCUTS.push(entry);
+
+    // TopSitesFeed takes a list of app provided engines and determine if the
+    // engine containing an alias that matches a keyword inside of this array.
+    // If so, the list of search shortcuts in the store will be updated.
+    let customSearchShortcuts = JSON.parse(
+      JSON.stringify(CUSTOM_SEARCH_SHORTCUTS)
+    );
+    CUSTOM_SEARCH_SHORTCUTS.push(entry);
+
+    // TopSitesFeed only allows app provided engines to be included as
+    // search shortcuts.
+    // eslint-disable-next-line mozilla/valid-lazy
+    let sandbox = lazy.sinon.createSandbox();
+    sandbox
+      .stub(SearchService.prototype, "getAppProvidedEngines")
+      .resolves([{ aliases: ["@test"] }]);
+
+    let siteToPin = {
+      url: "https://example.com",
+      label: "@test",
+      searchTopSite: true,
+    };
+    NewTabUtils.pinnedLinks.pin(siteToPin, 0);
+
+    await updateTopSites(sites => {
+      return sites && sites[0] && sites[0].url == "https://example.com";
+    }, true);
+
+    BrowserTestUtils.startLoadingURIString(browser, "about:newtab");
+    await BrowserTestUtils.browserStopped(browser, "about:newtab");
+
+    await BrowserTestUtils.synthesizeMouseAtCenter(
+      ".search-shortcut .top-site-button",
+      {},
+      gBrowser.selectedBrowser
+    );
+
+    EventUtils.synthesizeKey("x");
+    await UrlbarTestUtils.promiseSearchComplete(window);
+
+    await trigger();
+    await assert();
+
+    // Clean up.
+    NewTabUtils.pinnedLinks.unpin(siteToPin);
+    SEARCH_SHORTCUTS.pop();
+    CUSTOM_SEARCH_SHORTCUTS.pop();
+    // Sanity check to ensure we're leaving the shortcuts in their default state.
+    Assert.deepEqual(
+      searchShortcuts,
+      SEARCH_SHORTCUTS,
+      "SEARCH_SHORTCUTS values"
+    );
+    Assert.deepEqual(
+      customSearchShortcuts,
+      CUSTOM_SEARCH_SHORTCUTS,
+      "CUSTOM_SEARCH_SHORTCUTS values"
+    );
+    sandbox.restore();
+    Services.prefs.clearUserPref("browser.newtabpage.pinned");
+    NewTabUtils.pinnedLinks.resetCache();
+    await extension.unload();
+  });
+}
+
+async function doTypedTest({ trigger, assert }) {
+  await doTest(async () => {
     await openPopup("x");
 
     await trigger();
@@ -27,7 +129,8 @@ async function doTypedTest({ trigger, assert }) {
 }
 
 async function doTypedWithResultsPopupTest({ trigger, assert }) {
-  await doTest(async browser => {
+  await doTest(async () => {
+    await addTopSites("https://example.org/");
     await showResultByArrowDown();
     EventUtils.synthesizeKey("x");
     await UrlbarTestUtils.promiseSearchComplete(window);
@@ -38,7 +141,7 @@ async function doTypedWithResultsPopupTest({ trigger, assert }) {
 }
 
 async function doPastedTest({ trigger, assert }) {
-  await doTest(async browser => {
+  await doTest(async () => {
     await doPaste("www.example.com");
 
     await trigger();
@@ -47,7 +150,8 @@ async function doPastedTest({ trigger, assert }) {
 }
 
 async function doPastedWithResultsPopupTest({ trigger, assert }) {
-  await doTest(async browser => {
+  await doTest(async () => {
+    await addTopSites("https://example.org/");
     await showResultByArrowDown();
     await doPaste("x");
 
@@ -87,9 +191,8 @@ async function doReturnedRestartedRefinedTest({ trigger, assert }) {
   ];
 
   for (const { firstInput, secondInput, expected } of testData) {
-    await doTest(async browser => {
+    await doTest(async () => {
       await openPopup(firstInput);
-      await waitForPauseImpression();
       await doBlur();
 
       await UrlbarTestUtils.promisePopupOpen(window, () => {
@@ -109,9 +212,8 @@ async function doReturnedRestartedRefinedTest({ trigger, assert }) {
 }
 
 async function doPersistedSearchTermsTest({ trigger, assert }) {
-  await doTest(async browser => {
+  await doTest(async () => {
     await openPopup("x");
-    await waitForPauseImpression();
     await doEnter();
 
     await openPopup("x");
@@ -156,9 +258,9 @@ async function doPersistedSearchTermsRestartedRefinedTest({
   ];
 
   for (const { firstInput, secondInput, expected } of testData) {
-    await doTest(async browser => {
+    await doTest(async () => {
+      await addTopSites("https://example.com/");
       await openPopup(firstInput);
-      await waitForPauseImpression();
       await doEnter();
 
       await UrlbarTestUtils.promisePopupOpen(window, () => {
@@ -212,13 +314,11 @@ async function doPersistedSearchTermsRestartedRefinedViaAbandonmentTest({
   ];
 
   for (const { firstInput, secondInput, expected } of testData) {
-    await doTest(async browser => {
+    await doTest(async () => {
       await openPopup("any search");
-      await waitForPauseImpression();
       await doEnter();
 
       await openPopup(firstInput);
-      await waitForPauseImpression();
       await doBlur();
 
       await UrlbarTestUtils.promisePopupOpen(window, () => {

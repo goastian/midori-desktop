@@ -5,8 +5,8 @@
  * that is seen when we detect pending crash reports on startup.
  */
 
-const { UnsubmittedCrashHandler } = ChromeUtils.import(
-  "resource:///modules/ContentCrashHandlers.jsm"
+const { UnsubmittedCrashHandler } = ChromeUtils.importESModule(
+  "resource:///modules/ContentCrashHandlers.sys.mjs"
 );
 
 const { makeFakeAppDir } = ChromeUtils.importESModule(
@@ -26,11 +26,7 @@ const SERVER_URL =
 function getPendingCrashReportDir() {
   // The fake UAppData directory that makeFakeAppDir provides
   // is just UAppData under the profile directory.
-  return FileUtils.getDir(
-    "ProfD",
-    ["UAppData", "Crash Reports", "pending"],
-    false
-  );
+  return FileUtils.getDir("ProfD", ["UAppData", "Crash Reports", "pending"]);
 }
 
 /**
@@ -102,7 +98,7 @@ function createPendingCrashReports(howMany, accessDate) {
   };
 
   let uuidGenerator = Services.uuid;
-  // Some annotations are always present in the .extra file and CrashSubmit.jsm
+  // Some annotations are always present in the .extra file and CrashSubmit.sys.mjs
   // expects there to be a ServerURL entry, so we'll add them here.
   let extraFileContents = JSON.stringify({
     ServerURL: SERVER_URL,
@@ -388,6 +384,8 @@ add_task(async function test_can_submit() {
   );
   // ...which should be the first button.
   let submit = buttons[0];
+  let submissionBefore = Glean.crashSubmission.success.testGetValue();
+
   let promiseReports = waitForSubmittedReports(reportIDs, extraCheck);
   info("Sending crash report");
   submit.click();
@@ -399,6 +397,11 @@ add_task(async function test_can_submit() {
   info("Waiting on reports to be received.");
   await promiseReports;
   info("Received!");
+
+  Assert.equal(
+    submissionBefore + 1,
+    Glean.crashSubmission.success.testGetValue()
+  );
   clearPendingCrashReports();
 });
 
@@ -419,6 +422,8 @@ add_task(async function test_can_submit_several() {
   // ...which should be the first button.
   let submit = buttons[0];
 
+  let submissionBefore = Glean.crashSubmission.success.testGetValue();
+
   let promiseReports = waitForSubmittedReports(reportIDs);
   info("Sending crash reports");
   submit.click();
@@ -430,6 +435,11 @@ add_task(async function test_can_submit_several() {
   info("Waiting on reports to be received.");
   await promiseReports;
   info("Received!");
+
+  Assert.equal(
+    submissionBefore + 3,
+    Glean.crashSubmission.success.testGetValue()
+  );
   clearPendingCrashReports();
 });
 
@@ -457,6 +467,7 @@ add_task(async function test_can_submit_always() {
   );
   // ...which should be the second button.
   let sendAll = buttons[1];
+  let submissionBefore = Glean.crashSubmission.success.testGetValue();
 
   let promiseReports = waitForSubmittedReports(reportIDs);
   info("Sending crash reports");
@@ -469,6 +480,10 @@ add_task(async function test_can_submit_always() {
   info("Waiting on reports to be received.");
   await promiseReports;
   info("Received!");
+  Assert.equal(
+    submissionBefore + 1,
+    Glean.crashSubmission.success.testGetValue()
+  );
 
   // Make sure the pref was set
   Assert.equal(
@@ -488,6 +503,11 @@ add_task(async function test_can_submit_always() {
     Assert.equal(extra.get("Throttleable"), "1");
   });
 
+  Assert.equal(
+    submissionBefore + 2,
+    Glean.crashSubmission.success.testGetValue()
+  );
+
   // And revert back to default now.
   Services.prefs.clearUserPref(pref);
 
@@ -505,6 +525,7 @@ add_task(async function test_can_auto_submit() {
   });
 
   let reportIDs = await createPendingCrashReports(3);
+  let submissionBefore = Glean.crashSubmission.success.testGetValue();
   let promiseReports = waitForSubmittedReports(reportIDs);
   let notification =
     await UnsubmittedCrashHandler.checkForUnsubmittedCrashReports();
@@ -512,6 +533,10 @@ add_task(async function test_can_auto_submit() {
   info("Waiting on reports to be received.");
   await promiseReports;
   info("Received!");
+  Assert.equal(
+    submissionBefore + 3,
+    Glean.crashSubmission.success.testGetValue()
+  );
 
   clearPendingCrashReports();
   await SpecialPowers.popPrefEnv();

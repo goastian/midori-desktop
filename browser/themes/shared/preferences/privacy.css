@@ -12,7 +12,11 @@
   width: 20px;
   height: 20px;
   vertical-align: middle;
-  margin-inline-end: 0.2em;
+  margin-inline-end: var(--space-xsmall);
+
+  + label {
+    vertical-align: middle;
+  }
 }
 
 .permission-icon,
@@ -42,7 +46,7 @@
 }
 
 .speaker-icon {
-  list-style-image: url(chrome://global/skin/media/audio.svg);
+  list-style-image: url(chrome://browser/skin/notification-icons/speaker.svg);
 }
 
 .desktop-notification-icon {
@@ -80,15 +84,18 @@
 }
 
 .privacy-detailedoption,
-#fpiIncompatibilityWarning {
+#fpiIncompatibilityWarning,
+#rfpIncompatibilityWarning {
   margin: 3px 0;
 }
 
-#fpiIncompatibilityWarning {
+#fpiIncompatibilityWarning,
+#rfpIncompatibilityWarning {
   background-color: var(--section-highlight-background-color);
 }
 
 #fpiIncompatibilityWarning,
+#rfpIncompatibilityWarning,
 #contentBlockingCategories {
   margin-top: 16px;
 }
@@ -148,7 +155,6 @@
 }
 
 .content-blocking-reload-description {
-  line-height: 1.8em;
   margin-inline-end: 5px;
 }
 
@@ -181,13 +187,13 @@
   border-color: var(--in-content-accent-color);
 }
 
-@media (prefers-contrast) {
+@media (forced-colors) {
   .privacy-detailedoption.selected {
     outline: 2px solid var(--in-content-accent-color);
   }
 }
 
-@media not (prefers-contrast) {
+@media not (forced-colors) {
   .privacy-detailedoption {
     background-color: rgba(215, 215, 219, 0.1);
   }
@@ -251,7 +257,10 @@
 .content-blocking-label,
 .doh-label {
   display: list-item;
-  line-height: 1.2em;
+}
+
+#dohExceptionsButton {
+  align-self: end;
 }
 
 .content-blocking-warning-image {
@@ -265,7 +274,8 @@
 }
 
 #blockCookiesMenu,
-#trackingProtectionMenu {
+#trackingProtectionMenu,
+#fingerprintingProtectionMenu {
   margin: 0;
 }
 
@@ -275,7 +285,6 @@
 
 #telemetry-container {
   margin-block: 4px;
-  line-height: 1.8em;
   width: 100%;
 }
 
@@ -320,12 +329,6 @@
   margin-block-start: 18px;
 }
 
-.firefoxSuggestOptionBox:first-of-type {
-  /* Similar here: Make the apparent vertical space between the last checkbox
-     and first option box the same as elsewhere. */
-  margin-block-start: 11px;
-}
-
 #firefoxSuggestInfoBox {
   margin-block-start: 16px;
 }
@@ -339,8 +342,8 @@
   margin-block-start: 2em;
 }
 
-#dohDescription,
-#dohLearnMore,
-#dohStatusSection {
-  line-height: 1.8em;
+/* Logins and Passwords */
+
+#openWindowsPasskeySettings {
+  margin-block-start: 2em;
 }

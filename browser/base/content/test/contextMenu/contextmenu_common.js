@@ -39,7 +39,7 @@ function closeContextMenu() {
   contextMenu.hidePopup();
 }
 
-function getVisibleMenuItems(aMenu, aData) {
+function getVisibleMenuItems(aMenu) {
   var items = [];
   var accessKeys = {};
   for (var i = 0; i < aMenu.children.length; i++) {
@@ -65,7 +65,7 @@ function getVisibleMenuItems(aMenu, aData) {
       var label = item.getAttribute("label");
       ok(label.length, "menuitem " + item.id + " has a label");
       if (isGenerated) {
-        is(key, "", "Generated items shouldn't have an access key");
+        is(key, null, "Generated items shouldn't have an access key");
         items.push("*" + label);
       } else if (
         item.id.indexOf("spell-check-dictionary-") != 0 &&

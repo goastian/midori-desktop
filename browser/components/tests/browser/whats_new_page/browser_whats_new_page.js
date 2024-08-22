@@ -32,15 +32,16 @@ add_task(async function whats_new_page() {
     Ci.nsIUpdateManager
   );
   await TestUtils.waitForCondition(
-    () => !um.readyUpdate,
+    async () => !(await um.getReadyUpdate()),
     "Waiting for the ready update to be removed"
   );
-  ok(!um.readyUpdate, "There should not be a ready update");
-  await TestUtils.waitForCondition(
-    () => !!um.getUpdateAt(0),
-    "Waiting for the ready update to be moved to the update history"
-  );
-  ok(!!um.getUpdateAt(0), "There should be an update in the update history");
+  ok(!(await um.getReadyUpdate()), "There should not be a ready update");
+  let history;
+  await TestUtils.waitForCondition(async () => {
+    history = await um.getHistory();
+    return !!history[0];
+  }, "Waiting for the ready update to be moved to the update history");
+  ok(!!history[0], "There should be an update in the update history");
 
   // Leave no trace. Since this test modifies its support files put them back in
   // their original state.
@@ -103,6 +104,5 @@ add_task(async function whats_new_page() {
   updatesFile.remove(false);
   Cc["@mozilla.org/updates/update-manager;1"]
     .getService(Ci.nsIUpdateManager)
-    .QueryInterface(Ci.nsIObserver)
-    .observe(null, "um-reload-update-data", "");
+    .internal.reload(false);
 });

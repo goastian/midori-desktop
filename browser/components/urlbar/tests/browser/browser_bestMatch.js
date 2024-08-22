@@ -1,13 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-// Tests best match rows in the view. See also:
-//
-// browser_quicksuggest_bestMatch.js
-//   UI test for quick suggest best matches specifically
-// test_quicksuggest_bestMatch.js
-//   Tests triggering quick suggest best matches and things that don't depend on
-//   the view
+// Tests best match rows in the view.
 
 "use strict";
 
@@ -75,12 +69,7 @@ add_task(async function keySelection() {
 
   await withProvider(result, async () => {
     // Ordered list of class names of the elements that should be selected.
-    let expectedClassNames = [
-      "urlbarView-row-inner",
-      UrlbarPrefs.get("resultMenu")
-        ? "urlbarView-button-menu"
-        : "urlbarView-button-help",
-    ];
+    let expectedClassNames = ["urlbarView-row-inner", "urlbarView-button-menu"];
 
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
@@ -128,11 +117,7 @@ add_task(async function keySelection() {
   });
 });
 
-async function checkBestMatchRow({
-  result,
-  isSponsored = false,
-  hasHelpUrl = false,
-}) {
+async function checkBestMatchRow({ result, hasHelpUrl = false }) {
   Assert.equal(
     UrlbarTestUtils.getResultCount(window),
     1,
@@ -141,8 +126,6 @@ async function checkBestMatchRow({
 
   let details = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
   let { row } = details.element;
-
-  Assert.equal(row.getAttribute("type"), "bestmatch", "row[type] is bestmatch");
 
   let favicon = row._elements.get("favicon");
   Assert.ok(favicon, "Row has a favicon");
@@ -161,30 +144,7 @@ async function checkBestMatchRow({
     "Row URL is correct"
   );
 
-  let bottom = row._elements.get("bottom");
-  Assert.ok(bottom, "Row has a bottom");
-  Assert.equal(
-    !!result.payload.isSponsored,
-    isSponsored,
-    "Sanity check: Row's expected isSponsored matches result's"
-  );
-  if (isSponsored) {
-    Assert.equal(
-      bottom.textContent,
-      "Sponsored",
-      "Sponsored row bottom has Sponsored textContext"
-    );
-  } else {
-    Assert.equal(
-      bottom.textContent,
-      "",
-      "Non-sponsored row bottom has empty textContext"
-    );
-  }
-
-  let button = row._buttons.get(
-    UrlbarPrefs.get("resultMenu") ? "menu" : "help"
-  );
+  let button = row._buttons.get("menu");
   Assert.equal(
     !!result.payload.helpUrl,
     hasHelpUrl,

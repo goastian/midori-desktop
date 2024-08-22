@@ -125,21 +125,21 @@ async function testSectionVisibility({
         testPBM,
       });
       is(
-        BrowserTestUtils.is_visible(el.section),
+        BrowserTestUtils.isVisible(el.section),
         expectVisible,
         `Cookie banner section should be ${
           expectVisible ? "visible" : "not visible"
         }.`
       );
       is(
-        BrowserTestUtils.is_visible(el.sectionSeparator),
+        BrowserTestUtils.isVisible(el.sectionSeparator),
         expectVisible,
         `Cookie banner section separator should be ${
           expectVisible ? "visible" : "not visible"
         }.`
       );
       is(
-        BrowserTestUtils.is_visible(el.switch),
+        BrowserTestUtils.isVisible(el.switch),
         expectVisible,
         `Cookie banner switch should be ${
           expectVisible ? "visible" : "not visible"
@@ -250,15 +250,19 @@ function assertSwitchAndPrefState({ win, isPBM, expectedSwitchState }) {
   let currentURI = win.gBrowser.currentURI;
   let pref = Services.cookieBanners.getDomainPref(currentURI, isPBM);
   if (expectedSwitchState == "on") {
-    ok(el.section.dataset.state == "detected", "CBH switch is set to ON");
+    Assert.equal(
+      el.section.dataset.state,
+      "detected",
+      "CBH switch is set to ON"
+    );
 
-    ok(BrowserTestUtils.is_visible(el.labelON), "ON label should be visible");
+    ok(BrowserTestUtils.isVisible(el.labelON), "ON label should be visible");
     ok(
-      !BrowserTestUtils.is_visible(el.labelOFF),
+      !BrowserTestUtils.isVisible(el.labelOFF),
       "OFF label should not be visible"
     );
     ok(
-      !BrowserTestUtils.is_visible(el.labelUNDETECTED),
+      !BrowserTestUtils.isVisible(el.labelUNDETECTED),
       "UNDETECTED label should not be visible"
     );
 
@@ -268,15 +272,19 @@ function assertSwitchAndPrefState({ win, isPBM, expectedSwitchState }) {
       `There should be no per-site exception for ${currentURI.spec}.`
     );
   } else if (expectedSwitchState === "off") {
-    ok(el.section.dataset.state == "site-disabled", "CBH switch is set to OFF");
+    Assert.equal(
+      el.section.dataset.state,
+      "site-disabled",
+      "CBH switch is set to OFF"
+    );
 
     ok(
-      !BrowserTestUtils.is_visible(el.labelON),
+      !BrowserTestUtils.isVisible(el.labelON),
       "ON label should not be visible"
     );
-    ok(BrowserTestUtils.is_visible(el.labelOFF), "OFF label should be visible");
+    ok(BrowserTestUtils.isVisible(el.labelOFF), "OFF label should be visible");
     ok(
-      !BrowserTestUtils.is_visible(el.labelUNDETECTED),
+      !BrowserTestUtils.isVisible(el.labelUNDETECTED),
       "UNDETECTED label should not be visible"
     );
 
@@ -286,18 +294,22 @@ function assertSwitchAndPrefState({ win, isPBM, expectedSwitchState }) {
       `There should be a per-site exception for ${currentURI.spec}.`
     );
   } else {
-    ok(el.section.dataset.state == "undetected", "CBH not supported for site");
+    Assert.equal(
+      el.section.dataset.state,
+      "undetected",
+      "CBH not supported for site"
+    );
 
     ok(
-      !BrowserTestUtils.is_visible(el.labelON),
+      !BrowserTestUtils.isVisible(el.labelON),
       "ON label should not be visible"
     );
     ok(
-      !BrowserTestUtils.is_visible(el.labelOFF),
+      !BrowserTestUtils.isVisible(el.labelOFF),
       "OFF label should not be visible"
     );
     ok(
-      BrowserTestUtils.is_visible(el.labelUNDETECTED),
+      BrowserTestUtils.isVisible(el.labelUNDETECTED),
       "UNDETECTED label should be visible"
     );
   }
@@ -360,10 +372,10 @@ async function toggleCookieBannerHandling(enable, win) {
   await subViewShownPromise;
 
   if (enable) {
-    ok(BrowserTestUtils.is_visible(enableButton), "Enable button is visible");
+    ok(BrowserTestUtils.isVisible(enableButton), "Enable button is visible");
     enableButton.click();
   } else {
-    ok(BrowserTestUtils.is_visible(disableButton), "Disable button is visible");
+    ok(BrowserTestUtils.isVisible(disableButton), "Disable button is visible");
     disableButton.click();
   }
 }
@@ -379,6 +391,8 @@ function waitForProtectionsPopupHide(win = window) {
  * Tests the cookie banner section per-site preference toggle.
  */
 add_task(async function test_section_toggle() {
+  requestLongerTimeout(3);
+
   // initialize the pref environment
   await SpecialPowers.pushPrefEnv({
     set: [

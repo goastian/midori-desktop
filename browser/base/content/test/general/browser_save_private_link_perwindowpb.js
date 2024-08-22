@@ -12,9 +12,9 @@ function createTemporarySaveDirectory() {
 }
 
 function promiseNoCacheEntry(filename) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     Visitor.prototype = {
-      onCacheStorageInfo(num, consumption) {
+      onCacheStorageInfo(num) {
         info("disk storage contains " + num + " entries");
       },
       onCacheEntryInfo(uri) {
@@ -40,10 +40,10 @@ function promiseNoCacheEntry(filename) {
 }
 
 function promiseImageDownloaded() {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let fileName;
     let MockFilePicker = SpecialPowers.MockFilePicker;
-    MockFilePicker.init(window);
+    MockFilePicker.init(window.browsingContext);
 
     function onTransferComplete(downloadSuccess) {
       ok(

@@ -4,7 +4,7 @@
 
 <!-- General panel -->
 
-<script src="chrome://browser/content/preferences/floorp-main.js"/>
+<script src="chrome://floorp/content/preferences/floorp-main.js"/>
 <script src="chrome://browser/content/preferences/main.js"/>
 
 #ifdef MOZ_UPDATER
@@ -30,6 +30,20 @@
   <vbox id="startupPageBox">
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-windows-and-tabs"/>
+#ifdef XP_WIN
+    <hbox id="windowsLaunchOnLoginBox" align="center" hidden="true">
+      <checkbox id="windowsLaunchOnLogin"
+                data-l10n-id="windows-launch-on-login"/>
+    </hbox>
+    <hbox id="windowsLaunchOnLoginDisabledBox" align="center" class="indent" hidden="true">
+      <hbox class="info-icon-container">
+        <html:img class="info-icon"/>
+      </hbox>
+      <html:div data-l10n-id="windows-launch-on-login-disabled">
+        <html:a id="windowsAutostartLink" class="text-link" data-l10n-name="startup-link" href="ms-settings:startupapps" target="_self" />
+      </html:div>
+    </hbox>
+#endif
   </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
@@ -68,6 +82,14 @@
   </hbox>
 </groupbox>
 
+<groupbox id="dataBackupGroup" data-category="paneGeneral" hidden="true"
+          data-hidden-from-search="true">
+  <label><html:h2 data-l10n-id="settings-data-backup-header"/></label>
+  <hbox flex="1">
+    <html:backup-settings />
+  </hbox>
+</groupbox>
+
 <!-- Tab preferences -->
 <groupbox data-category="paneGeneral"
           hidden="true">
@@ -97,7 +119,7 @@
               preference="browser.taskbar.previews.enable"/>
 #endif
 
-    <hbox align="center" class="hide-if-lightning-build">
+    <hbox align="center">
       <checkbox data-l10n-id="enable-tab-sleep"
                id="tab-sleep" preference="floorp.tabsleep.enabled"/>
       <spacer flex="1"/>
@@ -114,19 +136,27 @@
     <checkbox  data-l10n-id="enable-tab-scroll-reverse"
                id="tabscrollReverse" preference="floorp.tabscroll.reverse"/>
 
-    <checkbox  data-l10n-id="enable-tab-scroll-wrap" class="hide-if-lightning-build"
+    <checkbox  data-l10n-id="enable-tab-scroll-wrap"
                id="tabscrollWrap" preference="floorp.tabscroll.wrap"/>
 
     <checkbox  data-l10n-id="enable-double-click-block"
                id="doubleClickClose" preference="browser.tabs.closeTabByDblclick"/>
 
-    <checkbox  data-l10n-id="enable-show-pinned-tabs-title" class="hide-if-lightning-build"
+    <checkbox  data-l10n-id="enable-show-pinned-tabs-title"
                id="showPinnedTabsTitle" preference="floorp.tabs.showPinnedTabsTitle"/>
 
-    <hbox class="hide-if-lightning-build">
+    <hbox>
       <description flex="1" data-l10n-id="tab-width"/>
       <html:input type="number" min="50" value="0" id="tabWidthValue"/>
     </hbox>
+
+    <hbox>
+      <description flex="1" data-l10n-id="tab-height"/>
+      <html:input type="number" min="30" value="0" id="tabHeightValue"/>
+    </hbox>
+
+    <checkbox id="tabPreviewShowThumbnails" data-l10n-id="settings-tabs-show-image-in-preview"
+              preference="browser.tabs.hoverPreview.showThumbnails" hidden="true"/>
 
     <vbox id="browserContainersbox" hidden="true">
       <hbox id="browserContainersExtensionContent"
@@ -162,7 +192,7 @@
     </vbox>
 </groupbox>
 
-<groupbox data-category="paneGeneral" hidden="true" class="hide-if-lightning-build">
+<groupbox data-category="paneGeneral" hidden="true">
     <html:h2 data-l10n-id="preferences-tabs-newtab-position"/>
     <radiogroup id="openNewTabPosition" preference="floorp.browser.tabs.openNewTabPosition">
     <radio  value="-1"  data-l10n-id="open-new-tab-use-default"/>
@@ -171,7 +201,7 @@
     </radiogroup>
 </groupbox>
 
-<groupbox id="aboutMouseGesture" data-category="paneGeneral" class="hide-if-lightning-build" hidden="true">
+<groupbox id="aboutMouseGesture" data-category="paneGeneral" hidden="true">
   <html:h2 id="mouse-gesture-header" data-l10n-id="mouse-gesture"/>
   <description id="mouse-gesture-description" data-l10n-id="mouse-gesture-description"/>
   <vbox class="Gesturefy ContentBlockBox">
@@ -186,109 +216,16 @@
    </vbox>
 </groupbox>
 
-<!-- Languages -->
-<groupbox id="languagesGroup" data-category="paneGeneral" hidden="true">
-  <label><html:h2 data-l10n-id="language-header"/></label>
-
-  <vbox id="browserLanguagesBox" align="start" hidden="true">
-    <description flex="1" controls="chooseBrowserLanguage" data-l10n-id="choose-browser-language-description"/>
-    <hbox>
-      <menulist id="primaryBrowserLocale">
-        <menupopup/>
-      </menulist>
-      <button id="manageBrowserLanguagesButton"
-              is="highlightable-button"
-              class="accessory-button"
-              data-l10n-id="manage-browser-languages-button"/>
-    </hbox>
-  </vbox>
-  <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
-    <html:img class="message-bar-icon"/>
-    <vbox class="message-bar-content-container" align="stretch" flex="1"/>
+<groupbox data-category="paneGeneral" hidden="true">
+  <html:h2 id="notes-preferences" data-l10n-id="floorp-notes"/>
+  <checkbox preference="services.sync.prefs.sync.floorp.browser.note.memos"
+            id="enable-notes-sync" data-l10n-id="enable-notes-sync" class="needreboot"/>
+  <description flex="1" class="indent tip-caption" data-l10n-id="notes-sync-description"/>
+  <hbox>
+    <description flex="1" data-l10n-id="notes-backup-option"/>
+    <button  data-l10n-id="backup-option-button" is="highlightable-button"
+             class="accessory-button" id="backUpNotesOption"/>
   </hbox>
-
-  <hbox id="languagesBox" align="center">
-    <description flex="1" control="chooseLanguage" data-l10n-id="choose-language-description"/>
-    <button id="chooseLanguage"
-            is="highlightable-button"
-            class="accessory-button"
-            data-l10n-id="choose-button"
-            search-l10n-ids="
-              webpage-languages-window2.title,
-              languages-description,
-              languages-customize-moveup.label,
-              languages-customize-movedown.label,
-              languages-customize-remove.label,
-              languages-customize-select-language.placeholder,
-              languages-customize-add.label,
-            " />
-  </hbox>
-
-  <checkbox id="useSystemLocale" hidden="true"
-            data-l10n-id="use-system-locale"
-            data-l10n-args='{"localeName": "und"}'
-            preference="intl.regional_prefs.use_os_locales"/>
-
-  <!-- TODO (Bug 1817084) This older implementation will be removed soon -->
-  <hbox id="translationBox" hidden="true">
-    <hbox align="center" flex="1">
-      <checkbox id="translate" preference="browser.translation.detectLanguage"
-                data-l10n-id="translate-web-pages"/>
-      <hbox id="bingAttribution" hidden="true" align="center">
-        <label data-l10n-id="translate-attribution">
-          <html:img id="translationAttributionImage" aria-label="Microsoft Translator"
-            src="chrome://browser/content/microsoft-translator-attribution.png"
-            data-l10n-name="logo"/>
-        </label>
-      </hbox>
-    </hbox>
-    <button id="translateButton"
-            is="highlightable-button"
-            class="accessory-button"
-            data-l10n-id="translate-exceptions"/>
-  </hbox>
-
-  <hbox id="fxtranslationsBox" hidden="true" data-subcategory="fxtranslations">
-    <description flex="1" control="fxtranslateButton" data-l10n-id="fx-translate-web-pages"/>
-    <button id="fxtranslateButton"
-            is="highlightable-button"
-            class="accessory-button"
-            data-l10n-id="translate-exceptions"/>
-  </hbox>
-
-  <checkbox id="checkSpelling"
-          data-l10n-id="check-user-spelling"
-          preference="layout.spellcheckDefault"/>
-
-  <!-- Translations -->
-  <vbox id="translationsGroup" hidden="true" data-subcategory="translations">
-    <label><html:h2 data-l10n-id="translations-manage-header"/></label>
-    <description data-l10n-id="translations-manage-description"/>
-    <vbox>
-      <html:div id="translations-manage-install-list" hidden="true">
-        <hbox class="translations-manage-language">
-          <label data-l10n-id="translations-manage-all-language"></label>
-          <button id="translations-manage-install-all"
-                  data-l10n-id="translations-manage-download-button"></button>
-          <button id="translations-manage-delete-all"
-                  data-l10n-id="translations-manage-delete-button"></button>
-        </hbox>
-        <!-- The downloadable languages will be listed here. -->
-      </html:div>
-      <description id="translations-manage-error" hidden="true"></description>
-    </vbox>
-  </vbox>
-
-  <vbox id="TWS-box" class="TWS ContentBlockBox hide-if-lightning-build">
-    <html:h3 class="TWS addonRecommend-header" data-l10n-id="TWS"/>
-    <hbox class="addonRecommend-box">
-      <image id="TWSImg" class="addonRecommend-img" style="background-image: url('https://addons.mozilla.org/user-media/addon_icons/2623/2623538-64.png');"/>
-      <vbox class="addonRecommend-label-box">
-       <description id="AddonRecommend" data-l10n-id="about-TWS"/>
-       <label class="AMO-Link" is="text-link" href="https://addons.mozilla.org/firefox/addon/traduzir-paginas-web" data-l10n-id="view-at-AMO"></label>
-      </vbox>
-    </hbox>
-  </vbox>
 </groupbox>
 
 <!-- Fonts -->
@@ -384,17 +321,123 @@
 <!-- Zoom -->
 <groupbox id="zoomGroup" data-category="paneGeneral" hidden="true">
   <label><html:h2 data-l10n-id="preferences-zoom-header"/></label>
-
   <hbox id="zoomBox" align="center" hidden="true">
     <label control="defaultZoom" data-l10n-id="preferences-default-zoom"/>
     <menulist id="defaultZoom">
       <menupopup/>
     </menulist>
   </hbox>
-
+  <html:moz-message-bar id="text-zoom-override-warning" data-l10n-id="preferences-text-zoom-override-warning"
+    data-l10n-attrs="message" />
   <checkbox id="zoomText"
     data-l10n-id="preferences-zoom-text-only"/>
 
+</groupbox>
+
+<!-- Languages -->
+<groupbox id="languagesGroup" data-category="paneGeneral" hidden="true">
+  <label><html:h2 data-l10n-id="language-header"/></label>
+
+  <vbox id="browserLanguagesBox" align="start" hidden="true">
+    <description flex="1" controls="chooseBrowserLanguage" data-l10n-id="choose-browser-language-description"/>
+    <hbox>
+      <menulist id="primaryBrowserLocale">
+        <menupopup/>
+      </menulist>
+      <button id="manageBrowserLanguagesButton"
+              is="highlightable-button"
+              class="accessory-button"
+              data-l10n-id="manage-browser-languages-button"/>
+    </hbox>
+  </vbox>
+  <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
+    <html:img class="message-bar-icon"/>
+    <vbox class="message-bar-content-container" align="stretch" flex="1"/>
+  </hbox>
+
+  <hbox id="languagesBox" align="center">
+    <description flex="1" control="chooseLanguage" data-l10n-id="choose-language-description"/>
+    <button id="chooseLanguage"
+            is="highlightable-button"
+            class="accessory-button"
+            data-l10n-id="choose-button"
+            search-l10n-ids="
+              webpage-languages-window2.title,
+              languages-description,
+              languages-customize-moveup.label,
+              languages-customize-movedown.label,
+              languages-customize-remove.label,
+              languages-customize-select-language.placeholder,
+              languages-customize-add.label,
+            " />
+  </hbox>
+
+  <checkbox id="useSystemLocale" hidden="true"
+            data-l10n-id="use-system-locale"
+            data-l10n-args='{"localeName": "und"}'
+            preference="intl.regional_prefs.use_os_locales"/>
+
+  <!-- This Firefox Translations UI manages the prefs for the addon only. -->
+  <hbox id="fxtranslationsBox" hidden="true" data-subcategory="fxtranslations">
+    <description flex="1" control="fxtranslateButton" data-l10n-id="fx-translate-web-pages"/>
+    <button id="fxtranslateButton"
+            is="highlightable-button"
+            class="accessory-button"
+            data-l10n-id="translate-exceptions"/>
+  </hbox>
+
+  <checkbox id="checkSpelling"
+          data-l10n-id="check-user-spelling"
+          preference="layout.spellcheckDefault"/>
+
+  <!-- Translations -->
+  <vbox id="translationsGroup" hidden="true" data-subcategory="translations">
+    <label><html:h2 data-l10n-id="translations-manage-header"/></label>
+    <hbox id="translations-manage-description" align="center">
+      <description flex="1" data-l10n-id="translations-manage-intro-2"/>
+      <button id="translations-manage-settings-button"
+              is="highlightable-button"
+              class="accessory-button"
+              data-l10n-id="translations-manage-settings-button"/>
+    </hbox>
+    <vbox>
+      <html:div id="translations-manage-install-list" hidden="true">
+        <hbox class="translations-manage-language">
+          <label data-l10n-id="translations-manage-download-description"></label>
+          <button id="translations-manage-install-all"
+                  data-l10n-id="translations-manage-language-download-all-button"></button>
+          <button id="translations-manage-delete-all"
+                  data-l10n-id="translations-manage-language-remove-all-button"></button>
+        </hbox>
+        <!-- The downloadable languages will be listed here. -->
+      </html:div>
+      <description id="translations-manage-error" hidden="true"></description>
+    </vbox>
+  </vbox>
+
+  <vbox id="TWS-box" class="TWS ContentBlockBox">
+    <html:h3 class="TWS addonRecommend-header" data-l10n-id="TWS"/>
+    <hbox class="addonRecommend-box">
+      <image id="TWSImg" class="addonRecommend-img" style="background-image: url('https://addons.mozilla.org/user-media/addon_icons/2623/2623538-64.png');"/>
+      <vbox class="addonRecommend-label-box">
+       <description id="AddonRecommend" data-l10n-id="about-TWS"/>
+       <label class="AMO-Link" is="text-link" href="https://addons.mozilla.org/firefox/addon/traduzir-paginas-web" data-l10n-id="view-at-AMO"></label>
+      </vbox>
+    </hbox>
+  </vbox>
+</groupbox>
+
+<!-- DRM Content -->
+<groupbox id="drmGroup" data-category="paneGeneral" data-subcategory="drm" hidden="true">
+  <label><html:h2 data-l10n-id="drm-content-header"/></label>
+  <hbox align="center">
+    <checkbox id="playDRMContent" preference="media.eme.enabled"
+              class="tail-with-learn-more" data-l10n-id="play-drm-content" />
+    <html:a is="moz-support-link"
+      data-l10n-id="play-drm-content-learn-more"
+      support-page="drm-content"
+    />
+  </hbox>
 </groupbox>
 
 <hbox id="updatesCategory"
@@ -408,12 +451,12 @@
 <groupbox id="updateApp" data-category="paneGeneral" hidden="true">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="update-application-title"/></label>
 
-  <label data-l10n-id="update-application-description"/>
+  <description class="description-deemphasized" data-l10n-id="update-application-description"/>
   <hbox align="center">
     <vbox flex="1">
-      <description id="updateAppInfo">
+      <html:span id="updateAppInfo">
         <html:a id="releasenotes" target="_blank" data-l10n-name="learn-more" class="learnMore text-link" hidden="true"/>
-      </description>
+      </html:span>
       <description id="distribution" class="text-blurb" hidden="true"/>
       <description id="distributionId" class="text-blurb" hidden="true"/>
     </vbox>
@@ -457,10 +500,10 @@
                 is="highlightable-button"
                 disabled="true"/>
       </hbox>
-      <hbox id="downloading" align="start" data-l10n-id="settings-update-downloading" data-l10n-args='{"transfer":""}'>
+      <description id="downloading" data-l10n-id="settings-update-downloading" data-l10n-args='{"transfer":""}'>
         <html:img class="update-throbber" data-l10n-name="icon"/>
         <label data-l10n-name="download-status"/>
-      </hbox>
+      </description>
       <hbox id="applying" align="start">
         <html:img class="update-throbber"/>
         <label data-l10n-id="update-applying"/>
@@ -474,7 +517,7 @@
                 is="highlightable-button"/>
       </hbox>
       <hbox id="policyDisabled" align="start">
-        <label data-l10n-id="update-adminDisabled"/>
+        <label data-l10n-id="update-policy-disabled"/>
         <button data-l10n-id="update-checkForUpdatesButton"
                 is="highlightable-button"
                 disabled="true"/>
@@ -533,12 +576,7 @@
 #endif
 
 #ifdef MOZ_UPDATER
-  <description id="updateAllowDescription" data-l10n-id="update-application-allow-description"></description>
-
-  <html:h2 id="floorpPortableUpdateHeader" hidden="true" data-l10n-id="floorp-portable-update-application-allow"/>
-  <checkbox id="floorpPortableUpdateAuto" preference="floorp.portable.isUpdate" hidden="true"
-            data-l10n-id="floorp-update-application-auto-enabled-option"/>
-
+  <label id="updateAllowDescription" data-l10n-id="update-application-allow-description"></label>
   <vbox id="updateSettingsContainer" class="info-box-container">
     <radiogroup id="updateRadioGroup">
       <radio id="autoDesktop"
@@ -564,11 +602,6 @@
       </description>
     </hbox>
   </vbox>
-#ifdef MOZ_MAINTENANCE_SERVICE
-  <checkbox id="useService"
-            data-l10n-id="update-application-use-service"
-            preference="app.update.service.enabled"/>
-#endif
 #ifdef NIGHTLY_BUILD
   <checkbox id="showUpdatePrompts"
             data-l10n-id="update-application-suppress-prompts"
@@ -589,14 +622,14 @@
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="performance-title"/></label>
 
   <hbox>
-  <label id="processCount" data-l10n-id="memory-and-performance"/>
-     <menulist id="dom-ipc-processCount" preference="dom.ipc.processCount">
-         <menupopup>
-           <menuitem data-l10n-id="min-memory" value="1"/>
-           <menuitem data-l10n-id="balance-memory" value="4"/>
-           <menuitem data-l10n-id="max-memory" value="8"/>
-         </menupopup>
-    </menulist>
+   <label id="processCount" data-l10n-id="memory-and-performance"/>
+       <menulist id="dom-ipc-processCount" preference="dom.ipc.processCount">
+           <menupopup>
+             <menuitem data-l10n-id="min-memory" value="1"/>
+             <menuitem data-l10n-id="balance-memory" value="4"/>
+             <menuitem data-l10n-id="max-memory" value="8"/>
+          </menupopup>
+      </menulist>
   </hbox>
 
   <hbox>
@@ -645,13 +678,13 @@
 
 #if defined(XP_WIN) || defined(XP_LINUX)
  <hbox id="openInExternalCategory"
-      class="subcategory hide-if-lightning-build"
+      class="subcategory"
       hidden="true"
       data-category="paneGeneral">
    <html:h1 data-l10n-id="openInExternal-title"/>
  </hbox>
 
- <groupbox id="openInExternalGroup" class="hide-if-lightning-build" data-category="paneGeneral" hidden="true">
+ <groupbox id="openInExternalGroup" data-category="paneGeneral" hidden="true">
     <checkbox preference="floorp.openLinkInExternal.enabled" data-l10n-id="open-link-in-external-enabled-option" class="needreboot"/>
     <hbox>
       <description flex="1" data-l10n-id="open-link-in-external-select-browser-option"/>
@@ -664,6 +697,7 @@
     </hbox>
  </groupbox>
 #endif
+
 
 <hbox id="browsingCategory"
       class="subcategory"
@@ -689,13 +723,20 @@
 #endif
 #ifdef XP_WIN
   <checkbox id="useOnScreenKeyboard"
-            hidden="true"
             data-l10n-id="browsing-use-onscreen-keyboard"
             preference="ui.osk.enabled"/>
 #endif
   <checkbox id="useCursorNavigation"
             data-l10n-id="browsing-use-cursor-navigation"
             preference="accessibility.browsewithcaret"/>
+#ifdef XP_MACOSX
+  <checkbox id="useFullKeyboardNavigation"
+            data-l10n-id="browsing-use-full-keyboard-navigation"
+            preference="accessibility.tabfocus" />
+#endif
+  <checkbox id="alwaysUnderlineLinks"
+            data-l10n-id="browsing-always-underline-links"
+            preference="layout.css.always_underline_links"/>
   <checkbox id="searchStartTyping"
             data-l10n-id="browsing-search-on-start-typing"
             preference="accessibility.typeaheadfind"/>
@@ -719,22 +760,17 @@
           support-page="media-keyboard-control"
     />
   </hbox>
-  <checkbox preference="floorp.search.top.mode" class="hide-if-lightning-build"
+
+    <checkbox preference="floorp.search.top.mode"
               id="searchbartop" data-l10n-id="search-positon-top"/>
 
-  <checkbox preference="floorp.enable.auto.restart" class="hide-if-lightning-build"
+  <checkbox preference="floorp.enable.auto.restart"
               id="autorestart" data-l10n-id="allow-auto-restart" />
-  <hbox>
-   <checkbox preference="toolkit.legacyUserProfileCustomizations.script" 
-             id ="legacytoolkit" data-l10n-id="enable-userscript" class="needreboot"/>
-    <label class="learnMore" is="text-link" href="https://t.me/midoriweb"
-            data-l10n-id="do-not-track-learn-more"/>
-  </hbox>
-  <description class="indent tip-caption" data-l10n-id="about-userscript"/>
 
   <checkbox id="disableExtensionCheckCompatibility" data-l10n-id="disable-extension-check-compatibility-option"/>
-  <checkbox preference="floorp.disable.fullscreen.notification" class="hide-if-lightning-build"
+  <checkbox preference="floorp.disable.fullscreen.notification"
              id="disable-fullscreen-notify" data-l10n-id="disable-fullscreen-notification"/>
+
   <hbox align="center" data-subcategory="cfraddons">
     <checkbox id="cfrRecommendations"
             class="tail-with-learn-more"
@@ -755,32 +791,6 @@
           support-page="extensionrecommendations"
     />
   </hbox>
-</groupbox>
-
-<!-- DRM Content -->
-<groupbox id="drmGroup" data-category="paneGeneral" data-subcategory="drm" hidden="true">
-  <label><html:h2 data-l10n-id="drm-content-header"/></label>
-  <hbox align="center">
-    <checkbox id="playDRMContent" preference="media.eme.enabled"
-              class="tail-with-learn-more" data-l10n-id="play-drm-content" />
-    <html:a is="moz-support-link"
-      data-l10n-id="play-drm-content-learn-more"
-      support-page="drm-content"
-    />
-  </hbox>
-</groupbox>
-
-<groupbox id="uaGroup" data-category="paneGeneral" data-subcategory="userAgent" hidden="true" class="hide-if-lightning-build">
-  <label><html:h2 data-l10n-id="userAgent-preference"/></label>
-   <radiogroup id="floorpUAs" preference="floorp.browser.UserAgent">
-     <radio value="0" data-l10n-id="default-useragent-mode"/>
-     <radio value="1" data-l10n-id="windows-chrome-useragent-mode"/>
-     <radio value="2" data-l10n-id="macOS-chrome-useragent-mode"/>
-     <radio value="3" data-l10n-id="linux-chrome-useragent-mode"/>
-     <radio value="4" data-l10n-id="mobile-chrome-useragent-mode"/>
-     <radio value="5" data-l10n-id="use-custom-useragent-mode"/>
-    </radiogroup>
-    <html:input type="text" id="customUsergent" placeholder="Mozilla/5.0 (Android 4.4; Tablet; rv:41.0) Gecko/41.0 Firefox/41.0" />
 </groupbox>
 
 <hbox id="networkProxyCategory"
@@ -813,6 +823,7 @@
               connection-proxy-option-no.label,
               connection-proxy-option-auto.label,
               connection-proxy-option-system.label,
+              connection-proxy-option-wpad.label,
               connection-proxy-option-manual.label,
               connection-proxy-http,
               connection-proxy-https,
@@ -825,7 +836,7 @@
               connection-proxy-https-sharing.label,
               connection-proxy-autotype.label,
               connection-proxy-reload.label,
-              connection-proxy-autologin.label,
+              connection-proxy-autologin-checkbox.label,
               connection-proxy-socks-remote-dns.label,
           " />
   </hbox>

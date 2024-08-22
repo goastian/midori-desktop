@@ -3,12 +3,12 @@ import {
   BaseContent,
   PrefsButton,
 } from "content-src/components/Base/Base";
-import { ASRouterAdmin } from "content-src/components/ASRouterAdmin/ASRouterAdmin";
+import { DiscoveryStreamAdmin } from "content-src/components/DiscoveryStreamAdmin/DiscoveryStreamAdmin";
 import { ErrorBoundary } from "content-src/components/ErrorBoundary/ErrorBoundary";
 import React from "react";
 import { Search } from "content-src/components/Search/Search";
 import { shallow } from "enzyme";
-import { actionCreators as ac } from "common/Actions.sys.mjs";
+import { actionCreators as ac } from "common/Actions.mjs";
 
 describe("<Base>", () => {
   let DEFAULT_PROPS = {
@@ -20,6 +20,11 @@ describe("<Base>", () => {
     dispatch: () => {},
     adminContent: {
       message: {},
+    },
+    document: {
+      visibilityState: "visible",
+      addEventListener: sinon.stub(),
+      removeEventListener: sinon.stub(),
     },
   };
 
@@ -47,24 +52,24 @@ describe("<Base>", () => {
     );
   });
 
-  it("should render an ASRouterAdmin if the devtools pref is true", () => {
+  it("should render an DiscoveryStreamAdmin if the devtools pref is true", () => {
     const wrapper = shallow(
       <Base
         {...DEFAULT_PROPS}
         Prefs={{ values: { "asrouter.devtoolsEnabled": true } }}
       />
     );
-    assert.lengthOf(wrapper.find(ASRouterAdmin), 1);
+    assert.lengthOf(wrapper.find(DiscoveryStreamAdmin), 1);
   });
 
-  it("should not render an ASRouterAdmin if the devtools pref is false", () => {
+  it("should not render an DiscoveryStreamAdmin if the devtools pref is false", () => {
     const wrapper = shallow(
       <Base
         {...DEFAULT_PROPS}
         Prefs={{ values: { "asrouter.devtoolsEnabled": false } }}
       />
     );
-    assert.lengthOf(wrapper.find(ASRouterAdmin), 0);
+    assert.lengthOf(wrapper.find(DiscoveryStreamAdmin), 0);
   });
 });
 
@@ -76,6 +81,11 @@ describe("<BaseContent>", () => {
     Sections: [],
     DiscoveryStream: { config: { enabled: false } },
     dispatch: () => {},
+    document: {
+      visibilityState: "visible",
+      addEventListener: sinon.stub(),
+      removeEventListener: sinon.stub(),
+    },
   };
 
   it("should render an ErrorBoundary with a Search child", () => {
@@ -113,6 +123,73 @@ describe("<BaseContent>", () => {
 
     const wrapper = shallow(<BaseContent {...onlySearchProps} />);
     assert.lengthOf(wrapper.find(".only-search"), 1);
+  });
+
+  it("should update firstVisibleTimestamp if it is visible immediately with no event listener", () => {
+    const props = Object.assign({}, DEFAULT_PROPS, {
+      document: {
+        visibilityState: "visible",
+        addEventListener: sinon.spy(),
+        removeEventListener: sinon.spy(),
+      },
+    });
+
+    const wrapper = shallow(<BaseContent {...props} />);
+    assert.notCalled(props.document.addEventListener);
+    assert.isDefined(wrapper.state("firstVisibleTimestamp"));
+  });
+  it("should attach an event listener for visibility change if it is not visible", () => {
+    const props = Object.assign({}, DEFAULT_PROPS, {
+      document: {
+        visibilityState: "hidden",
+        addEventListener: sinon.spy(),
+        removeEventListener: sinon.spy(),
+      },
+    });
+
+    const wrapper = shallow(<BaseContent {...props} />);
+    assert.calledWith(props.document.addEventListener, "visibilitychange");
+    assert.notExists(wrapper.state("firstVisibleTimestamp"));
+  });
+  it("should remove the event listener for visibility change when unmounted", () => {
+    const props = Object.assign({}, DEFAULT_PROPS, {
+      document: {
+        visibilityState: "hidden",
+        addEventListener: sinon.spy(),
+        removeEventListener: sinon.spy(),
+      },
+    });
+
+    const wrapper = shallow(<BaseContent {...props} />);
+    const [, listener] = props.document.addEventListener.firstCall.args;
+
+    wrapper.unmount();
+    assert.calledWith(
+      props.document.removeEventListener,
+      "visibilitychange",
+      listener
+    );
+  });
+  it("should remove the event listener for visibility change after becoming visible", () => {
+    const listeners = new Set();
+    const props = Object.assign({}, DEFAULT_PROPS, {
+      document: {
+        visibilityState: "hidden",
+        addEventListener: (ev, cb) => listeners.add(cb),
+        removeEventListener: (ev, cb) => listeners.delete(cb),
+      },
+    });
+
+    const wrapper = shallow(<BaseContent {...props} />);
+    assert.equal(listeners.size, 1);
+    assert.notExists(wrapper.state("firstVisibleTimestamp"));
+
+    // Simulate listeners getting called
+    props.document.visibilityState = "visible";
+    listeners.forEach(l => l());
+
+    assert.equal(listeners.size, 0);
+    assert.isDefined(wrapper.state("firstVisibleTimestamp"));
   });
 });
 

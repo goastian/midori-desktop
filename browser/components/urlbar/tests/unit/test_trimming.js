@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-add_task(async function setup() {
+add_setup(async function () {
   registerCleanupFunction(async () => {
     Services.prefs.clearUserPref("browser.urlbar.suggest.searches");
   });
@@ -22,7 +22,7 @@ add_task(async function test_untrimmed_secure_www() {
     matches: [
       makeVisitResult(context, {
         uri: "https://www.mozilla.org/",
-        fallbackTitle: "https://www.mozilla.org",
+        fallbackTitle: UrlbarTestUtils.trimURL("https://www.mozilla.org"),
         heuristic: true,
       }),
       makeVisitResult(context, {
@@ -68,7 +68,7 @@ add_task(async function test_untrimmed_secure() {
     matches: [
       makeVisitResult(context, {
         uri: "https://mozilla.org/",
-        fallbackTitle: "https://mozilla.org",
+        fallbackTitle: UrlbarTestUtils.trimURL("https://mozilla.org"),
         heuristic: true,
       }),
       makeVisitResult(context, {
@@ -114,7 +114,7 @@ add_task(async function test_untrimmed_www() {
     matches: [
       makeVisitResult(context, {
         uri: "http://www.mozilla.org/",
-        fallbackTitle: "www.mozilla.org",
+        fallbackTitle: UrlbarTestUtils.trimURL("http://www.mozilla.org"),
         heuristic: true,
       }),
       makeVisitResult(context, {

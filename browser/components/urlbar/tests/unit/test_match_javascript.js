@@ -10,12 +10,10 @@
 testEngine_setup();
 
 add_task(async function test_javascript_match() {
-  Services.prefs.setBoolPref("browser.urlbar.autoFill.searchEngines", false);
   Services.prefs.setBoolPref("browser.urlbar.suggest.searches", false);
   Services.prefs.setBoolPref("browser.urlbar.suggest.engines", false);
   Services.prefs.setBoolPref("browser.urlbar.suggest.quickactions", false);
   registerCleanupFunction(() => {
-    Services.prefs.clearUserPref("browser.urlbar.autoFill.searchEngines");
     Services.prefs.clearUserPref("browser.urlbar.suggest.searches");
     Services.prefs.clearUserPref("browser.urlbar.suggest.engines");
     Services.prefs.clearUserPref("browser.urlbar.suggest.quickactions");
@@ -34,7 +32,10 @@ add_task(async function test_javascript_match() {
   await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
 
   info("Match non-javascript: with plain search");
-  let context = createContext("a", { isPrivate: false });
+  let context = createContext("a", {
+    isPrivate: false,
+    allowAutofill: false /* avoid autofilling abc, as it's not necessary */,
+  });
   await check_results({
     context,
     matches: [

@@ -2,7 +2,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 /**
  * TestCase for bug 564387
@@ -12,7 +12,7 @@ add_task(async function () {
   var fileName;
 
   let loadPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     gBrowser,
     "http://mochi.test:8888/browser/browser/base/content/test/general/web_video.html"
   );
@@ -52,7 +52,7 @@ add_task(async function () {
 
       is(
         fileName,
-        "web-video1-expectedName.ogv",
+        "web-video1-expectedName.webm",
         "Video file name is correctly retrieved from Content-Disposition http header"
       );
       resolve();

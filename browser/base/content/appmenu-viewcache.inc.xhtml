@@ -3,24 +3,11 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <html:template id="appMenu-viewCache">
-  <panelview id="appMenu-mainView" class="PanelUI-subView">
-    <vbox class="panel-subview-body">
-      <toolbarbutton id="appMenu-whatsnew-button"
-                     class="subviewbutton subviewbutton-iconic subviewbutton-nav"
-                     hidden="true"
-                     closemenu="none"
-                     oncommand="PanelUI.showSubView('PanelUI-whatsNew', this)"/>
-    </vbox>
-  </panelview>
-
-  <!-- This is a placeholder app menu which should be replaced with the "real"
-       Proton app menu before the Proton pref starts getting enabled. -->
-  <panelview id="appMenu-protonMainView" class="PanelUI-subView"
+  <panelview id="appMenu-mainView" class="PanelUI-subView"
              lockpanelvertical="true">
     <vbox class="panel-subview-body">
-      <vbox id="appMenu-proton-addon-banners"/>
-      <toolbarbutton id="appMenu-proton-update-banner" class="panel-banner-item subviewbutton"
-                     oncommand="PanelUI._onBannerItemSelected(event)"
+      <vbox id="appMenu-addon-banners"/>
+      <toolbarbutton id="appMenu-update-banner" class="panel-banner-item subviewbutton"
                      wrap="true"
                      hidden="true"/>
       <toolbaritem id="appMenu-fxa-status2"
@@ -29,7 +16,7 @@
         <html:div id="appMenu-fxa-text" data-l10n-id="appmenu-fxa-sync-and-save-data2"/>
         <toolbarbutton id="appMenu-fxa-label2"
                       class="subviewbutton"
-                      oncommand="gSync.toggleAccountPanel(this, event)">
+                      >
           <vbox flex="1">
             <label id="appMenu-header-title"
                    crop="end"/>
@@ -38,6 +25,12 @@
           </vbox>
         </toolbarbutton>
       </toolbaritem>
+      <toolbarbutton id="appMenu-profiles-button"
+                     class="subviewbutton subviewbutton-nav"
+                     data-l10n-id="appmenuitem-profiles"
+                     data-l10n-args='{ "profilename": "" }'
+                     closemenu="none"
+                     hidden="true"/>
       <toolbarseparator id="appMenu-fxa-separator" class="proton-zap"/>
       <toolbarbutton id="appMenu-new-tab-button2"
                      class="subviewbutton"
@@ -55,18 +48,19 @@
                      key="key_privatebrowsing"
                      command="Tools:PrivateBrowsing"/>
       <toolbarseparator/>
+
 <!-- Floorp Injections +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
       <toolbarbutton id="appMenu-ssb-button"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="appmenuitem-webapps"
                      closemenu="none"
-                     oncommand="gSsbChromeManager.functions.showSsbPanelSubView();"/>
+                     oncommand="gSsbSupport.functions.showSsbPanelSubView();"/>
       <panelview id="PanelUI-ssb">
         <vbox id="ssb-subview-body" class="panel-subview-body">
           <toolbarbutton id="appMenu-install-or-open-ssb-current-page-button"
                          class="subviewbutton"
                          data-l10n-id="appmenuitem-install-current-page"
-                         oncommand="gSsbChromeManager.functions.installOrRunCurrentPageAsSsb(false);"/>
+                         oncommand="gSsbSupport.functions.installOrRunCurrentPageAsSsb(false);"/>
           <toolbarseparator/>
           <html:h2 id="panelMenu_openInstalledApps"
                    data-l10n-id="appmenu-open-installed-apps-subheader"
@@ -89,19 +83,18 @@
                        oncommand=""
                        hidden="true"/>
       </panelview>
-
 <!-- Floorp Injections +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
 
       <toolbarbutton id="appMenu-bookmarks-button"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="library-bookmarks-menu"
                      closemenu="none"
-                     oncommand="BookmarkingUI.showSubView(this);"/>
+                     />
       <toolbarbutton id="appMenu-history-button"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="appmenuitem-history"
                      closemenu="none"
-                     oncommand="PanelUI.showSubView('PanelUI-history', this)"/>
+                     />
       <toolbarbutton id="appMenu-downloads-button"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-downloads"
@@ -110,18 +103,12 @@
       <toolbarbutton id="appMenu-passwords-button"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-passwords"
-                     oncommand="LoginHelper.openPasswordManager(window, { entryPoint: 'mainmenu' })"
                      />
       <toolbarbutton id="appMenu-extensions-themes-button"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-addons-and-themes"
                      key="key_openAddons"
                      command="Tools:Addons"
-                     />
-      <toolbarbutton id="openprofiledir"
-                     class="subviewbutton"
-                     data-l10n-id="open-profile-dir"
-                     oncommand="OpenChromeDirectory();"
                      />
       <toolbarseparator/>
       <toolbarbutton id="appMenu-print-button2"
@@ -164,13 +151,6 @@
                        class="subviewbutton subviewbutton-iconic"
                        data-l10n-id="appmenuitem-fullscreen"
                        type="checkbox"
-# Note that we're custom-handling this click to make sure the panel disappears
-# before entering fullscreen, as it does some odd moving about on the screen
-# in the middle of the fullscreen transition otherwise.
-                       oncommand="
-                         this.closest('panel').hidePopup();
-                         setTimeout(() => BrowserFullScreen(), 0);
-                       "
                        tooltip="dynamic-shortcut-tooltip">
            <observes element="View:FullScreen" attribute="checked"/>
         </toolbarbutton>
@@ -182,23 +162,32 @@
 #ifdef XP_MACOSX
                      key="key_preferencesCmdMac"
 #endif
-                     oncommand="openPreferences()"/>
+                     />
       <toolbarbutton id="appMenu-more-button2"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="appmenuitem-more-tools"
                      closemenu="none"
-                     oncommand="PanelUI.showMoreToolsPanel(this);"/>
+                     />
+      <toolbarbutton id="appMenu-report-broken-site-button"
+                     class="subviewbutton subviewbutton-nav"
+                     data-l10n-id="appmenuitem-report-broken-site"
+                     closemenu="none"
+                     hidden="true"
+                     command="cmd_reportBrokenSite"/>
       <toolbarbutton id="appMenu-help-button2"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="appmenuitem-help"
                      closemenu="none"
-                     oncommand="PanelUI.showSubView('PanelUI-helpView', this)"/>
+                     />
 #ifndef XP_MACOSX
       <toolbarseparator/>
+<!-- Floorp Injections +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
       <toolbarbutton id="rebootappmenu"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-reboot"
-                     oncommand="restartbrowser();"/>
+                     oncommand="gFloorpCommands.restartbrowser();"/>
+<!-- Floorp Injections +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
       <toolbarbutton id="appMenu-quit-button2"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-exit2"
@@ -214,16 +203,16 @@
                      data-l10n-id="appmenu-recently-closed-tabs"
                      class="subviewbutton subviewbutton-nav"
                      closemenu="none"
-                     oncommand="PanelUI.showSubView('appMenu-library-recentlyClosedTabs', this)"/>
+                     />
       <toolbarbutton id="appMenuRecentlyClosedWindows"
                      data-l10n-id="appmenu-recently-closed-windows"
                      class="subviewbutton subviewbutton-nav"
                      closemenu="none"
-                     oncommand="PanelUI.showSubView('appMenu-library-recentlyClosedWindows', this)"/>
+                     />
       <toolbarbutton id="appMenuSearchHistory"
                      data-l10n-id="appmenu-search-history"
                      class="subviewbutton"
-                     oncommand="PlacesCommandHook.searchHistory()"/>
+                     />
       <toolbarbutton id="appMenu-restoreSession"
                      data-l10n-id="appmenu-restore-session"
                      class="subviewbutton"
@@ -249,7 +238,40 @@
     <toolbarbutton id="PanelUI-historyMore"
                    class="subviewbutton panel-subview-footer-button"
                    data-l10n-id="appmenu-manage-history"
-                   oncommand="PlacesCommandHook.showPlacesOrganizer('History'); CustomizableUI.hidePanelForNode(this);"/>
+                   />
+  </panelview>
+
+  <panelview id="PanelUI-profiles" flex="1">
+    <vbox class="panel-subview-body">
+      <vbox id="current-profile">
+        <image id="profile-icon-image"></image>
+        <h2 id="profile-name"></h2>
+        <hbox id="this-profile-buttons">
+          <toolbarbutton id="profiles-edit-this-delete-button"
+                         class="subviewbutton toolbarbutton-1"
+                         />
+          <toolbarbutton id="profiles-delete-this-profile-button"
+                         class="subviewbutton toolbarbutton-1"
+                         />
+        </hbox>
+      </vbox>
+      <toolbarseparator/>
+      <vbox id="profiles-list"></vbox>
+      <toolbarseparator/>
+      <toolbarbutton id="profiles-close-profile-button"
+                     class="subviewbutton"
+                     data-l10n-id="appmenu-close-profile"
+                     data-l10n-args='{ "profilename": "" }'
+                     />
+      <toolbarbutton id="profiles-create-profile-button"
+                     class="subviewbutton"
+                     data-l10n-id="appmenu-create-profile"
+                     />
+      <toolbarbutton id="profiles-manage-profiles-button"
+                     class="subviewbutton"
+                     data-l10n-id="appmenu-manage-profiles"
+                     />
+    </vbox>
   </panelview>
 
   <panelview id="appMenu-library-recentlyClosedTabs"/>
@@ -272,12 +294,12 @@
       <toolbarbutton id="panelMenu_searchBookmarks"
                      data-l10n-id="bookmarks-search"
                      class="subviewbutton"
-                     oncommand="PlacesCommandHook.searchBookmarks();"/>
+                     />
       <toolbarbutton id="panelMenu_viewBookmarksToolbar"
                      class="subviewbutton"
                      data-l10n-id="bookmarks-tools-toolbar-visibility-panel"
                      data-l10n-args='{ "isVisible": false }'
-                     oncommand="BookmarkingUI.toggleBookmarksToolbar('bookmark-tools');"/>
+                     />
       <toolbarseparator/>
       <html:h2 id="panelMenu_recentBookmarks"
           data-l10n-id="bookmarks-recent-bookmarks-panel-subheader"
@@ -300,9 +322,12 @@
                    />
   </panelview>
 
-  <panelview id="PanelUI-profiler" showheader="true">
+  <panelview id="PanelUI-profiler"
+             mainview-with-header="true"
+             has-customized-header="true">
     <vbox id="PanelUI-profiler-header" animationready="false">
-      <hbox id="PanelUI-profiler-header-bar" class="panel-header panel-header-with-info-button">
+      <hbox id="PanelUI-profiler-header-bar"
+            class="panel-header panel-header-with-additional-element panel-header-with-info-button">
         <html:h1>
           <html:span data-l10n-id="profiler-popup-header-text"></html:span>
         </html:h1>
@@ -467,8 +492,6 @@
           <toolbarbutton id="PanelUI-remotetabs-syncnow"
                          align="center"
                          class="subviewbutton"
-                         oncommand="gSync.doSync();"
-                         onmouseover="gSync.refreshSyncButtonsTooltip();"
                          closemenu="none">
             <hbox flex="1">
               <image class="syncNowBtn"/>
@@ -483,7 +506,7 @@
           <toolbarbutton id="PanelUI-remotetabs-view-managedevices"
                          class="subviewbutton"
                          data-l10n-id="appmenuitem-fxa-manage-account"
-                         oncommand="gSync.openDevicesManagementPage('syncedtabs-menupanel');">
+                         >
                          <observes element="sidebar-box" attribute="positionend"/>
           </toolbarbutton>
           <toolbarseparator id="PanelUI-remotetabs-separator"/>
@@ -510,7 +533,7 @@
                 <toolbarbutton class="PanelUI-remotetabs-button"
                                id="PanelUI-remotetabs-tabsdisabledpane-button"
                                data-l10n-id="appmenu-remote-tabs-opensettings"
-                               oncommand="gSync.openPrefs('synced-tabs');"/>
+                               />
               </hbox>
             </vbox>
           </hbox>
@@ -524,7 +547,7 @@
               <toolbarbutton id="PanelUI-remotetabs-connect-device-button"
                              class="PanelUI-remotetabs-button"
                              data-l10n-id="appmenu-remote-tabs-connectdevice"
-                             oncommand="gSync.openConnectAnotherDevice('synced-tabs');"/>
+                             />
             </vbox>
           </hbox>
         </deck>
@@ -542,7 +565,7 @@
           <toolbarbutton class="PanelUI-remotetabs-button"
                          id="PanelUI-remotetabs-setupsync-button"
                          data-l10n-id="appmenu-remote-tabs-sign-into-sync"
-                         oncommand="gSync.openPrefs('synced-tabs');"/>
+                         />
         </vbox>
         <!-- When Sync is not enabled -->
         <vbox id="PanelUI-remotetabs-syncdisabled"
@@ -555,7 +578,7 @@
           <toolbarbutton class="PanelUI-remotetabs-button"
                          id="PanelUI-remotetabs-syncdisabled-button"
                          data-l10n-id="appmenu-remote-tabs-turn-on-sync"
-                         oncommand="gSync.openPrefs('synced-tabs');"/>
+                         />
         </vbox>
         <!-- When Sync needs re-authentication -->
         <vbox id="PanelUI-remotetabs-reauthsync"
@@ -568,7 +591,7 @@
           <toolbarbutton class="PanelUI-remotetabs-button"
                          id="PanelUI-remotetabs-reauthsync-button"
                          data-l10n-id="appmenu-remote-tabs-sign-into-sync"
-                         oncommand="gSync.openPrefs('synced-tabs');"/>
+                         />
         </vbox>
         <!-- When Sync needs verification -->
         <vbox id="PanelUI-remotetabs-unverified"
@@ -581,7 +604,7 @@
           <toolbarbutton class="PanelUI-remotetabs-button"
                          id="PanelUI-remotetabs-unverified-button"
                          data-l10n-id="appmenu-remote-tabs-opensettings"
-                         oncommand="gSync.openPrefs('synced-tabs');"/>
+                         />
         </vbox>
       </hbox>
     </vbox>
@@ -592,21 +615,20 @@
       <toolbarbutton id="fxa-manage-account-button"
                      align="center"
                      class="subviewbutton"
-                     oncommand="gSync.clickFxAMenuHeaderButton(this);">
+                     >
         <vbox flex="1">
           <label id="fxa-menu-header-title"
                  crop="end"
                  data-l10n-id="appmenuitem-fxa-sign-in"/>
           <label id="fxa-menu-header-description"
                  crop="end"
+                 hidden="true"
                  data-l10n-id="fxa-menu-turn-on-sync"/>
         </vbox>
       </toolbarbutton>
       <toolbarbutton id="PanelUI-fxa-menu-syncnow-button"
                      align="center"
                      class="subviewbutton"
-                     oncommand="gSync.doSyncFromFxaMenu(this);"
-                     onmouseover="gSync.refreshSyncButtonsTooltip();"
                      closemenu="none">
         <hbox flex="1">
           <image id="PanelUI-appMenu-fxa-image-last-synced"
@@ -619,36 +641,69 @@
                  crop="end"/>
         </hbox>
       </toolbarbutton>
+      <vbox id="PanelUI-signedin-panel" hidden="true">
       <toolbarbutton id="PanelUI-fxa-menu-setup-sync-button"
                       class="subviewbutton"
                       data-l10n-id="appmenu-fxa-setup-sync"
-                      oncommand="gSync.openPrefsFromFxaMenu('sync_settings', this);"/>
+                      />
       <!-- The `Connect Another Device` button is disabled by default until the user logs into Sync. -->
       <toolbarbutton id="PanelUI-fxa-menu-connect-device-button"
                       class="subviewbutton"
                       data-l10n-id="fxa-menu-connect-another-device"
                       disabled="true"
-                      oncommand="gSync.openConnectAnotherDeviceFromFxaMenu(this);"/>
+                      />
       <toolbarbutton id="PanelUI-fxa-menu-sendtab-button"
                       class="subviewbutton subviewbutton-nav"
                       data-l10n-id="fxa-menu-send-tab-to-device"
                       data-l10n-args='{"tabCount":1}'
                       closemenu="none"
-                      oncommand="gSync.showSendToDeviceViewFromFxaMenu(this);"/>
+                      />
       <toolbarbutton id="PanelUI-fxa-menu-sync-prefs-button"
                       class="subviewbutton"
                       data-l10n-id="fxa-menu-sync-settings"
                       hidden="true"
-                      oncommand="gSync.openPrefsFromFxaMenu('sync_settings', this);"/>
-      <toolbarseparator id="PanelUI-sign-out-separator"/>
+                      />
+      <toolbarseparator id="PanelUI-sign-out-separator" />
       <toolbarbutton id="PanelUI-fxa-menu-account-signout-button"
               class="subviewbutton"
               data-l10n-id="fxa-menu-sign-out"
-              oncommand="gSync.disconnect();"/>
-      <toolbarseparator id="PanelUI-remote-tabs-separator"/>
+              hidden="true"/>
+      </vbox>
+      <!-- updateCTAPanel will control if we show this panel -->
+      <vbox id="PanelUI-fxa-cta-menu" hidden="true">
+        <toolbarseparator id="PanelUI-products-separator" />
+        <toolbarbutton id="PanelUI-fxa-menu-monitor-button" class="fxa-cta-button subviewbutton subviewbutton-iconic">
+          <vbox flex="1">
+            <hbox align="center">
+              <image class="PanelUI-fxa-menu-monitor-button ctaMenuLogo" role="presentation" />
+              <label id="fxa-menu-header-title" crop="end" data-l10n-id="appmenuitem-monitor-title" />
+            </hbox>
+            <label id="cta-menu-header-description" crop="end" data-l10n-id="appmenuitem-monitor-description" />
+          </vbox>
+        </toolbarbutton>
+        <toolbarbutton id="PanelUI-fxa-menu-relay-button" class="fxa-cta-button subviewbutton subviewbutton-iconic">
+          <vbox flex="1">
+            <hbox align="center">
+              <image class="PanelUI-fxa-menu-relay-button ctaMenuLogo" role="presentation" />
+              <label id="fxa-menu-header-title" crop="end" data-l10n-id="appmenuitem-relay-title" />
+            </hbox>
+            <label id="cta-menu-header-description" crop="end" data-l10n-id="appmenuitem-relay-description" />
+          </vbox>
+        </toolbarbutton>
+        <toolbarbutton id="PanelUI-fxa-menu-vpn-button" class="fxa-cta-button subviewbutton subviewbutton-iconic">
+          <vbox flex="1">
+            <hbox align="center">
+              <image class="PanelUI-fxa-menu-vpn-button ctaMenuLogo" role="presentation" />
+              <label id="fxa-menu-header-title" crop="end" data-l10n-id="appmenuitem-vpn-title" />
+            </hbox>
+            <label id="cta-menu-header-description" crop="end" data-l10n-id="appmenuitem-vpn-description" />
+          </vbox>
+        </toolbarbutton>
+      </vbox>
       <deck id="PanelUI-fxa-remotetabs-deck">
         <!-- Sync is ready to Sync and the "tabs" engine is enabled -->
         <vbox id="PanelUI-fxa-remotetabs-tabspane">
+          <toolbarseparator id="PanelUI-remote-tabs-separator" />
           <vbox id="PanelUI-fxa-remotetabs-tabslist"
           notabsforclientlabel="appmenu-remote-tabs-notabs"
           />
@@ -677,7 +732,7 @@
       <toolbarbutton id="PanelUI-fxa-menu-sendtab-not-configured-button"
                      class="PanelUI-fxa-signin-button"
                      data-l10n-id="appmenuitem-fxa-sign-in"
-                     oncommand="gSync.openPrefsFromFxaMenu('send_tab', this);"/>
+                     />
     </vbox>
   </panelview>
 
@@ -688,7 +743,15 @@
       <toolbarbutton id="PanelUI-fxa-menu-sendtab-connect-device-button"
                      class="PanelUI-fxa-signin-button"
                      data-l10n-id="appmenu-remote-tabs-connectdevice"
-                     oncommand="gSync.openConnectAnotherDeviceFromFxaMenu(this);"/>
+                     />
+    </vbox>
+  </panelview>
+
+  <!-- This panelview holds the list of "inactive" tabs for devices -->
+  <panelview id="PanelUI-fxa-menu-inactive-tabs" class="PanelUI-subView PanelUI-remotetabs-clientcontainer">
+    <label itemtype="client">
+    </label>
+    <vbox class="panel-subview-body">
     </vbox>
   </panelview>
 
@@ -698,39 +761,55 @@
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="library-bookmarks-menu"
                      closemenu="none"
-                     oncommand="BookmarkingUI.showSubView(this);"/>
+                     />
       <toolbarbutton id="appMenu-library-history-button"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="appmenuitem-history"
                      closemenu="none"
-                     oncommand="PanelUI.showSubView('PanelUI-history', this)"/>
+                     />
       <toolbarbutton id="appMenu-library-downloads-button"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-downloads"
-                     oncommand="DownloadsPanel.showDownloadsHistory();"/>
+                     />
     </vbox>
   </panelview>
 
-  <panelview id="PanelUI-whatsNew" class="PanelUI-subView" showheader="true">
-    <hbox id="PanelUI-whatsNew-title" class="panel-header">
-      <html:h1>
-        <html:span data-l10n-id="whatsnew-panel-header"></html:span>
-      </html:h1>
-    </hbox>
-    <toolbarseparator/>
-    <vbox class="panel-subview-body">
-      <toolbaritem id="PanelUI-whatsNew-content"
-                   orient="vertical"
-                   smoothscroll="false">
-        <html:div id="PanelUI-whatsNew-message-container" role="document">
-          <!-- What's New messages will be rendered here -->
-        </html:div>
-      </toolbaritem>
+  <panelview id="reset-pbm-panel" class="PanelUI-subView" role="document">
+    <vbox id="reset-pbm-panel-container" role="alertdialog" aria-labelledby="reset-pbm-panel-header">
+      <hbox id="reset-pbm-panel-header">
+        <description data-l10n-id="reset-pbm-panel-heading" role="heading" aria-level="2"/>
+      </hbox>
+
+      <description id="reset-pbm-panel-description" data-l10n-id="reset-pbm-panel-description"/>
+      <checkbox id="reset-pbm-panel-checkbox" data-l10n-id="reset-pbm-panel-always-ask-checkbox"/>
+
+      <html:moz-button-group id="reset-pbm-panel-footer" class="panel-footer">
+        <button id="reset-pbm-panel-cancel-button"
+                class="footer-button"
+                data-l10n-id="reset-pbm-panel-cancel-button"
+                ></button>
+        <button slot="primary"
+                id="reset-pbm-panel-confirm-button"
+                class="footer-button"
+                data-l10n-id="reset-pbm-panel-confirm-button"
+                ></button>
+      </html:moz-button-group>
     </vbox>
-    <toolbarseparator/>
-    <checkbox id="panelMenu-toggleWhatsNew"
-              class="panelMenu-toggleWhatsNew-checkbox"
-              onclick="ToolbarPanelHub.toggleWhatsNewPref(event)"
-              data-l10n-id="whatsnew-panel-footer-checkbox"/>
   </panelview>
+
+  <panelview id="content-analysis-panel" class="PanelUI-subView" role="document" mainview-with-header="true">
+    <vbox id="content-analysis-panel-container" role="alertdialog" aria-labelledby="content-analysis-header">
+      <hbox class="panel-header">
+        <html:h1 id="content-analysis-header" data-l10n-id="content-analysis-panel-title"/>
+      </hbox>
+      <description id="content-analysis-panel-description">
+        <html:a is="moz-support-link"
+                data-l10n-name="info"
+                class="learnMore"
+                support-page="data-loss-prevention"/>
+      </description>
+    </vbox>
+  </panelview>
+
+#include ../../components/reportbrokensite/content/reportBrokenSitePanel.inc.xhtml
 </html:template>

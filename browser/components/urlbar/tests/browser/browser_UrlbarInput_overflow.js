@@ -2,8 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-async function testVal(aExpected, overflowSide = "") {
-  info(`Testing ${aExpected}`);
+async function testVal(aExpected, overflowSide = null) {
+  info(`Testing ${aExpected} with overflow ${overflowSide}`);
   try {
     gURLBar.setURI(makeURI(aExpected));
   } catch (ex) {
@@ -45,10 +45,14 @@ async function testVal(aExpected, overflowSide = "") {
   );
 
   let scheme = aExpected.match(/^([a-z]+:\/{0,2})/)?.[1] || "";
-  // We strip http, so we should not show the scheme for it.
+  // If we strip the protocol, or insecure label is enabled, we should not show
+  // the scheme for it.
   if (
-    scheme == "http://" &&
-    Services.prefs.getBoolPref("browser.urlbar.trimURLs", true)
+    !gURLBar.value.startsWith(scheme) ||
+    Services.prefs.getBoolPref(
+      "security.insecure_connection_text.enabled",
+      false
+    )
   ) {
     scheme = "";
   }
@@ -56,7 +60,7 @@ async function testVal(aExpected, overflowSide = "") {
   Assert.equal(
     gURLBar.valueFormatter.scheme.value,
     scheme,
-    "Check the scheme value"
+    "Check the scheme value after blur"
   );
   let isOverflowed =
     gURLBar.inputField.scrollWidth > gURLBar.inputField.clientWidth;
@@ -129,7 +133,7 @@ add_task(async function () {
   await testVal(`http://${rtlDomain}:8888/${lotsOfSpaces}/test/`, "left");
   await testVal(`http://[::1]/${rtlChar}/${lotsOfSpaces}/test/`, "right");
 
-  info("Test with formatting disabled");
+  info("Test with formatting and trimURLs disabled");
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.urlbar.formatting.enabled", false],
@@ -140,8 +144,6 @@ add_task(async function () {
   await testVal(`https://mozilla.org/`);
   await testVal(`https://${rtlDomain}/${lotsOfSpaces}/test/`, "left");
   await testVal(`https://mozilla.org/${lotsOfSpaces}/test/`, "right");
-
-  info("Test with trimURLs disabled");
   await testVal(`http://${rtlDomain}/${lotsOfSpaces}/test/`, "left");
 
   await SpecialPowers.popPrefEnv();

@@ -134,7 +134,7 @@ export var TestRunner = {
       .removeAttribute("remotecontrol");
 
     let selectedBrowser = browserWindow.gBrowser.selectedBrowser;
-    lazy.BrowserTestUtils.loadURIString(selectedBrowser, HOME_PAGE);
+    lazy.BrowserTestUtils.startLoadingURIString(selectedBrowser, HOME_PAGE);
     await lazy.BrowserTestUtils.browserLoaded(selectedBrowser);
 
     for (let i = 0; i < this.combos.length; i++) {
@@ -155,8 +155,9 @@ export var TestRunner = {
   /**
    * Helper function for loadSets. This filters out the restricted configs from setName.
    * This was made a helper function to facilitate xpcshell unit testing.
-   * @param {String} setName - set name to be filtered e.g. "Toolbars[onlyNavBar,allToolbars]"
-   * @return {Object} Returns an object with two values: the filtered set name and a set of
+   *
+   * @param {string} setName - set name to be filtered e.g. "Toolbars[onlyNavBar,allToolbars]"
+   * @returns {object} Returns an object with two values: the filtered set name and a set of
    *                  restricted configs.
    */
   filterRestrictions(setName) {
@@ -175,8 +176,9 @@ export var TestRunner = {
 
   /**
    * Load sets of configurations from JSMs.
-   * @param {String[]} setNames - array of set names (e.g. ["Tabs", "WindowSize"].
-   * @return {Object[]} Array of sets containing `name` and `configurations` properties.
+   *
+   * @param {string[]} setNames - array of set names (e.g. ["Tabs", "WindowSize"].
+   * @returns {object[]} Array of sets containing `name` and `configurations` properties.
    */
   loadSets(setNames) {
     let sets = [];
@@ -187,8 +189,8 @@ export var TestRunner = {
         setName = filteredData.trimmedSetName;
         restrictions = filteredData.restrictions;
       }
-      let imported = ChromeUtils.import(
-        `resource://mozscreenshots/configurations/${setName}.jsm`
+      let imported = ChromeUtils.importESModule(
+        `resource://mozscreenshots/configurations/${setName}.sys.mjs`
       );
       imported[setName].init(this._libDir);
       let configurationNames = Object.keys(imported[setName].configurations);
@@ -228,7 +230,7 @@ export var TestRunner = {
       gBrowser.removeTab(gBrowser.selectedTab, { animate: false });
     }
     gBrowser.unpinTab(gBrowser.selectedTab);
-    lazy.BrowserTestUtils.loadURIString(
+    lazy.BrowserTestUtils.startLoadingURIString(
       gBrowser.selectedBrowser,
       "data:text/html;charset=utf-8,<h1>Done!"
     );
@@ -243,9 +245,10 @@ export var TestRunner = {
   /**
    * Calculate the bounding box based on CSS selector from config for cropping
    *
-   * @param {String[]} selectors - array of CSS selectors for relevant DOM element
-   * @return {Geometry.sys.mjs Rect} Rect holding relevant x, y, width, height with padding
-   **/
+   * @param {string[]} selectors - array of CSS selectors for relevant DOM element
+   * @returns {Rect}
+   *   A Geometry.sys.mjs Rect holding relevant x, y, width, height with padding
+   */
   _findBoundingBox(selectors, windowType) {
     if (!selectors.length) {
       throw new Error("No selectors specified.");
@@ -564,8 +567,9 @@ export var TestRunner = {
 
   /**
    * Finds the index of the first comma that is not enclosed within square brackets.
-   * @param {String} envVar - the string that needs to be searched
-   * @return {Integer} index of valid comma or -1 if not found.
+   *
+   * @param {string} envVar - the string that needs to be searched
+   * @returns {number} index of valid comma or -1 if not found.
    */
   findComma(envVar) {
     let nestingDepth = 0;
@@ -584,8 +588,9 @@ export var TestRunner = {
 
   /**
    * Splits the environment variable around commas not enclosed in brackets.
-   * @param {String} envVar - The environment variable
-   * @return {String[]} Array of strings containing the configurations
+   *
+   * @param {string} envVar - The environment variable
+   * @returns {string[]} Array of strings containing the configurations
    * e.g. ["Toolbars[onlyNavBar,allToolbars]","DevTools[jsdebugger,webconsole]","Tabs"]
    */
   splitEnv(envVar) {
@@ -604,7 +609,7 @@ export var TestRunner = {
 
 /**
  * Helper to lazily compute the Cartesian product of all of the sets of configurations.
- **/
+ */
 function LazyProduct(sets) {
   /**
    * An entry for each set with the value being:

@@ -60,9 +60,8 @@ async function testClearData(clearSiteData, clearCache) {
   let doc = gBrowser.selectedBrowser.contentDocument;
   let clearSiteDataButton = doc.getElementById("clearSiteDataButton");
 
-  let dialogOpened = promiseLoadSubDialog(
-    "chrome://browser/content/preferences/dialogs/clearSiteData.xhtml"
-  );
+  let url = "chrome://browser/content/preferences/dialogs/clearSiteData.xhtml";
+  let dialogOpened = promiseLoadSubDialog(url);
   clearSiteDataButton.doCommand();
   let dialogWin = await dialogOpened;
 
@@ -73,9 +72,11 @@ async function testClearData(clearSiteData, clearCache) {
   // since we've had cache intermittently changing under our feet.
   let [, convertedCacheUnit] = DownloadUtils.convertByteUnits(cacheUsage);
 
+  let cookiesCheckboxId = "clearSiteData";
+  let cacheCheckboxId = "clearCache";
   let clearSiteDataCheckbox =
-    dialogWin.document.getElementById("clearSiteData");
-  let clearCacheCheckbox = dialogWin.document.getElementById("clearCache");
+    dialogWin.document.getElementById(cookiesCheckboxId);
+  let clearCacheCheckbox = dialogWin.document.getElementById(cacheCheckboxId);
   // The usage details are filled asynchronously, so we assert that they're present by
   // waiting for them to be filled in.
   await Promise.all([
@@ -197,6 +198,12 @@ async function testClearData(clearSiteData, clearCache) {
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
   await SiteDataManager.removeAll();
 }
+
+add_setup(function () {
+  SpecialPowers.pushPrefEnv({
+    set: [["privacy.sanitize.useOldClearHistoryDialog", true]],
+  });
+});
 
 // Test opening the "Clear All Data" dialog and cancelling.
 add_task(async function () {

@@ -33,9 +33,7 @@ function recordTelemetryEvent(event) {
       extra
     );
   } catch (ex) {
-    console.error(
-      "AboutLoginsChild: error recording telemetry event: " + ex.message
-    );
+    console.error("AboutLoginsChild: error recording telemetry event:", ex);
   }
 }
 
@@ -162,7 +160,11 @@ export class AboutLoginsChild extends JSWindowActorChild {
   }
 
   #aboutLoginsCopyLoginDetail(detail) {
-    lazy.ClipboardHelper.copyString(detail, lazy.ClipboardHelper.Sensitive);
+    lazy.ClipboardHelper.copyString(
+      detail,
+      this.windowContext,
+      lazy.ClipboardHelper.Sensitive
+    );
   }
 
   #aboutLoginsCreateLogin(login) {

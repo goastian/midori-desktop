@@ -15,7 +15,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UIState: "resource://services-sync/UIState.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "syncUtils", () => {
+ChromeUtils.defineLazyGetter(lazy, "syncUtils", () => {
   return ChromeUtils.importESModule("resource://services-sync/util.sys.mjs")
     .Utils;
 });
@@ -153,7 +153,7 @@ export const SyncedTabsErrorHandler = {
     },
     [ErrorType.FXA_ADMIN_DISABLED]: {
       header: "firefoxview-tabpickup-fxa-admin-disabled-header",
-      description: "firefoxview-tabpickup-fxa-admin-disabled-description",
+      description: "firefoxview-tabpickup-fxa-disabled-by-policy-description",
       // The button is hidden for this errorState, so we don't include the
       // buttonLabel property.
     },
@@ -180,7 +180,7 @@ export const SyncedTabsErrorHandler = {
     },
     [ErrorType.SIGNED_OUT]: {
       header: "firefoxview-tabpickup-signed-out-header",
-      description: "firefoxview-tabpickup-signed-out-description",
+      description: "firefoxview-tabpickup-signed-out-description2",
       buttonLabel: "firefoxview-tabpickup-signed-out-primarybutton",
     },
   },

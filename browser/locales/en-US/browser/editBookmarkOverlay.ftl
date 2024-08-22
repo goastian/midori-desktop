@@ -19,10 +19,15 @@ bookmark-overlay-location-2 =
 bookmark-overlay-choose =
   .label = Choose…
 
-bookmark-overlay-folders-expander =
+bookmark-overlay-folders-expander2 =
   .tooltiptext = Show all the bookmarks folders
-  .tooltiptextdown = { bookmark-overlay-folders-expander.tooltiptext }
-  .tooltiptextup = Hide
+
+bookmark-overlay-folders-expander-hide =
+  .tooltiptext = Hide
+
+# bookmark-overlay-folders-tree is used to provide an accessible name to the tree view of the Bookmarks directory, when it is expanded
+bookmark-overlay-folders-tree =
+  .aria-label = Folders
 
 bookmark-overlay-new-folder-button =
   .label = New Folder
@@ -35,10 +40,11 @@ bookmark-overlay-tags-2 =
 bookmark-overlay-tags-empty-description =
   .placeholder = Separate tags with commas
 
-bookmark-overlay-tags-expander =
+bookmark-overlay-tags-expander2 =
   .tooltiptext = Show all tags
-  .tooltiptextdown = { bookmark-overlay-tags-expander.tooltiptext }
-  .tooltiptextup = Hide
+
+bookmark-overlay-tags-expander-hide =
+  .tooltiptext = Hide
 
 bookmark-overlay-keyword-2 =
   .value = Keyword

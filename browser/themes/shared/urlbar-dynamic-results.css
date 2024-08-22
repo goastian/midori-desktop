@@ -3,32 +3,109 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * UrlbarProviderTabToSearch
+ * Firefox Suggest contextual opt-in
+ */
+
+.urlbarView-row[dynamicType=quickSuggestContextualOptIn] {
+  background-color: color-mix(in srgb, currentColor 3%, transparent);
+
+  > .urlbarView-row-inner {
+    align-items: center;
+
+    > .urlbarView-no-wrap {
+      align-items: center;
+
+      > .urlbarView-favicon {
+        background-color: color-mix(in srgb, currentColor 3%, transparent);
+        min-width: 32px;
+        height: 32px;
+        padding: 16px;
+        margin-inline: 0 .7em;
+      }
+    }
+  }
+
+  .urlbarView-results[wrap] > &,
+  .search-one-offs[wrap] > .urlbarView-quickSuggestContextualOptIn-one-off-container > & {
+    display: block;
+    text-align: end;
+    white-space: normal;
+
+    > .urlbarView-row-inner {
+      display: block;
+      text-align: start;
+    }
+
+    > .urlbarView-button {
+      margin-bottom: var(--urlbarView-item-block-padding);
+    }
+  }
+}
+
+.urlbarView-dynamic-quickSuggestContextualOptIn-text-container {
+  display: flex;
+  flex-direction: column;
+  white-space: normal;
+}
+
+.urlbarView-dynamic-quickSuggestContextualOptIn-title {
+  font-weight: var(--font-weight-bold);
+}
+
+.urlbarView-dynamic-quickSuggestContextualOptIn-description {
+  margin-block-start: 2px;
+  color: var(--urlbarView-secondary-text-color);
+  font-size: var(--urlbarView-small-font-size);
+}
+
+.urlbarView-dynamic-quickSuggestContextualOptIn-learn_more {
+  white-space: nowrap;
+
+  &[selected] {
+    border-radius: var(--focus-outline-offset);
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
+}
+
+.urlbarView-quickSuggestContextualOptIn-one-off-container {
+  border-top: 1px solid var(--urlbarView-separator-color);
+  margin-top: 10px;
+  padding-top: 5px;
+  width: 100%;
+}
+
+/**
+ * Tab To Search onboarding
  */
 
 .urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner {
   min-height: 64px !important; /* Overriding :root:not([uidensity=compact]) .urlbarView-row-inner { min-height } in urlbarView.inc.css */
   align-items: center;
-}
 
-.urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap {
-  align-items: center;
+  > .urlbarView-no-wrap {
+    align-items: center;
+
+    > .urlbarView-favicon {
+      min-width: 32px;
+      height: 32px;
+      -moz-context-properties: fill;
+    }
+  }
+
+  &:not([selected]) > .urlbarView-no-wrap {
+    > .urlbarView-favicon {
+      color: var(--link-color);
+    }
+
+    > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-description {
+      color: var(--urlbarView-secondary-text-color);
+    }
+  }
 }
 
 .urlbarView-row[dynamicType=onboardTabToSearch][selected] {
   fill-opacity: 1;
-}
-
-/* Icon */
-.urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  min-width: 32px;
-  height: 32px;
-  color: var(--urlbar-popup-url-color);
-  -moz-context-properties: fill;
-}
-
-.urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner[selected] > .urlbarView-no-wrap > .urlbarView-favicon {
-  color: inherit;
 }
 
 .urlbarView-dynamic-onboardTabToSearch-text-container {
@@ -39,139 +116,109 @@
 /* First row of text. */
 .urlbarView-dynamic-onboardTabToSearch-first-row-container {
   display: flex;
-  align-items: end;
-}
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-first-row-container {
-  flex-wrap: wrap;
-}
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-first-row-container > * {
-  max-width: 100%;
-  flex-basis: 100%;
-}
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-first-row-container > .urlbarView-title-separator {
-  visibility: collapse;
-}
-.urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner[selected] > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-first-row-container > .urlbarView-action {
-  color: var(--autocomplete-popup-highlight-color);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .urlbarView-results:not([wrap]) > .urlbarView-row > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-first-row-container > .urlbarView-action[slide-in] {
-    animation-name: urlbarView-action-slide-in;
-    animation-duration: 350ms;
-    animation-timing-function: var(--animation-easing-function);
-  }
+  align-items: baseline;
 }
 
-/* Description text. */
 .urlbarView-dynamic-onboardTabToSearch-description {
   margin-block-start: 2px;
 }
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-description {
-  max-width: 100%;
-  flex-basis: 100%;
-}
-.urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner:not([selected]) > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container > .urlbarView-dynamic-onboardTabToSearch-description {
-  opacity: 0.6;
-}
 
-/* CSS for Calculator */
-.urlbarView-dynamic-calculator-action {
-  font-size: .85em;
-  font-weight: normal;
-  visibility: collapse;
-}
+.urlbarView-results[wrap] > .urlbarView-row[dynamicType=onboardTabToSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-dynamic-onboardTabToSearch-text-container {
+  > .urlbarView-dynamic-onboardTabToSearch-first-row-container {
+    flex-wrap: wrap;
 
-.urlbarView-row[dynamicType=calculator]:is(:hover, [selected]) .urlbarView-dynamic-calculator-action {
-  visibility: visible;
-}
+    > .urlbarView-action {
+      max-width: 100%;
+      flex-basis: 100%;
+    }
 
-.urlbarView-dynamic-calculator-action::before {
-  content: "\2014";
-  margin: 0 .4em;
-  opacity: 0.6;
+    > .urlbarView-title-separator {
+      visibility: collapse;
+    }
+  }
+
+  > .urlbarView-dynamic-onboardTabToSearch-description {
+    max-width: 100%;
+    flex-basis: 100%;
+  }
 }
 
-/** UrlbarProviderUnitConversion **/
+/**
+ * Calculator & Unit Conversion
+ */
 
-.urlbarView-row[dynamicType=unitConversion][selected] {
-  fill-opacity: 1;
-}
-
+.urlbarView-dynamic-calculator-action,
 .urlbarView-dynamic-unitConversion-action {
-	font-size: .85em;
-	font-weight: normal;
-	visibility: collapse;
+  font-size: var(--urlbarView-small-font-size);
+  font-weight: normal;
+
+  .urlbarView-row:not(:hover, [selected]) & {
+    visibility: collapse;
+  }
+
+  &::before {
+    content: "\2014";
+    margin: 0 .4em;
+    opacity: 0.6;
+  }
 }
 
-.urlbarView-dynamic-unitConversion-action::before {
-	content: "\2014";
-	margin: 0 .4em;
-	opacity: 0.6;
-}
+/**
+ * Quick actions
+ */
 
-.urlbarView-row[dynamicType=unitConversion]:is(:hover, [selected]) .urlbarView-dynamic-unitConversion-action {
-	visibility: visible;
-}
-
-.urlbarView-row[dynamicType=unitConversion]:hover .urlbarView-dynamic-unitConversion-action {
-	color: var(--urlbar-popup-action-color);
-}
-
-.urlbarView-row[dynamicType=unitConversion][selected] .urlbarView-dynamic-unitConversion-action {
-  color: var(--autocomplete-popup-highlight-color);
-}
-
-.urlbarView-row[dynamicType=quickactions] > .urlbarView-row-inner {
-  align-items: start;
-}
-
-.urlbarView-row[dynamicType=quickactions] .urlbarView-dynamic-quickactions-buttons {
+.urlbarView-dynamic-quickactions-buttons {
   display: flex;
   flex-grow: 1;
   gap: 0.9em 1.8em;
   max-width: 100%;
+
+  &[data-is-quickactions-searchmode] {
+    flex-wrap: wrap;
+  }
 }
 
-#urlbar[searchmodesource=actions] .urlbarView-row[dynamicType=quickactions] .urlbarView-dynamic-quickactions-buttons {
-  flex-wrap: wrap;
-}
-
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=quickactions] > .urlbarView-row-inner {
-  flex-wrap: unset;
-}
-
-.urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row {
-  box-shadow: 0px 0px 1px rgba(128, 128, 142, 0.9), 0px 0px 4px rgba(128, 128, 142, 0.5);
+.urlbarView-quickaction-button {
+  font-size: var(--urlbarView-small-font-size);
+  font-weight: var(--font-weight-bold);
+  box-shadow: 0 0 1px rgba(128, 128, 142, 0.9), 0 0 4px rgba(128, 128, 142, 0.5);
   border-radius: 4px;
   display: flex;
-  align-items: center;
   padding: .5em;
   margin-top: 2px;
   position: relative;
   overflow: hidden;
   min-width: 16px;
-}
 
-.urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row[disabled] {
-  opacity: .4;
-}
+  &[disabled] {
+    opacity: var(--toolbarbutton-disabled-opacity);
+  }
 
-.urlbarView-row[dynamicType=quickactions] .urlbarView-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: .8em;
-  font-weight: 500;
-}
+  &:hover:not([disabled]):not([selected]) {
+    background-color: var(--urlbarView-hover-background);
+  }
 
-.urlbarView-row[dynamicType=quickactions] .urlbarView-favicon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+  &[selected] {
+    background-color: var(--urlbarView-highlight-background);
+    color: var(--urlbarView-highlight-color);
+  }
 
-.urlbarView-row[dynamicType=quickactions] .urlbarView-favicon-img {
-  width: 16px;
-  height: 16px;
+  > .urlbarView-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  > .urlbarView-favicon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-inline: 0 .5em;
+
+    > .urlbarView-favicon-img {
+      width: 16px;
+      height: 16px;
+    }
+  }
 }
 
 .urlbarView-row[dynamicType=quickactions][label]::before {
@@ -179,87 +226,52 @@
   margin-inline-start: 6px;
 }
 
-.urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row:hover:not([disabled]):not([selected]) {
-  background-color: var(--autocomplete-popup-hover-background);
-}
-
-.urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row[selected] {
-  background-color: var(--autocomplete-popup-highlight-background);
-  color: var(--autocomplete-popup-highlight-color);
-}
-
-.urlbarView-row[dynamicType=quickactions] .urlbarView-title {
-  display: flex;
-}
-
 /**
- * UrlbarProviderContextualSearch
+ * Site-specific search
  */
 
-.urlbarView-row[dynamicType=contextualSearch] .urlbarView-title[overflow] {
-  mask-image: linear-gradient(to left, transparent, black 2em);
+.urlbarView-title-separator.urlbarView-dynamic-contextualSearch-separator {
+  display: block !important /* override .urlbarView-title-separator rules */;
 }
 
-.urlbarView-row[dynamicType=contextualSearch] .urlbarView-title[overflow]:-moz-locale-dir(rtl) {
-  mask-image: linear-gradient(to right, transparent, black 2em);
-}
+.urlbarView-dynamic-contextualSearch-description {
+  font-size: var(--urlbarView-small-font-size);
 
-.urlbarView-row[dynamicType=contextualSearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator.urlbarView-dynamic-contextualSearch-separator {
-  visibility: visible;
+  .urlbarView-row:not([selected]) & {
+    color: var(--urlbarView-action-color);
+  }
 }
-
-.urlbarView-row[dynamicType=contextualSearch] .urlbarView-dynamic-contextualSearch-description {
-  font-size: 0.85em;
-}
-
-.urlbarView-row[dynamicType=contextualSearch]:hover > .urlbarView-row-inner {
-  background-color: var(--autocomplete-popup-hover-background);
-}
-
 
 /**
  * Weather
- *
- * All em units used below are based on the spec where 1em is 13px.
- * Thus using 13px as a base to calculate the other relative em sizes, either
- * a bigger or smaller ratio to 13px.
  */
 
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=weather] > .urlbarView-row-inner {
-  flex-wrap: nowrap;
+.urlbarView-row[dynamicType=weather] > .urlbarView-row-inner {
+  align-items: center;
 }
 
 .urlbarView-dynamic-weather-currentConditions {
-  /* Same colors as the switch-to-tab action chiclet */
   color: var(--urlbar-box-text-color);
   background-color: var(--urlbar-box-focus-bgcolor);
   padding: 0.61em 0.61em 0.84em;
   margin-inline-end: 0.92em;
   border-radius: 2px;
   text-align: center;
-}
 
-.urlbarView-row[dynamicType=weather]:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-dynamic-weather-currentConditions {
-  /* Same colors as the switch-to-tab action chiclet */
-  color: var(--urlbarView-result-button-selected-color);
-  background-color: var(--urlbarView-result-button-selected-background-color);
+  .urlbarView-row[dynamicType=weather]:is([selected], :hover) > .urlbarView-row-inner > & {
+    color: var(--urlbarView-result-button-selected-color);
+    background-color: var(--urlbarView-result-button-selected-background-color);
+  }
 }
 
 .urlbarView-dynamic-weather-currently {
-  font-size: 0.85em;
+  font-size: var(--urlbarView-small-font-size);
   margin-bottom: 0.53em;
 }
 
 .urlbarView-dynamic-weather-temperature {
   margin-inline-end: 0.3em;
   font-weight: 600;
-  /* The units from the spec:
-     - 1em is 13px
-     - temperature is 18px
-     - We need to figure out the temperature in units of em.
-     - 18px / 13px = 1.385em
-     Therefore, the temperature is 1.385em units.
-  */
   font-size: 1.385em;
   vertical-align: middle;
 }
@@ -268,133 +280,114 @@
   width: 22px;
   height: 23px;
   vertical-align: middle;
-}
 
-/* Weather Icon color for high contrast mode */
-@media (prefers-contrast) {
-  .urlbarView-dynamic-weather-weatherIcon {
+  @media (prefers-contrast) {
     -moz-context-properties: fill, stroke;
     fill: currentColor;
     stroke: currentColor;
   }
-}
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="1"] {
-  content: url("chrome://browser/skin/weather/sunny.svg");
-  height: 22px;
-}
+  &[iconId="1"] {
+    content: url("chrome://browser/skin/weather/sunny.svg");
+    height: 22px;
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="2"] {
-  content: url("chrome://browser/skin/weather/mostly-sunny.svg");
-  height: 22px;
-}
+  &[iconId="2"] {
+    content: url("chrome://browser/skin/weather/mostly-sunny.svg");
+    height: 22px;
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="3"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="4"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="6"] {
-  content: url("chrome://browser/skin/weather/partly-sunny.svg");
-  height: 22px;
-}
+  &:is([iconId="3"], [iconId="4"], [iconId="6"]) {
+    content: url("chrome://browser/skin/weather/partly-sunny.svg");
+    height: 22px;
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="5"] {
-  content: url("chrome://browser/skin/weather/hazy-sunshine.svg");
-  height: 22px;
-}
+  &[iconId="5"] {
+    content: url("chrome://browser/skin/weather/hazy-sunshine.svg");
+    height: 22px;
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="7"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="8"] {
-  content: url("chrome://browser/skin/weather/cloudy.svg");
-}
+  &:is([iconId="7"], [iconId="8"]) {
+    content: url("chrome://browser/skin/weather/cloudy.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="11"] {
-  content: url("chrome://browser/skin/weather/fog.svg");
-}
+  &[iconId="11"] {
+    content: url("chrome://browser/skin/weather/fog.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="12"] {
-  content: url("chrome://browser/skin/weather/showers.svg");
-}
+  &[iconId="12"] {
+    content: url("chrome://browser/skin/weather/showers.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="13"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="14"] {
-  content: url("chrome://browser/skin/weather/mostly-cloudy-with-showers.svg");
-  height: 22px;
-}
+  &:is([iconId="13"], [iconId="14"]) {
+    content: url("chrome://browser/skin/weather/mostly-cloudy-with-showers.svg");
+    height: 22px;
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="15"] {
-  content: url("chrome://browser/skin/weather/thunderstorms.svg");
-}
+  &[iconId="15"] {
+    content: url("chrome://browser/skin/weather/thunderstorms.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="16"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="17"] {
-  content: url("chrome://browser/skin/weather/mostly-cloudy-with-thunderstorms.svg");
-}
+  &:is([iconId="16"], [iconId="17"]) {
+    content: url("chrome://browser/skin/weather/mostly-cloudy-with-thunderstorms.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="18"] {
-  content: url("chrome://browser/skin/weather/rain.svg");
-}
+  &[iconId="18"] {
+    content: url("chrome://browser/skin/weather/rain.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="19"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="20"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="25"] {
-  content: url("chrome://browser/skin/weather/flurries.svg");
-}
+  &:is([iconId="19"], [iconId="20"], [iconId="25"]) {
+    content: url("chrome://browser/skin/weather/flurries.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="21"] {
-  content: url("chrome://browser/skin/weather/partly-sunny-with-flurries.svg");
-}
+  &[iconId="21"] {
+    content: url("chrome://browser/skin/weather/partly-sunny-with-flurries.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="22"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="23"] {
-  content: url("chrome://browser/skin/weather/snow.svg");
-}
+  &:is([iconId="22"], [iconId="23"]) {
+    content: url("chrome://browser/skin/weather/snow.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="24"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="31"] {
-  content: url("chrome://browser/skin/weather/ice.svg");
-}
+  &:is([iconId="24"], [iconId="31"]) {
+    content: url("chrome://browser/skin/weather/ice.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="26"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="29"] {
-  content: url("chrome://browser/skin/weather/freezing-rain.svg");
-}
+  &:is([iconId="26"], [iconId="29"]) {
+    content: url("chrome://browser/skin/weather/freezing-rain.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="30"] {
-  content: url("chrome://browser/skin/weather/hot.svg");
-}
+  &[iconId="30"] {
+    content: url("chrome://browser/skin/weather/hot.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="32"] {
-  content: url("chrome://browser/skin/weather/windy.svg");
-}
+  &[iconId="32"] {
+    content: url("chrome://browser/skin/weather/windy.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="33"] {
-  content: url("chrome://browser/skin/weather/night-clear.svg");
-}
+  &[iconId="33"] {
+    content: url("chrome://browser/skin/weather/night-clear.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="34"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="35"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="36"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="38"] {
-  content: url("chrome://browser/skin/weather/night-mostly-clear.svg");
-}
+  &:is([iconId="34"], [iconId="35"], [iconId="36"], [iconId="38"]) {
+    content: url("chrome://browser/skin/weather/night-mostly-clear.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="37"] {
-  content: url("chrome://browser/skin/weather/night-hazy-moonlight.svg");
-}
+  &[iconId="37"] {
+    content: url("chrome://browser/skin/weather/night-hazy-moonlight.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="39"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="40"] {
-  content: url("chrome://browser/skin/weather/night-partly-cloudy-with-showers.svg");
-  height: 22px;
-}
+  &:is([iconId="39"], [iconId="40"]) {
+    content: url("chrome://browser/skin/weather/night-partly-cloudy-with-showers.svg");
+    height: 22px;
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="41"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="42"] {
-  content: url("chrome://browser/skin/weather/night-partly-cloudy-with-thunderstorms.svg");
-}
+  &:is([iconId="41"], [iconId="42"]) {
+    content: url("chrome://browser/skin/weather/night-partly-cloudy-with-thunderstorms.svg");
+  }
 
-.urlbarView-dynamic-weather-weatherIcon[iconId="43"],
-.urlbarView-dynamic-weather-weatherIcon[iconId="44"] {
-  content: url("chrome://browser/skin/weather/night-mostly-cloudy-with-flurries.svg");
+  &:is([iconId="43"], [iconId="44"]) {
+    content: url("chrome://browser/skin/weather/night-mostly-cloudy-with-flurries.svg");
+  }
 }
 
 .urlbarView-dynamic-weather-summary {
@@ -413,16 +406,20 @@
   align-items: center;
 }
 
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=weather] > .urlbarView-row-inner .urlbarView-dynamic-weather-top {
-  flex-wrap: wrap;
-}
+.urlbarView-results[wrap] > .urlbarView-row[dynamicType=weather] > .urlbarView-row-inner {
+  flex-wrap: nowrap;
 
-.urlbarView-results[wrap] > .urlbarView-row[dynamicType=weather] > .urlbarView-row-inner > .urlbarView-dynamic-weather-summary > .urlbarView-dynamic-weather-top > .urlbarView-dynamic-weather-topNoWrap > .urlbarView-dynamic-weather-titleSeparator {
-  display: none;
+  > .urlbarView-dynamic-weather-summary > .urlbarView-dynamic-weather-top {
+    flex-wrap: wrap;
+
+    > .urlbarView-dynamic-weather-topNoWrap > .urlbarView-dynamic-weather-titleSeparator {
+      display: none;
+    }
+  }
 }
 
 .urlbarView-dynamic-weather-middle {
-  font-size: 0.85em;
+  font-size: var(--urlbarView-small-font-size);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -431,114 +428,36 @@
 .urlbarView-dynamic-weather-middleNoWrap {
   display: inline-flex;
   align-items: center;
-}
 
-/* When middleNoWrap has overflowed, we want to hide the summaryTextSeparator.
-   We also want to keep the overflow state stable without it going back to
-   an underflow state. This is why we are using `visibility: hidden` so the
-   space is allocated for the summaryTextSeparator and highLow but they are
-   not visible on the page. Thus, keeping the middleNoWrap in an overflow
-   state while hiding the summaryTextSeparator.
- */
-.urlbarView-dynamic-weather-middleNoWrap[overflow] > .urlbarView-dynamic-weather-summaryTextSeparator,
-.urlbarView-dynamic-weather-middleNoWrap[overflow] > .urlbarView-dynamic-weather-highLow {
-  visibility: hidden;
-}
+  /* When middleNoWrap has overflowed, we want to hide the summaryTextSeparator.
+     We also want to keep the overflow state stable without it going back to
+     an underflow state. This is why we are using `visibility: hidden` so the
+     space is allocated for the summaryTextSeparator and highLow but they are
+     not visible on the page. Thus, keeping the middleNoWrap in an overflow
+     state while hiding the summaryTextSeparator.
+   */
+  &[overflow] > :is(.urlbarView-dynamic-weather-summaryTextSeparator, .urlbarView-dynamic-weather-highLow) {
+    visibility: hidden;
+  }
 
-/* The highLowWrap remains hidden when middleNoWrap is not overflowed. Once it
-   has overflowed, we display the highLowWrap element.
-*/
-.urlbarView-dynamic-weather-middleNoWrap:not([overflow]) + .urlbarView-dynamic-weather-highLowWrap {
-  display: none;
+  /* The highLowWrap remains hidden when middleNoWrap is not overflowed. Once it
+     has overflowed, we display the highLowWrap element.
+  */
+  &:not([overflow]) + .urlbarView-dynamic-weather-highLowWrap {
+    display: none;
+  }
 }
 
 .urlbarView-dynamic-weather-summaryTextSeparator::before {
   content: '\00B7';
   margin: 0.25em;
 }
+
 .urlbarView-dynamic-weather-bottom {
-  font-size: 0.85em;
+  font-size: var(--urlbarView-small-font-size);
   margin-top: 0.40em;
-  opacity: 0.6;
-}
 
-.urlbarView-row[dynamicType=weather][selected] > .urlbarView-row-inner > .urlbarView-dynamic-weather-summary > .urlbarView-dynamic-weather-top > .urlbarView-url {
-  color: inherit;
-}
-
-.urlbarView-row[dynamicType=weather][selected] > .urlbarView-row-inner > .urlbarView-dynamic-weather-summary > .urlbarView-dynamic-weather-bottom {
-  opacity: 1;
-}
-
-/* Addons suggestions */
-.urlbarView-dynamic-addons-content {
-  display: grid;
-  grid-template-areas: "icon header"
-                       "icon description"
-                       "icon footer";
-  align-items: center;
-  padding: 5px 4px;
-}
-
-.urlbarView-dynamic-addons-icon {
-  grid-area: icon;
-  width: 60px;
-  height: 60px;
-  margin-inline-end: 8px;
-}
-
-.urlbarView-dynamic-addons-header {
-  grid-area: header;
-  display: flex;
-}
-
-.urlbarView-dynamic-addons-description {
-  grid-area: description;
-  font-size: 0.85em;
-  color: var(--text-color-deemphasized);
-  margin-block: 2px 9px;
-}
-
-.urlbarView-dynamic-addons-footer {
-  grid-area: footer;
-  display: flex;
-  align-items: center;
-}
-
-.urlbarView-dynamic-addons-ratingContainer {
-  width: calc(16px * 5);
-  height: 16px;
-  margin-inline-end: 9px;
-}
-
-.urlbarView-dynamic-addons-content[treatment=b] > .urlbarView-dynamic-addons-footer > .urlbarView-dynamic-addons-ratingContainer {
-  display: none;
-}
-
-.urlbarView-dynamic-addons-rating {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  background-size: contain;
-  background-repeat: no-repeat;
-  fill: currentColor;
-  -moz-context-properties: fill;
-}
-
-.urlbarView-dynamic-addons-rating[fill="empty"] {
-  background-image: url("chrome://mozapps/skin/extensions/rating-star.svg#empty");
-}
-.urlbarView-dynamic-addons-rating[fill="half"] {
-  background-image: url("chrome://mozapps/skin/extensions/rating-star.svg#half");
-}
-.urlbarView-dynamic-addons-rating[fill="half"]:-moz-locale-dir(rtl) {
-  transform: scaleX(-1);
-}
-.urlbarView-dynamic-addons-rating[fill="full"] {
-  background-image: url("chrome://mozapps/skin/extensions/rating-star.svg#full");
-}
-
-.urlbarView-dynamic-addons-reviews {
-  font-size: 0.85em;
-  color: var(--text-color-deemphasized);
+  .urlbarView-row[dynamicType=weather]:not([selected]) > .urlbarView-row-inner > .urlbarView-dynamic-weather-summary > & {
+    opacity: 0.6;
+  }
 }

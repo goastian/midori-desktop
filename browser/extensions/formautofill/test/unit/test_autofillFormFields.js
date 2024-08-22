@@ -448,10 +448,10 @@ const TESTCASES = [
       "visible-name": "test name",
       "cc-exp-month": "06",
       "cc-exp-year": "25",
-      "hidden-cc": undefined,
-      "hidden-cc-2": undefined,
-      "hidden-name": undefined,
-      "hidden-name-2": undefined,
+      "hidden-cc": "4111111111111111",
+      "hidden-cc-2": "4111111111111111",
+      "hidden-name": "test name",
+      "hidden-name-2": "test name",
     },
   },
   {
@@ -895,7 +895,7 @@ function do_test(testcases, testFn) {
         // Replace the internal decrypt method with OSKeyStore API,
         // but don't pass the reauth parameter to avoid triggering
         // reauth login dialog in these tests.
-        let decryptHelper = async (cipherText, reauth) => {
+        let decryptHelper = async (cipherText, _reauth) => {
           return OSKeyStore.decrypt(cipherText, false);
         };
         handler.collectFormFields();
@@ -918,7 +918,7 @@ function do_test(testcases, testFn) {
         }
 
         handler.activeSection.fieldDetails.forEach(field => {
-          let element = field.elementWeakRef.get();
+          let element = field.element;
           if (!testcase.profileData[field.fieldName]) {
             // Avoid waiting for `change` event of a input with a blank value to
             // be filled.

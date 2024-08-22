@@ -43,7 +43,7 @@ add_task(async function folder() {
   const library = await promiseLibrary("BookmarksToolbar");
 
   info("Add Most Recent Visit column");
-  await showMostRecentColumn(library);
+  await showLibraryColumn(library, "placesContentDate");
 
   info("Check the initial content");
   const tree = library.document.getElementById("placeContent");
@@ -72,7 +72,7 @@ add_task(async function tags() {
   const library = await promiseLibrary("BookmarksToolbar");
 
   info("Add Most Recent Visit column");
-  await showMostRecentColumn(library);
+  await showLibraryColumn(library, "placesContentDate");
 
   info("Open test tag");
   const PO = library.PlacesOrganizer;
@@ -104,32 +104,9 @@ add_task(async function tags() {
 async function updateMostRecentVisitTime() {
   for (const url of TEST_URLS) {
     const onLoaded = BrowserTestUtils.browserLoaded(gBrowser, false, url);
-    BrowserTestUtils.loadURIString(gBrowser, url);
+    BrowserTestUtils.startLoadingURIString(gBrowser, url);
     await onLoaded;
   }
-}
-
-async function showMostRecentColumn(library) {
-  const viewMenu = library.document.getElementById("viewMenu");
-  const viewMenuPopup = library.document.getElementById("viewMenuPopup");
-  const onViewMenuPopup = new Promise(resolve => {
-    viewMenuPopup.addEventListener("popupshown", () => resolve());
-  });
-  EventUtils.synthesizeMouseAtCenter(viewMenu, {}, library);
-  await onViewMenuPopup;
-
-  const viewColumns = library.document.getElementById("viewColumns");
-  const viewColumnsPopup = viewColumns.querySelector("menupopup");
-  const onViewColumnsPopup = new Promise(resolve => {
-    viewColumnsPopup.addEventListener("popupshown", () => resolve());
-  });
-  EventUtils.synthesizeMouseAtCenter(viewColumns, {}, library);
-  await onViewColumnsPopup;
-
-  const mostRecentVisitColumnMenu = library.document.getElementById(
-    "menucol_placesContentDate"
-  );
-  EventUtils.synthesizeMouseAtCenter(mostRecentVisitColumnMenu, {}, library);
 }
 
 function assertRow(tree, targeRow, expectedUrl, expectMostRecentVisitHasValue) {

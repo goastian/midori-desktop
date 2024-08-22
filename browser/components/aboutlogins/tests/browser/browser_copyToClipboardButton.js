@@ -36,9 +36,9 @@ add_task(async function test() {
         );
       });
 
-      let testCases = [[TEST_LOGIN.username, ".copy-username-button"]];
+      let testCases = [[TEST_LOGIN.username, "copy-username-button"]];
       if (OSKeyStoreTestUtils.canTestOSKeyStoreLogin()) {
-        testCases[1] = [TEST_LOGIN.password, ".copy-password-button"];
+        testCases[1] = [TEST_LOGIN.password, "copy-password-button"];
       }
 
       for (let testCase of testCases) {
@@ -49,9 +49,11 @@ add_task(async function test() {
         info(
           "waiting for " + testObj.expectedValue + " to be placed on clipboard"
         );
-        let reauthObserved = true;
+        let reauthObserved = Promise.resolve();
         if (testObj.copyButtonSelector.includes("password")) {
-          reauthObserved = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
+          if (OSKeyStore.canReauth()) {
+            reauthObserved = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
+          }
         }
 
         await SimpleTest.promiseClipboardChange(

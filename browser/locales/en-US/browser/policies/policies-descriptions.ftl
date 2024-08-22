@@ -13,6 +13,8 @@ policy-3rdparty = Set policies that WebExtensions can access via chrome.storage.
 
 policy-AllowedDomainsForApps = Define domains allowed to access Google Workspace.
 
+policy-AllowFileSelectionDialogs = Allow file selection dialogs.
+
 policy-AppAutoUpdate = Enable or disable automatic application update.
 
 policy-AppUpdatePin = Prevent { -brand-short-name } from being updated beyond the specified version.
@@ -43,10 +45,14 @@ policy-CaptivePortal = Enable or disable captive portal support.
 
 policy-CertificatesDescription = Add certificates or use built-in certificates.
 
+policy-ContentAnalysis = Enable or disable connection to data-loss-prevention agent.
+
 policy-Cookies = Allow or deny websites to set cookies.
 
 # Containers in this context is referring to container tabs in Firefox.
 policy-Containers = Set policies related to containers.
+
+policy-DisableAccounts = Disable account-based services, including sync.
 
 policy-DisabledCiphers = Disable ciphers.
 
@@ -60,9 +66,12 @@ policy-DisableDefaultBrowserAgent = Prevent the default browser agent from takin
 
 policy-DisableDeveloperTools = Block access to the developer tools.
 
+policy-DisableEncryptedClientHello = Disable use of the TLS feature Encrypted Client Hello (ECH).
+
 policy-DisableFeedbackCommands = Disable commands to send feedback from the Help menu (Submit Feedback and Report Deceptive Site).
 
-policy-DisableFirefoxAccounts = Disable { -fxaccount-brand-name } based services, including Sync.
+# This string is in the process of being deprecated in favor of policy-DisableAccounts.
+policy-DisableFirefoxAccounts1 = Disable account-based services, including sync.
 
 # Firefox Screenshots is the name of the feature, and should not be translated.
 policy-DisableFirefoxScreenshots = Disable the Firefox Screenshots feature.
@@ -126,6 +135,8 @@ policy-ExtensionUpdate = Enable or disable automatic extension updates.
 
 policy-FirefoxHome2 = Configure { -firefox-home-brand-name }.
 
+policy-FirefoxSuggest = Configure { -firefox-suggest-brand-name }.
+
 policy-GoToIntranetSiteForSingleWordEntryInAddressBar = Force direct intranet site navigation instead of searching when typing single word entries in the address bar.
 
 policy-Handlers = Configure default application handlers.
@@ -134,6 +145,10 @@ policy-HardwareAcceleration = If false, turn off hardware acceleration.
 
 # “lock” means that the user won’t be able to change this setting
 policy-Homepage = Set and optionally lock the homepage.
+
+policy-HttpAllowlist = Origins that will not be upgraded to HTTPS.
+
+policy-HttpsOnlyMode = Allow HTTPS-Only Mode to be enabled.
 
 policy-InstallAddonsPermission = Allow certain websites to install add-ons.
 
@@ -175,6 +190,10 @@ policy-PasswordManagerEnabled = Enable saving passwords to the password manager.
 
 policy-PasswordManagerExceptions = Prevent { -brand-short-name } from saving passwords for specific sites.
 
+# Post-quantum refers to cryptography that is safe from attacks by quantum
+# computers. See https://en.wikipedia.org/wiki/Post-quantum_cryptography
+policy-PostQuantumKeyAgreementEnabled = Enable post-quantum key agreement for TLS.
+
 # PDF.js and PDF should not be translated
 policy-PDFjs = Disable or configure PDF.js, the built-in PDF viewer in { -brand-short-name }.
 
@@ -212,6 +231,8 @@ policy-SSLVersionMin = Set the minimum SSL version.
 policy-StartDownloadsInTempDirectory = Force downloads to start off in a local, temporary location rather than the default download directory.
 
 policy-SupportMenu = Add a custom support menu item to the help menu.
+
+policy-TranslateEnabled = Enable or disable webpage translation.
 
 policy-UserMessaging = Don’t show certain messages to the user.
 

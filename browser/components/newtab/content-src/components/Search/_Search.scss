@@ -6,6 +6,15 @@ $search-icon-width: 2 * $search-icon-padding + $search-icon-size - 4px;
 $search-button-width: 48px;
 $glyph-forward: url('chrome://browser/skin/forward.svg');
 
+@supports -moz-bool-pref("browser.disable.nt.image.gb") {
+  @media (prefers-color-scheme: light) {
+    .search-wrapper .logo-and-wordmark .wordmark {
+      background: url("chrome://branding/content/firefox-wordmark-white.svg") no-repeat center center !important;
+      width: 306px !important;
+    }
+  }
+}
+
 .search-wrapper {
   padding: 34px 0 38px;
 
@@ -26,12 +35,8 @@ $glyph-forward: url('chrome://browser/skin/forward.svg');
       display: inline-block;
       height: $logo-size;
       width: $logo-size;
-      background: url('chrome://branding/content/about-logo.png') no-repeat center;
+      background: image-set(url('chrome://branding/content/about-logo.png'), url('chrome://branding/content/about-logo@2x.png') 2x) no-repeat center;
       background-size: $logo-size;
-
-      @media (min-resolution: 2x) {
-        background-image: url('chrome://branding/content/about-logo@2x.png');
-      }
     }
 
     .wordmark {
@@ -43,6 +48,9 @@ $glyph-forward: url('chrome://browser/skin/forward.svg');
       height: 100px;
       margin-inline-start: 25px;
       width: 300px;
+
+      // Contrast fix for users who have wallpapers set
+      @include wallpaper-contrast-fix;
     }
 
     @media (max-width: $break-point-medium - 1) {
@@ -178,23 +186,9 @@ $glyph-forward: url('chrome://browser/skin/forward.svg');
   }
 }
 
-.non-collapsible-section + .below-search-snippet-wrapper {
-  // If search is enabled, we need to invade its large bottom padding.
-  margin-top: -48px;
-}
-
-@media (max-height: 700px) {
+@media (height <= 700px) {
   .search-wrapper {
     padding: 0 0 30px;
-  }
-
-  .non-collapsible-section + .below-search-snippet-wrapper {
-    // In shorter windows, search doesn't have such a large padding.
-    margin-top: -14px;
-  }
-
-  .below-search-snippet-wrapper {
-    min-height: 0;
   }
 }
 
@@ -266,7 +260,7 @@ $glyph-forward: url('chrome://browser/skin/forward.svg');
   }
 }
 
-@media (min-height: 701px) {
+@media (height > 700px) {
   body:not(.inline-onboarding) .fixed-search {
     main {
       padding-top: 124px;
@@ -408,14 +402,5 @@ $glyph-forward: url('chrome://browser/skin/forward.svg');
   .contentSearchSuggestionRow > td > .historyIcon {
     margin-inline-start: 7px;
     margin-inline-end: 15px;
-  }
-}
-
-@supports -moz-bool-pref("browser.disable.nt.image.gb") {
-  @media (prefers-color-scheme: light) {
-    .search-wrapper .logo-and-wordmark .wordmark {
-      background: url("chrome://branding/content/firefox-wordmark-white.svg") no-repeat center center !important;
-      width: 306px !important;
-    }  
   }
 }

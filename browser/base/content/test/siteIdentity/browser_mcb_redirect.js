@@ -65,7 +65,6 @@ const HTTP_TEST_ROOT = getRootDirectory(gTestPath).replace(
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
   "http://example.com"
 );
-const PREF_INSECURE_ICON = "security.insecure_connection_icon.enabled";
 
 var origBlockActive;
 var origBlockDisplay;
@@ -80,7 +79,6 @@ registerCleanupFunction(function () {
   Services.prefs.setBoolPref(PREF_ACTIVE, origBlockActive);
   Services.prefs.setBoolPref(PREF_DISPLAY, origBlockDisplay);
   Services.prefs.setBoolPref(PREF_DISPLAY_UPGRADE, origUpgradeDisplay);
-  Services.prefs.setBoolPref(PREF_INSECURE_ICON, origInsecurePref);
 
   // Make sure we are online again
   Services.io.offline = false;
@@ -94,24 +92,12 @@ function cleanUpAfterTests() {
 
 // ------------------------ Test 1 ------------------------------
 
-function test1() {
-  Services.prefs.setBoolPref(PREF_INSECURE_ICON, false);
-
-  var url = HTTPS_TEST_ROOT + "test_mcb_redirect.html";
-  BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
-    checkUIForTest1
-  );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
-}
-
 function testInsecure1() {
-  Services.prefs.setBoolPref(PREF_INSECURE_ICON, true);
-
   var url = HTTPS_TEST_ROOT + "test_mcb_redirect.html";
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkUIForTest1
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 async function checkUIForTest1() {
@@ -137,7 +123,7 @@ function test2() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkUIForTest2
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 async function checkUIForTest2() {
@@ -164,7 +150,7 @@ function test3() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest3
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest3() {
@@ -185,7 +171,7 @@ function test4() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest4
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest4() {
@@ -211,7 +197,7 @@ function test5() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest5
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest5() {
@@ -241,7 +227,7 @@ function test6() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest6
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest6() {
@@ -265,7 +251,7 @@ function test7() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest7
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest7() {
@@ -290,7 +276,7 @@ function test8() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest8
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest8() {
@@ -319,7 +305,7 @@ function test9() {
   BrowserTestUtils.browserLoaded(gTestBrowser, false, url).then(
     checkLoadEventForTest9
   );
-  BrowserTestUtils.loadURIString(gTestBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gTestBrowser, url);
 }
 
 function checkLoadEventForTest9() {
@@ -346,7 +332,6 @@ function test() {
   origBlockActive = Services.prefs.getBoolPref(PREF_ACTIVE);
   origBlockDisplay = Services.prefs.getBoolPref(PREF_DISPLAY);
   origUpgradeDisplay = Services.prefs.getBoolPref(PREF_DISPLAY_UPGRADE);
-  origInsecurePref = Services.prefs.getBoolPref(PREF_INSECURE_ICON);
   Services.prefs.setBoolPref(PREF_ACTIVE, true);
   Services.prefs.setBoolPref(PREF_DISPLAY, true);
   Services.prefs.setBoolPref(PREF_DISPLAY_UPGRADE, false);

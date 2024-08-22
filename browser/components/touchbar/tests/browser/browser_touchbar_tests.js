@@ -23,12 +23,12 @@ const TEST_PATH = getRootDirectory(gTestPath).replace(
 
 function is_element_visible(aElement, aMsg) {
   isnot(aElement, null, "Element should not be null when checking visibility");
-  ok(!BrowserTestUtils.is_hidden(aElement), aMsg);
+  ok(!BrowserTestUtils.isHidden(aElement), aMsg);
 }
 
 function is_element_hidden(aElement, aMsg) {
   isnot(aElement, null, "Element should not be null when checking visibility");
-  ok(BrowserTestUtils.is_hidden(aElement), aMsg);
+  ok(BrowserTestUtils.isHidden(aElement), aMsg);
 }
 
 /**
@@ -94,7 +94,7 @@ add_task(async function updateMainButtonInFullscreen() {
     "chrome://global/skin/icons/search-glass.svg",
     "OpenLocation should be displaying the search glass icon."
   );
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     gBrowser.selectedBrowser,
     TEST_PATH + "video_test.html"
   );
@@ -139,7 +139,7 @@ function waitForFullScreenState(browser, state) {
   return new Promise(resolve => {
     let eventReceived = false;
 
-    let observe = (subject, topic, data) => {
+    let observe = () => {
       if (!eventReceived) {
         return;
       }

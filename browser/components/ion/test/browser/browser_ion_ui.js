@@ -321,9 +321,13 @@ add_task(async function testBadDefaultAddon() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       const beforePref = Services.prefs.getStringPref(PREF_ION_ID, null);
-      ok(beforePref === null, "before enrollment, Ion pref is null.");
+      Assert.strictEqual(
+        beforePref,
+        null,
+        "before enrollment, Ion pref is null."
+      );
       const enrollmentButton =
         content.document.getElementById("enrollment-button");
       enrollmentButton.click();
@@ -356,17 +360,17 @@ add_task(async function testBadDefaultAddon() {
       ok(ionEnrolled, "after enrollment, Ion pref is set.");
 
       await promiseDialogAccepted;
-      ok(
-        document.l10n.getAttributes(enrollmentButton).id ==
-          "ion-unenrollment-button",
+      Assert.equal(
+        document.l10n.getAttributes(enrollmentButton).id,
+        "ion-unenrollment-button",
         "After Ion enrollment, join button is now leave button"
       );
 
       const availableStudies =
         content.document.getElementById("available-studies");
-      ok(
-        document.l10n.getAttributes(availableStudies).id ==
-          "ion-no-current-studies",
+      Assert.equal(
+        document.l10n.getAttributes(availableStudies).id,
+        "ion-no-current-studies",
         "No studies are available if default add-on install fails."
       );
     }
@@ -398,9 +402,13 @@ add_task(async function testAboutPage() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       const beforePref = Services.prefs.getStringPref(PREF_ION_ID, null);
-      ok(beforePref === null, "before enrollment, Ion pref is null.");
+      Assert.strictEqual(
+        beforePref,
+        null,
+        "before enrollment, Ion pref is null."
+      );
 
       const beforeToolbarButton = document.getElementById("ion-button");
       ok(
@@ -412,8 +420,9 @@ add_task(async function testAboutPage() {
         content.document.getElementById("enrollment-button");
 
       for (const section of ["details", "data"]) {
-        ok(
-          content.document.getElementById(section).open === true,
+        Assert.strictEqual(
+          content.document.getElementById(section).open,
+          true,
           "before enrollment, dialog sections are open."
         );
       }
@@ -468,9 +477,9 @@ add_task(async function testAboutPage() {
       ok(ionEnrolled, "after enrollment, Ion pref is set.");
 
       await promiseDialogAccepted;
-      ok(
-        document.l10n.getAttributes(enrollmentButton).id ==
-          "ion-unenrollment-button",
+      Assert.equal(
+        document.l10n.getAttributes(enrollmentButton).id,
+        "ion-unenrollment-button",
         "After Ion enrollment, join button is now leave button"
       );
 
@@ -481,8 +490,9 @@ add_task(async function testAboutPage() {
       );
 
       for (const section of ["details", "data"]) {
-        ok(
-          content.document.getElementById(section).open === false,
+        Assert.strictEqual(
+          content.document.getElementById(section).open,
+          false,
           "after enrollment, dialog sections are closed."
         );
       }
@@ -546,9 +556,9 @@ add_task(async function testAboutPage() {
 
         await joinDialogOpen;
 
-        ok(
-          content.document.getElementById("join-study-consent").innerHTML ==
-            `${cachedAddon.joinStudyConsent}`,
+        Assert.equal(
+          content.document.getElementById("join-study-consent").innerHTML,
+          `${cachedAddon.joinStudyConsent}`,
           "Join consent text matches remote settings data."
         );
 
@@ -580,8 +590,9 @@ add_task(async function testAboutPage() {
         studyAcceptButton.click();
         await promiseJoinTurnsToLeave;
 
-        ok(
-          document.l10n.getAttributes(joinButton).id == "ion-leave-study",
+        Assert.equal(
+          document.l10n.getAttributes(joinButton).id,
+          "ion-leave-study",
           "After study enrollment, join button is now leave button"
         );
 
@@ -614,9 +625,9 @@ add_task(async function testAboutPage() {
 
         await leaveDialogOpen;
 
-        ok(
-          content.document.getElementById("leave-study-consent").innerHTML ==
-            `${cachedAddon.leaveStudyConsent}`,
+        Assert.equal(
+          content.document.getElementById("leave-study-consent").innerHTML,
+          `${cachedAddon.leaveStudyConsent}`,
           "Leave consent text matches remote settings data."
         );
 
@@ -652,8 +663,9 @@ add_task(async function testAboutPage() {
           "After leaving study, join button is disabled."
         );
 
-        ok(
-          Services.prefs.getStringPref(PREF_TEST_ADDONS, null) == "[]",
+        Assert.equal(
+          Services.prefs.getStringPref(PREF_TEST_ADDONS, null),
+          "[]",
           "Correct add-on was uninstalled"
         );
       }
@@ -682,19 +694,16 @@ add_task(async function testAboutPage() {
 
       // Wait for deletion ping, uninstalls, and UI updates...
       const ionUnenrolled = await new Promise((resolve, reject) => {
-        Services.prefs.addObserver(
-          PREF_ION_ID,
-          function observer(subject, topic, data) {
-            try {
-              const prefValue = Services.prefs.getStringPref(PREF_ION_ID, null);
-              Services.prefs.removeObserver(PREF_ION_ID, observer);
-              resolve(prefValue);
-            } catch (ex) {
-              Services.prefs.removeObserver(PREF_ION_ID, observer);
-              reject(ex);
-            }
+        Services.prefs.addObserver(PREF_ION_ID, function observer() {
+          try {
+            const prefValue = Services.prefs.getStringPref(PREF_ION_ID, null);
+            Services.prefs.removeObserver(PREF_ION_ID, observer);
+            resolve(prefValue);
+          } catch (ex) {
+            Services.prefs.removeObserver(PREF_ION_ID, observer);
+            reject(ex);
           }
-        );
+        });
       });
 
       ok(!ionUnenrolled, "after accepting unenrollment, Ion pref is null.");
@@ -710,8 +719,9 @@ add_task(async function testAboutPage() {
 
       let pingDetails = [];
       for (const ping of pings) {
-        ok(
-          ping.type == "pioneer-study",
+        Assert.equal(
+          ping.type,
+          "pioneer-study",
           "ping is of expected type pioneer-study"
         );
         const details = await TelemetryArchive.promiseArchivedPingById(ping.id);
@@ -742,8 +752,9 @@ add_task(async function testAboutPage() {
         }
 
         for (const section of ["details", "data"]) {
-          ok(
-            content.document.getElementById(section).open === true,
+          Assert.strictEqual(
+            content.document.getElementById(section).open,
+            true,
             "after unenrollment, dialog sections are open."
           );
         }
@@ -781,9 +792,13 @@ add_task(async function testEnrollmentPings() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       const beforePref = Services.prefs.getStringPref(PREF_ION_ID, null);
-      ok(beforePref === null, "before enrollment, Ion pref is null.");
+      Assert.strictEqual(
+        beforePref,
+        null,
+        "before enrollment, Ion pref is null."
+      );
 
       // Enroll in ion.
       const enrollmentButton =
@@ -853,8 +868,9 @@ add_task(async function testEnrollmentPings() {
 
       let pingDetails = [];
       for (const ping of pings) {
-        ok(
-          ping.type == "pioneer-study",
+        Assert.equal(
+          ping.type,
+          "pioneer-study",
           "ping is of expected type pioneer-study"
         );
         const details = await TelemetryArchive.promiseArchivedPingById(ping.id);
@@ -965,36 +981,37 @@ add_task(async function testContentReplacement() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       // Check that text was updated from Remote Settings.
       console.log("debug:", content.document.getElementById("title").innerHTML);
-      ok(
-        content.document.getElementById("title").innerHTML ==
-          "<b>test title</b><p>test title line 2</p>",
+      Assert.equal(
+        content.document.getElementById("title").innerHTML,
+        "<b>test title</b><p>test title line 2</p>",
         "Title was replaced correctly."
       );
-      ok(
-        content.document.getElementById("summary").innerHTML ==
-          "<p>test summary</p>test summary line 2",
+      Assert.equal(
+        content.document.getElementById("summary").innerHTML,
+        "<p>test summary</p>test summary line 2",
         "Summary was replaced correctly."
       );
-      ok(
-        content.document.getElementById("details").innerHTML ==
-          "<ol><li>test details</li><li>test details line 2</li><li>test details line</li></ol>",
+      Assert.equal(
+        content.document.getElementById("details").innerHTML,
+        "<ol><li>test details</li><li>test details line 2</li><li>test details line</li></ol>",
         "Details was replaced correctly."
       );
-      ok(
-        content.document.getElementById("data").innerHTML == "<b>test data</b>",
+      Assert.equal(
+        content.document.getElementById("data").innerHTML,
+        "<b>test data</b>",
         "Data was replaced correctly."
       );
-      ok(
-        content.document.getElementById("join-ion-consent").innerHTML ==
-          "<p>test join consent</p><p>join consent line 2</p>",
+      Assert.equal(
+        content.document.getElementById("join-ion-consent").innerHTML,
+        "<p>test join consent</p><p>join consent line 2</p>",
         "Join consent was replaced correctly."
       );
-      ok(
-        content.document.getElementById("leave-ion-consent").innerHTML ==
-          "<p>test leave consent</p><p>test leave consent line 2</p>",
+      Assert.equal(
+        content.document.getElementById("leave-ion-consent").innerHTML,
+        "<p>test leave consent</p><p>test leave consent line 2</p>",
         "Leave consent was replaced correctly."
       );
     }
@@ -1022,15 +1039,16 @@ add_task(async function testBadContentReplacement() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       // Check that text was updated from Remote Settings.
-      ok(
-        content.document.getElementById("join-ion-consent").innerHTML == "",
+      Assert.equal(
+        content.document.getElementById("join-ion-consent").innerHTML,
+        "",
         "Script tags are skipped."
       );
-      ok(
-        content.document.getElementById("leave-ion-consent").innerHTML ==
-          "<a>blob</a>",
+      Assert.equal(
+        content.document.getElementById("leave-ion-consent").innerHTML,
+        "<a>blob</a>",
         "Bad HREFs are stripped."
       );
     }
@@ -1060,7 +1078,7 @@ add_task(async function testLocaleGating() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       const localeNotificationBar = content.document.getElementById(
         "locale-notification"
       );
@@ -1086,7 +1104,7 @@ add_task(async function testLocaleGating() {
       url: "about:ion",
       gBrowser,
     },
-    async function taskFn(browser) {
+    async function taskFn() {
       const localeNotificationBar = content.document.getElementById(
         "locale-notification"
       );

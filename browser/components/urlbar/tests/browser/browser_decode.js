@@ -29,7 +29,7 @@ add_task(async function injectJSON() {
 
 add_task(function losslessDecode() {
   let urlNoScheme = "example.com/\u30a2\u30a4\u30a6\u30a8\u30aa";
-  let url = "http://" + urlNoScheme;
+  let url = UrlbarTestUtils.getTrimmedProtocolWithSlashes() + urlNoScheme;
   const result = new UrlbarResult(
     UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
     UrlbarUtils.RESULT_SOURCE.TABS,
@@ -38,7 +38,7 @@ add_task(function losslessDecode() {
   gURLBar.setValueFromResult({ result });
   // Since this is directly setting textValue, it is expected to be trimmed.
   Assert.equal(
-    gURLBar.inputField.value,
+    gURLBar.value,
     urlNoScheme,
     "The string displayed in the textbox should not be escaped"
   );
@@ -49,7 +49,7 @@ add_task(function losslessDecode() {
 
 add_task(async function actionURILosslessDecode() {
   let urlNoScheme = "example.com/\u30a2\u30a4\u30a6\u30a8\u30aa";
-  let url = "http://" + urlNoScheme;
+  let url = UrlbarTestUtils.getTrimmedProtocolWithSlashes() + urlNoScheme;
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: url,
@@ -71,7 +71,7 @@ add_task(async function actionURILosslessDecode() {
   );
 
   Assert.equal(
-    gURLBar.inputField.value,
+    gURLBar.value,
     urlNoScheme,
     "The string displayed in the textbox should not be escaped"
   );

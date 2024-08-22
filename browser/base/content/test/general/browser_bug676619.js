@@ -1,5 +1,5 @@
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 function waitForNewWindow() {
   return new Promise(resolve => {
@@ -22,7 +22,7 @@ function waitForNewWindow() {
         var domwindow = aXULWindow.docShell.domWindow;
         domwindow.addEventListener("load", downloadOnLoad, true);
       },
-      onCloseWindow: aXULWindow => {},
+      onCloseWindow: () => {},
     };
 
     Services.wm.addListener(listener);
@@ -97,7 +97,7 @@ async function testLink(link, name) {
 }
 
 // Cross-origin URL does not trigger a download
-async function testLocation(link, url) {
+async function testLocation(link) {
   let tabPromise = BrowserTestUtils.waitForNewTab(gBrowser);
 
   SpecialPowers.spawn(gBrowser.selectedBrowser, [link], contentLink => {
@@ -116,8 +116,8 @@ async function runTest(url) {
   await BrowserTestUtils.browserLoaded(browser);
 
   await testLink("link1", "test.txt");
-  await testLink("link2", "video.ogg");
-  await testLink("link3", "just some video.ogg");
+  await testLink("link2", "video.webm");
+  await testLink("link3", "just some video.webm");
   await testLink("link4", "with-target.txt");
   await testLink("link5", "javascript.html");
   await testLink("link6", "test.blob");
@@ -132,8 +132,8 @@ async function runTest(url) {
   // Check that we enforce the correct extension if the website's
   // is bogus or missing. These extensions can differ slightly (ogx vs ogg,
   // htm vs html) on different OSes.
-  let oggExtension = getMIMEInfoForType("application/ogg").primaryExtension;
-  await testLink("link13", "no file extension." + oggExtension);
+  let webmExtension = getMIMEInfoForType("video/webm").primaryExtension;
+  await testLink("link13", "no file extension." + webmExtension);
 
   // See https://bugzilla.mozilla.org/show_bug.cgi?id=1690051#c8
   if (AppConstants.platform != "win") {

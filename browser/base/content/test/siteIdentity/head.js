@@ -46,7 +46,7 @@ function promiseTabLoadEvent(tab, url) {
   let loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, handle);
 
   if (url) {
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, url);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url);
   }
 
   return loaded;
@@ -164,25 +164,12 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
   );
 
   if (stateInsecure) {
-    const insecureConnectionIcon = Services.prefs.getBoolPref(
-      "security.insecure_connection_icon.enabled"
+    // HTTP request, there should be a broken padlock shown always.
+    ok(classList.contains("notSecure"), "notSecure on HTTP page");
+    ok(
+      !BrowserTestUtils.isHidden(identityIcon),
+      "information icon should be visible"
     );
-    if (!insecureConnectionIcon) {
-      // HTTP request, there should be no MCB classes for the identity box and the non secure icon
-      // should always be visible regardless of MCB state.
-      ok(classList.contains("unknownIdentity"), "unknownIdentity on HTTP page");
-      ok(
-        BrowserTestUtils.is_visible(identityIcon),
-        "information icon should be still visible"
-      );
-    } else {
-      // HTTP request, there should be a broken padlock shown always.
-      ok(classList.contains("notSecure"), "notSecure on HTTP page");
-      ok(
-        !BrowserTestUtils.is_hidden(identityIcon),
-        "information icon should be visible"
-      );
-    }
 
     ok(!classList.contains("mixedActiveContent"), "No MCB icon on HTTP page");
     ok(!classList.contains("mixedActiveBlocked"), "No MCB icon on HTTP page");
@@ -215,7 +202,7 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
     );
 
     ok(
-      !BrowserTestUtils.is_hidden(identityIcon),
+      !BrowserTestUtils.isHidden(identityIcon),
       "information icon should be visible"
     );
     if (activeLoaded) {
@@ -257,12 +244,12 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
   );
   gIdentityHandler._identityIconBox.click();
   await promisePanelOpen;
-  let popupAttr = doc
-    .getElementById("identity-popup")
-    .getAttribute("mixedcontent");
-  let bodyAttr = doc
-    .getElementById("identity-popup-securityView-extended-info")
-    .getAttribute("mixedcontent");
+  let popupAttr =
+    doc.getElementById("identity-popup").getAttribute("mixedcontent") || "";
+  let bodyAttr =
+    doc
+      .getElementById("identity-popup-securityView-extended-info")
+      .getAttribute("mixedcontent") || "";
 
   is(
     popupAttr.includes("active-loaded"),
@@ -390,7 +377,7 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
         doc
           .getElementById("identity-popup-securityView")
           .querySelectorAll(".identity-popup-mcb-learn-more"),
-        element => !BrowserTestUtils.is_hidden(element)
+        element => !BrowserTestUtils.isHidden(element)
       ).length,
       1,
       "The 'Learn more' link should be visible once."
@@ -410,7 +397,7 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
 
 async function loadBadCertPage(url) {
   let loaded = BrowserTestUtils.waitForErrorPage(gBrowser.selectedBrowser);
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, url);
   await loaded;
 
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {

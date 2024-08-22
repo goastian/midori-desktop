@@ -37,10 +37,10 @@ async function simulateDrop(
       mozCursor: "auto",
       mozItemCount: 1,
       types: [PlacesUtils.TYPE_X_MOZ_PLACE],
-      mozTypesAt(i) {
+      mozTypesAt() {
         return [this._data[0].type];
       },
-      mozGetDataAt(i) {
+      mozGetDataAt() {
         return this._data[0].data;
       },
       mozSetDataAt(type, data, index) {
@@ -80,7 +80,7 @@ async function simulateDrop(
     Assert.equal(dataTransfer.dropEffect, dropEffect);
 
     let ip = new PlacesInsertionPoint({
-      parentId: await PlacesUtils.promiseItemId(targetGuid),
+      parentId: await PlacesTestUtils.promiseItemId(targetGuid),
       parentGuid: targetGuid,
       index: 0,
       orientation: Ci.nsITreeView.DROP_ON,

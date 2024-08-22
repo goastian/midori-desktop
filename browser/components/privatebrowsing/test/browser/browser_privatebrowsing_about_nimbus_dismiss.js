@@ -41,7 +41,7 @@ add_task(async function test_experiment_messaging_system_dismiss() {
 
   let { win: win1, tab: tab1 } = await openTabAndWaitForRender();
 
-  await SpecialPowers.spawn(tab1, [LOCALE], async function (locale) {
+  await SpecialPowers.spawn(tab1, [LOCALE], async function () {
     content.document.querySelector("#dismiss-btn").click();
     info("button clicked");
   });
@@ -65,7 +65,7 @@ add_task(async function test_experiment_messaging_system_dismiss() {
 
   await BrowserTestUtils.closeWindow(win1);
   await BrowserTestUtils.closeWindow(win2);
-  await doExperimentCleanup();
+  doExperimentCleanup();
 });
 
 add_task(async function test_experiment_messaging_show_default_on_dismiss() {
@@ -127,13 +127,13 @@ add_task(async function test_experiment_messaging_show_default_on_dismiss() {
       "should render the default promo message after dismissing experiment promo"
     );
     is(
-      promoHeader.textContent,
-      "Next-level privacy on mobile",
+      promoHeader.getAttribute("data-l10n-id"),
+      "about-private-browsing-focus-promo-header-c",
       "Correct default values are shown"
     );
   });
 
   await BrowserTestUtils.closeWindow(win1);
   await BrowserTestUtils.closeWindow(win2);
-  await doExperimentCleanup();
+  doExperimentCleanup();
 });

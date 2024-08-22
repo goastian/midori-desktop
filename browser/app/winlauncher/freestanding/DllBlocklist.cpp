@@ -11,7 +11,6 @@
 #include "mozilla/Types.h"
 #include "mozilla/WindowsDllBlocklist.h"
 
-#include "CrashAnnotations.h"
 #include "DllBlocklist.h"
 #include "LoaderPrivateAPI.h"
 #include "ModuleLoadFrame.h"
@@ -136,12 +135,8 @@ void NativeNtBlockSet::Write(WritableBuffer& aBuffer) {
 
 static NativeNtBlockSet gBlockSet;
 
-extern "C" void MOZ_EXPORT
-NativeNtBlockSet_Write(CrashReporter::AnnotationWriter& aWriter) {
-  WritableBuffer buffer;
-  gBlockSet.Write(buffer);
-  aWriter.Write(CrashReporter::Annotation::BlockedDllList, buffer.Data(),
-                buffer.Length());
+extern "C" void MOZ_EXPORT NativeNtBlockSet_Write(WritableBuffer& aBuffer) {
+  gBlockSet.Write(aBuffer);
 }
 
 enum class BlockAction {
@@ -169,27 +164,6 @@ static BlockAction CheckBlockInfo(const DllBlockInfo* aInfo,
                                   const mozilla::nt::PEHeaders& aHeaders,
                                   uint64_t& aVersion) {
   aVersion = DllBlockInfo::ALL_VERSIONS;
-
-  if (aInfo->mFlags & (DllBlockInfoFlags::BLOCK_WIN8_AND_OLDER |
-                       DllBlockInfoFlags::BLOCK_WIN7_AND_OLDER)) {
-    RTL_OSVERSIONINFOW osv = {sizeof(osv)};
-    NTSTATUS ntStatus = ::RtlGetVersion(&osv);
-    if (!NT_SUCCESS(ntStatus)) {
-      return BlockAction::Error;
-    }
-
-    if ((aInfo->mFlags & DllBlockInfoFlags::BLOCK_WIN8_AND_OLDER) &&
-        (osv.dwMajorVersion > 6 ||
-         (osv.dwMajorVersion == 6 && osv.dwMinorVersion > 2))) {
-      return BlockAction::Allow;
-    }
-
-    if ((aInfo->mFlags & DllBlockInfoFlags::BLOCK_WIN7_AND_OLDER) &&
-        (osv.dwMajorVersion > 6 ||
-         (osv.dwMajorVersion == 6 && osv.dwMinorVersion > 1))) {
-      return BlockAction::Allow;
-    }
-  }
 
   if ((aInfo->mFlags & DllBlockInfoFlags::CHILD_PROCESSES_ONLY) &&
       !(gBlocklistInitFlags & eDllBlocklistInitFlagIsChildProcess)) {

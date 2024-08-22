@@ -31,12 +31,18 @@ add_setup(async function () {
 
   // Navigate away from the initial page so that about:addons always
   // opens in a new tab during tests
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:robots");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:robots"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   registerCleanupFunction(async function () {
     // Return to about:blank when we're done
-    BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:blank");
+    BrowserTestUtils.startLoadingURIString(
+      gBrowser.selectedBrowser,
+      "about:blank"
+    );
     await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
   });
 });
@@ -55,6 +61,7 @@ async function testNoPrompt(origUrl, id) {
       ],
     ],
   });
+  Services.fog.testResetFOG();
 
   // Install version 1.0 of the test extension
   let addon = await promiseInstallAddon(origUrl);
@@ -74,7 +81,7 @@ async function testNoPrompt(origUrl, id) {
   await updatePromise;
 
   // There should be no notifications about the update
-  is(getBadgeStatus(), "", "Should not have addon alert badge");
+  is(getBadgeStatus(), null, "Should not have addon alert badge");
 
   await gCUITestUtils.openMainMenu();
   let addons = PanelUI.addonNotificationContainer;
@@ -100,11 +107,25 @@ async function testNoPrompt(origUrl, id) {
       return evt.extra.step;
     });
 
+  let expected = [
+    "started",
+    "download_started",
+    "download_completed",
+    "completed",
+  ];
   // Expect telemetry events related to a completed update with no permissions_prompt event.
   Assert.deepEqual(
+    expected,
     updateEventsSteps,
-    ["started", "download_started", "download_completed", "completed"],
     "Got the steps from the collected telemetry events"
+  );
+
+  Assert.deepEqual(
+    expected,
+    AddonTestUtils.getAMGleanEvents("update", { addon_id: id }).map(
+      e => e.step
+    ),
+    "Got the steps from the collected Glean events."
   );
 }
 

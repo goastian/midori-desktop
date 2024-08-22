@@ -10,7 +10,7 @@ with Files("**"):
 with Files("ContentSearch*.sys.mjs"):
     BUG_COMPONENT = ("Firefox", "Search")
 
-with Files("AboutReaderParent.jsm"):
+with Files("AboutReaderParent.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "Reader Mode")
 
 with Files("LightweightThemeChild.sys.mjs"):
@@ -34,8 +34,6 @@ with Files("WebRTCChild.sys.mjs"):
 FINAL_TARGET_FILES.actors += [
     "AboutNewTabChild.sys.mjs",
     "AboutNewTabParent.sys.mjs",
-    "AboutPluginsChild.sys.mjs",
-    "AboutPluginsParent.sys.mjs",
     "AboutPocketChild.sys.mjs",
     "AboutPocketParent.sys.mjs",
     "AboutPrivateBrowsingChild.sys.mjs",
@@ -82,11 +80,13 @@ FINAL_TARGET_FILES.actors += [
     "ScreenshotsComponentChild.sys.mjs",
     "SearchSERPTelemetryChild.sys.mjs",
     "SearchSERPTelemetryParent.sys.mjs",
+    "SpeechDispatcherChild.sys.mjs",
+    "SpeechDispatcherParent.sys.mjs",
     "SwitchDocumentDirectionChild.sys.mjs",
     "WebRTCChild.sys.mjs",
     "WebRTCParent.sys.mjs",
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser.ini",
+    "test/browser/browser.toml",
 ]

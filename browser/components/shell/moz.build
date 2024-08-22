@@ -7,8 +7,11 @@
 # For BinaryPath::GetLong for Windows
 LOCAL_INCLUDES += ["/xpcom/build"]
 
-BROWSER_CHROME_MANIFESTS += ["test/browser.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]
+TEST_DIRS += [
+    "test/gtest",
+]
 
 JAR_MANIFESTS += ["jar.mn"]
 
@@ -50,6 +53,8 @@ elif CONFIG["OS_ARCH"] == "WINNT":
     ]
     SOURCES += [
         "nsWindowsShellService.cpp",
+        "Windows11LimitedAccessFeatures.cpp",
+        "Windows11TaskbarPinning.cpp",
         "WindowsDefaultBrowser.cpp",
         "WindowsUserChoice.cpp",
     ]
@@ -82,11 +87,9 @@ for var in (
 ):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
+
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
-
-if CONFIG["MOZ_ENABLE_DBUS"]:
-    CXXFLAGS += CONFIG["MOZ_DBUS_GLIB_CFLAGS"]
 
 with Files("**"):
     BUG_COMPONENT = ("Firefox", "Shell Integration")

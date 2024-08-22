@@ -44,7 +44,9 @@ add_setup(async function () {
 });
 
 async function ensureIcon(tab, expectedIcon) {
-  await SpecialPowers.spawn(
+  let response = await fetch(expectedIcon);
+  const expectedType = response.headers.get("content-type");
+  let blobURL = await SpecialPowers.spawn(
     tab.linkedBrowser,
     [expectedIcon],
     async function (icon) {
@@ -58,13 +60,37 @@ async function ensureIcon(tab, expectedIcon) {
         "Search Icon not set."
       );
 
+      if (icon.startsWith("blob:")) {
+        // We don't check the data here as `browser_contentSearch.js` performs
+        // those checks.
+        Assert.ok(
+          computedStyle
+            .getPropertyValue("--newtab-search-icon")
+            .startsWith("url(blob:"),
+          "Should have a blob URL"
+        );
+        return computedStyle
+          .getPropertyValue("--newtab-search-icon")
+          .slice(4, -1);
+      }
       Assert.equal(
         computedStyle.getPropertyValue("--newtab-search-icon"),
         `url(${icon})`,
         "Should have the expected icon"
       );
+      return icon;
     }
   );
+  // Ensure that the icon has the correct MIME type.
+  if (blobURL) {
+    try {
+      response = await fetch(blobURL);
+      const type = response.headers.get("content-type");
+      Assert.equal(type, expectedType, "Should have the correct MIME type");
+    } catch (error) {
+      console.error("Error retrieving url: ", error);
+    }
+  }
 }
 
 async function ensurePlaceholder(tab, expectedId, expectedEngine) {
@@ -96,7 +122,7 @@ async function runNewTabTest(isHandoff) {
     waitForLoad: false,
   });
 
-  let engineIcon = defaultEngine.getIconURLBySize(16, 16);
+  let engineIcon = await defaultEngine.getIconURL(16);
 
   await ensureIcon(tab, engineIcon);
   if (isHandoff) {
@@ -162,7 +188,7 @@ add_task(async function test_content_search_attributes_in_private_window() {
   });
   let tab = win.gBrowser.selectedTab;
 
-  let engineIcon = defaultEngine.getIconURLBySize(16, 16);
+  let engineIcon = await defaultEngine.getIconURL(16);
 
   await ensureIcon(tab, engineIcon);
   await ensurePlaceholder(

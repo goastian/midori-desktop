@@ -11,7 +11,7 @@ const SEARCH_ENGINE_DETAILS = [
   {
     alias: "a",
     baseURL:
-      "https://www.amazon.com/exec/obidos/external-search/?field-keywords=foo&ie=UTF-8&mode=blended&tag=moz-us-20&sourceid=Mozilla-search",
+      "https://www.amazon.com/s?tag=admarketus-20&ref=pd_sl_a71c226e8a96bfdb7ae5bc6d1f30e9e88d9e4e3436d7bfb941a95d0a&mfadid=adm&k=foo",
     codes: {
       context: "",
       keyword: "",
@@ -22,15 +22,26 @@ const SEARCH_ENGINE_DETAILS = [
   },
   {
     alias: "b",
-    baseURL: `https://www.bing.com/search?{code}pc=${
-      SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "MOZR" : "MOZI"
-    }&q=foo`,
-    codes: {
-      context: "form=MOZCON&",
-      keyword: "form=MOZLBR&",
-      newTab: "form=MOZTSB&",
-      submission: "form=MOZSBR&",
-    },
+    baseURL: SearchUtils.newSearchConfigEnabled
+      ? `https://www.bing.com/search?pc=${
+          SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "MOZR" : "MOZI"
+        }&{code}q=foo`
+      : `https://www.bing.com/search?{code}pc=${
+          SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "MOZR" : "MOZI"
+        }&q=foo`,
+    codes: SearchUtils.newSearchConfigEnabled
+      ? {
+          context: "form=MOZLBR&",
+          keyword: "form=MOZLBR&",
+          newTab: "form=MOZLBR&",
+          submission: "form=MOZLBR&",
+        }
+      : {
+          context: "form=MOZCON&",
+          keyword: "form=MOZLBR&",
+          newTab: "form=MOZTSB&",
+          submission: "form=MOZSBR&",
+        },
     name: "Bing",
   },
   {
@@ -74,7 +85,7 @@ const SEARCH_ENGINE_DETAILS = [
 ];
 
 function promiseContentSearchReady(browser) {
-  return SpecialPowers.spawn(browser, [], async function (args) {
+  return SpecialPowers.spawn(browser, [], async function () {
     SpecialPowers.pushPrefEnv({
       set: [
         [
@@ -91,7 +102,7 @@ function promiseContentSearchReady(browser) {
   });
 }
 
-add_task(async function test_setup() {
+add_setup(async function () {
   await gCUITestUtils.addSearchBar();
   registerCleanupFunction(() => {
     gCUITestUtils.removeSearchBar();
@@ -182,7 +193,7 @@ async function testSearchEngine(engineDetails) {
       searchURL: base.replace("{code}", engineDetails.codes.newTab),
       async preTest(tab) {
         let browser = tab.linkedBrowser;
-        BrowserTestUtils.loadURIString(browser, "about:newtab");
+        BrowserTestUtils.startLoadingURIString(browser, "about:newtab");
 
         await BrowserTestUtils.browserLoaded(browser, false, "about:newtab");
         await promiseContentSearchReady(browser);

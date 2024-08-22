@@ -1,14 +1,11 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
+  AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
   PerfTestHelpers: "resource://testing-common/PerfTestHelpers.sys.mjs",
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   UrlbarTestUtils: "resource://testing-common/UrlbarTestUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  AboutNewTab: "resource:///modules/AboutNewTab.jsm",
 });
 
 /**
@@ -45,7 +42,7 @@ async function recordReflows(testPromise, win = window) {
   let reflows = [];
 
   let observer = {
-    reflow(start, end) {
+    reflow() {
       // Gather information about the current code path.
       reflows.push(new Error().stack);
 
@@ -53,7 +50,7 @@ async function recordReflows(testPromise, win = window) {
       dirtyFrame(win);
     },
 
-    reflowInterruptible(start, end) {
+    reflowInterruptible() {
       // Interruptible reflows are the reflows caused by the refresh
       // driver ticking. These are fine.
     },
@@ -102,11 +99,9 @@ async function recordReflows(testPromise, win = window) {
  *            // Sometimes, due to unpredictable timings, the reflow may be hit
  *            // less times.
  *            stack: [
- *              "select@chrome://global/content/bindings/textbox.xml",
- *              "focusAndSelectUrlBar@chrome://browser/content/browser.js",
- *              "openLinkIn@chrome://browser/content/utilityOverlay.js",
- *              "openUILinkIn@chrome://browser/content/utilityOverlay.js",
- *              "BrowserOpenTab@chrome://browser/content/browser.js",
+ *              "somefunction@chrome://somepackage/content/somefile.mjs",
+ *              "otherfunction@chrome://otherpackage/content/otherfile.js",
+ *              "morecode@resource://somewhereelse/SomeModule.sys.mjs",
  *            ],
  *            // We expect this particular reflow to happen up to 2 times.
  *            maxCount: 2,
@@ -116,10 +111,9 @@ async function recordReflows(testPromise, win = window) {
  *            // This reflow is caused by lorem ipsum. We expect this reflow
  *            // to only happen once, so we can omit the "maxCount" property.
  *            stack: [
- *              "get_scrollPosition@chrome://global/content/bindings/scrollbox.xml",
- *              "_fillTrailingGap@chrome://browser/content/tabbrowser.xml",
- *              "_handleNewTab@chrome://browser/content/tabbrowser.xml",
- *              "onxbltransitionend@chrome://browser/content/tabbrowser.xml",
+ *              "somefunction@chrome://somepackage/content/somefile.mjs",
+ *              "otherfunction@chrome://otherpackage/content/otherfile.js",
+ *              "morecode@resource://somewhereelse/SomeModule.sys.mjs",
  *            ],
  *          }
  *        ]
@@ -262,8 +256,8 @@ async function ensureNoPreloadedBrowser(win = window) {
 // which confuses tests that look at repaints in the toolbar.  Use this
 // function to cancel the badge update.
 function disableFxaBadge() {
-  let { ToolbarBadgeHub } = ChromeUtils.import(
-    "resource://activity-stream/lib/ToolbarBadgeHub.jsm"
+  let { ToolbarBadgeHub } = ChromeUtils.importESModule(
+    "resource:///modules/asrouter/ToolbarBadgeHub.sys.mjs"
   );
   ToolbarBadgeHub.removeAllNotifications();
 
@@ -304,9 +298,16 @@ async function getBookmarksToolbarRect() {
   return bookmarksToolbarRect;
 }
 
+async function ensureAnimationsFinished(win = window) {
+  let animations = win.document.getAnimations();
+  info(`Waiting for ${animations.length} animations`);
+  await Promise.allSettled(animations.map(a => a.finished));
+}
+
 async function prepareSettledWindow() {
   let win = await BrowserTestUtils.openNewBrowserWindow();
   await ensureNoPreloadedBrowser(win);
+  await ensureAnimationsFinished(win);
   return win;
 }
 
@@ -426,7 +427,7 @@ async function recordFrames(testPromise, win = window) {
 
   let frames = [];
 
-  let afterPaintListener = event => {
+  let afterPaintListener = () => {
     let width, height;
     canvas.width = width = win.innerWidth;
     canvas.height = height = win.innerHeight;
@@ -632,26 +633,32 @@ function reportUnexpectedFlicker(frames, expectations) {
       previousFrame = frames[i - 1];
     let rects = compareFrames(frame, previousFrame);
 
+    let rectText = r => `${r.toSource()}, window width: ${frame.width}`;
+
+    rects = rects.filter(rect => {
+      for (let e of expectations.exceptions || []) {
+        if (e.condition(rect)) {
+          todo(false, e.name + ", " + rectText(rect));
+          return false;
+        }
+      }
+      return true;
+    });
+
     if (expectations.filter) {
       rects = expectations.filter(rects, frame, previousFrame);
     }
 
-    rects = rects.filter(rect => {
-      let rectText = `${rect.toSource()}, window width: ${frame.width}`;
-      for (let e of expectations.exceptions || []) {
-        if (e.condition(rect)) {
-          todo(false, e.name + ", " + rectText);
-          return false;
-        }
-      }
-
-      ok(false, "unexpected changed rect: " + rectText);
-      return true;
-    });
-
     if (!rects.length) {
       continue;
     }
+
+    ok(
+      false,
+      `unexpected ${rects.length} changed rects: ${rects
+        .map(rectText)
+        .join(", ")}`
+    );
 
     // Before dumping a frame with unexpected differences for the first time,
     // ensure at least one previous frame has been logged so that it's possible
@@ -894,7 +901,7 @@ async function checkLoadedScripts({
   }
 
   for (let scriptType in known) {
-    loadedList[scriptType] = Object.keys(loadedInfo[scriptType]).filter(c => {
+    loadedList[scriptType] = [...loadedInfo[scriptType].keys()].filter(c => {
       if (!known[scriptType].has(c)) {
         return true;
       }
@@ -902,7 +909,7 @@ async function checkLoadedScripts({
       return false;
     });
 
-    loadedList[scriptType] = loadedList[scriptType].filter(c => {
+    loadedList[scriptType] = [...loadedList[scriptType]].filter(c => {
       return !intermittent[scriptType].has(c);
     });
 
@@ -920,7 +927,7 @@ async function checkLoadedScripts({
         false,
         `Unexpected ${scriptType} loaded during content process startup: ${script}`,
         undefined,
-        loadedInfo[scriptType][script]
+        loadedInfo[scriptType].get(script)
       );
     }
 
@@ -941,12 +948,10 @@ async function checkLoadedScripts({
 
     if (dumpAllStacks) {
       info(`Stacks for all loaded ${scriptType}:`);
-      for (let file in loadedInfo[scriptType]) {
-        if (loadedInfo[scriptType][file]) {
+      for (let [file, stack] of loadedInfo[scriptType]) {
+        if (stack) {
           info(
-            `${file}\n------------------------------------\n` +
-              loadedInfo[scriptType][file] +
-              "\n"
+            `${file}\n------------------------------------\n` + stack + "\n"
           );
         }
       }
@@ -955,17 +960,37 @@ async function checkLoadedScripts({
 
   for (let scriptType in forbidden) {
     for (let script of forbidden[scriptType]) {
-      let loaded = script in loadedInfo[scriptType];
+      let loaded = loadedInfo[scriptType].has(script);
       if (loaded) {
         record(
           false,
           `Forbidden ${scriptType} loaded during content process startup: ${script}`,
           undefined,
-          loadedInfo[scriptType][script]
+          loadedInfo[scriptType].get(script)
         );
       }
     }
 
     await checkAllExist(scriptType, forbidden[scriptType], "forbidden");
   }
+}
+
+// The first screenshot we get in OSX / Windows shows an unfocused browser
+// window for some reason. See bug 1445161. This function allows to deal with
+// that in a central place.
+function isLikelyFocusChange(rects, frame) {
+  if (rects.length > 3 && rects.every(r => r.y2 < 100)) {
+    // There are at least 4 areas that changed near the top of the screen.
+    // Note that we need a bit more leeway than the titlebar height, because on
+    // OSX other toolbarbuttons in the navigation toolbar also get disabled
+    // state.
+    return true;
+  }
+  if (
+    rects.every(r => r.y1 == 0 && r.x1 == 0 && r.w == frame.width && r.y2 < 100)
+  ) {
+    // Full-width rect in the top of the titlebar.
+    return true;
+  }
+  return false;
 }

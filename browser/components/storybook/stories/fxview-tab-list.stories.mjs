@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { html } from "lit.all.mjs";
-// eslint-disable-next-line import/no-unassigned-import
 import "browser/components/firefoxview/fxview-tab-list.mjs";
 
 const DATE_TIME_FORMATS = {
@@ -56,6 +55,7 @@ const Template = ({
       .dateTimeFormat=${dateTimeFormat}
       .maxTabsLength=${maxTabsLength}
       .tabItems=${tabItems}
+      .updatesPaused=${false}
       @fxview-tab-list-secondary-action=${secondaryAction}
       @fxview-tab-list-primary-action=${primaryAction}
     >
@@ -84,7 +84,7 @@ let secondaryAction = e => {
   e.target.querySelector("panel-list").toggle(e.detail.originalEvent);
 };
 
-let primaryAction = e => {
+let primaryAction = () => {
   // Open in new tab
 };
 
@@ -96,7 +96,8 @@ const tabItems = [
     time: 1678141738136,
     primaryL10nId: "fxviewtabrow-tabs-list-tab",
     primaryL10nArgs: JSON.stringify({ targetURI: "example.net" }),
-    secondaryL10nId: "fxviewtabrow-open-menu-button",
+    secondaryL10nId: "fxviewtabrow-options-menu-button",
+    secondaryL10nArgs: JSON.stringify({ tabTitle: "Example Domain" }),
   },
   {
     icon: "chrome://global/skin/icons/defaultFavicon.svg",
@@ -105,7 +106,8 @@ const tabItems = [
     time: 1678141738136,
     primaryL10nId: "fxviewtabrow-tabs-list-tab",
     primaryL10nArgs: JSON.stringify({ targetURI: "example.org" }),
-    secondaryL10nId: "fxviewtabrow-open-menu-button",
+    secondaryL10nId: "fxviewtabrow-options-menu-button",
+    secondaryL10nArgs: JSON.stringify({ tabTitle: "Example Domain" }),
   },
   {
     icon: "chrome://global/skin/icons/defaultFavicon.svg",
@@ -114,7 +116,8 @@ const tabItems = [
     time: 1678141738136,
     primaryL10nId: "fxviewtabrow-tabs-list-tab",
     primaryL10nArgs: JSON.stringify({ targetURI: "example.com" }),
-    secondaryL10nId: "fxviewtabrow-open-menu-button",
+    secondaryL10nId: "fxviewtabrow-options-menu-button",
+    secondaryL10nArgs: JSON.stringify({ tabTitle: "Example Domain" }),
   },
 ];
 const recentlyClosedItems = [

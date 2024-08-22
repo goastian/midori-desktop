@@ -186,20 +186,6 @@ const AVAILABLE_INJECTIONS = [
     },
   },
   {
-    id: "bug1654877",
-    platform: "android",
-    domain: "preev.com",
-    bug: "1654877",
-    contentScripts: {
-      matches: ["*://preev.com/*"],
-      css: [
-        {
-          file: "injections/css/bug1654877-preev.com-moz-appearance-fix.css",
-        },
-      ],
-    },
-  },
-  {
     id: "bug1654907",
     platform: "android",
     domain: "reactine.ca",
@@ -211,24 +197,6 @@ const AVAILABLE_INJECTIONS = [
           file: "injections/css/bug1654907-reactine.ca-hide-unsupported.css",
         },
       ],
-    },
-  },
-  {
-    id: "bug1631811",
-    platform: "all",
-    domain: "datastudio.google.com",
-    bug: "1631811",
-    contentScripts: {
-      matches: [
-        "https://datastudio.google.com/embed/reporting/*",
-        "https://lookerstudio.google.com/embed/reporting/*",
-      ],
-      js: [
-        {
-          file: "injections/js/bug1631811-datastudio.google.com-indexedDB.js",
-        },
-      ],
-      allFrames: true,
     },
   },
   {
@@ -262,20 +230,6 @@ const AVAILABLE_INJECTIONS = [
         },
       ],
       allFrames: true,
-    },
-  },
-  {
-    id: "bug1712833",
-    platform: "all",
-    domain: "buskocchi.desuca.co.jp",
-    bug: "1712833",
-    contentScripts: {
-      matches: ["*://buskocchi.desuca.co.jp/*"],
-      css: [
-        {
-          file: "injections/css/bug1712833-buskocchi.desuca.co.jp-fix-map-height.css",
-        },
-      ],
     },
   },
   {
@@ -540,11 +494,11 @@ const AVAILABLE_INJECTIONS = [
         "*://*.avanabayview.com/*", // #118617
         "*://*.breakpointeandcoronado.com/*", // #117735
         "*://*.courtsatspringmill.com/*", // #128404
+        "*://*.fieldstoneamherst.com/*", // #132974
         "*://*.gslbriarcreek.com/*", // #126401
-        "*://*.liveatlasathens.com/*", // #111189
+        "*://*.hpixeniatrails.com/*", // #131703
         "*://*.liveobserverpark.com/*", // #105244
         "*://*.liveupark.com/*", // #121083
-        "*://*.metropolisapt.com/*", // #129105
         "*://*.midwayurban.com/*", // #116523
         "*://*.nhcalaska.com/*",
         "*://*.prospectportal.com/*", // #115206
@@ -552,7 +506,6 @@ const AVAILABLE_INJECTIONS = [
         "*://*.thefoundryat41st.com/*", // #128994
         "*://*.theloftsorlando.com/*",
         "*://*.vanallenapartments.com/*", // #120056
-        "*://*.waterfordapartmentstulsa.com/*", // #125870
       ],
       css: [
         {
@@ -567,6 +520,20 @@ const AVAILABLE_INJECTIONS = [
     platform: "linux",
     domain: "www.samsung.com",
     bug: "1799968",
+    contentScripts: {
+      matches: ["*://www.samsung.com/*"],
+      js: [
+        {
+          file: "injections/js/bug1799968-www.samsung.com-appVersion-linux-fix.js",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1860417",
+    platform: "android",
+    domain: "www.samsung.com",
+    bug: "1860417",
     contentScripts: {
       matches: ["*://www.samsung.com/*"],
       js: [
@@ -617,6 +584,7 @@ const AVAILABLE_INJECTIONS = [
         "*://drafthouse.com/*", // 126385
         "*://*.lafoodbank.org/*", // 127006
         "*://rutamayacoffee.com/*", // 129353
+        "*://ottoandspike.com.au/*", // bugzilla 1644602
       ],
       js: [
         {
@@ -671,7 +639,7 @@ const AVAILABLE_INJECTIONS = [
     },
   },
   {
-    id: "bug1827678-webc77727",
+    id: "bug1827678-webc77727-js",
     platform: "android",
     domain: "free4talk.com",
     bug: "1827678",
@@ -722,20 +690,6 @@ const AVAILABLE_INJECTIONS = [
       css: [
         {
           file: "injections/css/bug1829949-tomshardware.com-scrollbar-width.css",
-        },
-      ],
-    },
-  },
-  {
-    id: "bug1830747",
-    platform: "android",
-    domain: "my.babbel.com",
-    bug: "1830747",
-    contentScripts: {
-      matches: ["*://my.babbel.com/*"],
-      css: [
-        {
-          file: "injections/css/bug1830747-babbel.com-page-height.css",
         },
       ],
     },
@@ -941,20 +895,6 @@ const AVAILABLE_INJECTIONS = [
     },
   },
   {
-    id: "bug1848716",
-    platform: "desktop",
-    domain: "elal.com",
-    bug: "1848716",
-    contentScripts: {
-      matches: ["*://*.elal.com/*"],
-      css: [
-        {
-          file: "injections/css/bug1848716-elal.com-unsupported-banner.css",
-        },
-      ],
-    },
-  },
-  {
     id: "bug1848849",
     platform: "all",
     domain: "theaa.com",
@@ -964,20 +904,6 @@ const AVAILABLE_INJECTIONS = [
       css: [
         {
           file: "injections/css/bug1848849-theaa.com-printing-mode-fix.css",
-        },
-      ],
-    },
-  },
-  {
-    id: "bug1849019",
-    platform: "android",
-    domain: "axa-assistance.pl",
-    bug: "1849019",
-    contentScripts: {
-      matches: ["*://*.axa-assistance.pl/*"],
-      css: [
-        {
-          file: "injections/css/bug1849019-axa-assistance.pl-datepicker-fix.css",
         },
       ],
     },
@@ -1066,10 +992,82 @@ const AVAILABLE_INJECTIONS = [
       matches: [
         "*://www.tvmovie.de/tv/fernsehprogramm",
         "*://www.tvmovie.de/tv/fernsehprogramm*",
+        "*://www.goodcarbadcar.net/*",
       ],
       css: [
         {
           file: "injections/css/bug1868345-tvmovie.de-scroll-fix.css",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1877346",
+    platform: "android",
+    domain: "offerup.com",
+    bug: "1877346",
+    contentScripts: {
+      matches: ["*://offerup.com/*"],
+      css: [
+        {
+          file: "injections/css/bug1877346-offerup.com-infinite-scroll-fix.css",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1884842",
+    platform: "android",
+    domain: "foodora.cz",
+    bug: "1884842",
+    contentScripts: {
+      matches: ["*://*.foodora.cz/*"],
+      css: [
+        {
+          file: "injections/css/bug1884842-foodora.cz-height-fix.css",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1897120",
+    platform: "desktop",
+    domain: "turn.js breakage",
+    bug: "1897120",
+    contentScripts: {
+      matches: ["*://flipbook.se.com/*", "*://*.flipbookpdf.net/*"],
+      js: [
+        {
+          file: "injections/js/bug1897120-turnjs-zoom-fix.js",
+        },
+      ],
+      allFrames: true,
+    },
+  },
+  {
+    id: "1896383",
+    platform: "all",
+    domain: "unimarc.cl",
+    bug: "1896383",
+    contentScripts: {
+      matches: ["*://*.unimarc.cl/*"],
+      js: [
+        {
+          file: "injections/js/bug1896383-error-capturestacktrace-shim.js",
+        },
+      ],
+    },
+  },
+  {
+    id: "1882040",
+    platform: "android",
+    domain: "YouTube Shorts",
+    bug: "1882040",
+    contentScripts: {
+      matches: ["*://m.youtube.com/shorts", "*://m.youtube.com/shorts/*"],
+      css: [
+        {
+          file: "injections/css/bug1882040-disable-pull-to-refresh.css",
         },
       ],
     },

@@ -2,6 +2,10 @@
 /* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/EventUtils.js */
 /* import-globals-from ../../../../../toolkit/components/satchel/test/satchel_common.js */
 /* eslint-disable no-unused-vars */
+// Despite a use of `spawnChrome` and thus ChromeUtils, we can't use isInstance
+// here as it gets used in plain mochitests which don't have the ChromeOnly
+// APIs for it.
+/* eslint-disable mozilla/use-isInstance */
 
 "use strict";
 
@@ -12,6 +16,10 @@ let expectingPopup = null;
 
 const { FormAutofillUtils } = SpecialPowers.ChromeUtils.importESModule(
   "resource://gre/modules/shared/FormAutofillUtils.sys.mjs"
+);
+
+const { OSKeyStore } = SpecialPowers.ChromeUtils.importESModule(
+  "resource://gre/modules/OSKeyStore.sys.mjs"
 );
 
 async function sleep(ms = 500, reason = "Intentionally wait for UI ready") {
@@ -80,8 +88,9 @@ function clickOnElement(selector) {
   SimpleTest.executeSoon(() => element.click());
 }
 
-// The equivalent helper function to getAdaptedProfiles in FormAutofillHandler.jsm that
-// transforms the given profile to expected filled profile.
+// The equivalent helper function to getAdaptedProfiles in
+// FormAutofillSection.sys.mjs that transforms the given profile to expected
+// filled profile.
 function _getAdaptedProfile(profile) {
   const adaptedProfile = Object.assign({}, profile);
 
@@ -104,27 +113,6 @@ async function checkFieldHighlighted(elem, expectedValue) {
   is(isHighlightApplied, expectedValue, `Checking #${elem.id} highlight style`);
 }
 
-async function checkFieldPreview(elem, expectedValue) {
-  is(
-    SpecialPowers.wrap(elem).previewValue,
-    expectedValue,
-    `Checking #${elem.id} previewValue`
-  );
-  let isTextColorApplied;
-  await SimpleTest.promiseWaitForCondition(function checkPreview() {
-    const computedStyle = window.getComputedStyle(elem);
-    const actualColor = computedStyle.getPropertyValue("color");
-    if (elem.disabled) {
-      isTextColorApplied = actualColor !== defaultDisabledTextColor;
-    } else {
-      isTextColorApplied = actualColor !== defaultTextColor;
-    }
-    return isTextColorApplied === !!expectedValue;
-  }, `Checking #${elem.id} preview style`);
-
-  is(isTextColorApplied, !!expectedValue, `Checking #${elem.id} preview style`);
-}
-
 async function checkFormFieldsStyle(profile, isPreviewing = true) {
   const elems = document.querySelectorAll("input, select");
 
@@ -139,10 +127,10 @@ async function checkFormFieldsStyle(profile, isPreviewing = true) {
       previewValue = "";
     } else {
       fillableValue = profile && profile[elem.id];
-      previewValue = (isPreviewing && fillableValue) || "";
+      previewValue =
+        (isPreviewing && fillableValue?.toString().replaceAll("*", "•")) || "";
     }
     await checkFieldHighlighted(elem, !!fillableValue);
-    await checkFieldPreview(elem, previewValue);
   }
 }
 
@@ -291,16 +279,43 @@ async function onStorageChanged(type) {
   });
 }
 
-function checkMenuEntries(expectedValues, isFormAutofillResult = true) {
-  let actualValues = getMenuEntries();
-  // Expect one more item would appear at the bottom as the footer if the result is from form autofill.
-  let expectedLength = isFormAutofillResult
-    ? expectedValues.length + 1
-    : expectedValues.length;
+function makeAddressComment({ primary, secondary, status }) {
+  return JSON.stringify({
+    primary,
+    secondary,
+    status,
+    ariaLabel: primary + " " + secondary + " " + status,
+  });
+}
+
+// Compare the labels on the autocomplete menu items to the expected labels.
+function checkMenuEntries(expectedValues, extraRows = 1) {
+  let actualValues = getMenuEntries().labels;
+  let expectedLength = expectedValues.length + extraRows;
 
   is(actualValues.length, expectedLength, " Checking length of expected menu");
   for (let i = 0; i < expectedValues.length; i++) {
     is(actualValues[i], expectedValues[i], " Checking menu entry #" + i);
+  }
+}
+
+// Compare the comment on the autocomplete menu items to the expected comment.
+// The profile field is not compared.
+function checkMenuEntriesComment(expectedValues, extraRows = 1) {
+  let actualValues = getMenuEntries().comments;
+  let expectedLength = expectedValues.length + extraRows;
+
+  is(actualValues.length, expectedLength, " Checking length of expected menu");
+  for (let i = 0; i < expectedValues.length; i++) {
+    const expectedValue = JSON.parse(expectedValues[i]);
+    const actualValue = JSON.parse(actualValues[i]);
+    for (const [key, value] of Object.entries(expectedValue)) {
+      is(
+        actualValue[key],
+        value,
+        ` Checking menu entry #${i}, ${key} should be ${value}`
+      );
+    }
   }
 }
 
@@ -367,17 +382,30 @@ async function canTestOSKeyStoreLogin() {
 }
 
 async function waitForOSKeyStoreLogin(login = false) {
-  await invokeAsyncChromeTask("FormAutofillTest:OSKeyStoreLogin", { login });
+  // Need to fetch this from the parent in order for it to be correct.
+  let isOSAuthEnabled = await SpecialPowers.spawnChrome([], () => {
+    // Need to re-import this because we're running in the parent.
+    // eslint-disable-next-line no-shadow
+    const { FormAutofillUtils } = ChromeUtils.importESModule(
+      "resource://gre/modules/shared/FormAutofillUtils.sys.mjs"
+    );
+
+    return FormAutofillUtils.getOSAuthEnabled(
+      FormAutofillUtils.AUTOFILL_CREDITCARDS_REAUTH_PREF
+    );
+  });
+  if (isOSAuthEnabled) {
+    await invokeAsyncChromeTask("FormAutofillTest:OSKeyStoreLogin", { login });
+  }
 }
 
 function patchRecordCCNumber(record) {
-  const number = record["cc-number"];
-  const ccNumberFmt = {
-    affix: "****",
-    label: number.substr(-4),
-  };
+  const ccNumberFmt = "****" + record.cc["cc-number"].substr(-4);
 
-  return Object.assign({}, record, { ccNumberFmt });
+  return {
+    cc: Object.assign({}, record.cc, { ccNumberFmt }),
+    expected: record.expected,
+  };
 }
 
 // Utils for registerPopupShownListener(in satchel_common.js) that handles dropdown popup

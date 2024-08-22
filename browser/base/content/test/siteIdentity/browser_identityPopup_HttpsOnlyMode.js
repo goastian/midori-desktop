@@ -6,6 +6,16 @@ const HTTPS_ONLY_PERMISSION = "https-only-load-insecure";
 const WEBSITE = scheme => `${scheme}://example.com`;
 
 add_task(async function () {
+  info("Running regular tests");
+  await runTests();
+  info("Running tests with view-source: uri");
+  await runTests({ outerScheme: "view-source" });
+});
+
+async function runTests(options = {}) {
+  const { outerScheme = "" } = options;
+  const outerSchemePrefix = outerScheme ? outerScheme + ":" : "";
+
   await SpecialPowers.pushPrefEnv({
     set: [["dom.security.https_only_mode", true]],
   });
@@ -13,70 +23,115 @@ add_task(async function () {
   // Site is already HTTPS, so the UI should not be visible.
   await runTest({
     name: "No HTTPS-Only UI",
-    initialScheme: "https",
+    initialScheme: outerSchemePrefix + "https",
+    initialPermission: 0,
+    isUiVisible: false,
+  });
+
+  // Site gets upgraded to HTTPS, so the UI should be visible.
+  // Adding a HTTPS-Only exemption through the menulist should reload the page and
+  // set the permission accordingly.
+  await runTest({
+    name: "Add HTTPS-Only exemption",
+    initialScheme: outerSchemePrefix + "http",
+    initialPermission: 0,
+    isUiVisible: true,
+    selectPermission: 1,
+    expectReload: true,
+    finalScheme: outerScheme || "https",
+  });
+
+  // HTTPS-Only Mode is disabled for this site, so the UI should be visible.
+  // Switching HTTPS-Only exemption modes through the menulist should not reload the page
+  // but set the permission accordingly.
+  await runTest({
+    name: "Switch between HTTPS-Only exemption modes",
+    initialScheme: outerSchemePrefix + "http",
+    initialPermission: 1,
+    isUiVisible: true,
+    selectPermission: 2,
+    expectReload: false,
+    finalScheme: outerScheme || "http",
+  });
+
+  // HTTPS-Only Mode is disabled for this site, so the UI should be visible.
+  // Disabling HTTPS-Only exemptions through the menulist should reload and upgrade the
+  // page and set the permission accordingly.
+  await runTest({
+    name: "Remove HTTPS-Only exemption again",
+    initialScheme: outerSchemePrefix + "http",
+    initialPermission: 2,
+    permissionScheme: "http",
+    isUiVisible: true,
+    selectPermission: 0,
+    expectReload: true,
+    finalScheme: outerScheme || "https",
+  });
+
+  await SpecialPowers.flushPrefEnv();
+  await SpecialPowers.pushPrefEnv({
+    set: [["dom.security.https_first", true]],
+  });
+
+  // Site is already HTTPS, so the UI should not be visible.
+  await runTest({
+    name: "No HTTPS-Only UI",
+    initialScheme: outerSchemePrefix + "https",
     initialPermission: 0,
     permissionScheme: "https",
     isUiVisible: false,
   });
 
   // Site gets upgraded to HTTPS, so the UI should be visible.
-  // Disabling HTTPS-Only Mode through the menulist should reload the page and
+  // Adding a HTTPS-Only exemption through the menulist should reload the page and
   // set the permission accordingly.
   await runTest({
-    name: "Disable HTTPS-Only",
-    initialScheme: "http",
+    name: "Add HTTPS-Only exemption",
+    initialScheme: outerSchemePrefix + "http",
     initialPermission: 0,
     permissionScheme: "https",
     isUiVisible: true,
     selectPermission: 1,
     expectReload: true,
-    finalScheme: "https",
+    finalScheme: outerScheme || "https",
   });
 
-  // HTTPS-Only Mode is disabled for this site, so the UI should be visible.
-  // Disabling HTTPS-Only Mode through the menulist should not reload the page
+  // HTTPS-First Mode is disabled for this site, so the UI should be visible.
+  // Switching HTTPS-Only exemption modes through the menulist should not reload the page
   // but set the permission accordingly.
   await runTest({
-    name: "Switch between off states",
-    initialScheme: "http",
+    name: "Switch between HTTPS-Only exemption modes",
+    initialScheme: outerSchemePrefix + "http",
     initialPermission: 1,
     permissionScheme: "http",
     isUiVisible: true,
     selectPermission: 2,
     expectReload: false,
-    finalScheme: "http",
+    finalScheme: outerScheme || "http",
   });
 
-  // HTTPS-Only Mode is disabled for this site, so the UI should be visible.
-  // Enabling HTTPS-Only Mode through the menulist should reload and upgrade the
+  // HTTPS-First Mode is disabled for this site, so the UI should be visible.
+  // Disabling HTTPS-Only exemptions through the menulist should reload and upgrade the
   // page and set the permission accordingly.
   await runTest({
-    name: "Enable HTTPS-Only again",
-    initialScheme: "http",
+    name: "Remove HTTPS-Only exemption again",
+    initialScheme: outerSchemePrefix + "http",
     initialPermission: 2,
-    permissionScheme: "http",
     isUiVisible: true,
     selectPermission: 0,
     expectReload: true,
-    finalScheme: "https",
+    finalScheme: outerScheme || "https",
   });
-});
+}
 
 async function runTest(options) {
   // Set the initial permission
-  setPermission(WEBSITE(options.permissionScheme), options.initialPermission);
+  setPermission(WEBSITE("http"), options.initialPermission);
 
   await BrowserTestUtils.withNewTab(
     WEBSITE(options.initialScheme),
     async function (browser) {
       const name = options.name + " | ";
-
-      // Check if the site has the expected scheme
-      is(
-        browser.currentURI.scheme,
-        options.permissionScheme,
-        name + "Expected scheme should match actual scheme"
-      );
 
       // Open the identity popup.
       let { gIdentityHandler } = gBrowser.ownerGlobal;
@@ -134,7 +189,7 @@ async function runTest(options) {
 
       // Check if the permission was sucessfully changed
       is(
-        getPermission(WEBSITE(options.permissionScheme)),
+        getPermission(WEBSITE("http")),
         options.selectPermission,
         name + "Set permission should match the one selected from the menulist."
       );

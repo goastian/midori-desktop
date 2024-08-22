@@ -13,7 +13,7 @@ add_task(async function test_onCreated_active() {
         browser.tabs.remove(tab.id);
         browser.test.sendMessage("onCreated", tab);
       });
-      browser.tabs.onUpdated.addListener((tabId, changes, tab) => {
+      browser.tabs.onUpdated.addListener((tabId, changes) => {
         browser.test.assertEq(
           '["status"]',
           JSON.stringify(Object.keys(changes)),
@@ -26,7 +26,7 @@ add_task(async function test_onCreated_active() {
 
   await extension.startup();
   await extension.awaitMessage("ready");
-  BrowserOpenTab();
+  BrowserCommands.openTab();
 
   let tab = await extension.awaitMessage("onCreated");
   is(true, tab.active, "Tab should be active");

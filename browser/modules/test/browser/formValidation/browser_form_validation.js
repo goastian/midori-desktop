@@ -29,7 +29,7 @@ function promiseTabLoadEvent(tab, url) {
   let loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, handle);
 
   if (url) {
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, url);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url);
   }
 
   return loaded;
@@ -161,7 +161,7 @@ add_task(async function () {
 
   await clickChildElement(browser);
 
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     // XXXndeakin This isn't really going to work when the content is another process
     executeSoon(function () {
       checkPopupHide();
@@ -289,7 +289,7 @@ add_task(async function () {
     gInvalidFormPopup.firstElementChild.textContent
   );
 
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     EventUtils.sendString("a");
     executeSoon(function () {
       checkPopupShow(anchorRect);
@@ -434,7 +434,10 @@ add_task(async function () {
     gInvalidFormPopup,
     "popuphidden"
   );
-  BrowserTestUtils.loadURIString(browser, "data:text/html,<div>hello!</div>");
+  BrowserTestUtils.startLoadingURIString(
+    browser,
+    "data:text/html,<div>hello!</div>"
+  );
   await BrowserTestUtils.browserLoaded(browser);
 
   await popupHiddenPromise;
@@ -472,7 +475,7 @@ add_task(async function () {
 
   // Now, the element suffers from another error, the message should have
   // been updated.
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     // XXXndeakin This isn't really going to work when the content is another process
     executeSoon(function () {
       checkChildFocus(browser, gInvalidFormPopup.firstElementChild.textContent);
@@ -512,7 +515,7 @@ add_task(async function () {
     gInvalidFormPopup,
     "popuphidden"
   );
-  BrowserReloadSkipCache();
+  BrowserCommands.reloadSkipCache();
   await popupHiddenPromise;
 
   gBrowser.removeCurrentTab();

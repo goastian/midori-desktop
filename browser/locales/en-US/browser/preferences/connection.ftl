@@ -24,6 +24,9 @@ connection-proxy-option-no =
 connection-proxy-option-system =
     .label = Use system proxy settings
     .accesskey = U
+connection-proxy-option-wpad =
+    .label = Use system Web Proxy Auto-Discovery setting
+    .accesskey = g
 connection-proxy-option-auto =
     .label = Auto-detect proxy settings for this network
     .accesskey = w
@@ -71,10 +74,14 @@ connection-proxy-reload =
     .label = Reload
     .accesskey = e
 
-connection-proxy-autologin =
+connection-proxy-autologin-checkbox =
     .label = Do not prompt for authentication if password is saved
     .accesskey = i
-    .tooltip = This option silently authenticates you to proxies when you have saved credentials for them. You will be prompted if authentication fails.
+    .tooltiptext = This option silently authenticates you to proxies when you have saved credentials for them. You will be prompted if authentication fails.
+
+connection-proxy-socks4-remote-dns =
+    .label = Proxy DNS when using SOCKS v4
+    .accesskey = 4
 
 connection-proxy-socks-remote-dns =
     .label = Proxy DNS when using SOCKS v5

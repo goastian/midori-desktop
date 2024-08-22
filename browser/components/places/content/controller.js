@@ -73,7 +73,7 @@ PlacesInsertionPoint.prototype = {
 
 function PlacesController(aView) {
   this._view = aView;
-  XPCOMUtils.defineLazyGetter(this, "profileName", function () {
+  ChromeUtils.defineLazyGetter(this, "profileName", function () {
     return Services.dirsvc.get("ProfD", Ci.nsIFile).leafName;
   });
 
@@ -102,7 +102,7 @@ PlacesController.prototype = {
   QueryInterface: ChromeUtils.generateQI(["nsIClipboardOwner"]),
 
   // nsIClipboardOwner
-  LosingOwnership: function PC_LosingOwnership(aXferable) {
+  LosingOwnership: function PC_LosingOwnership() {
     this.cutNodes = [];
   },
 
@@ -242,6 +242,12 @@ PlacesController.prototype = {
   },
 
   doCommand: function PC_doCommand(aCommand) {
+    if (aCommand != "cmd_delete" && aCommand != "placesCmd_delete") {
+      // Clear out last removal fingerprint if any other commands arrives.
+      // This covers sequences like: remove, undo, remove, where the removal
+      // commands are not immediately adjacent.
+      this._lastRemoveOperationFingerprint = null;
+    }
     switch (aCommand) {
       case "cmd_undo":
         PlacesTransactions.undo().catch(console.error);
@@ -327,7 +333,7 @@ PlacesController.prototype = {
     }
   },
 
-  onEvent: function PC_onEvent(eventName) {},
+  onEvent: function PC_onEvent() {},
 
   /**
    * Determine whether or not the selection can be removed, either by the
@@ -362,6 +368,26 @@ PlacesController.prototype = {
     }
 
     return true;
+  },
+
+  /**
+   * This helper can be used to avoid handling repeated remove operations.
+   * Clear this._lastRemoveOperationFingerprint if another operation happens.
+   *
+   * @returns {boolean} whether the removal is the same as the last one.
+   */
+  _isRepeatedRemoveOperation() {
+    let lastRemoveOperationFingerprint = this._lastRemoveOperationFingerprint;
+    // .bookmarkGuid and .pageGuid may either be null or an empty string. While
+    // that should probably change, it's safer to use || here.
+    this._lastRemoveOperationFingerprint = PlacesUtils.sha256(
+      this._view.selectedNodes
+        .map(n => n.bookmarkGuid || (n.pageGuid || n.uri) + n.time)
+        .join()
+    );
+    return (
+      lastRemoveOperationFingerprint == this._lastRemoveOperationFingerprint
+    );
   },
 
   /**
@@ -913,7 +939,10 @@ PlacesController.prototype = {
         this._view.result,
         totalItems,
         async () => {
-          await PlacesTransactions.batch(transactions);
+          await PlacesTransactions.batch(
+            transactions,
+            "PlacesController::removeRowsFromBookmarks"
+          );
         }
       );
     }
@@ -999,6 +1028,15 @@ PlacesController.prototype = {
       return;
     }
 
+    // Sometimes we get repeated remove operation requests, because the user is
+    // holding down the DEL key. Since removal operations are asynchronous
+    // that would cause duplicated remove transactions that perform badly,
+    // increase memory usage (duplicate data), and cause failures (trying to
+    // act on already removed nodes).
+    if (this._isRepeatedRemoveOperation()) {
+      return;
+    }
+
     var root = this._view.result.root;
 
     if (PlacesUtils.nodeIsFolder(root)) {
@@ -1010,7 +1048,7 @@ PlacesController.prototype = {
       } else if (queryType == Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
         await this._removeRowsFromHistory();
       } else {
-        throw new Error("implement support for QUERY_TYPE_UNIFIED");
+        throw new Error("Unknown query type");
       }
     } else {
       throw new Error("unexpected root");
@@ -1398,7 +1436,7 @@ PlacesController.prototype = {
     let documentUrl = document.documentURI.toLowerCase();
     if (documentUrl.endsWith("browser.xhtml")) {
       // We're in a menu or a panel.
-      window.SidebarUI._show("viewBookmarksSidebar").then(() => {
+      window.SidebarController._show("viewBookmarksSidebar").then(() => {
         let theSidebar = document.getElementById("sidebar");
         theSidebar.contentDocument
           .getElementById("bookmarks-view")

@@ -14,7 +14,7 @@ ChromeUtils.defineESModuleGetters(this, {
   UrlbarView: "resource:///modules/UrlbarView.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
+ChromeUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
   const { UrlbarTestUtils: module } = ChromeUtils.importESModule(
     "resource://testing-common/UrlbarTestUtils.sys.mjs"
   );
@@ -55,7 +55,7 @@ add_setup(async function headInit() {
 class DelayingTestProvider extends UrlbarTestUtils.TestProvider {
   finishQueryPromise = null;
   async startQuery(context, addCallback) {
-    for (let result of this._results) {
+    for (let result of this.results) {
       addCallback(this, result);
     }
     await this.finishQueryPromise;
@@ -80,6 +80,9 @@ function makeSuggestedIndexResult(suggestedIndex, resultSpan = 1) {
         url: "http://example.com/si",
         displayUrl: "http://example.com/si",
         title: "suggested index",
+        helpUrl: "http://example.com/",
+        isBlockable: true,
+        blockL10n: { id: "urlbar-result-menu-remove-from-history" },
       }
     ),
     { suggestedIndex, resultSpan }
@@ -156,6 +159,9 @@ function makeProviderResults({ count = 0, type = undefined, specs = [] }) {
                 url: "http://example.com/" + i,
                 displayUrl: "http://example.com/" + i,
                 title: str,
+                helpUrl: "http://example.com/",
+                isBlockable: true,
+                blockL10n: { id: "urlbar-result-menu-remove-from-history" },
               }
             )
           );
@@ -285,7 +291,7 @@ async function doSuggestedIndexTest({ search1, search2, duringUpdate }) {
 
   // Set up the first search. First, add the non-suggestedIndex results to the
   // provider.
-  provider._results = makeProviderResults({
+  provider.results = makeProviderResults({
     specs: search1.other,
     count: search1.otherCount,
     type: search1.otherType,
@@ -308,9 +314,7 @@ async function doSuggestedIndexTest({ search1, search2, duringUpdate }) {
 
   // Add the suggestedIndex results to the provider.
   for (let [suggestedIndex, resultSpan] of search1.suggestedIndexes) {
-    provider._results.push(
-      makeSuggestedIndexResult(suggestedIndex, resultSpan)
-    );
+    provider.results.push(makeSuggestedIndexResult(suggestedIndex, resultSpan));
   }
 
   // Do the first search.
@@ -346,7 +350,7 @@ async function doSuggestedIndexTest({ search1, search2, duringUpdate }) {
 
   // Set up the second search. First, add the non-suggestedIndex results to the
   // provider.
-  provider._results = makeProviderResults({
+  provider.results = makeProviderResults({
     specs: search2.other,
     count: search2.otherCount,
     type: search2.otherType,
@@ -369,9 +373,7 @@ async function doSuggestedIndexTest({ search1, search2, duringUpdate }) {
 
   // Add the suggestedIndex results to the provider.
   for (let [suggestedIndex, resultSpan] of search2.suggestedIndexes) {
-    provider._results.push(
-      makeSuggestedIndexResult(suggestedIndex, resultSpan)
-    );
+    provider.results.push(makeSuggestedIndexResult(suggestedIndex, resultSpan));
   }
 
   let rowCountDuringUpdate = duringUpdate.reduce(
@@ -384,7 +386,7 @@ async function doSuggestedIndexTest({ search1, search2, duringUpdate }) {
   // update and delaying resolving the provider's finishQueryPromise.
   let mutationPromise = new Promise(resolve => {
     let lastRowState = duringUpdate[duringUpdate.length - 1];
-    let observer = new MutationObserver(mutations => {
+    let observer = new MutationObserver(() => {
       observer.disconnect();
       resolve();
     });
@@ -487,7 +489,7 @@ async function doSuggestedIndexTest({ search1, search2, duringUpdate }) {
 
       // visible
       Assert.equal(
-        BrowserTestUtils.is_visible(row),
+        BrowserTestUtils.isVisible(row),
         !rowState.hidden,
         `Visible at index ${rowIndex} during update`
       );

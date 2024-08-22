@@ -23,7 +23,7 @@ let suggestionsEngine;
 let defaultEngine;
 
 add_setup(async function () {
-  suggestionsEngine = await SearchTestUtils.promiseNewSearchEngine({
+  suggestionsEngine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + SUGGESTIONS_ENGINE_NAME,
   });
 
@@ -196,7 +196,7 @@ add_task(async function escapeOnInitialPage() {
 add_task(async function escapeOnBrowsingPage() {
   info("Tests the indicator's interaction with the ESC key on browsing page");
 
-  await BrowserTestUtils.withNewTab("http://example.com", async browser => {
+  await BrowserTestUtils.withNewTab("http://example.com", async () => {
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
       value: TEST_QUERY,
@@ -219,7 +219,7 @@ add_task(async function escapeOnBrowsingPage() {
     Assert.ok(!UrlbarTestUtils.isPopupOpen(window, "UrlbarView is closed."));
     Assert.equal(
       gURLBar.value,
-      "example.com",
+      UrlbarTestUtils.trimURL("http://example.com"),
       "Urlbar value indicates the browsing page."
     );
     await UrlbarTestUtils.assertSearchMode(window, null);
@@ -355,7 +355,7 @@ add_task(async function menubar_item() {
 // Tests that entering search mode invalidates pageproxystate and that
 // pageproxystate remains invalid after exiting search mode.
 add_task(async function invalidate_pageproxystate() {
-  await BrowserTestUtils.withNewTab("about:robots", async function (browser) {
+  await BrowserTestUtils.withNewTab("about:robots", async function () {
     await UrlbarTestUtils.promisePopupOpen(window, () => {
       EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
     });

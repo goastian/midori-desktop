@@ -23,14 +23,10 @@ add_task(async function () {
       // Add a test engine that provides suggestions and switch to it.
       let engine;
       await promiseContentSearchChange(browser, async () => {
-        engine = await SearchTestUtils.promiseNewSearchEngine({
+        engine = await SearchTestUtils.installOpenSearchEngine({
           url: getRootDirectory(gTestPath) + "searchSuggestionEngine.xml",
           setAsDefault: true,
         });
-        await Services.search.setDefault(
-          engine,
-          Ci.nsISearchService.CHANGE_REASON_UNKNOWN
-        );
         return engine.name;
       });
 

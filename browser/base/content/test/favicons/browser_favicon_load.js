@@ -23,7 +23,6 @@ const THIRD_PARTY_FAVICON_URI =
 
 ChromeUtils.defineESModuleGetters(this, {
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
 });
 
 let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
@@ -51,7 +50,7 @@ function FaviconObserver(aPageURI, aFaviconURL, aTailingEnabled) {
 }
 
 FaviconObserver.prototype = {
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     // Make sure that the topic is 'http-on-modify-request'.
     if (aTopic === "http-on-modify-request") {
       let httpChannel = aSubject.QueryInterface(Ci.nsIHttpChannel);
@@ -84,7 +83,7 @@ FaviconObserver.prototype = {
 
   reset(aPageURI, aFaviconURL, aTailingEnabled) {
     this._faviconURL = aFaviconURL;
-    this._faviconLoaded = PromiseUtils.defer();
+    this._faviconLoaded = Promise.withResolvers();
     this._tailingEnabled = aTailingEnabled;
   },
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
+import { MigrationWizardConstants } from "chrome://browser/content/migration/migration-wizard-constants.mjs";
 
 const lazy = {};
 
@@ -20,6 +21,10 @@ export class InternalTestingProfileMigrator extends MigratorBase {
 
   static get displayNameL10nID() {
     return "Internal Testing Migrator";
+  }
+
+  static get sourceID() {
+    return 1;
   }
 
   getSourceProfiles() {
@@ -41,7 +46,15 @@ export class InternalTestingProfileMigrator extends MigratorBase {
       return {
         type,
         migrate: callback => {
-          callback(true /* success */);
+          if (type == lazy.MigrationUtils.resourceTypes.EXTENSIONS) {
+            callback(true, {
+              progressValue: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+              totalExtensions: [],
+              importedExtensions: [],
+            });
+          } else {
+            callback(true /* success */);
+          }
         },
       };
     });

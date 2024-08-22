@@ -48,14 +48,6 @@ function ensureCssLoaded(domWindow) {
   }
 
   insertStyleSheet(domWindow, "chrome://formautofill/content/formautofill.css");
-  insertStyleSheet(
-    domWindow,
-    "chrome://formautofill/content/skin/autocomplete-item-shared.css"
-  );
-  insertStyleSheet(
-    domWindow,
-    "chrome://formautofill/content/skin/autocomplete-item.css"
-  );
 }
 
 this.formautofill = class extends ExtensionAPI {
@@ -179,7 +171,7 @@ this.formautofill = class extends ExtensionAPI {
         esModuleURI: "resource://autofill/FormAutofillChild.sys.mjs",
         events: {
           focusin: {},
-          DOMFormBeforeSubmit: {},
+          "form-submission-detected": { createActor: false },
         },
       },
       allFrames: true,

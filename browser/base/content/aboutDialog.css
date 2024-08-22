@@ -11,7 +11,28 @@
 }
 
 #aboutDialogContainer {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#leftBox {
+  background-image: url("chrome://branding/content/about-logo.png");
+  background-repeat: no-repeat;
+  background-size: 192px auto;
+  background-position: center 40px;
+  /* min-width and min-height create room for the logo; logo is 192px tall w/
+     40px above it, this leaves 8px on the bottom at the minimum height */
+  min-width: 210px;
+  min-height: 240px;
+  margin-top: 20px;
+  margin-inline-start: 30px;
+}
+
+@media (min-resolution: 2dppx) {
+  #leftBox {
+    background-image: url("chrome://branding/content/about-logo@2x.png");
+  }
 }
 
 #rightBox {
@@ -25,6 +46,11 @@
 
 #rightBox:-moz-locale-dir(rtl) {
   background-position: 100% 0;
+}
+
+#clientBox {
+  flex: 1 0 auto;
+  padding: 10px 0 15px;
 }
 
 #bottomBox {
@@ -63,6 +89,16 @@
   padding-inline-start: 0;
 }
 
+#updateInfo {
+  display: grid;
+  grid-row-start: 1;
+  grid-row-end: 4;
+  grid-column-start: 2;
+  grid-column-end: 3;
+  grid-template-rows: subgrid;
+  grid-template-columns: subgrid;
+}
+
 #updateDeck {
   align-items: center;
 }
@@ -92,6 +128,11 @@
   content: image-set(url("chrome://global/skin/icons/loading.png"), url("chrome://global/skin/icons/loading@2x.png") 2x);
 }
 
+.text-link {
+  color: #fff !important;
+  text-decoration: underline;
+}
+
 description > .text-link {
   margin: 0;
   padding: 0;
@@ -114,11 +155,21 @@ description > .text-link {
 
 #updateBox {
   line-height: normal;
+  display: grid;
+}
+
+#icons {
+  align-self: center;
+  grid-row-start: 1;
+  grid-row-end: 2;
+  grid-column-start: 1;
+  grid-column-end: 2;
 }
 
 #icons > .icon {
+  vertical-align: middle;
   -moz-context-properties: fill;
-  margin: 10px 5px;
+  margin: 0px 5px;
   width: 16px;
   height: 16px;
 }

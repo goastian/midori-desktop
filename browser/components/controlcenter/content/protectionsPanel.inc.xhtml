@@ -9,7 +9,7 @@
        role="alertdialog"
        noautofocus="true"
        aria-labelledby="protections-popup-main-header-label"
-       onpopupshown="gProtectionsHandler.onPopupShown(event);"
+       onpopupshown="gProtectionsHandler.onPopupShown(event);ReportBrokenSite.updateParentMenu(event)"
        onpopuphidden="gProtectionsHandler.onPopupHidden(event);"
        orient="vertical">
 
@@ -18,13 +18,13 @@
     <panelview id="protections-popup-mainView"
                class="PanelUI-subView"
                role="document"
-               showheader="true">
+               mainview-with-header="true"
+               has-custom-header="true">
       <vbox id="protections-popup-mainView-panel-header-section">
         <box id="protections-popup-mainView-panel-header"
-             class="panel-header panel-header-with-info-button"
+             class="panel-header panel-header-with-additional-element panel-header-with-info-button"
              onclick="gProtectionsHandler.onHeaderClicked(event);">
-          <html:h1 id="protections-popup-main-header-label"
-                 role="heading" aria-level="1">
+          <html:h1 id="protections-popup-main-header-label">
             <html:span id="protections-popup-mainView-panel-header-span"/>
           </html:h1>
           <toolbarbutton id="protections-popup-info-button" class="panel-info-button"
@@ -36,8 +36,8 @@
         </box>
         <toolbarseparator></toolbarseparator>
 
-        <html:div id="messaging-system-message-container" disabled="true">
-          <!-- Messaging System Messages will render in this container -->
+        <html:div id="info-message-container" disabled="true">
+          <!-- Info message will render in this container -->
         </html:div>
       </vbox>
 
@@ -45,56 +45,26 @@
       <vbox id="protections-popup-main-body" class="panel-subview-body">
         <vbox id="protections-popup-tp-switch-section" class="protections-popup-section protections-popup-switch-section">
           <hbox id="protections-popup-tp-switch-section-header" class="protections-popup-switch-section-header">
-            <vbox class="protections-popup-tp-switch-label-box" flex="1" align="start">
-              <label class="protections-popup-switch-header protections-popup-tp-switch-on-header"
-                     role="heading"
-                     aria-level="2" data-l10n-id="protections-panel-etp-on-header"></label>
-              <label class="protections-popup-switch-header protections-popup-tp-switch-off-header"
-                     role="heading"
-                     aria-level="2" data-l10n-id="protections-panel-etp-off-header"></label>
+            <vbox class="protections-popup-tp-switch-box" flex="1" align="stretch">
+              <html:moz-toggle id="protections-popup-tp-switch" data-l10n-attrs="label, description"></html:moz-toggle>
             </vbox>
-            <vbox class="protections-popup-tp-switch-box">
-              <toolbarbutton id="protections-popup-tp-switch"
-                             class="protections-popup-tp-switch"
-                             enabled="false"
-                             oncommand="gProtectionsHandler.onTPSwitchCommand();" />
-            </vbox>
-          </hbox>
-          <hbox id="protections-popup-tp-switch-section-footer">
-            <toolbarbutton id="protections-popup-tp-switch-breakage-link"
-                           oncommand="gProtectionsHandler.showSiteNotWorkingView(); gProtectionsHandler.recordClick('sitenotworking_link');"
-                           class="subviewbutton subviewbutton-nav" align="center" flex="1">
-              <label flex="1" class="toolbarbutton-text" data-l10n-id="protections-panel-site-not-working"></label>
-            </toolbarbutton>
-            <toolbarbutton id="protections-popup-tp-switch-breakage-fixed-link"
-                           oncommand="gProtectionsHandler.showSendReportView(); gProtectionsHandler.recordClick('sitenotworking_link', 'sitefixed');"
-                           class="subviewbutton subviewbutton-nav" align="center" flex="1">
-              <label flex="1" class="toolbarbutton-text" data-l10n-id="protections-panel-sitefixedsendreport-label"></label>
-            </toolbarbutton>
           </hbox>
         </vbox>
 
-        <toolbarseparator id="protections-popup-cookie-banner-section-separator"></toolbarseparator>
-        <hbox id="protections-popup-cookie-banner-section" class="protections-popup-section" uiDisabled="true" enabled="true" flex="1">
-          <toolbarbutton id="protections-popup-cookie-banner-switch"
-                         class="subviewbutton subviewbutton-nav"
-                         onclick="gProtectionsHandler.onCookieBannerClick()"
-                         flex="1">
-            <vbox flex="1">
-              <label role="heading" class="protections-popup-switch-header" aria-level="2" data-l10n-id="protections-panel-cookie-banner-handling-header"></label>
-              <description id="protections-popup-cookie-banner-undetected" data-l10n-id="protections-panel-cookie-banner-handling-undetected"></description>
-              <description id="protections-popup-cookie-banner-site-disabled" data-l10n-id="protections-panel-cookie-banner-handling-disabled"></description>
-              <description id="protections-popup-cookie-banner-detected" data-l10n-id="protections-panel-cookie-banner-handling-enabled"></description>
-            </vbox>
-          </toolbarbutton>
-        </hbox>
+        <toolbarseparator observes="cmd_reportBrokenSite"></toolbarseparator>
+        <toolbarbutton id="protections-popup-report-broken-site-button"
+                     command="cmd_reportBrokenSite"
+                     class="subviewbutton subviewbutton-nav"
+                     data-l10n-id="protections-panel-report-broken-site"
+                     hidden="true"
+                     closemenu="none"/>
 
         <!-- Tracking Protection Section -->
         <toolbarseparator></toolbarseparator>
         <vbox id="tracking-protection-container" class="protections-popup-section">
           <description id="protections-popup-no-trackers-found-description" data-l10n-id="protections-panel-no-trackers-found"></description>
-          <tooltip id="protections-popup-not-blocking-why-etp-on-tooltip" data-l10n-id="protections-panel-not-blocking-why-etp-on-tooltip"></tooltip>
-          <tooltip id="protections-popup-not-blocking-why-etp-off-tooltip" data-l10n-id="protections-panel-not-blocking-why-etp-off-tooltip"></tooltip>
+          <tooltip id="protections-popup-not-blocking-why-etp-on-tooltip" data-l10n-id="protections-panel-not-blocking-why-etp-on-tooltip-label"></tooltip>
+          <tooltip id="protections-popup-not-blocking-why-etp-off-tooltip" data-l10n-id="protections-panel-not-blocking-why-etp-off-tooltip-label"></tooltip>
           <vbox id="protections-popup-content" flex="1">
             <vbox id="protections-popup-category-list">
               <toolbarbutton id="protections-popup-category-trackers"
@@ -179,53 +149,27 @@
                          class="subviewbutton"
                          flex="1"
                          oncommand="gProtectionsHandler.openProtections(true); gProtectionsHandler.recordClick('milestone_message');">
-            <description id="protections-popup-milestones-text" flex="1"
-                         role="heading" aria-level="2"/>
+            <label id="protections-popup-milestones-text" flex="1"
+                   role="heading" aria-level="2"/>
             <image id="protections-popup-milestones-illustration"/>
           </toolbarbutton>
         </hbox>
-      </vbox>
-    </panelview>
 
-    <!-- Site Not Working? SubView -->
-    <panelview id="protections-popup-siteNotWorkingView"
-               class="PanelUI-subView"
-               role="document"
-               data-l10n-id="protections-panel-site-not-working-view">
-        <hbox id="protections-popup-siteNotWorkingView-header">
-          <vbox class="protections-popup-tp-switch-label-box" flex="1">
-            <label class="protections-popup-switch-header protections-popup-tp-switch-on-header"
-                   role="heading"
-                   aria-level="1" data-l10n-id="protections-panel-etp-on-header"></label>
-            <label class="protections-popup-switch-header protections-popup-tp-switch-off-header"
-                   role="heading"
-                   aria-level="1" data-l10n-id="protections-panel-etp-off-header"></label>
-          </vbox>
-          <vbox class="protections-popup-tp-switch-box">
-            <toolbarbutton id="protections-popup-siteNotWorking-tp-switch"
-                           class="protections-popup-tp-switch"
-                           enabled="false"
-                           oncommand="gProtectionsHandler.onTPSwitchCommand();" />
-          </vbox>
+        <toolbarseparator id="protections-popup-cookie-banner-section-separator"></toolbarseparator>
+        <hbox id="protections-popup-cookie-banner-section" class="protections-popup-section" uiDisabled="true" enabled="true" flex="1">
+          <toolbarbutton id="protections-popup-cookie-banner-switch"
+                         class="subviewbutton subviewbutton-nav"
+                         onclick="gProtectionsHandler.onCookieBannerClick()"
+                         flex="1">
+            <vbox flex="1">
+              <label role="heading" class="protections-popup-switch-header" aria-level="2" data-l10n-id="protections-panel-cookie-banner-blocker-header"></label>
+              <description id="protections-popup-cookie-banner-undetected" data-l10n-id="protections-panel-cookie-banner-handling-undetected"></description>
+              <description id="protections-popup-cookie-banner-site-disabled" data-l10n-id="protections-panel-cookie-banner-handling-disabled"></description>
+              <description id="protections-popup-cookie-banner-detected" data-l10n-id="protections-panel-cookie-banner-handling-enabled"></description>
+            </vbox>
+          </toolbarbutton>
         </hbox>
-        <toolbarseparator></toolbarseparator>
-        <vbox id="protections-popup-siteNotWorkingView-body" class="panel-subview-body" align="start">
-          <label role="heading" aria-level="2" data-l10n-id="protections-panel-site-not-working-view-header"></label>
-          <label>
-            <html:ul id="protections-popup-siteNotWorkingView-body-issue-list">
-              <html:li data-l10n-id="protections-panel-site-not-working-view-issue-list-login-fields"></html:li>
-              <html:li data-l10n-id="protections-panel-site-not-working-view-issue-list-forms"></html:li>
-              <html:li data-l10n-id="protections-panel-site-not-working-view-issue-list-payments"></html:li>
-              <html:li data-l10n-id="protections-panel-site-not-working-view-issue-list-comments"></html:li>
-              <html:li data-l10n-id="protections-panel-site-not-working-view-issue-list-videos"></html:li>
-              <html:li data-l10n-id="protections-panel-site-not-working-view-issue-list-fonts"
-                       id="protections-panel-site-not-working-view-issue-list-fonts"></html:li>
-            </html:ul>
-          </label>
-          <label id="protections-popup-siteNotWorkingView-sendReport"
-            onclick="gProtectionsHandler.showSendReportView(); gProtectionsHandler.recordClick('send_report_link');"
-            class="text-link" data-l10n-id="protections-panel-site-not-working-view-send-report"></label>
-        </vbox>
+      </vbox>
     </panelview>
 
     <!-- Trackers SubView -->
@@ -240,10 +184,11 @@
             <vbox flex="1">
               <description data-l10n-id="protections-panel-description-shim-allowed">
               </description>
-              <label class="protections-popup-shim-allow-learn-more"
-                     is="text-link"
-                     data-l10n-id="protections-panel-description-shim-allowed-learn-more">
-              </label>
+              <html:a class="protections-popup-shim-allow-learn-more"
+                     is="moz-support-link"
+                     data-l10n-id="protections-panel-description-shim-allowed-learn-more"
+                     support-page="smartblock-enhanced-tracking-protection"
+              />
             </vbox>
           </hbox>
         </vbox>
@@ -269,10 +214,11 @@
             <vbox flex="1">
               <description data-l10n-id="protections-panel-description-shim-allowed">
               </description>
-              <label class="protections-popup-shim-allow-learn-more"
-                     is="text-link"
-                     data-l10n-id="protections-panel-description-shim-allowed-learn-more">
-              </label>
+              <html:a class="protections-popup-shim-allow-learn-more"
+                     is="moz-support-link"
+                     data-l10n-id="protections-panel-description-shim-allowed-learn-more"
+                     support-page="smartblock-enhanced-tracking-protection"
+              />
             </vbox>
           </hbox>
         </vbox>
@@ -315,10 +261,11 @@
             <vbox flex="1">
               <description data-l10n-id="protections-panel-description-shim-allowed">
               </description>
-              <label class="protections-popup-shim-allow-learn-more"
-                     is="text-link"
-                     data-l10n-id="protections-panel-description-shim-allowed-learn-more">
-              </label>
+              <html:a class="protections-popup-shim-allow-learn-more"
+                     is="moz-support-link"
+                     data-l10n-id="protections-panel-description-shim-allowed-learn-more"
+                     support-page="smartblock-enhanced-tracking-protection"
+              />
             </vbox>
           </hbox>
         </vbox>
@@ -344,10 +291,11 @@
             <vbox flex="1">
               <description data-l10n-id="protections-panel-description-shim-allowed">
               </description>
-              <label class="protections-popup-shim-allow-learn-more"
-                     is="text-link"
-                     data-l10n-id="protections-panel-description-shim-allowed-learn-more">
-              </label>
+              <html:a class="protections-popup-shim-allow-learn-more"
+                     is="moz-support-link"
+                     data-l10n-id="protections-panel-description-shim-allowed-learn-more"
+                     support-page="smartblock-enhanced-tracking-protection"
+              />
             </vbox>
           </hbox>
         </vbox>
@@ -361,69 +309,33 @@
                   oncommand="gProtectionsHandler.openPreferences(); gProtectionsHandler.recordClick('subview_settings', 'cryptominers');"/>
     </panelview>
 
-    <!-- Send Report SubView -->
-    <panelview id="protections-popup-sendReportView"
-               class="PanelUI-subView"
-               data-l10n-id="protections-panel-content-blocking-breakage-report-view">
-        <vbox id="protections-popup-sendReportView-heading">
-          <description data-l10n-id="protections-panel-content-blocking-breakage-report-view-description">
-            <label id="protections-popup-sendReportView-learn-more"
-                   is="text-link" data-l10n-name="learn-more"></label>
-          </description>
-        </vbox>
-        <toolbarseparator></toolbarseparator>
-        <vbox id="protections-popup-sendReportView-body" class="panel-view-body-unscrollable">
-          <vbox class="protections-popup-sendReportView-collection-section">
-            <label control="protections-popup-sendReportView-collection-url" data-l10n-id="protections-panel-content-blocking-breakage-report-view-collection-url"></label>
-            <html:input readonly="readonly" id="protections-popup-sendReportView-collection-url" data-l10n-id="protections-panel-content-blocking-breakage-report-view-collection-url-label"/>
-          </vbox>
-          <vbox class="protections-popup-sendReportView-collection-section">
-            <label control="protections-popup-sendReportView-collection-comments" data-l10n-id="protections-panel-content-blocking-breakage-report-view-collection-comments"></label>
-            <html:textarea id="protections-popup-sendReportView-collection-comments" data-l10n-id="protections-panel-content-blocking-breakage-report-view-collection-comments-label"/>
-          </vbox>
-          <label id="protections-popup-sendReportView-report-error"
-            data-l10n-id="protections-panel-sendreportview-error"
-            hidden="true" role="alert"></label>
-        </vbox>
-        <html:moz-button-group id="protections-popup-sendReportView-footer"
-              class="panel-footer">
-          <button id="protections-popup-sendReportView-cancel"
-                  data-l10n-id="protections-panel-content-blocking-breakage-report-view-cancel"
-                  oncommand="gProtectionsHandler._protectionsPopupMultiView.goBack();"/>
-          <button id="protections-popup-sendReportView-submit"
-                  default="true"
-                  data-l10n-id="protections-panel-content-blocking-breakage-report-view-send-report"
-                  oncommand="gProtectionsHandler.onSendReportClicked(); gProtectionsHandler.recordClick('send_report_submit');"/>
-        </html:moz-button-group>
-    </panelview>
-
     <!-- Cookie Banner SubView -->
     <panelview id="protections-popup-cookieBannerView"
                class="PanelUI-subView"
                role="document"
-               data-l10n-id="protections-panel-cookie-banner-view-title">
+               data-l10n-id="protections-panel-cookie-banner-blocker-view-title">
         <vbox id="protections-popup-cookieBannerView-heading"
               class="protections-popup-description protections-popup-cookiesView-list-section">
-          <description id="cookieBannerView-disable-site" data-l10n-id="protections-panel-cookie-banner-view-turn-off-for-site" data-l10n-args='{"host":""}'></description>
-          <description id="cookieBannerView-enable-site" data-l10n-id="protections-panel-cookie-banner-view-turn-on-for-site" data-l10n-args='{"host":""}'></description>
+          <description id="cookieBannerView-disable-site" data-l10n-id="protections-panel-cookie-banner-blocker-view-turn-off-for-site" data-l10n-args='{"host":""}'></description>
+          <description id="cookieBannerView-enable-site" data-l10n-id="protections-panel-cookie-banner-blocker-view-turn-on-for-site" data-l10n-args='{"host":""}'></description>
           <description id="cookieBannerView-disable-site-warning" data-l10n-id="protections-panel-cookie-banner-view-cookie-clear-warning"></description>
-          <description id="cookieBannerView-enable-site-description" data-l10n-id="protections-panel-cookie-banner-view-turn-on-description"></description>
+          <description id="cookieBannerView-enable-site-description" data-l10n-id="protections-panel-cookie-banner-blocker-view-turn-on-description"></description>
         </vbox>
         <html:moz-button-group class="panel-footer protections-popup-cookieBannerView-footer">
           <button id="protections-popup-cookieBannerView-cancel"
-                    data-l10n-id="protections-panel-cookie-banner-view-cancel"
+                    data-l10n-id="protections-panel-cookie-banner-view-cancel-label"
                     oncommand="gProtectionsHandler._protectionsPopupMultiView.goBack();"
-                    class="subviewbutton panel-subview-footer-button" />
+                    class="footer-button" />
           <button id="protections-popup-cookieBannerView-enable-button"
-                    data-l10n-id="protections-panel-cookie-banner-view-turn-on"
+                    data-l10n-id="protections-panel-cookie-banner-view-turn-on-label"
                     oncommand="gProtectionsHandler.onCookieBannerToggleCommand()"
                     default="true"
-                    class="subviewbutton panel-subview-footer-button" />
+                    class="footer-button" />
           <button id="protections-popup-cookieBannerView-disable-button"
-                    data-l10n-id="protections-panel-cookie-banner-view-turn-off"
+                    data-l10n-id="protections-panel-cookie-banner-view-turn-off-label"
                     oncommand="gProtectionsHandler.onCookieBannerToggleCommand()"
                     default="true"
-                    class="subviewbutton panel-subview-footer-button" />
+                    class="footer-button" />
         </html:moz-button-group>
     </panelview>
   </panelmultiview>

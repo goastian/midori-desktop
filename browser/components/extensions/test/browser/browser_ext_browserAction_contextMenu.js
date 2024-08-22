@@ -2,10 +2,6 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-ChromeUtils.defineESModuleGetters(this, {
-  AbuseReporter: "resource://gre/modules/AbuseReporter.sys.mjs",
-});
-
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
   "ABUSE_REPORT_ENABLED",
@@ -67,11 +63,20 @@ const UNIFIED_CONTEXT_MENU = "unified-extensions-context-menu";
 
 loadTestSubscript("head_unified_extensions.js");
 
-add_task(async function test_setup() {
+add_setup(async function test_setup() {
   CustomizableUI.addWidgetToArea("home-button", "nav-bar");
   registerCleanupFunction(() =>
     CustomizableUI.removeWidgetFromArea("home-button")
   );
+
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [
+        "extensions.abuseReport.amoFormURL",
+        "https://example.org/%LOCALE%/firefox/feedback/addon/%addonID%/",
+      ],
+    ],
+  });
 });
 
 async function browseraction_popup_contextmenu_helper() {
@@ -421,9 +426,6 @@ async function browseraction_contextmenu_remove_extension_helper() {
     },
     useAddonManager: "temporary",
   });
-  let brand = Services.strings
-    .createBundle("chrome://branding/locale/brand.properties")
-    .GetStringFromName("brandShorterName");
   let { prompt } = Services;
   let promptService = {
     _response: 1,
@@ -443,7 +445,7 @@ async function browseraction_contextmenu_remove_extension_helper() {
     Services.prompt = prompt;
   });
 
-  async function testContextMenu(menuId, customizing) {
+  async function testContextMenu(menuId) {
     info(`Open browserAction context menu in ${menuId}`);
     let confirmArgs = promptService.confirmArgs();
     let menu = await openContextMenu(menuId, buttonId);
@@ -457,9 +459,6 @@ async function browseraction_contextmenu_remove_extension_helper() {
     await closeChromeContextMenu(menuId, removeExtension);
     let args = await confirmArgs;
     is(args[1], `Remove ${name}?`);
-    if (!Services.prefs.getBoolPref("prompts.windowPromptSubDialog", false)) {
-      is(args[2], `Remove ${name} from ${brand}?`);
-    }
     is(args[4], "Remove");
     return menu;
   }
@@ -543,40 +542,11 @@ async function browseraction_contextmenu_report_extension_helper() {
     useAddonManager: "temporary",
   });
 
-  async function testReportDialog(viaUnifiedContextMenu) {
-    const reportDialogWindow = await BrowserTestUtils.waitForCondition(
-      () => AbuseReporter.getOpenDialog(),
-      "Wait for the abuse report dialog to have been opened"
-    );
-
-    const reportDialogParams = reportDialogWindow.arguments[0].wrappedJSObject;
-    is(
-      reportDialogParams.report.addon.id,
-      id,
-      "Abuse report dialog has the expected addon id"
-    );
-    is(
-      reportDialogParams.report.reportEntryPoint,
-      viaUnifiedContextMenu ? "unified_context_menu" : "toolbar_context_menu",
-      "Abuse report dialog has the expected reportEntryPoint"
-    );
-
-    info("Wait the report dialog to complete rendering");
-    await reportDialogParams.promiseReportPanel;
-    info("Close the report dialog");
-    reportDialogWindow.close();
-    is(
-      await reportDialogParams.promiseReport,
-      undefined,
-      "Report resolved as user cancelled when the window is closed"
-    );
-  }
-
   async function testContextMenu(menuId, customizing) {
     info(`Open browserAction context menu in ${menuId}`);
     let menu = await openContextMenu(menuId, buttonId);
 
-    info(`Choosing 'Report Extension' in ${menuId} should show confirm dialog`);
+    info(`Choosing 'Report Extension' in ${menuId}`);
 
     let usingUnifiedContextMenu = menuId == UNIFIED_CONTEXT_MENU;
     let reportItemQuery = usingUnifiedContextMenu
@@ -586,32 +556,29 @@ async function browseraction_contextmenu_report_extension_helper() {
 
     ok(!reportExtension.hidden, "Report extension should be visibile");
 
-    // When running in customizing mode "about:addons" will load in a new tab,
-    // otherwise it will replace the existing blank tab.
-    const onceAboutAddonsTab = customizing
-      ? BrowserTestUtils.waitForNewTab(gBrowser, "about:addons")
-      : BrowserTestUtils.waitForCondition(() => {
-          return gBrowser.currentURI.spec === "about:addons";
-        }, "Wait an about:addons tab to be opened");
+    let aboutAddonsBrowser;
 
-    await closeChromeContextMenu(menuId, reportExtension);
-    await onceAboutAddonsTab;
+    const reportURL = Services.urlFormatter
+      .formatURLPref("extensions.abuseReport.amoFormURL")
+      .replace("%addonID%", id);
 
-    const browser = gBrowser.selectedBrowser;
-    is(
-      browser.currentURI.spec,
-      "about:addons",
-      "Got about:addons tab selected"
+    const promiseReportTab = BrowserTestUtils.waitForNewTab(
+      gBrowser,
+      reportURL,
+      /* waitForLoad */ false,
+      // Expect it to be the next tab opened
+      /* waitForAnyTab */ false
     );
-
-    // Do not wait for the about:addons tab to be loaded if its
-    // document is already readyState==complete.
-    // This prevents intermittent timeout failures while running
-    // this test in optimized builds.
-    if (browser.contentDocument?.readyState != "complete") {
-      await BrowserTestUtils.browserLoaded(browser);
-    }
-    await testReportDialog(usingUnifiedContextMenu);
+    await closeChromeContextMenu(menuId, reportExtension);
+    const reportTab = await promiseReportTab;
+    // Remove the report tab and expect the selected tab
+    // to become the about:addons tab.
+    BrowserTestUtils.removeTab(reportTab);
+    is(
+      gBrowser.selectedBrowser.currentURI.spec,
+      "about:blank",
+      "Expect about:addons tab to not have been opened"
+    );
 
     // Close the new about:addons tab when running in customize mode,
     // or cancel the abuse report if the about:addons page has been
@@ -624,10 +591,10 @@ async function browseraction_contextmenu_report_extension_helper() {
       );
       gBrowser.removeTab(gBrowser.selectedTab);
       await customizationReady;
-    } else {
+    } else if (aboutAddonsBrowser) {
       info("Navigate the about:addons tab to about:blank");
-      BrowserTestUtils.loadURIString(browser, "about:blank");
-      await BrowserTestUtils.browserLoaded(browser);
+      BrowserTestUtils.startLoadingURIString(aboutAddonsBrowser, "about:blank");
+      await BrowserTestUtils.browserLoaded(aboutAddonsBrowser);
     }
 
     return menu;
@@ -641,7 +608,6 @@ async function browseraction_contextmenu_report_extension_helper() {
     customizing: false,
     testContextMenu,
   });
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
   info("Run tests in customize mode");
   await runTestContextMenu({
@@ -651,6 +617,27 @@ async function browseraction_contextmenu_report_extension_helper() {
   });
 
   await extension.unload();
+
+  // Opening the about:addons page will reuse an about:blank tab if it was
+  // a new tab that was never navigated, otherwise opens in a new tab when
+  // the test is triggering the report action (then we navigate it to
+  // about:blank). Here we cleanup all the blank tabs lets behind but one
+  // (otherwise the window running the test will be closed and the test
+  // would be failing with a timeout).
+  info("Cleanup about:blank tabs");
+  while (gBrowser.visibleTabs.length > 1) {
+    is(
+      gBrowser.selectedBrowser.currentURI.spec,
+      "about:blank",
+      "Expect an about:blank tab"
+    );
+    const promiseRemovedTab = BrowserTestUtils.waitForEvent(
+      gBrowser.selectedTab,
+      "TabClose"
+    );
+    BrowserTestUtils.removeTab(gBrowser.selectedTab);
+    await promiseRemovedTab;
+  }
 }
 
 /**
@@ -681,8 +668,8 @@ add_task(async function test_unified_extensions_ui() {
   await browseraction_popup_image_contextmenu_helper();
   await browseraction_contextmenu_manage_extension_helper();
   await browseraction_contextmenu_remove_extension_helper();
-  await browseraction_contextmenu_report_extension_helper();
   await test_no_toolbar_pinning_on_builtin_helper();
+  await browseraction_contextmenu_report_extension_helper();
 });
 
 /**

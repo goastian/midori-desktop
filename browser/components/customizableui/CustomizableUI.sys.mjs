@@ -11,18 +11,15 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.sys.mjs",
+  BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
   CustomizableWidgets: "resource:///modules/CustomizableWidgets.sys.mjs",
+  HomePage: "resource:///modules/HomePage.sys.mjs",
   PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
-  HomePage: "resource:///modules/HomePage.jsm",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
   const kUrl =
     "chrome://browser/locale/customizableui/customizableWidgets.properties";
   return Services.strings.createBundle(kUrl);
@@ -60,7 +57,7 @@ const kSubviewEvents = ["ViewShowing", "ViewHiding"];
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
-var kVersion = 19;
+var kVersion = 20;
 
 /**
  * Buttons removed from built-ins by version they were removed. kVersion must be
@@ -188,7 +185,14 @@ XPCOMUtils.defineLazyPreferenceGetter(
   }
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "resetPBMToolbarButtonEnabled",
+  "browser.privatebrowsing.resetPBM.enabled",
+  false
+);
+
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -245,6 +249,7 @@ var CustomizableUIInternal = {
       Services.policies.isAllowed("removeHomeButtonByDefault")
         ? null
         : "home-button",
+      Services.prefs.getBoolPref("sidebar.revamp") ? "sidebar-button" : null,
       "spring",
       "urlbar-container",
       "spring",
@@ -252,6 +257,7 @@ var CustomizableUIInternal = {
       "downloads-button",
       AppConstants.MOZ_DEV_EDITION ? "developer-button" : null,
       "fxa-toolbar-menu-button",
+      lazy.resetPBMToolbarButtonEnabled ? "reset-pbm-toolbar-button" : null,
     ].filter(name => name);
 
     this.registerArea(
@@ -369,6 +375,14 @@ var CustomizableUIInternal = {
           shouldSetPref = shouldAdd;
         } else if (widget._introducedInVersion > currentVersion) {
           shouldAdd = true;
+        } else if (
+          widget._introducedByPref &&
+          Services.prefs.getBoolPref(widget._introducedByPref)
+        ) {
+          shouldSetPref = shouldAdd = !Services.prefs.getBoolPref(
+            prefId,
+            false
+          );
         }
 
         if (shouldAdd) {
@@ -661,6 +675,18 @@ var CustomizableUIInternal = {
         ...addonsPlacements,
       ];
     }
+
+    // Add the PBM reset button as the right most button item
+    if (currentVersion < 20) {
+      let navbarPlacements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
+      // Place the button as the first item to the left of the hamburger menu
+      if (
+        navbarPlacements &&
+        !navbarPlacements.includes("reset-pbm-toolbar-button")
+      ) {
+        navbarPlacements.push("reset-pbm-toolbar-button");
+      }
+    }
   },
 
   _updateForNewProtonVersion() {
@@ -761,7 +787,7 @@ var CustomizableUIInternal = {
         !widget ||
         widget.source !== CustomizableUI.SOURCE_BUILTIN ||
         !widget.defaultArea ||
-        !widget._introducedInVersion ||
+        !(widget._introducedInVersion || widget._introducedByPref) ||
         savedPlacements.includes(widget.id)
       ) {
         continue;
@@ -1234,8 +1260,8 @@ var CustomizableUIInternal = {
   },
 
   addPanelCloseListeners(aPanel) {
-    Services.els.addSystemEventListener(aPanel, "click", this, false);
-    Services.els.addSystemEventListener(aPanel, "keypress", this, false);
+    aPanel.addEventListener("click", this, { mozSystemGroup: true });
+    aPanel.addEventListener("keypress", this, { mozSystemGroup: true });
     let win = aPanel.ownerGlobal;
     if (!gPanelsForWindow.has(win)) {
       gPanelsForWindow.set(win, new Set());
@@ -1244,8 +1270,8 @@ var CustomizableUIInternal = {
   },
 
   removePanelCloseListeners(aPanel) {
-    Services.els.removeSystemEventListener(aPanel, "click", this, false);
-    Services.els.removeSystemEventListener(aPanel, "keypress", this, false);
+    aPanel.removeEventListener("click", this, { mozSystemGroup: true });
+    aPanel.removeEventListener("keypress", this, { mozSystemGroup: true });
     let win = aPanel.ownerGlobal;
     let panels = gPanelsForWindow.get(win);
     if (panels) {
@@ -1437,7 +1463,7 @@ var CustomizableUIInternal = {
     }
   },
 
-  onCustomizeEnd(aWindow) {
+  onCustomizeEnd() {
     this._clearPreviousUIState();
   },
 
@@ -1825,8 +1851,7 @@ var CustomizableUIInternal = {
   },
 
   buildWidget(aDocument, aWidget) {
-    // Floorp Injections
-    if (!aDocument.documentURI.startsWith(kExpectedWindowURL)) {
+    if (aDocument.documentURI != kExpectedWindowURL) {
       throw new Error("buildWidget was called for a non-browser window!");
     }
     if (typeof aWidget == "string") {
@@ -1941,7 +1966,7 @@ var CustomizableUIInternal = {
       }
 
       if (aWidget.l10nId) {
-        node.setAttribute("data-l10n-id", aWidget.l10nId);
+        aDocument.l10n.setAttributes(node, aWidget.l10nId);
         if (button != node) {
           // This is probably a "button-and-view" widget, such as the Profiler
           // button. In that case, "node" is the "toolbaritem" container, and
@@ -1949,7 +1974,7 @@ var CustomizableUIInternal = {
           // In this case, the values on the "node" is used in the Customize
           // view, as well as the tooltips over both buttons; the values on the
           // "button" are used in the overflow menu.
-          button.setAttribute("data-l10n-id", aWidget.l10nId);
+          aDocument.l10n.setAttributes(button, aWidget.l10nId);
         }
 
         if (shortcut) {
@@ -2967,6 +2992,7 @@ var CustomizableUIInternal = {
       l10nId: null,
       showInPrivateBrowsing: true,
       _introducedInVersion: -1,
+      _introducedByPref: null,
       keepBroadcastAttributesWhenCustomizing: false,
       disallowSubView: false,
       webExtension: false,
@@ -3049,6 +3075,10 @@ var CustomizableUIInternal = {
 
     if (aSource == CustomizableUI.SOURCE_BUILTIN) {
       widget._introducedInVersion = aData.introducedInVersion || 0;
+
+      if (aData._introducedByPref) {
+        widget._introducedByPref = aData._introducedByPref;
+      }
     }
 
     this.wrapWidgetEventHandler("onBeforeCreated", widget);
@@ -3256,7 +3286,7 @@ var CustomizableUIInternal = {
     Services.prefs.clearUserPref(kPrefUIDensity);
     Services.prefs.clearUserPref(kPrefAutoTouchMode);
     Services.prefs.clearUserPref(kPrefAutoHideDownloadsButton);
-    // gDefaultTheme.enable();
+    gDefaultTheme.enable();
     gNewElementCount = 0;
     lazy.log.debug("State reset");
 
@@ -4838,7 +4868,7 @@ export var CustomizableUI = {
       // Sentence case in the AppMenu / panels.
       let l10nId = menuChild.getAttribute("appmenu-data-l10n-id");
       if (l10nId) {
-        subviewItem.setAttribute("data-l10n-id", l10nId);
+        doc.l10n.setAttributes(subviewItem, l10nId);
       }
 
       fragment.appendChild(subviewItem);
@@ -5467,7 +5497,10 @@ class OverflowableToolbar {
       let mainViewId = multiview.getAttribute("mainViewId");
       let mainView = doc.getElementById(mainViewId);
       let contextMenu = doc.getElementById(mainView.getAttribute("context"));
-      Services.els.addSystemEventListener(contextMenu, "command", this, true);
+      contextMenu.addEventListener("command", this, {
+        capture: true,
+        mozSystemGroup: true,
+      });
       let anchor = this.#defaultListButton.icon;
 
       let popupshown = false;
@@ -6066,12 +6099,10 @@ class OverflowableToolbar {
     let contextMenuId = this.#defaultListPanel.getAttribute("context");
     if (contextMenuId) {
       let contextMenu = doc.getElementById(contextMenuId);
-      Services.els.removeSystemEventListener(
-        contextMenu,
-        "command",
-        this,
-        true
-      );
+      contextMenu.removeEventListener("command", this, {
+        capture: true,
+        mozSystemGroup: true,
+      });
     }
   }
 
@@ -6198,7 +6229,7 @@ class OverflowableToolbar {
    * nsIObserver implementation starts here.
    */
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     // This nsIObserver method allows us to defer initialization until after
     // this window has finished painting and starting up.
     if (

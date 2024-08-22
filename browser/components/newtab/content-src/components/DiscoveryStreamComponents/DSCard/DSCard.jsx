@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import { DSImage } from "../DSImage/DSImage.jsx";
 import { DSLinkMenu } from "../DSLinkMenu/DSLinkMenu";
 import { ImpressionStats } from "../../DiscoveryStreamImpressionStats/ImpressionStats";
@@ -27,7 +24,9 @@ const READING_WPM = 220;
  * @returns {int} number of words per minute in minutes
  */
 export function readTimeFromWordCount(wordCount) {
-  if (!wordCount) return false;
+  if (!wordCount) {
+    return false;
+  }
   return Math.ceil(parseInt(wordCount, 10) / READING_WPM);
 }
 
@@ -83,21 +82,23 @@ export const DefaultMeta = ({
   sponsor,
   sponsored_by_override,
   saveToPocketCard,
-  isRecentSave,
+  ctaButtonVariant,
+  dispatch,
+  spocMessageVariant,
 }) => (
   <div className="meta">
     <div className="info-wrap">
-      <DSSource
-        source={source}
-        timeToRead={timeToRead}
-        newSponsoredLabel={newSponsoredLabel}
-        context={context}
-        sponsor={sponsor}
-        sponsored_by_override={sponsored_by_override}
-      />
-      <header title={title} className="title clamp">
-        {title}
-      </header>
+      {ctaButtonVariant !== "variant-b" && (
+        <DSSource
+          source={source}
+          timeToRead={timeToRead}
+          newSponsoredLabel={newSponsoredLabel}
+          context={context}
+          sponsor={sponsor}
+          sponsored_by_override={sponsored_by_override}
+        />
+      )}
+      <header className="title clamp">{title}</header>
       {excerpt && <p className="excerpt clamp">{excerpt}</p>}
     </div>
     {!newSponsoredLabel && (
@@ -106,6 +107,10 @@ export const DefaultMeta = ({
         context={context}
         sponsor={sponsor}
         sponsored_by_override={sponsored_by_override}
+        cta_button_variant={ctaButtonVariant}
+        source={source}
+        dispatch={dispatch}
+        spocMessageVariant={spocMessageVariant}
       />
     )}
     {/* Sponsored label is normally in the way of any message.
@@ -176,14 +181,23 @@ export class _DSCard extends React.PureComponent {
     ];
   }
 
-  onLinkClick(event) {
+  onLinkClick() {
     if (this.props.dispatch) {
       this.props.dispatch(
         ac.DiscoveryStreamUserEvent({
           event: "CLICK",
           source: this.props.type.toUpperCase(),
           action_position: this.props.pos,
-          value: { card_type: this.props.flightId ? "spoc" : "organic" },
+          value: {
+            card_type: this.props.flightId ? "spoc" : "organic",
+            recommendation_id: this.props.recommendation_id,
+            tile_id: this.props.id,
+            ...(this.props.shim && this.props.shim.click
+              ? { shim: this.props.shim.click }
+              : {}),
+            fetchTimestamp: this.props.fetchTimestamp,
+            firstVisibleTimestamp: this.props.firstVisibleTimestamp,
+          },
         })
       );
 
@@ -201,6 +215,7 @@ export class _DSCard extends React.PureComponent {
                 ? { shim: this.props.shim.click }
                 : {}),
               type: this.props.flightId ? "spoc" : "organic",
+              recommendation_id: this.props.recommendation_id,
             },
           ],
         })
@@ -208,7 +223,7 @@ export class _DSCard extends React.PureComponent {
     }
   }
 
-  onSaveClick(event) {
+  onSaveClick() {
     if (this.props.dispatch) {
       this.props.dispatch(
         ac.AlsoToMain({
@@ -222,7 +237,16 @@ export class _DSCard extends React.PureComponent {
           event: "SAVE_TO_POCKET",
           source: "CARDGRID_HOVER",
           action_position: this.props.pos,
-          value: { card_type: this.props.flightId ? "spoc" : "organic" },
+          value: {
+            card_type: this.props.flightId ? "spoc" : "organic",
+            recommendation_id: this.props.recommendation_id,
+            tile_id: this.props.id,
+            ...(this.props.shim && this.props.shim.save
+              ? { shim: this.props.shim.save }
+              : {}),
+            fetchTimestamp: this.props.fetchTimestamp,
+            firstVisibleTimestamp: this.props.firstVisibleTimestamp,
+          },
         })
       );
 
@@ -237,6 +261,7 @@ export class _DSCard extends React.PureComponent {
               ...(this.props.shim && this.props.shim.save
                 ? { shim: this.props.shim.save }
                 : {}),
+              recommendation_id: this.props.recommendation_id,
             },
           ],
         })
@@ -323,7 +348,7 @@ export class _DSCard extends React.PureComponent {
     }
 
     const { isRecentSave, DiscoveryStream, saveToPocketCard } = this.props;
-    let { source } = this.props;
+    let source = this.props.source || this.props.publisher;
     if (!source) {
       try {
         source = new URL(this.props.url).hostname;
@@ -349,6 +374,16 @@ export class _DSCard extends React.PureComponent {
         this.props.time_to_read || readTimeFromWordCount(this.props.word_count);
     }
 
+    const ctaButtonEnabled = this.props.ctaButtonSponsors?.includes(
+      this.props.sponsor?.toLowerCase()
+    );
+    let ctaButtonVariant = "";
+    if (ctaButtonEnabled) {
+      ctaButtonVariant = this.props.ctaButtonVariant;
+    }
+    let ctaButtonVariantClassName = ctaButtonVariant;
+
+    const ctaButtonClassName = ctaButtonEnabled ? `ds-card-cta-button` : ``;
     const compactImagesClassName = compactImages ? `ds-card-compact-image` : ``;
     const imageGradientClassName = imageGradient
       ? `ds-card-image-gradient`
@@ -375,39 +410,28 @@ export class _DSCard extends React.PureComponent {
     };
 
     return (
-      <div
-        className={`ds-card ${compactImagesClassName} ${imageGradientClassName} ${titleLinesName} ${descLinesClassName}`}
+      <article
+        className={`ds-card ${compactImagesClassName} ${imageGradientClassName} ${titleLinesName} ${descLinesClassName} ${ctaButtonClassName} ${ctaButtonVariantClassName}`}
         ref={this.setContextMenuButtonHostRef}
       >
+        <div className="img-wrapper">
+          <DSImage
+            extraClassNames="img"
+            source={this.props.image_src}
+            rawSource={this.props.raw_image_src}
+            sizes={this.dsImageSizes}
+            url={this.props.url}
+            title={this.props.title}
+            isRecentSave={isRecentSave}
+          />
+        </div>
         <SafeAnchor
           className="ds-card-link"
           dispatch={this.props.dispatch}
           onLinkClick={!this.props.placeholder ? this.onLinkClick : undefined}
           url={this.props.url}
+          title={this.props.title}
         >
-          <div className="img-wrapper">
-            <DSImage
-              extraClassNames="img"
-              source={this.props.image_src}
-              rawSource={this.props.raw_image_src}
-              sizes={this.dsImageSizes}
-              url={this.props.url}
-              title={this.props.title}
-              isRecentSave={isRecentSave}
-            />
-          </div>
-          <DefaultMeta
-            source={source}
-            title={this.props.title}
-            excerpt={excerpt}
-            newSponsoredLabel={newSponsoredLabel}
-            timeToRead={timeToRead}
-            context={this.props.context}
-            context_type={this.props.context_type}
-            sponsor={this.props.sponsor}
-            sponsored_by_override={this.props.sponsored_by_override}
-            saveToPocketCard={saveToPocketCard}
-          />
           <ImpressionStats
             flightId={this.props.flightId}
             rows={[
@@ -417,64 +441,62 @@ export class _DSCard extends React.PureComponent {
                 ...(this.props.shim && this.props.shim.impression
                   ? { shim: this.props.shim.impression }
                   : {}),
+                recommendation_id: this.props.recommendation_id,
+                fetchTimestamp: this.props.fetchTimestamp,
               },
             ]}
             dispatch={this.props.dispatch}
             source={this.props.type}
+            firstVisibleTimestamp={this.props.firstVisibleTimestamp}
           />
         </SafeAnchor>
-        {saveToPocketCard && (
-          <div className="card-stp-button-hover-background">
-            <div className="card-stp-button-position-wrapper">
-              {!this.props.flightId && stpButton()}
-              <DSLinkMenu
-                id={this.props.id}
-                index={this.props.pos}
-                dispatch={this.props.dispatch}
-                url={this.props.url}
-                title={this.props.title}
-                source={source}
-                type={this.props.type}
-                pocket_id={this.props.pocket_id}
-                shim={this.props.shim}
-                bookmarkGuid={this.props.bookmarkGuid}
-                flightId={
-                  !this.props.is_collection ? this.props.flightId : undefined
-                }
-                showPrivacyInfo={!!this.props.flightId}
-                onMenuUpdate={this.onMenuUpdate}
-                onMenuShow={this.onMenuShow}
-                saveToPocketCard={saveToPocketCard}
-                pocket_button_enabled={pocketButtonEnabled}
-                isRecentSave={isRecentSave}
-              />
-            </div>
+        {ctaButtonVariant === "variant-b" && (
+          <div className="cta-header">Shop Now</div>
+        )}
+        <DefaultMeta
+          source={source}
+          title={this.props.title}
+          excerpt={excerpt}
+          newSponsoredLabel={newSponsoredLabel}
+          timeToRead={timeToRead}
+          context={this.props.context}
+          context_type={this.props.context_type}
+          sponsor={this.props.sponsor}
+          sponsored_by_override={this.props.sponsored_by_override}
+          saveToPocketCard={saveToPocketCard}
+          ctaButtonVariant={ctaButtonVariant}
+          dispatch={this.props.dispatch}
+          spocMessageVariant={this.props.spocMessageVariant}
+        />
+
+        <div className="card-stp-button-hover-background">
+          <div className="card-stp-button-position-wrapper">
+            {saveToPocketCard && <>{!this.props.flightId && stpButton()}</>}
+
+            <DSLinkMenu
+              id={this.props.id}
+              index={this.props.pos}
+              dispatch={this.props.dispatch}
+              url={this.props.url}
+              title={this.props.title}
+              source={source}
+              type={this.props.type}
+              pocket_id={this.props.pocket_id}
+              shim={this.props.shim}
+              bookmarkGuid={this.props.bookmarkGuid}
+              flightId={
+                !this.props.is_collection ? this.props.flightId : undefined
+              }
+              showPrivacyInfo={!!this.props.flightId}
+              onMenuUpdate={this.onMenuUpdate}
+              onMenuShow={this.onMenuShow}
+              saveToPocketCard={saveToPocketCard}
+              pocket_button_enabled={pocketButtonEnabled}
+              isRecentSave={isRecentSave}
+            />
           </div>
-        )}
-        {!saveToPocketCard && (
-          <DSLinkMenu
-            id={this.props.id}
-            index={this.props.pos}
-            dispatch={this.props.dispatch}
-            url={this.props.url}
-            title={this.props.title}
-            source={source}
-            type={this.props.type}
-            pocket_id={this.props.pocket_id}
-            shim={this.props.shim}
-            bookmarkGuid={this.props.bookmarkGuid}
-            flightId={
-              !this.props.is_collection ? this.props.flightId : undefined
-            }
-            showPrivacyInfo={!!this.props.flightId}
-            hostRef={this.contextMenuButtonHostRef}
-            onMenuUpdate={this.onMenuUpdate}
-            onMenuShow={this.onMenuShow}
-            pocket_button_enabled={pocketButtonEnabled}
-            isRecentSave={isRecentSave}
-          />
-        )}
-      </div>
+        </div>
+      </article>
     );
   }
 }
@@ -488,4 +510,4 @@ export const DSCard = connect(state => ({
   DiscoveryStream: state.DiscoveryStream,
 }))(_DSCard);
 
-export const PlaceholderDSCard = props => <DSCard placeholder={true} />;
+export const PlaceholderDSCard = () => <DSCard placeholder={true} />;

@@ -8,16 +8,13 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 );
 
 ChromeUtils.defineESModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
   DownloadsCommon: "resource:///modules/DownloadsCommon.sys.mjs",
   DownloadsViewUI: "resource:///modules/DownloadsViewUI.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 /**
@@ -144,7 +141,7 @@ HistoryDownloadElementShell.prototype = {
       // be opened.
       let browserWin = BrowserWindowTracker.getTopWindow();
       let openWhere = browserWin
-        ? browserWin.whereToOpenLink(event, false, true)
+        ? BrowserUtils.whereToOpenLink(event, false, true)
         : "window";
       if (["window", "tabshifted", "tab"].includes(openWhere)) {
         command += ":" + openWhere;
@@ -737,7 +734,7 @@ DownloadsPlacesView.prototype = {
     goUpdateCommand("downloadsCmd_clearDownloads");
   },
 
-  onContextMenu(aEvent) {
+  onContextMenu() {
     let element = this._richlistbox.selectedItem;
     if (!element || !element._shell) {
       return false;
@@ -913,7 +910,7 @@ function goUpdateDownloadCommands() {
 
 document.addEventListener("DOMContentLoaded", function () {
   let richListBox = document.getElementById("downloadsListBox");
-  richListBox.addEventListener("scroll", function (event) {
+  richListBox.addEventListener("scroll", function () {
     return this._placesView.onScroll();
   });
   richListBox.addEventListener("keypress", function (event) {
@@ -941,7 +938,7 @@ document.addEventListener("DOMContentLoaded", function () {
   dropNode.addEventListener("drop", function (event) {
     richListBox._placesView.onDrop(event);
   });
-  richListBox.addEventListener("select", function (event) {
+  richListBox.addEventListener("select", function () {
     this._placesView.onSelect();
   });
   richListBox.addEventListener("focus", goUpdateDownloadCommands);

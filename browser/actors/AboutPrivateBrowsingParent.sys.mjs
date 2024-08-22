@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { ASRouter } = ChromeUtils.import(
-  "resource://activity-stream/lib/ASRouter.jsm"
-);
+import { ASRouter } from "resource:///modules/asrouter/ASRouter.sys.mjs";
 import { BrowserUtils } from "resource://gre/modules/BrowserUtils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
@@ -27,7 +25,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
 ChromeUtils.defineESModuleGetters(lazy, {
   SpecialMessageActions:
     "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
-  UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
 });
 
 // We only show the private search banner once per browser session.
@@ -118,16 +115,6 @@ export class AboutPrivateBrowsingParent extends JSWindowActorParent {
         urlBar.addEventListener("compositionstart", checkFirstChange);
         urlBar.addEventListener("paste", checkFirstChange);
         break;
-      }
-      case "ShouldShowSearch": {
-        let engineName = Services.prefs.getStringPref(
-          "browser.urlbar.placeholderName.private",
-          ""
-        );
-        let shouldHandOffToSearchMode = lazy.UrlbarPrefs.get(
-          "shouldHandOffToSearchMode"
-        );
-        return [engineName, shouldHandOffToSearchMode];
       }
       case "ShouldShowSearchBanner": {
         // If this is a pre-loaded private browsing new tab, then we don't want

@@ -12,11 +12,9 @@ import { CustomizableUI } from "resource:///modules/CustomizableUI.sys.mjs";
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "BrowserUsageTelemetry",
-  "resource:///modules/BrowserUsageTelemetry.jsm"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
+});
 
 const WIDGET_ID = "search-container";
 const PREF_NAME = "browser.search.widget.inNavBar";
@@ -33,6 +31,7 @@ export const SearchWidgetTracker = {
     Services.prefs.addObserver(PREF_NAME, () =>
       this.syncWidgetWithPreference()
     );
+    this._updateSearchBarVisibilityBasedOnUsage();
   },
 
   onWidgetAdded(widgetId, area) {
@@ -93,6 +92,23 @@ export const SearchWidgetTracker = {
         null,
         "searchpref"
       );
+    }
+  },
+
+  _updateSearchBarVisibilityBasedOnUsage() {
+    let searchBarLastUsed = Services.prefs.getStringPref(
+      "browser.search.widget.lastUsed",
+      ""
+    );
+    if (searchBarLastUsed) {
+      const removeAfterDaysUnused = Services.prefs.getIntPref(
+        "browser.search.widget.removeAfterDaysUnused"
+      );
+      let saerchBarUnusedThreshold =
+        removeAfterDaysUnused * 24 * 60 * 60 * 1000;
+      if (new Date() - new Date(searchBarLastUsed) > saerchBarUnusedThreshold) {
+        Services.prefs.setBoolPref("browser.search.widget.inNavBar", false);
+      }
     }
   },
 

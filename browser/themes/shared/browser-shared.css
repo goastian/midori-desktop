@@ -2,9 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@import url("chrome://browser/skin/downloads/indicator.css");
 @import url("chrome://browser/skin/addons/extension-controlled.css");
 @import url("chrome://browser/skin/addons/unified-extensions.css");
+@import url("chrome://browser/skin/downloads/indicator.css");
+@import url("chrome://browser/skin/tabbrowser/content-area.css");
+@import url("chrome://browser/skin/tabbrowser/ctrlTab.css");
+@import url("chrome://browser/skin/tabbrowser/fullscreen-and-pointerlock.css");
+@import url("chrome://browser/skin/tabbrowser/tabs.css");
+@import url("chrome://browser/skin/tabbrowser/tab-hover-preview.css");
 @import url("chrome://browser/skin/toolbarbuttons.css");
 @import url("chrome://browser/skin/toolbarbutton-icons.css");
 @import url("chrome://browser/skin/menupanel.css");
@@ -16,25 +21,54 @@
 @import url("chrome://browser/skin/urlbarView.css");
 @import url("chrome://browser/skin/autocomplete.css");
 @import url("chrome://browser/skin/places/editBookmarkPanel.css");
+@import url("chrome://browser/skin/searchbar.css");
 @import url("chrome://browser/skin/sidebar.css");
-@import url("chrome://browser/skin/tabs.css");
-@import url("chrome://browser/skin/fullscreen/warning.css");
-@import url("chrome://browser/skin/ctrlTab.css");
 @import url("chrome://browser/skin/customizableui/customizeMode.css");
 @import url("chrome://browser/skin/UITour.css");
-@import url("chrome://browser/content/browser-floorp.css");
+@import url("chrome://browser/skin/formautofill-notification.css");
 
 @namespace html url("http://www.w3.org/1999/xhtml");
 
+:root,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: clip;
+}
+
 :root {
-  --toolbar-bgcolor: var(--toolbar-non-lwt-bgcolor);
-  --toolbar-color: var(--toolbar-non-lwt-textcolor);
+  user-select: none;
+  color-scheme: light dark;
+  accent-color: var(--button-primary-bgcolor);
+  text-rendering: optimizeLegibility;
+  min-height: 95px;
+  min-width: 95px;
+
+  &:-moz-locale-dir(rtl) {
+    direction: rtl;
+  }
+
+  &:not([chromehidden~="toolbar"]) {
+    min-width: 450px;
+    min-height: 120px;
+  }
+
+  /* z-indices that fight on the browser stack */
+  --browser-stack-z-index-devtools-splitter: 1;
+  --browser-stack-z-index-dialog-stack: 2;
+  --browser-stack-z-index-rdm-toolbar: 3;
+
+  --toolbox-non-lwt-bgcolor: -moz-headerbar;
+  --toolbox-non-lwt-textcolor: -moz-headerbartext;
+  --toolbox-non-lwt-bgcolor-inactive: -moz-headerbarinactive;
+  --toolbox-non-lwt-textcolor-inactive: -moz-headerbarinactivetext;
+
   --toolbarbutton-border-radius: 4px;
 
-  --tabs-navbar-shadow-size: 1px;
+  --chrome-content-separator-color: ThreeDShadow;
+  --tabs-navbar-separator-color: ThreeDShadow;
+  --tabs-navbar-separator-style: solid;
 
-  --panel-separator-color: color-mix(in srgb, currentColor 25%, transparent);
-  --panel-shortcut-color: inherit;
   --panelui-subview-transition-duration: 150ms;
 
   --short-notification-background: #0250BB;
@@ -54,18 +88,6 @@
   --buttons-destructive-active-bgcolor: #810220;
   --buttons-destructive-color: #fbfbfe;
 
-  --checkbox-unchecked-bgcolor: var(--button-bgcolor);
-  --checkbox-unchecked-hover-bgcolor: var(--button-hover-bgcolor);
-  --checkbox-unchecked-active-bgcolor: var(--button-active-bgcolor);
-  --checkbox-checked-border-color: transparent;
-  --checkbox-checked-bgcolor: var(--button-primary-bgcolor);
-  --checkbox-checked-color: var(--button-primary-color);
-  --checkbox-checked-hover-bgcolor: var(--button-primary-hover-bgcolor);
-  --checkbox-checked-active-bgcolor: var(--button-primary-active-bgcolor);
-
-  --autocomplete-popup-hover-background: var(--arrowpanel-dimmed);
-  --autocomplete-popup-separator-color: color-mix(in srgb, currentColor 14%, transparent);
-
   --identity-box-margin-inline: 4px;
   --urlbar-box-bgcolor: var(--button-bgcolor);
   --urlbar-box-focus-bgcolor: var(--button-bgcolor);
@@ -79,172 +101,392 @@
   /* This should be used for icons and chiclets inside the input field. It makes
      the gap around them more uniform when they are close to the field edges */
   --urlbar-icon-border-radius: calc(var(--toolbarbutton-border-radius) - 1px);
-  --urlbar-popup-url-color: -moz-nativehyperlinktext;
+
+  --pocket-icon-fill: #ef4056;
 
   --lwt-additional-images: none;
   --lwt-background-alignment: right top;
   --lwt-background-tiling: no-repeat;
-  --lwt-brighttext-url-color: #00ddff;
 
   --ext-theme-background-transition: background-color 0.1s cubic-bezier(.17,.67,.83,.67);
-
-  user-select: none;
-}
-
-:root:-moz-lwtheme {
-  --checkbox-border-color: color-mix(in srgb, currentColor 41%, transparent);
-}
-
-@media (prefers-contrast) {
-  :root {
-    --autocomplete-popup-separator-color: color-mix(in srgb, currentColor 86%, transparent);
-    --panel-separator-color: currentColor;
-    --urlbar-icon-fill-opacity: 1;
-    --checkbox-checked-border-color: var(--checkbox-checked-bgcolor);
+  --inactive-window-transition: 0.2s ease;
+  --inactive-titlebar-opacity: .6;
+  /**
+   * On macOS and Linux, fading the whole titlebar is the native behavior.
+   *
+   * On Windows there's no particular standard, but the default .6 opacity
+   * feels like too much, specially because Windows "fades" the titlebar of
+   * unresponsive applications. Fade substantially less the titlebar on windows
+   * to account for this platform difference.
+   */
+  @media (-moz-platform: windows) {
+    --inactive-titlebar-opacity: .75;
   }
-}
 
-:root[uidensity=compact] {
-  --urlbar-min-height: max(26px, 1.4em);
-}
+  &:where([tabsintitlebar]) {
+    --toolbox-non-lwt-bgcolor: ActiveCaption;
+    --toolbox-non-lwt-textcolor: CaptionText;
+    --toolbox-non-lwt-bgcolor-inactive: InactiveCaption;
+    --toolbox-non-lwt-textcolor-inactive: InactiveCaptionText;
+  }
 
-:root[uidensity=touch] {
-  --urlbar-min-height: max(34px, 1.4em);
-}
+  &[lwtheme] {
+    color: var(--lwt-text-color);
 
-:root:-moz-lwtheme {
-  --toolbar-bgcolor: rgba(255,255,255,.4);
-  --toolbar-color: var(--lwt-text-color, inherit);
+    --link-color: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --chrome-content-separator-color: rgba(0,0,0,.3);
+    --tabs-navbar-separator-color: light-dark(rgba(0,0,0,.1), rgba(0,0,0,.3));
+    --attention-dot-color: light-dark(#2ac3a2, #54ffbd);
 
-  color: var(--lwt-text-color);
-}
+    @media not (prefers-contrast) {
+      --focus-outline-color: light-dark(#0061E0, #00DDFF);
+    }
+  }
 
-@media not (prefers-contrast) {
-  :root:-moz-lwtheme {
-    --focus-outline-color: #0061E0;
+  @media (prefers-contrast) {
+    --urlbar-icon-fill-opacity: 1;
+  }
+
+  &[uidensity=compact] {
+    --urlbar-min-height: max(26px, 1.4em);
+  }
+
+  &[uidensity=touch] {
+    --urlbar-min-height: max(34px, 1.4em);
   }
 
   @media (prefers-color-scheme: dark) {
-    :root:-moz-lwtheme {
-      --focus-outline-color: #00DDFF;
-    }
-  }
-}
-
-/* Increase the contrast of urlbar boxes in dark mode.
-   In practice these are bumped-up --button(-hover)-bgcolor rules */
-@media (prefers-color-scheme: dark) {
-  :root {
+    /* Increase the contrast of urlbar boxes in dark mode.
+       In practice these are bumped-up --button(-hover)-bgcolor rules */
     --urlbar-box-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
     --urlbar-box-focus-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
     --urlbar-box-hover-bgcolor: color-mix(in srgb, currentColor 22%, transparent);
   }
-}
 
-@media (min-resolution: 1.5dppx) {
-  :root {
-    --tabs-navbar-shadow-size: 0.5px;
+  @media (prefers-reduced-motion) {
+    --inactive-window-transition: 0s;
   }
 }
 
-@media (min-resolution: 3dppx) {
-  :root {
-    --tabs-navbar-shadow-size: 0.33px;
-  }
+body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin: 0;
 }
 
-/* Set link color with proper contrast for WebExt themes */
-
-:is(toolbar, panel) :is(a, .text-link):-moz-lwtheme {
-  color: #0060df;
-}
-
-toolbar[brighttext] :is(a, .text-link):-moz-lwtheme,
-:root[lwt-popup-brighttext] panel :is(a, .text-link) {
-  color: var(--lwt-brighttext-url-color);
-}
-
-/* Toolbar / content area border */
+/* Toolbox and Toolbars */
 
 #navigator-toolbox {
-  border-bottom: 1px solid var(--chrome-content-separator-color);
+  appearance: none;
+
+  /* Toolbar / content area border */
+  border-bottom: 0.01px solid var(--chrome-content-separator-color);
+
+  background-color: var(--toolbox-non-lwt-bgcolor);
+  color: var(--toolbox-non-lwt-textcolor);
+
+  will-change: background-color;
+  transition: background-color var(--inactive-window-transition);
+
+  &:-moz-window-inactive {
+    background-color: var(--toolbox-non-lwt-bgcolor-inactive);
+    color: var(--toolbox-non-lwt-textcolor-inactive);
+  }
+
+  &[fullscreenShouldAnimate] {
+    transition: 0.8s margin-top ease-out;
+  }
+
+  :root[customizing] & {
+    border-bottom-style: none;
+  }
+
+  :root[lwtheme] & {
+    background-image: var(--lwt-additional-images);
+    background-repeat: var(--lwt-background-tiling);
+    background-position: var(--lwt-background-alignment);
+    background-color: var(--lwt-accent-color);
+    color: inherit;
+
+    &:-moz-window-inactive {
+      background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
+    }
+  }
+
+  /* When a theme defines both theme_frame and additional_backgrounds, show
+     the latter atop the former. */
+  :root[lwtheme-image] & {
+    background-image: var(--lwt-header-image), var(--lwt-additional-images);
+    background-repeat: no-repeat, var(--lwt-background-tiling);
+    background-position: right top, var(--lwt-background-alignment);
+  }
 }
 
-:root[customizing] #navigator-toolbox {
-  border-bottom-style: none;
+.browser-toolbar {
+  appearance: none;
+  /* Reset linux padding */
+  padding: 0;
+
+  &:not(.titlebar-color) {
+    background-color: var(--toolbar-bgcolor);
+    color: var(--toolbar-color);
+    border-style: none;
+  }
 }
 
-/* Add space to beginning of toolbar and make that space click the first <toolbarbutton> */
-#nav-bar-customization-target > :is(toolbarbutton, toolbaritem):first-child,
-#nav-bar-customization-target > toolbarpaletteitem:first-child > :is(toolbarbutton, toolbaritem) {
-  padding-inline-start: var(--toolbar-start-end-padding);
+/* Title bar */
+
+#titlebar {
+  -moz-window-dragging: drag;
+
+  :root[tabsintitlebar] & {
+    will-change: opacity;
+    transition: opacity var(--inactive-window-transition);
+
+    &:-moz-window-inactive {
+      opacity: var(--inactive-titlebar-opacity);
+    }
+  }
 }
 
-:root[sessionrestored] #nav-bar:-moz-lwtheme {
-  transition: var(--ext-theme-background-transition);
+.titlebar-buttonbox-container {
+  order: 1000;
+
+  @media (-moz-platform: macos) and (not (-moz-mac-rtl)) {
+    &:-moz-locale-dir(ltr) {
+      order: -1;
+    }
+  }
+
+  @media (-moz-mac-rtl) {
+    &:-moz-locale-dir(rtl) {
+      order: -1;
+    }
+  }
+
+  #toolbar-menubar[autohide="true"]:not([inactive]) + #TabsToolbar > & {
+    visibility: hidden;
+  }
+
+  :root:not([chromemargin], [inFullscreen]) & {
+    display: none;
+  }
 }
 
-/* Bookmark toolbar */
+.titlebar-spacer {
+  :root[inFullscreen] &,
+  :root:not([tabsintitlebar]) & {
+    display: none;
+  }
+
+  @media (-moz-platform: windows) {
+    :root:not([sizemode=normal]) &[type="pre-tabs"] {
+      display: none;
+    }
+  }
+
+  @media (-moz-platform: linux) and (-moz-gtk-csd-reversed-placement: 0) {
+    :root:not([sizemode=normal]) &[type="pre-tabs"],
+    :root[gtktiledwindow=true] &[type="pre-tabs"] {
+      display: none;
+    }
+  }
+
+  @media (-moz-gtk-csd-reversed-placement) {
+    :root:not([sizemode=normal]) &[type="post-tabs"],
+    :root[gtktiledwindow=true] &[type="post-tabs"] {
+      display: none;
+    }
+  }
+}
+
+/* Hide the TabsToolbar titlebar controls if the menubar is permanently shown.
+ * (That is, if the menu bar doesn't autohide, and we're not in a fullscreen or
+ * popup window.) */
+:root:not([chromehidden~="menubar"], [inFullscreen]) #toolbar-menubar[autohide="false"] + #TabsToolbar > :is(.titlebar-buttonbox-container, .titlebar-spacer) {
+  display: none;
+}
+
+:root:not([sizemode=maximized], [sizemode=fullscreen]) .titlebar-restore,
+:root:is([sizemode=maximized], [sizemode=fullscreen]) .titlebar-max {
+  display: none;
+}
+
+.titlebar-buttonbox {
+  appearance: auto;
+  -moz-default-appearance: -moz-window-button-box;
+  position: relative;
+
+  :root:not([tabsintitlebar], [sizemode=fullscreen]) & {
+    display: none;
+  }
+}
+
+/* Menu bar */
+
+#toolbar-menubar {
+  &[autohide="true"] {
+    overflow: hidden;
+
+    &[inactive]:not([customizing]) {
+      min-height: 0 !important;
+      height: 0 !important;
+      padding: 0 !important;
+      appearance: none !important;
+    }
+  }
+
+  &:not([autohide]) {
+    visibility: collapse;
+  }
+}
+
+/* Navigation toolbar */
+
+#nav-bar {
+  /* The toolbar buttons that animate use position:absolute and require a
+   * positioned #nav-bar. */
+  position: relative;
+  border-top: 0.01px var(--tabs-navbar-separator-style) var(--tabs-navbar-separator-color);
+
+  &[tabs-hidden] {
+    border-top-style: none;
+  }
+
+  :root[sessionrestored][lwtheme] & {
+    transition: var(--ext-theme-background-transition);
+  }
+}
+
+#nav-bar-customization-target {
+  /* Don't grow if potentially-user-sized elements (like the searchbar or the
+   * bookmarks toolbar item list) are too wide. This forces them to flex to the
+   * available space as much as possible, see bug 1795260. */
+  min-width: 0;
+
+  /* Add space to beginning of toolbar and make that space click the first <toolbarbutton> */
+  > :is(toolbarbutton, toolbaritem):first-child,
+  > toolbarpaletteitem:first-child > :is(toolbarbutton, toolbaritem) {
+    padding-inline-start: var(--toolbar-start-end-padding);
+  }
+}
+
+/* Bookmarks toolbar */
 
 #PersonalToolbar {
+  /* Make the toolbar not take any vertical space when it's empty, before
+     bookmarks load. Otherwise, showing the toolbar might resize the content
+     area twice. */
+  min-height: 0;
+  padding-inline: 6px;
+
+  :root[uidensity=compact] & {
+    padding-inline: 2px;
+  }
+
+  /* Vertical sliding animation */
+
   overflow: clip;
   max-height: 4em;
-  padding-inline: 6px;
+
+  :root[sessionrestored] &:not(.instant) {
+    transition: min-height 170ms ease-out, max-height 170ms ease-out, var(--ext-theme-background-transition);
+
+    &[collapsed=true] {
+      transition: min-height 170ms ease-out, max-height 170ms ease-out, visibility 170ms linear;
+    }
+  }
+
+  &[collapsed=true] {
+    max-height: 0;
+
+    &.instant {
+      visibility: collapse;
+    }
+  }
+
+  /* Bookmarks toolbar empty message */
+
+  &[collapsed=false]:not([initialized]) > #personal-toolbar-empty {
+    visibility: hidden;
+  }
+
+  /*
+   * Make the empty bookmarks toolbar message take up no horizontal space.
+   * This avoids two issues:
+   * 1) drag/drop of urls/bookmarks to the toolbar not working, because they
+   *    land on the personal-toolbar-empty element.
+   * 2) buttons in the toolbar moving horizontally while the window opens,
+   *    because the element is first shown at full width and then completely
+   *    hidden.
+   * TODO(emilio): The comment above was never quite true (the message did take
+   * horizontal space, see bug 1812636). Figure out how much of this rule is
+   * really needed.
+   */
+  &[collapsed=false] > #personal-toolbar-empty[nowidth] > #personal-toolbar-empty-description {
+    margin-inline: 0;
+    min-width: 0;
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Bookmarks toolbar in customize mode */
+
+  &[customizing] {
+    outline: 1px dashed;
+    outline-offset: -3px;
+    /* Avoid the toolbar having no height when there's no items in it */
+    min-height: 22px;
+  }
 }
 
-:root[uidensity=compact] #PersonalToolbar {
-  padding-inline: 2px;
-}
-
-:root[sessionrestored] #PersonalToolbar:not(.instant) {
-  transition: min-height 170ms ease-out, max-height 170ms ease-out, var(--ext-theme-background-transition);
-}
-
-#PersonalToolbar[collapsed=true] {
-  min-height: 0;
-  max-height: 0;
-}
-
-:root[sessionrestored] #PersonalToolbar:not(.instant)[collapsed=true] {
-  transition: min-height 170ms ease-out, max-height 170ms ease-out, visibility 170ms linear;
-}
-
-#PersonalToolbar[collapsed=false]:not([initialized]) > #personal-toolbar-empty {
-  visibility: hidden;
-}
-
-/*
- * Make the empty bookmarks toolbar message take up no horizontal space.
- * This avoids two issues:
- * 1) drag/drop of urls/bookmarks to the toolbar not working, because they land
- *    on the personal-toolbar-empty element.
- * 2) buttons in the toolbar moving horizontally while the window opens,
- *    because the element is first shown at full width and then completely
- *    hidden.
- * TODO(emilio): The comment above was never quite true (the message did take
- * horizontal space, see bug 1812636). Figure out how much of this rule is
- * really needed.
- */
-#PersonalToolbar[collapsed=false] > #personal-toolbar-empty[nowidth] > #personal-toolbar-empty-description {
-  margin-inline: 0;
-  min-width: 0;
-  white-space: nowrap;
+#personal-bookmarks {
   position: relative;
-  z-index: 1;
+  -moz-window-dragging: inherit;
 }
 
-#PersonalToolbar[collapsed=true].instant {
-  visibility: collapse;
+toolbarpaletteitem > #personal-bookmarks > #PlacesToolbar,
+#personal-bookmarks:is([overflowedItem=true], [cui-areatype="panel"]) > #PlacesToolbar {
+  display: none;
 }
 
-#PersonalToolbar[customizing] {
-  outline: 1px dashed;
-  outline-offset: -3px;
+/* Bookmarks toolbar only-on-new-tab mode */
+
+:root {
+  --bookmarks-toolbar-overlapping-browser-height: max(28px, 2em);
 }
 
-#PersonalToolbar[customizing]:empty {
-  /* Avoid the toolbar having no height when there's no items in it */
-  min-height: 22px;
+:root[BookmarksToolbarOverlapsBrowser] {
+  #PersonalToolbar {
+    height: var(--bookmarks-toolbar-overlapping-browser-height);
+  }
+
+  #navigator-toolbox {
+    /* Overlap the content area by the height of the bookmarks toolbar so that
+       temporarily showing the toolbar for new tabs doesn't resize the content
+       area for all tabs. */
+    margin-bottom: calc(-1 * var(--bookmarks-toolbar-overlapping-browser-height));
+    z-index: 1;
+  }
+
+  .newTabBrowserPanel,
+  #sidebar-main,
+  #sidebar-box {
+    /* Make room for the bookmarks toolbar so that it won't visibly overlap the
+       new tab page and sidebar contents. We do not put this padding on #browser
+       as that would resize the content area for all tabs including background
+       tabs, which is what we explicitly want to avoid doing here. */
+    padding-top: var(--bookmarks-toolbar-overlapping-browser-height);
+  }
+}
+
+/* Bookmarks toolbar drop indicator */
+
+#PlacesToolbarDropIndicatorHolder {
+  display: block;
+  position: absolute;
 }
 
 #PlacesToolbarDropIndicator {
@@ -252,7 +494,8 @@ toolbar[brighttext] :is(a, .text-link):-moz-lwtheme,
   pointer-events: none;
 }
 
-/* rules for menupopup drop indicators */
+/* Menupopup drop indicators */
+
 menupopup::part(drop-indicator-container) {
   /* TODO(emilio): When menupopups get ported to modern flex layout we can
    * probably simplify this substantially, by making the indicator position:
@@ -301,47 +544,37 @@ menupopup::part(drop-indicator) {
 .browserContainer > findbar {
   background-color: var(--toolbar-bgcolor);
   color: var(--toolbar-color);
+  color-scheme: var(--toolbar-color-scheme);
   border-top-color: var(--chrome-content-separator-color, ThreeDShadow);
-}
 
-.browserContainer > findbar:-moz-lwtheme {
-  background-color: var(--lwt-accent-color);
-  background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor)), var(--lwt-additional-images);
-  background-repeat: no-repeat, var(--lwt-background-tiling);
-  background-position: right bottom, var(--lwt-background-alignment);
-  background-position-y: bottom !important;
-}
+  :root[lwtheme] & {
+    background-color: var(--lwt-accent-color);
+    background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor)), var(--lwt-additional-images);
+    background-repeat: no-repeat, var(--lwt-background-tiling);
+    background-position: right bottom, var(--lwt-background-alignment);
+    background-position-y: bottom !important;
+  }
 
-:root:not([lwtheme-image]) .browserContainer > findbar:-moz-lwtheme:-moz-window-inactive {
-  background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
-}
+  :root[lwtheme]:not([lwtheme-image]) &:-moz-window-inactive {
+    background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
+  }
 
-:root[lwtheme-image] .browserContainer > findbar {
-  background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor)), var(--lwt-header-image), var(--lwt-additional-images);
-  background-repeat: no-repeat, no-repeat, var(--lwt-background-tiling);
-  background-position: center, right bottom, var(--lwt-background-alignment);
+  :root[lwtheme-image] & {
+    background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor)), var(--lwt-header-image), var(--lwt-additional-images);
+    background-repeat: no-repeat, no-repeat, var(--lwt-background-tiling);
+    background-position: center, right bottom, var(--lwt-background-alignment);
+  }
 }
 
 /* Private browsing indicator */
 
-.private-browsing-indicator {
-  background-image: url("chrome://global/skin/icons/indicator-private-browsing.svg");
-  background-repeat: no-repeat;
-  background-size: 100% auto;
-  background-position: center;
-  width: 24px;
-  margin-inline: 7px;
-  position: relative;
-  /* Need to ensure this gets positioned on top of the position:relative #navigator-toolbox
-   * in case the dark/light themes give that item a background. */
-  z-index: 1;
-}
-
-/* New Private Browsing Indicator */
-
 #private-browsing-indicator-with-label {
   align-items: center;
   margin-inline: 7px;
+
+  :root:not([privatebrowsingmode=temporary]) & {
+    display: none;
+  }
 }
 
 .private-browsing-indicator-icon {
@@ -350,28 +583,22 @@ menupopup::part(drop-indicator) {
   height: 16px;
 }
 
-:root:not([privatebrowsingmode=temporary]) .private-browsing-indicator,
-:root[privatebrowsingnewindicator] .private-browsing-indicator,
-:root:not([privatebrowsingnewindicator]) #private-browsing-indicator-with-label,
-:root:not([privatebrowsingmode=temporary]) #private-browsing-indicator-with-label {
+/* End private browsing indicator */
+
+/* Content analysis indicator */
+
+:root:not([contentanalysisactive]) #content-analysis-indicator {
   display: none;
 }
 
-/* End private browsing indicator */
+/* End content analysis indicator */
 
 /* Override theme colors since the picker uses extra colors that
    themes cannot set */
 #DateTimePickerPanel {
-  color-scheme: light;
+  color-scheme: env(-moz-content-preferred-color-scheme);
   --arrowpanel-background: Field;
   --arrowpanel-color: FieldText;
-}
-
-/* stylelint-disable-next-line media-feature-name-no-unknown */
-@media (-moz-content-prefers-color-scheme: dark) and (not (prefers-contrast)) {
-  #DateTimePickerPanel {
-    color-scheme: dark;
-  }
 }
 
 #widget-overflow .webextension-popup-browser {
@@ -419,148 +646,192 @@ menupopup::part(drop-indicator) {
   fill: currentColor;
   fill-opacity: 0.6;
   list-style-image: url(chrome://global/skin/icons/help.svg);
-}
 
-#cfr-notification-header-image:hover {
-  background-color: hsla(0,0%,70%,.2);
-  border-radius: 2px;
+  &:hover {
+    background-color: hsla(0,0%,70%,.2);
+    border-radius: 2px;
+  }
 }
 
 #contextual-feature-recommendation-notification {
   width: 400px;
-}
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] {
-  background: radial-gradient(circle farthest-side at top right, var(--short-notification-gradient), var(--short-notification-background));
-  width: unset;
-  max-width: 700px;
-  overflow-wrap: break-word;
-}
+  .popup-notification-icon {
+    margin-inline-end: 4px;
+  }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"]:-moz-locale-dir(rtl) {
-  background: radial-gradient(circle farthest-side at top left, var(--short-notification-gradient), var(--short-notification-background));
-}
+  .cfr-doorhanger-large-icon {
+    width: 64px;
+    height: 64px;
+    margin-inline-end: 12px;
+  }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-body-container,
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-footer-container,
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] #cfr-notification-header-link {
-  display: none;
-}
+  .cfr-doorhanger-medium-icon {
+    width: 50px;
+    height: 50px;
+    margin-inline-end: 12px;
+  }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] #cfr-notification-header {
-  box-shadow: none;
-}
+  .popup-notification-body-container {
+    width: 100%;
+    padding-bottom: 2px;
+  }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] description {
-  font-weight: 400;
-  margin: unset;
-  margin-inline: 12px;
-  transform: translateY(50%);
-}
+  popupnotificationcontent {
+    margin-top: 0;
+  }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-button-container,
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-header-container {
-  display: inline-flex;
-}
+  description {
+    margin-bottom: 0;
+  }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-button-container {
-  float: inline-end;
-  background-color: transparent;
-  flex-direction: row-reverse;
-  /* Override proton-doorhanger default styles that increase the size of the button */
-  margin: 0;
-}
+  &[data-notification-bucket="CFR_MILESTONE_MESSAGE"] {
+    &:not([hidden]) {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      background: radial-gradient(circle farthest-side at top right, var(--short-notification-gradient), var(--short-notification-background));
+      width: unset;
+      max-width: 700px;
+      overflow-wrap: break-word;
+      padding: 4px;
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-primary-button {
-  background-color: rgba(216, 216, 216, 0.2);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  margin: 4px;
-  padding: 3px 12px;
-  flex: 1;
-}
+    &:-moz-locale-dir(rtl) {
+      background: radial-gradient(circle farthest-side at top left, var(--short-notification-gradient), var(--short-notification-background));
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-primary-button:after {
-  content: url(chrome://global/skin/icons/arrow-left-12.svg);
-  -moz-context-properties: fill;
-  fill: currentColor;
-  transform: translateY(2px);
-  float: inline-end;
-}
+    .popup-notification-body-container,
+    .popup-notification-footer-container,
+    #cfr-notification-header-link {
+      display: none;
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"]:-moz-locale-dir(ltr) .popup-notification-primary-button:after {
-  content: url(chrome://global/skin/icons/arrow-right-12.svg);
-}
+    #cfr-notification-header {
+      box-shadow: none;
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-primary-button:hover {
-  background-color: rgba(216, 216, 216, 0.4);
-}
+    description {
+      font-weight: 400;
+      margin: unset;
+      margin-inline: 12px;
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-primary-button:active {
-  background-color: rgba(216, 216, 216, 0.5);
-}
+    .panel-footer,
+    .popup-notification-header-container {
+      display: inline-flex;
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-secondary-button {
-  margin: 3px;
-  border: none;
-  border-radius: 2px;
-  background-image: url(chrome://global/skin/icons/close.svg);
-  background-color: transparent;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 10px;
-  -moz-context-properties: fill;
-  fill: white;
-  height: 22px;
-  width: 22px;
-  padding: 0;
-  align-self: center;
-  flex: none;
-  font-size: 0;
-}
+    .panel-footer {
+      float: inline-end;
+      background-color: transparent;
+      flex-direction: row-reverse;
+      /* Override doorhanger default styles that increase the size of the button */
+      margin: 0;
+    }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-secondary-button:hover {
-  background-color: rgba(216, 216, 216, 0.4);
-}
+    .popup-notification-primary-button {
+      background-color: rgba(216, 216, 216, 0.2);
+      color: white;
+      border: none;
+      border-radius: 2px;
+      margin: 4px;
+      padding: 3px 12px;
+      flex: 1;
+      min-height: 22px;
 
+      &::after {
+        content: url(chrome://global/skin/icons/arrow-left-12.svg);
+        -moz-context-properties: fill;
+        fill: currentColor;
+        transform: translateY(2px);
+        float: inline-end;
+      }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_MILESTONE_MESSAGE"] .popup-notification-header-container {
-  color: white;
-  max-width: unset;
-}
+      &:-moz-locale-dir(ltr)::after {
+        content: url(chrome://global/skin/icons/arrow-right-12.svg);
+      }
 
-#contextual-feature-recommendation-notification[data-notification-bucket="CFR_SOCIAL_TRACKING_PROTECTION"] {
-  width: 386px;
-}
+      &:hover {
+        background-color: rgba(216, 216, 216, 0.4);
+      }
 
-#contextual-feature-recommendation-notification .popup-notification-icon {
-  margin-inline-end: 4px;
-}
+      &:hover:active {
+        background-color: rgba(216, 216, 216, 0.5);
+      }
+    }
 
-#contextual-feature-recommendation-notification .cfr-doorhanger-large-icon {
-  width: 64px;
-  height: 64px;
-  margin-inline-end: 12px;
-}
+    .popup-notification-secondary-button {
+      margin: 3px;
+      border: none;
+      border-radius: 2px;
+      background-image: url(chrome://global/skin/icons/close.svg);
+      background-color: transparent;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 10px;
+      -moz-context-properties: fill;
+      fill: white;
+      min-height: 22px;
+      width: 22px;
+      padding: 0;
+      align-self: center;
+      flex: none;
+      font-size: 0;
 
-#contextual-feature-recommendation-notification .cfr-doorhanger-medium-icon {
-  width: 50px;
-  height: 50px;
-  margin-inline-end: 12px;
-}
+      &:hover {
+        background-color: rgba(216, 216, 216, 0.4);
+      }
+    }
 
-#contextual-feature-recommendation-notification .popup-notification-body-container {
-  width: 100%;
-  padding-bottom: 2px;
-}
+    .popup-notification-header-container {
+      color: white;
+      max-width: unset;
+    }
+  }
 
-#contextual-feature-recommendation-notification popupnotificationcontent {
-  margin-top: 0;
-}
+  &[data-notification-bucket="CFR_SOCIAL_TRACKING_PROTECTION"] {
+    width: 386px;
+  }
 
-#contextual-feature-recommendation-notification description {
-  margin-bottom: 0;
+  &[data-notification-category="addon_recommendation"] {
+    .popup-notification-description > b {
+      padding-inline-start: 5px;
+    }
+
+    #cfr-notification-footer-learn-more-link {
+      margin-inline-start: 5px;
+    }
+
+    #cfr-notification-feature-steps,
+    #cfr-notification-header-image {
+      display: none;
+    }
+
+    #cfr-notification-header-label {
+      margin-block-end: 9px;
+    }
+  }
+
+  &[data-notification-category="icon_and_message"] {
+    /*
+     * `icon_and_message` CFR doorhanger with: icon, title and subtitle.
+     * No panel header is shown
+     */
+    #cfr-notification-header,
+    .popup-notification-footer-container {
+      display: none;
+    }
+
+    .popup-notification-description {
+      font-weight: 600;
+      margin-bottom: 15px;
+    }
+
+    popupnotificationcontent {
+      display: block; /* This forces the subtitle content to wrap */
+    }
+  }
 }
 
 #cfr-notification-footer-text-and-addon-info {
@@ -568,59 +839,20 @@ menupopup::part(drop-indicator) {
   padding: 10px var(--arrowpanel-padding);
 }
 
-#contextual-feature-recommendation-notification[data-notification-category="addon_recommendation"] #cfr-notification-feature-steps,
-#contextual-feature-recommendation-notification[data-notification-category="icon_and_message"] .popup-notification-footer-container {
-  display: none;
-}
-
-#contextual-feature-recommendation-notification[data-notification-category="addon_recommendation"] .popup-notification-description > b {
-  font-weight: 300;
-  padding-inline-start: 5px;
-}
-
-#contextual-feature-recommendation-notification[data-notification-category="addon_recommendation"] #cfr-notification-footer-learn-more-link {
-  margin-inline-start: 5px;
-}
-
-#contextual-feature-recommendation-notification[data-notification-category="addon_recommendation"] #cfr-notification-header-image {
-  display: none;
-}
-
-#contextual-feature-recommendation-notification[data-notification-category="addon_recommendation"] #cfr-notification-header-label {
-  margin-block-end: 9px;
-}
-
-/*
- * `icon_and_message` CFR doorhanger with: icon, title and subtitle.
- * No panel header is shown
- */
-#contextual-feature-recommendation-notification[data-notification-category="icon_and_message"] #cfr-notification-header {
-  display: none;
-}
-
-#contextual-feature-recommendation-notification[data-notification-category="icon_and_message"] .popup-notification-description {
-  font-weight: 600;
-  margin-bottom: 15px;
-}
-
-#contextual-feature-recommendation-notification[data-notification-category="icon_and_message"] popupnotificationcontent {
-  display: block; /* This forces the subtitle content to wrap */
-}
-
 #cfr-notification-feature-steps {
   display: flex;
   flex-direction: column;
   margin-top: 10px;
-}
 
-#cfr-notification-feature-steps li {
-  margin-inline-start: 10px;
-  position: relative;
-  display: list-item;
-}
+  li {
+    margin-inline-start: 10px;
+    position: relative;
+    display: list-item;
 
-#cfr-notification-feature-steps li:not(:last-child) {
-  margin-bottom: 5px;
+    &:not(:last-child) {
+      margin-bottom: 5px;
+    }
+  }
 }
 
 #cfr-notification-footer-text,
@@ -667,53 +899,27 @@ menupopup::part(drop-indicator) {
   flex-grow: 1;
 }
 
-#content-mask {
-  background: rgba(0, 0, 0, 0.5);
-}
-
 /* nhnt11: Workaround to insert a linebreak after the DoH doorhanger's title.
- * The title uses the inline html|b that usually contains the hostname for
+ * The title uses the inline <b> that usually contains the hostname for
  * permission prompts to achieve bold formatting. This is always the 2nd child.
  */
-.popup-notification-description[popupid="doh-first-time"] > html|b:first-of-type {
+.popup-notification-description[popupid="doh-first-time"] > b:first-of-type {
   display: block;
   margin-bottom: 4px; /* matches the margin-bottom on description elements */
 }
 
-/* Password Manager Doorhanger */
-
-.ac-dropmarker {
-  appearance: none;
-  justify-self: end;
-  margin-inline-end: 8px;
-  align-self: center;
-}
-
-.ac-dropmarker::part(icon) {
-  list-style-image: url(chrome://global/skin/icons/arrow-down-12.svg);
-  -moz-context-properties: fill;
-  fill: var(--input-color, -moz-DialogText);
-}
-
-.ac-has-end-icon {
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-
-/* ENABLE DEVTOOLS POPUP */
-@media (-moz-platform: macos), (-moz-platform: windows) {
-  #enable-devtools-popup {
-    font-size: 1.18em;
-  }
-}
-
-#sharing-tabs-warning-panel > hbox[type="window"] > vbox > label > #sharing-warning-screen-panel-header,
-#sharing-tabs-warning-panel > hbox[type="screen"] > vbox > label > #sharing-warning-window-panel-header {
-  display: none;
-}
+/* Sharing tabs warning */
 
 #sharing-tabs-warning-panel {
   max-width: 400px;
+
+  > hbox[type="window"] > vbox > label > #sharing-warning-screen-panel-header {
+    display: none;
+  }
+
+  > hbox[type="screen"] > vbox > label > #sharing-warning-window-panel-header {
+    display: none;
+  }
 }
 
 #sharing-warning-proceed-to-tab {
@@ -726,50 +932,33 @@ menupopup::part(drop-indicator) {
   padding: 10px;
   margin-top: 15px;
   margin-bottom: 10px;
+
+  &:hover {
+    background-color: rgb(0,62,170);
+  }
 }
 
-#sharing-warning-proceed-to-tab:hover {
-  background-color: rgb(0,62,170);
-}
+/* webRTC device sharing selector */
 
 .webRTC-selectDevice-selector-container {
   display: flex;
   align-items: center;
+
+  > menulist {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
-.webRTC-selectDevice-selector-container > menulist {
+#webRTC-selectSpeaker-richlistbox {
   flex: 1;
-  min-width: 0;
-}
-
-popupnotificationcontent {
-  margin-block-start: 8px;
-}
-
-/**
- * Our OS integration code toggles whether system colors should return light or
- * dark values based on the luminosity of the toolbar background. Because themes
- * can style panels to have a different background color than the toolbar, we
- * need specific overrides for system colors used in light or dark themes.
- */
-.popup-notification-body:-moz-lwtheme {
-  color-scheme: light;
-}
-
-:root[lwt-popup-brighttext] .popup-notification-body {
-  color-scheme: dark;
-}
-
-.popup-notification-body menulist {
-  margin: 0;
-}
-
-.popup-notification-checkbox {
-  margin-block: 12px 0;
-}
-
-.popup-notification-body-container {
-  padding-block-end: 0;
+  /* Keep the richlistbox small enough that a large number of devices doesn't
+     push the main and secondary action buttons off the bottom of the
+     popupnotification window when limited by screen size.  Only enough
+     richlistitems need to be shown to indicate that there are options
+     available but give enough space for the common case of only a few
+     devices.  */
+  max-height: 600px;
 }
 
 #webRTC-selectCamera-label,
@@ -794,21 +983,55 @@ popupnotificationcontent {
 }
 
 #webRTC-selectSpeaker-icon {
-  list-style-image: url("chrome://global/skin/media/audio.svg");
+  list-style-image: url("chrome://browser/skin/notification-icons/speaker.svg");
+}
+
+/* TODO: move these to popupnotification.css */
+
+popupnotificationcontent {
+  margin-block-start: 8px;
+}
+
+.popup-notification-body menulist {
+  margin: 0;
+}
+
+.popup-notification-checkbox {
+  margin-block: 12px 0;
+}
+
+.popup-notification-body-container {
+  padding-block-end: 0;
 }
 
 .popup-notification-body :is(description, label:not(.learnMore), checkbox, input) {
   margin-inline: 0;
 }
 
-.popup-notification-body input {
-  padding: 8px;
-  border-radius: 4px;
-  border: 0;
-  outline: 1px solid var(--input-border-color, ThreeDShadow);
-  outline-offset: -1px;
-  background-color: var(--input-bgcolor, Field);
-  color: var(--input-color, FieldText);
+.popup-notification-description {
+  font-weight: 600;
+  margin-top: 0;
+
+  > b {
+    font-weight: inherit;
+  }
+}
+
+/* Password Manager Doorhanger */
+
+.ac-dropmarker {
+  appearance: none;
+  justify-self: end;
+  margin-inline-end: 8px;
+  align-self: center;
+  content: url(chrome://global/skin/icons/arrow-down-12.svg);
+  -moz-context-properties: fill;
+  fill: var(--input-color, -moz-DialogText);
+}
+
+.ac-has-end-icon {
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .popup-notification-body input.ac-has-end-icon {
@@ -826,68 +1049,57 @@ popupnotificationcontent {
   padding-left: 8px;
 }
 
-.popup-notification-body input:focus-visible {
-  outline: 2px solid var(--focus-outline-color);
-}
-
-/**
- * There's already a margin-block-start of 8px on popupnotificationcontent,
- * so the first label only needs 8px of margin-block-start to match the
- * spec.
- */
-.password-notification-label:first-of-type {
-  margin-block-start: 8px;
-}
-
-.password-notification-label:not(:first-of-type) {
+.password-notification-label {
   margin-block-start: 16px;
+
+  /**
+   * There's already a margin-block-start of 8px on popupnotificationcontent,
+   * so the first label only needs 8px of margin-block-start to match the
+   * spec.
+   */
+  &:first-of-type {
+    margin-block-start: 8px;
+  }
 }
 
 #password-notification-visibilityToggle {
   margin-block-start: 14px;
-}
 
-#password-notification-visibilityToggle > .checkbox-label-box > .checkbox-label {
-  opacity: 0.7;
-}
-
-.popup-notification-description > b {
-  font-weight: inherit;
-}
-
-.popup-notification-description {
-  font-weight: 600;
-  margin-top: 0;
+  > .checkbox-label-box > .checkbox-label {
+    opacity: 0.7;
+  }
 }
 
 #tab-notification-deck {
   display: block;
 }
 
+/* Relay Integration */
+
 .relay-integration-header {
   display: flex;
   align-items: center;
   font-size: 2em;
+
+  > div {
+    width: 32px;
+    height: 32px;
+    background-image: url("chrome://browser/content/logos/relay.svg");
+    background-repeat: no-repeat;
+  }
+
+  > span:first-of-type {
+    font-weight: bold;
+    margin-inline-start: 8px;
+  }
+
+  > span:last-of-type {
+    font-weight: normal;
+    white-space: pre;
+  }
 }
 
-.relay-integration-header > div {
-  width: 32px;
-  height: 32px;
-  background-image: url("chrome://browser/content/logos/relay.svg");
-  background-repeat: no-repeat;
-}
-
-.relay-integration-header > span:first-of-type {
-  font-weight: bold;
-  margin-inline-start: 8px;
-}
-
-.relay-integration-header > span:last-of-type {
-  font-weight: normal;
-  white-space: pre;
-}
-
-.popup-notification-description[popupid="relay-integration-offer-notification"] > html|div:first-of-type {
+.popup-notification-description[popupid="relay-integration-offer-notification"] > div:first-of-type {
   font-weight: normal;
   display: grid;
   grid-template-columns: auto;
@@ -904,27 +1116,43 @@ popupnotificationcontent {
 .reusable-relay-masks {
   display: flex;
   flex-direction: column;
+
+  > button {
+    padding: 4px;
+    margin: 4px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+
+    > span:first-child {
+      margin-inline-end: 20px;
+    }
+
+    > span:last-child {
+      opacity: 0.6;
+    }
+  }
 }
 
-.reusable-relay-masks > button {
-  padding: 4px;
-  margin: 4px;
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-}
-
-.reusable-relay-masks > button > span:first-child {
-  margin-inline-end: 20px;
-}
-
-.reusable-relay-masks > button > span:last-child {
-  opacity: 0.6;
-}
+/* History swipe navigation animation */
 
 #historySwipeAnimationPreviousArrow,
 #historySwipeAnimationNextArrow {
+  --swipe-nav-icon-primary-color: SelectedItemText;
+  --swipe-nav-icon-accent-color: SelectedItem;
+
   will-change: transform;
+
+  @media not (prefers-contrast) {
+  /* TODO: Should this be in browser-custom-colors to respect system theming on
+   * Linux? */
+    --swipe-nav-icon-primary-color: light-dark(#0060DF, #00DDFF);
+    --swipe-nav-icon-accent-color: light-dark(#FFFFFF, #000000);
+  }
+
+  > svg {
+    margin: auto 0;
+  }
 }
 
 #historySwipeAnimationPreviousArrow:-moz-locale-dir(rtl),
@@ -932,85 +1160,50 @@ popupnotificationcontent {
   transform: scaleX(-1);
 }
 
-#historySwipeAnimationPreviousArrow > svg,
-#historySwipeAnimationNextArrow > svg {
-  margin: auto 0;
-}
-
-#historySwipeAnimationPreviousArrow,
-#historySwipeAnimationNextArrow {
-  --swipe-nav-icon-primary-color: #0060DF;
-  --swipe-nav-icon-accent-color: #FFFFFF;
-}
-
-@media (-moz-content-prefers-color-scheme: dark) {
-  #historySwipeAnimationPreviousArrow,
-  #historySwipeAnimationNextArrow {
-    --swipe-nav-icon-primary-color: #00DDFF;
-    --swipe-nav-icon-accent-color: #000000;
-  }
-}
-
-@media (prefers-contrast) {
-  #historySwipeAnimationPreviousArrow,
-  #historySwipeAnimationNextArrow {
-    --swipe-nav-icon-primary-color: SelectedItemText;
-    --swipe-nav-icon-accent-color: SelectedItem;
-  }
-}
-
-/*
- * Styles for the swipe navigation SVG icon.
- */
-.swipe-nav-icon path {
-  transition: fill 1s;
-}
-
-@media not (-moz-platform: macos) {
-  /*
-   * Styles for the swipe navigation SVG icon.
-   *
-   * `will-navigate` class name is added to the <svg> element when the user's
-   * swipe gesture reached to the point where history navigation will be
-   * triggered. It's used for triggering three animations, an arrow color change,
-   * a circle color change and a glowing effect outer the circle.
-   */
-  .swipe-nav-icon circle {
-    fill: var(--swipe-nav-icon-accent-color);
-    stroke: var(--swipe-nav-icon-primary-color);
-  }
-
-  .swipe-nav-icon circle:first-of-type {
-    fill: var(--swipe-nav-icon-primary-color);
-    transition: opacity 1s;
-    will-change: opacity; /* a workaround for bug 1804189 */
-    opacity: 0;
-  }
-
-  .swipe-nav-icon.will-navigate > circle:not(:first-of-type) {
-    fill: var(--swipe-nav-icon-primary-color);
-  }
-
-  .swipe-nav-icon circle:not(:first-of-type) {
+.swipe-nav-icon {
+  > path {
     transition: fill 1s;
   }
 
-  .swipe-nav-icon.will-navigate > circle:first-of-type {
-    transition-delay: 0.2s;
-    opacity: 0.2;
-  }
+  @media not (-moz-platform: macos) {
+    /*
+     * Styles for the swipe navigation SVG icon.
+     *
+     * `will-navigate` class name is added to the <svg> element when the user's
+     * swipe gesture reached to the point where history navigation will be
+     * triggered. It's used for triggering three animations, an arrow color change,
+     * a circle color change and a glowing effect outer the circle.
+     */
+    > circle {
+      fill: var(--swipe-nav-icon-accent-color);
+      stroke: var(--swipe-nav-icon-primary-color);
+      transition: fill 1s;
 
-  .swipe-nav-icon.will-navigate > circle:not(:first-of-type) {
-    fill: var(--swipe-nav-icon-primary-color);
-  }
+      &:first-of-type {
+        fill: var(--swipe-nav-icon-primary-color);
+        transition: opacity 1s;
+        will-change: opacity; /* a workaround for bug 1804189 */
+        opacity: 0;
+      }
+    }
 
-  .swipe-nav-icon path {
-    fill: var(--swipe-nav-icon-primary-color);
-  }
+    &.will-navigate > circle:not(:first-of-type) {
+      fill: var(--swipe-nav-icon-primary-color);
+    }
 
-  .swipe-nav-icon.will-navigate > path {
-    fill: var(--swipe-nav-icon-accent-color);
-    stroke: var(--swipe-nav-icon-accent-color);
+    &.will-navigate > circle:first-of-type {
+      transition-delay: 0.2s;
+      opacity: 0.2;
+    }
+
+    > path {
+      fill: var(--swipe-nav-icon-primary-color);
+    }
+
+    &.will-navigate > path {
+      fill: var(--swipe-nav-icon-accent-color);
+      stroke: var(--swipe-nav-icon-accent-color);
+    }
   }
 }
 
@@ -1026,18 +1219,24 @@ popupnotificationcontent {
   .swipe-nav-icon-arrow {
     fill: var(--swipe-nav-icon-primary-color);
   }
+
   .swipe-nav-icon-circle {
     fill: var(--swipe-nav-icon-accent-color);
   }
-  .swipe-nav-icon.will-navigate > .swipe-nav-icon-circle-outline,
-  .swipe-nav-icon.will-navigate > .swipe-nav-icon-arrow {
-    fill: var(--swipe-nav-icon-accent-color);
-  }
-  .swipe-nav-icon.will-navigate > .swipe-nav-icon-circle {
-    fill: var(--swipe-nav-icon-primary-color);
+
+  .swipe-nav-icon.will-navigate {
+    > .swipe-nav-icon-circle-outline,
+    > .swipe-nav-icon-arrow {
+      fill: var(--swipe-nav-icon-accent-color);
+    }
+
+    > .swipe-nav-icon-circle {
+      fill: var(--swipe-nav-icon-primary-color);
+    }
   }
 }
 
+/* TODO: move this to toolkit */
 panel toolbarseparator {
   appearance: none;
   min-height: 0;
@@ -1048,6 +1247,7 @@ panel toolbarseparator {
 }
 
 /* Picture-in-Picture panel */
+
 #PictureInPicturePanel {
   width: var(--menu-panel-width-wide);
   font: caption;
@@ -1060,4 +1260,14 @@ panel toolbarseparator {
 
 #PictureInPicturePanelFooter {
   margin: 8px 16px 16px;
+}
+
+/* Shopping sidebar */
+
+shopping-sidebar {
+  border-inline-start: 1px solid var(--chrome-content-separator-color);
+  min-width: 16.92em;
+  max-width: 32.31em;
+  width: 320px;
+  box-sizing: content-box;
 }

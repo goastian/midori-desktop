@@ -9,10 +9,10 @@ import { UrlClassifierTestUtils } from "resource://testing-common/UrlClassifierT
 
 import { SitePermissions } from "resource:///modules/SitePermissions.sys.mjs";
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+import { NetUtil } from "resource://gre/modules/NetUtil.sys.mjs";
 
-const CC_SELECTORS = ["#identity-popup", "#urlbar-input-container"];
-const PP_SELECTORS = ["#protections-popup", "#urlbar-input-container"];
+const CC_SELECTORS = ["#identity-popup", "#urlbar .urlbar-input-container"];
+const PP_SELECTORS = ["#protections-popup", "#urlbar .urlbar-input-container"];
 
 const RESOURCE_PATH =
   "browser/browser/tools/mozscreenshots/mozscreenshots/extension/mozscreenshots/browser/resources/lib/controlCenter";
@@ -26,7 +26,7 @@ const MIXED_PASSIVE_CONTENT_URL = `https://example.com/${RESOURCE_PATH}/mixed_pa
 const TRACKING_PAGE = `http://tracking.example.org/${RESOURCE_PATH}/tracking.html`;
 
 export var ControlCenter = {
-  init(libDir) {},
+  init() {},
 
   configurations: {
     about: {
@@ -49,7 +49,7 @@ export var ControlCenter = {
         let browserWindow =
           Services.wm.getMostRecentWindow("navigator:browser");
         let gBrowser = browserWindow.gBrowser;
-        BrowserTestUtils.loadURIString(
+        BrowserTestUtils.startLoadingURIString(
           gBrowser.selectedBrowser,
           channel.file.path
         );
@@ -278,7 +278,7 @@ export var ControlCenter = {
 async function loadPage(url) {
   let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
   let gBrowser = browserWindow.gBrowser;
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, url);
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, url);
 }
 

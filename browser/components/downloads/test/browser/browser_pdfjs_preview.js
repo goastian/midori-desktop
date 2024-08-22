@@ -377,21 +377,21 @@ async function verifyContextMenu(contextMenu, expected = {}) {
   );
   info("Waiting for the context menu to show up");
   await TestUtils.waitForCondition(
-    () => BrowserTestUtils.is_visible(contextMenu),
+    () => BrowserTestUtils.isVisible(contextMenu),
     "The context menu is visible"
   );
   await TestUtils.waitForTick();
 
   info("Checking visibility of the system viewer menu items");
   is(
-    BrowserTestUtils.is_hidden(useSystemMenuItem),
+    BrowserTestUtils.isHidden(useSystemMenuItem),
     expected.useSystemMenuItemDisabled,
     `The 'Use system viewer' menu item was ${
       expected.useSystemMenuItemDisabled ? "hidden" : "visible"
     }`
   );
   is(
-    BrowserTestUtils.is_hidden(alwaysMenuItem),
+    BrowserTestUtils.isHidden(alwaysMenuItem),
     expected.alwaysMenuItemDisabled,
     `The 'Use system viewer' menu item was ${
       expected.alwaysMenuItemDisabled ? "hidden" : "visible"
@@ -588,7 +588,7 @@ async function testOpenPDFPreview({
         await TestUtils.waitForCondition(() => {
           return (
             listbox.itemChildren.length == expected.downloadCount &&
-            BrowserTestUtils.is_visible(listbox.itemChildren[0])
+            BrowserTestUtils.isVisible(listbox.itemChildren[0])
           );
         });
         itemTarget = listbox.itemChildren[0];
@@ -639,7 +639,7 @@ async function testOpenPDFPreview({
           "InitialDownloadsLoaded",
           true
         );
-        BrowserTestUtils.loadURIString(browser, "about:downloads");
+        BrowserTestUtils.startLoadingURIString(browser, "about:downloads");
         await BrowserTestUtils.browserLoaded(browser);
         info("waiting for downloadsLoaded");
         await downloadsLoaded;

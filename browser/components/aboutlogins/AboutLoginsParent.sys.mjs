@@ -17,11 +17,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginExport: "resource://gre/modules/LoginExport.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
-  OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
   UIState: "resource://services-sync/UIState.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   return lazy.LoginHelper.createLogger("AboutLoginsParent");
 });
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -38,17 +37,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
 );
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
-  "OS_AUTH_ENABLED",
-  "signon.management.page.os-auth.enabled",
-  true
-);
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
   "VULNERABLE_PASSWORDS_ENABLED",
   "signon.management.page.vulnerable-passwords.enabled",
   false
 );
-XPCOMUtils.defineLazyGetter(lazy, "AboutLoginsL10n", () => {
+ChromeUtils.defineLazyGetter(lazy, "AboutLoginsL10n", () => {
   return new Localization(["branding/brand.ftl", "browser/aboutLogins.ftl"]);
 });
 
@@ -76,6 +69,11 @@ const augmentVanillaLoginObject = login => {
   return Object.assign({}, login, {
     title,
   });
+};
+
+const EXPORT_PASSWORD_OS_AUTH_DIALOG_MESSAGE_IDS = {
+  win: "about-logins-export-password-os-auth-dialog-message2-win",
+  macosx: "about-logins-export-password-os-auth-dialog-message2-macosx",
 };
 
 export class AboutLoginsParent extends JSWindowActorParent {
@@ -163,7 +161,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
   }
 
   get #ownerGlobal() {
-    return this.browsingContext.embedderElement.ownerGlobal;
+    return this.browsingContext.embedderElement?.ownerGlobal;
   }
 
   async #createLogin(newLogin) {
@@ -199,6 +197,14 @@ export class AboutLoginsParent extends JSWindowActorParent {
     } catch (error) {
       this.#handleLoginStorageErrors(newLogin, error);
     }
+  }
+
+  get preselectedLogin() {
+    const preselectedLogin =
+      this.#ownerGlobal?.gBrowser.selectedTab.getAttribute("preselect-login") ||
+      this.browsingContext.currentURI?.ref;
+    this.#ownerGlobal?.gBrowser.selectedTab.removeAttribute("preselect-login");
+    return preselectedLogin || null;
   }
 
   #deleteLogin(loginObject) {
@@ -253,11 +259,15 @@ export class AboutLoginsParent extends JSWindowActorParent {
     let messageText = { value: "NOT SUPPORTED" };
     let captionText = { value: "" };
 
+    const isOSAuthEnabled = lazy.LoginHelper.getOSAuthEnabled(
+      lazy.LoginHelper.OS_AUTH_FOR_PASSWORDS_PREF
+    );
+
     // This feature is only supported on Windows and macOS
     // but we still call in to OSKeyStore on Linux to get
     // the proper auth_details for Telemetry.
     // See bug 1614874 for Linux support.
-    if (lazy.OS_AUTH_ENABLED && lazy.OSKeyStore.canReauth()) {
+    if (isOSAuthEnabled) {
       messageId += "-" + AppConstants.platform;
       [messageText, captionText] = await lazy.AboutLoginsL10n.formatMessages([
         {
@@ -271,7 +281,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
 
     let { isAuthorized, telemetryEvent } = await lazy.LoginHelper.requestReauth(
       this.browsingContext.embedderElement,
-      lazy.OS_AUTH_ENABLED,
+      isOSAuthEnabled,
       AboutLogins._authExpirationTime,
       messageText.value,
       captionText.value
@@ -316,6 +326,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
         importVisible:
           Services.policies.isAllowed("profileImport") &&
           AppConstants.platform != "linux",
+        preselectedLogin: this.preselectedLogin,
       });
 
       await AboutLogins.sendAllLoginRelatedObjects(
@@ -364,14 +375,22 @@ export class AboutLoginsParent extends JSWindowActorParent {
     let messageText = { value: "NOT SUPPORTED" };
     let captionText = { value: "" };
 
+    const isOSAuthEnabled = lazy.LoginHelper.getOSAuthEnabled(
+      lazy.LoginHelper.OS_AUTH_FOR_PASSWORDS_PREF
+    );
+
     // This feature is only supported on Windows and macOS
     // but we still call in to OSKeyStore on Linux to get
     // the proper auth_details for Telemetry.
     // See bug 1614874 for Linux support.
-    if (lazy.OSKeyStore.canReauth()) {
-      let messageId =
-        "about-logins-export-password-os-auth-dialog-message-" +
-        AppConstants.platform;
+    if (isOSAuthEnabled) {
+      const messageId =
+        EXPORT_PASSWORD_OS_AUTH_DIALOG_MESSAGE_IDS[AppConstants.platform];
+      if (!messageId) {
+        throw new Error(
+          `AboutLoginsParent: Cannot find l10n id for platform ${AppConstants.platform} for export passwords os auth dialog message`
+        );
+      }
       [messageText, captionText] = await lazy.AboutLoginsL10n.formatMessages([
         {
           id: messageId,
@@ -411,10 +430,10 @@ export class AboutLoginsParent extends JSWindowActorParent {
     let [title, defaultFilename, okButtonLabel, csvFilterTitle] =
       await lazy.AboutLoginsL10n.formatValues([
         {
-          id: "about-logins-export-file-picker-title",
+          id: "about-logins-export-file-picker-title2",
         },
         {
-          id: "about-logins-export-file-picker-default-filename",
+          id: "about-logins-export-file-picker-default-filename2",
         },
         {
           id: "about-logins-export-file-picker-export-button",
@@ -424,7 +443,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
         },
       ]);
 
-    fp.init(this.#ownerGlobal, title, Ci.nsIFilePicker.modeSave);
+    fp.init(this.browsingContext, title, Ci.nsIFilePicker.modeSave);
     fp.appendFilter(csvFilterTitle, "*.csv");
     fp.appendFilters(Ci.nsIFilePicker.filterAll);
     fp.defaultString = defaultFilename;
@@ -437,7 +456,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
     let [title, okButtonLabel, csvFilterTitle, tsvFilterTitle] =
       await lazy.AboutLoginsL10n.formatValues([
         {
-          id: "about-logins-import-file-picker-title",
+          id: "about-logins-import-file-picker-title2",
         },
         {
           id: "about-logins-import-file-picker-import-button",
@@ -461,8 +480,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
           title: tsvFilterTitle,
           extensionPattern: "*.tsv",
         },
-      ],
-      this.#ownerGlobal
+      ]
     );
 
     if (result != Ci.nsIFilePicker.returnCancel) {
@@ -508,10 +526,10 @@ export class AboutLoginsParent extends JSWindowActorParent {
     this.sendAsyncMessage("AboutLogins:ShowLoginItemError", messageObject);
   }
 
-  async openFilePickerDialog(title, okButtonLabel, appendFilters, ownerGlobal) {
+  async openFilePickerDialog(title, okButtonLabel, appendFilters) {
     return new Promise(resolve => {
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-      fp.init(ownerGlobal, title, Ci.nsIFilePicker.modeOpen);
+      fp.init(this.browsingContext, title, Ci.nsIFilePicker.modeOpen);
       for (const appendFilter of appendFilters) {
         fp.appendFilter(appendFilter.title, appendFilter.extensionPattern);
       }
@@ -825,7 +843,7 @@ class AboutLoginsInternal {
     };
   }
 
-  onPasswordSyncEnabledPreferenceChange(data, previous, latest) {
+  onPasswordSyncEnabledPreferenceChange(_data, _previous, _latest) {
     this.#messageSubscribers("AboutLogins:SyncState", this.getSyncState());
   }
 

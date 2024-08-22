@@ -59,7 +59,7 @@ async function setupPolicyEngineWithJson(json, customSchema) {
  * with the new policy. Also waits for the search service to write the settings
  * file to disk.
  *
- * @param {object} policy
+ * @param {object} json
  *   The enterprise policy to use.
  * @param {object} customSchema
  *   A custom schema to use to validate the enterprise policy.
@@ -116,7 +116,7 @@ function checkUserPref(prefName, prefValue) {
   );
 }
 
-function checkClearPref(prefName, prefValue) {
+function checkClearPref(prefName) {
   equal(
     Services.prefs.prefHasUserValue(prefName),
     false,

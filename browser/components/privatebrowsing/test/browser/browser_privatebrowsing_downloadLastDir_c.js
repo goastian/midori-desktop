@@ -14,12 +14,12 @@ function test() {
   );
   let MockFilePicker = SpecialPowers.MockFilePicker;
 
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   MockFilePicker.returnValue = Ci.nsIFilePicker.returnOK;
 
   let validateFileNameToRestore = validateFileName;
   let prefs = Services.prefs.getBranch("browser.download.");
-  let tmpDir = FileUtils.getDir("TmpD", [], true);
+  let tmpDir = FileUtils.getDir("TmpD", []);
   let dir1 = newDirectory();
   let dir2 = newDirectory();
   let dir3 = newDirectory();

@@ -6,8 +6,9 @@
  * Checks if buttons are disabled/enabled and visible/hidden correctly.
  */
 add_task(async function testButtons() {
-  // Let's make sure HTTPS-Only Mode is off.
+  // Let's make sure HTTPS-Only and HTTPS-First Mode is off.
   await setHttpsOnlyPref("off");
+  await setHttpsFirstPref("off");
 
   // Open the privacy-pane in about:preferences
   await openPreferencesViaOpenPreferencesAPI("panePrivacy", {
@@ -28,8 +29,8 @@ add_task(async function testButtons() {
   await setHttpsOnlyPref("private");
   is(
     exceptionButton.disabled,
-    true,
-    "HTTPS-Only exception button should be disabled when HTTPS-Only Mode is only enabled in private browsing."
+    false,
+    "HTTPS-Only exception button should be enabled when HTTPS-Only Mode is only enabled in private browsing."
   );
 
   await setHttpsOnlyPref("everywhere");
@@ -37,6 +38,27 @@ add_task(async function testButtons() {
     exceptionButton.disabled,
     false,
     "HTTPS-Only exception button should be enabled when HTTPS-Only Mode enabled everywhere."
+  );
+
+  await setHttpsOnlyPref("off");
+  is(
+    exceptionButton.disabled,
+    true,
+    "Turning off HTTPS-Only should disable the exception button again."
+  );
+
+  await setHttpsFirstPref("private");
+  is(
+    exceptionButton.disabled,
+    false,
+    "HTTPS-Only exception button should be enabled when HTTPS-Only Mode is disabled and HTTPS-First Mode is only enabled in private browsing."
+  );
+
+  await setHttpsFirstPref("everywhere");
+  is(
+    exceptionButton.disabled,
+    false,
+    "HTTPS-Only exception button should be enabled when HTTPS-Only Mode is disabled and HTTPS-First Mode enabled everywhere."
   );
 
   // Now that the button is clickable, we open the dialog
@@ -107,9 +129,103 @@ add_task(async function checkDialogFunctionality() {
       elements.url.value = "test.com";
       elements.btnAllow.doCommand();
 
+      assertListContents(elements, [["http://test.com", elements.allowL10nId]]);
+    },
+    () => [
+      {
+        type: "https-only-load-insecure",
+        origin: "http://test.com",
+        data: "added",
+        capability: Ci.nsIPermissionManager.ALLOW_ACTION,
+        expireType: Ci.nsIPermissionManager.EXPIRE_NEVER,
+      },
+    ]
+  );
+
+  // Test if items are retained, and if temporary exceptions are added correctly
+  await runTest(
+    preferencesDoc,
+    elements => {
+      assertListContents(elements, [["http://test.com", elements.allowL10nId]]);
+
+      elements.url.value = "1.1.1.1:8080";
+      elements.btnAllowSession.doCommand();
+
       assertListContents(elements, [
         ["http://test.com", elements.allowL10nId],
-        ["https://test.com", elements.allowL10nId],
+        ["http://1.1.1.1:8080", elements.allowSessionL10nId],
+      ]);
+    },
+    () => [
+      {
+        type: "https-only-load-insecure",
+        origin: "http://1.1.1.1:8080",
+        data: "added",
+        capability: Ci.nsIHttpsOnlyModePermission.LOAD_INSECURE_ALLOW_SESSION,
+        expireType: Ci.nsIPermissionManager.EXPIRE_SESSION,
+      },
+    ]
+  );
+
+  // Test if we can remove the permissions one-by-one
+  await runTest(
+    preferencesDoc,
+    elements => {
+      while (elements.richlistbox.itemCount) {
+        elements.richlistbox.selectedIndex = 0;
+        elements.btnRemove.doCommand();
+      }
+      assertListContents(elements, []);
+    },
+    elements => {
+      let richlistItems = elements.richlistbox.getElementsByAttribute(
+        "origin",
+        "*"
+      );
+      let observances = [];
+      for (let item of richlistItems) {
+        observances.push({
+          type: "https-only-load-insecure",
+          origin: item.getAttribute("origin"),
+          data: "deleted",
+        });
+      }
+      return observances;
+    }
+  );
+
+  // Test if all inputs with an https scheme are added with an http scheme,
+  // while other schemes are kept as they are. (Bug 1757297)
+  await runTest(
+    preferencesDoc,
+    elements => {
+      assertListContents(elements, []);
+
+      elements.url.value = "http://test.com";
+      elements.btnAllow.doCommand();
+
+      assertListContents(elements, [["http://test.com", elements.allowL10nId]]);
+
+      elements.url.value = "https://test.com";
+      elements.btnAllow.doCommand();
+
+      assertListContents(elements, [["http://test.com", elements.allowL10nId]]);
+
+      elements.url.value = "https://test.org";
+      elements.btnAllow.doCommand();
+
+      assertListContents(elements, [
+        ["http://test.com", elements.allowL10nId],
+        ["http://test.org", elements.allowL10nId],
+      ]);
+
+      elements.url.value = "moz-extension://test";
+      elements.btnAllow.doCommand();
+
+      assertListContents(elements, [
+        ["http://test.com", elements.allowL10nId],
+        ["http://test.org", elements.allowL10nId],
+        ["moz-extension://test", elements.allowL10nId],
       ]);
     },
     () => [
@@ -122,7 +238,14 @@ add_task(async function checkDialogFunctionality() {
       },
       {
         type: "https-only-load-insecure",
-        origin: "https://test.com",
+        origin: "http://test.org",
+        data: "added",
+        capability: Ci.nsIPermissionManager.ALLOW_ACTION,
+        expireType: Ci.nsIPermissionManager.EXPIRE_NEVER,
+      },
+      {
+        type: "https-only-load-insecure",
+        origin: "moz-extension://test",
         data: "added",
         capability: Ci.nsIPermissionManager.ALLOW_ACTION,
         expireType: Ci.nsIPermissionManager.EXPIRE_NEVER,
@@ -130,50 +253,11 @@ add_task(async function checkDialogFunctionality() {
     ]
   );
 
-  // Test if items are retained, and if temporary exceptions are added correctly
+  // Test if we can remove all permissions at once
   await runTest(
     preferencesDoc,
     elements => {
-      assertListContents(elements, [
-        ["http://test.com", elements.allowL10nId],
-        ["https://test.com", elements.allowL10nId],
-      ]);
-
-      elements.url.value = "1.1.1.1:8080";
-      elements.btnAllowSession.doCommand();
-
-      assertListContents(elements, [
-        ["http://test.com", elements.allowL10nId],
-        ["https://test.com", elements.allowL10nId],
-        ["http://1.1.1.1:8080", elements.allowSessionL10nId],
-        ["https://1.1.1.1:8080", elements.allowSessionL10nId],
-      ]);
-    },
-    () => [
-      {
-        type: "https-only-load-insecure",
-        origin: "http://1.1.1.1:8080",
-        data: "added",
-        capability: Ci.nsIHttpsOnlyModePermission.LOAD_INSECURE_ALLOW_SESSION,
-        expireType: Ci.nsIPermissionManager.EXPIRE_SESSION,
-      },
-      {
-        type: "https-only-load-insecure",
-        origin: "https://1.1.1.1:8080",
-        data: "added",
-        capability: Ci.nsIHttpsOnlyModePermission.LOAD_INSECURE_ALLOW_SESSION,
-        expireType: Ci.nsIPermissionManager.EXPIRE_SESSION,
-      },
-    ]
-  );
-
-  await runTest(
-    preferencesDoc,
-    elements => {
-      while (elements.richlistbox.itemCount) {
-        elements.richlistbox.selectedIndex = 0;
-        elements.btnRemove.doCommand();
-      }
+      elements.btnRemoveAll.doCommand();
       assertListContents(elements, []);
     },
     elements => {
@@ -210,6 +294,19 @@ async function setHttpsOnlyPref(state) {
 }
 
 /**
+ * Changes HTTPS-First Mode pref
+ * @param {string} state "everywhere", "private", "off"
+ */
+async function setHttpsFirstPref(state) {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.security.https_first", state === "everywhere"],
+      ["dom.security.https_first_pbm", state === "private"],
+    ],
+  });
+}
+
+/**
  * Opens new exceptions dialog, runs test function
  * @param {HTMLElement} preferencesDoc document of about:preferences tab
  * @param {function} test function to call when dialog is open
@@ -232,6 +329,7 @@ async function runTest(preferencesDoc, test, observancesFn) {
     btnAllow: doc.getElementById("btnHttpsOnlyOff"),
     btnAllowSession: doc.getElementById("btnHttpsOnlyOffTmp"),
     btnRemove: doc.getElementById("removePermission"),
+    btnRemoveAll: doc.getElementById("removeAllPermissions"),
     allowL10nId: win.gPermissionManager._getCapabilityL10nId(
       Ci.nsIPermissionManager.ALLOW_ACTION
     ),

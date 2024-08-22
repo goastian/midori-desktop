@@ -24,14 +24,15 @@ ac_add_options --with-toolchain-prefix=x86_64-w64-mingw32-
 ac_add_options --disable-warnings-as-errors
 mk_add_options "export WIDL_TIME_OVERRIDE=0"
 
-# This replicates Tor's configuration
+# These replicate Tor's configuration
 ac_add_options --enable-proxy-bypass-protection
+ac_add_options --enable-disk-remnant-avoidance
 
 # These aren't supported on mingw at this time
 ac_add_options --disable-webrtc # Bug 1393901
 ac_add_options --disable-geckodriver # Bug 1489320
 ac_add_options --disable-update-agent # Bug 1561797
-ac_add_options --disable-default-browser-agent # WinToast does not build on mingw
+ac_add_options --disable-default-browser-agent # Relies on toast notifications which don't build on mingw.
 ac_add_options --disable-notification-server # Toast notifications don't build on mingw.
 
 # Find our toolchain
@@ -42,6 +43,8 @@ CXX="$MOZ_FETCHES_DIR/clang/bin/x86_64-w64-mingw32-clang++"
 CXXFLAGS="-fms-extensions"
 CFLAGS="$CFLAGS -fcrash-diagnostics-dir=${UPLOAD_PATH}"
 CXXFLAGS="$CXXFLAGS -fcrash-diagnostics-dir=${UPLOAD_PATH}"
+CFLAGS="$CFLAGS -include _mingw.h"
+CXXFLAGS="$CXXFLAGS -include _mingw.h"
 
 # We want to make sure we use binutils and other binaries in the tooltool
 # package.

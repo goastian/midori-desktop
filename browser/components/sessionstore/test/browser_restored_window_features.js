@@ -38,7 +38,8 @@ function testFeatures(win, test) {
 }
 
 add_task(async function testRestoredWindowFeatures() {
-  const DUMMY_PAGE = "browser/base/content/test/tabs/dummy_page.html";
+  const DUMMY_PAGE =
+    "browser/components/tabbrowser/test/browser/tabs/dummy_page.html";
   const ALL_BARPROPS = {
     locationbar: true,
     menubar: true,
@@ -100,7 +101,10 @@ add_task(async function testRestoredWindowFeatures() {
   ];
   const TEST_URL_CHROME = "chrome://mochitests/content/browser/" + DUMMY_PAGE;
 
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, TEST_URL_CHROME);
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    TEST_URL_CHROME
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   for (let test of TESTS) {

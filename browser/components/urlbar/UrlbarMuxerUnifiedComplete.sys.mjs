@@ -6,8 +6,6 @@
  * This module exports a component used to sort results in a UrlbarQueryContext.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import {
   UrlbarMuxer,
   UrlbarUtils,
@@ -18,6 +16,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
+  UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.sys.mjs",
   UrlbarProviderQuickSuggest:
     "resource:///modules/UrlbarProviderQuickSuggest.sys.mjs",
   UrlbarProviderTabToSearch:
@@ -26,9 +25,30 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   UrlbarUtils.getLogger({ prefix: "MuxerUnifiedComplete" })
 );
+
+/**
+ * Constructs the map key by joining the url with the userContextId if
+ * 'browser.urlbar.switchTabs.searchAllContainers' is set to true.
+ * Otherwise, just the url is used.
+ *
+ * @param   {UrlbarResult} result The result object.
+ * @returns {string} map key
+ */
+function makeMapKeyForTabResult(result) {
+  return UrlbarUtils.tupleString(
+    result.payload.url,
+    lazy.UrlbarPrefs.get("switchTabs.searchAllContainers") &&
+      result.type == UrlbarUtils.RESULT_TYPE.TAB_SWITCH &&
+      lazy.UrlbarProviderOpenTabs.isNonPrivateUserContextId(
+        result.payload.userContextId
+      )
+      ? result.payload.userContextId
+      : undefined
+  );
+}
 
 /**
  * Class used to create a muxer.
@@ -72,12 +92,16 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       // result span instead of the total available result count. We'll add
       // results until `usedResultSpan` would exceed `availableResultSpan`.
       availableResultSpan: context.maxResults,
+      // The total result span taken up by all global (non-group-relative)
+      // suggestedIndex results.
+      globalSuggestedIndexResultSpan: 0,
       // The total span of results that have been added so far.
       usedResultSpan: 0,
       strippedUrlToTopPrefixAndTitle: new Map(),
       urlToTabResultType: new Map(),
       addedRemoteTabUrls: new Set(),
       addedSwitchTabUrls: new Set(),
+      addedResultUrls: new Set(),
       canShowPrivateSearch: unsortedResults.length > 1,
       canShowTailSuggestions: true,
       // Form history and remote suggestions added so far.  Used for deduping
@@ -110,14 +134,21 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       this._updateStatePreAdd(result, state);
     }
 
-    // Now that the first pass is done, adjust the available result span.
-    if (state.maxTabToSearchResultSpan) {
-      // Subtract the max tab-to-search span.
-      state.availableResultSpan = Math.max(
-        state.availableResultSpan - state.maxTabToSearchResultSpan,
-        0
-      );
-    }
+    // Now that the first pass is done, adjust the available result span. More
+    // than one tab-to-search result may be present but only one will be shown;
+    // add the max TTS span to the total span of global suggestedIndex results.
+    state.globalSuggestedIndexResultSpan += state.maxTabToSearchResultSpan;
+
+    // Leave room for global suggestedIndex results at the end of the sort, by
+    // subtracting their total span from the total available span. For very
+    // small values of `maxRichResults`, their total span may be larger than
+    // `state.availableResultSpan`.
+    let globalSuggestedIndexAvailableSpan = Math.min(
+      state.availableResultSpan,
+      state.globalSuggestedIndexResultSpan
+    );
+    state.availableResultSpan -= globalSuggestedIndexAvailableSpan;
+
     if (state.maxHeuristicResultSpan) {
       if (lazy.UrlbarPrefs.get("experimental.hideHeuristic")) {
         // The heuristic is hidden. The muxer will include it but the view will
@@ -134,11 +165,18 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       }
     }
 
+    // Show Top Sites above trending results.
+    let showSearchSuggestionsFirst =
+      context.searchString ||
+      (!lazy.UrlbarPrefs.get("suggest.trending") &&
+        !lazy.UrlbarPrefs.get("suggest.recentsearches"));
+
     // Determine the result groups to use for this sort.  In search mode with
     // an engine, show search suggestions first.
-    let rootGroup = context.searchMode?.engineName
-      ? lazy.UrlbarPrefs.makeResultGroups({ showSearchSuggestionsFirst: true })
-      : lazy.UrlbarPrefs.resultGroups;
+    let rootGroup =
+      context.searchMode?.engineName || !showSearchSuggestionsFirst
+        ? lazy.UrlbarPrefs.makeResultGroups({ showSearchSuggestionsFirst })
+        : lazy.UrlbarPrefs.resultGroups;
     lazy.logger.debug(`Groups: ${JSON.stringify(rootGroup)}`);
 
     // Fill the root group.
@@ -148,23 +186,20 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       state
     );
 
-    // Add global suggestedIndex results unless the max result count is zero,
-    // which isn't really supported but it's easy to honor here. We add them all
-    // even if they exceed the max because we assume they're high-priority
-    // results that should always be shown, and as long as the max is positive
-    // it's not a problem to exceed it sometimes. In practice that will happen
-    // only for small, non-default values of `maxRichResults`.
-    if (context.maxResults > 0) {
-      let suggestedIndexResults = state.resultsByGroup.get(
-        UrlbarUtils.RESULT_GROUP.SUGGESTED_INDEX
+    // Add global suggestedIndex results.
+    let globalSuggestedIndexResults = state.resultsByGroup.get(
+      UrlbarUtils.RESULT_GROUP.SUGGESTED_INDEX
+    );
+    if (globalSuggestedIndexResults) {
+      this._addSuggestedIndexResults(
+        globalSuggestedIndexResults,
+        sortedResults,
+        {
+          availableSpan: globalSuggestedIndexAvailableSpan,
+          maxResultCount: Infinity,
+        },
+        state
       );
-      if (suggestedIndexResults) {
-        this._addSuggestedIndexResults(
-          suggestedIndexResults,
-          sortedResults,
-          state
-        );
-      }
     }
 
     context.results = sortedResults;
@@ -192,6 +227,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       addedRemoteTabUrls: new Set(state.addedRemoteTabUrls),
       addedSwitchTabUrls: new Set(state.addedSwitchTabUrls),
       suggestions: new Set(state.suggestions),
+      addedResultUrls: new Set(state.addedResultUrls),
     });
 
     // Deep copy the `resultsByGroup` maps.
@@ -244,6 +280,8 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     // Get the group's suggestedIndex results. Reminder: `group.group` is a
     // `RESULT_GROUP` constant.
     let suggestedIndexResults;
+    let suggestedIndexAvailableSpan = 0;
+    let suggestedIndexAvailableCount = 0;
     if ("group" in group) {
       suggestedIndexResults = state.suggestedIndexResultsByGroup.get(
         group.group
@@ -262,12 +300,14 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
           },
           [0, 0]
         );
-        limits = { ...limits };
-        limits.availableSpan = Math.max(limits.availableSpan - span, 0);
-        limits.maxResultCount = Math.max(
-          limits.maxResultCount - resultCount,
-          0
+        suggestedIndexAvailableSpan = Math.min(limits.availableSpan, span);
+        suggestedIndexAvailableCount = Math.min(
+          limits.maxResultCount,
+          resultCount
         );
+        limits = { ...limits };
+        limits.availableSpan -= suggestedIndexAvailableSpan;
+        limits.maxResultCount -= suggestedIndexAvailableCount;
       }
     }
 
@@ -282,6 +322,10 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       let suggestedIndexUsedLimits = this._addSuggestedIndexResults(
         suggestedIndexResults,
         results,
+        {
+          availableSpan: suggestedIndexAvailableSpan,
+          maxResultCount: suggestedIndexAvailableCount,
+        },
         state
       );
       for (let [key, value] of Object.entries(suggestedIndexUsedLimits)) {
@@ -606,22 +650,13 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     ) {
       let result = groupResults[0];
       if (this._canAddResult(result, state)) {
-        let span = UrlbarUtils.getSpanForResult(result);
-        let newUsedSpan = usedLimits.availableSpan + span;
-        if (limits.availableSpan < newUsedSpan) {
+        if (!this.#updateUsedLimits(result, limits, usedLimits, state)) {
           // Adding the result would exceed the group's available span, so stop
           // adding results to it. Skip the shift() below so the result can be
           // added to later groups.
           break;
         }
-
         addedResults.push(result);
-        usedLimits.availableSpan = newUsedSpan;
-        if (span) {
-          usedLimits.maxResultCount++;
-        }
-        state.usedResultSpan += span;
-        this._updateStatePostAdd(result, state);
       }
 
       // We either add or discard results in the order they appear in
@@ -806,10 +841,13 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     }
 
     // Discard form history and remote suggestions that dupe previously added
-    // suggestions or the heuristic.
+    // suggestions or the heuristic. We do not deduplicate rich suggestions so
+    // they do not visually disapear as the suggestion is completed and
+    // becomes the same url as the heuristic result.
     if (
       result.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
-      result.payload.lowerCaseSuggestion
+      result.payload.lowerCaseSuggestion &&
+      !result.isRichSuggestion
     ) {
       let suggestion = result.payload.lowerCaseSuggestion.trim();
       if (!suggestion || state.suggestions.has(suggestion)) {
@@ -821,7 +859,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     if (
       result.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
       result.payload.tail &&
-      !result.payload.isRichSuggestion &&
+      !result.isRichSuggestion &&
       !state.canShowTailSuggestions
     ) {
       return false;
@@ -842,7 +880,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     // Discard switch-to-tab results that dupes another switch-to-tab result.
     if (
       result.type == UrlbarUtils.RESULT_TYPE.TAB_SWITCH &&
-      state.addedSwitchTabUrls.has(result.payload.url)
+      state.addedSwitchTabUrls.has(makeMapKeyForTabResult(result))
     ) {
       return false;
     }
@@ -966,6 +1004,17 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       return false;
     }
 
+    // Discard results that have an embedded "url" param with the same value
+    // as another result's url
+    if (result.payload.url) {
+      let urlParams = result.payload.url.split("?").pop();
+      let embeddedUrl = new URLSearchParams(urlParams).get("url");
+
+      if (state.addedResultUrls.has(embeddedUrl)) {
+        return false;
+      }
+    }
+
     // Include the result.
     return true;
   }
@@ -995,11 +1044,10 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       );
     }
 
-    // Subtract from `availableResultSpan` the span of global suggestedIndex
-    // results so there will be room for them at the end of the sort. Except
-    // when `maxRichResults` is zero and other special cases, we assume
-    // suggestedIndex results will always be shown regardless of the total
-    // available result span, `context.maxResults`, and `maxRichResults`.
+    // Keep track of the total span of global suggestedIndex results so we can
+    // make room for them at the end of the sort. Tab-to-search results are an
+    // exception: There can be multiple TTS results but only one will be shown,
+    // so we track the max TTS span separately.
     if (
       result.hasSuggestedIndex &&
       !result.isSuggestedIndexRelativeToGroup &&
@@ -1012,10 +1060,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
           span
         );
       } else {
-        state.availableResultSpan = Math.max(
-          state.availableResultSpan - span,
-          0
-        );
+        state.globalSuggestedIndexResultSpan += span;
       }
     }
 
@@ -1063,10 +1108,10 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       result.payload.url &&
       (result.type == UrlbarUtils.RESULT_TYPE.TAB_SWITCH ||
         (result.type == UrlbarUtils.RESULT_TYPE.REMOTE_TAB &&
-          !state.urlToTabResultType.has(result.payload.url)))
+          !state.urlToTabResultType.has(makeMapKeyForTabResult(result))))
     ) {
       // url => result type
-      state.urlToTabResultType.set(result.payload.url, result.type);
+      state.urlToTabResultType.set(makeMapKeyForTabResult(result), result.type);
     }
 
     // If we find results other than the heuristic, "Search in Private
@@ -1091,6 +1136,12 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
 
     state.hasUnitConversionResult =
       state.hasUnitConversionResult || result.providerName == "UnitConversion";
+
+    // Keep track of result urls to dedupe results with the same url embedded
+    // in its query string
+    if (result.payload.url) {
+      state.addedResultUrls.add(result.payload.url);
+    }
   }
 
   /**
@@ -1152,18 +1203,6 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     // TODO (Bug 1670185): figure out better strategies to manage this case.
     if (result.providerName == lazy.UrlbarProviderTabToSearch.name) {
       state.canAddTabToSearch = false;
-      // We want to record in urlbar.tips once per engagement per engine. Since
-      // whether these results are shown is dependent on the Muxer, we must
-      // add to `enginesShown` here.
-      if (result.payload.dynamicType) {
-        lazy.UrlbarProviderTabToSearch.enginesShown.onboarding.add(
-          result.payload.engine
-        );
-      } else {
-        lazy.UrlbarProviderTabToSearch.enginesShown.regular.add(
-          result.payload.engine
-        );
-      }
     }
 
     // Sync will send us duplicate remote tabs if multiple copies of a tab are
@@ -1175,7 +1214,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
 
     // Keep track of which switch tabs we've added to dedupe switch tabs.
     if (result.type == UrlbarUtils.RESULT_TYPE.TAB_SWITCH) {
-      state.addedSwitchTabUrls.add(result.payload.url);
+      state.addedSwitchTabUrls.add(makeMapKeyForTabResult(result));
     }
   }
 
@@ -1192,13 +1231,20 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
    *   group-relative suggestedIndex results, this should be the final list of
    *   results in the group before group-relative suggestedIndex results are
    *   inserted.
+   * @param {object} limits
+   *   An object defining span and count limits. See `_fillGroup()`.
    * @param {object} state
    *   Global state that we use to make decisions during this sort.
    * @returns {object}
    *   A `usedLimits` object that describes the total span and count of all the
    *   added results. See `_addResults`.
    */
-  _addSuggestedIndexResults(suggestedIndexResults, sortedResults, state) {
+  _addSuggestedIndexResults(
+    suggestedIndexResults,
+    sortedResults,
+    limits,
+    state
+  ) {
     let usedLimits = {
       availableSpan: 0,
       maxResultCount: 0,
@@ -1263,6 +1309,10 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
       let prevIndex;
       for (let result of results) {
         if (this._canAddResult(result, state)) {
+          if (!this.#updateUsedLimits(result, limits, usedLimits, state)) {
+            return usedLimits;
+          }
+
           let index;
           if (
             prevResult &&
@@ -1278,19 +1328,50 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
           prevResult = result;
           prevIndex = index;
           sortedResults.splice(index, 0, result);
-
-          // Adjust the limits based on span size.
-          const resultSpan = UrlbarUtils.getSpanForResult(result);
-          usedLimits.availableSpan += resultSpan;
-          if (resultSpan) {
-            usedLimits.maxResultCount++;
-          }
-          this._updateStatePostAdd(result, state);
         }
       }
     }
 
     return usedLimits;
+  }
+
+  /**
+   * Checks whether adding a result would exceed the given limits. If the limits
+   * would be exceeded, this returns false and does nothing else. If the limits
+   * would not be exceeded, the given used limits and state are updated to
+   * account for the result, true is returned, and the caller should then add
+   * the result to its list of sorted results.
+   *
+   * @param {UrlbarResult} result
+   *   The result.
+   * @param {object} limits
+   *   An object defining span and count limits. See `_fillGroup()`.
+   * @param {object} usedLimits
+   *   An object with parallel properties to `limits` that describes how much of
+   *   the limits have been used. See `_addResults()`.
+   * @param {object} state
+   *   The muxer state.
+   * @returns {boolean}
+   *   True if the limits were updated and the result can be added and false
+   *   otherwise.
+   */
+  #updateUsedLimits(result, limits, usedLimits, state) {
+    let span = UrlbarUtils.getSpanForResult(result);
+    let newUsedSpan = usedLimits.availableSpan + span;
+    if (limits.availableSpan < newUsedSpan) {
+      // Adding the result would exceed the available span.
+      return false;
+    }
+
+    usedLimits.availableSpan = newUsedSpan;
+    if (span) {
+      usedLimits.maxResultCount++;
+    }
+
+    state.usedResultSpan += span;
+    this._updateStatePostAdd(result, state);
+
+    return true;
   }
 
   /**

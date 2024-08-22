@@ -125,7 +125,7 @@ add_task(async function () {
     null,
     true
   );
-  BrowserStop();
+  BrowserCommands.stop();
   await browserStoppedPromise;
 
   is(
@@ -207,7 +207,7 @@ add_task(async function () {
     null,
     true
   );
-  BrowserStop();
+  BrowserCommands.stop();
   await browserStoppedPromise;
 
   is(
@@ -238,7 +238,7 @@ add_task(async function testCorrectUrlBarAfterGoingBackDuringAnotherLoad() {
   // Load example.com in the same browser
   let page1 = "http://example.com/";
   let loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, page1);
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, page1);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, page1);
   await loaded;
 
   let initialValue = gURLBar.untrimmedValue;

@@ -2,12 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
-import { ASRouterAdmin } from "content-src/components/ASRouterAdmin/ASRouterAdmin";
-import { ASRouterUISurface } from "../../asrouter/asrouter-content";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
+import { DiscoveryStreamAdmin } from "content-src/components/DiscoveryStreamAdmin/DiscoveryStreamAdmin";
 import { ConfirmDialog } from "content-src/components/ConfirmDialog/ConfirmDialog";
 import { connect } from "react-redux";
 import { DiscoveryStreamBase } from "content-src/components/DiscoveryStreamBase/DiscoveryStreamBase";
@@ -16,7 +12,15 @@ import { CustomizeMenu } from "content-src/components/CustomizeMenu/CustomizeMen
 import React from "react";
 import { Search } from "content-src/components/Search/Search";
 import { Sections } from "content-src/components/Sections/Sections";
-import { Background } from "content-src/components/Background/Background"
+import { Weather } from "content-src/components/Weather/Weather";
+import { WallpaperFeatureHighlight } from "../DiscoveryStreamComponents/FeatureHighlight/WallpaperFeatureHighlight";
+
+import { Background } from "content-src/components/Background/Background";
+
+const VISIBLE = "visible";
+const VISIBILITY_CHANGE_EVENT = "visibilitychange";
+const WALLPAPER_HIGHLIGHT_DISMISSED_PREF =
+  "newtabWallpapers.highlightDismissed";
 
 export const PrefsButton = ({ onClick, icon }) => (
   <div className="prefs-button">
@@ -37,7 +41,7 @@ function debounce(func, wait) {
       return;
     }
 
-    let wakeUp = () => {
+    const wakeUp = () => {
       timer = null;
     };
 
@@ -78,7 +82,7 @@ export class _Base extends React.PureComponent {
     ]
       .filter(v => v)
       .join(" ");
-    global.document.body.className = bodyClassName;
+    globalThis.document.body.className = bodyClassName;
   }
 
   render() {
@@ -95,7 +99,7 @@ export class _Base extends React.PureComponent {
         <React.Fragment>
           <BaseContent {...this.props} adminContent={this.state} />
           {isDevtoolsEnabled ? (
-            <ASRouterAdmin notifyContent={this.notifyContent} />
+            <DiscoveryStreamAdmin notifyContent={this.notifyContent} />
           ) : null}
         </React.Fragment>
       </ErrorBoundary>
@@ -113,17 +117,77 @@ export class BaseContent extends React.PureComponent {
     this.onWindowScroll = debounce(this.onWindowScroll.bind(this), 5);
     this.setPref = this.setPref.bind(this);
     this.setPref = this.setPref.bind(this);
-    this.state = { fixedSearch: false };
+    this.shouldShowWallpapersHighlight =
+      this.shouldShowWallpapersHighlight.bind(this);
+    this.updateWallpaper = this.updateWallpaper.bind(this);
+    this.prefersDarkQuery = null;
+    this.handleColorModeChange = this.handleColorModeChange.bind(this);
+    this.state = {
+      fixedSearch: false,
+      firstVisibleTimestamp: null,
+      colorMode: "",
+    };
+  }
+
+  setFirstVisibleTimestamp() {
+    if (!this.state.firstVisibleTimestamp) {
+      this.setState({
+        firstVisibleTimestamp: Date.now(),
+      });
+    }
   }
 
   componentDidMount() {
     global.addEventListener("scroll", this.onWindowScroll);
     global.addEventListener("keydown", this.handleOnKeyDown);
+    if (this.props.document.visibilityState === VISIBLE) {
+      this.setFirstVisibleTimestamp();
+    } else {
+      this._onVisibilityChange = () => {
+        if (this.props.document.visibilityState === VISIBLE) {
+          this.setFirstVisibleTimestamp();
+          this.props.document.removeEventListener(
+            VISIBILITY_CHANGE_EVENT,
+            this._onVisibilityChange
+          );
+          this._onVisibilityChange = null;
+        }
+      };
+      this.props.document.addEventListener(
+        VISIBILITY_CHANGE_EVENT,
+        this._onVisibilityChange
+      );
+    }
+    // track change event to dark/light mode
+    this.prefersDarkQuery = globalThis.matchMedia(
+      "(prefers-color-scheme: dark)"
+    );
+
+    this.prefersDarkQuery.addEventListener(
+      "change",
+      this.handleColorModeChange
+    );
+    this.handleColorModeChange();
+  }
+
+  handleColorModeChange() {
+    const colorMode = this.prefersDarkQuery?.matches ? "dark" : "light";
+    this.setState({ colorMode });
   }
 
   componentWillUnmount() {
+    this.prefersDarkQuery?.removeEventListener(
+      "change",
+      this.handleColorModeChange
+    );
     global.removeEventListener("scroll", this.onWindowScroll);
     global.removeEventListener("keydown", this.handleOnKeyDown);
+    if (this._onVisibilityChange) {
+      this.props.document.removeEventListener(
+        VISIBILITY_CHANGE_EVENT,
+        this._onVisibilityChange
+      );
+    }
   }
 
   onWindowScroll() {
@@ -163,7 +227,165 @@ export class BaseContent extends React.PureComponent {
     this.props.dispatch(ac.SetPref(pref, value));
   }
 
-  getImageSend(path){
+  renderWallpaperAttribution() {
+    const { wallpaperList } = this.props.Wallpapers;
+    const activeWallpaper =
+      this.props.Prefs.values[
+        `newtabWallpapers.wallpaper-${this.state.colorMode}`
+      ];
+    const selected = wallpaperList.find(wp => wp.title === activeWallpaper);
+    // make sure a wallpaper is selected and that the attribution also exists
+    if (!selected?.attribution) {
+      return null;
+    }
+
+    const { name, webpage } = selected.attribution;
+    if (activeWallpaper && wallpaperList && name.url) {
+      return (
+        <p
+          className={`wallpaper-attribution`}
+          key={name.string}
+          data-l10n-id="newtab-wallpaper-attribution"
+          data-l10n-args={JSON.stringify({
+            author_string: name.string,
+            author_url: name.url,
+            webpage_string: webpage.string,
+            webpage_url: webpage.url,
+          })}
+        >
+          <a data-l10n-name="name-link" href={name.url}>
+            {name.string}
+          </a>
+          <a data-l10n-name="webpage-link" href={webpage.url}>
+            {webpage.string}
+          </a>
+        </p>
+      );
+    }
+    return null;
+  }
+
+  async updateWallpaper() {
+    const prefs = this.props.Prefs.values;
+    const wallpaperLight = prefs["newtabWallpapers.wallpaper-light"];
+    const wallpaperDark = prefs["newtabWallpapers.wallpaper-dark"];
+    const { wallpaperList } = this.props.Wallpapers;
+
+    if (wallpaperList) {
+      const lightWallpaper =
+        wallpaperList.find(wp => wp.title === wallpaperLight) || "";
+      const darkWallpaper =
+        wallpaperList.find(wp => wp.title === wallpaperDark) || "";
+
+      const wallpaperColor =
+        darkWallpaper?.solid_color || lightWallpaper?.solid_color || "";
+
+      global.document?.body.style.setProperty(
+        `--newtab-wallpaper-light`,
+        `url(${lightWallpaper?.wallpaperUrl || ""})`
+      );
+
+      global.document?.body.style.setProperty(
+        `--newtab-wallpaper-dark`,
+        `url(${darkWallpaper?.wallpaperUrl || ""})`
+      );
+
+      global.document?.body.style.setProperty(
+        `--newtab-wallpaper-color`,
+        wallpaperColor || "transparent"
+      );
+
+      let wallpaperTheme = "";
+
+      // If we have a solid colour set, let's see how dark it is.
+      if (wallpaperColor) {
+        const rgbColors = this.getRGBColors(wallpaperColor);
+        const isColorDark = this.isWallpaperColorDark(rgbColors);
+        wallpaperTheme = isColorDark ? "dark" : "light";
+      } else {
+        // Grab the contrast of the currently displayed wallpaper.
+        const { theme } =
+          this.state.colorMode === "light" ? lightWallpaper : darkWallpaper;
+
+        if (theme) {
+          wallpaperTheme = theme;
+        }
+      }
+
+      // Add helper class to body if user has a wallpaper selected
+      if (wallpaperTheme === "light") {
+        global.document?.body.classList.add("lightWallpaper");
+        global.document?.body.classList.remove("darkWallpaper");
+      }
+
+      if (wallpaperTheme === "dark") {
+        global.document?.body.classList.add("darkWallpaper");
+        global.document?.body.classList.remove("lightWallpaper");
+      }
+    }
+  }
+
+  // Contains all the logic to show the wallpapers Feature Highlight
+  shouldShowWallpapersHighlight() {
+    const prefs = this.props.Prefs.values;
+
+    // If wallpapers (or v2 wallpapers) are not enabled, don't show the highlight.
+    const wallpapersEnabled = prefs["newtabWallpapers.enabled"];
+    const wallpapersV2Enabled = prefs["newtabWallpapers.v2.enabled"];
+    if (!wallpapersEnabled || !wallpapersV2Enabled) {
+      return false;
+    }
+
+    // If user has interacted/dismissed the highlight, don't show
+    const wallpapersHighlightDismissed =
+      prefs[WALLPAPER_HIGHLIGHT_DISMISSED_PREF];
+    if (wallpapersHighlightDismissed) {
+      return false;
+    }
+
+    // If the user has selected a wallpaper, don't show the pop-up
+    const activeWallpaperLight = prefs[`newtabWallpapers.wallpaper-light`];
+    const activeWallpaperDark = prefs[`newtabWallpapers.wallpaper-dark`];
+    if (activeWallpaperLight || activeWallpaperDark) {
+      this.props.dispatch(ac.SetPref(WALLPAPER_HIGHLIGHT_DISMISSED_PREF, true));
+      return false;
+    }
+
+    // If the user has seen* the highlight more than three times
+    // *Seen means they loaded HNT page and the highlight was observed for more than 3 seconds
+    const { highlightSeenCounter } = this.props.Wallpapers;
+    if (highlightSeenCounter.value > 3) {
+      return false;
+    }
+
+    // Show the highlight if available
+    const wallpapersHighlightEnabled =
+      prefs["newtabWallpapers.highlightEnabled"];
+    if (wallpapersHighlightEnabled) {
+      return true;
+    }
+
+    // Default return value
+    return false;
+  }
+
+  getRGBColors(input) {
+    if (input.length !== 7) {
+      return [];
+    }
+
+    const r = Number.parseInt(input.substr(1, 2), 16);
+    const g = Number.parseInt(input.substr(3, 2), 16);
+    const b = Number.parseInt(input.substr(5, 2), 16);
+
+    return [r, g, b];
+  }
+
+  isWallpaperColorDark([r, g, b]) {
+    return 0.2125 * r + 0.7154 * g + 0.0721 * b <= 110;
+  }
+
+  getImageSend(path) {
     this.props.dispatch(ac.GetImageSend(path));
   }
 
@@ -173,11 +395,27 @@ export class BaseContent extends React.PureComponent {
     const { initialized, customizeMenuVisible } = App;
     const prefs = props.Prefs.values;
 
+    const activeWallpaper =
+      prefs[`newtabWallpapers.wallpaper-${this.state.colorMode}`];
+    const wallpapersEnabled = prefs["newtabWallpapers.enabled"];
+    const wallpapersV2Enabled = prefs["newtabWallpapers.v2.enabled"];
+    const weatherEnabled = prefs.showWeather;
+
+    const { pocketConfig } = prefs;
+
     const isDiscoveryStream =
       props.DiscoveryStream.config && props.DiscoveryStream.config.enabled;
-    let filteredSections = props.Sections.filter(
+    const filteredSections = props.Sections.filter(
       section => section.id !== "topstories"
     );
+
+    let spocMessageVariant = "";
+    if (
+      props.App.locale?.startsWith("en-") &&
+      pocketConfig?.spocMessageVariant === "variant-c"
+    ) {
+      spocMessageVariant = pocketConfig.spocMessageVariant;
+    }
 
     const pocketEnabled =
       prefs["feeds.section.topstories"] && prefs["feeds.system.topstories"];
@@ -194,9 +432,12 @@ export class BaseContent extends React.PureComponent {
       showSponsoredPocketEnabled: prefs.showSponsored,
       showRecentSavesEnabled: prefs.showRecentSaves,
       topSitesRowsCount: prefs.topSitesRows,
+      weatherEnabled: prefs.showWeather,
     };
 
     const pocketRegion = prefs["feeds.system.topstories"];
+    const mayHaveSponsoredStories = prefs["system.showSponsored"];
+    const mayHaveWeather = prefs["system.showWeather"];
     const { mayHaveSponsoredTopSites } = prefs;
 
     const outerClassName = [
@@ -212,48 +453,71 @@ export class BaseContent extends React.PureComponent {
     ]
       .filter(v => v)
       .join(" ");
+    if (wallpapersEnabled || wallpapersV2Enabled) {
+      this.updateWallpaper();
+    }
 
-    const hasSnippet =
-      prefs["feeds.snippets"] &&
-      this.props.adminContent &&
-      this.props.adminContent.message &&
-      this.props.adminContent.message.id;
-
-      let Background_ClassName = ""
-      switch (prefs["floorp.background.type"]) {
-        case 1:
-          Background_ClassName = "random_image"
-          break;
-        case 2:
-          Background_ClassName = "gradation"
-          break;
-          case 3:
-            Background_ClassName = "selected_folder"
-            break;
-            case 4:
-              Background_ClassName = "selected_image"
-              break;
-        default:
-          Background_ClassName = "not_background"
-          break;
-      }
+    let Background_ClassName = "";
+    switch (prefs["floorp.background.type"]) {
+      case 1:
+        Background_ClassName = "random_image";
+        break;
+      case 2:
+        Background_ClassName = "gradation";
+        break;
+      case 3:
+        Background_ClassName = "selected_folder";
+        break;
+      case 4:
+        Background_ClassName = "selected_image";
+        break;
+      default:
+        Background_ClassName = "not_background";
+        break;
+    }
 
     return (
-      <div className={prefs["floorp.newtab.backdrop.blur.disable"] ? "" : "floorp-backdrop-blur-enable"}>
-        <Background className={Background_ClassName}  getImg={this.getImageSend.bind(this)} pref={prefs} />
-        <CustomizeMenu
-          onClose={this.closeCustomizationMenu}
-          onOpen={this.openCustomizationMenu}
-          openPreferences={this.openPreferences}
-          setPref={this.setPref}
-          enabledSections={enabledSections}
-          pocketRegion={pocketRegion}
-          mayHaveSponsoredTopSites={mayHaveSponsoredTopSites}
-          showing={customizeMenuVisible}
+      <div
+        className={
+          prefs["floorp.newtab.backdrop.blur.disable"]
+            ? ""
+            : "floorp-backdrop-blur-enable"
+        }
+      >
+        {this.getImageSend.bind(this)}
+        <Background
+          className={Background_ClassName}
+          getImg = {this.getImageSend.bind(this)}
+          pref={prefs}
         />
+        {/* Floating menu for customize menu toggle */}
+        <menu className="personalizeButtonWrapper">
+          <CustomizeMenu
+            onClose={this.closeCustomizationMenu}
+            onOpen={this.openCustomizationMenu}
+            openPreferences={this.openPreferences}
+            setPref={this.setPref}
+            enabledSections={enabledSections}
+            wallpapersEnabled={wallpapersEnabled}
+            wallpapersV2Enabled={wallpapersV2Enabled}
+            activeWallpaper={activeWallpaper}
+            pocketRegion={pocketRegion}
+            mayHaveSponsoredTopSites={mayHaveSponsoredTopSites}
+            mayHaveSponsoredStories={mayHaveSponsoredStories}
+            mayHaveWeather={mayHaveWeather}
+            spocMessageVariant={spocMessageVariant}
+            showing={customizeMenuVisible}
+          />
+          {this.shouldShowWallpapersHighlight() && (
+            <WallpaperFeatureHighlight
+              position="inset-block-end inset-inline-start"
+              dispatch={this.props.dispatch}
+            />
+          )}
+        </menu>
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions*/}
         <div className={outerClassName} onClick={this.closeCustomizationMenu}>
-          <main className={hasSnippet ? "has-snippet" : ""}>
+          <main>
             {prefs.showSearch && (
               <div className="non-collapsible-section">
                 <ErrorBoundary>
@@ -267,28 +531,34 @@ export class BaseContent extends React.PureComponent {
                 </ErrorBoundary>
               </div>
             )}
-            <ASRouterUISurface
-              adminContent={this.props.adminContent}
-              appUpdateChannel={this.props.Prefs.values.appUpdateChannel}
-              fxaEndpoint={this.props.Prefs.values.fxa_endpoint}
-              dispatch={this.props.dispatch}
-            />
             <div className={`body-wrapper${initialized ? " on" : ""}`}>
               {isDiscoveryStream ? (
                 <ErrorBoundary className="borderless-error">
-                  <DiscoveryStreamBase locale={props.App.locale} />
+                  <DiscoveryStreamBase
+                    locale={props.App.locale}
+                    mayHaveSponsoredStories={mayHaveSponsoredStories}
+                    firstVisibleTimestamp={this.state.firstVisibleTimestamp}
+                  />
                 </ErrorBoundary>
               ) : (
                 <Sections />
               )}
             </div>
             <ConfirmDialog />
+            {wallpapersEnabled && this.renderWallpaperAttribution()}
           </main>
+          <aside>
+            {weatherEnabled && (
+              <ErrorBoundary>
+                <Weather />
+              </ErrorBoundary>
+            )}
+          </aside>
         </div>
         <div id="floorp">
           {/* TODO: use css instead this br tag */}
-          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://t.me/midoriweb">Support</a><br /><br />
-          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://astian.org/category/midori-en">Release Note</a>
+          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://support.ablaze.one">Support</a><br /><br />
+          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://blog.ablaze.one/category/ablaze/ablaze-project/floorp">Release Note</a>
         </div>
         <a className={prefs["floorp.newtab.imagecredit.hide"] ? "floorp-imagecred-hidden" : "imagecred" } href="https://unsplash.com/" id="unsplash">Unsplash</a>
       </div>
@@ -296,10 +566,16 @@ export class BaseContent extends React.PureComponent {
   }
 }
 
+BaseContent.defaultProps = {
+  document: global.document,
+};
+
 export const Base = connect(state => ({
   App: state.App,
   Prefs: state.Prefs,
   Sections: state.Sections,
   DiscoveryStream: state.DiscoveryStream,
   Search: state.Search,
+  Wallpapers: state.Wallpapers,
+  Weather: state.Weather,
 }))(_Base);

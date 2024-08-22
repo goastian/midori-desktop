@@ -6,10 +6,16 @@ const CM_PREF = "privacy.trackingprotection.cryptomining.enabled";
 const FP_PREF = "privacy.trackingprotection.fingerprinting.enabled";
 const ST_PREF = "privacy.trackingprotection.socialtracking.enabled";
 const STC_PREF = "privacy.socialtracking.block_cookies.enabled";
+const FPP_PREF = "privacy.fingerprintingProtection";
 
 const { CustomizableUITestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/CustomizableUITestUtils.sys.mjs"
 );
+
+const l10n = new Localization([
+  "browser/siteProtections.ftl",
+  "branding/brand.ftl",
+]);
 
 registerCleanupFunction(function () {
   Services.prefs.clearUserPref(CAT_PREF);
@@ -50,19 +56,12 @@ add_task(async function testCookieCategoryLabel() {
         "The category label has updated correctly"
       );
       ok(categoryItem.classList.contains("blocked"));
-      await TestUtils.waitForCondition(
-        () =>
-          categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blockingAll2.label"
-          ),
-        "The category label has updated correctly"
+      const blockAllMsg = await l10n.formatValue(
+        "content-blocking-cookies-blocking-all-label"
       );
-      ok(
-        categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blockingAll2.label"
-          )
+      await TestUtils.waitForCondition(
+        () => categoryLabel.textContent == blockAllMsg,
+        "The category label has updated correctly"
       );
 
       Services.prefs.setIntPref(
@@ -74,19 +73,12 @@ add_task(async function testCookieCategoryLabel() {
         "The category label has updated correctly"
       );
       ok(categoryItem.classList.contains("blocked"));
-      await TestUtils.waitForCondition(
-        () =>
-          categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blocking3rdParty2.label"
-          ),
-        "The category label has updated correctly"
+      const block3rdMsg = await l10n.formatValue(
+        "content-blocking-cookies-blocking-third-party-label"
       );
-      ok(
-        categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blocking3rdParty2.label"
-          )
+      await TestUtils.waitForCondition(
+        () => categoryLabel.textContent == block3rdMsg,
+        "The category label has updated correctly"
       );
 
       Services.prefs.setIntPref(
@@ -98,19 +90,12 @@ add_task(async function testCookieCategoryLabel() {
         "The category label has updated correctly"
       );
       ok(categoryItem.classList.contains("blocked"));
-      await TestUtils.waitForCondition(
-        () =>
-          categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blockingTrackers3.label"
-          ),
-        "The category label has updated correctly"
+      const blockTrackersMsg = await l10n.formatValue(
+        "content-blocking-cookies-blocking-trackers-label"
       );
-      ok(
-        categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blockingTrackers3.label"
-          )
+      await TestUtils.waitForCondition(
+        () => categoryLabel.textContent == blockTrackersMsg,
+        "The category label has updated correctly"
       );
 
       Services.prefs.setIntPref(
@@ -123,18 +108,8 @@ add_task(async function testCookieCategoryLabel() {
       );
       ok(categoryItem.classList.contains("blocked"));
       await TestUtils.waitForCondition(
-        () =>
-          categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blockingTrackers3.label"
-          ),
+        () => categoryLabel.textContent == blockTrackersMsg,
         "The category label has updated correctly"
-      );
-      ok(
-        categoryLabel.textContent ==
-          gNavigatorBundle.getString(
-            "contentBlocking.cookies.blockingTrackers3.label"
-          )
       );
 
       Services.prefs.setIntPref(
@@ -165,14 +140,16 @@ async function waitForClass(item, className, shouldBePresent = true) {
     return item.classList.contains(className) == shouldBePresent;
   }, `Target class ${className} should be ${shouldBePresent ? "present" : "not present"} on item ${item.id}`);
 
-  ok(
-    item.classList.contains(className) == shouldBePresent,
+  Assert.equal(
+    item.classList.contains(className),
+    shouldBePresent,
     `item.classList.contains(${className}) is ${shouldBePresent} for ${item.id}`
   );
 }
 
 add_task(async function testCategorySections() {
   Services.prefs.setBoolPref(ST_PREF, true);
+  Services.prefs.setBoolPref(FPP_PREF, false);
 
   for (let pref of categoryEnabledPrefs) {
     if (pref == TPC_PREF) {
@@ -243,6 +220,8 @@ add_task(async function testCategorySections() {
  * wrt the pref.
  */
 add_task(async function testCategorySectionInitial() {
+  requestLongerTimeout(3);
+
   let categoryItems = [
     "protections-popup-category-trackers",
     "protections-popup-category-socialblock",

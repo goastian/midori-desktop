@@ -33,6 +33,16 @@ const QUERYINDEX_TAGS = 5;
 const QUERYINDEX_PLACEID = 8;
 const QUERYINDEX_SWITCHTAB = 9;
 const QUERYINDEX_FRECENCY = 10;
+const QUERYINDEX_USERCONTEXTID = 11;
+
+// Constants to support an alternative frecency algorithm.
+const PAGES_USE_ALT_FRECENCY = Services.prefs.getBoolPref(
+  "places.frecency.pages.alternative.featureGate",
+  false
+);
+const PAGES_FRECENCY_FIELD = PAGES_USE_ALT_FRECENCY
+  ? "alt_frecency"
+  : "frecency";
 
 // This SQL query fragment provides the following:
 //   - whether the entry is bookmarked (QUERYINDEX_BOOKMARKED)
@@ -42,7 +52,7 @@ const SQL_BOOKMARK_TAGS_FRAGMENT = `EXISTS(SELECT 1 FROM moz_bookmarks WHERE fk 
    ( SELECT title FROM moz_bookmarks WHERE fk = h.id AND title NOTNULL
      ORDER BY lastModified DESC LIMIT 1
    ) AS btitle,
-   ( SELECT GROUP_CONCAT(t.title, ', ')
+   ( SELECT GROUP_CONCAT(t.title ORDER BY t.title)
      FROM moz_bookmarks b
      JOIN moz_bookmarks t ON t.id = +b.parent AND t.parent = :parent
      WHERE b.fk = h.id
@@ -54,12 +64,12 @@ const SQL_BOOKMARK_TAGS_FRAGMENT = `EXISTS(SELECT 1 FROM moz_bookmarks WHERE fk 
 // condition once, and avoid evaluating "btitle" and "tags" when it is false.
 function defaultQuery(conditions = "") {
   let query = `SELECT :query_type, h.url, h.title, ${SQL_BOOKMARK_TAGS_FRAGMENT},
-            h.visit_count, h.typed, h.id, t.open_count, h.frecency
+            h.visit_count, h.typed, h.id, t.open_count, ${PAGES_FRECENCY_FIELD}, t.userContextId
      FROM moz_places h
      LEFT JOIN moz_openpages_temp t
             ON t.url = h.url
-           AND t.userContextId = :userContextId
-     WHERE h.frecency <> 0
+            AND (t.userContextId = :userContextId OR (t.userContextId <> -1 AND :userContextId IS NULL))
+     WHERE ${PAGES_FRECENCY_FIELD} <> 0
        AND CASE WHEN bookmarked
          THEN
            AUTOCOMPLETE_MATCH(:searchString, h.url,
@@ -75,17 +85,17 @@ function defaultQuery(conditions = "") {
                               :matchBehavior, :searchBehavior, NULL)
          END
        ${conditions ? "AND" : ""} ${conditions}
-     ORDER BY h.frecency DESC, h.id DESC
+     ORDER BY ${PAGES_FRECENCY_FIELD} DESC, h.id DESC
      LIMIT :maxResults`;
   return query;
 }
 
 const SQL_SWITCHTAB_QUERY = `SELECT :query_type, t.url, t.url, NULL, NULL, NULL, NULL, NULL, NULL,
-          t.open_count, NULL
+          t.open_count, NULL, t.userContextId
    FROM moz_openpages_temp t
    LEFT JOIN moz_places h ON h.url_hash = hash(t.url) AND h.url = t.url
    WHERE h.id IS NULL
-     AND t.userContextId = :userContextId
+     AND (t.userContextId = :userContextId OR (t.userContextId <> -1 AND :userContextId IS NULL))
      AND AUTOCOMPLETE_MATCH(:searchString, t.url, t.url, NULL,
                             NULL, NULL, NULL, t.open_count,
                             :matchBehavior, :searchBehavior, NULL)
@@ -93,8 +103,6 @@ const SQL_SWITCHTAB_QUERY = `SELECT :query_type, t.url, t.url, NULL, NULL, NULL,
    LIMIT :maxResults`;
 
 // Getters
-
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import {
   UrlbarProvider,
@@ -105,8 +113,8 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   KeywordUtils: "resource://gre/modules/KeywordUtils.sys.mjs",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.sys.mjs",
@@ -116,10 +124,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
-});
-
 function setTimeout(callback, ms) {
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   timer.initWithCallback(callback, ms, timer.TYPE_ONE_SHOT);
@@ -127,7 +131,7 @@ function setTimeout(callback, ms) {
 }
 
 // Maps restriction character types to textual behaviors.
-XPCOMUtils.defineLazyGetter(lazy, "typeToBehaviorMap", () => {
+ChromeUtils.defineLazyGetter(lazy, "typeToBehaviorMap", () => {
   return new Map([
     [lazy.UrlbarTokenizer.TYPE.RESTRICT_HISTORY, "history"],
     [lazy.UrlbarTokenizer.TYPE.RESTRICT_BOOKMARK, "bookmark"],
@@ -139,7 +143,7 @@ XPCOMUtils.defineLazyGetter(lazy, "typeToBehaviorMap", () => {
   ]);
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "sourceToBehaviorMap", () => {
+ChromeUtils.defineLazyGetter(lazy, "sourceToBehaviorMap", () => {
   return new Map([
     [UrlbarUtils.RESULT_SOURCE.HISTORY, "history"],
     [UrlbarUtils.RESULT_SOURCE.BOOKMARKS, "bookmark"],
@@ -151,11 +155,32 @@ XPCOMUtils.defineLazyGetter(lazy, "sourceToBehaviorMap", () => {
 // Helper functions
 
 /**
+ * Constructs the map key by joining the url with the userContextId if the pref is
+ * set. Otherwise, just the url is used
+ *
+ * @param   {string} url
+ *          The url to use
+ * @param   {UrlbarResult} match
+ *          The match object with the (optional) userContextId
+ * @returns {string} map key
+ */
+function makeMapKeyForResult(url, match) {
+  let action = lazy.PlacesUtils.parseActionUrl(match.value);
+  return UrlbarUtils.tupleString(
+    url,
+    action?.type == "switchtab" &&
+      lazy.UrlbarPrefs.get("switchTabs.searchAllContainers") &&
+      lazy.UrlbarProviderOpenTabs.isNonPrivateUserContextId(match.userContextId)
+      ? match.userContextId
+      : undefined
+  );
+}
+
+/**
  * Returns the key to be used for a match in a map for the purposes of removing
  * duplicate entries - any 2 matches that should be considered the same should
  * return the same key.  The type of the returned key depends on the type of the
- * match, so don't assume you can compare keys using ==.  Instead, use
- * ObjectUtils.deepEqual().
+ * match.
  *
  * @param   {object} match
  *          The match object.
@@ -174,7 +199,7 @@ function makeKeyForMatch(match) {
       trimEmptyQuery: true,
       trimEmptyHash: true,
     });
-    return [key, prefix, null];
+    return [makeMapKeyForResult(key, match), prefix, null];
   }
 
   switch (action.type) {
@@ -203,8 +228,8 @@ function makeKeyForMatch(match) {
       );
       break;
   }
-
-  return [key, prefix, action];
+  let resKey = makeMapKeyForResult(key, match);
+  return [resKey, prefix, action];
 }
 
 /**
@@ -237,8 +262,8 @@ function makeActionUrl(type, params) {
  *
  * @param {UrlbarQueryContext} context the query context.
  * @param {Array} matches The match objects.
- * @param {set} urls a Set containing all the found urls, used to discard
- *        already added results.
+ * @param {set} urls a Set containing all the found urls, userContextId tuple
+ *        strings used to discard already added results.
  * @returns {Array} converted results
  */
 function convertLegacyMatches(context, matches, urls) {
@@ -249,10 +274,10 @@ function convertLegacyMatches(context, matches, urls) {
     // we may have added already. This means we'll end up adding things in the
     // wrong order here, but that's a task for the UrlbarMuxer.
     let url = match.finalCompleteValue || match.value;
-    if (urls.has(url)) {
+    if (urls.has(makeMapKeyForResult(url, match))) {
       continue;
     }
-    urls.add(url);
+    urls.add(makeMapKeyForResult(url, match));
     let result = makeUrlbarResult(context.tokens, {
       url,
       // `match.icon` is an empty string if there is no icon. Use undefined
@@ -262,6 +287,7 @@ function convertLegacyMatches(context, matches, urls) {
       style: match.style,
       comment: match.comment,
       firstToken: context.tokens[0],
+      userContextId: match.userContextId,
     });
     // Should not happen, but better safe than sorry.
     if (!result) {
@@ -291,6 +317,11 @@ function makeUrlbarResult(tokens, info) {
           UrlbarUtils.RESULT_SOURCE.HISTORY,
           ...lazy.UrlbarResult.payloadAndSimpleHighlights(tokens, {
             engine: action.params.engineName,
+            isBlockable: true,
+            blockL10n: { id: "urlbar-result-menu-remove-from-history" },
+            helpUrl:
+              Services.urlFormatter.formatURLPref("app.support.baseURL") +
+              "awesome-bar-result-menu",
             suggestion: [
               action.params.searchSuggestion,
               UrlbarUtils.HIGHLIGHT.SUGGESTED,
@@ -299,16 +330,27 @@ function makeUrlbarResult(tokens, info) {
               action.params.searchSuggestion.toLocaleLowerCase(),
           })
         );
-      case "switchtab":
+      case "switchtab": {
+        let payload = lazy.UrlbarResult.payloadAndSimpleHighlights(tokens, {
+          url: [action.params.url, UrlbarUtils.HIGHLIGHT.TYPED],
+          title: [info.comment, UrlbarUtils.HIGHLIGHT.TYPED],
+          icon: info.icon,
+          userContextId: info.userContextId,
+        });
+        if (
+          lazy.UrlbarPrefs.getScotchBonnetPref("secondaryActions.featureGate")
+        ) {
+          payload[0].action = {
+            key: "tabswitch",
+            l10nId: "urlbar-result-action-switch-tab",
+          };
+        }
         return new lazy.UrlbarResult(
           UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
           UrlbarUtils.RESULT_SOURCE.TABS,
-          ...lazy.UrlbarResult.payloadAndSimpleHighlights(tokens, {
-            url: [action.params.url, UrlbarUtils.HIGHLIGHT.TYPED],
-            title: [info.comment, UrlbarUtils.HIGHLIGHT.TYPED],
-            icon: info.icon,
-          })
+          ...payload
         );
+      }
       case "visiturl":
         return new lazy.UrlbarResult(
           UrlbarUtils.RESULT_TYPE.URL,
@@ -329,6 +371,9 @@ function makeUrlbarResult(tokens, info) {
   let source;
   let tags = [];
   let comment = info.comment;
+  let isBlockable;
+  let blockL10n;
+  let helpUrl;
 
   // The legacy autocomplete result may return "bookmark", "bookmark-tag" or
   // "tag". In the last case it should not be considered a bookmark, but an
@@ -337,6 +382,11 @@ function makeUrlbarResult(tokens, info) {
     source = UrlbarUtils.RESULT_SOURCE.BOOKMARKS;
   } else {
     source = UrlbarUtils.RESULT_SOURCE.HISTORY;
+    isBlockable = true;
+    blockL10n = { id: "urlbar-result-menu-remove-from-history" };
+    helpUrl =
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "awesome-bar-result-menu";
   }
 
   // If the style indicates that the result is tagged, then the tags are
@@ -351,18 +401,12 @@ function makeUrlbarResult(tokens, info) {
       tags = "";
     }
 
-    // Tags are separated by a comma and in a random order.
+    // Tags are separated by a comma.
     // We should also just include tags that match the searchString.
-    tags = tags
-      .split(",")
-      .map(t => t.trim())
-      .filter(tag => {
-        let lowerCaseTag = tag.toLocaleLowerCase();
-        return tokens.some(token =>
-          lowerCaseTag.includes(token.lowerCaseValue)
-        );
-      })
-      .sort();
+    tags = tags.split(",").filter(tag => {
+      let lowerCaseTag = tag.toLocaleLowerCase();
+      return tokens.some(token => lowerCaseTag.includes(token.lowerCaseValue));
+    });
   }
 
   return new lazy.UrlbarResult(
@@ -373,6 +417,9 @@ function makeUrlbarResult(tokens, info) {
       icon: info.icon,
       title: [comment, UrlbarUtils.HIGHLIGHT.TYPED],
       tags: [tags, UrlbarUtils.HIGHLIGHT.TYPED],
+      isBlockable,
+      blockL10n,
+      helpUrl,
     })
   );
 }
@@ -432,12 +479,6 @@ function Search(queryContext, listener, provider) {
     let engine = Services.search.getEngineByName(this._searchModeEngine);
     this._filterOnHost = engine.searchUrlDomain;
   }
-
-  this._userContextId =
-    lazy.UrlbarProviderOpenTabs.getUserContextIdForOpenPagesTable(
-      this._userContextId,
-      this._inPrivateWindow
-    );
 
   // Use the original string here, not the stripped one, so the tokenizer can
   // properly recognize token types.
@@ -894,7 +935,8 @@ Search.prototype = {
   _getInsertIndexForMatch(match) {
     let [urlMapKey, prefix, action] = makeKeyForMatch(match);
     if (
-      (match.placeId && this._usedPlaceIds.has(match.placeId)) ||
+      (match.placeId &&
+        this._usedPlaceIds.has(makeMapKeyForResult(match.placeId, match))) ||
       this._usedURLs.some(e => lazy.ObjectUtils.deepEqual(e.key, urlMapKey))
     ) {
       let isDupe = true;
@@ -981,7 +1023,7 @@ Search.prototype = {
     // include the search string, and would be returned multiple times.  Ids
     // are faster too.
     if (match.placeId) {
-      this._usedPlaceIds.add(match.placeId);
+      this._usedPlaceIds.add(makeMapKeyForResult(match.placeId, match));
     }
 
     let index = 0;
@@ -1089,17 +1131,21 @@ Search.prototype = {
       : null;
     let tags = row.getResultByIndex(QUERYINDEX_TAGS) || "";
     let frecency = row.getResultByIndex(QUERYINDEX_FRECENCY);
-
+    let userContextId = row.getResultByIndex(QUERYINDEX_USERCONTEXTID);
     let match = {
       placeId,
       value: url,
       comment: bookmarkTitle || historyTitle,
       icon: UrlbarUtils.getIconForUrl(url),
       frecency: frecency || FRECENCY_DEFAULT,
+      userContextId,
     };
-
     if (openPageCount > 0 && this.hasBehavior("openpage")) {
-      if (this._currentPage == match.value) {
+      if (
+        this._currentPage == match.value &&
+        (!lazy.UrlbarPrefs.get("switchTabs.searchAllContainers") ||
+          this._userContextId == match.userContextId)
+      ) {
         // Don't suggest switching to the current tab.
         return;
       }
@@ -1250,11 +1296,19 @@ Search.prototype = {
       // We only want to search the tokens that we are left with - not the
       // original search string.
       searchString: this._keywordFilteredSearchString,
-      userContextId: this._userContextId,
       // Limit the query to the the maximum number of desired results.
       // This way we can avoid doing more work than needed.
       maxResults: this._maxResults,
     };
+    params.userContextId = lazy.UrlbarPrefs.get(
+      "switchTabs.searchAllContainers"
+    )
+      ? lazy.UrlbarProviderOpenTabs.getUserContextIdForOpenPagesTable(
+          null,
+          this._inPrivateWindow
+        )
+      : this._userContextId;
+
     if (this._filterOnHost) {
       params.host = this._filterOnHost;
     }
@@ -1278,7 +1332,12 @@ Search.prototype = {
         // We only want to search the tokens that we are left with - not the
         // original search string.
         searchString: this._keywordFilteredSearchString,
-        userContextId: this._userContextId,
+        userContextId: lazy.UrlbarPrefs.get("switchTabs.searchAllContainers")
+          ? lazy.UrlbarProviderOpenTabs.getUserContextIdForOpenPagesTable(
+              null,
+              this._inPrivateWindow
+            )
+          : this._userContextId,
         maxResults: this._maxResults,
       },
     ];
@@ -1390,8 +1449,7 @@ class ProviderPlaces extends UrlbarProvider {
   isActive(queryContext) {
     if (
       !queryContext.trimmedSearchString &&
-      queryContext.searchMode?.engineName &&
-      lazy.UrlbarPrefs.get("update2.emptySearchBehavior") < 2
+      queryContext.searchMode?.engineName
     ) {
       return false;
     }
@@ -1423,10 +1481,8 @@ class ProviderPlaces extends UrlbarProvider {
 
   /**
    * Cancels a running query.
-   *
-   * @param {object} queryContext The query context object
    */
-  cancelQuery(queryContext) {
+  cancelQuery() {
     if (this._currentSearch) {
       this._currentSearch.stop();
     }
@@ -1470,12 +1526,8 @@ class ProviderPlaces extends UrlbarProvider {
     search.notifyResult(false);
   }
 
-  onEngagement(isPrivate, state, queryContext, details) {
+  onEngagement(queryContext, controller, details) {
     let { result } = details;
-    if (result?.providerName != this.name) {
-      return;
-    }
-
     if (details.selType == "dismiss") {
       switch (result.type) {
         case UrlbarUtils.RESULT_TYPE.SEARCH:
@@ -1483,21 +1535,21 @@ class ProviderPlaces extends UrlbarProvider {
           // from browsing history.
           let { url } = UrlbarUtils.getUrlFromResult(result);
           lazy.PlacesUtils.history.remove(url).catch(console.error);
-          queryContext.view.controller.removeResult(result);
+          controller.removeResult(result);
           break;
         case UrlbarUtils.RESULT_TYPE.URL:
           // Remove browsing history entries from Places.
           lazy.PlacesUtils.history
             .remove(result.payload.url)
             .catch(console.error);
-          queryContext.view.controller.removeResult(result);
+          controller.removeResult(result);
           break;
       }
     }
   }
 
   _startLegacyQuery(queryContext, callback) {
-    let deferred = lazy.PromiseUtils.defer();
+    let deferred = Promise.withResolvers();
     let listener = (matches, searchOngoing) => {
       callback(matches);
       if (!searchOngoing) {

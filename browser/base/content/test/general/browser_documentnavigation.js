@@ -121,7 +121,7 @@ add_task(async function () {
     false,
     testPage1
   );
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, testPage1);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, testPage1);
   await page1Promise;
 
   // When the urlbar is focused, pressing F6 should focus the root of the content page.
@@ -229,7 +229,7 @@ add_task(async function () {
   let sidebar = document.getElementById("sidebar");
 
   let loadPromise = BrowserTestUtils.waitForEvent(sidebar, "load", true);
-  SidebarUI.toggle("viewBookmarksSidebar");
+  SidebarController.toggle("viewBookmarksSidebar");
   await loadPromise;
 
   gURLBar.focus();
@@ -278,7 +278,7 @@ add_task(async function () {
     "back focus with sidebar urlbar"
   );
 
-  SidebarUI.toggle("viewBookmarksSidebar");
+  SidebarController.toggle("viewBookmarksSidebar");
 });
 
 // Navigate when the downloads panel is open

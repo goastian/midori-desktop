@@ -2,25 +2,20 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 ChromeUtils.defineESModuleGetters(this, {
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
   ExperimentFakes: "resource://testing-common/NimbusTestUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
-const _handleWDBAResultStub = sinon
-  .stub(ShellService, "_handleWDBAResult")
-  .callsFake(async () => {
-    throw new Error("from _handleWDBAResultStub");
-  });
+const setDefaultBrowserUserChoiceStub = async () => {
+  throw Components.Exception("", Cr.NS_ERROR_WDBA_NO_PROGID);
+};
 
-const _callExternalDefaultBrowserAgentStub = sinon
-  .stub(ShellService, "_callExternalDefaultBrowserAgent")
-  .callsFake(async () => ({
-    async wait() {
-      return { exitCode: 0 };
-    },
-  }));
+const defaultAgentStub = sinon
+  .stub(ShellService, "defaultAgent")
+  .value({ setDefaultBrowserUserChoiceAsync: setDefaultBrowserUserChoiceStub });
 
 const _userChoiceImpossibleTelemetryResultStub = sinon
   .stub(ShellService, "_userChoiceImpossibleTelemetryResult")
@@ -35,8 +30,7 @@ const shellStub = sinon
   .value({ setDefaultBrowser: setDefaultStub });
 
 registerCleanupFunction(() => {
-  _handleWDBAResultStub.restore();
-  _callExternalDefaultBrowserAgentStub.restore();
+  defaultAgentStub.restore();
   _userChoiceImpossibleTelemetryResultStub.restore();
   userChoiceStub.restore();
   shellStub.restore();
@@ -46,7 +40,7 @@ registerCleanupFunction(() => {
 
 let defaultUserChoice;
 add_task(async function need_user_choice() {
-  ShellService.setDefaultBrowser();
+  await ShellService.setDefaultBrowser();
   defaultUserChoice = userChoiceStub.called;
 
   Assert.ok(
@@ -68,23 +62,26 @@ add_task(async function remote_disable() {
 
   userChoiceStub.resetHistory();
   setDefaultStub.resetHistory();
-  let doCleanup = await ExperimentFakes.enrollWithRollout({
-    featureId: NimbusFeatures.shellService.featureId,
-    value: {
-      setDefaultBrowserUserChoice: false,
-      enabled: true,
+  let doCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: NimbusFeatures.shellService.featureId,
+      value: {
+        setDefaultBrowserUserChoice: false,
+        enabled: true,
+      },
     },
-  });
+    { isRollout: true }
+  );
 
-  ShellService.setDefaultBrowser();
+  await ShellService.setDefaultBrowser();
 
   Assert.ok(
     userChoiceStub.notCalled,
     "Set default with user choice disabled via nimbus"
   );
-  Assert.ok(setDefaultStub.called, "Used plain set default insteead");
+  Assert.ok(setDefaultStub.called, "Used plain set default instead");
 
-  await doCleanup();
+  doCleanup();
 });
 
 add_task(async function restore_default() {
@@ -97,7 +94,7 @@ add_task(async function restore_default() {
   setDefaultStub.resetHistory();
   ExperimentAPI._store._deleteForTests("shellService");
 
-  ShellService.setDefaultBrowser();
+  await ShellService.setDefaultBrowser();
 
   Assert.equal(
     userChoiceStub.called,
@@ -112,7 +109,7 @@ add_task(async function restore_default() {
 });
 
 add_task(async function ensure_fallback() {
-  if (!AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+  if (AppConstants.platform != "win") {
     info("Nothing to test on non-Windows");
     return;
   }
@@ -123,24 +120,125 @@ add_task(async function ensure_fallback() {
   });
   userChoiceStub.resetHistory();
   setDefaultStub.resetHistory();
-  let doCleanup = await ExperimentFakes.enrollWithRollout({
-    featureId: NimbusFeatures.shellService.featureId,
-    value: {
-      setDefaultBrowserUserChoice: true,
-      setDefaultPDFHandler: false,
-      enabled: true,
+  let doCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: NimbusFeatures.shellService.featureId,
+      value: {
+        setDefaultBrowserUserChoice: true,
+        setDefaultPDFHandler: false,
+        enabled: true,
+      },
     },
-  });
+    { isRollout: true }
+  );
 
-  ShellService.setDefaultBrowser();
+  await ShellService.setDefaultBrowser();
 
   Assert.ok(userChoiceStub.called, "Set default with user choice called");
 
-  let thrown = false;
-  await userChoicePromise.catch(() => (thrown = true));
+  let message = "";
+  await userChoicePromise.catch(err => (message = err.message || ""));
 
-  Assert.ok(thrown, "Set default with user choice threw an error");
+  Assert.ok(
+    message.includes("ErrExeProgID"),
+    "Set default with user choice threw an expected error"
+  );
   Assert.ok(setDefaultStub.called, "Fallbacked to plain set default");
 
-  await doCleanup();
+  doCleanup();
 });
+
+async function setUpNotificationTests(guidanceEnabled, oneClick) {
+  const sandbox = sinon.createSandbox();
+  const sendTriggerStub = sandbox.stub(ASRouter, "sendTriggerMessage");
+  const maybeShowSpy = sandbox.spy(
+    ShellService,
+    "_maybeShowSetDefaultGuidanceNotification"
+  );
+  const doCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: NimbusFeatures.shellService.featureId,
+      value: {
+        setDefaultBrowserUserChoice: false,
+        setDefaultGuidanceNotifications: guidanceEnabled,
+        setDefaultBrowserUserChoiceRegRename: oneClick,
+        enabled: true,
+      },
+    },
+    { isRollout: true }
+  );
+
+  await ShellService.setDefaultBrowser();
+  // We don't await the return of _maybeShowSetDefaultGuidanceNotification when setting the default browser, so ensure it's been called before proceeding.
+  await TestUtils.waitForCondition(() => maybeShowSpy.callCount);
+  return { doCleanup, sandbox, sendTriggerStub };
+}
+
+add_task(
+  async function show_notification_when_set_to_default_guidance_enabled_and_one_click_disabled() {
+    if (AppConstants.isPlatformAndVersionAtLeast("win", 10)) {
+      info("Nothing to test on non-Windows");
+      return;
+    }
+
+    let { doCleanup, sandbox, sendTriggerStub } = await setUpNotificationTests(
+      true, // guidance enabled
+      false // one-click disabled
+    );
+
+    Assert.equal(
+      sendTriggerStub.firstCall.args[0].id,
+      "deeplinkedToWindowsSettingsUI",
+      `Set to default guidance message trigger was sent.`
+    );
+
+    sandbox.restore();
+    await doCleanup();
+  }
+);
+
+add_task(
+  async function do_not_show_notification_when_set_to_default_guidance_disabled_and_one_click_enabled() {
+    if (AppConstants.isPlatformAndVersionAtLeast("win", 10)) {
+      info("Nothing to test on non-Windows");
+      return;
+    }
+
+    let { doCleanup, sandbox, sendTriggerStub } = await setUpNotificationTests(
+      false, // guidance disabled
+      true // one-click enabled
+    );
+
+    Assert.equal(
+      sendTriggerStub.callCount,
+      0,
+      `Set to default guidance message trigger was not sent.`
+    );
+
+    sandbox.restore();
+    await doCleanup();
+  }
+);
+
+add_task(
+  async function do_not_show_notification_when_set_to_default_guidance_enabled_and_one_click_enabled() {
+    if (AppConstants.isPlatformAndVersionAtLeast("win", 10)) {
+      info("Nothing to test on non-Windows");
+      return;
+    }
+
+    let { doCleanup, sandbox, sendTriggerStub } = await setUpNotificationTests(
+      true, // guidance enabled
+      true // one-click enabled
+    );
+
+    Assert.equal(
+      sendTriggerStub.callCount,
+      0,
+      `Set to default guidance message trigger was not sent.`
+    );
+
+    sandbox.restore();
+    await doCleanup();
+  }
+);

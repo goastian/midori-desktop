@@ -1,26 +1,26 @@
-import { CONTENT_MESSAGE_TYPE } from "common/Actions.sys.mjs";
-import { ActivityStream, PREFS_CONFIG } from "lib/ActivityStream.jsm";
+import { CONTENT_MESSAGE_TYPE } from "common/Actions.mjs";
+import { ActivityStream, PREFS_CONFIG } from "lib/ActivityStream.sys.mjs";
 import { GlobalOverrider } from "test/unit/utils";
 
 import { DEFAULT_SITES } from "lib/DefaultSites.sys.mjs";
-import { AboutPreferences } from "lib/AboutPreferences.jsm";
-import { DefaultPrefs } from "lib/ActivityStreamPrefs.jsm";
-import { NewTabInit } from "lib/NewTabInit.jsm";
-import { SectionsFeed } from "lib/SectionsManager.jsm";
-import { RecommendationProvider } from "lib/RecommendationProvider.jsm";
-import { PlacesFeed } from "lib/PlacesFeed.jsm";
-import { PrefsFeed } from "lib/PrefsFeed.jsm";
-import { SystemTickFeed } from "lib/SystemTickFeed.jsm";
-import { TelemetryFeed } from "lib/TelemetryFeed.jsm";
-import { FaviconFeed } from "lib/FaviconFeed.jsm";
-import { TopSitesFeed } from "lib/TopSitesFeed.jsm";
-import { TopStoriesFeed } from "lib/TopStoriesFeed.jsm";
-import { HighlightsFeed } from "lib/HighlightsFeed.jsm";
-import { DiscoveryStreamFeed } from "lib/DiscoveryStreamFeed.jsm";
+import { AboutPreferences } from "lib/AboutPreferences.sys.mjs";
+import { DefaultPrefs } from "lib/ActivityStreamPrefs.sys.mjs";
+import { NewTabInit } from "lib/NewTabInit.sys.mjs";
+import { SectionsFeed } from "lib/SectionsManager.sys.mjs";
+import { RecommendationProvider } from "lib/RecommendationProvider.sys.mjs";
+import { PlacesFeed } from "lib/PlacesFeed.sys.mjs";
+import { PrefsFeed } from "lib/PrefsFeed.sys.mjs";
+import { SystemTickFeed } from "lib/SystemTickFeed.sys.mjs";
+import { TelemetryFeed } from "lib/TelemetryFeed.sys.mjs";
+import { FaviconFeed } from "lib/FaviconFeed.sys.mjs";
+import { TopSitesFeed } from "lib/TopSitesFeed.sys.mjs";
+import { TopStoriesFeed } from "lib/TopStoriesFeed.sys.mjs";
+import { HighlightsFeed } from "lib/HighlightsFeed.sys.mjs";
+import { DiscoveryStreamFeed } from "lib/DiscoveryStreamFeed.sys.mjs";
 
 import { LinksCache } from "lib/LinksCache.sys.mjs";
 import { PersistentCache } from "lib/PersistentCache.sys.mjs";
-import { DownloadsManager } from "lib/DownloadsManager.jsm";
+import { DownloadsManager } from "lib/DownloadsManager.sys.mjs";
 
 describe("ActivityStream", () => {
   let sandbox;
@@ -311,6 +311,38 @@ describe("ActivityStream", () => {
       );
     });
   });
+  describe("discoverystream.region-weather-config", () => {
+    let getVariableStub;
+    beforeEach(() => {
+      getVariableStub = sandbox.stub(
+        global.NimbusFeatures.pocketNewtab,
+        "getVariable"
+      );
+      sandbox.stub(global.Region, "home").get(() => "CA");
+    });
+    it("should turn off weather system pref if no region weather config is set and no geo is set", () => {
+      getVariableStub.withArgs("regionWeatherConfig").returns("");
+      sandbox.stub(global.Region, "home").get(() => "");
+
+      as._updateDynamicPrefs();
+
+      assert.isFalse(PREFS_CONFIG.get("system.showWeather").value);
+    });
+    it("should turn on weather system pref based on region weather config pref", () => {
+      getVariableStub.withArgs("regionWeatherConfig").returns("CA");
+
+      as._updateDynamicPrefs();
+
+      assert.isTrue(PREFS_CONFIG.get("system.showWeather").value);
+    });
+    it("should turn off weather system pref if no region weather config is set", () => {
+      getVariableStub.withArgs("regionWeatherConfig").returns("");
+
+      as._updateDynamicPrefs();
+
+      assert.isFalse(PREFS_CONFIG.get("system.showWeather").value);
+    });
+  });
   describe("_updateDynamicPrefs topstories default value", () => {
     let getVariableStub;
     let getBoolPrefStub;
@@ -417,13 +449,11 @@ describe("ActivityStream", () => {
       clock = sinon.useFakeTimers();
 
       // Have addObserver cause prefHasUserValue to now return true then observe
-      sandbox
-        .stub(global.Services.obs, "addObserver")
-        .callsFake((pref, obs) => {
-          setTimeout(() => {
-            Services.obs.notifyObservers("US", "browser-region-updated");
-          });
+      sandbox.stub(global.Services.obs, "addObserver").callsFake(() => {
+        setTimeout(() => {
+          Services.obs.notifyObservers("US", "browser-region-updated");
         });
+      });
     });
     afterEach(() => clock.restore());
 

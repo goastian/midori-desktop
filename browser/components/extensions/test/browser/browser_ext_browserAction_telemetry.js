@@ -14,6 +14,26 @@ const EXTENSION_ID2 = "@test-extension2";
 // Keep this in sync with the order in Histograms.json for
 // WEBEXT_BROWSERACTION_POPUP_PRELOAD_RESULT_COUNT
 const CATEGORIES = ["popupShown", "clearAfterHover", "clearAfterMousedown"];
+const GLEAN_RESULT_LABELS = [...CATEGORIES, "__other__"];
+
+function assertGleanPreloadResultLabelCounter(expectedLabelsValue) {
+  for (const label of GLEAN_RESULT_LABELS) {
+    const expectedLabelValue = expectedLabelsValue[label];
+    Assert.deepEqual(
+      Glean.extensionsCounters.browserActionPreloadResult[label].testGetValue(),
+      expectedLabelValue,
+      `Expect Glean browserActionPreloadResult metric label ${label} to be ${
+        expectedLabelValue > 0 ? expectedLabelValue : "empty"
+      }`
+    );
+  }
+}
+
+function assertGleanPreloadResultLabelCounterEmpty() {
+  // All empty labels passed to the other helpers to make it
+  // assert that all labels are empty.
+  assertGleanPreloadResultLabelCounter({});
+}
 
 /**
  * Takes a Telemetry histogram snapshot and makes sure
@@ -83,6 +103,7 @@ add_task(async function testBrowserActionTelemetryTiming() {
 
   histogram.clear();
   histogramKeyed.clear();
+  Services.fog.testResetFOG();
 
   is(
     histogram.snapshot().sum,
@@ -93,6 +114,11 @@ add_task(async function testBrowserActionTelemetryTiming() {
     Object.keys(histogramKeyed).length,
     0,
     `No data recorded for histogram: ${TIMING_HISTOGRAM_KEYED}.`
+  );
+  Assert.deepEqual(
+    Glean.extensionsTiming.browserActionPopupOpen.testGetValue(),
+    undefined,
+    "No data recorded for glean metric extensionsTiming.browserActionPopupOpen"
   );
 
   await extension1.startup();
@@ -108,12 +134,18 @@ add_task(async function testBrowserActionTelemetryTiming() {
     0,
     `No data recorded for histogram after startup: ${TIMING_HISTOGRAM_KEYED}.`
   );
+  Assert.deepEqual(
+    Glean.extensionsTiming.browserActionPopupOpen.testGetValue(),
+    undefined,
+    "No data recorded for glean metric extensionsTiming.browserActionPopupOpen"
+  );
 
   clickBrowserAction(extension1);
   await awaitExtensionPanel(extension1);
   let sumOld = histogram.snapshot().sum;
-  ok(
-    sumOld > 0,
+  Assert.greater(
+    sumOld,
+    0,
     `Data recorded for first extension for histogram: ${TIMING_HISTOGRAM}.`
   );
 
@@ -123,9 +155,18 @@ add_task(async function testBrowserActionTelemetryTiming() {
     [EXTENSION_ID1],
     `Data recorded for first extension for histogram: ${TIMING_HISTOGRAM_KEYED}.`
   );
-  ok(
-    oldKeyedSnapshot[EXTENSION_ID1].sum > 0,
+  Assert.greater(
+    oldKeyedSnapshot[EXTENSION_ID1].sum,
+    0,
     `Data recorded for first extension for histogram: ${TIMING_HISTOGRAM_KEYED}.`
+  );
+
+  let gleanSumOld =
+    Glean.extensionsTiming.browserActionPopupOpen.testGetValue()?.sum;
+  Assert.greater(
+    gleanSumOld,
+    0,
+    "Data recorded for first extension on glean metric extensionsTiming.browserActionPopupOpen"
   );
 
   await closeBrowserAction(extension1);
@@ -133,11 +174,21 @@ add_task(async function testBrowserActionTelemetryTiming() {
   clickBrowserAction(extension2);
   await awaitExtensionPanel(extension2);
   let sumNew = histogram.snapshot().sum;
-  ok(
-    sumNew > sumOld,
+  Assert.greater(
+    sumNew,
+    sumOld,
     `Data recorded for second extension for histogram: ${TIMING_HISTOGRAM}.`
   );
   sumOld = sumNew;
+
+  let gleanSumNew =
+    Glean.extensionsTiming.browserActionPopupOpen.testGetValue()?.sum;
+  Assert.greater(
+    gleanSumNew,
+    gleanSumOld,
+    "Data recorded for second extension on glean metric extensionsTiming.browserActionPopupOpen"
+  );
+  gleanSumOld = gleanSumNew;
 
   let newKeyedSnapshot = histogramKeyed.snapshot();
   Assert.deepEqual(
@@ -145,8 +196,9 @@ add_task(async function testBrowserActionTelemetryTiming() {
     [EXTENSION_ID1, EXTENSION_ID2],
     `Data recorded for second extension for histogram: ${TIMING_HISTOGRAM_KEYED}.`
   );
-  ok(
-    newKeyedSnapshot[EXTENSION_ID2].sum > 0,
+  Assert.greater(
+    newKeyedSnapshot[EXTENSION_ID2].sum,
+    0,
     `Data recorded for second extension for histogram: ${TIMING_HISTOGRAM_KEYED}.`
   );
   is(
@@ -161,15 +213,26 @@ add_task(async function testBrowserActionTelemetryTiming() {
   clickBrowserAction(extension2);
   await awaitExtensionPanel(extension2);
   sumNew = histogram.snapshot().sum;
-  ok(
-    sumNew > sumOld,
+  Assert.greater(
+    sumNew,
+    sumOld,
     `Data recorded for second opening of popup for histogram: ${TIMING_HISTOGRAM}.`
   );
   sumOld = sumNew;
 
+  gleanSumNew =
+    Glean.extensionsTiming.browserActionPopupOpen.testGetValue()?.sum;
+  Assert.greater(
+    gleanSumNew,
+    gleanSumOld,
+    "Data recorded for second popup opening on glean metric extensionsTiming.browserActionPopupOpen"
+  );
+  gleanSumOld = gleanSumNew;
+
   newKeyedSnapshot = histogramKeyed.snapshot();
-  ok(
-    newKeyedSnapshot[EXTENSION_ID2].sum > oldKeyedSnapshot[EXTENSION_ID2].sum,
+  Assert.greater(
+    newKeyedSnapshot[EXTENSION_ID2].sum,
+    oldKeyedSnapshot[EXTENSION_ID2].sum,
     `Data recorded for second opening of popup for histogram: ${TIMING_HISTOGRAM_KEYED}.`
   );
   is(
@@ -184,14 +247,24 @@ add_task(async function testBrowserActionTelemetryTiming() {
   clickBrowserAction(extension1);
   await awaitExtensionPanel(extension1);
   sumNew = histogram.snapshot().sum;
-  ok(
-    sumNew > sumOld,
-    `Data recorded for second opening of popup for histogram: ${TIMING_HISTOGRAM}.`
+  Assert.greater(
+    sumNew,
+    sumOld,
+    `Data recorded for third opening of popup for histogram: ${TIMING_HISTOGRAM}.`
+  );
+
+  gleanSumNew =
+    Glean.extensionsTiming.browserActionPopupOpen.testGetValue()?.sum;
+  Assert.greater(
+    gleanSumNew,
+    gleanSumOld,
+    "Data recorded for third popup opening on glean metric extensionsTiming.browserActionPopupOpen"
   );
 
   newKeyedSnapshot = histogramKeyed.snapshot();
-  ok(
-    newKeyedSnapshot[EXTENSION_ID1].sum > oldKeyedSnapshot[EXTENSION_ID1].sum,
+  Assert.greater(
+    newKeyedSnapshot[EXTENSION_ID1].sum,
+    oldKeyedSnapshot[EXTENSION_ID1].sum,
     `Data recorded for second opening of popup for histogram: ${TIMING_HISTOGRAM_KEYED}.`
   );
   is(
@@ -232,6 +305,7 @@ add_task(async function testBrowserActionTelemetryResults() {
 
   histogram.clear();
   histogramKeyed.clear();
+  Services.fog.testResetFOG();
 
   is(
     histogram.snapshot().sum,
@@ -243,6 +317,7 @@ add_task(async function testBrowserActionTelemetryResults() {
     0,
     `No data recorded for histogram: ${RESULT_HISTOGRAM_KEYED}.`
   );
+  assertGleanPreloadResultLabelCounterEmpty();
 
   await extension.startup();
 
@@ -273,6 +348,7 @@ add_task(async function testBrowserActionTelemetryResults() {
   );
 
   assertOnlyOneTypeSet(histogram.snapshot(), "clearAfterHover");
+  assertGleanPreloadResultLabelCounter({ clearAfterHover: 1 });
 
   let keyedSnapshot = histogramKeyed.snapshot();
   Assert.deepEqual(
@@ -284,6 +360,7 @@ add_task(async function testBrowserActionTelemetryResults() {
 
   histogram.clear();
   histogramKeyed.clear();
+  Services.fog.testResetFOG();
 
   // TODO: Create a test for cancel after mousedown.
   // This is tricky because calling mouseout after mousedown causes a
@@ -293,6 +370,7 @@ add_task(async function testBrowserActionTelemetryResults() {
   await awaitExtensionPanel(extension);
 
   assertOnlyOneTypeSet(histogram.snapshot(), "popupShown");
+  assertGleanPreloadResultLabelCounter({ popupShown: 1 });
 
   keyedSnapshot = histogramKeyed.snapshot();
   Assert.deepEqual(

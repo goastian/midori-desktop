@@ -46,6 +46,7 @@ newtab-topsites-add-search-engine-header = Add Search Engine
 newtab-topsites-add-shortcut-header = New Shortcut
 newtab-topsites-edit-topsites-header = Edit Top Site
 newtab-topsites-edit-shortcut-header = Edit Shortcut
+newtab-topsites-add-shortcut-label = Add Shortcut
 newtab-topsites-title-label = Title
 newtab-topsites-title-input =
     .placeholder = Enter a title
@@ -203,18 +204,14 @@ newtab-section-expand-section-label =
 
 newtab-section-header-topsites = Top Sites
 newtab-section-header-recent-activity = Recent activity
-# Variables:
-#   $provider (string) - Name of the corresponding content provider.
-newtab-section-header-pocket = Recommended by { $provider }
+newtab-section-header-stories = Thought-provoking stories
 
 ## Empty Section States: These show when there are no more items in a section. Ex. When there are no more Pocket story recommendations, in the space where there would have been stories, this is shown instead.
 
 newtab-empty-section-highlights = Start browsing, and we’ll show some of the great articles, videos, and other pages you’ve recently visited or bookmarked here.
 
-# Ex. When there are no more Pocket story recommendations, in the space where there would have been stories, this is shown instead.
-# Variables:
-#   $provider (string) - Name of the content provider for this section, e.g "Pocket".
-newtab-empty-section-topstories = You’ve caught up. Check back later for more top stories from { $provider }. Can’t wait? Select a popular topic to find more great stories from around the web.
+# Ex. When there are no more story recommendations, in the space where there would have been stories, this is shown instead.
+newtab-empty-section-topstories-generic = You’ve caught up. Check back later for more stories. Can’t wait? Select a popular topic to find more great stories from around the web.
 
 ## Empty Section (Content Discovery Experience). These show when there are no more stories or when some stories fail to load.
 
@@ -253,8 +250,10 @@ newtab-error-fallback-refresh-link = Refresh page to try again.
 
 ## Customization Menu
 
-newtab-custom-shortcuts-title = Shortcuts
-newtab-custom-shortcuts-subtitle = Sites you save or visit
+newtab-custom-shortcuts-toggle =
+  .label = Shortcuts
+  .description = Sites you save or visit
+
 # Variables
 #   $num (number) - Number of rows to display
 newtab-custom-row-selector =
@@ -263,11 +262,116 @@ newtab-custom-row-selector =
            *[other] { $num } rows
         }
 newtab-custom-sponsored-sites = Sponsored shortcuts
-newtab-custom-pocket-title = Recommended by { -pocket-brand-name }
-newtab-custom-pocket-subtitle = Exceptional content curated by { -pocket-brand-name }, part of the { -brand-product-name } family
+newtab-custom-stories-toggle =
+  .label = Recommended stories
+  .description = Exceptional content curated by the { -brand-product-name } family
 newtab-custom-pocket-sponsored = Sponsored stories
 newtab-custom-pocket-show-recent-saves = Show recent saves
-newtab-custom-recent-title = Recent activity
-newtab-custom-recent-subtitle = A selection of recent sites and content
+newtab-custom-recent-toggle =
+  .label = Recent activity
+  .description = A selection of recent sites and content
+newtab-custom-weather-toggle =
+  .label = Weather
+  .description = Today’s forecast at a glance
 newtab-custom-close-button = Close
 newtab-custom-settings = Manage more settings
+
+## New Tab Wallpapers
+
+newtab-wallpaper-title = Wallpapers
+newtab-wallpaper-reset = Reset to default
+newtab-wallpaper-light-red-panda = Red panda
+newtab-wallpaper-light-mountain = White mountain
+newtab-wallpaper-light-sky = Sky with purple and pink clouds
+newtab-wallpaper-light-color = Blue, pink and yellow shapes
+newtab-wallpaper-light-landscape = Blue mist mountain landscape
+newtab-wallpaper-light-beach = Beach with palm tree
+newtab-wallpaper-dark-aurora = Aurora Borealis
+newtab-wallpaper-dark-color = Red and blue shapes
+newtab-wallpaper-dark-panda = Red panda hidden in forest
+newtab-wallpaper-dark-sky = City landscape with a night sky
+newtab-wallpaper-dark-mountain = Landscape mountain
+newtab-wallpaper-dark-city = Purple city landscape
+
+## Solid Colors
+
+newtab-wallpaper-category-title-colors = Solid colors
+newtab-wallpaper-blue = Blue
+newtab-wallpaper-light-blue = Light blue
+newtab-wallpaper-light-purple = Light purple
+newtab-wallpaper-light-green = Light green
+newtab-wallpaper-green = Green
+newtab-wallpaper-beige = Beige
+newtab-wallpaper-yellow = Yellow
+newtab-wallpaper-orange = Orange
+newtab-wallpaper-pink = Pink
+newtab-wallpaper-light-pink = Light pink
+newtab-wallpaper-red = Red
+newtab-wallpaper-dark-blue = Dark blue
+newtab-wallpaper-dark-purple = Dark purple
+newtab-wallpaper-dark-green = Dark green
+newtab-wallpaper-brown = Brown
+
+## Abstract
+
+newtab-wallpaper-category-title-abstract = Abstract
+newtab-wallpaper-abstract-green = Green shapes
+newtab-wallpaper-abstract-blue = Blue shapes
+newtab-wallpaper-abstract-purple = Purple shapes
+newtab-wallpaper-abstract-orange = Orange shapes
+newtab-wallpaper-gradient-orange = Gradient orange and pink
+newtab-wallpaper-abstract-blue-purple = Blue and purple shapes
+
+## Photographs
+
+newtab-wallpaper-category-title-photographs = Photographs
+newtab-wallpaper-beach-at-sunrise = Beach at sunrise
+newtab-wallpaper-beach-at-sunset = Beach at sunset
+newtab-wallpaper-storm-sky = Storm sky
+newtab-wallpaper-sky-with-pink-clouds = Sky with pink clouds
+newtab-wallpaper-red-panda-yawns-in-a-tree = Red panda yawns in a tree
+newtab-wallpaper-white-mountains = White mountains
+
+# Variables
+#   $author_string (String) - The name of the creator of the photo.
+#   $webpage_string (String) - The name of the webpage where the photo is located.
+newtab-wallpaper-attribution = Photo by <a data-l10n-name="name-link">{ $author_string }</a> on <a data-l10n-name="webpage-link">{ $webpage_string }</a>
+newtab-wallpaper-feature-highlight-header = Try a splash of color
+newtab-wallpaper-feature-highlight-content = Give your New Tab a fresh look with wallpapers.
+newtab-wallpaper-feature-highlight-button = Got it
+# Tooltip for dismiss button
+feature-highlight-dismiss-button =
+    .title = Dismiss
+    .aria-label = Close popup
+feature-highlight-wallpaper =
+    .title = { -newtab-wallpaper-feature-highlight-header }
+    .aria-label = { -newtab-wallpaper-feature-highlight-content }
+
+## New Tab Weather
+
+# Variables:
+#   $provider (string) - Service provider for weather data
+newtab-weather-see-forecast =
+    .title = See forecast in { $provider }
+# Variables:
+#   $provider (string) - Service provider for weather data
+newtab-weather-sponsored = { $provider } ∙ Sponsored
+newtab-weather-menu-change-location = Change location
+newtab-weather-change-location-search-input = Search location
+newtab-weather-menu-weather-display = Weather display
+# Display options are:
+# - Simple: Displays a current weather condition icon and the current temperature
+# - Detailed: Include simple information plus a short text summary: e.g. "Mostly cloudy"
+newtab-weather-menu-weather-display-option-simple = Simple
+newtab-weather-menu-change-weather-display-simple = Switch to simple view
+newtab-weather-menu-weather-display-option-detailed = Detailed
+newtab-weather-menu-change-weather-display-detailed = Switch to detailed view
+newtab-weather-menu-temperature-units = Temperature units
+newtab-weather-menu-temperature-option-fahrenheit = Fahrenheit
+newtab-weather-menu-temperature-option-celsius = Celsius
+newtab-weather-menu-change-temperature-units-fahrenheit = Switch to Fahrenheit
+newtab-weather-menu-change-temperature-units-celsius = Switch to Celsius
+newtab-weather-menu-hide-weather = Hide weather on New Tab
+newtab-weather-menu-learn-more = Learn more
+# This message is shown if user is working offline
+newtab-weather-error-not-available = Weather data is not available right now.

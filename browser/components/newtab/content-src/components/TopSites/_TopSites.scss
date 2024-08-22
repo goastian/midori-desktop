@@ -1,5 +1,7 @@
 @use 'sass:math';
 
+/* stylelint-disable max-nesting-depth */
+
 $top-sites-size: $grid-unit-small;
 $top-sites-border-radius: 8px;
 $top-sites-icon-border-radius: 4px;
@@ -15,10 +17,6 @@ $letter-fallback-color: $white;
   list-style: none;
   margin: 0 -40px !important;
   padding: 0;
-  justify-content: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
 
   a {
     text-decoration: none;
@@ -102,6 +100,10 @@ $letter-fallback-color: $white;
     }
   }
 }
+
+.top-site-outer {
+  margin: 0 3px;
+}
 .floorp-backdrop-blur-enable .top-site-outer{
   backdrop-filter: blur(12px);
 }
@@ -109,9 +111,9 @@ $letter-fallback-color: $white;
 // container for drop zone
 .top-site-outer {
   width: 120px;
-  padding: 20px $half-base-gutter 4px;
   border-radius: 8px;
   display: inline-block;
+  margin-block-end: 16px;
 
   background-color: color-mix(in srgb, var(--newtab-background-color) 50%, transparent);
   border: 1px solid rgba(170, 170, 170, 0.6);
@@ -122,6 +124,7 @@ $letter-fallback-color: $white;
     position: relative;
 
     > a {
+      padding: 20px $half-base-gutter 4px;
       color: inherit;
       display: block;
       outline: none;
@@ -133,30 +136,57 @@ $letter-fallback-color: $white;
       opacity: 1;
     }
   }
+
+  // Contrast fix for users who have wallpapers set
+  &:not(:hover, :active, .active) {
+    @include wallpaper-contrast-fix;
+  }
+
+  // Necessary for when navigating by a keyboard, having the context
+  // menu open should display the "…" button. This style is a clone
+  // of the `:active` state for `.context-menu-button`
+  &.active {
+    .context-menu-button {
+      opacity: 1;
+      background-color: var(--newtab-button-active-background);
+    }
+  }
+
   &:is(.active) {
     z-index: 2;
   }
 
   .context-menu-button {
     background-image: url('chrome://global/skin/icons/more.svg');
+    background-color: var(--newtab-button-background);
     border: 0;
     border-radius: 4px;
     cursor: pointer;
-    fill: var(--newtab-text-primary-color);
+    fill: var(--newtab-button-text);
     -moz-context-properties: fill;
     height: 20px;
     width: 20px;
-    inset-inline-end: -9px;
+    inset-inline-end: 3px;
     opacity: 0;
     position: absolute;
     top: -20px;
     transition: opacity 200ms;
 
-    &:is(:active, :focus) {
-      outline: 0;
+    // Contrast fix for users who have wallpapers set
+    @include wallpaper-contrast-fix;
+
+    &:hover {
+      background-color: var(--newtab-button-hover-background);
+
+      &:active {
+        background-color: var(--newtab-button-active-background);
+      }
+    }
+
+    &:focus-visible {
+      background-color: var(--newtab-button-focus-background);
+      border-color: var(--newtab-button-focus-border);
       opacity: 1;
-      background-color: var(--newtab-element-hover-color);
-      fill: var(--newtab-primary-action-background);
     }
   }
 
@@ -173,7 +203,7 @@ $letter-fallback-color: $white;
 
     // For letter fallback
     align-items: center;
-    color: var(--newtab-text-secondary-color);
+    color: var(--newtab-contextual-text-secondary-color);
     display: flex;
     font-size: 32px;
     font-weight: 200;
@@ -257,12 +287,29 @@ $letter-fallback-color: $white;
 
   &.placeholder {
     .tile {
-      box-shadow: $inner-box-shadow;
+      box-shadow: $shadow-card;
+      cursor: default;
+    }
+
+    &.add-button {
+      .tile {
+        background-color: var(--button-background-color);
+
+        .icon-wrapper {
+          background-image: url('chrome://global/skin/icons/plus-20.svg');
+          background-size: cover;
+          background-repeat: no-repeat;
+          height: 20px;
+          width: 20px;
+          fill: var(--icon-color);
+          -moz-context-properties: fill;
+        }
+      }
     }
   }
 
   .title {
-    color: var(--newtab-text-primary-color);
+    color: var(--newtab-contextual-text-primary-color);
     padding-top: 8px;
     font: caption;
     text-align: center;
@@ -270,7 +317,10 @@ $letter-fallback-color: $white;
 
     .icon {
       margin-inline-end: 2px;
-      fill: var(--newtab-text-primary-color);
+      fill: var(--newtab-contextual-text-primary-color);
+
+      // Contrast fix for users who have wallpapers set
+      @include wallpaper-contrast-fix;
     }
 
     span {
@@ -281,7 +331,7 @@ $letter-fallback-color: $white;
     }
 
     .sponsored-label {
-      color: var(--newtab-text-secondary-color);
+      color: var(--newtab-contextual-text-secondary-color);
       font-size: 0.9em;
     }
 

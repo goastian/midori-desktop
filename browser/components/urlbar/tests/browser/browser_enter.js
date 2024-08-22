@@ -3,14 +3,14 @@
 
 "use strict";
 
-const TEST_VALUE = "example.com/\xF7?\xF7";
-const START_VALUE = "example.com/%C3%B7?%C3%B7";
+const TEST_VALUE = "http://example.com/\xF7?\xF7";
+const START_VALUE = "http://example.com/%C3%B7?%C3%B7";
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.suggest.quickactions", false]],
   });
-  const engine = await SearchTestUtils.promiseNewSearchEngine({
+  const engine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "searchSuggestionEngine.xml",
     setAsDefault: true,
   });
@@ -28,7 +28,7 @@ add_task(async function returnKeypress() {
   // Check url bar and selected tab.
   is(
     gURLBar.value,
-    TEST_VALUE,
+    UrlbarTestUtils.trimURL(TEST_VALUE),
     "Urlbar should preserve the value on return keypress"
   );
   is(gBrowser.selectedTab, tab, "New URL was loaded in the current tab");
@@ -54,7 +54,7 @@ add_task(async function altReturnKeypress() {
   // Check url bar and selected tab.
   is(
     gURLBar.value,
-    TEST_VALUE,
+    UrlbarTestUtils.trimURL(TEST_VALUE),
     "Urlbar should preserve the value on return keypress"
   );
   isnot(gBrowser.selectedTab, tab, "New URL was loaded in a new tab");
@@ -81,7 +81,7 @@ add_task(async function altGrReturnKeypress() {
   // Check url bar and selected tab.
   is(
     gURLBar.value,
-    TEST_VALUE,
+    UrlbarTestUtils.trimURL(TEST_VALUE),
     "Urlbar should preserve the value on return keypress"
   );
   isnot(gBrowser.selectedTab, tab, "New URL was loaded in a new tab");
@@ -277,7 +277,7 @@ add_task(async function typeCharWhileProcessingEnter() {
   const onLoad = BrowserTestUtils.browserLoaded(
     gBrowser.selectedBrowser,
     false,
-    `http://${START_VALUE}`
+    START_VALUE
   );
   gURLBar.focus();
 
@@ -296,8 +296,8 @@ add_task(async function typeCharWhileProcessingEnter() {
   EventUtils.synthesizeKey("KEY_Enter", { type: "keyup" });
 
   Assert.equal(
-    gURLBar.inputField.value,
-    TEST_VALUE,
+    gURLBar.value,
+    UrlbarTestUtils.trimURL(TEST_VALUE),
     "The value of urlbar is correct"
   );
 

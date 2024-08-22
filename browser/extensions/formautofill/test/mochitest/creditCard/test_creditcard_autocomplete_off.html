@@ -16,20 +16,30 @@ Form autofill test: simple form credit card autofill
 "use strict";
 
 const MOCK_STORAGE = [{
-  "cc-name": "John Doe",
-  "cc-number": "4929001587121045",
-  "cc-exp-month": 4,
-  "cc-exp-year": 2017,
+  cc: {
+    "cc-name": "John Doe",
+    "cc-number": "4929001587121045",
+    "cc-exp-month": 4,
+    "cc-exp-year": 2017,
+  },
+  expected: {
+    image: "chrome://formautofill/content/third-party/cc-logo-visa.svg"
+  },
 }, {
-  "cc-name": "Timothy Berners-Lee",
-  "cc-number": "5103059495477870",
-  "cc-exp-month": 12,
-  "cc-exp-year": 2022,
+  cc: {
+    "cc-name": "Timothy Berners-Lee",
+    "cc-number": "5103059495477870",
+    "cc-exp-month": 12,
+    "cc-exp-year": 2022,
+  },
+  expected: {
+    image: "chrome://formautofill/content/third-party/cc-logo-mastercard.svg"
+  },
 }];
 
 async function setupCreditCardStorage() {
-  await addCreditCard(MOCK_STORAGE[0]);
-  await addCreditCard(MOCK_STORAGE[1]);
+  await addCreditCard(MOCK_STORAGE[0].cc);
+  await addCreditCard(MOCK_STORAGE[1].cc);
 }
 
 async function setupFormHistory() {
@@ -37,6 +47,11 @@ async function setupFormHistory() {
     {op: "add", fieldname: "cc-name", value: "John Smith"},
     {op: "add", fieldname: "cc-number", value: "6011029476355493"},
   ]);
+}
+
+function replaceStars(str)
+{
+  return str.replaceAll("*", "•")
 }
 
 initPopupListener();
@@ -62,20 +77,21 @@ add_task(async function check_menu_when_both_with_autocomplete_off() {
   await setInput("#cc-number", "");
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(patchRecordCCNumber).map(cc => JSON.stringify({
-    primaryAffix: cc.ccNumberFmt.affix,
-    primary: cc.ccNumberFmt.label,
+  checkMenuEntriesComment(MOCK_STORAGE.map(patchRecordCCNumber).map(({ cc, expected }) => JSON.stringify({
+    primary: replaceStars(cc.ccNumberFmt),
     secondary: cc["cc-name"],
-    ariaLabel: `${getCCTypeName(cc)} ${cc.ccNumberFmt.affix} ${cc.ccNumberFmt.label} ${cc["cc-name"]}`,
+    ariaLabel: `${getCCTypeName(cc)} ${cc.ccNumberFmt.replaceAll("*", "")} ${cc["cc-name"]}`,
+    image: expected.image,
   })));
 
   await setInput("#cc-name", "");
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(MOCK_STORAGE.map(patchRecordCCNumber).map(cc => JSON.stringify({
+  checkMenuEntriesComment(MOCK_STORAGE.map(patchRecordCCNumber).map(({ cc, expected }) => JSON.stringify({
     primary: cc["cc-name"],
-    secondary: cc.ccNumberFmt.affix + cc.ccNumberFmt.label,
-    ariaLabel: `${getCCTypeName(cc)} ${cc["cc-name"]} ${cc.ccNumberFmt.affix}${cc.ccNumberFmt.label}`,
+    secondary: replaceStars(cc.ccNumberFmt),
+    ariaLabel: `${getCCTypeName(cc)} ${cc["cc-name"]} ${cc.ccNumberFmt}`,
+    image: expected.image,
   })));
 });
 

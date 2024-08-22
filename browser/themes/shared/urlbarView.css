@@ -7,18 +7,39 @@
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 :root {
-  --autocomplete-popup-highlight-background: SelectedItem;
-  --autocomplete-popup-highlight-color: SelectedItemText;
+  --urlbarView-hover-background: var(--arrowpanel-dimmed);
+  --urlbarView-separator-color: color-mix(in srgb, currentColor 14%, transparent);
 
-  --urlbar-popup-action-color: hsl(178, 100%, 28%);
+  --urlbarView-highlight-background: SelectedItem;
+  --urlbarView-highlight-color: SelectedItemText;
 
+  --urlbarView-secondary-text-color: color-mix(in srgb, currentColor 73%, transparent);
+
+  --urlbarView-action-color: LinkText;
   --urlbarView-action-slide-in-distance: 200px;
 
-  --urlbarView-row-gutter: 2px;
+  --urlbarView-small-font-size: 0.85em;
 
+  --urlbarView-results-padding: 4px;
+  --urlbarView-row-gutter: 2px;
   --urlbarView-item-inline-padding: var(--urlbar-icon-padding);
-  --urlbarView-favicon-width: 16px;
+  --urlbarView-item-block-padding: 6px;
+
+  /* The inline margins of a row icon. Rows with different icon sizes will define
+     different values for these variables so that the icons of all rows are
+     center-aligned along one vertical axis. Row icons happen to use the
+     `.urlbarView-favicon` class but not all icons are favicons (e.g., rich
+     search suggestion icons are images from the search engine). */
+  --urlbarView-icon-margin-start: 0px;
   --urlbarView-icon-margin-end: calc(var(--urlbar-icon-padding) + var(--identity-box-margin-inline));
+
+  /* The size and inline margins of a standard 16px favicon. The margin variables
+     can be used to align any 16px content along the vertical icon axis. */
+  --urlbarView-favicon-width: 16px;
+  --urlbarView-favicon-margin-start: var(--urlbarView-icon-margin-start);
+  --urlbarView-favicon-margin-end: var(--urlbarView-icon-margin-end);
+
+  --urlbarView-rich-suggestion-default-icon-size: 28px;
 
   --urlbarView-result-button-size: 24px;
   --urlbarView-result-button-background-opacity: 60%;
@@ -26,37 +47,36 @@
   --urlbarView-result-button-selected-background-color: color-mix(in srgb, var(--toolbar-field-focus-background-color) var(--urlbarView-result-button-background-opacity), transparent);
   --urlbarView-result-button-hover-color: var(--toolbar-field-focus-background-color);
   --urlbarView-result-button-hover-background-color: color-mix(in srgb, var(--toolbar-field-focus-color) var(--urlbarView-result-button-background-opacity), transparent);
-}
 
-:root:-moz-lwtheme {
-  --urlbar-popup-action-color: rgb(91,91,102);
-  --urlbar-popup-url-color: rgb(0,97,224);
-  /* Fallback colours for when theme authors don't define lwtheme variables. */
-  --autocomplete-popup-highlight-background: rgb(0, 99, 255);
-  --autocomplete-popup-highlight-color: white;
-}
+  --urlbarView-labeled-row-margin-top: calc(1.46em + 4px);
+  --urlbarView-labeled-row-label-top: calc(-1.27em - 2px);
+  --urlbarView-labeled-tip-margin-top-extra: 8px;
 
-:root[lwt-toolbar-field-focus-brighttext] {
-  --urlbar-popup-url-color: var(--lwt-brighttext-url-color);
-  --urlbar-popup-action-color: #30e60b;
-}
+  --urlbarView-action-button-background-color: light-dark(white, #1C1B22);
+  --urlbarView-action-button-hover-color: light-dark(#5B5B66, var(--buttons-destructive-color));
+  --urlbarView-action-button-selected-color: light-dark(#1C1B22, var(--urlbarView-action-button-background-color));
 
-:root[lwt-toolbar-field-brighttext] {
-  --autocomplete-popup-highlight-background: rgb(0, 99, 225);
-}
-
-:root[lwt-toolbar-field-focus-brighttext] {
-  --urlbar-popup-action-color: rgb(191,191,201);
-}
-
-@media (prefers-contrast) {
-  :root {
-    --urlbarView-result-button-background-opacity: 100%;
+  &:-moz-locale-dir(rtl) {
+    --urlbarView-action-slide-in-distance: -200px;
   }
-}
 
-:root:-moz-locale-dir(rtl) {
-  --urlbarView-action-slide-in-distance: -200px;
+  &[lwtheme] {
+    --urlbarView-action-color: light-dark(rgb(91, 91, 102), rgb(191, 191, 201));
+    --urlbarView-highlight-background: light-dark(rgb(0, 99, 255), rgb(0, 99, 225));
+    --urlbarView-highlight-color: white;
+  }
+
+  @media (prefers-contrast) {
+    --urlbarView-separator-color: color-mix(in srgb, currentColor 86%, transparent);
+    --urlbarView-result-button-background-opacity: 100%;
+    --urlbarView-secondary-text-color: currentColor;
+  }
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media (-moz-bool-pref: "browser.urlbar.richSuggestions.featureGate") {
+    --urlbarView-favicon-margin-start: calc((var(--urlbarView-rich-suggestion-default-icon-size) - var(--urlbarView-favicon-width)) / 2);
+    --urlbarView-favicon-margin-end: calc(var(--urlbar-icon-padding) + var(--identity-box-margin-inline) + ((var(--urlbarView-rich-suggestion-default-icon-size) - var(--urlbarView-favicon-width)) / 2));
+    }
 }
 
 .urlbarView {
@@ -75,23 +95,40 @@
 .urlbarView-body-inner {
   width: calc(100% + 2 * var(--urlbarView-row-gutter));
   margin-inline: calc(-1 * var(--urlbarView-row-gutter));
-}
 
-#urlbar[open] > .urlbarView > .urlbarView-body-outer > .urlbarView-body-inner {
-  border-top: 1px solid var(--autocomplete-popup-separator-color);
+  #urlbar[open] > .urlbarView > .urlbarView-body-outer > & {
+    border-top: 1px solid var(--urlbarView-separator-color);
+  }
 }
 
 .urlbarView-results {
-  padding-block: 4px;
+  padding-block: var(--urlbarView-results-padding);
   white-space: nowrap;
-}
 
-/* Vertically center the one-offs when no results are present. */
-.urlbarView[noresults] > .urlbarView-body-outer > .urlbarView-body-inner > .urlbarView-results {
-  padding-block: 0;
+  /* Vertically center the one-offs when no results are present. */
+  .urlbarView[noresults] > .urlbarView-body-outer > .urlbarView-body-inner > & {
+    padding-block: 0;
+  }
 }
 
 .urlbarView-row {
+  --urlbarView-second-line-indent: calc(var(--urlbarView-icon-margin-start) + var(--urlbarView-icon-margin-end) + var(--urlbarView-favicon-width));
+
+  /* Align icons that are smaller than the default rich suggestion icon size
+    (28px) with default-size rich suggestion icons. */
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media (-moz-bool-pref: "browser.urlbar.richSuggestions.featureGate") {
+    &:not([rich-suggestion]),
+    &[rich-suggestion][icon-size="16"] {
+      --urlbarView-icon-margin-start: var(--urlbarView-favicon-margin-start);
+      --urlbarView-icon-margin-end: var(--urlbarView-favicon-margin-end);
+    }
+    &[rich-suggestion][icon-size="24"] {
+      --urlbarView-icon-margin-start: calc((var(--urlbarView-rich-suggestion-default-icon-size) - 24px) / 2);
+      --urlbarView-icon-margin-end: calc(var(--urlbar-icon-padding) + var(--identity-box-margin-inline) + ((var(--urlbarView-rich-suggestion-default-icon-size) - 24px) / 2));
+    }
+  }
+
   display: flex;
   align-items: center;
   fill: currentColor;
@@ -103,113 +140,126 @@
   border: var(--urlbarView-row-gutter) solid transparent;
   border-radius: calc(var(--urlbarView-row-gutter) + var(--toolbarbutton-border-radius));
   background-clip: padding-box;
-}
 
-.urlbarView-row[row-selectable]:not([selected]):hover {
-  background-color: var(--autocomplete-popup-hover-background);
-}
+  &[row-selectable]:not([selected]):hover {
+    background-color: var(--urlbarView-hover-background);
+  }
 
-.urlbarView-row[selected] {
-  background-color: var(--autocomplete-popup-highlight-background);
-  color: var(--autocomplete-popup-highlight-color);
-}
+  &[selected] {
+    background-color: var(--urlbarView-highlight-background);
+    color: var(--urlbarView-highlight-color);
+  }
 
-:root:not([uidensity=compact]) .urlbarView-row:not([type=tip], [type=dynamic]) {
-  min-height: 32px;
-}
+  &:not([type=tip], [type=dynamic]) {
+    :root:not([uidensity=compact]) & {
+      min-height: 32px;
+    }
+    :root[uidensity=touch] & {
+      padding-block: 11px;
+    }
+  }
 
-:root[uidensity=touch] .urlbarView-row:not([type=tip], [type=dynamic]) {
-  padding-block: 11px;
-}
-
-.urlbarView-row-inner {
-  display: inline-flex;
-  flex: 1 1;
-  flex-wrap: nowrap;
-  overflow: hidden;
-  padding-inline: var(--urlbarView-item-inline-padding);
-  padding-block: 6px;
-}
-
-:root:not([uidensity=compact]) .urlbarView-row-inner {
-  min-height: 20px; /* row min-height 32px - (2 * padding-block 6px) */
+  &[rich-suggestion][type=search] {
+    :root:not([uidensity=compact]) & {
+      min-height: 46px;
+    }
+    :root[uidensity=touch] & {
+      padding-block: 4px;
+    }
+  }
 }
 
 .urlbarView-row-inner,
 .urlbarView-no-wrap {
+  display: inline-flex;
   flex-wrap: nowrap;
-  align-items: center;
+  align-items: baseline;
   justify-content: start;
 }
 
+.urlbarView-row-inner {
+  flex: 1 1;
+  overflow: hidden;
+  padding-inline: var(--urlbarView-item-inline-padding);
+  padding-block: var(--urlbarView-item-block-padding);
+
+  :root:not([uidensity=compact]) & {
+    min-height: 20px; /* row min-height 32px - (2 * padding-block 6px) */
+  }
+}
+
 .urlbarView-no-wrap {
-  display: inline-flex;
   max-width: 100%;
   flex-grow: 0;
   flex-shrink: 0;
-}
 
-.urlbarView-url {
-  flex-grow: 1;
-  flex-shrink: 1;
-}
-
-.urlbarView[actionoverride] .urlbarView-row[has-url] > .urlbarView-row-inner > .urlbarView-no-wrap,
-.urlbarView-row[has-url]:not([type$=tab]) > .urlbarView-row-inner > .urlbarView-no-wrap,
-.urlbarView-row[has-url]:is([type=remotetab], [sponsored]):is(:hover, [selected]) > .urlbarView-row-inner > .urlbarView-no-wrap {
-  /* We prioritize icons + title + action over the url, so they can grow freely,
-     but the url should never disappear when it's visible */
-  flex-shrink: 0;
-  max-width: calc(70% - 2 * (var(--urlbarView-favicon-width) + (6px + 2px)));
+  .urlbarView[action-override] .urlbarView-row[has-url] > .urlbarView-row-inner > &,
+  .urlbarView-row[has-url]:not([type$=tab]) > .urlbarView-row-inner > &,
+  .urlbarView-row[has-url]:is([type=remotetab], [sponsored]):is(:hover, [selected]) > .urlbarView-row-inner > & {
+    /* We prioritize icons + title + action over the url, so they can grow freely,
+       but the url should never disappear when it's visible */
+    max-width: calc(70% - 2 * (var(--urlbarView-favicon-width) + (6px + 2px)));
+  }
 }
 
 /* Wrap the url to a second line when the window is narrow. Do not wrap when the
    window is also short, because fewer results will be shown. */
 @media screen and (min-height: 600px) {
-  .urlbarView-results[wrap] > .urlbarView-row:where(:not([rich-suggestion=with-icon])) > .urlbarView-row-inner {
-    flex-wrap: wrap;
-  }
-  .urlbarView-results[wrap] > .urlbarView-row > .urlbarView-row-inner > .urlbarView-no-wrap {
-    max-width: 100% !important;
-    flex-basis: 100%;
-  }
-  .urlbarView-results[wrap] > .urlbarView-row[has-url] > .urlbarView-row-inner > .urlbarView-url,
-  .urlbarView-results[wrap] > .urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top > .urlbarView-url {
-    margin-top: 2px;
-  }
-  /* urlbarView-url is forced to be LTR for RTL locales, so set the padding based on the browser's directionality. */
-  .urlbarView-results[wrap] > .urlbarView-row[has-url] > .urlbarView-row-inner > .urlbarView-url:-moz-locale-dir(ltr) {
-    padding-left: calc(var(--urlbarView-item-inline-padding) + var(--identity-box-margin-inline) + var(--urlbarView-favicon-width));
-  }
-  .urlbarView-results[wrap] > .urlbarView-row[has-url] > .urlbarView-row-inner > .urlbarView-url:-moz-locale-dir(rtl) {
-    padding-right: calc(var(--urlbarView-item-inline-padding) + var(--identity-box-margin-inline) + var(--urlbarView-favicon-width));
-  }
-  /* When rich suggestions are enabled the space for the icon increases to allow for larger icons */
-  .urlbarView-results[wrap]>.urlbarView-row[rich-suggestion=no-icon][has-url]>.urlbarView-row-inner>.urlbarView-url {
-    margin-inline-start: var(--urlbarView-icon-margin-end);
-  }
-  /* Note: switchtab entries show the url only in override mode,
-     remotetab and sponsored ones only when selected or :hover. */
-  .urlbarView[actionoverride] .urlbarView-results[wrap] > .urlbarView-row[has-url] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-  .urlbarView-results[wrap] > .urlbarView-row[has-url]:not([type$=tab], [sponsored]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-  .urlbarView-results[wrap] > .urlbarView-row[has-url]:is([type=remotetab], [sponsored]):is(:hover, [selected]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-  .urlbarView-results[wrap] > .urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top > .urlbarView-row-body-top-no-wrap > .urlbarView-title-separator,
-  .urlbarView-results[wrap] > .urlbarView-row[type=tabtosearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator {
-    display: none;
-  }
-  .urlbarView-results[wrap] > .urlbarView-row[type=tabtosearch] > .urlbarView-row-inner > .urlbarView-no-wrap {
-    flex-wrap: wrap;
-  }
-  .urlbarView-results[wrap] > .urlbarView-row[type=tabtosearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-    flex-basis: 100%;
-    margin-inline-start: calc(var(--urlbarView-item-inline-padding) + var(--identity-box-margin-inline) + var(--urlbarView-favicon-width));
-  }
+  .urlbarView-results[wrap] > .urlbarView-row {
+    &:where(:not([rich-suggestion])) > .urlbarView-row-inner {
+      flex-wrap: wrap;
 
-  .urlbarView-results[wrap] > .urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top {
-    flex-wrap: wrap;
-  }
-  .urlbarView-results[wrap] > .urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top > .urlbarView-row-body-top-no-wrap {
-    flex-basis: 100%;
+      > .urlbarView-no-wrap {
+        max-width: 100% !important;
+        flex-basis: 100%;
+      }
+    }
+
+    &[has-url] > .urlbarView-row-inner > .urlbarView-url {
+      margin-top: 2px;
+
+      /* urlbarView-url is forced to be LTR for RTL locales, so set the padding based on
+         the browser's directionality. */
+      &:-moz-locale-dir(ltr) {
+        margin-left: var(--urlbarView-second-line-indent);
+      }
+      &:-moz-locale-dir(rtl) {
+        margin-right: var(--urlbarView-second-line-indent);
+      }
+    }
+
+    /* Note: switchtab entries show the url only in override mode,
+       remotetab and sponsored ones only when selected or :hover. */
+    .urlbarView[action-override] &[has-url]:not([restyled-search]),
+    &[has-url]:not([type$=tab], [sponsored], [restyled-search]),
+    &[has-url]:is([type=remotetab], [sponsored]):is(:hover, [selected]),
+    &[type=tabtosearch] {
+      /* This targets both rich and non-rich results, so not using the child selector here. */
+      .urlbarView-title-separator {
+        display: none;
+      }
+    }
+
+    &[type=tabtosearch] > .urlbarView-row-inner > .urlbarView-no-wrap {
+      flex-wrap: wrap;
+
+      > .urlbarView-action {
+        flex-basis: 100%;
+        margin-inline-start: var(--urlbarView-second-line-indent);
+      }
+    }
+
+    &[rich-suggestion] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top {
+      flex-wrap: wrap;
+
+      > .urlbarView-row-body-top-no-wrap {
+        flex-basis: 100%;
+      }
+
+      > .urlbarView-url {
+        margin-top: 2px;
+      }
+    }
   }
 }
 
@@ -223,11 +273,11 @@
   mask-image: linear-gradient(to left, transparent, black 2em);
 }
 
-.urlbarView-overflowable[overflow]:not(.urlbarView-title[isurl]):-moz-locale-dir(rtl) {
+.urlbarView-overflowable[overflow]:not(.urlbarView-title[is-url]):-moz-locale-dir(rtl) {
   mask-image: linear-gradient(to right, transparent, black 2em);
 }
 
-.urlbarView-title[isurl]:-moz-locale-dir(rtl),
+.urlbarView-title[is-url]:-moz-locale-dir(rtl),
 .urlbarView-url:-moz-locale-dir(rtl) {
   direction: ltr !important;
 }
@@ -240,64 +290,31 @@
   text-align: right;
 }
 
-/* Rich Suggestions */
-
-.urlbarView-row[rich-suggestion=with-icon] > .urlbarView-row-inner > .urlbarView-favicon {
-  width: 28px;
-  height: 28px;
-  margin-inline-end: 8px;
-}
-
-.urlbarView-row[rich-suggestion=with-icon] > .urlbarView-row-inner {
-  padding-block: 4px;
-  flex-wrap: nowrap;
-}
-
-.urlbarView-row[rich-suggestion=no-icon]:not([firefox-suggest-sponsored]) .urlbarView-favicon {
-  margin-inline: 4px 16px;
-}
-
-.urlbarView-row[rich-suggestion=with-icon] > .urlbarView-row-inner > .urlbarView-no-wrap {
-  display: grid;
-  grid-template-columns: repeat(3, min-content);
-  align-items: center;
-  flex-shrink: 1;
-}
-
-.urlbarView-row[rich-suggestion=with-icon]:not(:hover) .urlbarView-action {
-  visibility: collapse;
-}
-
-.urlbarView-description {
-  /* We want the description to be last visually but to be after the title
-     in the screenreader */
-  order: 2;
-  grid-area: 2 / 1 / 3 / 4;
-}
-
 /* Favicon */
 
 .urlbarView-favicon {
   width: var(--urlbarView-favicon-width);
   height: var(--urlbarView-favicon-width);
+  align-self: center;
+  margin-inline-start: var(--urlbarView-icon-margin-start);
   margin-inline-end: var(--urlbarView-icon-margin-end);
   background-repeat: no-repeat;
   background-size: contain;
   object-fit: contain;
   flex-shrink: 0;
   -moz-context-properties: fill, fill-opacity;
-}
 
-.urlbarView-row[tail-suggestion] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  visibility: hidden;
-}
+  .urlbarView-row[tail-suggestion] > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    visibility: hidden;
+  }
 
-.urlbarView-row[type=tabtosearch] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  /* We use the URL color for this icon to inherit its accessibility
-     properties, like adapting to high contrast modes. We also want to ensure
-     contrast from the result highlight. */
-  color: var(--urlbar-popup-url-color);
-  -moz-context-properties: fill;
+  .urlbarView-row[type=tabtosearch]:not([selected]) > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    /* We use the URL color for this icon to inherit its accessibility
+       properties, like adapting to high contrast modes. We also want to ensure
+       contrast from the result highlight. */
+    color: var(--link-color);
+    -moz-context-properties: fill;
+  }
 }
 
 /* Type icon */
@@ -306,28 +323,24 @@
   position: absolute;
   width: 12px;
   height: 12px;
+  align-self: center;
   margin-top: var(--urlbarView-favicon-width);
-  margin-inline-start: 8px;
+  margin-inline-start: calc(var(--urlbarView-icon-margin-start) + var(--urlbarView-favicon-width) - 6px);
   background-repeat: no-repeat;
   background-size: contain;
   -moz-context-properties: fill, stroke;
   stroke: var(--toolbar-field-focus-background-color);
-}
 
-/* Favicon badges have this priority: pinned > bookmark. */
+  /* Favicon badges have this priority: pinned > bookmark. */
+  .urlbarView-row[type=bookmark] > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    background-image: url(chrome://browser/skin/bookmark-12.svg);
+    fill: var(--toolbarbutton-icon-fill-attention);
+  }
 
-.urlbarView-row[type=bookmark] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-type-icon {
-  background-image: url(chrome://browser/skin/bookmark-12.svg);
-  fill: var(--toolbarbutton-icon-fill-attention);
-}
-
-.urlbarView-row[pinned] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-type-icon {
-  background-image: url(chrome://browser/skin/pin-12.svg);
-  fill: rgb(91,91,102);
-}
-
-:root[lwt-toolbar-field-focus-brighttext] .urlbarView-row[pinned] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-type-icon {
-  fill: rgb(251,251,254);
+  .urlbarView-row[pinned] > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    background-image: url(chrome://browser/skin/pin-12.svg);
+    fill: light-dark(rgb(91, 91, 102), rgb(251, 251, 254));
+  }
 }
 
 /* Buttons */
@@ -342,34 +355,33 @@
   margin-inline: 4px;
   -moz-context-properties: fill, fill-opacity;
   border-radius: 100%;
-}
 
-.urlbarView-button[selected] {
-  outline: var(--focus-outline);
-  outline-color: var(--autocomplete-popup-highlight-color);
-  outline-offset: 1px;
-}
+  &:not(:hover, [selected], [primary], [open]) {
+    @media (prefers-contrast) {
+      outline: 1px solid currentColor;
+      outline-offset: -1px;
+    }
+  }
 
-.urlbarView-row:is([row-selectable]:hover, [selected]) > .urlbarView-button:not(:hover, [open]) {
-  color: var(--urlbarView-result-button-selected-color);
-  background-color: var(--urlbarView-result-button-selected-background-color);
-}
+  &[selected] {
+    outline: var(--focus-outline);
+    outline-color: var(--urlbarView-highlight-color);
+    outline-offset: 1px;
+  }
 
-.urlbarView-button:is(:hover, [open]) {
-  color: var(--urlbarView-result-button-hover-color);
-  background-color: var(--urlbarView-result-button-hover-background-color);
-}
+  .urlbarView-row:is([row-selectable]:hover, [selected]) > &:not(:hover, [open]) {
+    color: var(--urlbarView-result-button-selected-color);
+    background-color: var(--urlbarView-result-button-selected-background-color);
+  }
 
-.urlbarView-button + .urlbarView-button {
-  margin-inline-start: 0;
-}
+  &:is(:hover, [open]) {
+    color: var(--urlbarView-result-button-hover-color);
+    background-color: var(--urlbarView-result-button-hover-background-color);
+  }
 
-.urlbarView-button-block {
-  background-image: url("chrome://browser/skin/thumb-down.svg");
-}
-
-.urlbarView-button-help {
-  background-image: url("chrome://global/skin/icons/help.svg");
+  & + & {
+    margin-inline-start: 0;
+  }
 }
 
 /* Result menu button */
@@ -377,173 +389,208 @@
 .urlbarView-button-menu {
   background-image: url("chrome://global/skin/icons/more.svg");
   background-color: var(--button-bgcolor);
-}
 
-.urlbarView-results:not([disable-resultmenu-autohide]) > .urlbarView-row:not(:hover, [selected]) > .urlbarView-row-inner + .urlbarView-button-menu:not([open]):empty {
-  display: none;
-}
+  .urlbarView-results:not([disable-resultmenu-autohide]) > .urlbarView-row:not(:hover, [selected]) > .urlbarView-row-inner + &:not([open]):empty {
+    display: none;
+  }
 
-/* Labeled result menu button */
+  /* Labeled result menu button */
 
-.urlbarView-results:not([wrap]) > .urlbarView-row > .urlbarView-button-menu:not(:empty) {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--urlbarView-result-button-size);
-  padding-inline: 8px 26px;
-  background-position-x: right 4px;
-  font-size: 0.85em;
-}
+  &:not(:empty) {
+    .urlbarView-results:not([wrap]) > .urlbarView-row > & {
+      display: inline-flex;
+      align-items: center;
+      border-radius: var(--urlbarView-result-button-size);
+      padding-inline: 8px 26px;
+      background-position-x: right 4px;
+      font-size: var(--urlbarView-small-font-size);
 
-.urlbarView-results:not([wrap]) > .urlbarView-row > .urlbarView-button-menu:not(:empty):-moz-locale-dir(rtl) {
-  background-position-x: left 4px;
-}
+      &:-moz-locale-dir(rtl) {
+        background-position-x: left 4px;
+      }
+    }
 
-.urlbarView-results[wrap] > .urlbarView-row > .urlbarView-button-menu:not(:empty) {
-  /* Hide the label in narrow windows. */
-  font-size: 0;
+    .urlbarView-results[wrap] > .urlbarView-row > & {
+      /* Hide the label in narrow windows. */
+      font-size: 0;
+    }
+  }
 }
 
 /* Button with label, e.g. tip button */
 
-.urlbarView-button:not(:empty, .urlbarView-button-menu) {
+.urlbarView-button:not(:empty):not(.urlbarView-button-menu) {
   border-radius: var(--toolbarbutton-border-radius);
-  padding: 7px;
+  padding: .5em 1em;
+  margin-inline-end: 1.4em;
   font-size: 0.93em;
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
   background-clip: padding-box;
   min-height: 16px;
-  min-width: 8.75em;
+  min-width: 6em;
   text-align: center;
   flex-basis: initial;
   flex-shrink: 0;
-}
 
-.urlbarView-button:not(:empty, :hover, .urlbarView-button-menu) {
-  background-color: var(--button-bgcolor);
-}
+  &:not(:hover) {
+    background-color: var(--button-bgcolor);
+  }
 
-.urlbarView-button:not(:empty, .urlbarView-button-menu)[selected] {
-  color: var(--button-primary-color);
-  background-color: var(--button-primary-bgcolor);
-  outline-offset: var(--focus-outline-offset);
-}
+  &:is([selected], [primary]) {
+    color: var(--button-primary-color);
+    background-color: var(--button-primary-bgcolor);
+    outline-color: var(--button-primary-bgcolor);
+    outline-offset: var(--focus-outline-offset);
 
-.urlbarView-button:not(:empty, .urlbarView-button-menu)[selected]:hover {
-  background-color: var(--button-primary-hover-bgcolor);
-}
+    &:hover {
+      background-color: var(--button-primary-hover-bgcolor);
+    }
 
-.urlbarView-button:not(:empty, .urlbarView-button-menu)[selected]:hover:active {
-  background-color: var(--button-primary-active-bgcolor);
-}
-
-.urlbarView-button:not(:empty) + .urlbarView-button:empty {
-  /* Add space between a labeled button followed by an unlabeled button. */
-  margin-inline-start: 1.8em;
-}
-
-.urlbarView-button:not(:empty, .urlbarView-button-menu):last-child {
-  /* Add space between a labeled button and the trailing edge of the panel. */
-  margin-inline-end: 1.8em;
+    &:hover:active {
+      background-color: var(--button-primary-active-bgcolor);
+    }
+  }
 }
 
 /* Tip rows */
 
 .urlbarView-row[type=tip] {
   padding-block: 18px;
+  border-block: 0;
   border-radius: 0;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--urlbarView-separator-color);
+    margin-bottom: 4px;
+  }
+
+  &:not(:first-child) {
+    border-top: 1px solid var(--urlbarView-separator-color);
+    margin-top: 4px;
+  }
+
+  /* For tips with row labels, move the entire row down by an additional
+     var(--urlbarView-labeled-tip-margin-top-extra) so there's more space
+     between the tip's top border and the label. They're too close otherwise.
+     The row label must also be adjusted; see the row label rules. */
+  &[label] {
+    margin-top: calc(var(--urlbarView-labeled-row-margin-top) + var(--urlbarView-labeled-tip-margin-top-extra));
+  }
+
+  > .urlbarView-row-inner {
+    min-height: 32px;
+    align-items: center;
+
+    /* Add space between the tip title (and the rest of row-inner) and its
+       button. */
+    margin-inline-end: 1.8em;
+
+    > .urlbarView-no-wrap > .urlbarView-title-separator,
+    > .urlbarView-url {
+      display: none;
+    }
+
+    > .urlbarView-no-wrap > .urlbarView-title {
+      white-space: normal;
+    }
+  }
+
+  .urlbarView-results[wrap] > & {
+    display: block;
+    text-align: end;
+
+    > .urlbarView-row-inner {
+      display: block;
+      text-align: start;
+    }
+
+    > .urlbarView-button {
+      margin-top: 1em;
+      margin-bottom: var(--urlbarView-item-block-padding);
+    }
+  }
+
+  &:not([tip-type=dismissalAcknowledgment]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
+    width: 24px;
+    height: 24px;
+    margin-inline-end: 12px;
+    flex-basis: 24px;
+    flex-grow:  0;
+  }
+
+  &[tip-type=dismissalAcknowledgment] {
+    padding-block: 6px;
+
+    &:last-child {
+      padding-block-end: max(0px, 6px - var(--urlbarView-results-padding));
+    }
+  }
 }
 
-.urlbarView-row[type=tip]:not(:last-child) {
-  border-bottom: 1px solid var(--autocomplete-popup-separator-color);
-  margin-bottom: 4px;
-}
-
-.urlbarView-row[type=tip]:not(:first-child) {
-  border-top: 1px solid var(--autocomplete-popup-separator-color);
-  margin-top: 4px;
-}
-
-.urlbarView-row[type=tip] > .urlbarView-row-inner {
-  min-height: 32px;
-
-  /* Add space between the tip title (and the rest of row-inner) and its
-     button. */
-  margin-inline-end: 1.8em;
-}
-
-.urlbarView-row[type=tip]:not([tip-type=dismissalAcknowledgment]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  width: 24px;
-  height: 24px;
-  margin-inline-end: 12px;
-  flex-basis: 24px;
-  flex-grow:  0;
-}
-
-.urlbarView-row[type=tip] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-.urlbarView-row[type=tip] > .urlbarView-row-inner > .urlbarView-url {
-  display: none;
-}
-
-.urlbarView-row[type=tip] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title {
-  white-space: normal;
-}
-
-.urlbarView-row[type=tip][tip-type=dismissalAcknowledgment] {
-  padding-block: 6px;
-}
 
 /* Row label (a.k.a. group label) */
-
-.urlbarView-row[label]::before {
-  content: attr(label);
-  display: block;
-  /* Remove the label from the document flow so it doesn't affect the row
-     selection and hover states. */
-  position: absolute;
-  /* `top` controls how far the label is from the main part of the row. */
-  top: calc(-1.27em - 2px);
-  margin-inline-start: var(--urlbarView-item-inline-padding);
-  font-size: 0.8em;
-  /* The color and opacity of labels is the same as the "This time, search with"
-     text in the search shortcuts. See `.search-panel-header > label` in
-     searchbar.css. */
-  color: var(--toolbar-field-focus-color);
-  opacity: 0.6;
-  pointer-events: none;
-}
-:root[lwt-toolbar-field-focus-brighttext] .urlbarView-row[label]::before {
-  /* Same as `.search-panel-header > label` in searchbar.css */
-  opacity: 1;
-}
 
 .urlbarView-row[label] {
   position: relative;
   /* `margin-block-start` controls how far the main part of the row is from the
      main part of the previous row. */
-  margin-block-start: calc(1.46em + 4px);
+  margin-block-start: var(--urlbarView-labeled-row-margin-top);
+
+  &::before {
+    content: attr(label);
+    display: block;
+    /* Remove the label from the document flow so it doesn't affect the row
+       selection and hover states. */
+    position: absolute;
+    /* `top` controls how far the label is from the main part of the row. */
+    top: var(--urlbarView-labeled-row-label-top);
+    margin-inline-start: var(--urlbarView-item-inline-padding);
+    font-size: 0.8em;
+    /* The color and opacity of labels is the same as the "This time, search with"
+       text in the search shortcuts. See `.search-panel-header > label` in
+       searchbar.css. */
+    color: var(--toolbar-field-focus-color);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* For tips with row labels, the entire row is moved down by an additional
+     var(--urlbarView-labeled-tip-margin-top-extra) so there's more space
+     between the tip's top border and the label; see the tip rules. Here we
+     compensate so that the label remains the same distance from the previous
+     row as it would have had we not moved the tip row down. +1px compensates
+     for the tip's top 1px border. */
+  &[type=tip]::before {
+    top: calc(var(--urlbarView-labeled-row-label-top) - var(--urlbarView-labeled-tip-margin-top-extra) + 1px);
+  }
+
+  :root[lwt-toolbar-field-focus="dark"] &::before {
+    /* Same as `.search-panel-header > label` in searchbar.css */
+    opacity: 1;
+  }
 }
 
 /* Feedback acknowledgment */
 
-.urlbarView-row[feedback-acknowledgment]::after {
-  content: attr(feedback-acknowledgment);
-  display: flex;
-  align-items: center;
-  position: absolute;
-  bottom: 0.72em;
-  font-size: 0.85em;
-  margin-inline-start: var(--urlbarView-item-inline-padding);
-  padding-inline-start: calc(var(--urlbarView-favicon-width) + 6px);
-  background-image: url("chrome://branding/content/icon32.png");
-  background-repeat: no-repeat;
-  background-position: 0 center;
-  background-size: var(--urlbarView-favicon-width);
-  min-height: var(--urlbarView-favicon-width);
-}
-
 .urlbarView-row[feedback-acknowledgment] {
   position: relative;
   padding-bottom: 1.94em;
+
+  &::after {
+    content: attr(feedback-acknowledgment);
+    display: flex;
+    align-items: center;
+    position: absolute;
+    bottom: 0.72em;
+    font-size: var(--urlbarView-small-font-size);
+    margin-inline-start: calc(var(--urlbarView-item-inline-padding) + var(--urlbarView-favicon-margin-start));
+    padding-inline-start: calc(var(--urlbarView-favicon-width) + var(--urlbarView-favicon-margin-end));
+    background-image: url("chrome://branding/content/icon32.png");
+    background-repeat: no-repeat;
+    background-position: 0 center;
+    background-size: var(--urlbarView-favicon-width);
+    min-height: var(--urlbarView-favicon-width);
+  }
 }
 
 /* Title */
@@ -555,197 +602,182 @@
   line-height: 1.4;
 }
 
+/* user context box */
+.urlbarView-userContext {
+  border-top: 4px solid var(--identity-tab-color);
+}
+
+.urlbarView-userContext-icon {
+  height: 14px;
+  width: 14px;
+  -moz-context-properties: fill;
+  vertical-align: top;
+  margin-inline-start: 0.35em;
+}
+
+.urlbarView-userContext-textMode > span {
+  font-variant: small-caps;
+}
+
+/* Display userContext icon instead of text, when window is too narrow. */
+.urlbarView-results[wrap] .urlbarView-userContext-textMode,
+.urlbarView-results:not([wrap]) .urlbarView-userContext-iconMode {
+  display: none;
+}
+
 /* Tail suggestions */
+
 .urlbarView-tail-prefix {
   display: none;
   justify-content: flex-end;
   white-space: pre;
-}
 
-.urlbarView-row[tail-suggestion] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-tail-prefix {
-  display: inline-flex;
-}
+  .urlbarView-row[tail-suggestion] > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    display: inline-flex;
+  }
 
-.urlbarView-tail-prefix > .urlbarView-tail-prefix-string {
-  visibility: hidden;
-}
+  > .urlbarView-tail-prefix-string {
+    visibility: hidden;
+  }
 
-.urlbarView-tail-prefix > .urlbarView-tail-prefix-char {
-  position: absolute;
+  > .urlbarView-tail-prefix-char {
+    position: absolute;
+  }
 }
 
 /* Title separator */
 
-.urlbarView-title-separator::before {
-  content: "\2014";
-  margin: 0 .4em;
-  opacity: 0.6;
+.urlbarView-title-separator {
+  &::before {
+    content: "\2014";
+    margin: 0 .4em;
+    opacity: 0.6;
+  }
+
+  .urlbarView-title:empty + .urlbarView-tags:empty + &,
+  /* This targets both rich and non-rich results, so not using the child selector here. */
+  .urlbarView-row:is([type=search], [restyled-search]):not([selected], [show-action-text], :hover) &,
+  .urlbarView-row:not([has-action], [has-url], [restyled-search]) & {
+    display: none;
+  }
 }
 
-.urlbarView-title:empty + .urlbarView-tags:empty + .urlbarView-title-separator {
-  display: none;
-}
+/* Action labels */
 
-/* URLs, action labels, tags */
+.urlbarView-action {
+  .urlbarView-title:not(:empty) ~ & {
+    font-size: var(--urlbarView-small-font-size);
 
-.urlbarView-tags,
-.urlbarView-url,
-.urlbarView-title:not(:empty) ~ .urlbarView-action {
-  font-size: .85em;
-}
-
-.urlbarView-title:not(:empty) ~ .urlbarView-action {
-  color: var(--urlbar-popup-action-color);
-}
-
-.urlbarView-row[sponsored] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-  color: unset;
-  opacity: .6;
-}
-
-.urlbarView-row[sponsored][selected] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action,
-.urlbarView-row[sponsored] > .urlbarView-row-inner[selected] > .urlbarView-no-wrap > .urlbarView-action {
-  opacity: 1;
-}
-
-/* Firefox Suggest sponsored results */
-
-.urlbarView-row[firefox-suggest-sponsored] > .urlbarView-row-inner {
-  /* 0px of top padding because the space between the favicon/title and the top
-     edge of the row is determined by the favicon margin-top and we don't want
-     any extra padding to complicate that. 1px of bottom padding so the bottom
-     edge of the action isn't touching the bottom edge of the row. The space
-     between the bottom edge of the favicon and the bottom edge of the row is
-     determined by this + the action margin-top. */
-  padding-block: 0 1px;
-}
-
-.urlbarView-row[firefox-suggest-sponsored] > .urlbarView-row-inner > .urlbarView-no-wrap {
-  /* Wrap the action span onto a new row. */
-  flex-wrap: wrap;
-}
-
-.urlbarView-row[firefox-suggest-sponsored] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  /* The favicon should be vertically centered in the row. The action span wraps
-     below the favicon and title, leaving the favicon centered with the title,
-     not the row, so we add margin-top. Normally there is 8x between the top
-     edge of the favicon and the top edge of the row. Here 1em = 13.75px, so
-     that's 8 / 13.75 =~ 0.58em. */
-  margin-top: 0.58em;
-}
-
-.urlbarView-row[firefox-suggest-sponsored] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title {
-  /* The width of favicon + this title element + help icon is over than total
-     displayed width, favicon and title will collapse as different row, the style
-     will be broken. To avoid it, we specify the max displayable width for title
-     explicitly. */
-  flex-basis: calc(100% - var(--urlbarView-favicon-width) - var(--urlbarView-icon-margin-end));
-  /* Move the title away from the action a little. This does not affect the
-     height of the row. */
-  margin-top: -0.3em;
-}
-
-.urlbarView-row[firefox-suggest-sponsored] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-  flex-basis: 100%;
-  margin-inline-start: calc(var(--urlbarView-favicon-width) + var(--urlbarView-icon-margin-end));
-  font-size: 0.73em;
-  /* This value + the bottom padding control the space between the bottom edge
-     of the favicon and the bottom edge of the row. The bottom padding is 1px,
-     leaving 8px - 1px = 7px we need to make up here. Here 1em = 0.73 * 13.75 =~
-     10px, so that's 7 / 10 = 0.7em. However, the action itself takes up some of
-     that space, so it's not that simple. The value used here was arrived at by
-     trial and error and is approximately 5px. */
-  margin-top: -0.5em;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  /* The slide-in effect is delayed ~100ms to reduce motion during result
-     composition. We set opacity: 0 at the 0% keyframe to ensure the text is not
-     seen by the user until after the delay. */
-  @keyframes urlbarView-action-slide-in {
-    0%, 28.6% {
-      translate: var(--urlbarView-action-slide-in-distance);
-      opacity: 0;
+    /* This targets both rich and non-rich results, so not using the child selector here. */
+    .urlbarView-row:not(:hover, [selected], [sponsored]) & {
+      color: var(--urlbarView-action-color);
     }
-    100% {
-      translate: 0;
-      opacity: 1;
+
+    &[slide-in] {
+      @media (prefers-reduced-motion: no-preference) {
+        animation-name: urlbarView-action-slide-in;
+        animation-duration: 350ms;
+        animation-timing-function: var(--animation-easing-function);
+      }
     }
   }
 
-  .urlbarView-results > .urlbarView-row > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title:not(:empty) ~ .urlbarView-action[slide-in] {
-    animation-name: urlbarView-action-slide-in;
-    animation-duration: 350ms;
-    animation-timing-function: var(--animation-easing-function);
+  .urlbarView-row[sponsored]:not([selected]) > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    opacity: .6;
+  }
+
+  .urlbarView-row[has-url]:is([type=remotetab], [sponsored]):is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > &,
+  /* This targets both rich and non-rich results, so not using the child selector here. */
+  .urlbarView-row:is([type=search], [restyled-search]):not([selected], [show-action-text], :hover) &,
+  .urlbarView-row:not([has-action], [has-url], [restyled-search]) > .urlbarView-row-inner > .urlbarView-no-wrap > &,
+  .urlbarView[action-override] .urlbarView-row[type=switchtab] > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    display: none;
   }
 }
+
+/* The slide-in effect is delayed ~100ms to reduce motion during result
+   composition. We set opacity: 0 at the 0% keyframe to ensure the text is not
+   seen by the user until after the delay. */
+@keyframes urlbarView-action-slide-in {
+  0%, 28.6% {
+    translate: var(--urlbarView-action-slide-in-distance);
+    opacity: 0;
+  }
+  100% {
+    translate: 0;
+    opacity: 1;
+  }
+}
+
+/* Switch-to-tab and Clipboard action text is styled as a chiclet. */
+.urlbarView-row:is([type=switchtab], [type=remotetab], [type=clipboard]) {
+  > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
+    color: var(--urlbar-box-text-color);
+    background-color: var(--urlbar-box-focus-bgcolor);
+    border-radius: var(--toolbarbutton-border-radius);
+    padding: 4px 8px;
+    margin-block: -2px;
+    margin-inline-start: 8px;
+
+    :root[uidensity=compact] & {
+      padding: 3px 6px;
+    }
+
+    &.urlbarView-userContext {
+      padding-top: 0;
+    }
+  }
+
+  &:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
+    color: var(--urlbarView-result-button-selected-color);
+    background-color: var(--urlbarView-result-button-selected-background-color);
+  }
+}
+
+.urlbarView:not([action-override]) .urlbarView-row[type=switchtab],
+.urlbarView-row[type=remotetab]:not([selected], :hover),
+.urlbarView-row[type=clipboard] {
+  > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator::before {
+    /* We make the title separator transparent so it stays in the accessibility
+       tree. We want screen readers to pause between the result title and the
+       switch-to-tab action text. */
+    opacity: 0;
+    /* -1em for the width of the \2014 character. -.4em to offset the
+       margin-inline-start already set on this element. */
+    margin-inline-end: -1.4em;
+  }
+}
+
+/* URLs */
 
 .urlbarView-url {
-  color: var(--urlbar-popup-url-color);
+  flex-grow: 1;
+  flex-shrink: 1;
+  font-size: var(--urlbarView-small-font-size);
   /* Increase line-height to avoid cutting overhanging glyphs due to masking on
      the element */
   line-height: 1.4;
-}
 
-.urlbarView-row:is(:hover, [selected]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action,
-.urlbarView-row[selected] > .urlbarView-row-inner > .urlbarView-url,
-.urlbarView-row[type=tabtosearch][selected] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  color: inherit;
-}
+  /* This targets both rich and non-rich results, so not using the child selector here. */
+  .urlbarView-row:not([selected]) & {
+    color: var(--link-color);
+  }
 
-.urlbarView-row:is([type=remotetab], [sponsored]):not([selected], :hover) > .urlbarView-row-inner > .urlbarView-url,
-.urlbarView-row:is([type=search], [restyled-search]):not([selected], [show-action-text], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-.urlbarView-row:not([has-action], [has-url], [restyled-search]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-.urlbarView:not([actionoverride]) .urlbarView-row[type=switchtab] > .urlbarView-row-inner > .urlbarView-url {
-  /* Use visibility:collapse instead of display:none since the latter can
-     confuse the overflow state of title and url elements when their content
-     changes while they're hidden. */
-  visibility: collapse;
-}
-
-.urlbarView-row[has-url]:is([type=remotetab], [sponsored]):is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action,
-.urlbarView-row:is([type=search], [restyled-search]):not([selected], [rich-selection], [show-action-text], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action,
-.urlbarView-row:not([has-action], [has-url], [restyled-search]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action,
-.urlbarView-row[firefox-suggest-sponsored] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator,
-.urlbarView[actionoverride] .urlbarView-row[type=switchtab] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-  display: none;
-}
-
-/* Switch-to-tab action text is styled as a chiclet. */
-.urlbarView-row:is([type=switchtab], [type=remotetab]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-  color: var(--urlbar-box-text-color);
-  background-color: var(--urlbar-box-focus-bgcolor);
-  border-radius: var(--toolbarbutton-border-radius);
-  padding: 6px 8px;
-  margin-block: -6px;
-  margin-inline-start: 8px;
-}
-
-:root[uidensity=compact] .urlbarView-row:is([type=switchtab], [type=remotetab]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-  padding: 3px 6px;
-  margin-block: -3px;
-}
-
-.urlbarView-row:is([type=switchtab], [type=remotetab]):is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-  color: var(--urlbarView-result-button-selected-color);
-  background-color: var(--urlbarView-result-button-selected-background-color);
-}
-
-.urlbarView-row[type=remotetab]:not([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator::before,
-.urlbarView:not([actionoverride]) .urlbarView-row[type=switchtab] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator::before {
-  /* We make the title separator transparent so it stays in the accessibility
-     tree. We want screen readers to pause between the result title and the
-     switch-to-tab action text. */
-  opacity: 0;
-  /* -1em for the width of the \2014 character. -.4em to offset the
-     margin-inline-start already set on this element. */
-  margin-inline-end: -1.4em;
+  .urlbarView-row:is([type=remotetab], [sponsored]):not([selected], :hover) > .urlbarView-row-inner > &,
+  .urlbarView-row:is([show-action-text], [restyled-search]) > .urlbarView-row-inner > &,
+  .urlbarView:not([action-override]) .urlbarView-row[type=switchtab] > .urlbarView-row-inner > & {
+    /* Use visibility:collapse instead of display:none since the latter can
+       confuse the overflow state of these elements when their content
+       changes while they're hidden (bug 1549787). */
+    visibility: collapse;
+  }
 }
 
 /* Tags */
 
 .urlbarView-tags {
   display: flex;
+  font-size: var(--urlbarView-small-font-size);
   /* Increase line-height to avoid cutting overhanging glyphs due to masking on
      the element */
   line-height: 1.4;
@@ -758,64 +790,118 @@
   border-radius: 4px;
 }
 
-/* Best match */
+/* Rich suggestions */
 
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner {
+.urlbarView-row[rich-suggestion] > .urlbarView-row-inner {
   align-items: center;
-  justify-content: start;
 }
 
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner,
-.urlbarView-results[wrap] > .urlbarView-row[type=bestmatch] > .urlbarView-row-inner {
-  flex-wrap: nowrap;
-}
-
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-favicon {
-  width: 52px;
-  height: 52px;
-  flex-basis: 52px;
+.urlbarView-row[rich-suggestion] > .urlbarView-row-inner > .urlbarView-favicon {
+  width: var(--urlbarView-rich-suggestion-default-icon-size);
+  height: var(--urlbarView-rich-suggestion-default-icon-size);
+  flex-basis: var(--urlbarView-rich-suggestion-default-icon-size);
   flex-shrink: 0;
   flex-grow: 0;
-  border-radius: 2px;
+
+  &[icon-size="16"] {
+    width: 16px;
+    height: 16px;
+    flex-basis: 16px;
+  }
+
+  &[icon-size="24"] {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
+  &[icon-size="38"] {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  &[icon-size="52"] {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+    border-radius: 2px;
+  }
 }
 
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body {
+.urlbarView-row[rich-suggestion] > .urlbarView-row-inner > .urlbarView-row-body {
   flex-grow: 1;
   flex-shrink: 1;
   min-width: 0;
+
+  > .urlbarView-row-body-top {
+    display: flex;
+    flex-wrap: nowrap;
+    flex-direction: row;
+    align-items: baseline;
+
+    > .urlbarView-row-body-top-no-wrap {
+      display: flex;
+      flex-wrap: nowrap;
+      flex-direction: row;
+      align-items: baseline;
+      flex-shrink: 0;
+      min-width: 0;
+
+      .urlbarView-results:not([wrap]) > & {
+        /* Limit the title (which is inside .urlbarView-row-body-top-no-wrap) to 70%
+           of the width so the URL is never completely hidden. */
+        max-width: 70%;
+      }
+    }
+  }
+
+  > .urlbarView-row-body-description {
+    max-width: 80ch;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-y: hidden;
+
+    &:not(:empty) + .urlbarView-row-body-bottom:not(:empty) {
+      margin-block-start: 1em;
+    }
+  }
+
+  > :is(.urlbarView-row-body-description, .urlbarView-row-body-bottom) {
+    font-size: var(--urlbarView-small-font-size);
+    white-space: normal;
+  }
 }
 
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top {
-  display: flex;
-  flex-wrap: nowrap;
-  flex-direction: row;
-  align-items: center;
-  justify-content: start;
+.urlbarView-row[rich-suggestion]:not([selected]) > .urlbarView-row-inner > .urlbarView-row-body > :is(.urlbarView-row-body-description, .urlbarView-row-body-bottom) {
+  color: var(--urlbarView-secondary-text-color);
 }
 
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top > .urlbarView-row-body-top-no-wrap {
-  display: flex;
-  flex-wrap: nowrap;
-  flex-direction: row;
-  align-items: center;
-  justify-content: start;
-  flex-shrink: 0;
-  min-width: 0;
+/* Sponsored Firefox Suggest rows */
+
+.urlbarView-row[type$=_adm_sponsored][icon-size="16"] > .urlbarView-row-inner {
+  /* Keep the status quo before these rows were rich suggestions, where the row
+     height is roughly the same as usual rows. */
+  padding-block: 0;
 }
 
-.urlbarView-results:not([wrap]) > .urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-top > .urlbarView-row-body-top-no-wrap {
-  /* Limit the title (which is inside .urlbarView-row-body-top-no-wrap) to 70%
-     of the width so the URL is never completely hidden. */
-  max-width: 70%;
+/* Other Firefox Suggest rows */
+
+.urlbarView-row[type$=_pocket] > .urlbarView-row-inner > .urlbarView-favicon,
+.urlbarView-row[type$=_pocket] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
+  fill: var(--pocket-icon-fill);
+  fill-opacity: 1;
 }
 
-.urlbarView-row[type=bestmatch] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-bottom {
-  font-size: 0.73em;
-  opacity: 0.6;
+.urlbarView-row:is([type$=_amo], [type$=_pocket])[icon-size="24"] > .urlbarView-row-inner > .urlbarView-favicon {
+  padding: calc((52px - 24px) / 2);
+  background-color: var(--urlbar-box-focus-bgcolor);
+  border-radius: 2px;
 }
 
-.urlbarView-row[type=bestmatch][selected] > .urlbarView-row-inner > .urlbarView-row-body > .urlbarView-row-body-bottom {
-  opacity: 1;
+.urlbarView-row:is([type$=_amo], [type$=_pocket])[icon-size="24"]:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-favicon {
+  background-color: var(--urlbarView-result-button-selected-background-color);
 }
 
 /* Search one-offs */
@@ -828,7 +914,7 @@
 }
 
 .urlbarView:not([noresults]) > .search-one-offs:not([hidden]) {
-  border-top: 1px solid var(--autocomplete-popup-separator-color);
+  border-top: 1px solid var(--urlbarView-separator-color);
 }
 
 :root[uidensity=touch] #urlbar .search-one-offs:not([hidden]) {
@@ -938,6 +1024,46 @@
 }
 
 #PopupSearchAutoComplete .autocomplete-richlistitem[selected] {
-  background: var(--autocomplete-popup-highlight-background);
-  color: var(--autocomplete-popup-highlight-color);
+  background: var(--urlbarView-highlight-background);
+  color: var(--urlbarView-highlight-color);
+}
+
+.urlbarView-row:has(.urlbarView-actions-container:not(:empty)) {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.urlbarView-actions-container {
+  margin-inline-start: calc(var(--urlbarView-item-inline-padding) + var(--urlbarView-favicon-margin-start) + var(--urlbarView-favicon-width) + var(--urlbarView-icon-margin-end));
+  margin-block-end: var(--urlbarView-item-block-padding);
+}
+
+.urlbarView-action-btn {
+  font-size: smaller;
+  color: var(--toolbar-field-focus-color);
+  border-radius: var(--toolbarbutton-border-radius);
+  border: 1px solid transparent;
+  padding: .4em .6em;
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--urlbarView-action-button-background-color);
+  box-shadow: 0 0px 4px rgba(0, 0, 0, 0.23);
+}
+
+.urlbarView-action-btn img {
+  width: 16px;
+  height: 16px;
+  margin-inline-end: .4em;
+  -moz-context-properties: fill, fill-opacity;
+}
+
+.urlbarView-action-btn:hover {
+  color: var(--urlbarView-result-button-hover-color);
+  background-color: var(--urlbarView-action-button-hover-color);
+}
+
+.urlbarView-action-btn[selected] {
+  color: light-dark(var(--urlbarView-result-button-hover-color), var(--toolbar-field-focus-color));
+  background-color: var(--urlbarView-action-button-selected-color);
+  border-color: light-dark(transparent, white);
 }

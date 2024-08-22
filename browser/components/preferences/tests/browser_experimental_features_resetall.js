@@ -6,7 +6,7 @@
 // It doesn't matter what two preferences are used here, as long as the first is a built-in
 // one that defaults to false and the second defaults to true.
 const KNOWN_PREF_1 = "browser.display.use_system_colors";
-const KNOWN_PREF_2 = "browser.underline_anchors";
+const KNOWN_PREF_2 = "browser.autofocus";
 
 // This test verifies that pressing the reset all button for experimental features
 // resets all of the checkboxes to their default state.
@@ -27,26 +27,31 @@ add_task(async function testResetAll() {
     {
       id: "test-featureA",
       preference: "test.featureA",
-      defaultValue: false,
+      defaultValueJexl: "false",
     },
     {
       id: "test-featureB",
       preference: "test.featureB",
-      defaultValue: true,
+      defaultValueJexl: "true",
     },
     {
       id: "test-featureC",
       preference: KNOWN_PREF_1,
-      defaultValue: false,
+      defaultValueJexl: "false",
     },
     {
       id: "test-featureD",
       preference: KNOWN_PREF_2,
-      defaultValue: true,
+      defaultValueJexl: "true",
     },
   ];
-  for (let { id, preference, defaultValue } of definitions) {
-    server.addDefinition({ id, preference, defaultValue, isPublic: true });
+  for (let { id, preference, defaultValueJexl } of definitions) {
+    server.addDefinition({
+      id,
+      preference,
+      defaultValueJexl,
+      isPublicJexl: "true",
+    });
   }
 
   await BrowserTestUtils.openNewForegroundTab(

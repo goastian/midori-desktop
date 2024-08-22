@@ -86,6 +86,10 @@ PlacesTreeView.prototype = {
       }
       delete this._editingObservers;
     }
+    // Break the reference cycle between the PlacesTreeView and result.
+    if (this._result) {
+      this._result.removeObserver(this);
+    }
   },
 
   /**
@@ -473,19 +477,13 @@ PlacesTreeView.prototype = {
    * that node was not found, we look for a node that has the same itemId, uri
    * and time values.
    *
-   * @param {object} aUpdatedContainer
-   *        An ancestor of the node which was removed.  It does not have to be
-   *        its direct parent.
    * @param {object} aOldNode
    *        The node which was removed.
    *
    * @returns {number} the row number of an equivalent node for aOldOne, if one was
    *         found, -1 otherwise.
    */
-  _getNewRowForRemovedNode: function PTV__getNewRowForRemovedNode(
-    aUpdatedContainer,
-    aOldNode
-  ) {
+  _getNewRowForRemovedNode: function PTV__getNewRowForRemovedNode(aOldNode) {
     let parent = aOldNode.parent;
     if (parent) {
       // If the node's parent is still set, the node is not obsolete
@@ -523,13 +521,8 @@ PlacesTreeView.prototype = {
    * @param {Array} aNodesInfo
    *        The persisted selection state as returned by
    *        _getSelectedNodesInRange.
-   * @param {object} aUpdatedContainer
-   *        The container which was updated.
    */
-  _restoreSelection: function PTV__restoreSelection(
-    aNodesInfo,
-    aUpdatedContainer
-  ) {
+  _restoreSelection: function PTV__restoreSelection(aNodesInfo) {
     if (!aNodesInfo.length) {
       return;
     }
@@ -541,7 +534,7 @@ PlacesTreeView.prototype = {
     let scrollToRow = -1;
     for (let i = 0; i < aNodesInfo.length; i++) {
       let nodeInfo = aNodesInfo[i];
-      let row = this._getNewRowForRemovedNode(aUpdatedContainer, nodeInfo.node);
+      let row = this._getNewRowForRemovedNode(nodeInfo.node);
       // Select the found node, if any.
       if (row != -1) {
         selection.rangedSelect(row, row, true);
@@ -894,7 +887,7 @@ PlacesTreeView.prototype = {
 
     // Restore selection.
     if (nodesToReselect.length) {
-      this._restoreSelection(nodesToReselect, aNewParent);
+      this._restoreSelection(nodesToReselect);
       this.selection.selectEventsSuppressed = false;
     }
   },
@@ -934,7 +927,7 @@ PlacesTreeView.prototype = {
     }
   },
 
-  nodeTitleChanged: function PTV_nodeTitleChanged(aNode, aNewTitle) {
+  nodeTitleChanged: function PTV_nodeTitleChanged(aNode) {
     this._invalidateCellValue(aNode, this.COLUMN_TYPE_TITLE);
   },
 
@@ -956,8 +949,7 @@ PlacesTreeView.prototype = {
 
   nodeHistoryDetailsChanged: function PTV_nodeHistoryDetailsChanged(
     aNode,
-    aOldVisitDate,
-    aOldVisitCount
+    aOldVisitDate
   ) {
     this._nodeDetails.delete(
       makeNodeDetailsKey({
@@ -976,24 +968,17 @@ PlacesTreeView.prototype = {
     this._invalidateCellValue(aNode, this.COLUMN_TYPE_TAGS);
   },
 
-  nodeKeywordChanged(aNode, aNewKeyword) {},
+  nodeKeywordChanged() {},
 
-  nodeDateAddedChanged: function PTV_nodeDateAddedChanged(aNode, aNewValue) {
+  nodeDateAddedChanged: function PTV_nodeDateAddedChanged(aNode) {
     this._invalidateCellValue(aNode, this.COLUMN_TYPE_DATEADDED);
   },
 
-  nodeLastModifiedChanged: function PTV_nodeLastModifiedChanged(
-    aNode,
-    aNewValue
-  ) {
+  nodeLastModifiedChanged: function PTV_nodeLastModifiedChanged(aNode) {
     this._invalidateCellValue(aNode, this.COLUMN_TYPE_LASTMODIFIED);
   },
 
-  containerStateChanged: function PTV_containerStateChanged(
-    aNode,
-    aOldState,
-    aNewState
-  ) {
+  containerStateChanged: function PTV_containerStateChanged(aNode) {
     this.invalidateContainer(aNode);
   },
 
@@ -1131,7 +1116,7 @@ PlacesTreeView.prototype = {
     this._tree.endUpdateBatch();
 
     // Restore selection.
-    this._restoreSelection(nodesToReselect, aContainer);
+    this._restoreSelection(nodesToReselect);
     this.selection.selectEventsSuppressed = false;
   },
 
@@ -1347,7 +1332,7 @@ PlacesTreeView.prototype = {
     return props + " " + properties;
   },
 
-  getColumnProperties(aColumn) {
+  getColumnProperties() {
     return "";
   },
 
@@ -1583,7 +1568,7 @@ PlacesTreeView.prototype = {
     return node.icon;
   },
 
-  getCellValue(aRow, aColumn) {},
+  getCellValue() {},
 
   getCellText: function PTV_getCellText(aRow, aColumn) {
     let node = this._getNodeForRow(aRow);
@@ -1598,7 +1583,7 @@ PlacesTreeView.prototype = {
         }
         return PlacesUIUtils.getBestTitle(node, true);
       case this.COLUMN_TYPE_TAGS:
-        return node.tags;
+        return node.tags?.replace(",", ", ");
       case this.COLUMN_TYPE_URI:
         if (PlacesUtils.nodeIsURI(node)) {
           return node.uri;
@@ -1646,8 +1631,7 @@ PlacesTreeView.prototype = {
         // detach from result when we are detaching from the tree.
         // This breaks the reference cycle between us and the result.
         if (!aTree) {
-          // Balances the addObserver call from the load method in tree.xml
-          this._result.removeObserver(this);
+          // Close the root container to free up memory and stop live updates.
           this._rootNode.containerOpen = false;
         }
       }
@@ -1866,5 +1850,5 @@ PlacesTreeView.prototype = {
   },
 
   selectionChanged() {},
-  cycleCell(aRow, aColumn) {},
+  cycleCell() {},
 };

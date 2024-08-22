@@ -19,19 +19,13 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.sys.mjs",
   DefaultBrowserCheck: "resource:///modules/BrowserGlue.sys.mjs",
-  ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
+  LaterRun: "resource:///modules/LaterRun.sys.mjs",
+  SearchStaticData: "resource://gre/modules/SearchStaticData.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderTopSites: "resource:///modules/UrlbarProviderTopSites.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "updateManager", () => {
-  return (
-    Cc["@mozilla.org/updates/update-manager;1"] &&
-    Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager)
-  );
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -53,26 +47,32 @@ const TIPS = {
   REDIRECT: "searchTip_redirect",
 };
 
-// This maps engine names to regexes matching their homepages. We show the
-// redirect tip on these pages. The Google domains are taken from
-// https://ipfs.io/ipfs/QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco/wiki/List_of_Google_domains.html.
-const SUPPORTED_ENGINES = new Map([
-  ["Bing", { domainPath: /^www\.bing\.com\/$/ }],
-  [
-    "DuckDuckGo",
-    {
-      domainPath: /^(start\.)?duckduckgo\.com\/$/,
-      prohibitedSearchParams: ["q"],
-    },
-  ],
-  [
-    "Google",
-    {
-      domainPath:
-        /^www\.google\.(com|ac|ad|ae|com\.af|com\.ag|com\.ai|al|am|co\.ao|com\.ar|as|at|com\.au|az|ba|com\.bd|be|bf|bg|com\.bh|bi|bj|com\.bn|com\.bo|com\.br|bs|bt|co\.bw|by|com\.bz|ca|com\.kh|cc|cd|cf|cat|cg|ch|ci|co\.ck|cl|cm|cn|com\.co|co\.cr|com\.cu|cv|com\.cy|cz|de|dj|dk|dm|com\.do|dz|com\.ec|ee|com\.eg|es|com\.et|fi|com\.fj|fm|fr|ga|ge|gf|gg|com\.gh|com\.gi|gl|gm|gp|gr|com\.gt|gy|com\.hk|hn|hr|ht|hu|co\.id|iq|ie|co\.il|im|co\.in|io|is|it|je|com\.jm|jo|co\.jp|co\.ke|ki|kg|co\.kr|com\.kw|kz|la|com\.lb|com\.lc|li|lk|co\.ls|lt|lu|lv|com\.ly|co\.ma|md|me|mg|mk|ml|com\.mm|mn|ms|com\.mt|mu|mv|mw|com\.mx|com\.my|co\.mz|com\.na|ne|com\.nf|com\.ng|com\.ni|nl|no|com\.np|nr|nu|co\.nz|com\.om|com\.pk|com\.pa|com\.pe|com\.ph|pl|com\.pg|pn|com\.pr|ps|pt|com\.py|com\.qa|ro|rs|ru|rw|com\.sa|com\.sb|sc|se|com\.sg|sh|si|sk|com\.sl|sn|sm|so|st|sr|com\.sv|td|tg|co\.th|com\.tj|tk|tl|tm|to|tn|com\.tr|tt|com\.tw|co\.tz|com\.ua|co\.ug|co\.uk|com\.uy|co\.uz|com\.vc|co\.ve|vg|co\.vi|com\.vn|vu|ws|co\.za|co\.zm|co\.zw)\/(webhp)?$/,
-    },
-  ],
-]);
+ChromeUtils.defineLazyGetter(lazy, "SUPPORTED_ENGINES", () => {
+  // Converts a list of Google domains to a pipe separated string of escaped TLDs.
+  // [www.google.com, ..., www.google.co.uk] => "com|...|co\.uk"
+  const googleTLDs = lazy.SearchStaticData.getAlternateDomains("www.google.com")
+    .map(str => str.slice("www.google.".length).replaceAll(".", "\\."))
+    .join("|");
+
+  // This maps engine names to regexes matching their homepages. We show the
+  // redirect tip on these pages.
+  return new Map([
+    ["Bing", { domainPath: /^www\.bing\.com\/$/ }],
+    [
+      "DuckDuckGo",
+      {
+        domainPath: /^(start\.)?duckduckgo\.com\/$/,
+        prohibitedSearchParams: ["q"],
+      },
+    ],
+    [
+      "Google",
+      {
+        domainPath: new RegExp(`^www\.google\.(?:${googleTLDs})\/(webhp)?$`),
+      },
+    ],
+  ]);
+});
 
 // The maximum number of times we'll show a tip across all sessions.
 const MAX_SHOWN_COUNT = 4;
@@ -87,8 +87,8 @@ const SHOW_TIP_DELAY_MS = 200;
 const SHOW_PERSIST_TIP_DELAY_MS = 1500;
 
 // We won't show a tip if the browser has been updated in the past
-// LAST_UPDATE_THRESHOLD_MS.
-const LAST_UPDATE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+// LAST_UPDATE_THRESHOLD_HOURS.
+const LAST_UPDATE_THRESHOLD_HOURS = 24;
 
 /**
  * A provider that sometimes returns a tip result when the user visits the
@@ -160,20 +160,18 @@ class ProviderSearchTips extends UrlbarProvider {
    * If this method returns false, the providers manager won't start a query
    * with this provider, to save on resources.
    *
-   * @param {UrlbarQueryContext} queryContext The query context object
    * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  isActive(queryContext) {
+  isActive() {
     return this.currentTip && lazy.cfrFeaturesUserPref;
   }
 
   /**
    * Gets the provider's priority.
    *
-   * @param {UrlbarQueryContext} queryContext The query context object
    * @returns {number} The provider's priority for the given query.
    */
-  getPriority(queryContext) {
+  getPriority() {
     return this.PRIORITY;
   }
 
@@ -194,6 +192,7 @@ class ProviderSearchTips extends UrlbarProvider {
     this.currentTip = TIPS.NONE;
 
     let defaultEngine = await Services.search.getDefault();
+    let icon = await defaultEngine.getIconURL();
     if (instance != this.queryInstance) {
       return;
     }
@@ -204,7 +203,7 @@ class ProviderSearchTips extends UrlbarProvider {
       {
         type: tip,
         buttons: [{ l10n: { id: "urlbar-search-tips-confirm" } }],
-        icon: defaultEngine.iconURI?.spec,
+        icon,
       }
     );
 
@@ -274,36 +273,11 @@ class ProviderSearchTips extends UrlbarProvider {
     lazy.UrlbarPrefs.set(`tipShownCount.${tip}`, MAX_SHOWN_COUNT);
   }
 
-  /**
-   * Called when the user starts and ends an engagement with the urlbar.  For
-   * details on parameters, see UrlbarProvider.onEngagement().
-   *
-   * @param {boolean} isPrivate
-   *   True if the engagement is in a private context.
-   * @param {string} state
-   *   The state of the engagement, one of: start, engagement, abandonment,
-   *   discard
-   * @param {UrlbarQueryContext} queryContext
-   *   The engagement's query context.  This is *not* guaranteed to be defined
-   *   when `state` is "start".  It will always be defined for "engagement" and
-   *   "abandonment".
-   * @param {object} details
-   *   This is defined only when `state` is "engagement" or "abandonment", and
-   *   it describes the search string and picked result.
-   * @param {window} window
-   *   The browser window where the engagement event took place.
-   */
-  onEngagement(isPrivate, state, queryContext, details, window) {
-    // Ignore engagements on other results that didn't end the session.
-    let { result } = details;
-    if (result?.providerName != this.name && details.isSessionOngoing) {
-      return;
-    }
+  onEngagement(queryContext, controller, details) {
+    this.#pickResult(details.result, controller.browserWindow);
+  }
 
-    if (result?.providerName == this.name) {
-      this.#pickResult(result, window);
-    }
-
+  onSearchSessionEnd() {
     this.showedTipTypeInCurrentEngagement = TIPS.NONE;
   }
 
@@ -439,10 +413,13 @@ class ProviderSearchTips extends UrlbarProvider {
     // Don't show a tip if the browser has been updated recently.
     // Exception: TIPS.PERSIST should show immediately
     // after the feature is enabled for users.
-    let date = await lastBrowserUpdateDate();
+    let hoursSinceUpdate = Math.min(
+      lazy.LaterRun.hoursSinceInstall,
+      lazy.LaterRun.hoursSinceUpdate
+    );
     if (
       tip != TIPS.PERSIST &&
-      Date.now() - date <= LAST_UPDATE_THRESHOLD_MS &&
+      hoursSinceUpdate < LAST_UPDATE_THRESHOLD_HOURS &&
       !ignoreShowLimits
     ) {
       return;
@@ -590,7 +567,7 @@ async function isDefaultEngineHomepage(urlStr) {
     return false;
   }
 
-  let homepageMatches = SUPPORTED_ENGINES.get(defaultEngine.name);
+  let homepageMatches = lazy.SUPPORTED_ENGINES.get(defaultEngine.name);
   if (!homepageMatches) {
     return false;
   }
@@ -611,19 +588,6 @@ async function isDefaultEngineHomepage(urlStr) {
   urlStr = url.hostname.concat(url.pathname);
 
   return homepageMatches.domainPath.test(urlStr);
-}
-
-async function lastBrowserUpdateDate() {
-  // Get the newest update in the update history. This isn't perfect
-  // because these dates are when updates are applied, not when the
-  // user restarts with the update. See bug 1595328.
-  if (lazy.updateManager && lazy.updateManager.getUpdateCount()) {
-    let update = lazy.updateManager.getUpdateAt(0);
-    return update.installDate;
-  }
-  // Fall back to the profile age.
-  let age = await lazy.ProfileAge();
-  return (await age.firstUse) || age.created;
 }
 
 export var UrlbarProviderSearchTips = new ProviderSearchTips();

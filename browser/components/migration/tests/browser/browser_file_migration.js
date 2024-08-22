@@ -62,6 +62,18 @@ class DummyFileMigrator extends FileMigratorBase {
   }
 }
 
+const { MockFilePicker } = SpecialPowers;
+
+add_setup(async () => {
+  // We use MockFilePicker to simulate a native file picker, and prepare it
+  // to return a dummy file pointed at TEST_FILE_PATH. The file at
+  // TEST_FILE_PATH is not required (nor expected) to exist.
+  MockFilePicker.init(window.browsingContext);
+  registerCleanupFunction(() => {
+    MockFilePicker.cleanup();
+  });
+});
+
 /**
  * Tests the flow of selecting a file migrator (in this case,
  * the DummyFileMigrator), getting the file picker opened for it,
@@ -97,13 +109,118 @@ add_task(async function test_file_migration() {
     return SUCCESS_STATE;
   });
 
-  // We use MockFilePicker to simulate a native file picker, and prepare it
-  // to return a dummy file pointed at TEST_FILE_PATH. The file at
-  // TEST_FILE_PATH is not required (nor expected) to exist.
-  const { MockFilePicker } = SpecialPowers;
-  MockFilePicker.init(window);
+  let dummyFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  dummyFile.initWithPath(TEST_FILE_PATH);
+  let filePickerShownPromise = new Promise(resolve => {
+    MockFilePicker.showCallback = () => {
+      Assert.ok(true, "Filepicker shown.");
+      MockFilePicker.setFiles([dummyFile]);
+      resolve();
+    };
+  });
+  MockFilePicker.returnValue = MockFilePicker.returnOK;
+
+  await withMigrationWizardDialog(async prefsWin => {
+    let dialogBody = prefsWin.document.body;
+    let wizard = dialogBody.querySelector("migration-wizard");
+    let shadow = wizard.openOrClosedShadowRoot;
+
+    let wizardDone = BrowserTestUtils.waitForEvent(
+      wizard,
+      "MigrationWizard:DoneMigration"
+    );
+
+    // Now select our DummyFileMigrator from the list.
+    let selector = shadow.querySelector("#browser-profile-selector");
+    EventUtils.synthesizeMouseAtCenter(selector, {}, prefsWin);
+
+    info("Waiting for panel-list shown");
+    await new Promise(resolve => {
+      shadow
+        .querySelector("panel-list")
+        .addEventListener("shown", resolve, { once: true });
+    });
+
+    info("Panel list shown. Clicking on panel-item");
+    let panelItem = shadow.querySelector(
+      `panel-item[key="${DUMMY_FILEMIGRATOR_KEY}"]`
+    );
+    panelItem.click();
+
+    // Selecting a file migrator from the selector should automatically
+    // open the file picker, so we await it here. Once the file is
+    // selected, migration should begin immediately.
+
+    info("Waiting for file picker");
+    await filePickerShownPromise;
+    await wizardDone;
+    Assert.ok(migrateStub.called, "Migrate on DummyFileMigrator was called.");
+
+    // At this point, with migration having completed, we should be showing
+    // the PROGRESS page with the SUCCESS_STATE represented.
+    let deck = shadow.querySelector("#wizard-deck");
+    Assert.equal(
+      deck.selectedViewName,
+      `page-${MigrationWizardConstants.PAGES.FILE_IMPORT_PROGRESS}`
+    );
+
+    // We expect only the displayed resource types in SUCCESS_STATE are
+    // displayed now.
+    let progressGroups = shadow.querySelectorAll(
+      "div[name='page-file-import-progress'] .resource-progress-group"
+    );
+    for (let progressGroup of progressGroups) {
+      let expectedMessageText =
+        SUCCESS_STATE[progressGroup.dataset.resourceType];
+      if (expectedMessageText) {
+        let progressIcon = progressGroup.querySelector(".progress-icon");
+        Assert.stringMatches(
+          progressIcon.getAttribute("state"),
+          "success",
+          "Should be showing completed state."
+        );
+
+        let messageText =
+          progressGroup.querySelector(".message-text").textContent;
+        Assert.equal(messageText, expectedMessageText);
+      } else {
+        Assert.ok(
+          BrowserTestUtils.isHidden(progressGroup),
+          `Resource progress group for ${progressGroup.dataset.resourceType}` +
+            ` should be hidden.`
+        );
+      }
+    }
+  });
+
+  sandbox.restore();
+});
+
+/**
+ * Tests that the migration wizard will go back to the selection page and
+ * show an error message if the migration for a FileMigrator throws an
+ * exception.
+ */
+add_task(async function test_file_migration_error() {
+  let migrator = new DummyFileMigrator();
+  let sandbox = sinon.createSandbox();
   registerCleanupFunction(() => {
-    MockFilePicker.cleanup();
+    sandbox.restore();
+  });
+
+  // First, use Sinon to insert our DummyFileMigrator as the only available
+  // file migrator.
+  sandbox.stub(MigrationUtils, "getFileMigrator").callsFake(() => {
+    return migrator;
+  });
+  sandbox.stub(MigrationUtils, "availableFileMigrators").get(() => {
+    return [migrator];
+  });
+
+  const ERROR_MESSAGE = "This is my error message";
+
+  let migrateStub = sandbox.stub(migrator, "migrate").callsFake(() => {
+    throw new Error(ERROR_MESSAGE);
   });
 
   let dummyFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
@@ -129,17 +246,17 @@ add_task(async function test_file_migration() {
 
     // Now select our DummyFileMigrator from the list.
     let selector = shadow.querySelector("#browser-profile-selector");
-    selector.click();
+    EventUtils.synthesizeMouseAtCenter(selector, {}, prefsWin);
 
     info("Waiting for panel-list shown");
     await new Promise(resolve => {
-      wizard
+      shadow
         .querySelector("panel-list")
         .addEventListener("shown", resolve, { once: true });
     });
 
     info("Panel list shown. Clicking on panel-item");
-    let panelItem = wizard.querySelector(
+    let panelItem = shadow.querySelector(
       `panel-item[key="${DUMMY_FILEMIGRATOR_KEY}"]`
     );
     panelItem.click();
@@ -154,32 +271,36 @@ add_task(async function test_file_migration() {
     Assert.ok(migrateStub.called, "Migrate on DummyFileMigrator was called.");
 
     // At this point, with migration having completed, we should be showing
-    // the PROGRESS page with the SUCCESS_STATE represented.
+    // the SELECTION page again with the ERROR_MESSAGE displayed.
     let deck = shadow.querySelector("#wizard-deck");
-    Assert.equal(
-      deck.selectedViewName,
-      `page-${MigrationWizardConstants.PAGES.FILE_IMPORT_PROGRESS}`
-    );
-
-    // We expect only the displayed resource types in SUCCESS_STATE are
-    // displayed now.
-    let progressGroups = shadow.querySelectorAll(
-      "div[name='page-page-file-import-progress'] .resource-progress-group"
-    );
-    for (let progressGroup of progressGroups) {
-      let expectedSuccessText =
-        SUCCESS_STATE[progressGroup.dataset.resourceType];
-      if (expectedSuccessText) {
-        let successText =
-          progressGroup.querySelector(".success-text").textContent;
-        Assert.equal(successText, expectedSuccessText);
-      } else {
-        Assert.ok(
-          BrowserTestUtils.is_hidden(progressGroup),
-          `Resource progress group for ${progressGroup.dataset.resourceType}` +
-            ` should be hidden.`
+    await BrowserTestUtils.waitForMutationCondition(
+      deck,
+      { attributeFilter: ["selected-view"] },
+      () => {
+        return (
+          deck.getAttribute("selected-view") ==
+          "page-" + MigrationWizardConstants.PAGES.SELECTION
         );
       }
-    }
+    );
+
+    Assert.equal(
+      selector.selectedPanelItem.getAttribute("key"),
+      DUMMY_FILEMIGRATOR_KEY,
+      "Should have the file migrator selected."
+    );
+
+    let errorMessageContainer = shadow.querySelector(".file-import-error");
+    Assert.ok(
+      BrowserTestUtils.isVisible(errorMessageContainer),
+      "Should be showing the error message container"
+    );
+
+    let fileImportErrorMessage = shadow.querySelector(
+      "#file-import-error-message"
+    ).textContent;
+    Assert.equal(fileImportErrorMessage, ERROR_MESSAGE);
   });
+
+  sandbox.restore();
 });

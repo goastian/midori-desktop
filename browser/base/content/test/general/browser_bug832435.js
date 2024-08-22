@@ -2,25 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-function test() {
-  waitForExplicitFinish();
-  ok(true, "Starting up");
-
-  gBrowser.selectedBrowser.focus();
-  gURLBar.addEventListener(
-    "focus",
-    function () {
-      ok(true, "Invoked onfocus handler");
-      EventUtils.synthesizeKey("VK_RETURN", { shiftKey: true });
-
-      // javscript: URIs are evaluated async.
-      SimpleTest.executeSoon(function () {
-        ok(true, "Evaluated without crashing");
-        finish();
-      });
-    },
-    { once: true }
+ChromeUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
+  const { UrlbarTestUtils: module } = ChromeUtils.importESModule(
+    "resource://testing-common/UrlbarTestUtils.sys.mjs"
   );
-  gURLBar.inputField.value = "javascript: var foo = '11111111'; ";
-  gURLBar.focus();
-}
+  module.init(this);
+  return module;
+});
+
+add_task(async function test() {
+  gBrowser.selectedBrowser.focus();
+  await UrlbarTestUtils.inputIntoURLBar(
+    window,
+    "javascript: var foo = '11111111'; "
+  );
+  ok(gURLBar.focused, "Address bar is focused");
+  EventUtils.synthesizeKey("VK_RETURN");
+
+  // javscript: URIs are evaluated async.
+  await new Promise(resolve => SimpleTest.executeSoon(resolve));
+  ok(true, "Evaluated without crashing");
+});

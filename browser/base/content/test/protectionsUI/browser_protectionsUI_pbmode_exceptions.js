@@ -44,7 +44,7 @@ function testTrackingPage() {
   ok(!gProtectionsHandler.hasException, "content shows no exception");
 
   ok(
-    BrowserTestUtils.is_visible(gProtectionsHandler.iconBox),
+    BrowserTestUtils.isVisible(gProtectionsHandler.iconBox),
     "icon box is visible"
   );
   ok(gProtectionsHandler.iconBox.hasAttribute("active"), "shield is active");
@@ -53,8 +53,10 @@ function testTrackingPage() {
     "icon box shows no exception"
   );
   is(
-    gProtectionsHandler._trackingProtectionIconTooltipLabel.textContent,
-    gNavigatorBundle.getString("trackingProtection.icon.activeTooltip2"),
+    gProtectionsHandler._trackingProtectionIconTooltipLabel.getAttribute(
+      "data-l10n-id"
+    ),
+    "tracking-protection-icon-active",
     "correct tooltip"
   );
 }
@@ -70,13 +72,15 @@ function testTrackingPageUnblocked() {
     "shield shows exception"
   );
   is(
-    gProtectionsHandler._trackingProtectionIconTooltipLabel.textContent,
-    gNavigatorBundle.getString("trackingProtection.icon.disabledTooltip2"),
+    gProtectionsHandler._trackingProtectionIconTooltipLabel.getAttribute(
+      "data-l10n-id"
+    ),
+    "tracking-protection-icon-disabled",
     "correct tooltip"
   );
 
   ok(
-    BrowserTestUtils.is_visible(gProtectionsHandler.iconBox),
+    BrowserTestUtils.isVisible(gProtectionsHandler.iconBox),
     "icon box is visible"
   );
 }

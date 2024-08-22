@@ -22,33 +22,18 @@ const NON_SPONSORED_SEARCH_STRING = "nonspon";
 const TEST_URL = "http://example.com/quicksuggest";
 
 const REMOTE_SETTINGS_RESULTS = [
-  {
-    id: 1,
-    url: `${TEST_URL}?q=${SPONSORED_SEARCH_STRING}`,
-    title: "frabbits",
+  QuickSuggestTestUtils.ampRemoteSettings({
     keywords: [SPONSORED_SEARCH_STRING],
-    click_url: "http://click.reporting.test.com/",
-    impression_url: "http://impression.reporting.test.com/",
-    advertiser: "TestAdvertiser",
-  },
-  {
-    id: 2,
-    url: `${TEST_URL}?q=${NON_SPONSORED_SEARCH_STRING}`,
-    title: "Non-Sponsored",
+  }),
+  QuickSuggestTestUtils.wikipediaRemoteSettings({
     keywords: [NON_SPONSORED_SEARCH_STRING],
-    click_url: "http://click.reporting.test.com/nonsponsored",
-    impression_url: "http://impression.reporting.test.com/nonsponsored",
-    advertiser: "TestAdvertiserNonSponsored",
-    iab_category: "5 - Education",
-  },
+  }),
 ];
 
-add_setup(async function () {
-  // This test intermittently times out on Mac TV WebRender.
-  if (AppConstants.platform == "macosx") {
-    requestLongerTimeout(3);
-  }
+// Trying to avoid timeouts.
+requestLongerTimeout(3);
 
+add_setup(async function () {
   await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
   await UrlbarTestUtils.formHistory.clear();
@@ -57,7 +42,7 @@ add_setup(async function () {
   await SearchTestUtils.installSearchExtension({}, { setAsDefault: true });
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
-    remoteSettingsResults: [
+    remoteSettingsRecords: [
       {
         type: "data",
         attachment: REMOTE_SETTINGS_RESULTS,
@@ -312,8 +297,8 @@ async function doTest({
     isSponsored,
     index: expectedIndex,
     url: isSponsored
-      ? `${TEST_URL}?q=${SPONSORED_SEARCH_STRING}`
-      : `${TEST_URL}?q=${NON_SPONSORED_SEARCH_STRING}`,
+      ? REMOTE_SETTINGS_RESULTS[0].url
+      : REMOTE_SETTINGS_RESULTS[1].url,
   });
 
   await UrlbarTestUtils.promisePopupClose(window);
@@ -344,7 +329,7 @@ async function withSuggestions(callback) {
   await SpecialPowers.pushPrefEnv({
     set: [[SUGGESTIONS_PREF, true]],
   });
-  let engine = await SearchTestUtils.promiseNewSearchEngine({
+  let engine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
   });
   let oldDefaultEngine = await Services.search.getDefault();

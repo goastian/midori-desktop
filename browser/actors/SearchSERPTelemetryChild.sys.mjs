@@ -13,13 +13,38 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
-  "serpEventsEnabled",
-  "browser.search.serpEventTelemetry.enabled",
+  "serpEventTelemetryCategorization",
+  "browser.search.serpEventTelemetryCategorization.enabled",
   false
 );
 
-const SHARED_DATA_KEY = "SearchTelemetry:ProviderInfo";
-export const ADLINK_CHECK_TIMEOUT_MS = 1000;
+export const CATEGORIZATION_SETTINGS = {
+  MAX_DOMAINS_TO_CATEGORIZE: 10,
+};
+
+// Duplicated from SearchSERPTelemetry to avoid loading the module on content
+// startup.
+const SEARCH_TELEMETRY_SHARED = {
+  PROVIDER_INFO: "SearchTelemetry:ProviderInfo",
+  LOAD_TIMEOUT: "SearchTelemetry:LoadTimeout",
+  SPA_LOAD_TIMEOUT: "SearchTelemetry:SPALoadTimeout",
+};
+
+/**
+ * Standard events mapped to the telemetry action.
+ */
+const EVENT_TYPE_TO_ACTION = {
+  click: "clicked",
+};
+
+/**
+ * A map of object conditions mapped to the condition that should be run when
+ * an event is triggered. The condition name is referenced in Remote Settings
+ * under the optional `condition` string for an event listener.
+ */
+const CONDITIONS = {
+  keydownEnter: event => event.key == "Enter",
+};
 
 /**
  * SearchProviders looks after keeping track of the search provider information
@@ -38,14 +63,17 @@ class SearchProviders {
    * Gets the search provider information for any provider with advert information.
    * If there is nothing in the cache, it will obtain it from shared data.
    *
-   * @returns {object} Returns the search provider information. @see SearchTelemetry.jsm
+   * @returns {object} Returns the search provider information.
+   * @see SearchTelemetry.sys.mjs
    */
   get info() {
     if (this._searchProviderInfo) {
       return this._searchProviderInfo;
     }
 
-    this._searchProviderInfo = Services.cpmm.sharedData.get(SHARED_DATA_KEY);
+    this._searchProviderInfo = Services.cpmm.sharedData.get(
+      SEARCH_TELEMETRY_SHARED.PROVIDER_INFO
+    );
 
     if (!this._searchProviderInfo) {
       return null;
@@ -81,7 +109,7 @@ class SearchProviders {
   handleEvent(event) {
     switch (event.type) {
       case "change": {
-        if (event.changedKeys.includes(SHARED_DATA_KEY)) {
+        if (event.changedKeys.includes(SEARCH_TELEMETRY_SHARED.PROVIDER_INFO)) {
           // Just null out the provider information for now, we'll fetch it next
           // time we need it.
           this._searchProviderInfo = null;
@@ -89,6 +117,129 @@ class SearchProviders {
         break;
       }
     }
+  }
+}
+
+/**
+ * @typedef {object} EventListenerParam
+ * @property {string} eventType
+ *  The type of event the listener should listen for. If the event type is
+ *  is non-standard, it should correspond to a definition in
+ *  CUSTOM_EVENT_TYPE_TO_DATA that will re-map it to a standard type. TODO
+ * @property {string} target
+ *  The type of component that was the source of the event.
+ * @property {string | null} action
+ *  The action that should be reported in telemetry.
+ */
+
+/**
+ * Provides a way to add listeners to elements, as well as unload them.
+ */
+class ListenerHelper {
+  /**
+   * Adds each event listener in an array of event listeners to each element
+   * in an array of elements, and sets their unloading.
+   *
+   * @param {Array<Element>} elements
+   *  DOM elements to add event listeners to.
+   * @param {Array<EventListenerParam>} eventListenerParams
+   *  The type of event to add the listener to.
+   * @param {string} target
+   */
+  static addListeners(elements, eventListenerParams, target) {
+    if (!elements?.length || !eventListenerParams?.length) {
+      return;
+    }
+
+    let document = elements[0].ownerGlobal.document;
+    let callback = documentToEventCallbackMap.get(document);
+    if (!callback) {
+      return;
+    }
+
+    // The map might have entries from previous callers, so we must ensure
+    // we don't discard existing event listener callbacks.
+    let removeListenerCallbacks = [];
+    if (documentToRemoveEventListenersMap.has(document)) {
+      removeListenerCallbacks = documentToRemoveEventListenersMap.get(document);
+    }
+
+    for (let params of eventListenerParams) {
+      let removeListeners = ListenerHelper.addListener(
+        elements,
+        params,
+        target,
+        callback
+      );
+      removeListenerCallbacks = removeListenerCallbacks.concat(removeListeners);
+    }
+
+    documentToRemoveEventListenersMap.set(document, removeListenerCallbacks);
+  }
+
+  /**
+   * Add an event listener to each element in an array of elements.
+   *
+   * @param {Array<Element>} elements
+   *  DOM elements to add event listeners to.
+   * @param {EventListenerParam} eventListenerParam
+   * @param {string} target
+   * @param {Function} callback
+   * @returns {Array<function>} Array of remove event listener functions.
+   */
+  static addListener(elements, eventListenerParam, target, callback) {
+    let { action, eventType, target: customTarget } = eventListenerParam;
+
+    if (customTarget) {
+      target = customTarget;
+    }
+
+    if (!action) {
+      action = EVENT_TYPE_TO_ACTION[eventType];
+      if (!action) {
+        return [];
+      }
+    }
+
+    // Some events might have specific conditions we want to check before
+    // registering an engagement event.
+    let eventCallback;
+    if (eventListenerParam.condition) {
+      if (CONDITIONS[eventListenerParam.condition]) {
+        let condition = CONDITIONS[eventListenerParam.condition];
+        eventCallback = async event => {
+          let start = Cu.now();
+          if (condition(event)) {
+            callback({ action, target });
+          }
+          ChromeUtils.addProfilerMarker(
+            "SearchSERPTelemetryChild._eventCallback",
+            start,
+            "Call cached function before callback."
+          );
+        };
+      } else {
+        // If a component included a condition, but it wasn't found it is
+        // due to the fact that it was added in a more recent Firefox version
+        // than what is provided via search-telemetry-v2. Since the version of
+        // Firefox the user is using doesn't include this condition,
+        // we shouldn't add the event.
+        return [];
+      }
+    } else {
+      eventCallback = () => {
+        callback({ action, target });
+      };
+    }
+
+    let removeListenerCallbacks = [];
+    for (let element of elements) {
+      element.addEventListener(eventType, eventCallback);
+      removeListenerCallbacks.push(() => {
+        element.removeEventListener(eventType, eventCallback);
+      });
+    }
+    return removeListenerCallbacks;
   }
 }
 
@@ -238,12 +389,24 @@ class SearchAdImpression {
     // - For others, map its component type and check visibility.
     for (let [element, data] of this.#elementToAdDataMap.entries()) {
       if (data.type == "incontent_searchbox") {
+        // Bug 1880413: Deprecate hard coding the incontent search box.
         // If searchbox has child elements, observe those, otherwise
         // fallback to its parent element.
-        this.#addEventListenerToElements(
-          data.childElements.length ? data.childElements : [element],
-          data.type,
-          false
+        let searchElements = data.childElements.length
+          ? data.childElements
+          : [element];
+        ListenerHelper.addListeners(
+          searchElements,
+          [
+            { eventType: "click", target: data.type },
+            {
+              eventType: "keydown",
+              target: data.type,
+              action: "submitted",
+              condition: "keydownEnter",
+            },
+          ],
+          data.type
         );
         continue;
       }
@@ -338,6 +501,12 @@ class SearchAdImpression {
     if (!href) {
       return "";
     }
+
+    // Avoid extracting or fixing up Javascript URLs.
+    if (href.startsWith("javascript")) {
+      return "";
+    }
+
     // Hrefs can be relative.
     if (!href.startsWith("https://") && !href.startsWith("http://")) {
       href = origin + href;
@@ -385,7 +554,19 @@ class SearchAdImpression {
           });
         }
         if (result.relatedElements?.length) {
-          this.#addEventListenerToElements(result.relatedElements, result.type);
+          // Bug 1880413: Deprecate related elements.
+          // Bottom-up approach with related elements are only used for
+          // non-link elements related to ads, like carousel arrows.
+          ListenerHelper.addListeners(
+            result.relatedElements,
+            [
+              {
+                action: "expanded",
+                eventType: "click",
+              },
+            ],
+            result.type
+          );
         }
       }
     }
@@ -414,25 +595,60 @@ class SearchAdImpression {
         component.included.parent.selector
       );
       if (parents.length) {
+        let eventListeners = component.included.parent.eventListeners;
+        if (eventListeners?.length) {
+          ListenerHelper.addListeners(parents, eventListeners, component.type);
+        }
         for (let parent of parents) {
+          // Bug 1880413: Deprecate related elements.
+          // Top-down related elements are either used for auto-suggested
+          // elements of a searchbox, or elements on a page which we can't
+          // find through a bottom up approach but we want an add a listener,
+          // like carousels with arrows.
           if (component.included.related?.selector) {
-            this.#addEventListenerToElements(
-              parent.querySelectorAll(component.included.related.selector),
-              component.type
+            let relatedElements = parent.querySelectorAll(
+              component.included.related.selector
             );
+            if (relatedElements.length) {
+              // For the search box, related elements with event listeners are
+              // auto-suggested terms. For everything else (e.g. carousels)
+              // they are expanded.
+              ListenerHelper.addListeners(
+                relatedElements,
+                [
+                  {
+                    action:
+                      component.type == "incontent_searchbox"
+                        ? "submitted"
+                        : "expanded",
+                    eventType: "click",
+                  },
+                ],
+                component.type
+              );
+            }
           }
           if (component.included.children) {
             for (let child of component.included.children) {
               let childElements = parent.querySelectorAll(child.selector);
               if (childElements.length) {
-                this.#recordElementData(parent, {
-                  type: component.type,
-                  childElements: Array.from(childElements),
-                });
-                break;
+                if (child.eventListeners) {
+                  childElements = Array.from(childElements);
+                  ListenerHelper.addListeners(
+                    childElements,
+                    child.eventListeners,
+                    child.type ?? component.type
+                  );
+                }
+                if (!child.skipCount) {
+                  this.#recordElementData(parent, {
+                    type: component.type,
+                    childElements: Array.from(childElements),
+                  });
+                }
               }
             }
-          } else {
+          } else if (!component.included.parent.skipCount) {
             this.#recordElementData(parent, {
               type: component.type,
             });
@@ -774,84 +990,325 @@ class SearchAdImpression {
       });
     }
   }
+}
+
+/**
+ * An object indicating which elements to examine for domains to extract and
+ * which heuristic technique to use to extract that element's domain.
+ *
+ * @typedef {object} ExtractorInfo
+ * @property {string} selectors
+ *  A string representing the CSS selector that targets the elements on the
+ *  page that contain domains we want to extract.
+ * @property {string} method
+ *  A string representing which domain extraction heuristic to use.
+ *  One of: "href", "dataAttribute" or "textContent".
+ * @property {object | null} options
+ *  Options related to the domain extraction heuristic used.
+ * @property {string | null} options.dataAttributeKey
+ *  The key name of the data attribute to lookup.
+ * @property {string | null} options.queryParamKey
+ *  The key name of the query param value to lookup.
+ * @property {boolean | null} options.queryParamValueIsHref
+ *  Whether the query param value is expected to contain an href.
+ */
+
+/**
+ * DomainExtractor examines elements on a page to retrieve the domains.
+ */
+class DomainExtractor {
+  /**
+   * Extract domains from the page using an array of information pertaining to
+   * the SERP.
+   *
+   * @param {Document} document
+   *  The document for the SERP we are extracting domains from.
+   * @param {Array<ExtractorInfo>} extractorInfos
+   *  Information used to target the domains we need to extract.
+   * @param {string} providerName
+   *  Name of the search provider.
+   * @return {Set<string>}
+   *  A set of the domains extracted from the page.
+   */
+  extractDomainsFromDocument(document, extractorInfos, providerName) {
+    let extractedDomains = new Set();
+    if (!extractorInfos?.length) {
+      return extractedDomains;
+    }
+
+    for (let extractorInfo of extractorInfos) {
+      if (!extractorInfo.selectors) {
+        continue;
+      }
+
+      let elements = document.querySelectorAll(extractorInfo.selectors);
+      if (!elements) {
+        continue;
+      }
+
+      switch (extractorInfo.method) {
+        case "href": {
+          // Origin is used in case a URL needs to be made absolute.
+          let origin = new URL(document.documentURI).origin;
+          this.#fromElementsConvertHrefsIntoDomains(
+            elements,
+            origin,
+            providerName,
+            extractedDomains,
+            extractorInfo.options?.queryParamKey,
+            extractorInfo.options?.queryParamValueIsHref
+          );
+          break;
+        }
+        case "dataAttribute": {
+          this.#fromElementsRetrieveDataAttributeValues(
+            elements,
+            providerName,
+            extractorInfo.options?.dataAttributeKey,
+            extractedDomains
+          );
+          break;
+        }
+        case "textContent": {
+          this.#fromElementsRetrieveTextContent(
+            elements,
+            extractedDomains,
+            providerName
+          );
+          break;
+        }
+      }
+    }
+
+    return extractedDomains;
+  }
 
   /**
-   * Adds a click listener to a specific element.
+   * Given a list of elements, extract domains using href attributes. If the
+   * URL in the href includes the specified query param, the domain will be
+   * that query param's value. Otherwise it will be the hostname of the href
+   * attribute's URL.
    *
-   * @param {Array<Element>} elements
-   *  DOM elements to add event listeners to.
-   * @param {string} type
-   *  The component type of the element.
-   * @param {boolean} isRelated
-   *  Whether the elements input are related to components or are actual
-   *  components.
+   * @param {NodeList<Element>} elements
+   *  A list of elements from the page whose href attributes we want to
+   *  inspect.
+   * @param {string} origin
+   *  Origin of the current page.
+   * @param {string} providerName
+   *  The name of the search provider.
+   * @param {Set<string>} extractedDomains
+   *  The result set of domains extracted from the page.
+   * @param {string | null} queryParam
+   *  An optional query param to search for in an element's href attribute.
+   * @param {boolean | null} queryParamValueIsHref
+   *  Whether the query param value is expected to contain an href.
    */
-  #addEventListenerToElements(elements, type, isRelated = true) {
-    if (!elements?.length) {
-      return;
-    }
-    let clickAction = "clicked";
-    let keydownEnterAction = "clicked";
+  #fromElementsConvertHrefsIntoDomains(
+    elements,
+    origin,
+    providerName,
+    extractedDomains,
+    queryParam,
+    queryParamValueIsHref
+  ) {
+    for (let element of elements) {
+      if (this.#exceedsThreshold(extractedDomains.size)) {
+        return;
+      }
 
-    switch (type) {
-      case "incontent_searchbox":
-        keydownEnterAction = "submitted";
-        if (isRelated) {
-          // The related element to incontent_search are autosuggested elements
-          // which when clicked should cause different action than if the
-          // searchbox is clicked.
-          clickAction = "submitted";
-        }
-        break;
-      case "ad_carousel":
-      case "refined_search_buttons":
-        if (isRelated) {
-          clickAction = "expanded";
-        }
-        break;
-    }
+      let href = element.getAttribute("href");
 
-    let document = elements[0].ownerGlobal.document;
-    let url = document.documentURI;
-    let callback = documentToEventCallbackMap.get(document);
+      let url;
+      try {
+        url = new URL(href, origin);
+      } catch (ex) {
+        continue;
+      }
+
+      // Ignore non-standard protocols.
+      if (url.protocol != "https:" && url.protocol != "http:") {
+        continue;
+      }
+
+      if (queryParam) {
+        let paramValue = url.searchParams.get(queryParam);
+        if (queryParamValueIsHref) {
+          try {
+            paramValue = new URL(paramValue).hostname;
+          } catch (e) {
+            continue;
+          }
+          paramValue = this.#processDomain(paramValue, providerName);
+        }
+        if (paramValue && !extractedDomains.has(paramValue)) {
+          extractedDomains.add(paramValue);
+        }
+      } else if (url.hostname) {
+        let processedHostname = this.#processDomain(url.hostname, providerName);
+        if (processedHostname && !extractedDomains.has(processedHostname)) {
+          extractedDomains.add(processedHostname);
+        }
+      }
+    }
+  }
+
+  /**
+   * Given a list of elements, examine each for the specified data attribute.
+   * If found, add that data attribute's value to the result set of extracted
+   * domains as is.
+   *
+   * @param {NodeList<Element>} elements
+   *  A list of elements from the page whose data attributes we want to
+   *  inspect.
+   * @param {string} providerName
+   *  The name of the search provider.
+   * @param {string} attribute
+   *  The name of a data attribute to search for within an element.
+   * @param {Set<string>} extractedDomains
+   *  The result set of domains extracted from the page.
+   */
+  #fromElementsRetrieveDataAttributeValues(
+    elements,
+    providerName,
+    attribute,
+    extractedDomains
+  ) {
+    for (let element of elements) {
+      if (this.#exceedsThreshold(extractedDomains.size)) {
+        return;
+      }
+      let value = element.dataset[attribute];
+      value = this.#processDomain(value, providerName);
+      if (value && !extractedDomains.has(value)) {
+        extractedDomains.add(value);
+      }
+    }
+  }
+
+  /* Given a list of elements, examine the text content for each element, which
+   * may be 1) a URL from which we can extract a domain or 2) text we can fix
+   * up to create a best guess as to a URL. If either condition is met, we add
+   * the domain to the result set.
+   *
+   * @param {NodeList<Element>} elements
+   *  A list of elements from the page whose text content we want to inspect.
+   * @param {Set<string>} extractedDomains
+   *  The result set of domains extracted from the page.
+   * @param {string} providerName
+   *  The name of the search provider.
+   */
+  #fromElementsRetrieveTextContent(elements, extractedDomains, providerName) {
+    // Not an exhaustive regex, but it fits our purpose for this method.
+    const LOOSE_URL_REGEX =
+      /^(?:https?:\/\/)?(?:www\.)?(?:[\w\-]+\.)+(?:[\w\-]{2,})/i;
+
+    // Known but acceptable limitations to this function, where the return
+    // value won't be correctly fixed up:
+    //   1) A url is embedded within other text. Ex: "xkcd.com is cool."
+    //   2) The url contains legal but unusual characters. Ex: $ ! * '
+    function fixup(textContent) {
+      return textContent
+        .toLowerCase()
+        .replaceAll(" ", "")
+        .replace(/\.$/, "")
+        .concat(".com");
+    }
 
     for (let element of elements) {
-      let clickCallback = () => {
-        callback({
-          type,
-          url,
-          action: clickAction,
-        });
-      };
-      element.addEventListener("click", clickCallback);
+      if (this.#exceedsThreshold(extractedDomains.size)) {
+        return;
+      }
+      let textContent = element.textContent;
+      if (!textContent) {
+        continue;
+      }
 
-      let keydownCallback = event => {
-        if (event.key == "Enter") {
-          callback({
-            type,
-            url,
-            action: keydownEnterAction,
-          });
+      let domain;
+      if (LOOSE_URL_REGEX.test(textContent)) {
+        // Creating a new URL object will throw if the protocol is missing.
+        if (!/^https?:\/\//.test(textContent)) {
+          textContent = "https://" + textContent;
         }
-      };
-      element.addEventListener("keydown", keydownCallback);
 
-      document.ownerGlobal.addEventListener(
-        "pagehide",
-        () => {
-          element.removeEventListener("click", clickCallback);
-          element.removeEventListener("keydown", keydownCallback);
-        },
-        { once: true }
-      );
+        try {
+          domain = new URL(textContent).hostname;
+        } catch (e) {
+          domain = fixup(textContent);
+        }
+      } else {
+        domain = fixup(textContent);
+      }
+
+      let processedDomain = this.#processDomain(domain, providerName);
+      if (processedDomain && !extractedDomains.has(processedDomain)) {
+        extractedDomains.add(processedDomain);
+      }
     }
+  }
+
+  /**
+   * Processes a raw domain extracted from the SERP into its final form before
+   * categorization.
+   *
+   * @param {string} domain
+   *   The domain extracted from the page.
+   * @param {string} providerName
+   *   The provider associated with the page.
+   * @returns {string}
+   *   The domain without any subdomains.
+   */
+  #processDomain(domain, providerName) {
+    if (
+      domain.startsWith(`${providerName}.`) ||
+      domain.includes(`.${providerName}.`)
+    ) {
+      return "";
+    }
+    return this.#stripDomainOfSubdomains(domain);
+  }
+
+  /**
+   * Helper to strip domains of any subdomains.
+   *
+   * @param {string} domain
+   *   The domain to strip of any subdomains.
+   * @returns {object} browser
+   *   The given domain with any subdomains removed.
+   */
+  #stripDomainOfSubdomains(domain) {
+    let tld;
+    // Can throw an exception if the input has too few domain levels.
+    try {
+      tld = Services.eTLD.getKnownPublicSuffixFromHost(domain);
+    } catch (ex) {
+      return "";
+    }
+
+    let domainWithoutTLD = domain.substring(0, domain.length - tld.length);
+    let secondLevelDomain = domainWithoutTLD.split(".").at(-2);
+
+    return secondLevelDomain ? `${secondLevelDomain}.${tld}` : "";
+  }
+
+  /**
+   * Per a request from Data Science, we need to limit the number of domains
+   * categorized to 10 non-ad domains and 10 ad domains.
+   *
+   * @param {number} nDomains The number of domains processed.
+   * @returns {boolean} Whether or not the threshold was exceeded.
+   */
+  #exceedsThreshold(nDomains) {
+    return nDomains >= CATEGORIZATION_SETTINGS.MAX_DOMAINS_TO_CATEGORIZE;
   }
 }
 
+export const domainExtractor = new DomainExtractor();
 const searchProviders = new SearchProviders();
 const searchAdImpression = new SearchAdImpression();
 
 const documentToEventCallbackMap = new WeakMap();
+const documentToRemoveEventListenersMap = new WeakMap();
+const documentToSubmitMap = new WeakMap();
 
 /**
  * SearchTelemetryChild monitors for pages that are partner searches, and
@@ -863,6 +1320,13 @@ const documentToEventCallbackMap = new WeakMap();
  * given.
  */
 export class SearchSERPTelemetryChild extends JSWindowActorChild {
+  /**
+   * Amount of time to wait after a page event before examining the page
+   * for ads.
+   *
+   * @type {number | null}
+   */
+  #adTimeout;
   /**
    * Determines if there is a provider that matches the supplied URL and returns
    * the information associated with that provider.
@@ -925,7 +1389,6 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
     }
 
     if (
-      lazy.serpEventsEnabled &&
       providerInfo.components?.length &&
       (eventType == "load" || eventType == "pageshow")
     ) {
@@ -934,8 +1397,11 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
       let timerId = Glean.serp.categorizationDuration.start();
 
       let pageActionCallback = info => {
+        if (info.action == "submitted") {
+          documentToSubmitMap.set(doc, true);
+        }
         this.sendAsyncMessage("SearchTelemetry:Action", {
-          type: info.type,
+          target: info.target,
           url: info.url,
           action: info.action,
         });
@@ -967,6 +1433,36 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
         });
       }
     }
+
+    if (
+      lazy.serpEventTelemetryCategorization &&
+      providerInfo.domainExtraction &&
+      (eventType == "load" || eventType == "pageshow")
+    ) {
+      let start = Cu.now();
+      let nonAdDomains = domainExtractor.extractDomainsFromDocument(
+        doc,
+        providerInfo.domainExtraction.nonAds,
+        providerInfo.telemetryId
+      );
+      let adDomains = domainExtractor.extractDomainsFromDocument(
+        doc,
+        providerInfo.domainExtraction.ads,
+        providerInfo.telemetryId
+      );
+
+      this.sendAsyncMessage("SearchTelemetry:Domains", {
+        url,
+        nonAdDomains,
+        adDomains,
+      });
+
+      ChromeUtils.addProfilerMarker(
+        "SearchSERPTelemetryChild._checkForAdLink",
+        start,
+        "Extract domains from elements"
+      );
+    }
   }
 
   /**
@@ -994,6 +1490,16 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
     }
   }
 
+  #removeEventListeners() {
+    let callbacks = documentToRemoveEventListenersMap.get(this.document);
+    if (callbacks) {
+      for (let callback of callbacks) {
+        callback();
+      }
+      documentToRemoveEventListenersMap.delete(this.document);
+    }
+  }
+
   /**
    * Handles events received from the actor child notifications.
    *
@@ -1010,17 +1516,13 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
         // so that we remain consistent with the *.in-content:sap* count for the
         // SEARCH_COUNTS histogram.
         if (event.persisted) {
+          this.#checkForPageImpressionComponents();
           this.#check(event.type);
-          if (lazy.serpEventsEnabled) {
-            this.#checkForPageImpressionComponents();
-          }
         }
         break;
       }
       case "DOMContentLoaded": {
-        if (lazy.serpEventsEnabled) {
-          this.#checkForPageImpressionComponents();
-        }
+        this.#checkForPageImpressionComponents();
         this.#check(event.type);
         break;
       }
@@ -1034,10 +1536,43 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
         break;
       }
       case "pagehide": {
+        let callbacks = documentToRemoveEventListenersMap.get(this.document);
+        if (callbacks) {
+          for (let removeEventListenerCallback of callbacks) {
+            removeEventListenerCallback();
+          }
+          documentToRemoveEventListenersMap.delete(this.document);
+        }
         this.#cancelCheck();
         break;
       }
     }
+  }
+
+  async receiveMessage(message) {
+    switch (message.name) {
+      case "SearchSERPTelemetry:WaitForSPAPageLoad":
+        lazy.setTimeout(() => {
+          this.#checkForPageImpressionComponents();
+          this._checkForAdLink("load");
+        }, Services.cpmm.sharedData.get(SEARCH_TELEMETRY_SHARED.SPA_LOAD_TIMEOUT));
+        break;
+      case "SearchSERPTelemetry:StopTrackingDocument":
+        this.#removeDocumentFromSubmitMap();
+        this.#removeEventListeners();
+        break;
+      case "SearchSERPTelemetry:DidSubmit":
+        return this.#didSubmit();
+    }
+    return null;
+  }
+
+  #didSubmit() {
+    return documentToSubmitMap.get(this.document);
+  }
+
+  #removeDocumentFromSubmitMap() {
+    documentToSubmitMap.delete(this.document);
   }
 
   #urlIsSERP(url) {
@@ -1049,8 +1584,10 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
       // To check this, we look for the presence of the query parameter
       // that contains a search term.
       let queries = new URLSearchParams(url.split("#")[0].split("?")[1]);
-      if (queries.has(provider.queryParamName)) {
-        return true;
+      for (let queryParamName of provider.queryParamNames) {
+        if (queries.get(queryParamName)) {
+          return true;
+        }
       }
     }
     return false;
@@ -1063,9 +1600,14 @@ export class SearchSERPTelemetryChild extends JSWindowActorChild {
   }
 
   #check(eventType) {
+    if (!this.#adTimeout) {
+      this.#adTimeout = Services.cpmm.sharedData.get(
+        SEARCH_TELEMETRY_SHARED.LOAD_TIMEOUT
+      );
+    }
     this.#cancelCheck();
     this._waitForContentTimeout = lazy.setTimeout(() => {
       this._checkForAdLink(eventType);
-    }, ADLINK_CHECK_TIMEOUT_MS);
+    }, this.#adTimeout);
   }
 }

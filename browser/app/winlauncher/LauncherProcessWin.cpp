@@ -93,12 +93,11 @@ static nsReturnRef<HANDLE> CreateJobAndAssignProcess(HANDLE aProcess) {
   nsAutoHandle empty;
   nsAutoHandle job(::CreateJobObjectW(nullptr, nullptr));
 
-  // Set JOB_OBJECT_LIMIT_BREAKAWAY_OK to allow the browser process
-  // to put child processes into a job on Win7, which does not support
-  // nested jobs.  See CanUseJob() in sandboxBroker.cpp.
+  // Set JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK to put only browser process
+  // into a job without putting children of browser process into the job.
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {};
   jobInfo.BasicLimitInformation.LimitFlags =
-      JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+      JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
   if (!::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation,
                                  &jobInfo, sizeof(jobInfo))) {
     return empty.out();
@@ -121,12 +120,6 @@ static nsReturnRef<HANDLE> CreateJobAndAssignProcess(HANDLE aProcess) {
 #  define PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_OFF \
     (0x00000002ULL << 40)
 #endif  // !defined(PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_OFF)
-
-#if (_WIN32_WINNT < 0x0602)
-BOOL WINAPI
-SetProcessMitigationPolicy(PROCESS_MITIGATION_POLICY aMitigationPolicy,
-                           PVOID aBuffer, SIZE_T aBufferLen);
-#endif  // (_WIN32_WINNT >= 0x0602)
 
 /**
  * Any mitigation policies that should be set on the browser process should go

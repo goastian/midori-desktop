@@ -17,8 +17,6 @@ var { IconDetails } = ExtensionParent;
 // WeakMap[Extension -> SidebarAction]
 let sidebarActionMap = new WeakMap();
 
-const sidebarURL = "chrome://browser/content/webext-panels.xhtml";
-
 /**
  * Responsible for the sidebar_action section of the manifest as well
  * as the associated sidebar browser.
@@ -28,7 +26,7 @@ this.sidebarAction = class extends ExtensionAPI {
     return sidebarActionMap.get(extension);
   }
 
-  onManifestEntry(entryName) {
+  onManifestEntry() {
     let { extension } = this;
 
     extension.once("ready", this.onReady.bind(this));
@@ -39,8 +37,7 @@ this.sidebarAction = class extends ExtensionAPI {
     // from that when it is viewed, so we shouldn't need to update that.
     let widgetId = makeWidgetId(extension.id);
     this.id = `${widgetId}-sidebar-action`;
-    this.menuId = `menu_${this.id}`;
-    this.buttonId = `button_${this.id}`;
+    this.menuId = `menubar_menu_${this.id}`;
 
     this.browserStyle = options.browser_style;
 
@@ -52,10 +49,8 @@ this.sidebarAction = class extends ExtensionAPI {
     };
     this.globals = Object.create(this.defaults);
 
-
 /****************************************** Floorp ************************************************************************************/
 
-    let { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
     let prefObj = JSON.parse(Services.prefs.getStringPref("floorp.extensions.webextensions.sidebar-action"));
 
     const keys = Object.keys(this.defaults.icon);
@@ -73,6 +68,8 @@ this.sidebarAction = class extends ExtensionAPI {
 
 /**************************************************************************************************************************************/
 
+
+
     this.tabContext = new TabContext(target => {
       let window = target.ownerGlobal;
       if (target === window) {
@@ -87,23 +84,6 @@ this.sidebarAction = class extends ExtensionAPI {
     };
     windowTracker.addOpenListener(this.windowOpenListener);
 
-    this.updateHeader = event => {
-      let window = event.target.ownerGlobal;
-      let details = this.tabContext.get(window.gBrowser.selectedTab);
-      let header = window.document.getElementById("sidebar-switcher-target");
-      if (window.SidebarUI.currentID === this.id) {
-        this.setMenuIcon(header, details);
-      }
-    };
-
-    this.windowCloseListener = window => {
-      let header = window.document.getElementById("sidebar-switcher-target");
-      if (header) {
-        header.removeEventListener("SidebarShown", this.updateHeader);
-      }
-    };
-    windowTracker.addCloseListener(this.windowCloseListener);
-
     sidebarActionMap.set(extension, this);
   }
 
@@ -112,7 +92,7 @@ this.sidebarAction = class extends ExtensionAPI {
   }
 
   onShutdown(isAppShutdown) {
-    sidebarActionMap.delete(this.this);
+    sidebarActionMap.delete(this.extension);
 
     this.tabContext.shutdown();
 
@@ -123,32 +103,18 @@ this.sidebarAction = class extends ExtensionAPI {
     }
 
     for (let window of windowTracker.browserWindows()) {
-      let { document, SidebarUI } = window;
-      if (SidebarUI.currentID === this.id) {
-        SidebarUI.hide();
-      }
-      let menu = document.getElementById(this.menuId);
-      if (menu) {
-        menu.remove();
-      }
-      let button = document.getElementById(this.buttonId);
-      if (button) {
-        button.remove();
-      }
-      let header = document.getElementById("sidebar-switcher-target");
-      header.removeEventListener("SidebarShown", this.updateHeader);
-      SidebarUI.sidebars.delete(this.id);
+      let { SidebarController } = window;
+      SidebarController.removeExtension(this.id);
     }
     windowTracker.removeOpenListener(this.windowOpenListener);
-    windowTracker.removeCloseListener(this.windowCloseListener);
   }
 
   static onUninstall(id) {
     const sidebarId = `${makeWidgetId(id)}-sidebar-action`;
     for (let window of windowTracker.browserWindows()) {
-      let { SidebarUI } = window;
-      if (SidebarUI.lastOpenedId === sidebarId) {
-        SidebarUI.lastOpenedId = null;
+      let { SidebarController } = window;
+      if (SidebarController.lastOpenedId === sidebarId) {
+        SidebarController.lastOpenedId = null;
       }
     }
   }
@@ -162,12 +128,12 @@ this.sidebarAction = class extends ExtensionAPI {
     let install = this.extension.startupReason === "ADDON_INSTALL";
     for (let window of windowTracker.browserWindows()) {
       this.updateWindow(window);
-      let { SidebarUI } = window;
+      let { SidebarController } = window;
       if (
         (install && this.extension.manifest.sidebar_action.open_at_install) ||
-        SidebarUI.lastOpenedId == this.id
+        SidebarController.lastOpenedId == this.id
       ) {
-        SidebarUI.show(this.id);
+        SidebarController.show(this.id);
       }
     }
   }
@@ -176,66 +142,44 @@ this.sidebarAction = class extends ExtensionAPI {
     if (!this.extension.canAccessWindow(window)) {
       return;
     }
-    let { document, SidebarUI } = window;
-    let keyId = `ext-key-id-${this.id}`;
-
-    SidebarUI.sidebars.set(this.id, {
-      title: details.title,
-      url: sidebarURL,
+    this.panel = details.panel;
+    let { SidebarController, devicePixelRatio } = window;
+    SidebarController.registerExtension(this.id, {
+      ...this.getMenuIcon(details, devicePixelRatio),
       menuId: this.menuId,
-      buttonId: this.buttonId,
-      // The following properties are specific to extensions
+      title: details.title,
       extensionId: this.extension.id,
-      panel: details.panel,
-      browserStyle: this.browserStyle,
+      onload: () =>
+        SidebarController.browser.contentWindow.loadPanel(
+          this.extension.id,
+          this.panel,
+          this.browserStyle
+        ),
     });
-
-    let header = document.getElementById("sidebar-switcher-target");
-    header.addEventListener("SidebarShown", this.updateHeader);
-
-    // Insert a menuitem for View->Show Sidebars.
-    let menuitem = document.createXULElement("menuitem");
-    menuitem.setAttribute("id", this.menuId);
-    menuitem.setAttribute("type", "checkbox");
-    menuitem.setAttribute("label", details.title);
-    menuitem.setAttribute("oncommand", `SidebarUI.toggle("${this.id}");`);
-    menuitem.setAttribute("class", "menuitem-iconic webextension-menuitem");
-    menuitem.setAttribute("key", keyId);
-    this.setMenuIcon(menuitem, details);
-
-    // Insert a toolbarbutton for the sidebar dropdown selector.
-    let toolbarbutton = document.createXULElement("toolbarbutton");
-    toolbarbutton.setAttribute("id", this.buttonId);
-    toolbarbutton.setAttribute("label", details.title);
-    toolbarbutton.setAttribute("oncommand", `SidebarUI.show("${this.id}");`);
-    toolbarbutton.setAttribute(
-      "class",
-      "subviewbutton subviewbutton-iconic webextension-menuitem"
-    );
-    toolbarbutton.setAttribute("key", keyId);
-    this.setMenuIcon(toolbarbutton, details);
-
-    document.getElementById("viewSidebarMenu").appendChild(menuitem);
-    let separator = document.getElementById("sidebar-extensions-separator");
-    separator.parentNode.insertBefore(toolbarbutton, separator);
-    SidebarUI.updateShortcut({ button: toolbarbutton });
-
-    return menuitem;
   }
 
-  setMenuIcon(menuitem, details) {
+  /**
+   * Retrieve the icon to be rendered in sidebar menus.
+   *
+   * @param {object} details
+   * @param {object} details.icon
+   *   Extension icons.
+   * @param {number} scale
+   *   Scaling factor of the icon's size.
+   * @returns {{ icon: string; iconUrl: string }}
+   */
+  getMenuIcon({ icon }, scale) {
     let getIcon = size =>
       IconDetails.escapeUrl(
-        IconDetails.getPreferredIcon(details.icon, this.extension, size).icon
+        IconDetails.getPreferredIcon(icon, this.extension, size).icon
       );
 
-    menuitem.setAttribute(
-      "style",
-      `
-      --webextension-menuitem-image: url("${getIcon(16)}");
-      --webextension-menuitem-image-2x: url("${getIcon(32)}");
-    `
-    );
+    const iconUrl = getIcon(16 * scale);
+    // TODO Bug 1898257 - Only return iconUrl here, remove usages of icon.
+    return {
+      icon: `image-set(url("${getIcon(16)}"), url("${getIcon(32)}") 2x)`,
+      iconUrl,
+    };
   }
 
   /**
@@ -247,34 +191,26 @@ this.sidebarAction = class extends ExtensionAPI {
    *        Tab specific sidebar configuration.
    */
   updateButton(window, tabData) {
-    let { document, SidebarUI } = window;
+    let { document, SidebarController, devicePixelRatio } = window;
     let title = tabData.title || this.extension.name;
-    let menu = document.getElementById(this.menuId);
-    if (!menu) {
-      menu = this.createMenuItem(window, tabData);
+    if (!document.getElementById(this.menuId)) {
+      // Menu items are added when new windows are opened, or from onReady (when
+      // an extension has fully started). The menu item may be missing at this
+      // point if the extension updates the sidebar during its startup.
+      this.createMenuItem(window, tabData);
     }
-
-    let urlChanged = tabData.panel !== SidebarUI.sidebars.get(this.id).panel;
+    let urlChanged = tabData.panel !== this.panel;
     if (urlChanged) {
-      SidebarUI.sidebars.get(this.id).panel = tabData.panel;
+      this.panel = tabData.panel;
     }
-
-    menu.setAttribute("label", title);
-    this.setMenuIcon(menu, tabData);
-
-    let button = document.getElementById(this.buttonId);
-    button.setAttribute("label", title);
-    this.setMenuIcon(button, tabData);
-
-    // Update the sidebar if this extension is the current sidebar.
-    if (SidebarUI.currentID === this.id) {
-      SidebarUI.title = title;
-      let header = document.getElementById("sidebar-switcher-target");
-      this.setMenuIcon(header, tabData);
-      if (SidebarUI.isOpen && urlChanged) {
-        SidebarUI.show(this.id);
-      }
-    }
+    SidebarController.setExtensionAttributes(
+      this.id,
+      {
+        ...this.getMenuIcon(tabData, devicePixelRatio),
+        label: title,
+      },
+      urlChanged
+    );
   }
 
   /**
@@ -415,9 +351,9 @@ this.sidebarAction = class extends ExtensionAPI {
    * @param {ChromeWindow} window
    */
   triggerAction(window) {
-    let { SidebarUI } = window;
-    if (SidebarUI && this.extension.canAccessWindow(window)) {
-      SidebarUI.toggle(this.id);
+    let { SidebarController } = window;
+    if (SidebarController && this.extension.canAccessWindow(window)) {
+      SidebarController.toggle(this.id);
     }
   }
 
@@ -427,9 +363,9 @@ this.sidebarAction = class extends ExtensionAPI {
    * @param {ChromeWindow} window
    */
   open(window) {
-    let { SidebarUI } = window;
-    if (SidebarUI && this.extension.canAccessWindow(window)) {
-      SidebarUI.show(this.id);
+    let { SidebarController } = window;
+    if (SidebarController && this.extension.canAccessWindow(window)) {
+      SidebarController.show(this.id);
     }
   }
 
@@ -440,7 +376,7 @@ this.sidebarAction = class extends ExtensionAPI {
    */
   close(window) {
     if (this.isOpen(window)) {
-      window.SidebarUI.hide();
+      window.SidebarController.hide();
     }
   }
 
@@ -450,15 +386,15 @@ this.sidebarAction = class extends ExtensionAPI {
    * @param {ChromeWindow} window
    */
   toggle(window) {
-    let { SidebarUI } = window;
-    if (!SidebarUI || !this.extension.canAccessWindow(window)) {
+    let { SidebarController } = window;
+    if (!SidebarController || !this.extension.canAccessWindow(window)) {
       return;
     }
 
     if (!this.isOpen(window)) {
-      SidebarUI.show(this.id);
+      SidebarController.show(this.id);
     } else {
-      SidebarUI.hide();
+      SidebarController.hide();
     }
   }
 
@@ -469,8 +405,8 @@ this.sidebarAction = class extends ExtensionAPI {
    * @returns {boolean}
    */
   isOpen(window) {
-    let { SidebarUI } = window;
-    return SidebarUI.isOpen && this.id == SidebarUI.currentID;
+    let { SidebarController } = window;
+    return SidebarController.isOpen && this.id == SidebarController.currentID;
   }
 
   getAPI(context) {

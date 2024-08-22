@@ -9,18 +9,15 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
+  FXA_PWDMGR_HOST: "resource://gre/modules/FxAccountsCommon.sys.mjs",
+  FXA_PWDMGR_REALM: "resource://gre/modules/FxAccountsCommon.sys.mjs",
   LoginBreaches: "resource:///modules/LoginBreaches.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  FXA_PWDMGR_HOST: "resource://gre/modules/FxAccountsCommon.js",
-  FXA_PWDMGR_REALM: "resource://gre/modules/FxAccountsCommon.js",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
@@ -38,6 +35,9 @@ let idToTextMap = new Map([
   [Ci.nsITrackingDBService.TRACKING_COOKIES_ID, "cookie"],
   [Ci.nsITrackingDBService.CRYPTOMINERS_ID, "cryptominer"],
   [Ci.nsITrackingDBService.FINGERPRINTERS_ID, "fingerprinter"],
+  // We map the suspicious fingerprinter to fingerprinter category to aggregate
+  // the number.
+  [Ci.nsITrackingDBService.SUSPICIOUS_FINGERPRINTERS_ID, "fingerprinter"],
   [Ci.nsITrackingDBService.SOCIAL_ID, "social"],
 ]);
 
@@ -396,8 +396,11 @@ export class AboutProtectionsParent extends JSWindowActorParent {
           let count = result.getResultByName("count");
           let type = result.getResultByName("type");
           let timestamp = result.getResultByName("timestamp");
-          dataToSend[timestamp] = dataToSend[timestamp] || { total: 0 };
-          dataToSend[timestamp][idToTextMap.get(type)] = count;
+          let typeStr = idToTextMap.get(type);
+          dataToSend[timestamp] = dataToSend[timestamp] ?? { total: 0 };
+          let currentCnt = dataToSend[timestamp][typeStr] ?? 0;
+          currentCnt += count;
+          dataToSend[timestamp][typeStr] = currentCnt;
           dataToSend[timestamp].total += count;
           // Record the largest amount of tracking events found per day,
           // to create the tallest column on the graph and compare other days to.

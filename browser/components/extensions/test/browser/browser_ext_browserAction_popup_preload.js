@@ -15,7 +15,7 @@ add_task(async function testBrowserActionClickCanceled() {
   // Make sure the mouse isn't hovering over the browserAction widget.
   EventUtils.synthesizeMouseAtCenter(
     gURLBar.textbox,
-    { type: "mouseover" },
+    { type: "mousemove" },
     window
   );
 
@@ -50,6 +50,11 @@ add_task(async function testBrowserActionClickCanceled() {
   // Test canceled click.
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
+    { type: "mousemove" },
+    window
+  );
+  EventUtils.synthesizeMouseAtCenter(
+    widget.node,
     { type: "mousedown", button: 0 },
     window
   );
@@ -70,11 +75,24 @@ add_task(async function testBrowserActionClickCanceled() {
     "Active tab was granted permission"
   );
 
+  // We intentionally turn off this a11y check, because the following click
+  // is send on the <body> to dismiss the pending popup using an alternative way
+  // of the popup dismissal, where the other way like `Esc` key is available,
+  // therefore this test can be ignored.
+  AccessibilityUtils.setEnv({
+    mustHaveAccessibleRule: false,
+  });
+  EventUtils.synthesizeMouseAtCenter(
+    document.documentElement,
+    { type: "mousemove" },
+    window
+  );
   EventUtils.synthesizeMouseAtCenter(
     document.documentElement,
     { type: "mouseup", button: 0 },
     window
   );
+  AccessibilityUtils.resetEnv();
 
   is(browserAction.pendingPopup, null, "Pending popup was cleared");
   is(browserAction.pendingPopupTimeout, null, "Have no pending popup timeout");
@@ -91,6 +109,11 @@ add_task(async function testBrowserActionClickCanceled() {
   );
 
   // Test completed click.
+  EventUtils.synthesizeMouseAtCenter(
+    widget.node,
+    { type: "mousemove" },
+    window
+  );
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
     { type: "mousedown", button: 0 },
@@ -113,7 +136,7 @@ add_task(async function testBrowserActionClickCanceled() {
     widget.node,
     "mouseup",
     false,
-    event => {
+    () => {
       isnot(browserAction.pendingPopup, null, "Pending popup was not cleared");
       isnot(
         browserAction.pendingPopupTimeout,
@@ -151,7 +174,7 @@ add_task(async function testBrowserActionDisabled() {
   // Make sure the mouse isn't hovering over the browserAction widget.
   EventUtils.synthesizeMouseAtCenter(
     gURLBar.textbox,
-    { type: "mouseover" },
+    { type: "mousemove" },
     window
   );
 
@@ -200,6 +223,11 @@ add_task(async function testBrowserActionDisabled() {
   // Test canceled click.
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
+    { type: "mousemove" },
+    window
+  );
+  EventUtils.synthesizeMouseAtCenter(
+    widget.node,
     { type: "mousedown", button: 0 },
     window
   );
@@ -207,16 +235,34 @@ add_task(async function testBrowserActionDisabled() {
   is(browserAction.pendingPopup, null, "Have no pending popup");
   is(browserAction.pendingPopupTimeout, null, "Have no pending popup timeout");
 
+  // We intentionally turn off this a11y check, because the following click
+  // is send on the <body> to dismiss the pending popup using an alternative way
+  // of the popup dismissal, where the other way like `Esc` key is available,
+  // therefore this test can be ignored.
+  AccessibilityUtils.setEnv({
+    mustHaveAccessibleRule: false,
+  });
+  EventUtils.synthesizeMouseAtCenter(
+    document.documentElement,
+    { type: "mousemove" },
+    window
+  );
   EventUtils.synthesizeMouseAtCenter(
     document.documentElement,
     { type: "mouseup", button: 0 },
     window
   );
+  AccessibilityUtils.resetEnv();
 
   is(browserAction.pendingPopup, null, "Have no pending popup");
   is(browserAction.pendingPopupTimeout, null, "Have no pending popup timeout");
 
   // Test completed click.
+  EventUtils.synthesizeMouseAtCenter(
+    widget.node,
+    { type: "mousemove" },
+    window
+  );
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
     { type: "mousedown", button: 0 },
@@ -233,7 +279,7 @@ add_task(async function testBrowserActionDisabled() {
     widget.node,
     "mouseup",
     false,
-    event => {
+    () => {
       is(browserAction.pendingPopup, null, "Have no pending popup");
       is(
         browserAction.pendingPopupTimeout,
@@ -244,11 +290,18 @@ add_task(async function testBrowserActionDisabled() {
     }
   );
 
+  // We intentionally turn off a11y_checks, because the following click
+  // is targeting a disabled control to confirm the click event won't come through.
+  // It is not meant to be interactive and is not expected to be accessible:
+  AccessibilityUtils.setEnv({
+    mustBeEnabled: false,
+  });
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
     { type: "mouseup", button: 0 },
     window
   );
+  AccessibilityUtils.resetEnv();
 
   await mouseUpPromise;
 
@@ -290,7 +343,7 @@ add_task(async function testBrowserActionTabPopulation() {
   });
 
   let win = await BrowserTestUtils.openNewBrowserWindow();
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     win.gBrowser.selectedBrowser,
     "http://example.com/"
   );
@@ -299,13 +352,14 @@ add_task(async function testBrowserActionTabPopulation() {
   // Make sure the mouse isn't hovering over the browserAction widget.
   EventUtils.synthesizeMouseAtCenter(
     win.gURLBar.textbox,
-    { type: "mouseover" },
+    { type: "mousemove" },
     win
   );
 
   await extension.startup();
 
   let widget = getBrowserActionWidget(extension).forWindow(win);
+  EventUtils.synthesizeMouseAtCenter(widget.node, { type: "mousemove" }, win);
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
     { type: "mousedown", button: 0 },
@@ -348,7 +402,7 @@ add_task(async function testClosePopupDuringPreload() {
   // Make sure the mouse isn't hovering over the browserAction widget.
   EventUtils.synthesizeMouseAtCenter(
     gURLBar.textbox,
-    { type: "mouseover" },
+    { type: "mousemove" },
     window
   );
 
@@ -365,6 +419,11 @@ add_task(async function testClosePopupDuringPreload() {
 
   let widget = getBrowserActionWidget(extension).forWindow(window);
 
+  EventUtils.synthesizeMouseAtCenter(
+    widget.node,
+    { type: "mousemove" },
+    window
+  );
   EventUtils.synthesizeMouseAtCenter(
     widget.node,
     { type: "mousedown", button: 0 },

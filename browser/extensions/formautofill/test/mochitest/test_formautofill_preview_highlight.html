@@ -20,30 +20,36 @@ Form autofill test: preview and highlight
 const MOCK_STORAGE = [
   {
     organization: "Sesame Street",
+    country: "US",
     "street-address": "123 Sesame Street.",
     tel: "+13453453456",
   },
   {
     organization: "Mozilla",
+    country: "US",
     "street-address": "331 E. Evelyn Avenue",
   },
   {
     organization: "Tel org",
+    country: "US",
     tel: "+12223334444",
   },
   {
     organization: "Random Org",
+    country: "US",
     "address-level1": "First Admin Level",
     tel: "+13453453456",
   },
   {
     organization: "readonly Org",
+    country: "US",
     "address-level1": "First Admin Level",
     tel: "+13453453456",
     name: "John Doe",
   },
   {
     organization: "test org",
+    country: "US",
     "address-level2": "Not a Town",
     tel: "+13453453456",
     name: "John Doe",
@@ -75,7 +81,7 @@ add_task(async function check_preview() {
 
   // Navigate to the footer
   synthesizeKey("KEY_ArrowDown");
-  await notifySelectedIndex(MOCK_STORAGE.length);
+  await notifySelectedIndex(MOCK_STORAGE.length + 1); // skip over the status row
   await checkFormFieldsStyle(null);
 
   synthesizeKey("KEY_ArrowDown");

@@ -15,11 +15,11 @@ add_task(async () => {
   });
 
   let privateTab = privateWindow.gBrowser.selectedBrowser;
-  BrowserTestUtils.loadURIString(privateTab, TOP_PAGE);
+  BrowserTestUtils.startLoadingURIString(privateTab, TOP_PAGE);
   await BrowserTestUtils.browserLoaded(privateTab);
 
   let observerExited = {
-    observe(aSubject, aTopic, aData) {
+    observe() {
       ok(false, "Notification received!");
     },
   };

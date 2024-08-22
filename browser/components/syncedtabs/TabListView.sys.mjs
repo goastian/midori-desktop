@@ -5,6 +5,7 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -127,7 +128,7 @@ TabListView.prototype = {
   },
 
   // Client rows are hidden when the list is filtered
-  _renderFilteredClient(client, filter) {
+  _renderFilteredClient(client) {
     client.tabs.forEach((tab, index) => {
       let node = this._renderTab(client, tab, index);
       this.list.appendChild(node);
@@ -215,6 +216,7 @@ TabListView.prototype = {
   /**
    * Update the element representing an item, ensuring it's in sync with the
    * underlying data.
+   *
    * @param {client} item - Item to use as a source.
    * @param {Element} itemNode - Element to update.
    */
@@ -242,6 +244,7 @@ TabListView.prototype = {
   /**
    * Update the element representing a tab, ensuring it's in sync with the
    * underlying data.
+   *
    * @param {tab} item - Item to use as a source.
    * @param {Element} itemNode - Element to update.
    */
@@ -288,7 +291,7 @@ TabListView.prototype = {
 
     // Middle click on a client
     if (itemNode.classList.contains("client")) {
-      let where = getChromeWindow(this._window).whereToOpenLink(event);
+      let where = lazy.BrowserUtils.whereToOpenLink(event);
       if (where != "current") {
         this._openAllClientTabs(itemNode, where);
       }
@@ -308,6 +311,7 @@ TabListView.prototype = {
 
   /**
    * Handle a keydown event on the list box.
+   *
    * @param {Event} event - Triggering event.
    */
   onKeyDown(event) {
@@ -343,7 +347,7 @@ TabListView.prototype = {
   },
 
   onOpenSelected(url, event) {
-    let where = getChromeWindow(this._window).whereToOpenLink(event);
+    let where = lazy.BrowserUtils.whereToOpenLink(event);
     this.props.onOpenTab(url, where, {});
   },
 
@@ -408,12 +412,9 @@ TabListView.prototype = {
 
   // Set up the custom context menu
   _setupContextMenu() {
-    Services.els.addSystemEventListener(
-      this._window,
-      "contextmenu",
-      this,
-      false
-    );
+    this._window.addEventListener("contextmenu", this, {
+      mozSystemGroup: true,
+    });
     for (let getMenu of [getContextMenu, getTabsFilterContextMenu]) {
       let menu = getMenu(this._window);
       menu.addEventListener("popupshowing", this, true);
@@ -423,12 +424,9 @@ TabListView.prototype = {
 
   _teardownContextMenu() {
     // Tear down context menu
-    Services.els.removeSystemEventListener(
-      this._window,
-      "contextmenu",
-      this,
-      false
-    );
+    this._window.removeEventListener("contextmenu", this, {
+      mozSystemGroup: true,
+    });
     for (let getMenu of [getContextMenu, getTabsFilterContextMenu]) {
       let menu = getMenu(this._window);
       menu.removeEventListener("popupshowing", this, true);
@@ -585,8 +583,9 @@ TabListView.prototype = {
 
   /**
    * Find the parent item element, from a given child element.
+   *
    * @param {Element} node - Child element.
-   * @return {Element} Element for the item, or null if not found.
+   * @returns {Element} Element for the item, or null if not found.
    */
   _findParentItemNode(node) {
     while (

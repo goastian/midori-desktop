@@ -16,7 +16,7 @@ add_setup(async function () {
 });
 
 async function checkShortcutLoading(modifierKeys) {
-  let deferred = PromiseUtils.defer();
+  let deferred = Promise.withResolvers();
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
     opening: "about:robots",
@@ -46,7 +46,7 @@ async function checkShortcutLoading(modifierKeys) {
   );
 
   // Now load a different page.
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, "about:license");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, "about:license");
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   Assert.equal(gBrowser.visibleTabs.length, 2, "Should have 2 tabs");
 

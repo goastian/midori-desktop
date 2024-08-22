@@ -18,6 +18,12 @@ const { SearchTestUtils } = ChromeUtils.importESModule(
 const { TestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TestUtils.sys.mjs"
 );
+const { sinon } = ChromeUtils.importESModule(
+  "resource://testing-common/Sinon.sys.mjs"
+);
+const { DiscoveryStreamFeed } = ChromeUtils.importESModule(
+  "resource://activity-stream/lib/DiscoveryStreamFeed.sys.mjs"
+);
 
 SearchTestUtils.init(this);
 AddonTestUtils.init(this);
@@ -28,18 +34,18 @@ AddonTestUtils.createAppInfo(
   "42"
 );
 
-const { AboutNewTab } = ChromeUtils.import(
-  "resource:///modules/AboutNewTab.jsm"
+const { AboutNewTab } = ChromeUtils.importESModule(
+  "resource:///modules/AboutNewTab.sys.mjs"
 );
-const { PREFS_CONFIG } = ChromeUtils.import(
-  "resource://activity-stream/lib/ActivityStream.jsm"
+const { PREFS_CONFIG } = ChromeUtils.importESModule(
+  "resource://activity-stream/lib/ActivityStream.sys.mjs"
 );
 
 ChromeUtils.defineESModuleGetters(this, {
   BasePromiseWorker: "resource://gre/modules/PromiseWorker.sys.mjs",
 });
 
-const CACHE_WORKER_URL = "resource://activity-stream/lib/cache-worker.js";
+const CACHE_WORKER_URL = "resource://activity-stream/lib/cache.worker.js";
 const NEWTAB_RENDER_URL =
   "resource://activity-stream/data/content/newtab-render.js";
 
@@ -71,6 +77,14 @@ add_setup(async function () {
     "browser.newtabpage.activity-stream.feeds.system.topstories",
     true
   );
+  Services.prefs.setStringPref(
+    "browser.newtabpage.activity-stream.discoverystream.region-weather-config",
+    ""
+  );
+  Services.prefs.setBoolPref(
+    "browser.newtabpage.activity-stream.newtabWallpapers.enabled",
+    false
+  );
 
   let defaultDSConfig = JSON.parse(
     PREFS_CONFIG.get("discoverystream.config").getValue({
@@ -79,17 +93,16 @@ add_setup(async function () {
     })
   );
 
-  let newConfig = Object.assign(defaultDSConfig, {
-    show_spocs: false,
-    hardcoded_layout: false,
-    layout_endpoint: "http://example.com/ds_layout.json",
-  });
+  const sandbox = sinon.createSandbox();
+  sandbox
+    .stub(DiscoveryStreamFeed.prototype, "generateFeedUrl")
+    .returns("http://example.com/topstories.json");
 
   // Configure Activity Stream to query for the layout JSON file that points
   // at the local top stories feed.
   Services.prefs.setCharPref(
     "browser.newtabpage.activity-stream.discoverystream.config",
-    JSON.stringify(newConfig)
+    JSON.stringify(defaultDSConfig)
   );
 
   // We need to allow example.com as a place to get both the layout and the
@@ -103,7 +116,6 @@ add_setup(async function () {
     "browser.newtabpage.activity-stream.telemetry.structuredIngestion",
     false
   );
-  Services.prefs.setBoolPref("browser.ping-centre.telemetry", false);
 
   // We need a default search engine set up for rendering the search input.
   await SearchTestUtils.installSearchExtension(
@@ -223,11 +235,11 @@ add_task(async function test_cache_worker() {
   let root = doc.getElementById("root");
   ok(root.childElementCount, "There are children on the root node");
 
-  // There should be the 1 top story, and 2 placeholders.
+  // There should be the 1 top story, and 20 placeholders.
   equal(
     Array.from(root.querySelectorAll(".ds-card")).length,
-    3,
-    "There are 3 DSCards"
+    21,
+    "There are 21 DSCards"
   );
   let cardHostname = doc.querySelector(
     "[data-section-id='topstories'] .source"
@@ -235,7 +247,7 @@ add_task(async function test_cache_worker() {
   equal(cardHostname, "bbc.com", "Card hostname is bbc.com");
 
   let placeholders = doc.querySelectorAll(".ds-card.placeholder");
-  equal(placeholders.length, 2, "There should be 2 placeholders");
+  equal(placeholders.length, 20, "There should be 20 placeholders");
 });
 
 /**

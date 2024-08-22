@@ -7,11 +7,6 @@
 
 "use strict";
 
-ChromeUtils.defineESModuleGetters(this, {
-  CONTEXTUAL_SERVICES_PING_TYPES:
-    "resource:///modules/PartnerLinkAttribution.sys.mjs",
-});
-
 const { TELEMETRY_SCALARS } = UrlbarProviderQuickSuggest;
 
 const MERINO_SUGGESTION = {
@@ -56,27 +51,28 @@ add_task(async function () {
         },
       },
     },
-    selectables: {
-      // click
-      "urlbarView-row-inner": {
-        scalars: {
-          [TELEMETRY_SCALARS.IMPRESSION_DYNAMIC_WIKIPEDIA]: position,
-          [TELEMETRY_SCALARS.CLICK_DYNAMIC_WIKIPEDIA]: position,
-          "urlbar.picked.dynamic_wikipedia": index.toString(),
-        },
-        event: {
-          category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
-          method: "engagement",
-          object: "click",
-          extra: {
-            suggestion_type,
-            match_type,
-            position: position.toString(),
-          },
+    // click
+    click: {
+      scalars: {
+        [TELEMETRY_SCALARS.IMPRESSION_DYNAMIC_WIKIPEDIA]: position,
+        [TELEMETRY_SCALARS.CLICK_DYNAMIC_WIKIPEDIA]: position,
+        "urlbar.picked.dynamic_wikipedia": index.toString(),
+      },
+      event: {
+        category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
+        method: "engagement",
+        object: "click",
+        extra: {
+          suggestion_type,
+          match_type,
+          position: position.toString(),
         },
       },
-      // block
-      "urlbarView-button-block": {
+    },
+    commands: [
+      // dismiss
+      {
+        command: "dismiss",
         scalars: {
           [TELEMETRY_SCALARS.IMPRESSION_DYNAMIC_WIKIPEDIA]: position,
           [TELEMETRY_SCALARS.BLOCK_DYNAMIC_WIKIPEDIA]: position,
@@ -92,23 +88,6 @@ add_task(async function () {
           },
         },
       },
-      // help
-      "urlbarView-button-help": {
-        scalars: {
-          [TELEMETRY_SCALARS.IMPRESSION_DYNAMIC_WIKIPEDIA]: position,
-          [TELEMETRY_SCALARS.HELP_DYNAMIC_WIKIPEDIA]: position,
-        },
-        event: {
-          category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
-          method: "engagement",
-          object: "help",
-          extra: {
-            suggestion_type,
-            match_type,
-            position: position.toString(),
-          },
-        },
-      },
-    },
+    ],
   });
 });

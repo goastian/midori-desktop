@@ -14,7 +14,7 @@ add_task(async function () {
     await promiseBrowserLoaded(browser);
 
     let tab2 = gBrowser.duplicateTab(tab);
-    Assert.equal(tab2.getAttribute("usercontextid"), i);
+    Assert.equal(tab2.getAttribute("usercontextid") || "", i);
     let browser2 = tab2.linkedBrowser;
     await promiseTabRestored(tab2);
 
@@ -113,8 +113,9 @@ async function openTabInUserContext(userContextId) {
 
 function waitForNewCookie() {
   return new Promise(resolve => {
-    Services.obs.addObserver(function observer(subj, topic, data) {
-      if (data == "added") {
+    Services.obs.addObserver(function observer(subj, topic) {
+      let notification = subj.QueryInterface(Ci.nsICookieNotification);
+      if (notification.action == Ci.nsICookieNotification.COOKIE_ADDED) {
         Services.obs.removeObserver(observer, topic);
         resolve();
       }

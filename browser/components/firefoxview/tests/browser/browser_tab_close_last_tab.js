@@ -24,14 +24,14 @@ add_task(async function closing_last_tab_should_not_switch_to_fx_view() {
     false,
     URL
   );
-  BrowserTestUtils.loadURIString(win.gBrowser.selectedBrowser, URL);
+  BrowserTestUtils.startLoadingURIString(win.gBrowser.selectedBrowser, URL);
   await loaded;
   info("Opening new browser tab...");
   const secondTab = await BrowserTestUtils.openNewForegroundTab(
     win.gBrowser,
     URL
   );
-  info("Close all broswer tabs...");
+  info("Close all browser tabs...");
   await BrowserTestUtils.removeTab(firstTab);
   await BrowserTestUtils.removeTab(secondTab);
   isnot(

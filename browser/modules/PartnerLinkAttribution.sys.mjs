@@ -2,41 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   Region: "resource://gre/modules/Region.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  PingCentre: "resource:///modules/PingCentre.jsm",
-});
-
-// Endpoint base URL for Structured Ingestion
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "structuredIngestionEndpointBase",
-  "browser.newtabpage.activity-stream.telemetry.structuredIngestion.endpoint",
-  ""
-);
-const NAMESPACE_CONTEXUAL_SERVICES = "contextual-services";
-
-// PingCentre client to send custom pings
-XPCOMUtils.defineLazyGetter(lazy, "pingcentre", () => {
-  return new lazy.PingCentre({ topic: "contextual-services" });
-});
-
-// `contextId` is a unique identifier used by Contextual Services
-const CONTEXT_ID_PREF = "browser.contextual-services.contextId";
-XPCOMUtils.defineLazyGetter(lazy, "contextId", () => {
-  let _contextId = Services.prefs.getStringPref(CONTEXT_ID_PREF, null);
-  if (!_contextId) {
-    _contextId = String(Services.uuid.generateUUID());
-    Services.prefs.setStringPref(CONTEXT_ID_PREF, _contextId);
-  }
-  return _contextId;
 });
 
 export const CONTEXTUAL_SERVICES_PING_TYPES = {
@@ -91,96 +60,6 @@ export var PartnerLinkAttribution = {
     let result = await sendRequest(attributionUrl, source, targetURL);
     record("attribution", result ? "success" : "failure");
   },
-
-  /**
-   * Makes a request to the attribution URL for a search engine search.
-   *
-   * @param {nsISearchEngine} engine
-   *   The search engine to save the attribution for.
-   * @param {nsIURI} targetUrl
-   *   The target URL to filter and include in the attribution.
-   */
-  async makeSearchEngineRequest(engine, targetUrl) {
-    let cid;
-    if (engine.attribution?.cid) {
-      cid = engine.attribution.cid;
-    } else if (engine.sendAttributionRequest) {
-      cid = Services.prefs.getStringPref(
-        "browser.partnerlink.campaign.topsites"
-      );
-    } else {
-      return;
-    }
-
-    let searchUrlQueryParamName = engine.searchUrlQueryParamName;
-    if (!searchUrlQueryParamName) {
-      console.error("makeSearchEngineRequest can't find search terms key");
-      return;
-    }
-
-    let url = targetUrl;
-    if (typeof url == "string") {
-      url = Services.io.newURI(url);
-    }
-
-    let targetParams = new URLSearchParams(url.query);
-    if (!targetParams.has(searchUrlQueryParamName)) {
-      console.error("makeSearchEngineRequest can't remove target search terms");
-      return;
-    }
-
-    let attributionUrl = Services.prefs.getStringPref(
-      "browser.partnerlink.attributionURL",
-      ""
-    );
-    attributionUrl = attributionUrl + cid;
-
-    targetParams.delete(searchUrlQueryParamName);
-    let strippedTargetUrl = `${url.prePath}${url.filePath}`;
-    let newParams = targetParams.toString();
-    if (newParams) {
-      strippedTargetUrl += "?" + newParams;
-    }
-
-    await sendRequest(attributionUrl, "searchurl", strippedTargetUrl);
-  },
-
-  /**
-   * Sends a Contextual Services ping to the Mozilla data pipeline.
-   *
-   * Note:
-   *   * All Contextual Services pings are sent as custom pings
-   *     (https://docs.telemetry.mozilla.org/cookbooks/new_ping.html#sending-a-custom-ping)
-   *
-   *   * The full event list can be found at https://github.com/mozilla-services/mozilla-pipeline-schemas
-   *     under the "contextual-services" namespace
-   *
-   * @param {object} payload
-   *   The ping payload to be sent to the Mozilla Structured Ingestion endpoint
-   * @param {String} pingType
-   *   The ping type. Must be one of CONTEXTUAL_SERVICES_PING_TYPES
-   */
-  sendContextualServicesPing(payload, pingType) {
-    if (!Object.values(CONTEXTUAL_SERVICES_PING_TYPES).includes(pingType)) {
-      console.error("Invalid Contextual Services ping type");
-      return;
-    }
-
-    const endpoint = makeEndpointUrl(pingType, "1");
-    payload.context_id = lazy.contextId;
-    lazy.pingcentre.sendStructuredIngestionPing(
-      payload,
-      endpoint,
-      NAMESPACE_CONTEXUAL_SERVICES
-    );
-  },
-
-  /**
-   * Gets the underlying PingCentre client, only used for tests.
-   */
-  get _pingCentre() {
-    return lazy.pingcentre;
-  },
 };
 
 async function sendRequest(attributionUrl, source, targetURL) {
@@ -195,24 +74,4 @@ async function sendRequest(attributionUrl, source, targetURL) {
 function recordTelemetryEvent({ method, objectString, value }) {
   Services.telemetry.setEventRecordingEnabled("partner_link", true);
   Services.telemetry.recordEvent("partner_link", method, objectString, value);
-}
-
-/**
- * Makes a new endpoint URL for a ping submission. Note that each submission
- * to Structured Ingesttion requires a new endpoint. See more details about
- * the specs:
- *
- * https://docs.telemetry.mozilla.org/concepts/pipeline/http_edge_spec.html?highlight=docId#postput-request
- *
- * @param {String} pingType
- *   The ping type. Must be one of CONTEXTUAL_SERVICES_PING_TYPES
- * @param {String} version
- *   The schema version of the ping.
- */
-function makeEndpointUrl(pingType, version) {
-  // Structured Ingestion does not support the UUID generated by gUUIDGenerator.
-  // Stripping off the leading and trailing braces to make it happy.
-  const docID = Services.uuid.generateUUID().toString().slice(1, -1);
-  const extension = `${NAMESPACE_CONTEXUAL_SERVICES}/${pingType}/${version}/${docID}`;
-  return `${lazy.structuredIngestionEndpointBase}/${extension}`;
 }

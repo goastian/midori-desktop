@@ -7,17 +7,17 @@
 "use strict";
 
 add_setup(async function () {
-  const PREF_TRIMURL = "browser.urlbar.trimURLs";
-  const PREF_AUTOFILL = "browser.urlbar.autoFill";
-
+  SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.trimURLs", true],
+      ["browser.urlbar.trimHttps", false],
+      ["browser.urlbar.autoFill", true],
+    ],
+  });
   registerCleanupFunction(async function () {
-    Services.prefs.clearUserPref(PREF_TRIMURL);
-    Services.prefs.clearUserPref(PREF_AUTOFILL);
     await PlacesUtils.history.clear();
     gURLBar.handleRevert();
   });
-  Services.prefs.setBoolPref(PREF_TRIMURL, true);
-  Services.prefs.setBoolPref(PREF_AUTOFILL, true);
 
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
@@ -34,9 +34,7 @@ add_setup(async function () {
 });
 
 async function promiseSearch(searchtext) {
-  gURLBar.focus();
-  gURLBar.inputField.value = searchtext.substr(0, searchtext.length - 1);
-  EventUtils.sendString(searchtext.substr(-1, 1));
+  await UrlbarTestUtils.inputIntoURLBar(window, searchtext);
   await UrlbarTestUtils.promiseSearchComplete(window);
 }
 
@@ -46,7 +44,7 @@ async function promiseTestResult(test) {
   await promiseSearch(test.search);
 
   Assert.equal(
-    gURLBar.inputField.value,
+    gURLBar.value,
     test.autofilledValue,
     `Autofilled value is as expected for search '${test.search}'`
   );
@@ -163,7 +161,7 @@ add_task(async function autofill_tests() {
 add_task(async function autofill_complete_domain() {
   await promiseSearch("http://www.autofilltrimurl.com");
   Assert.equal(
-    gURLBar.inputField.value,
+    gURLBar.value,
     "http://www.autofilltrimurl.com/",
     "Should have the correct autofill value"
   );
@@ -176,7 +174,7 @@ add_task(async function autofill_complete_domain() {
   );
   EventUtils.synthesizeKey("KEY_ArrowDown");
   Assert.equal(
-    gURLBar.inputField.value,
+    gURLBar.value,
     "www.autofilltrimurl.com/whatever",
     "Should have applied trim correctly"
   );

@@ -2,7 +2,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 const SAVE_PER_SITE_PREF = "browser.download.lastDir.savePerSite";
 const ALWAYS_DOWNLOAD_DIR_PREF = "browser.download.useDownloadDir";
@@ -43,7 +43,7 @@ function triggerSave(aWindow, aCallback) {
     windowObserver.setCallback(onUCTDialog);
   }
 
-  BrowserTestUtils.loadURIString(testBrowser, testURI);
+  BrowserTestUtils.startLoadingURIString(testBrowser, testURI);
 
   // Create the folder the link will be saved into.
   var destDir = createTemporarySaveDirectory();
@@ -70,7 +70,7 @@ function triggerSave(aWindow, aCallback) {
     info("done mockTransferCallback");
   };
 
-  function onUCTDialog(dialog) {
+  function onUCTDialog() {
     SpecialPowers.spawn(testBrowser, [], async () => {
       content.document.querySelector("iframe").remove();
     }).then(() => executeSoon(continueDownloading));
@@ -104,7 +104,7 @@ var windowObserver = {
     }
     this._callback = aCallback;
   },
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     if (aTopic != "domwindowopened") {
       return;
     }
@@ -113,7 +113,7 @@ var windowObserver = {
 
     win.addEventListener(
       "load",
-      function (event) {
+      function () {
         if (win.location == UCT_URI) {
           SimpleTest.executeSoon(function () {
             if (windowObserver._callback) {

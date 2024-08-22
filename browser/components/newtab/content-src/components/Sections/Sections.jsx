@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  actionCreators as ac,
-  actionTypes as at,
-} from "common/Actions.sys.mjs";
+import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import { Card, PlaceholderCard } from "content-src/components/Card/Card";
 import { CollapsibleSection } from "content-src/components/CollapsibleSection/CollapsibleSection";
 import { ComponentPerfTimer } from "content-src/components/ComponentPerfTimer/ComponentPerfTimer";
@@ -33,7 +30,7 @@ export class Section extends React.PureComponent {
     let cardsPerRow = CARDS_PER_ROW_DEFAULT;
     if (
       props.compactCards &&
-      global.matchMedia(`(min-width: 1072px)`).matches
+      globalThis.matchMedia(`(min-width: 1072px)`).matches
     ) {
       // If the section has compact cards and the viewport is wide enough, we show
       // 4 columns instead of 3.
@@ -326,7 +323,7 @@ export class Section extends React.PureComponent {
 }
 
 Section.defaultProps = {
-  document: global.document,
+  document: globalThis.document,
   rows: [],
   emptyState: {},
   pref: {},

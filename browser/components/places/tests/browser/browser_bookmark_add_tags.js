@@ -29,6 +29,14 @@ registerCleanupFunction(async () => {
 add_task(async function test_add_bookmark_tags_from_bookmarkProperties() {
   const TEST_URL = "about:robots";
 
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    url: "about:buildconfig",
+    title: "Bookmark Title",
+  });
+
+  PlacesUtils.tagging.tagURI(makeURI("about:buildconfig"), ["tag0"]);
+
   let win = await BrowserTestUtils.openNewBrowserWindow();
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser: win.gBrowser,
@@ -163,7 +171,7 @@ add_task(async function test_add_bookmark_tags_from_library() {
   fillBookmarkTextField("editBMPanel_tagsField", "tag1, tag2", library);
 
   await TestUtils.waitForCondition(
-    () => bookmarkNode.tags === "tag1, tag2",
+    () => bookmarkNode.tags === "tag1,tag2",
     "Node tag is correct"
   );
 

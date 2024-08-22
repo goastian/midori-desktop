@@ -13,12 +13,12 @@ add_task(async function clicking_make_default_checks_alwaysCheck_checkbox() {
       let isNotDefaultPane =
         content.document.getElementById("isNotDefaultPane");
       Assert.equal(
-        ContentTaskUtils.is_hidden(isDefaultPane),
+        ContentTaskUtils.isHidden(isDefaultPane),
         !isDefault,
         "The 'browser is default' pane should be hidden when browser is not default"
       );
       Assert.equal(
-        ContentTaskUtils.is_hidden(isNotDefaultPane),
+        ContentTaskUtils.isHidden(isNotDefaultPane),
         isDefault,
         "The 'make default' pane should be hidden when browser is default"
       );
@@ -73,11 +73,11 @@ add_task(async function clicking_make_default_checks_alwaysCheck_checkbox() {
     let isDefaultPane = content.document.getElementById("isDefaultPane");
     let isNotDefaultPane = content.document.getElementById("isNotDefaultPane");
     Assert.ok(
-      ContentTaskUtils.is_hidden(isDefaultPane),
+      ContentTaskUtils.isHidden(isDefaultPane),
       "The 'browser is default' pane should be hidden when not default"
     );
     Assert.ok(
-      ContentTaskUtils.is_visible(isNotDefaultPane),
+      ContentTaskUtils.isVisible(isNotDefaultPane),
       "The 'make default' pane should be visible when not default"
     );
 
@@ -97,7 +97,7 @@ add_task(async function clicking_make_default_checks_alwaysCheck_checkbox() {
     content.window.gMainPane.updateSetDefaultBrowser();
 
     await ContentTaskUtils.waitForCondition(
-      () => ContentTaskUtils.is_visible(isDefaultPane),
+      () => ContentTaskUtils.isVisible(isDefaultPane),
       "Browser is now default"
     );
 
@@ -164,7 +164,7 @@ async function test_with_mock_shellservice(options, testFn) {
         isDefaultBrowser() {
           return this._isDefault;
         },
-        setDefaultBrowser() {
+        async setDefaultBrowser() {
           this._isDefault = true;
         },
       };

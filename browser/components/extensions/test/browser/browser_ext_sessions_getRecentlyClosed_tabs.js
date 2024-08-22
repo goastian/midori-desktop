@@ -53,7 +53,7 @@ add_task(async function test_sessions_get_recently_closed_tabs() {
   let win = await BrowserTestUtils.openNewBrowserWindow();
   let tabBrowser = win.gBrowser.selectedBrowser;
   for (let url of ["about:robots", "about:mozilla", "about:config"]) {
-    BrowserTestUtils.loadURIString(tabBrowser, url);
+    BrowserTestUtils.startLoadingURIString(tabBrowser, url);
     await BrowserTestUtils.browserLoaded(tabBrowser, false, url);
   }
 
@@ -68,7 +68,7 @@ add_task(async function test_sessions_get_recently_closed_tabs() {
 
   let expectedTabs = [];
   let tab = win.gBrowser.selectedTab;
-  // Because there is debounce logic in ContentLinkHandler.jsm to reduce the
+  // Because there is debounce logic in FaviconLoader.sys.mjs to reduce the
   // favicon loads, we have to wait some time before checking that icon was
   // stored properly. If that page doesn't have favicon links, let it timeout.
   try {
@@ -117,8 +117,9 @@ add_task(async function test_sessions_get_recently_closed_tabs() {
   let tabInfo = recentlyClosed[0].tab;
   let expectedTab = expectedTabs.pop();
   checkTabInfo(expectedTab, tabInfo);
-  ok(
-    tabInfo.lastAccessed > lastAccessedTimes.get(tabInfo.url),
+  Assert.greater(
+    tabInfo.lastAccessed,
+    lastAccessedTimes.get(tabInfo.url),
     "lastAccessed has been updated"
   );
 
@@ -131,8 +132,9 @@ add_task(async function test_sessions_get_recently_closed_tabs() {
   is(tabInfos.length, 2, "Expected number of tabs in closed window.");
   for (let x = 0; x < tabInfos.length; x++) {
     checkTabInfo(expectedTabs[x], tabInfos[x]);
-    ok(
-      tabInfos[x].lastAccessed > lastAccessedTimes.get(tabInfos[x].url),
+    Assert.greater(
+      tabInfos[x].lastAccessed,
+      lastAccessedTimes.get(tabInfos[x].url),
       "lastAccessed has been updated"
     );
   }
@@ -168,7 +170,10 @@ add_task(async function test_sessions_get_recently_closed_tabs() {
   // Test with host permission.
   win = await BrowserTestUtils.openNewBrowserWindow();
   tabBrowser = win.gBrowser.selectedBrowser;
-  BrowserTestUtils.loadURIString(tabBrowser, "http://example.com/testpage");
+  BrowserTestUtils.startLoadingURIString(
+    tabBrowser,
+    "http://example.com/testpage"
+  );
   await BrowserTestUtils.browserLoaded(
     tabBrowser,
     false,
@@ -232,7 +237,7 @@ add_task(
     );
     let url = `${testRoot}file_has_non_web_controlled_blank_page_link.html`;
     let win = await BrowserTestUtils.openNewBrowserWindow();
-    BrowserTestUtils.loadURIString(win.gBrowser.selectedBrowser, url);
+    BrowserTestUtils.startLoadingURIString(win.gBrowser.selectedBrowser, url);
     await BrowserTestUtils.browserLoaded(
       win.gBrowser.selectedBrowser,
       false,
@@ -242,7 +247,7 @@ add_task(
     info("Open the non web controlled page in _blank target");
     let onNewTabOpened = new Promise(resolve =>
       win.gBrowser.addTabsProgressListener({
-        onStateChange(browser, webProgress, request, stateFlags, status) {
+        onStateChange(browser, webProgress, request, stateFlags) {
           if (stateFlags & Ci.nsIWebProgressListener.STATE_START) {
             win.gBrowser.removeTabsProgressListener(this);
             resolve(win.gBrowser.getTabForBrowser(browser));

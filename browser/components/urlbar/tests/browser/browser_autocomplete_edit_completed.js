@@ -6,6 +6,12 @@
  */
 
 add_task(async function () {
+  SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.trimHttps", false],
+      ["dom.security.https_first_schemeless", false],
+    ],
+  });
   await PlacesUtils.history.clear();
 
   await PlacesTestUtils.addVisits([
@@ -50,6 +56,7 @@ add_task(async function () {
 
   info("Press backspace");
   EventUtils.synthesizeKey("KEY_Backspace");
+  info("Backspaced value is " + gURLBar.value);
   await UrlbarTestUtils.promiseSearchComplete(window);
 
   let editedValue = gURLBar.value;

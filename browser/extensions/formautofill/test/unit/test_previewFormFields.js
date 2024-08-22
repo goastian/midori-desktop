@@ -58,7 +58,7 @@ const TESTCASES = [
       "given-name": PREVIEW,
       "family-name": PREVIEW,
       "street-address": PREVIEW,
-      "address-level2": undefined,
+      "address-level2": "",
     },
   },
   {
@@ -80,7 +80,7 @@ const TESTCASES = [
       "given-name": PREVIEW,
       "family-name": PREVIEW,
       "street-address": PREVIEW,
-      country: undefined,
+      country: "",
     },
   },
   {
@@ -152,7 +152,7 @@ function run_tests(testcases) {
       // Replace the internal decrypt method with OSKeyStore API,
       // but don't pass the reauth parameter to avoid triggering
       // reauth login dialog in these tests.
-      let decryptHelper = async (cipherText, reauth) => {
+      let decryptHelper = async (cipherText, _reauth) => {
         return OSKeyStore.decrypt(cipherText, false);
       };
       handler.collectFormFields();
@@ -181,9 +181,7 @@ function run_tests(testcases) {
       await handler.activeSection.previewFormFields(adaptedProfile);
 
       for (let field of handler.fieldDetails) {
-        let actual = handler.getFilledStateByElement(
-          field.elementWeakRef.get()
-        );
+        let actual = field.element.autofillState;
         let expected = testcase.expectedResultState[field.fieldName];
         info(`Checking ${field.fieldName} state`);
         Assert.equal(

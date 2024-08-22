@@ -7,7 +7,7 @@ add_task(async function move_discarded_to_window() {
     manifest: { permissions: ["tabs"] },
     background: async function () {
       // Create a discarded tab
-      let url = "http://example.com/";
+      let url = "https://example.com/";
       let tab = await browser.tabs.create({ url, discarded: true });
       browser.test.assertEq(true, tab.discarded, "Tab should be discarded");
       browser.test.assertEq(url, tab.url, "Tab URL should be correct");
@@ -33,14 +33,14 @@ add_task(async function move_discarded_to_window() {
 add_task(async function move_hidden_discarded_to_window() {
   let extensionWithoutTabsPermission = ExtensionTestUtils.loadExtension({
     manifest: {
-      permissions: ["http://example.com/"],
+      permissions: ["https://example.com/"],
     },
     background() {
       browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         if (changeInfo.hidden) {
           browser.test.assertEq(
             tab.url,
-            "http://example.com/?hideme",
+            "https://example.com/?hideme",
             "tab.url is correctly observed without tabs permission"
           );
           browser.test.sendMessage("onUpdated_checked");
@@ -49,13 +49,13 @@ add_task(async function move_hidden_discarded_to_window() {
       // Listener with "urls" filter, regression test for
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1695346
       browser.tabs.onUpdated.addListener(
-        (tabId, changeInfo, tab) => {
+        (tabId, changeInfo) => {
           browser.test.assertTrue(changeInfo.hidden, "tab was hidden");
           browser.test.sendMessage("onUpdated_urls_filter");
         },
         {
           properties: ["hidden"],
-          urls: ["http://example.com/?hideme"],
+          urls: ["https://example.com/?hideme"],
         }
       );
     },
@@ -67,7 +67,7 @@ add_task(async function move_hidden_discarded_to_window() {
     // ExtensionControlledPopup's populateDescription method requires an addon:
     useAddonManager: "temporary",
     async background() {
-      let url = "http://example.com/?hideme";
+      let url = "https://example.com/?hideme";
       let tab = await browser.tabs.create({ url, discarded: true });
       await browser.tabs.hide(tab.id);
 

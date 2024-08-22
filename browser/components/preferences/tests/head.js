@@ -9,12 +9,12 @@ const kDefaultWait = 2000;
 
 function is_element_visible(aElement, aMsg) {
   isnot(aElement, null, "Element should not be null, when checking visibility");
-  ok(!BrowserTestUtils.is_hidden(aElement), aMsg);
+  ok(!BrowserTestUtils.isHidden(aElement), aMsg);
 }
 
 function is_element_hidden(aElement, aMsg) {
   isnot(aElement, null, "Element should not be null, when checking visibility");
-  ok(BrowserTestUtils.is_hidden(aElement), aMsg);
+  ok(BrowserTestUtils.isHidden(aElement), aMsg);
 }
 
 function open_preferences(aCallback) {
@@ -45,7 +45,7 @@ function openAndLoadSubDialog(
 }
 
 function promiseLoadSubDialog(aURL) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     content.gSubDialog._dialogStack.addEventListener(
       "dialogopen",
       function dialogopen(aEvent) {
@@ -170,8 +170,8 @@ function waitForMutation(target, opts, cb) {
 // a DefinitionServer, then call addDefinition as needed.
 class DefinitionServer {
   constructor(definitionOverrides = []) {
-    let { HttpServer } = ChromeUtils.import(
-      "resource://testing-common/httpd.js"
+    let { HttpServer } = ChromeUtils.importESModule(
+      "resource://testing-common/httpd.sys.mjs"
     );
 
     this.server = new HttpServer();

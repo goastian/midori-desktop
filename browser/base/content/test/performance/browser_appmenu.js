@@ -21,19 +21,11 @@ const EXPECTED_APPMENU_OPEN_REFLOWS = [
       "openPopup/this._openPopupPromise<@resource:///modules/PanelMultiView.sys.mjs",
     ],
   },
-
-  {
-    stack: [
-      "_calculateMaxHeight@resource:///modules/PanelMultiView.sys.mjs",
-      "handleEvent@resource:///modules/PanelMultiView.sys.mjs",
-    ],
-
-    maxCount: 7, // This number should only ever go down - never up.
-  },
 ];
 
 add_task(async function () {
   await ensureNoPreloadedBrowser();
+  await ensureAnimationsFinished();
   await disableFxaBadge();
 
   let textBoxRect = gURLBar

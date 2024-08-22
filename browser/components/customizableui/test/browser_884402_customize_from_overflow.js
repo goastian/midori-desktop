@@ -15,14 +15,14 @@ registerCleanupFunction(function () {
 add_task(async function () {
   overflowPanel.setAttribute("animate", "false");
   let fxaButton = document.getElementById("fxa-toolbar-menu-button");
-  if (BrowserTestUtils.is_hidden(fxaButton)) {
+  if (BrowserTestUtils.isHidden(fxaButton)) {
     // FxA button is likely hidden since the user is logged out.
     let initialFxaStatus = document.documentElement.getAttribute("fxastatus");
     document.documentElement.setAttribute("fxastatus", "signed_in");
     registerCleanupFunction(() =>
       document.documentElement.setAttribute("fxastatus", initialFxaStatus)
     );
-    ok(BrowserTestUtils.is_visible(fxaButton), "FxA button is now visible");
+    ok(BrowserTestUtils.isVisible(fxaButton), "FxA button is now visible");
   }
 
   originalWindowWidth = window.outerWidth;

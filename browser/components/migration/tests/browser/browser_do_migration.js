@@ -54,6 +54,15 @@ add_task(async function test_successful_migrations() {
     ]);
   });
 
+  // We should make sure that the migration.time_to_produce_migrator_list
+  // scalar was set, since we know that at least one migration wizard has
+  // been opened.
+  let scalars = TelemetryTestUtils.getProcessScalars("parent", false, false);
+  Assert.ok(
+    scalars["migration.time_to_produce_migrator_list"] > 0,
+    "Non-zero scalar value recorded for migration.time_to_produce_migrator_list"
+  );
+
   // Scenario 2: Several resource types are available, but only 1
   // is checked / expected.
   migration = waitForTestMigration(
@@ -97,7 +106,7 @@ add_task(async function test_successful_migrations() {
     );
 
     let dialogClosed = BrowserTestUtils.waitForEvent(dialog, "close");
-    doneButton.click();
+    EventUtils.synthesizeMouseAtCenter(doneButton, {}, prefsWin);
     await dialogClosed;
     assertQuantitiesShown(wizard, [
       MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS,
@@ -107,7 +116,12 @@ add_task(async function test_successful_migrations() {
   // Scenario 3: Several resource types are available, all are checked.
   let allResourceTypeStrs = Object.values(
     MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES
-  );
+  ).filter(resourceStr => {
+    return !MigrationWizardConstants.PROFILE_RESET_ONLY_RESOURCE_TYPES[
+      resourceStr
+    ];
+  });
+
   let allResourceTypes = allResourceTypeStrs.map(resourceTypeStr => {
     return MigrationUtils.resourceTypes[resourceTypeStr];
   });

@@ -46,7 +46,6 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
-  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   pktApi: "chrome://pocket/content/pktApi.sys.mjs",
   pktTelemetry: "chrome://pocket/content/pktTelemetry.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -54,8 +53,6 @@ ChromeUtils.defineESModuleGetters(this, {
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
 });
 
-const POCKET_ONSAVERECS_PREF = "extensions.pocket.onSaveRecs";
-const POCKET_ONSAVERECS_LOCLES_PREF = "extensions.pocket.onSaveRecs.locales";
 const POCKET_HOME_PREF = "extensions.pocket.showHome";
 
 var pktUI = (function () {
@@ -83,20 +80,9 @@ var pktUI = (function () {
     },
   };
 
-  var onSaveRecsEnabledPref;
-  var onSaveRecsLocalesPref;
   var pocketHomePref;
 
   function initPrefs() {
-    onSaveRecsEnabledPref = Services.prefs.getBoolPref(
-      POCKET_ONSAVERECS_PREF,
-      false
-    );
-    onSaveRecsLocalesPref = Services.prefs.getStringPref(
-      POCKET_ONSAVERECS_LOCLES_PREF,
-      ""
-    );
-
     pocketHomePref = Services.prefs.getBoolPref(POCKET_HOME_PREF);
   }
   initPrefs();
@@ -138,31 +124,16 @@ var pktUI = (function () {
    * Show the sign-up panel
    */
   function showSignUp() {
-    getFirefoxAccountSignedInUser(function (userdata) {
+    getFirefoxAccountSignedInUser(function () {
       showPanel(
         "about:pocket-signup?" +
           "emailButton=" +
-          NimbusFeatures.saveToPocket.getVariable("emailButton"),
+          Services.prefs.getBoolPref(
+            "extensions.pocket.refresh.emailButton.enabled"
+          ),
         `signup`
       );
     });
-  }
-
-  /**
-   * Get a list of recs for item and show them in the panel.
-   */
-  function getAndShowRecsForItem(item, options) {
-    var onSaveRecsEnabled =
-      onSaveRecsEnabledPref && onSaveRecsLocalesPref.includes(getUILocale());
-
-    if (
-      onSaveRecsEnabled &&
-      item &&
-      item.resolved_id &&
-      item.resolved_id !== "0"
-    ) {
-      pktApi.getRecsForItem(item.resolved_id, options);
-    }
   }
 
   /**
@@ -184,8 +155,9 @@ var pktUI = (function () {
    * Show the Pocket home panel state
    */
   function showPocketHome() {
-    const hideRecentSaves =
-      NimbusFeatures.saveToPocket.getVariable("hideRecentSaves");
+    const hideRecentSaves = Services.prefs.getBoolPref(
+      "extensions.pocket.refresh.hideRecentSaves.enabled"
+    );
     const locale = getUILocale();
     let panel = `home_no_topics`;
     if (locale.startsWith("en-")) {
@@ -256,33 +228,17 @@ var pktUI = (function () {
   function onShowSignup() {
     // Ensure opening the signup panel clears the icon state from any previous sessions.
     SaveToPocket.itemDeleted();
-    // A successful button click, for logged out users.
-    pktTelemetry.sendStructuredIngestionEvent(
-      pktTelemetry.createPingPayload({
-        events: [
-          {
-            action: "click",
-            source: "save_button",
-          },
-        ],
-      })
-    );
+    pktTelemetry.submitPocketButtonPing("click", "save_button");
   }
 
   async function onShowHome() {
-    // A successful home button click.
-    pktTelemetry.sendStructuredIngestionEvent(
-      pktTelemetry.createPingPayload({
-        events: [
-          {
-            action: "click",
-            source: "home_button",
-          },
-        ],
-      })
-    );
+    pktTelemetry.submitPocketButtonPing("click", "home_button");
 
-    if (!NimbusFeatures.saveToPocket.getVariable("hideRecentSaves")) {
+    if (
+      !Services.prefs.getBoolPref(
+        "extensions.pocket.refresh.hideRecentSaves.enabled"
+      )
+    ) {
       let recentSaves = await pktApi.getRecentSavesCache();
       if (recentSaves) {
         // We have cache, so we can use those.
@@ -330,21 +286,11 @@ var pktUI = (function () {
       return;
     }
 
-    // A successful button click, for logged in users.
-    pktTelemetry.sendStructuredIngestionEvent(
-      pktTelemetry.createPingPayload({
-        events: [
-          {
-            action: "click",
-            source: "save_button",
-          },
-        ],
-      })
-    );
+    pktTelemetry.submitPocketButtonPing("click", "save_button");
 
     // Add url
     var options = {
-      success(data, request) {
+      success(data) {
         var item = data.item;
         var ho2 = data.ho2;
         var accountState = data.account_state;
@@ -359,7 +305,11 @@ var pktUI = (function () {
         pktUIMessaging.sendMessageToPanel(saveLinkMessageId, successResponse);
         SaveToPocket.itemSaved();
 
-        if (!NimbusFeatures.saveToPocket.getVariable("hideRecentSaves")) {
+        if (
+          !Services.prefs.getBoolPref(
+            "extensions.pocket.refresh.hideRecentSaves.enabled"
+          )
+        ) {
           // Articles saved for the first time (by anyone) won't have a resolved_id
           if (item?.resolved_id && item?.resolved_id !== "0") {
             pktApi.getArticleInfo(item.resolved_url, {
@@ -379,28 +329,6 @@ var pktUI = (function () {
             pktUIMessaging.sendMessageToPanel("PKT_getArticleInfoAttempted");
           }
         }
-
-        getAndShowRecsForItem(item, {
-          success(data) {
-            pktUIMessaging.sendMessageToPanel("PKT_renderItemRecs", data);
-            if (data?.recommendations?.[0]?.experiment) {
-              const payload = pktTelemetry.createPingPayload({
-                // This is the ML model used to recommend the story.
-                // Right now this value is the same for all three items returned together,
-                // so we can just use the first item's value for all.
-                model: data.recommendations[0].experiment,
-                // Create an impression event for each item rendered.
-                events: data.recommendations.map((item, index) => ({
-                  action: "impression",
-                  position: index,
-                  source: "on_save_recs",
-                })),
-              });
-              // Send view impression ping.
-              pktTelemetry.sendStructuredIngestionEvent(payload);
-            }
-          },
-        });
       },
       error(error, request) {
         // If user is not authorized show singup page
@@ -503,19 +431,7 @@ var pktUI = (function () {
     // We don't track every click, only clicks with a known source.
     if (data.source) {
       const { position, source, model } = data;
-      const payload = pktTelemetry.createPingPayload({
-        ...(model ? { model } : {}),
-        events: [
-          {
-            action: "click",
-            source,
-            // Add in position if needed, for example, topic links have a position.
-            ...(position || position === 0 ? { position } : {}),
-          },
-        ],
-      });
-      // Send click event ping.
-      pktTelemetry.sendStructuredIngestionEvent(payload);
+      pktTelemetry.submitPocketButtonPing("click", source, position, model);
     }
 
     var url = data.url;
@@ -537,18 +453,12 @@ var pktUI = (function () {
     const { url, position, model } = data;
     // Check to see if we need to and can fire valid telemetry.
     if (model && (position || position === 0)) {
-      const payload = pktTelemetry.createPingPayload({
-        model,
-        events: [
-          {
-            action: "click",
-            position,
-            source: "on_save_recs",
-          },
-        ],
-      });
-      // Send click event ping.
-      pktTelemetry.sendStructuredIngestionEvent(payload);
+      pktTelemetry.submitPocketButtonPing(
+        "click",
+        "on_save_recs",
+        position,
+        model
+      );
     }
 
     openTabWithUrl(url, contentPrincipal, csp);
@@ -593,7 +503,7 @@ var pktUI = (function () {
       .then(userData => {
         callback(userData);
       })
-      .then(null, error => {
+      .then(null, () => {
         callback();
       });
   }
@@ -619,7 +529,6 @@ var pktUI = (function () {
     onShowSignup,
     onShowHome,
 
-    getAndShowRecsForItem,
     tryToSaveUrl,
     tryToSaveCurrentPage,
     resizePanel,
