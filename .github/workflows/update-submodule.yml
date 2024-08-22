@@ -29,5 +29,5 @@ jobs:
           exit 0
         fi
 
-        git commit -m "[FB bot] Update submodules" -a
+        git commit -m "[MB bot] Update submodules" -a
         git push
