@@ -34,7 +34,7 @@ jobs:
     outputs:
       display-version: ${{ steps.get.outputs.display-version }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         sparse-checkout: 'browser/config/version_display.txt'
     - name: Get Display Version
@@ -47,7 +47,7 @@ jobs:
     outputs:
       inside-version: ${{ steps.get.outputs.inside-version }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         sparse-checkout: 'browser/config/version.txt'
     - name: Get Inside Version
@@ -98,20 +98,6 @@ jobs:
 
 ################################################################ ↑ Windows x86_64 Build ###################################################################################
 
-  Part1-win-x86-build-with-profdata-and-jarlog:
-    needs: [get-buildid]
-    uses: ./.github/workflows/windows-build.yml
-    with:
-      aarch64: false
-      build32bit: true
-      beta: false
-      out_artifact_name: please-use-this-midori-windows-x86-package-build-with-profdata-and-jarlog
-      MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
-      release-note-url: ${{ inputs.release-note-url }}
-      release-note-url-ja: ${{ inputs.release-note-url-ja }}
-
-################################################################ ↑ Windows x86 Build ####################################################################################
-
   Part1-linux-x86_64-build-with-PGO:
     uses: ./.github/workflows/linux-build.yml
     needs: [get-buildid]
@@ -137,7 +123,7 @@ jobs:
 
 ################################################ ↑ Linux AArch64 Build ################################################
 
- #----------------------------------------- macOS -----------------------------------------#
+#----------------------------------------- macOS -----------------------------------------#
 
   Part1-macOS-Universal-build-with-profgen:
     uses: ./.github/workflows/macOS-Universal.yml
@@ -185,12 +171,7 @@ jobs:
   Deploy-to-installer:
     needs: [Part1-linux-x86_64-build-with-PGO, Part1-linux-aarch64-build, Part4-macOS-Universal-package-and-sign, Part3-win-x86_64-build-with-profdata-and-jarlog, get-display-version]
     runs-on: ubuntu-latest
-    environment: 
-      name: Deploy-to-installer-release
-
     steps:
-    - uses: actions/checkout@v3
-
     - name: Release version 📦
       run: |
         echo "Release version: ${{ needs.get-display-version.outputs.display-version }}"
@@ -201,35 +182,28 @@ jobs:
         mkdir -p ~/downloads/artifacts/linux-x64
         mkdir -p ~/downloads/artifacts/linux-aarch64
         mkdir -p ~/downloads/artifacts/windows-x64
-        mkdir -p ~/downloads/artifacts/windows-x86
         mkdir -p ~/downloads/artifacts/macOS-x64
 
     - name: download Linux x86_64 build artifact 📥
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: midori-linux-x64
         path: ~/downloads/artifacts/linux-x64
 
     - name: download Linux aarch64 build artifact 📥
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: midori-linux-aarch64
         path: ~/downloads/artifacts/linux-aarch64
 
     - name: download Windows x86_64 build artifact📥
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: please-use-this-midori-windows-x86_64-package-build-with-profdata-and-jarlog
         path: ~/downloads/artifacts/windows-x64
 
-    - name: download Windows x86 build artifact📥
-      uses: actions/download-artifact@v3
-      with:
-        name: please-use-this-midori-windows-x86-package-build-with-profdata-and-jarlog
-        path: ~/downloads/artifacts/windows-x86
-
     - name: download macOS Universal build artifact📥
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: Universal-Artifact
         path: ~/downloads/artifacts/macOS-x64
@@ -241,10 +215,23 @@ jobs:
         echo "****************************************************************************************************"
         find . -print | sed -e "s;[^/]*/;|____;g;s;____|; |;g"
         echo "****************************************************************************************************"
+    
+    - name: Create hashes.txt file 📝
+      run: |
+        cd /home/runner/downloads/artifacts
+        touch hashes.txt
+        echo "SHA256 hashes" > hashes.txt
+        echo "****************************************************************************************************" >> hashes.txt
+        echo "Linux AArch64" >> hashes.txt
+        sha256sum linux-aarch64/midori-${{ needs.get-display-version.outputs.display-version }}.linux-aarch64.tar.bz2  >> hashes.txt
+        echo "****************************************************************************************************" >> hashes.txt
+        echo "Linux x86_64" >> hashes.txt
+        sha256sum linux-x64/midori-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2  >> hashes.txt
+        echo "****************************************************************************************************" >> hashes.txt
 
     - name: Deploy to GitHub Releases for Stable Version 🚀
       id: create_release
-      uses: "softprops/action-gh-release@v1"
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           /home/runner/downloads/artifacts/linux-x64/LINUX-x86_64.mar
@@ -253,8 +240,8 @@ jobs:
           /home/runner/downloads/artifacts/linux-x64/midori-*.linux-x86_64.tar.bz2
           /home/runner/downloads/artifacts/linux-aarch64/midori-*.linux-aarch64.tar.bz2
           /home/runner/downloads/artifacts/windows-x64/midori-win64.installer.exe
-          /home/runner/downloads/artifacts/windows-x86/midori-win32.installer.exe
           /home/runner/downloads/artifacts/macOS-x64/midori-macOS-universal.dmg
+          /home/runner/downloads/artifacts/hashes.txt
         tag_name: "v${{ needs.get-display-version.outputs.display-version }}"
         name: "v${{ needs.get-display-version.outputs.display-version }}"
         draft: true
@@ -272,7 +259,7 @@ jobs:
     steps:
     - name: Run GitHub Actions for Release x86_64 Linux MAR "goastian/midori-update" 🚀
       run: |
-        echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
+        echo "Preparing to run GitHub Actions for Release x86_64 Linux MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
@@ -287,7 +274,7 @@ jobs:
             }
           }'
 
-    - name: Run GitHub Actions for Release aarch64 Linux MAR "goastian/midori-update" 🚀
+    - name: Run GitHub Actions for Release aarch64 Linux MAR "Floorp-Projects/Floorp-Update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
@@ -312,7 +299,7 @@ jobs:
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
+          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -325,14 +312,14 @@ jobs:
             }
           }'
 
-    - name: Run GitHub Actions for Release aarch64 Darwin MAR "goastian/midori-update" 🚀
+    - name: Run GitHub Actions for Release aarch64 Darwin MAR "Floorp-Projects/Floorp-Update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
+          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -346,14 +333,14 @@ jobs:
             }
           }'
 
-    - name: Run GitHub Actions for Release x86_64 Windows MAR "goastian/midori-update" 🚀
+    - name: Run GitHub Actions for Release x86_64 Windows MAR "Floorp-Projects/Floorp-Update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
+          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -364,24 +351,6 @@ jobs:
             }
           }'
 
-    - name: Run GitHub Actions for Release x86 Windows MAR "goastian/midori-update" 🚀
-      run: |
-        echo "Preparing to run GitHub Actions for Release x86 Windows MAR, waiting for 30 seconds"
-        sleep 60
-        curl -X POST \
-          -H "Authorization: token ${{ secrets.PAT }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/goastian/midori-updates/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
-          -d '{
-            "ref": "main",
-            "inputs": {
-              "mar-url": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/WINNT-x86.mar",
-              "os": "WINNT",
-              "arch": "x86",
-              "release-note-url": "${{ inputs.release-note-url }}"
-            }
-          }'
-
     - name: Run GitHub Actions for Release x86_64 Debian PPA Build 🚀
       run: |
         curl -X POST \
@@ -389,10 +358,10 @@ jobs:
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/linux-x64-deb.yml/dispatches" \
           -d '{
-            "ref": "ESR115",
+            "ref": "ESR128",
             "inputs": {
               "ppa": "true",
-              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/midori-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
+              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/floorp-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
             }
           }'
 
@@ -403,9 +372,9 @@ jobs:
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/linux-x64-deb.yml/dispatches" \
           -d '{
-            "ref": "ESR115",
+            "ref": "ESR128",
             "inputs": {
               "ppa": "false",
-              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/midori-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
+              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/floorp-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
             }
           }'

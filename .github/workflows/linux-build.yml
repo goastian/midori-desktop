@@ -83,7 +83,7 @@ jobs:
     - name: setup Rust 🦀
       run: |
         if [[ $GHA_aarch64 == 'true' ]];then
-          rustup target add aarch64-unknown-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu --toolchain stable
         fi
 
         #? https://github.com/mozilla/sccache#known-caveats
@@ -283,7 +283,7 @@ jobs:
 
     #PUBLISH START
     - name: Publish🎁
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: midori-linux-${{fromJson('["x64","aarch64"]')[inputs.aarch64]}}
         path: ~/output
