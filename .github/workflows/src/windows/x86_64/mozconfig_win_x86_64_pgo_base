@@ -11,30 +11,29 @@ ac_add_options --disable-tests
 ac_add_options --enable-rust-simd
 ac_add_options --enable-release
 ac_add_options RUSTC_OPT_LEVEL=3
-ac_add_options MOZ_REQUIRE_SIGNING=
-ac_add_options MOZ_DATA_REPORTING=
-ac_add_options MOZ_TELEMETRY_REPORTING=
+MOZ_REQUIRE_SIGNING=
+MOZ_DATA_REPORTING=
+MOZ_TELEMETRY_REPORTING=
 
 ac_add_options --enable-bootstrap
 
-ac_add_options --without-wasm-sandboxed-libraries
-
 ac_add_options --with-mozilla-api-keyfile="$PWD/floorp/apis/api-mozilla-key"
 ac_add_options --with-google-location-service-api-keyfile="$PWD/floorp/apis/api-google-location-service-key"
+ac_add_options --with-google-safebrowsing-api-keyfile="$PWD/floorp/apis/api-google-safe-browsing-key"
 
-ac_add_options WIN_UCRT_REDIST_DIR="$(echo ~)/win-cross/vs2019/Windows Kits/10/Redist/10.0.19041.0/ucrt/DLLs/x64"
-ac_add_options WIN32_REDIST_DIR="$(echo ~)/win-cross/vs2019/VC/Redist/MSVC/14.29.30133/x64/Microsoft.VC142.CRT"
+export WIN_UCRT_REDIST_DIR="$(echo ~)/win-cross/vs2022/Windows Kits/10/Redist/10.0.22621.0/ucrt/DLLs/x64"
+export WIN32_REDIST_DIR="$(echo ~)/win-cross/vs2022/VC/Redist/MSVC/14.38.33135/x64/Microsoft.VC143.CRT"
 
-ac_add_options WINSYSROOT="$(echo ~)/win-cross/vs2019"
+export WINSYSROOT="$(echo ~)/win-cross/vs2022"
 
-ac_add_options MIDL="$(echo ~)/win-cross/wine/bin/widl"
-ac_add_options WINE="$(echo ~)/win-cross/wine/bin/wine64"
-ac_add_options WINEDEBUG=-all
+export MIDL="$(echo ~)/win-cross/wine/bin/widl"
+export WINE="$(echo ~)/win-cross/wine/bin/wine64"
+export WINEDEBUG=-all
 
 #? https://bugzilla.mozilla.org/show_bug.cgi?id=1617793
 #? https://phabricator.services.mozilla.com/D170170
 ac_add_options --target=x86_64-pc-windows-msvc
 
-ac_add_options MOZ_STUB_INSTALLER=1
+export MOZ_STUB_INSTALLER=1
 
-ac_add_options MOZ_LTO=cross
+export MOZ_LTO=cross

@@ -11,24 +11,23 @@ ac_add_options --disable-tests
 ac_add_options --enable-rust-simd
 ac_add_options --enable-release
 ac_add_options RUSTC_OPT_LEVEL=3
-ac_add_options MOZ_REQUIRE_SIGNING=
-ac_add_options MOZ_DATA_REPORTING=
-ac_add_options MOZ_TELEMETRY_REPORTING=
+MOZ_REQUIRE_SIGNING=
+MOZ_DATA_REPORTING=
+MOZ_TELEMETRY_REPORTING=
 
 ac_add_options --enable-bootstrap
 
-ac_add_options --without-wasm-sandboxed-libraries
-
 ac_add_options --with-mozilla-api-keyfile="$PWD/floorp/apis/api-mozilla-key"
 ac_add_options --with-google-location-service-api-keyfile="$PWD/floorp/apis/api-google-location-service-key"
+ac_add_options --with-google-safebrowsing-api-keyfile="$PWD/floorp/apis/api-google-safe-browsing-key"
 
-ac_add_options WINSYSROOT="$(echo ~)/win-cross/vs2019"
+export WINSYSROOT="$(echo ~)/win-cross/vs2022"
 
-ac_add_options WINE="$(echo ~)/win-cross/wine/bin/wine64"
-ac_add_options WINEDEBUG=-all
+export WINE="$(echo ~)/win-cross/wine/bin/wine64"
+export WINEDEBUG=-all
 
 ac_add_options --target=aarch64-pc-windows-msvc
 
-ac_add_options MOZ_LTO=cross
+export MOZ_LTO=cross
 
-ac_add_options MOZ_STUB_INSTALLER=1
+export MOZ_STUB_INSTALLER=1
