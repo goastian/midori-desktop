@@ -66,7 +66,7 @@ found via sourcegraph.com. Most are Github repositories. If you would like to
 add your project or link to it directly, feel free to raise an issue or contact
 us via the below email.
 
-*   Browsers: Chromium (+Vivaldi), Firefox (+midori / foxhound / librewolf / Waterfox)
+*   Browsers: Chromium (+Vivaldi), Firefox (+floorp / foxhound / librewolf / Waterfox)
 *   Cryptography: google/distributed_point_functions
 *   Image codecs: eustas/2im, [Grok JPEG 2000](https://github.com/GrokImageCompression/grok), [JPEG XL](https://github.com/libjxl/libjxl), OpenHTJ2K
 *   Image processing: cloudinary/ssimulacra2, m-ab-s/media-autobuild_suite
