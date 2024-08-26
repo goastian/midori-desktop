@@ -14,6 +14,7 @@
 
 # Always ignore crashtests - specially crafted files that originally caused a
 # crash.
+**/crashtest/
 **/crashtests/
 # Also ignore reftest - specially crafted to produce expected output.
 **/reftest/
@@ -25,6 +26,8 @@ obj*/
 # These files are generated in some way.
 browser/components/pocket/content/panels/css/main.compiled.css
 browser/components/newtab/**/*.css
+browser/components/aboutwelcome/**/*.css
+browser/components/asrouter/**/*.css
 
 # Note that the debugger has its own stylelint setup, but that currently
 # produces errors. Bug 1831302 tracks making this better
@@ -66,13 +69,18 @@ dom/xml/test/old/toc/book.css
 dom/xml/test/old/toc/toc.css
 
 # Tests we don't want to modify at this point:
-layout/base/tests/bug839103.css
+layout/base/tests/stylesheet_change_events.css
 layout/inspector/tests/bug856317.css
 layout/inspector/tests/chrome/test_bug467669.css
 layout/inspector/tests/chrome/test_bug708874.css
 layout/style/test/gtest/example.css
 layout/style/test/mapped2.css
 layout/style/test/unstyled-frame.css
+
+# Bug 1893763
+mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readerview.css
+# Three dashes at top of file (for Jekyll?) cause syntax error:
+mobile/android/android-components/docs/assets/main.scss
 
 # Empty test files:
 netwerk/test/mochitests/test1.css
@@ -83,6 +91,8 @@ python/mozbuild/mozbuild/test/backend/data/build/foo.css
 
 # This is third-party in a way:
 toolkit/components/pdfjs/content/web/debugger.css
+toolkit/components/pdfjs/content/web/viewer.css
+toolkit/components/pdfjs/content/web/viewer-geckoview.css
 
 # Ignore web-platform tests as they are not necessarily under our control.
 testing/web-platform/tests/

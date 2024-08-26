@@ -15,9 +15,24 @@ jobs:
           by-project:
               # No default
               mozilla-beta:
-                  - {weekday: 'Sunday', hour: 21, minute: 0}
-                  - {weekday: 'Tuesday', hour: 21, minute: 0}
-                  - {weekday: 'Thursday', hour: 21, minute: 0}
+                  - {weekday: 'Monday', hour: 13, minute: 0}
+                  - {weekday: 'Wednesday', hour: 13, minute: 0}
+                  - {weekday: 'Friday', hour: 13, minute: 0}
+
+    - name: nightly-all
+      job:
+          type: decision-task
+          treeherder-symbol: N
+          target-tasks-method: nightly_all
+          include-push-tasks: true
+      run-on-projects:
+          - mozilla-central
+      when:
+          by-project:
+              # No default
+              mozilla-central:
+                  - {hour: 10, minute: 0}
+                  - {hour: 22, minute: 0}
 
     - name: nightly-desktop
       job:
@@ -27,10 +42,7 @@ jobs:
           include-push-tasks: true
       run-on-projects:
           - mozilla-central
-      when:
-          by-project:
-              mozilla-central: [{hour: 10, minute: 0}, {hour: 22, minute: 0}]
-              # No default
+      when: []  # never (hook only)
 
     - name: nightly-desktop-linux
       job:
@@ -82,17 +94,16 @@ jobs:
           - mozilla-central
       when: []  # never (hook only)
 
-    - name: ship-geckoview
+    - name: nightly-android
       job:
           type: decision-task
-          treeherder-symbol: ship_geckoview
-          target-tasks-method: ship_geckoview
+          treeherder-symbol: Na
+          target-tasks-method: nightly-android
           include-push-tasks: true
       run-on-projects:
           - mozilla-central
-      when:
-          by-project:
-              mozilla-central: [{hour: 10, minute: 0}, {hour: 22, minute: 0}]
+          - oak
+      when: []  # hook only
 
     - name: general-perf-testing
       job:
@@ -117,7 +128,7 @@ jobs:
           - mozilla-central
       when:
           by-project:
-              mozilla-central: [{hour: 18, minute: 30}]
+              mozilla-central: [{hour: 01, minute: 0}]
 
     # For more context on this job, see:
     # https://github.com/mozsearch/mozsearch-mozilla#how-searchfoxorg-stays-up-to-date
@@ -131,8 +142,7 @@ jobs:
       run-on-projects:
           - mozilla-beta
           - mozilla-release
-          - mozilla-esr102
-          - mozilla-esr115
+          - mozilla-esr128
           - elm
       # For all non m-c jobs we just run once daily matching the 10 UTC
       # nightly which is designed to align with searchfox's AWS cron
@@ -184,18 +194,6 @@ jobs:
           by-project:
               mozilla-central: [{hour: 10, minute: 30}]
 
-    - name: chromium-update
-      job:
-          type: decision-task
-          treeherder-symbol: Chromium
-          target-tasks-method: chromium_update
-          optimize-target-tasks: false
-      run-on-projects:
-          - mozilla-central
-      when:
-          by-project:
-              mozilla-central: [{hour: 10, minute: 30}]
-
     - name: bouncer-check
       job:
           type: decision-task
@@ -205,7 +203,7 @@ jobs:
           - mozilla-central
           - mozilla-beta
           - mozilla-release
-          - mozilla-esr115
+          - mozilla-esr128
       when:
           by-project:
               # No default branch
@@ -218,7 +216,7 @@ jobs:
               mozilla-release:
                   - {hour: 7, minute: 0}
                   - {hour: 19, minute: 0}
-              mozilla-esr115:
+              mozilla-esr128:
                   - {hour: 7, minute: 0}
                   - {hour: 19, minute: 0}
 
@@ -231,8 +229,7 @@ jobs:
           - mozilla-central
           - mozilla-beta
           - mozilla-release
-          - mozilla-esr102
-          - mozilla-esr115
+          - mozilla-esr128
       when:
           - {weekday: 'Monday', hour: 8, minute: 0}
           - {weekday: 'Thursday', hour: 8, minute: 0}
@@ -246,7 +243,7 @@ jobs:
       run-on-projects:
           - mozilla-beta
       when:
-          - {hour: 16, minute: 0}
+          - {hour: 12, minute: 0}
 
     - name: weekly-release-perf
       job:
@@ -257,7 +254,7 @@ jobs:
       run-on-projects:
           - mozilla-release
       when:
-          - {weekday: 'Friday', hour: 16, minute: 0}
+          - {weekday: 'Friday', hour: 12, minute: 0}
 
     - name: raptor-tp6m
       job:
@@ -310,11 +307,10 @@ jobs:
           - mozilla-beta
       when:
           by-project:
-              # 3h15m before launch of `nightly-desktop`
               autoland: [{hour: 6, minute: 45}, {hour: 18, minute: 45}]
               mozilla-central: []
-              # 3h15m before launch of `daily-releases`
-              mozilla-beta: [{hour: 17, minute: 45}]
+              # 4h before launch of `daily-releases`
+              mozilla-beta: [{hour: 9, minute: 00}]
               # No default
 
     - name: system-symbols
@@ -363,16 +359,6 @@ jobs:
               mozilla-central: [{hour: 11, minute: 0}, {hour: 23, minute: 0}]
               default: []
 
-    - name: are-we-esmified-yet
-      job:
-          type: decision-task
-          treeherder-symbol: are-we-esmified-yet
-          target-tasks-method: are-we-esmified-yet
-      run-on-projects:
-          - mozilla-central
-      when:
-          - {hour: 0, minute: 00}
-
     - name: eslint-build
       job:
           type: decision-task
@@ -388,7 +374,36 @@ jobs:
           type: decision-task
           treeherder-symbol: sp-perftests
           target-tasks-method: sp-perftests
+          include-push-tasks: true
       run-on-projects:
           - mozilla-central
       when:
           - {hour: 0, minute: 00}
+
+    - name: snap-upstream
+      job:
+          type: decision-task
+          treeherder-symbol: snap-upstream
+          target-tasks-method: snap_upstream_tests
+      run-on-projects:
+          - mozilla-central
+      when:
+          - {hour: 0, minute: 0}
+
+    - name: android-l10n-import
+      job:
+          type: decision-task
+          treeherder-symbol: android-l10n-import
+          target-tasks-method: android-l10n-import
+      run-on-projects: [autoland]
+      when:
+          - {hour: 0, minute: 0}
+
+    - name: android-l10n-sync
+      job:
+          type: decision-task
+          treeherder-symbol: android-l10n-sync
+          target-tasks-method: android-l10n-sync
+      run-on-projects: [mozilla-beta]
+      when:
+          - {hour: 2, minute: 0}

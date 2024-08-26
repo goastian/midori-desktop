@@ -46,9 +46,16 @@ module.exports = {
       true,
       {
         ignoreFunctions: [
-          "-moz-image-rect" /* Used for cropping images */,
+          "light-dark" /* Used for color-scheme dependent colors */,
           "add" /* Used in mathml.css */,
         ],
+      },
+    ],
+
+    "max-nesting-depth": [
+      3,
+      {
+        ignore: ["blockless-at-rules"],
       },
     ],
 
@@ -236,6 +243,12 @@ module.exports = {
         ignorePseudoClasses: ["popover-open"],
       },
     ],
+    "selector-pseudo-element-no-unknown": [
+      true,
+      {
+        ignorePseudoElements: ["slider-track", "slider-fill", "slider-thumb"],
+      },
+    ],
   },
 
   overrides: [
@@ -245,9 +258,12 @@ module.exports = {
       extends: "stylelint-config-recommended-scss",
     },
     {
-      files: "browser/components/newtab/**",
+      files: [
+        "browser/components/aboutwelcome/**",
+        "browser/components/asrouter/**",
+        "browser/components/newtab/**",
+      ],
       customSyntax: "postcss-scss",
-      defaultSeverity: "warning",
       extends: "stylelint-config-standard-scss",
       rules: {
         "at-rule-disallowed-list": [
@@ -268,34 +284,18 @@ module.exports = {
         ],
         "custom-property-empty-line-before": null,
         "custom-property-pattern": null,
-        "declaration-block-no-duplicate-properties": [
-          true,
-          {
-            severity: "error",
-          },
-        ],
+        "declaration-block-no-duplicate-properties": true,
         "declaration-block-no-redundant-longhand-properties": null,
-        "declaration-no-important": [
+        "declaration-no-important": true,
+        "function-no-unknown": [
           true,
           {
-            severity: "error",
+            ignoreFunctions: ["div"],
           },
         ],
-        "function-url-no-scheme-relative": [
-          true,
-          {
-            severity: "error",
-          },
-        ],
+        "function-url-no-scheme-relative": true,
         indentation: 2,
         "keyframes-name-pattern": null,
-        "max-nesting-depth": [
-          8,
-          {
-            ignore: ["blockless-at-rules", "pseudo-classes"],
-            severity: "error",
-          },
-        ],
         "media-feature-name-no-vendor-prefix": null,
         "no-descending-specificity": null,
         "no-eol-whitespace": true,
@@ -306,15 +306,9 @@ module.exports = {
           ["margin-left", "margin-right"],
           {
             message: "Use margin-inline instead of %s",
-            severity: "error",
           },
         ],
-        "property-no-unknown": [
-          true,
-          {
-            severity: "error",
-          },
-        ],
+        "property-no-unknown": true,
         "property-no-vendor-prefix": null,
         "scss/dollar-variable-empty-line-before": null,
         "scss/double-slash-comment-empty-line-before": [
@@ -330,7 +324,6 @@ module.exports = {
           "single",
           {
             avoidEscape: true,
-            severity: "error",
           },
         ],
         "value-keyword-case": null,

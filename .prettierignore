@@ -57,9 +57,7 @@ browser/base/content/macWindow.inc.xhtml
 browser/base/content/main-popupset.inc.xhtml
 browser/base/content/pageinfo/pageInfo.xhtml
 browser/base/content/webext-panels.xhtml
-browser/base/content/webrtcLegacyIndicator.xhtml
 browser/components/downloads/content/contentAreaDownloadsView.xhtml
-browser/components/migration/content/migration.xhtml
 browser/components/places/content/bookmarkProperties.xhtml
 browser/components/places/content/bookmarksSidebar.xhtml
 browser/components/places/content/historySidebar.xhtml
@@ -174,9 +172,6 @@ browser/base/content/test/siteIdentity/test_mcb_redirect_image.html
 browser/base/content/test/siteIdentity/test_no_mcb_for_loopback.html
 browser/base/content/test/siteIdentity/test_no_mcb_for_onions.html
 browser/base/content/test/static/dummy_page.html
-browser/base/content/test/tabs/dummy_page.html
-browser/base/content/test/tabs/file_anchor_elements.html
-browser/base/content/test/tabs/tab_that_closes.html
 browser/base/content/test/webrtc/get_user_media_in_xorigin_frame_ancestor.html
 browser/components/aboutlogins/content/aboutLogins.html
 browser/components/extensions/test/browser/file_dummy.html
@@ -196,6 +191,9 @@ browser/components/sessionstore/test/browser_423132_sample.html
 browser/components/sessionstore/test/browser_485482_sample.html
 browser/components/sessionstore/test/browser_frametree_sample_frameset.html
 browser/components/sessionstore/test/browser_scrollPositions_sample_frameset.html
+browser/components/tabbrowser/test/browser/tabs/dummy_page.html
+browser/components/tabbrowser/test/browser/tabs/file_anchor_elements.html
+browser/components/tabbrowser/test/browser/tabs/tab_that_closes.html
 browser/components/textrecognition/textrecognition.html
 browser/components/urlbar/content/quicksuggestOnboarding.html
 browser/components/urlbar/tests/browser/dummy_page.html
@@ -214,7 +212,6 @@ devtools/client/styleeditor/test/test_private.html
 devtools/client/webconsole/test/browser/test-csp-violation.html
 devtools/client/webconsole/test/browser/test-external-script-errors.html
 devtools/client/webconsole/test/browser/test-mixedcontent-securityerrors.html
-devtools/client/webconsole/test/browser/test-navigate-to-parse-error.html
 devtools/client/webconsole/test/browser/test-network.html
 devtools/client/webconsole/test/browser/test_jsterm_screenshot_command.html
 devtools/server/tests/browser/animation-data.html
@@ -237,7 +234,6 @@ docshell/test/iframesandbox/test_child_navigation_by_location.html
 docshell/test/mochitest/bug529119-window.html
 docshell/test/mochitest/test_bug387979.html
 docshell/test/mochitest/test_bug509055.html
-docshell/test/mochitest/test_bug511449.html
 docshell/test/mochitest/test_bug530396.html
 docshell/test/mochitest/test_forceinheritprincipal_overrule_owner.html
 docshell/test/navigation/file_triggeringprincipal_frame_1.html
@@ -670,8 +666,6 @@ dom/svg/test/test_style_sheet.html
 dom/svg/test/test_text_update.html
 dom/tests/browser/dummy.html
 dom/tests/browser/image.html
-dom/tests/browser/perfmetrics/dummy.html
-dom/tests/browser/perfmetrics/sound.html
 dom/tests/browser/test_new_window_from_content_child.html
 dom/tests/mochitest/beacon/test_beaconOriginHeader.html
 dom/tests/mochitest/beacon/test_beaconRedirect.html
@@ -726,7 +720,6 @@ dom/webauthn/tests/test_webauthn_authenticator_selection.html
 dom/webauthn/tests/test_webauthn_authenticator_transports.html
 dom/webauthn/tests/test_webauthn_get_assertion.html
 dom/webauthn/tests/test_webauthn_get_assertion_dead_object.html
-dom/webauthn/tests/test_webauthn_isexternalctap2securitykeysupported.html
 dom/webauthn/tests/test_webauthn_isplatformauthenticatoravailable.html
 dom/webauthn/tests/test_webauthn_loopback.html
 dom/webauthn/tests/test_webauthn_make_credential.html
@@ -912,14 +905,18 @@ layout/style/test/test_mql_event_listener_leaks.html
 layout/style/test/test_pointer-events.html
 layout/style/test/test_reframe_image_loading.html
 layout/tables/test/test_bug337124.html
-mobile/android/components/extensions/test/mochitest/file_dummy.html
+mobile/android/android-components/docs/_includes/footer.html
+mobile/android/android-components/docs/_includes/head.html
+mobile/android/android-components/docs/_layouts/home.html
+mobile/android/fenix/app/src/androidTest/assets/pages/htmlControls.html
+mobile/android/fenix/app/src/androidTest/assets/pages/trackingPage.html
 mobile/android/geckoview/src/androidTest/assets/www/accessibility/test-headings.html
 mobile/android/geckoview/src/androidTest/assets/www/autoplay.html
 mobile/android/geckoview/src/androidTest/assets/www/badVideoPath.html
 mobile/android/geckoview/src/androidTest/assets/www/context_menu_video.html
 mobile/android/geckoview/src/androidTest/assets/www/mp4.html
-mobile/android/geckoview/src/androidTest/assets/www/ogg.html
 mobile/android/geckoview/src/androidTest/assets/www/webm.html
+mobile/shared/components/extensions/test/mochitest/file_dummy.html
 netwerk/test/browser/103_preload_iframe.html
 netwerk/test/browser/post.html
 netwerk/test/mochitests/file_domain_hierarchy_inner.html
@@ -960,8 +957,8 @@ toolkit/components/places/tests/unit/bookmarks_html_localized.html
 toolkit/components/places/tests/unit/bookmarks_html_singleframe.html
 toolkit/components/printing/tests/simplifyArticleSample.html
 toolkit/components/processtools/tests/browser/dummy.html
-toolkit/components/reader/test/readerModeArticleMedium.html
-toolkit/components/reader/test/readerModeArticleShort.html
+toolkit/components/reader/tests/browser/readerModeArticleMedium.html
+toolkit/components/reader/tests/browser/readerModeArticleShort.html
 toolkit/components/translations/content/translations.html
 toolkit/components/translations/tests/browser/translations-tester-no-tag.html
 toolkit/components/url-classifier/tests/mochitest/classifiedAnnotatedFrame.html
@@ -1002,6 +999,8 @@ uriloader/exthandler/tests/mochitest/save_filenames.html
 # Also ignore reftest - specially crafted to produce expected output.
 **/reftest/
 **/reftests/
+# Don't ignore the reftest harness files.
+!/layout/tools/reftest/
 
 # Exclude expected objdirs.
 obj*/
@@ -1031,9 +1030,11 @@ browser/components/pocket/content/panels/js/main.bundle.js
 !browser/components/storybook/.storybook/*.js
 
 # Ignore newtab files
-browser/components/newtab/aboutwelcome/content/aboutwelcome.bundle.js
 browser/components/newtab/data/
 browser/components/newtab/logs/
+
+# Ignore about:welcome files
+browser/components/aboutwelcome/logs/
 
 # The only file in browser/locales/ is pre-processed.
 browser/locales/
@@ -1056,7 +1057,6 @@ devtools/client/debugger/webpack.config.js
 devtools/client/preferences/
 
 # Ignore devtools generated code
-devtools/shared/css/generated/properties-db.js
 devtools/client/webconsole/test/node/fixtures/stubs/*.js
 !devtools/client/webconsole/test/node/fixtures/stubs/index.js
 devtools/client/shared/components/test/node/stubs/reps/*.js
@@ -1113,9 +1113,10 @@ dom/serviceworkers/test/file_js_cache.js
 
 # Intentional broken files
 dom/base/test/file_js_cache_syntax_error.js
+dom/base/test/jsmodules/test_scriptNotParsedAsModule.html
 dom/base/test/jsmodules/test_syntaxError.html
 dom/base/test/jsmodules/test_syntaxErrorAsync.html
-dom/base/test/jsmodules/module_badSyntax.js
+dom/base/test/jsmodules/module_badSyntax.mjs
 dom/base/test/jsmodules/test_syntaxErrorInline.html
 dom/base/test/jsmodules/test_syntaxErrorInlineAsync.html
 dom/base/test/test_bug687859.html
@@ -1151,17 +1152,22 @@ js/src/fuzz-tests/
 mobile/android/docs/geckoview/assets/js/search-data.json
 
 # Uses `#filter substitution`
-mobile/android/app/mobile.js
 mobile/android/app/geckoview-prefs.js
 
 # Not much JS to lint and non-standard at that
 mobile/android/installer/
 mobile/android/locales/
 
+# Android - Web extensions: manifest.json files may be generated by the build system.
+mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/manifest.json
+mobile/android/android-components/samples/browser/src/main/assets/extensions/test/manifest.json
+
 # Pre-processed/pref files
 modules/libpref/greprefs.js
 modules/libpref/init/all.js
 modules/libpref/test/unit/*data/
+toolkit/components/backgroundtasks/defaults/backgroundtasks.js
+toolkit/components/backgroundtasks/defaults/backgroundtasks_browser.js
 
 # Only contains non-standard test files.
 python/
@@ -1176,15 +1182,18 @@ remote/shared/messagehandler/test/browser/resources/modules/root/invalid.sys.mjs
 
 # services/ exclusions
 
-# Third party services
-services/common/kinto-http-client.js
-services/common/kinto-offline-client.js
-
 # Webpack-bundled library
 services/fxaccounts/FxAccountsPairingChannel.sys.mjs
 
 # Servo is imported.
 servo/
+
+# Rust/Cargo output from running `cargo` directly
+target/
+servo/ports/geckolib/target/
+dom/base/rust/target/
+servo/components/style/target/
+dom/webgpu/tests/cts/vendor/target/
 
 # Test files that we don't want to lint (preprocessed, minified etc)
 testing/condprofile/condprof/tests/profile
@@ -1192,7 +1201,8 @@ testing/mozbase/mozprofile/tests/files/prefs_with_comments.js
 testing/mozharness/configs/test/test_malformed.json
 testing/talos/talos/startup_test/sessionrestore/profile/sessionstore.js
 testing/talos/talos/startup_test/sessionrestore/profile-manywindows/sessionstore.js
-testing/talos/talos/tests/devtools/addon/content/pages/
+testing/talos/talos/tests/offscreencanvas/benchmarks/video/demuxer_mp4.js
+testing/talos/talos/tests/offscreencanvas/benchmarks/video/mp4box.all.min.js
 # Python json.
 testing/talos/talos/unittests/test_talosconfig_browser_config.json
 testing/talos/talos/unittests/test_talosconfig_test_config.json
@@ -1213,11 +1223,6 @@ toolkit/mozapps/extensions/test/xpcshell/data/test_AddonRepository_fail.json
 # Built files
 toolkit/components/pdfjs/content/build
 toolkit/components/pdfjs/content/web
-
-# External code:
-toolkit/components/reader/Readability.js
-toolkit/components/reader/Readability-readerable.js
-toolkit/components/reader/JSDOMParser.js
 
 # Uses preprocessing
 toolkit/components/reader/Readerable.sys.mjs
@@ -1252,21 +1257,22 @@ toolkit/components/uniffi-bindgen-gecko-js/components/generated/*
 ##############################################################################
 
 browser/components/newtab/vendor/
+browser/components/pocket/content/panels/css/normalize.scss
 browser/components/pocket/content/panels/js/vendor/
 browser/components/storybook/node_modules/
 browser/extensions/formautofill/content/third-party/
 browser/extensions/formautofill/test/fixtures/third_party/
-browser/extensions/formautofill/test/unit/heuristics/
-browser/extensions/screenshots/build/raven.js
 devtools/client/inspector/markup/test/lib_*
 devtools/client/jsonview/lib/require.js
 devtools/client/shared/build/babel.js
 devtools/client/shared/source-map/
 devtools/client/shared/sourceeditor/codemirror/
+devtools/client/shared/sourceeditor/codemirror6/
 devtools/client/shared/sourceeditor/test/cm_mode_ruby.js
 devtools/client/shared/sourceeditor/test/codemirror/
 devtools/client/shared/vendor/
 devtools/client/inspector/markup/test/helper_diff.js
+devtools/client/debugger/src/workers/parser/utils/parse-script-tags/
 devtools/shared/acorn/
 devtools/shared/compatibility/dataset/css-properties.json
 devtools/shared/heapsnapshot/CoreDump.pb.cc
@@ -1288,6 +1294,7 @@ dom/media/platforms/ffmpeg/ffmpeg57/
 dom/media/platforms/ffmpeg/ffmpeg58/
 dom/media/platforms/ffmpeg/ffmpeg59/
 dom/media/platforms/ffmpeg/ffmpeg60/
+dom/media/platforms/ffmpeg/ffmpeg61/
 dom/media/platforms/ffmpeg/libav53/
 dom/media/platforms/ffmpeg/libav54/
 dom/media/platforms/ffmpeg/libav55/
@@ -1306,7 +1313,6 @@ dom/tests/mochitest/dom-level1-core/
 dom/tests/mochitest/dom-level2-core/
 dom/tests/mochitest/dom-level2-html/
 dom/u2f/tests/pkijs/
-dom/webauthn/cbor-cpp/
 dom/webauthn/tests/pkijs/
 dom/webgpu/tests/cts/checkout/
 editor/libeditor/tests/browserscope/lib/richtext/
@@ -1343,12 +1349,14 @@ gfx/vr/service/openvr/src/vrpathregistry_public.h
 gfx/wr/
 gfx/ycbcr/
 intl/icu/
+intl/icu_capi/
 ipc/chromium/src/third_party/
 js/src/ctypes/libffi/
 js/src/dtoa.c
 js/src/editline/
 js/src/jit/arm64/vixl/
 js/src/octane/
+js/src/tests/test262/
 js/src/vtune/disable_warnings.h
 js/src/vtune/ittnotify_config.h
 js/src/vtune/ittnotify.h
@@ -1374,7 +1382,6 @@ media/libpng/
 media/libsoundtouch/
 media/libspeex_resampler/
 media/libtheora/
-media/libtremor/
 media/libvorbis/
 media/libvpx/
 media/libwebp/
@@ -1386,6 +1393,9 @@ media/openmax_il/
 media/webrtc/signaling/gtest/MockCall.h
 mfbt/double-conversion/double-conversion/
 mfbt/lz4/.*
+mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readability/JSDOMParser-0.4.2.js
+mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readability/readability-0.4.2.js
+mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readability/readability-readerable-0.4.2.js
 mobile/android/exoplayer2/
 modules/brotli/
 modules/fdlibm/
@@ -1407,6 +1417,8 @@ security/manager/tools/log_list.json
 security/nss/
 security/sandbox/chromium/
 security/sandbox/chromium-shim/
+services/common/kinto-http-client.sys.mjs
+services/common/kinto-offline-client.sys.mjs
 testing/gtest/gmock/
 testing/gtest/gtest/
 testing/mochitest/MochiKit/
@@ -1414,8 +1426,11 @@ testing/mochitest/pywebsocket3/
 testing/mochitest/tests/MochiKit-1.4.2/
 testing/modules/sinon-7.2.7.js
 testing/mozbase/mozproxy/mozproxy/backends/mitm/scripts/catapult/
+testing/talos/talos/tests/devtools/addon/content/pages/
 testing/talos/talos/tests/dromaeo/
 testing/talos/talos/tests/kraken/
+testing/talos/talos/tests/offscreencanvas/benchmarks/video/demuxer_mp4.js
+testing/talos/talos/tests/offscreencanvas/benchmarks/video/mp4box.all.min.js
 testing/talos/talos/tests/v8_7/
 testing/web-platform/tests/resources/webidl2/
 testing/web-platform/tests/tools/third_party/
@@ -1427,15 +1442,17 @@ testing/xpcshell/node-ws/
 third_party/
 toolkit/components/certviewer/content/vendor/
 toolkit/components/jsoncpp/
+toolkit/components/ml/vendor/
 toolkit/components/normandy/vendor/
 toolkit/components/passwordmgr/PasswordRulesParser.sys.mjs
 toolkit/components/protobuf/
+toolkit/components/reader/readability/
+toolkit/components/resistfingerprinting/content/gl-matrix.js
 toolkit/components/translation/cld2/
-toolkit/components/translations/bergamot-translator
-toolkit/components/translations/fasttext/fasttext.js
-toolkit/components/translations/fasttext/fasttext_wasm.js
+toolkit/components/translations/bergamot-translator/thirdparty
+toolkit/components/translations/bergamot-translator/bergamot-translator.js
 toolkit/components/url-classifier/chromium/
-toolkit/components/utils/mozjexl.js
+toolkit/components/utils/mozjexl.sys.mjs
 toolkit/components/viaduct/fetch_msg_types.pb.cc
 toolkit/components/viaduct/fetch_msg_types.pb.h
 toolkit/content/widgets/vendor/lit.all.mjs
@@ -1455,8 +1472,17 @@ xpcom/io/crc32c.c
 ##############################################################################
 
 .gradle/
-browser/components/newtab/content-src/asrouter/schemas/BackgroundTaskMessagingExperiment.schema.json
-browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json
+build/vs/vs2022.yaml
+browser/components/aboutwelcome/content/aboutwelcome.bundle.js
+browser/components/aboutwelcome/logs/
+browser/components/aboutwelcome/node_modules/
+browser/components/asrouter/node_modules/
+browser/components/asrouter/content/asrouter-admin.bundle.js
+browser/components/asrouter/logs/
+browser/components/asrouter/content-src/schemas/BackgroundTaskMessagingExperiment.schema.json
+browser/components/asrouter/content-src/schemas/MessagingExperiment.schema.json
+browser/components/asrouter/tests/InflightAssetsMessageProvider.sys.mjs
+browser/components/asrouter/tests/NimbusRolloutMessageProvider.sys.mjs
 browser/components/newtab/logs/
 browser/components/newtab/node_modules/
 browser/components/storybook/storybook-static/
@@ -1467,16 +1493,31 @@ devtools/client/application/test/components/node_modules/
 devtools/client/debugger/node_modules/
 dom/tests/ajax/jquery/
 dom/tests/ajax/mochikit/
+gradle/wrapper/
 intl/components/src/UnicodeScriptCodes.h
 intl/unicharutil/util/nsSpecialCasingData.cpp
 intl/unicharutil/util/nsUnicodePropertyData.cpp
+mobile/android/**/.build-cache
+mobile/android/**/.gradle
+mobile/android/**/build
+mobile/android/**/bin
+mobile/android/**/generated
+mobile/android/**\/local.properties
+mobile/android/**\/manifest.json
+mobile/android/android-components/components/feature/search/src/main/assets/search/search_telemetry_v2.json
+mobile/android/android-components/gradle/wrapper/
+mobile/android/android-components/samples/glean/src/main/res/raw/initial_experiments.json
+mobile/android/fenix/app/src/debug/res/raw/initial_experiments.json
+mobile/android/fenix/app/src/main/res/raw/initial_experiments.json
+mobile/android/fenix/gradle/wrapper/
+mobile/android/focus-android/gradle/wrapper/
 mobile/locales/l10n-changesets.json
 mobile/locales/l10n-onchange-changesets.json
 node_modules/
+python/mozperftest/mozperftest/tests/data/
 security/manager/tools/KnownRootHashes.json
 security/manager/tools/PreloadedHPKPins.json
 services/settings/dumps/
-testing/talos/talos/tests/devtools/addon/content/pages/custom/debugger/static/js/minified.js
 toolkit/components/nimbus/schemas/NimbusExperiment.schema.json
 toolkit/components/pdfjs/content/PdfJsDefaultPreferences.sys.mjs
 toolkit/components/uniffi-js/UniFFIGeneratedScaffolding.cpp
@@ -1484,4 +1525,6 @@ toolkit/components/uniffi-js/UniFFIFixtureScaffolding.cpp
 toolkit/components/uniffi-bindgen-gecko-js/fixtures/generated
 tools/browsertime/package.json
 tools/browsertime/package-lock.json
+tools/ts/error_list.json
 try_task_config.json
+xpcom/idl-parser/xpidl/fixtures/xpctest.d.json

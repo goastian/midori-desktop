@@ -4,8 +4,6 @@
 
 "use strict";
 
-/* eslint-env node */
-
 // The `*testPaths` defined below for test paths are the main path formats we
 // prefer to support for tests as they are commonly used across the tree.
 
@@ -108,6 +106,7 @@ const extraBrowserTestPaths = [
   "browser/base/content/test/plugins/",
   "browser/base/content/test/popupNotifications/",
   "browser/base/content/test/popups/",
+  "browser/base/content/test/privateBrowsing/",
   "browser/base/content/test/protectionsUI/",
   "browser/base/content/test/referrer/",
   "browser/base/content/test/sanitize/",
@@ -115,13 +114,11 @@ const extraBrowserTestPaths = [
   "browser/base/content/test/siteIdentity/",
   "browser/base/content/test/startup/",
   "browser/base/content/test/static/",
-  "browser/base/content/test/statuspanel/",
   "browser/base/content/test/sync/",
   "browser/base/content/test/tabMediaIndicator/",
   "browser/base/content/test/tabPrompts/",
   "browser/base/content/test/tabcrashed/",
   "browser/base/content/test/tabdialogs/",
-  "browser/base/content/test/tabs/",
   "browser/base/content/test/touch/",
   "browser/base/content/test/utilityOverlay/",
   "browser/base/content/test/webextensions/",
@@ -134,7 +131,6 @@ const extraBrowserTestPaths = [
   "browser/components/sessionstore/test/",
   "browser/components/shell/test/",
   "browser/components/touchbar/tests/",
-  "browser/components/translation/test/",
   "browser/components/uitour/test/",
   "browser/extensions/report-site-issue/test/browser/",
   "browser/tools/mozscreenshots/",
@@ -177,6 +173,7 @@ const extraBrowserTestPaths = [
   "dom/broadcastchannel/tests/",
   "dom/events/test/",
   "dom/fetch/tests/",
+  "dom/file/ipc/tests/",
   "dom/html/test/",
   "dom/indexedDB/test/",
   "dom/ipc/tests/",
@@ -216,7 +213,7 @@ const extraBrowserTestPaths = [
   "toolkit/components/pdfjs/test/",
   "toolkit/components/pictureinpicture/tests/",
   "toolkit/components/printing/tests/",
-  "toolkit/components/reader/test/",
+  "toolkit/components/reader/tests/",
   "toolkit/components/thumbnails/test/",
   "toolkit/components/tooltiptext/tests/",
   "toolkit/components/windowcreator/test/",
@@ -279,7 +276,6 @@ const extraChromeTestPaths = [
 // of the file.
 
 const extraMochitestTestPaths = [
-  "dom/file/tests/",
   "dom/ipc/tests/",
   "toolkit/xre/test/",
   "accessible/tests/crashtests/",
@@ -301,6 +297,7 @@ const extraMochitestTestPaths = [
   "dom/encoding/test/",
   "dom/events/test/",
   "dom/file/tests/",
+  "dom/file/ipc/tests/",
   "dom/filesystem/compat/tests/",
   "dom/filesystem/tests/",
   "dom/html/test/",
@@ -314,6 +311,7 @@ const extraMochitestTestPaths = [
   "dom/media/mediasession/test/",
   "dom/media/mediasource/test/",
   "dom/media/test/",
+  "dom/media/webaudio/test/",
   "dom/media/webcodecs/test/",
   "dom/media/webspeech/recognition/test/",
   "dom/media/webspeech/synth/test/",
@@ -359,7 +357,6 @@ const extraMochitestTestPaths = [
   "layout/forms/test/",
   "layout/generic/test/",
   "layout/inspector/tests/",
-  "layout/mathml/tests/",
   "layout/style/test/",
   "layout/svg/tests/",
   "layout/tables/test/",
@@ -395,6 +392,7 @@ let expectedDupePaths = new Set([
   "dom/encoding/test/",
   "dom/events/test/",
   "dom/file/tests/",
+  "dom/file/ipc/tests/",
   "dom/indexedDB/test/",
   "dom/ipc/tests/",
   "dom/localstorage/test/",
@@ -430,7 +428,6 @@ let expectedDupePaths = new Set([
   "layout/base/tests/",
   "layout/forms/test/",
   "layout/generic/test/",
-  "layout/mathml/tests/",
   "layout/style/test/",
   "layout/svg/tests/",
   "layout/xul/test/",
