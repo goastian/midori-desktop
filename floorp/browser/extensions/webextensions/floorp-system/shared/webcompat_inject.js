@@ -19,6 +19,8 @@
 
 
     {
+      /*bugs: https://github.com/Floorp-Projects/Floorp/issues/1004"
+      description: "YouTube is hanging on Firefox/Floorp if YouTube uses VP9 codec.*/
       "matches": ["*://www.youtube.com/*"],
       "js": [
         { file: "webcompat/bug-1004-youtube-com.js" }

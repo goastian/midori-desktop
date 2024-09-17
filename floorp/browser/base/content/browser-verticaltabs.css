@@ -135,6 +135,7 @@
 
 #tabbrowser-tabs {
   overflow-y: scroll !important;
+  overflow-x: hidden !important;
   scrollbar-width: thin !important;
   border-inline-start: none !important;
   padding-inline-start: 0 !important;
@@ -142,6 +143,10 @@
   padding-bottom: 0 !important;
   margin: 5px !important;
   margin-left: 2px !important;
+}
+
+#TabsToolbar:not(:hover) #tabbrowser-tabs {
+  scrollbar-width: none !important;
 }
 
 #tabbrowser-arrowscrollbox-periphery {

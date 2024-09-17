@@ -30,7 +30,7 @@ export const WindowsSupport = {
   },
 
   buildGroupId(id) {
-    return `ablaze.floorp.ssb.${id}`;
+    return `astian.midori.ssb.${id}`;
   },
 
   async install(ssb) {

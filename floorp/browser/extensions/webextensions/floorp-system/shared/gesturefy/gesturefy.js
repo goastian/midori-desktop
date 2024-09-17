@@ -30,7 +30,7 @@ if (browser_.runtime.id == "{506e023c-7f2b-40a3-8066-bc5deb40aebe}") {
           let selectedExtension = "";
           if (
             valueJSON.settings != undefined &&
-            valueJSON.settings.extensionId == "floorp-actions@floorp.ablaze.one"
+            valueJSON.settings.extensionId == "midori-actions@astian.org"
           ) {
             if (
               JSON.parse(valueJSON.settings.message).action !=
@@ -236,7 +236,7 @@ if (browser_.runtime.id == "{506e023c-7f2b-40a3-8066-bc5deb40aebe}") {
         .querySelector("#gesturePopupCommandSelect")
         .setAttribute(
           "value",
-          `{"name":"SendMessageToOtherAddon","settings":{"extensionId":"floorp-actions@floorp.ablaze.one","message":"{\\"action\\": \\"${id}\\"${
+          `{"name":"SendMessageToOtherAddon","settings":{"extensionId":"midori-actions@astian.org","message":"{\\"action\\": \\"${id}\\"${
             setting != undefined
               ? `,\\"options\\":{${JSON.stringify(JSON.stringify(setting))
                   .slice(2)
@@ -289,7 +289,7 @@ if (browser_.runtime.id == "{506e023c-7f2b-40a3-8066-bc5deb40aebe}") {
       if (
         document.querySelector("#gesturePopup").getAttribute("open") === "" &&
         valueJSON.settings != undefined &&
-        valueJSON.settings.extensionId == "floorp-actions@floorp.ablaze.one"
+        valueJSON.settings.extensionId == "midori-actions@astian.org"
       ) {
         if (
           JSON.parse(valueJSON.settings.message).action == "open-tree-style-tab"
@@ -298,7 +298,7 @@ if (browser_.runtime.id == "{506e023c-7f2b-40a3-8066-bc5deb40aebe}") {
             .querySelector("#gesturePopupCommandSelect")
             .setAttribute(
               "value",
-              `{"name":"SendMessageToOtherAddon","settings":{"extensionId":"floorp-actions@floorp.ablaze.one","message":"{\\"action\\": \\"open-extension-sidebar\\",\\"options\\":{\\"extensionId\\":\\"treestyletab@piro.sakura.ne.jp\\"}}"}}`,
+              `{"name":"SendMessageToOtherAddon","settings":{"extensionId":"midori-actions@astian.org","message":"{\\"action\\": \\"open-extension-sidebar\\",\\"options\\":{\\"extensionId\\":\\"treestyletab@piro.sakura.ne.jp\\"}}"}}`,
             );
           valueJSON = JSON.parse(
             document
@@ -526,7 +526,7 @@ if (browser_.runtime.id == "{506e023c-7f2b-40a3-8066-bc5deb40aebe}") {
       }
       if (
         valueJSON.settings != undefined &&
-        valueJSON.settings.extensionId == "floorp-actions@floorp.ablaze.one"
+        valueJSON.settings.extensionId == "midori-actions@astian.org"
       ) {
         if (
           this.commandList.querySelector("#settingsBackButton") != null &&
@@ -542,7 +542,7 @@ if (browser_.runtime.id == "{506e023c-7f2b-40a3-8066-bc5deb40aebe}") {
         } else if (
           this.commandList.querySelector(`[name="extensionId"]`) &&
           this.commandList.querySelector(`[name="extensionId"]`).value ==
-            "floorp-actions@floorp.ablaze.one"
+            "midori-actions@astian.org"
         ) {
           this.commandList.querySelector(`[name="extensionId"]`).value = "";
           this.commandList.querySelector(`[name="message"]`).value = "";

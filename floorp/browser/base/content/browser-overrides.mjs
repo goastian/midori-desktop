@@ -34,8 +34,8 @@ window.SetClickAndHoldHandlers = function () {
 // Experimental feature. Malware can change this pref to redirect user to malware site.
 const newtabOverrideURL = "floorp.newtab.overrides.newtaburl";
 if (Services.prefs.getStringPref(newtabOverrideURL, "") != "") {
-  var { AboutNewTab } = ChromeUtils.import(
-    "resource:///modules/AboutNewTab.jsm"
+  const { AboutNewTab } = ChromeUtils.importESModule(
+    "resource:///modules/AboutNewTab.sys.mjs"
   );
   const newTabURL = Services.prefs.getStringPref(newtabOverrideURL);
   AboutNewTab.newTabURL = newTabURL;
@@ -46,17 +46,21 @@ if (Services.prefs.getStringPref(newtabOverrideURL, "") != "") {
 window.SessionStore.promiseInitialized.then(() => {
   window.gBrowser.createBrowser = function ({
     isPreloadBrowser,
-    tabName,
+    name,
     openWindowInfo,
     remoteType,
     initialBrowsingContextGroupId,
     uriIsAboutBlank,
     userContextId,
     skipLoad,
-    initiallyActive,
   } = {}) {
     let b = document.createXULElement("browser");
+    // Use the JSM global to create the permanentKey, so that if the
+    // permanentKey is held by something after this window closes, it
+    // doesn't keep the window alive.
+    b.permanentKey = new (Cu.getGlobalForObject(Services).Object)();
 
+    // Floorp Injection
     if (
       userContextId ===
       window.gFloorpPrivateContainer.getPrivateContainerUserContextId()
@@ -65,23 +69,7 @@ window.SessionStore.promiseInitialized.then(() => {
       b.setAttribute("disableglobalhistory", "true");
       b.setAttribute("FloorpPrivateContainer", "true");
     }
-
-    // Use the JSM global to create the permanentKey, so that if the
-    // permanentKey is held by something after this window closes, it
-    // doesn't keep the window alive.
-    b.permanentKey = new (Cu.getGlobalForObject(Services).Object)();
-
-    // Ensure that SessionStore has flushed any session history state from the
-    // content process before we this browser's remoteness.
-    if (!Services.appinfo.sessionHistoryInParent) {
-      b.prepareToChangeRemoteness = () =>
-        window.SessionStore.prepareToChangeRemoteness(b);
-      b.afterChangeRemoteness = switchId => {
-        let tab = this.getTabForBrowser(b);
-        window.SessionStore.finishTabRemotenessChange(tab, switchId);
-        return true;
-      };
-    }
+    // End Floorp Injection
 
     const defaultBrowserAttributes = {
       contextmenu: "contentAreaContextMenu",
@@ -89,6 +77,7 @@ window.SessionStore.promiseInitialized.then(() => {
       messagemanagergroup: "browsers",
       tooltip: "aHTMLTooltip",
       type: "content",
+      manualactiveness: "true",
     };
     for (let attribute in defaultBrowserAttributes) {
       b.setAttribute(attribute, defaultBrowserAttributes[attribute]);
@@ -96,10 +85,6 @@ window.SessionStore.promiseInitialized.then(() => {
 
     if (window.gMultiProcessBrowser || remoteType) {
       b.setAttribute("maychangeremoteness", "true");
-    }
-
-    if (!initiallyActive) {
-      b.setAttribute("initiallyactive", "false");
     }
 
     if (userContextId) {
@@ -147,14 +132,15 @@ window.SessionStore.promiseInitialized.then(() => {
 
     // This will be used by gecko to control the name of the opened
     // window.
-    if (tabName) {
+    if (name) {
       // XXX: The `name` property is special in HTML and XUL. Should
       // we use a different attribute name for this?
-      b.setAttribute("name", tabName);
+      b.setAttribute("name", name);
     }
 
-    let notificationbox = document.createXULElement("notificationbox");
-    notificationbox.setAttribute("notificationside", "top");
+    if (this._allowTransparentBrowser) {
+      b.setAttribute("transparent", "true");
+    }
 
     let stack = document.createXULElement("stack");
     stack.className = "browserStack";
@@ -162,7 +148,6 @@ window.SessionStore.promiseInitialized.then(() => {
 
     let browserContainer = document.createXULElement("vbox");
     browserContainer.className = "browserContainer";
-    browserContainer.appendChild(notificationbox);
     browserContainer.appendChild(stack);
 
     let browserSidebarContainer = document.createXULElement("hbox");

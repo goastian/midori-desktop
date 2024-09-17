@@ -8,12 +8,12 @@ DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]
 DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
 
 
-FINAL_TARGET_FILES.features["floorp-actions@floorp.ablaze.one"] += [
+FINAL_TARGET_FILES.features["midori-actions@astian.org"] += [
     "background.js",
     "manifest.json",
 ]
 
-FINAL_TARGET_FILES.features["floorp-actions@floorp.ablaze.one"]["API"] += [
+FINAL_TARGET_FILES.features["midori-actions@astian.org"]["API"] += [
     "API/aboutConfigPrefs.js",
     "API/aboutConfigPrefs.json",
     "API/floorpActions.js",
@@ -21,4 +21,4 @@ FINAL_TARGET_FILES.features["floorp-actions@floorp.ablaze.one"]["API"] += [
 ]
 
 with Files("**"):
-    BUG_COMPONENT = ("Firefox", "floorp-actions@floorp.ablaze.one")
+    BUG_COMPONENT = ("Firefox", "midori-actions@astian.org")

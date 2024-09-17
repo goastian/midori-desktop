@@ -232,8 +232,8 @@ Var ArchToInstall
 !undef URLStubDownloadX86
 !undef URLStubDownloadAMD64
 !undef URLStubDownloadAArch64
-!define URLStubDownloadX86 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win32.installer.exe"
-!define URLStubDownloadAMD64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64.installer.exe"
+!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
 !define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-beta-latest"
 !undef URLManualDownload
 !define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
@@ -329,19 +329,19 @@ Function .onInit
   ; path for this install, even if it's not the same architecture.
   SetRegView 32
   SetShellVarContext all ; Set SHCTX to HKLM
-  ${GetSingleInstallPath} "Software\Astian\${BrandFullNameInternal}" $R9
+  ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
 
   ${If} "$R9" == "false"
     ${If} ${IsNativeAMD64}
     ${OrIf} ${IsNativeARM64}
       SetRegView 64
-      ${GetSingleInstallPath} "Software\Astian\${BrandFullNameInternal}" $R9
+      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
     ${EndIf}
   ${EndIf}
 
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
-    ${GetSingleInstallPath} "Software\Astian\${BrandFullNameInternal}" $R9
+    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
   ${EndIf}
 
   StrCpy $PreviousInstallDir ""
@@ -458,7 +458,7 @@ Function .onInit
     Quit
   ${EndIf}
 
-  ${InitHashAppModelId} "$INSTDIR" "Software\Astian\${AppName}\TaskBarIDs"
+  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
 
   File /oname=$PLUGINSDIR\stub_common.css "stub_common.css"
   File /oname=$PLUGINSDIR\stub_common.js "stub_common.js"
@@ -671,7 +671,7 @@ Function createInstall
   ${EndIf}
 
   ${GetLocalAppDataFolder} $0
-  ${If} ${FileExists} "$0\Astian\Midori"
+  ${If} ${FileExists} "$0\Mozilla\Firefox"
     StrCpy $ExistingProfile "1"
   ${Else}
     StrCpy $ExistingProfile "0"
@@ -1064,12 +1064,12 @@ Function SendPing
     ${EndIf}
 
     ClearErrors
-    WriteRegStr HKLM "Software\Astian" "${BrandShortName}InstallerTest" \
+    WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
                      "Write Test"
     ${If} ${Errors}
       StrCpy $R8 "0"
     ${Else}
-      DeleteRegValue HKLM "Software\Astian" "${BrandShortName}InstallerTest"
+      DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
       StrCpy $R8 "1"
     ${EndIf}
 
@@ -1480,21 +1480,21 @@ Function ShouldPromptForProfileCleanup
     ${Do}
       ClearErrors
       ; Check if the section exists by reading a value that must be present.
-      ReadINIStr $1 "$APPDATA\Astian\Midori\profiles.ini" "Profile$0" "Path"
+      ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "Path"
       ${If} ${Errors}
         ; We've run out of profile sections.
         ${Break}
       ${EndIf}
 
       ClearErrors
-      ReadINIStr $1 "$APPDATA\Astian\Midori\profiles.ini" "Profile$0" "Default"
+      ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "Default"
       ${IfNot} ${Errors}
       ${AndIf} $1 == "1"
         ; We've found the default profile
-        ReadINIStr $1 "$APPDATA\Astian\Midori\profiles.ini" "Profile$0" "Path"
-        ReadINIStr $2 "$APPDATA\Astian\Midori\profiles.ini" "Profile$0" "IsRelative"
+        ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "Path"
+        ReadINIStr $2 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "IsRelative"
         ${If} $2 == "1"
-          StrCpy $R0 "$APPDATA\Astian\Midori\$1"
+          StrCpy $R0 "$APPDATA\Mozilla\Firefox\$1"
         ${Else}
           StrCpy $R0 "$1"
         ${EndIf}
@@ -1525,7 +1525,7 @@ Function ShouldPromptForProfileCleanup
       ${Break}
     ${EndIf}
     ${WordFind} "$1" "-" "+1{" $2
-    ${If} $2 == "MidoriURL"
+    ${If} $2 == "FirefoxURL"
       ClearErrors
       ReadRegStr $2 HKCR "$1\DefaultIcon" ""
       ${IfNot} ${Errors}
@@ -1545,10 +1545,10 @@ Function ShouldPromptForProfileCleanup
 
   ; Okay, there's at least one install, let's see if it's for this channel.
   SetShellVarContext all
-  ${GetSingleInstallPath} "Software\Astian\${BrandFullNameInternal}" $0
+  ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
   ${If} $0 == "false"
     SetShellVarContext current
-    ${GetSingleInstallPath} "Software\Astian\${BrandFullNameInternal}" $0
+    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
     ${If} $0 == "false"
       ; Existing installs are not for this channel. Don't show any prompt.
       GoTo end

@@ -1,6 +1,7 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
 import { WorkspacesExternalFileService } from "chrome://floorp/content/modules/workspaces/WorkspacesExternalFileService.mjs";
+import { WorkspacesService } from "./WorkspacesService.mjs";
 
 export const WorkspacesWindowIdUtils = {
   get _workspacesStoreFile() {
@@ -104,9 +105,53 @@ export const WorkspacesWindowIdUtils = {
       }
     }
 
-    await IOUtils.writeJSON(
-      this._workspacesStoreFile,
-      json
-    );
+    await IOUtils.writeJSON(this._workspacesStoreFile, json);
+  },
+
+  // Verify that the correct windowId is assigned by parsing the data stored in windowId and the tabs.
+  async checkWindowIntegrity(windowId, tabs) {
+    const workspacesData = await this.getWindowWorkspacesData(windowId);
+    const workspaceIds = Object.keys(workspacesData);
+
+    // generate a list of workspaceIds from the tabs excluding null values
+    const workspaceIdsFromTabs = tabs
+      .map(tab =>
+        tab.getAttribute(WorkspacesService.workspacesTabAttributionId)
+      )
+      .filter(workspaceId => workspaceId !== null);
+
+    // check if the all the workspaceIds from the tabs are present in the workspacesData
+    for (const workspaceId of workspaceIdsFromTabs) {
+      if (!workspaceIds.includes(workspaceId)) {
+        console.error(
+          `WorkspaceId ${workspaceId} is not present in the workspacesData`
+        );
+        return false;
+      }
+    }
+    return true;
+  },
+
+  // Infer the windowId from the tabs
+  // Get the id from the tab's attributes and find the data that has that id.
+  async getWindowIdByInference(tabs) {
+    const workspaceIdsFromTabs = tabs
+      .map(tab =>
+        tab.getAttribute(WorkspacesService.workspacesTabAttributionId)
+      )
+      .filter(workspaceId => workspaceId !== null);
+
+    const workspacesData = await this.getAllWindowAndWorkspacesData();
+    for (const windowId in workspacesData.windows) {
+      const windowWorkspacesData = workspacesData.windows[windowId];
+      for (const workspaceId of workspaceIdsFromTabs) {
+        if (windowWorkspacesData[workspaceId]) {
+          return windowId;
+        }
+      }
+    }
+
+    console.error("WindowId could not be inferred from tabs");
+    return null;
   },
 };

@@ -79,8 +79,6 @@ export var gFloorpVerticalTabBar = {
     Services.prefs.addObserver("floorp.tabbar.style", function () {
       if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
         Services.prefs.setIntPref(gFloorpTabBarStyle.tabbarDisplayStylePref, 2);
-      } else {
-        Services.prefs.setIntPref(gFloorpTabBarStyle.tabbarDisplayStylePref, 0);
       }
       gFloorpVerticalTabBar.setVerticalTabs();
     });

@@ -2616,10 +2616,78 @@ export class SearchService {
 
 		const engines = [
 			{
+				aliases: ["AstianGO", "ac"],
+				classification: "general",
+				name: "AstianGO",
+        partnerCode: "midori-browser",
+				urls: {
+					search: {
+						base: "https://astiango.co/search/web={searchTerms}",
+            
+            params:[
+              {
+                name: "client",
+                value: "{partnerCode}",
+              },
+            ],
+						searchTermParamName: "q",
+					},
+          suggestions: {
+						base: "https://ac.duckduckgo.com/ac/",
+						params: [
+							{
+								name: "type",
+								value: "list",
+							},
+						],
+						searchTermParamName: "q",
+					},
+				},
+				identifier: "AstianGO",
+				webExtension: {
+					locale: "default",
+					id: "astiango@search.mozilla.org"
+				},
+			},
+      {
+				aliases: ["duckduckgo", "ddg"],
+				classification: "general",
+				name: "DuckDuckGo",
+				partnerCode: "midori",
+				urls: {
+					search: {
+						base: "https://duckduckgo.com/",
+						params: [
+							{
+								name: "t",
+								value: "{partnerCode}",
+							},
+						],
+						searchTermParamName: "q",
+					},
+					suggestions: {
+						base: "https://ac.duckduckgo.com/ac/",
+						params: [
+							{
+								name: "type",
+								value: "list",
+							},
+						],
+						searchTermParamName: "q",
+					},
+				},
+				identifier: "ddg",
+				telemetrySuffix: "esr",
+				webExtension: {
+					locale: "default",
+					id: "ddg@search.mozilla.org",
+				},
+			},
+      {
 				aliases: ["google"],
 				classification: "general",
 				name: "Google",
-				partnerCode: "firefox-b-e",
+				partnerCode: "midori-b-e",
 				urls: {
 					search: {
 						base: "https://www.google.com/search",
@@ -2640,7 +2708,7 @@ export class SearchService {
 						params: [
 							{
 								name: "client",
-								value: "firefox",
+								value: "midori",
 							},
 							{
 								experimentConfig: "search_rich_suggestions",
@@ -2655,7 +2723,7 @@ export class SearchService {
 						params: [
 							{
 								name: "client",
-								value: "firefox",
+								value: "midori",
 							},
 							{
 								name: "channel",
@@ -2729,76 +2797,10 @@ export class SearchService {
 					id: "bing@search.mozilla.org"
 				},
 			},
-			{
-				aliases: ["duckduckgo", "ddg"],
-				classification: "general",
-				name: "DuckDuckGo",
-				partnerCode: "ftsa",
-				urls: {
-					search: {
-						base: "https://duckduckgo.com/",
-						params: [
-							{
-								name: "t",
-								value: "{partnerCode}",
-							},
-						],
-						searchTermParamName: "q",
-					},
-					suggestions: {
-						base: "https://ac.duckduckgo.com/ac/",
-						params: [
-							{
-								name: "type",
-								value: "list",
-							},
-						],
-						searchTermParamName: "q",
-					},
-				},
-				identifier: "ddg",
-				telemetrySuffix: "esr",
-				webExtension: {
-					locale: "default",
-					id: "ddg@search.mozilla.org",
-				},
-			},
-			{
-				aliases: ["Startpage", "st"],
-				classification: "general",
-				name: "Startpage",
-				urls: {
-					search: {
-						base: "https://www.startpage.com/do/dsearch",
-						searchTermParamName: "query",
-					},
-				},
-				identifier: "startpage",
-				webExtension: {
-					locale: "default",
-					id: "startpage@search.mozilla.org",
-				},
-			},
-      {
-				aliases: ["You.com", "yc"],
-				classification: "general",
-				name: "You.com",
-				urls: {
-					search: {
-						base: "https://you.com/search",
-						searchTermParamName: "q",
-					},
-				},
-				identifier: "you.com",
-				webExtension: {
-					locale: "default",
-					id: "you.com@search.mozilla.org"
-				},
-			},
 		];
 
 		const privateDefault = {
-			webExtension: { id: "ddg@search.mozilla.org", locale: "default" },
+			webExtension: { id: "astiango@search.mozilla.org", locale: "default" },
 			defaultPrivate: "yes",
 		};
 

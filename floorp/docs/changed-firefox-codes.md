@@ -85,7 +85,7 @@ changed: "Add Floorp pages for about:*"
 
 URL: https://github.com/Floorp-Projects/Floorp/commit/636326dcdea4db14401eca7f09fc2537deac1b98
 
-NOTICE: This commit is not completeley. Please see raw file on current branch.
+NOTICE: This commit is not complete. Please see raw file on current branch.
 
 ---
 
@@ -195,3 +195,118 @@ Line: 5312
 URL: [Searchfox](https://searchfox.org/mozilla-central/source/browser/base/content/browser.js#5312)
 
 ---
+
+20. browser/components/customizableui/CustomizableUI.sys.mjs
+
+**Feature: "Floorp Sidebar | BMS"**
+
+changed: "Insert Floorp Sidebar & BMS codes."
+Line: 1827
+
+URL: [VSCodeDev](https://insiders.vscode.dev/github/floorp-projects/Floorp/blob/ESR115/browser/components/customizableui/CustomizableUI.sys.mjs#L1827)
+
+
+---
+
+21. browser/components/extensions/webrequest/WebRequest.sys.mjs
+
+**Feature: "Floorp Sidebar | BMS"**
+
+changed: "Insert Floorp Sidebar & BMS codes."
+
+Line: 861
+
+URL: [VSCodeDev](https://insiders.vscode.dev/github/floorp-projects/Floorp/blob/ESR115/toolkit/components/extensions/webrequest/WebRequest.sys.mjs#L861)
+
+---
+
+22. browser\modules\AsyncTabSwitcher.jsm
+
+**Feature: "BMS"**
+
+changed: "Insert BMS codes."
+
+Line: 489
+
+URL: [VSCodeDev](https://insiders.vscode.dev/github/floorp-projects/Floorp/blob/ESR115/browser/modules/AsyncTabSwitcher.jsm#L489)
+
+---
+
+23. browser\components\BrowserContentHandler.sys.mjs
+
+**Feature: "BMS"**
+
+changed: "Fix open link by 3rd party app."
+
+
+URL: [VSCodeDev](https://insiders.vscode.dev/github/floorp-projects/Floorp/blob/ESR115/browser/components/BrowserContentHandler.sys.mjs#L959)
+
+
+---
+
+24. browser\modules\URILoadingHelper.sys.mjs
+
+**Feature: "BMS"**
+
+changed: "Fix open link by SSB or PWA."
+
+Line: 560
+
+URL: [VSCodeDev](https://insiders.vscode.dev/github/floorp-projects/Floorp/blob/ESR115/browser/modules/URILoadingHelper.sys.mjs#L560)
+
+---
+
+25. browser\modules\BrowserWindowTracker.jsm
+
+**Feature: "BMS"**
+
+changed: "Fix open link by SSB or PWA."
+
+Line: 165
+
+
+URL: [VSCodeDev](https://insiders.vscode.dev/github/floorp-projects/Floorp/blob/ESR115/browser/modules/BrowserWindowTracker.jsm#L165)
+
+---
+
+26. browser\base\content\browser.js
+
+**Feature: "BMS"**
+
+changed: "Disable XULBrowserWindow on webpanel."
+
+Line: 1619
+
+URL: [VSCodeDev](https://vscode.dev/github/Floorp-Projects/Floorp/blob/ESR115/browser/base/content/browser.js#L1619)
+
+---
+
+27. browser\base\content\browser-fullZoom.js
+
+**Feature: "BMS"**
+
+changed: "Make donot use mause + wheel for zoom."
+
+Line: 424
+
+URL: [VSCodeDev](https://vscode.dev/github/Floorp-Projects/Floorp/blob/ESR115/browser/base/content/browser-fullZoom.js#L424)
+
+---
+
+28. devtools\client\aboutdebugging\src\components\sidebar\Sidebar.js
+
+**Feature: "Branding"**
+
+changed: "Replace Firefox icon with Floorp icon"
+
+URL: https://github.com/Floorp-Projects/Floorp/commit/5d8f63f90f90c9538b75e9ef5dc41fd8efc05762
+
+---
+
+29. devtools\client\aboutdebugging\src\actions\runtimes.js
+
+**Feature: "Branding"**
+
+changed: "Replace Firefox icon with Floorp icon"
+
+URL: https://github.com/Floorp-Projects/Floorp/commit/5d8f63f90f90c9538b75e9ef5dc41fd8efc05762

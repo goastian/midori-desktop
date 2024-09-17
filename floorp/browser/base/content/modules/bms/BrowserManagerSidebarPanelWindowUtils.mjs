@@ -181,6 +181,8 @@ export const BrowserManagerSidebarPanelWindowUtils = {
     if (targetPanelWindow.gBrowser.selectedTab == tab) {
       targetPanelWindow.gBrowser.selectedTab = newTab;
     }
+
+    targetPanelWindow.gBrowser.removeTab(tab);
   },
 
   saveZoomLevel(webpanelId, zoomLevel) {

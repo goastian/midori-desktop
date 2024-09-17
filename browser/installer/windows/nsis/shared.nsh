@@ -9,25 +9,25 @@
   ${CreateShortcutsLog}
 
   ; Remove registry entries for non-existent apps and for apps that point to our
-  ; install location in the Software\Astian key and uninstall registry entries
+  ; install location in the Software\Mozilla key and uninstall registry entries
   ; that point to our install location for both HKCU and HKLM.
   SetShellVarContext current  ; Set SHCTX to the current user (e.g. HKCU)
-  ${RegCleanMain} "Software\Astian"
+  ${RegCleanMain} "Software\Mozilla"
   ${RegCleanUninstall}
   ${UpdateProtocolHandlers}
 
   ; setup the application model id registration value
-  ${InitHashAppModelId} "$INSTDIR" "Software\Astian\${AppName}\TaskBarIDs"
+  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
 
   ClearErrors
-  WriteRegStr HKLM "Software\Astian" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     StrCpy $TmpVal "HKCU"
   ${Else}
     SetShellVarContext all    ; Set SHCTX to all users (e.g. HKLM)
-    DeleteRegValue HKLM "Software\Astian" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM"
-    ${RegCleanMain} "Software\Astian"
+    ${RegCleanMain} "Software\Mozilla"
     ${RegCleanUninstall}
     ${UpdateProtocolHandlers}
     ${FixShellIconHandler} "HKLM"
@@ -36,9 +36,9 @@
     ; Add the Firewall entries after an update
     Call AddFirewallEntries
 
-    ReadRegStr $0 HKLM "Software\Astian\Midori" "CurrentVersion"
+    ReadRegStr $0 HKLM "Software\mozilla.org\Mozilla" "CurrentVersion"
     ${If} "$0" != "${GREVersion}"
-      WriteRegStr HKLM "Software\Astian\Midori" "CurrentVersion" "${GREVersion}"
+      WriteRegStr HKLM "Software\mozilla.org\Mozilla" "CurrentVersion" "${GREVersion}"
     ${EndIf}
   ${EndIf}
 
@@ -88,10 +88,10 @@
     ; If it already exists, just delete the appdata one.
     ; It's possible this was for a different install, but it's impossible to
     ; know for sure, so we may as well just get rid of it.
-    Delete /REBOOTOK "$0\Astian\Midori\postSigningData"
+    Delete /REBOOTOK "$0\Mozilla\Firefox\postSigningData"
   ${Else}
-    ${If} ${FileExists} "$0\Astian\Midori\postSigningData"
-      Rename "$0\Astian\Midori\postSigningData" "$INSTDIR\postSigningData"
+    ${If} ${FileExists} "$0\Mozilla\Firefox\postSigningData"
+      Rename "$0\Mozilla\Firefox\postSigningData" "$INSTDIR\postSigningData"
     ${EndIf}
   ${EndIf}
 
@@ -133,7 +133,7 @@
     ${OrIf} ${IsNativeARM64}
       SetRegView 64
     ${EndIf}
-    ReadRegDWORD $5 HKLM "Software\Astian\MaintenanceService" "Attempted"
+    ReadRegDWORD $5 HKLM "Software\Mozilla\MaintenanceService" "Attempted"
     ClearErrors
     ${If} ${RunningX64}
     ${OrIf} ${IsNativeARM64}
@@ -181,7 +181,7 @@
 !ifdef MOZ_DEFAULT_BROWSER_AGENT
 ${If} $TmpVal == "HKCU"
   ClearErrors
-  ReadRegDWORD $0 HKCU "Software\Astian\${AppName}\Installer\$AppUserModelID" \
+  ReadRegDWORD $0 HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
                     "DidRegisterDefaultBrowserAgent"
   ${If} $0 != 0
   ${OrIf} ${Errors}
@@ -472,32 +472,32 @@ ${RemoveDefaultBrowserAgentShortcut}
   ; Associate the file handlers with FirefoxHTML, if they aren't already.
   ReadRegStr $6 SHCTX "$0\.htm" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "MidoriHTML"
-    WriteRegStr SHCTX "$0\.htm"   "" "MidoriHTML$5"
+  ${If} "$6" != "FirefoxHTML"
+    WriteRegStr SHCTX "$0\.htm"   "" "FirefoxHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.html" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "MidoriHTML"
-    WriteRegStr SHCTX "$0\.html"  "" "MidoriHTML$5"
+  ${If} "$6" != "FirefoxHTML"
+    WriteRegStr SHCTX "$0\.html"  "" "FirefoxHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.shtml" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "MidoriHTML"
-    WriteRegStr SHCTX "$0\.shtml" "" "MidoriHTML$5"
+  ${If} "$6" != "FirefoxHTML"
+    WriteRegStr SHCTX "$0\.shtml" "" "FirefoxHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.xht" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "MidoriHTML"
-    WriteRegStr SHCTX "$0\.xht"   "" "MidoriHTML$5"
+  ${If} "$6" != "FirefoxHTML"
+    WriteRegStr SHCTX "$0\.xht"   "" "FirefoxHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.xhtml" ""
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "MidoriHTML"
-    WriteRegStr SHCTX "$0\.xhtml" "" "MidoriHTML$5"
+  ${If} "$6" != "FirefoxHTML"
+    WriteRegStr SHCTX "$0\.xhtml" "" "FirefoxHTML$5"
   ${EndIf}
 
 
@@ -505,26 +505,26 @@ ${RemoveDefaultBrowserAgentShortcut}
   ; https://searchfox.org/mozilla-central/source/browser/installer/windows/msix/AppxManifest.xml.in.
   ; and `os.environment.launched_to_handle` and `os.environment.invoked_to_handle` telemetry in
   ; https://searchfox.org/mozilla-central/source/browser/components/BrowserContentHandler.sys.mjs.
-  ${AddAssociationIfNoneExist} ".oga" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".ogg" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".ogv" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".webm" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".svg" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".webp"  "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".avif" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".jxl" "MidoriHTML$5"
+  ${AddAssociationIfNoneExist} ".oga" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".ogg" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".ogv" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".webm" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".svg" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".webp"  "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".avif" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".jxl" "FirefoxHTML$5"
 
-  ${AddAssociationIfNoneExist} ".pdf" "MidoriPDF$5"
+  ${AddAssociationIfNoneExist} ".pdf" "FirefoxPDF$5"
 
-  ; An empty string is used for the 5th param because MidoriHTML- is not a
-  ; protocol handler.  Ditto for MidoriPDF-.
-  ${AddDisabledDDEHandlerValues} "MidoriHTML$5" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
+  ; An empty string is used for the 5th param because FirefoxHTML- is not a
+  ; protocol handler.  Ditto for FirefoxPDF-.
+  ${AddDisabledDDEHandlerValues} "FirefoxHTML$5" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
                                  "${AppRegName} HTML Document" ""
 
-  ${AddDisabledDDEHandlerValues} "MidoriPDF$5" "$2" "$8,${IDI_DOCUMENT_PDF_ZERO_BASED}" \
+  ${AddDisabledDDEHandlerValues} "FirefoxPDF$5" "$2" "$8,${IDI_DOCUMENT_PDF_ZERO_BASED}" \
                                  "${AppRegName} PDF Document" ""
 
-  ${AddDisabledDDEHandlerValues} "MidoriPDF$5" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" "${AppRegName} URL" \
+  ${AddDisabledDDEHandlerValues} "FirefoxURL$5" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" "${AppRegName} URL" \
                                  "true"
   ; An empty string is used for the 4th & 5th params because the following
   ; protocol handlers already have a display name and the additional keys
@@ -601,16 +601,16 @@ ${RemoveDefaultBrowserAgentShortcut}
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationIcon" "$8,${IDI_APPICON_ZERO_BASED}"
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationName" "${BrandShortName}"
 
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "MidoriHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".avif"  "MidoriHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "FirefoxHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".avif"  "FirefoxHTML$2"
 
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".pdf"   "MidoriPDF$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".pdf"   "FirefoxPDF$2"
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
@@ -618,9 +618,9 @@ ${RemoveDefaultBrowserAgentShortcut}
   ; entire key, we need to remove any existing registration.
   DeleteRegValue ${RegKey} "$0\Capabilities\URLAssociations" "ftp"
 
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "MidoriPDF$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "MidoriPDF$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "MidoriPDF$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "FirefoxURL$2"
 
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"
 
@@ -703,31 +703,31 @@ ${RemoveDefaultBrowserAgentShortcut}
 
   ; Running Firefox 64 bit on Windows 64 bit
   ClearErrors
-  ReadRegDWORD $2 HKLM "Software\Astian\${AppName}\32to64DidMigrate" "$1"
+  ReadRegDWORD $2 HKLM "Software\Mozilla\${AppName}\32to64DidMigrate" "$1"
   ; If there were no errors then the system was updated from Firefox 32 bit to
   ; Firefox 64 bit and if the value is already 1 then the registry value has
   ; already been updated in the HKLM registry.
   ${IfNot} ${Errors}
   ${AndIf} $2 != 1
     ClearErrors
-    WriteRegDWORD HKLM "Software\Astian\${AppName}\32to64DidMigrate" "$1" 1
+    WriteRegDWORD HKLM "Software\Mozilla\${AppName}\32to64DidMigrate" "$1" 1
     ${If} ${Errors}
       ; There was an error writing to HKLM so just write it to HKCU
-      WriteRegDWORD HKCU "Software\Astian\${AppName}\32to64DidMigrate" "$1" 1
+      WriteRegDWORD HKCU "Software\Mozilla\${AppName}\32to64DidMigrate" "$1" 1
     ${Else}
       ; This will delete the value from HKCU if it exists
-      DeleteRegValue HKCU "Software\Astian\${AppName}\32to64DidMigrate" "$1"
+      DeleteRegValue HKCU "Software\Mozilla\${AppName}\32to64DidMigrate" "$1"
     ${EndIf}
   ${EndIf}
 
   ClearErrors
-  ReadRegDWORD $2 HKCU "Software\Astian\${AppName}\32to64DidMigrate" "$1"
+  ReadRegDWORD $2 HKCU "Software\Mozilla\${AppName}\32to64DidMigrate" "$1"
   ; If there were no errors then the system was updated from Firefox 32 bit to
   ; Firefox 64 bit and if the value is already 1 then the registry value has
   ; already been updated in the HKCU registry.
   ${IfNot} ${Errors}
   ${AndIf} $2 != 1
-    WriteRegDWORD HKCU "Software\Astian\${AppName}\32to64DidMigrate" "$1" 1
+    WriteRegDWORD HKCU "Software\Mozilla\${AppName}\32to64DidMigrate" "$1" 1
   ${EndIf}
 
 !else
@@ -737,14 +737,14 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${OrIf} ${IsNativeARM64}
     ; Running Firefox 32 bit on a Windows 64 bit system
     ClearErrors
-    ReadRegDWORD $2 HKLM "Software\Astian\${AppName}\32to64DidMigrate" "$1"
+    ReadRegDWORD $2 HKLM "Software\Mozilla\${AppName}\32to64DidMigrate" "$1"
     ; If there were errors the value doesn't exist yet.
     ${If} ${Errors}
       ClearErrors
-      WriteRegDWORD HKLM "Software\Astian\${AppName}\32to64DidMigrate" "$1" 0
+      WriteRegDWORD HKLM "Software\Mozilla\${AppName}\32to64DidMigrate" "$1" 0
       ; If there were errors write the value in HKCU.
       ${If} ${Errors}
-        WriteRegDWORD HKCU "Software\Astian\${AppName}\32to64DidMigrate" "$1" 0
+        WriteRegDWORD HKCU "Software\Mozilla\${AppName}\32to64DidMigrate" "$1" 0
       ${EndIf}
     ${EndIf}
   ${EndIf}
@@ -762,11 +762,11 @@ ${RemoveDefaultBrowserAgentShortcut}
 ; icon being displayed for files associated with Firefox (does not use SHCTX).
 !macro FixShellIconHandler RegKey
   ; Find the correct key to update, either FirefoxHTML or FirefoxHTML-[PathHash]
-  StrCpy $3 "MidoriHTML-$AppUserModelID"
+  StrCpy $3 "FirefoxHTML-$AppUserModelID"
   ClearErrors
   ReadRegStr $0 ${RegKey} "Software\Classes\$3\DefaultIcon" ""
   ${If} ${Errors}
-    StrCpy $3 "MidoriHTML"
+    StrCpy $3 "FirefoxHTML"
   ${EndIf}
 
   ClearErrors
@@ -781,7 +781,7 @@ ${RemoveDefaultBrowserAgentShortcut}
 !macroend
 !define FixShellIconHandler "!insertmacro FixShellIconHandler"
 
-; Add Software\Astian\ registry entries (uses SHCTX).
+; Add Software\Mozilla\ registry entries (uses SHCTX).
 !macro SetAppKeys
   ; Check if this is an ESR release and if so add registry values so it is
   ; possible to determine that this is an ESR install (bug 726781).
@@ -794,14 +794,14 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${EndIf}
 
   ${GetLongPath} "$INSTDIR" $8
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Main"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Main"
   ${WriteRegStr2} $TmpVal "$0" "Install Directory" "$8" 0
   ${WriteRegStr2} $TmpVal "$0" "PathToExe" "$8\${FileMainEXE}" 0
 
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Uninstall"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})\Uninstall"
   ${WriteRegStr2} $TmpVal "$0" "Description" "${BrandFullNameInternal} ${AppVersion}$3 (${ARCH} ${AB_CD})" 0
 
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal}\${AppVersion}$3 (${ARCH} ${AB_CD})"
   ${WriteRegStr2} $TmpVal  "$0" "" "${AppVersion}$3 (${ARCH} ${AB_CD})" 0
   ${If} "$3" == ""
     DeleteRegValue SHCTX "$0" "ESR"
@@ -809,14 +809,14 @@ ${RemoveDefaultBrowserAgentShortcut}
     ${WriteRegDWORD2} $TmpVal "$0" "ESR" 1 0
   ${EndIf}
 
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal} ${AppVersion}$3\bin"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal} ${AppVersion}$3\bin"
   ${WriteRegStr2} $TmpVal "$0" "PathToExe" "$8\${FileMainEXE}" 0
 
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal} ${AppVersion}$3\extensions"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal} ${AppVersion}$3\extensions"
   ${WriteRegStr2} $TmpVal "$0" "Components" "$8\components" 0
   ${WriteRegStr2} $TmpVal "$0" "Plugins" "$8\plugins" 0
 
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal} ${AppVersion}$3"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal} ${AppVersion}$3"
   ${WriteRegStr2} $TmpVal "$0" "GeckoVer" "${GREVersion}" 0
   ${If} "$3" == ""
     DeleteRegValue SHCTX "$0" "ESR"
@@ -824,7 +824,7 @@ ${RemoveDefaultBrowserAgentShortcut}
     ${WriteRegDWORD2} $TmpVal "$0" "ESR" 1 0
   ${EndIf}
 
-  StrCpy $0 "Software\Astian\${BrandFullNameInternal}$3"
+  StrCpy $0 "Software\Mozilla\${BrandFullNameInternal}$3"
   ${WriteRegStr2} $TmpVal "$0" "" "${GREVersion}" 0
   ${WriteRegStr2} $TmpVal "$0" "CurrentVersion" "${AppVersion}$3 (${ARCH} ${AB_CD})" 0
 !macroend
@@ -876,7 +876,7 @@ ${RemoveDefaultBrowserAgentShortcut}
     ${WriteRegStr2} $1 "$0" "DisplayVersion" "${AppVersion}" 0
     ${WriteRegStr2} $1 "$0" "HelpLink" "${HelpLink}" 0
     ${WriteRegStr2} $1 "$0" "InstallLocation" "$8" 0
-    ${WriteRegStr2} $1 "$0" "Publisher" "Astian" 0
+    ${WriteRegStr2} $1 "$0" "Publisher" "Mozilla" 0
     ${WriteRegStr2} $1 "$0" "UninstallString" "$\"$8\uninstall\helper.exe$\"" 0
     DeleteRegValue SHCTX "$0" "URLInfoAbout"
 ; Don't add URLUpdateInfo which is the release notes url except for the release
@@ -921,16 +921,16 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${WordFind} "$1" "-" "+1{" $1
   ReadRegStr $2 HKCR "${FILE_TYPE}\PersistentHandler" ""
   ${If} "$2" != ""
-    ; Since there is a persistent handler remove MidoriHTML as the default
-    ; value from both HKCU and HKLM if it set to MidoriHTML.
-    ${If} "$0" == "MidoriHTML"
+    ; Since there is a persistent handler remove FirefoxHTML as the default
+    ; value from both HKCU and HKLM if it set to FirefoxHTML.
+    ${If} "$0" == "FirefoxHTML"
       DeleteRegValue HKCU "Software\Classes\${FILE_TYPE}" ""
     ${EndIf}
-    ${If} "$1" == "MidoriHTML"
+    ${If} "$1" == "FirefoxHTML"
       DeleteRegValue HKLM "Software\Classes\${FILE_TYPE}" ""
     ${EndIf}
-  ${ElseIf} "$0" == "MidoriHTML"
-    ; Since HKCU is set to MidoriHTML remove MidoriHTML as the default value
+  ${ElseIf} "$0" == "FirefoxHTML"
+    ; Since HKCU is set to FirefoxHTML remove FirefoxHTML as the default value
     ; from HKCU if HKLM is set to a value other than an empty string.
     ${If} "$1" != ""
       DeleteRegValue HKCU "Software\Classes\${FILE_TYPE}" ""
@@ -986,16 +986,16 @@ ${RemoveDefaultBrowserAgentShortcut}
   ; Only set the file and protocol handlers if the existing one under HKCR is
   ; for this install location.
 
-  ${IsHandlerForInstallDir} "MidoriHTML-$AppUserModelID" $R9
+  ${IsHandlerForInstallDir} "FirefoxHTML-$AppUserModelID" $R9
   ${If} "$R9" == "true"
-    ; An empty string is used for the 5th param because MidoriHTML is not a
+    ; An empty string is used for the 5th param because FirefoxHTML is not a
     ; protocol handler.
-    ${AddDisabledDDEHandlerValues} "MidoriHTML-$AppUserModelID" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
+    ${AddDisabledDDEHandlerValues} "FirefoxHTML-$AppUserModelID" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
                                    "${AppRegName} HTML Document" ""
   ${Else}
-    ${IsHandlerForInstallDir} "MidoriHTML" $R9
+    ${IsHandlerForInstallDir} "FirefoxHTML" $R9
     ${If} "$R9" == "true"
-      ${AddDisabledDDEHandlerValues} "MidoriHTML" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
+      ${AddDisabledDDEHandlerValues} "FirefoxHTML" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
                                      "${AppRegName} HTML Document" ""
     ${EndIf}
   ${EndIf}
@@ -1008,14 +1008,14 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${AddDisabledDDEHandlerValues} "FirefoxPDF-$AppUserModelID" "$2" "$8,${IDI_DOCUMENT_PDF_ZERO_BASED}" \
                                  "${AppRegName} PDF Document" ""
 
-  ${IsHandlerForInstallDir} "MidoriURL-$AppUserModelID" $R9
+  ${IsHandlerForInstallDir} "FirefoxURL-$AppUserModelID" $R9
   ${If} "$R9" == "true"
-    ${AddDisabledDDEHandlerValues} "MidoriURL-$AppUserModelID" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
+    ${AddDisabledDDEHandlerValues} "FirefoxURL-$AppUserModelID" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
                                    "${AppRegName} URL" "true"
   ${Else}
-    ${IsHandlerForInstallDir} "MidoriURL" $R9
+    ${IsHandlerForInstallDir} "FirefoxURL" $R9
     ${If} "$R9" == "true"
-      ${AddDisabledDDEHandlerValues} "MidoriURL" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
+      ${AddDisabledDDEHandlerValues} "FirefoxURL" "$2" "$8,${IDI_DOCUMENT_ZERO_BASED}" \
                                      "${AppRegName} URL" "true"
     ${EndIf}
   ${EndIf}
@@ -1074,7 +1074,7 @@ ${RemoveDefaultBrowserAgentShortcut}
     ; Setting the Attempted value will ensure that a new Maintenance Service
     ; install will never be attempted again after this from updates.  The value
     ; is used only to see if updates should attempt new service installs.
-    WriteRegDWORD HKLM "Software\Astian\MaintenanceService" "Attempted" 1
+    WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Attempted" 1
 
     ; These values associate the allowed certificates for the current
     ; installation.
@@ -1110,8 +1110,8 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${RegCleanAppHandler} "chrome"
 
   ; Remove protocol handler registry keys added by the MS shim
-  DeleteRegKey HKLM "Software\Classes\Midori.URL"
-  DeleteRegKey HKCU "Software\Classes\Midori.URL"
+  DeleteRegKey HKLM "Software\Classes\Firefox.URL"
+  DeleteRegKey HKCU "Software\Classes\Firefox.URL"
 
   ; Unregister deprecated AccessibleHandler.dll.
   ${If} ${FileExists} "$INSTDIR\AccessibleHandler.dll"
@@ -1261,7 +1261,7 @@ ${RemoveDefaultBrowserAgentShortcut}
       ClearErrors
       WriteIniStr "$0" "TASKBAR" "Migrated" "true"
       WriteRegDWORD HKCU \
-        "Software\Astian\${AppName}\Installer\$AppUserModelID" \
+        "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
         "WasPinnedToTaskbar" 1
       ${If} "${SHOULD_PIN}" == "1"
         ${PinToTaskBar}
@@ -1666,7 +1666,7 @@ Function SetAsDefaultAppUserHKCU
   StrCpy $0 $0 -2
   ${If} $0 != $8
     ${If} $AppUserModelID == ""
-      ${InitHashAppModelId} "$INSTDIR" "Software\Astian\${AppName}\TaskBarIDs"
+      ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
     ${EndIf}
     StrCpy $R9 "${AppRegName}-$AppUserModelID"
   ${EndIf}

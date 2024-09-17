@@ -4,7 +4,5 @@
 
 browser.jar:
         search-extensions/startpage (extensions/startpage/**)
-        search-extensions/you.com (extensions/you.com/**)
-        search-extensions/floorp (extensions/floorp/**)
 
 % resource search-extensions %search-extensions/ contentaccessible=yes

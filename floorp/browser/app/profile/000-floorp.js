@@ -101,6 +101,9 @@ pref("floorp.browser.tabs.verticaltab.temporary.disabled", false);
 pref("floorp.browser.tabs.verticaltab.width", 200);
 pref("floorp.verticaltab.paddingtop.enabled", false);
 
+// レガシーコンポーネント
+pref("toolkit.legacyUserProfileCustomizations.script", false);
+
 // Chrome 形式のダウンローダー
 pref("floorp.browser.native.downloadbar.enabled", false);
 

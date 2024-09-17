@@ -41,9 +41,9 @@ Var BrandFullName
 ; And anyone that wants to run tests themselves should already have 
 ; this installed.
 !define FallbackKey \
-  "SOFTWARE\Astian\MaintenanceService\3932ecacee736d366d6436db0f55bce4"
+  "SOFTWARE\Mozilla\MaintenanceService\3932ecacee736d366d6436db0f55bce4"
 
-!define CompanyName "Astian, Inc"
+!define CompanyName "Mozilla Corporation"
 !define BrandFullNameInternal ""
 
 ; The following includes are custom.

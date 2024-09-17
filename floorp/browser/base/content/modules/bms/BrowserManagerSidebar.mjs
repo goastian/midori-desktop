@@ -25,13 +25,6 @@ export const BrowserManagerSidebar = {
       l10n: `download-sidebar`,
       defaultWidth: 415,
     },
-    //notes is available in floorp for v11.0.0.
-    "floorp//notes": {
-      url: "chrome://floorp/content/notes/notes-bms.html",
-      l10n: `notes-sidebar`,
-      defaultWidth: 550,
-      enabled: true,
-    },
   },
 
   BrowserManagerSidebarXULElement: `
@@ -111,9 +104,12 @@ export const BrowserManagerSidebar = {
 `,
 
   DEFAULT_WEBPANEL: [
-    "https://translate.google.com",
-    "https://support.ablaze.one",
-    "https://docs.floorp.app",
+    "https://cloud.astian.org",
+    "https://notes.astian.org",
+    "https://contacts.astian.org",
+    "https://calendar.astian.org",
+    "https://astiango.co",
+    "https://astian.org/astian-vpn/invite/",
   ],
   prefsUpdate() {
     const defaultPref = { data: {}, index: [] };

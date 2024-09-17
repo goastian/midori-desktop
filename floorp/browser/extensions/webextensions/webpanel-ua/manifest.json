@@ -7,7 +7,7 @@
   },
   "applications": {
     "gecko": {
-      "id": "webpanel-ua@floorp.ablaze.one"
+      "id": "webpanel-ua@astian.org"
     }
   },
   "permissions": ["webRequest", "webRequestBlocking", "<all_urls>"],

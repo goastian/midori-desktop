@@ -19,7 +19,7 @@ const AlertsService = Cc["@mozilla.org/alerts-service;1"].getService(
   Ci.nsIAlertsService,
 );
 
-const API_BASE_URL = "https://floorp-update.ablaze.one";
+const API_BASE_URL = "https://update.astian.org";
 
 const platformInfo = ExtensionParent.PlatformInfo;
 const isWin = platformInfo.os === "win";
@@ -75,8 +75,8 @@ const portableUpdateUtils = {
       try {
         await IOUtils.remove(
           isWin
-            ? PathUtils.join(appDirParentDirPath, "floorp.exe")
-            : PathUtils.join(appDirParentDirPath, "floorp"),
+            ? PathUtils.join(appDirParentDirPath, "midori.exe")
+            : PathUtils.join(appDirParentDirPath, "midori"),
         );
       } catch (e) {
         console.error(e);
@@ -86,11 +86,11 @@ const portableUpdateUtils = {
       try {
         await IOUtils.move(
           isWin
-            ? PathUtils.join(updateTmpDirPath, "floorp.exe")
-            : PathUtils.join(updateTmpDirPath, "floorp"),
+            ? PathUtils.join(updateTmpDirPath, "midori.exe")
+            : PathUtils.join(updateTmpDirPath, "midori"),
           isWin
             ? PathUtils.join(appDirParentDirPath, "floorp.exe")
-            : PathUtils.join(appDirParentDirPath, "floorp"),
+            : PathUtils.join(appDirParentDirPath, "midori"),
         );
       } catch (e) {
         console.error(e);

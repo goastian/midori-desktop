@@ -3,10 +3,10 @@
 <assemblyIdentity
         version="1.0.0.0"
         processorArchitecture="*"
-        name="Floorp"
+        name="Midori"
         type="win32"
 />
-<description>Floorp</description>
+<description>Midori</description>
 <dependency>
         <dependentAssembly>
                 <assemblyIdentity

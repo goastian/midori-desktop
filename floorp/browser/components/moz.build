@@ -8,11 +8,11 @@ JAR_MANIFESTS += ["jar.mn"]
 
 DIRS += [
     "about",
-    "astiango-search",
     "search",
     "preferences",
     "profile-manager",
     "ssb",
+    "notes",
     "welcome",
     "workspaces",
     "tabsleep",

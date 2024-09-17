@@ -9,7 +9,7 @@ try {
   var { gBmsWindow } = await import(
     "chrome://floorp/content/browser-bms-window.mjs"
   );
-} catch (e) {}
+} catch (e) { }
 
 /**
  * Object of Floorp Tab Bar style code.
@@ -49,6 +49,9 @@ export const gFloorpTabBarStyle = {
   },
   get navbarElement() {
     return document.querySelector("#nav-bar");
+  },
+  get navbarCustomElement() {
+    return document.querySelector("#nav-bar-customization-target");
   },
   get tabbarWindowManageContainer() {
     return document.querySelector(
@@ -148,7 +151,7 @@ export const gFloorpTabBarStyle = {
     );
 
     switch (
-      Services.prefs.getIntPref(gFloorpTabBarStyle.tabbarDisplayStylePref)
+    Services.prefs.getIntPref(gFloorpTabBarStyle.tabbarDisplayStylePref)
     ) {
       default:
         //default style
@@ -165,10 +168,10 @@ export const gFloorpTabBarStyle = {
         gFloorpTabBarStyle.modifyCSS = document.createElement("style");
         gFloorpTabBarStyle.modifyCSS.id = "floorp-tabbar-modify-css";
         gFloorpTabBarStyle.modifyCSS.textContent = `
-          #TabsToolbar-customization-target {
-            display: none !important;
-          }
-        `;
+           #TabsToolbar-customization-target {
+             display: none !important;
+           }
+         `;
         document
           .querySelector("head")
           .appendChild(gFloorpTabBarStyle.modifyCSS);
@@ -189,24 +192,24 @@ export const gFloorpTabBarStyle = {
         gFloorpTabBarStyle.modifyCSS = document.createElement("style");
         gFloorpTabBarStyle.modifyCSS.id = "floorp-tabbar-modify-css";
         gFloorpTabBarStyle.modifyCSS.textContent = `
-          #toolbar-menubar > .titlebar-buttonbox-container {
-            display: none !important;
-          }
-          #titlebar {
-            display: inherit;
-            appearance: none !important;
-          }
-          :root[sizemode="fullscreen"] #titlebar[id] {
-            flex-basis: auto;
-          }
-          #TabsToolbar #firefox-view-button[flex] > .toolbarbutton-icon {
-            height: 16px !important;
-            width: 16px !important;
-            padding: 0px !important;
-            margin: 0px !important;
-            margin-inline-start: 7px !important;
-          }
-        `;
+           #toolbar-menubar > .titlebar-buttonbox-container {
+             display: none !important;
+           }
+           #titlebar {
+             display: inherit;
+             appearance: none !important;
+           }
+           :root[sizemode="fullscreen"] #titlebar[id] {
+             flex-basis: auto;
+           }
+           #TabsToolbar #firefox-view-button[flex] > .toolbarbutton-icon {
+             height: 16px !important;
+             width: 16px !important;
+             padding: 0px !important;
+             margin: 0px !important;
+             margin-inline-start: 7px !important;
+           }
+         `;
 
         gFloorpTabBarStyle.enablePadding();
 
@@ -218,7 +221,7 @@ export const gFloorpTabBarStyle = {
           "1"
         );
 
-        window.setTimeout(() => {}, 3000);
+        window.setTimeout(() => { }, 3000);
         break;
       case 3:
         gFloorpTabBarStyle.revertToDefaultStyle();
@@ -227,25 +230,38 @@ export const gFloorpTabBarStyle = {
         gFloorpTabBarStyle.navigatorToolboxtabbarElement.appendChild(
           gFloorpTabBarStyle.tabbarElement
         );
-        gFloorpTabBarStyle.PanelUIMenuButton.after(
-          document.querySelector("#floorp-tabbar-window-manage-container")
-        );
+        if (AppConstants.platform == "macosx") {
+          gFloorpTabBarStyle.navbarCustomElement.after(
+            document.querySelector("#floorp-tabbar-window-manage-container")
+          );
+        } else {
+          gFloorpTabBarStyle.PanelUIMenuButton.after(
+            document.querySelector("#floorp-tabbar-window-manage-container")
+          );
+        }
         gFloorpTabBarStyle.modifyCSS = document.createElement("style");
         gFloorpTabBarStyle.modifyCSS.id = "floorp-tabbar-modify-css";
         gFloorpTabBarStyle.modifyCSS.textContent = `
-            #toolbar-menubar > .titlebar-buttonbox-container {
-              display: none !important;
-            }
-            #titlebar {
-              appearance: none !important;
-            }
-            #TabsToolbar #workspace-button[label] > .toolbarbutton-icon,
-            #TabsToolbar #firefox-view-button > .toolbarbutton-icon {
-              height: 16px !important;
-              width: 16px !important;
-              padding: 0px !important;
-            }
-          `;
+             #toolbar-menubar > .titlebar-buttonbox-container {
+               display: none !important;
+             }
+             #titlebar {
+               appearance: none !important;
+             }
+             #TabsToolbar #workspace-button[label] > .toolbarbutton-icon,
+             #TabsToolbar #firefox-view-button > .toolbarbutton-icon {
+               height: 16px !important;
+               width: 16px !important;
+               padding: 0px !important;
+             }
+           `;
+        if (AppConstants.platform == "macosx") {
+          gFloorpTabBarStyle.modifyCSS.textContent += `
+             #floorp-tabbar-window-manage-container {
+               order: -1;
+             }
+           `;
+        }
         document
           .querySelector("head")
           .appendChild(gFloorpTabBarStyle.modifyCSS);
@@ -261,19 +277,32 @@ export const gFloorpTabBarStyle = {
         gFloorpTabBarStyle.browserElement.after(
           gFloorpTabBarStyle.titleBarElement
         );
-        gFloorpTabBarStyle.PanelUIMenuButton.after(
-          document.querySelector("#floorp-tabbar-window-manage-container")
-        );
+        if (AppConstants.platform == "macosx") {
+          gFloorpTabBarStyle.navbarCustomElement.after(
+            document.querySelector("#floorp-tabbar-window-manage-container")
+          );
+        } else {
+          gFloorpTabBarStyle.PanelUIMenuButton.after(
+            document.querySelector("#floorp-tabbar-window-manage-container")
+          );
+        }
         gFloorpTabBarStyle.modifyCSS = document.createElement("style");
         gFloorpTabBarStyle.modifyCSS.id = "floorp-tabbar-modify-css";
         gFloorpTabBarStyle.modifyCSS.textContent = `
-          #toolbar-menubar > .titlebar-buttonbox-container {
-            display: none !important;
-          }
-          :root[inFullscreen]:not([macOSNativeFullscreen]) #titlebar {
-            display: none !important;
-          }
-        `;
+           #toolbar-menubar > .titlebar-buttonbox-container {
+             display: none !important;
+           }
+           :root[inFullscreen]:not([macOSNativeFullscreen]) #titlebar {
+             display: none !important;
+           }
+         `;
+        if (AppConstants.platform == "macosx") {
+          gFloorpTabBarStyle.modifyCSS.textContent += `
+             #floorp-tabbar-window-manage-container {
+               order: -1;
+             }
+           `;
+        }
         document
           .querySelector("head")
           .appendChild(gFloorpTabBarStyle.modifyCSS);

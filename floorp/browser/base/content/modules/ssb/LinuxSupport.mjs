@@ -24,7 +24,7 @@ export const LinuxSupport = {
    * @param {SiteSpecificBrowser} ssb the SSB to install.
    */
   async install(ssb) {
-    let iconDir = "~/.local/share/icons/Floorp_Web_Apps";
+    let iconDir = "~/.local/share/icons/Midori_Web_Apps";
     await IOUtils.makeDirectory(iconDir, {
       from: "~/.local/share/icons",
       ignoreExisting: true,
@@ -46,12 +46,12 @@ export const LinuxSupport = {
 
     let command = Services.dirsvc.get("XREExeF",Ci.nsIFile).path;
     if (FileUtils.File("/.flatpak-info").exists()) {
-      command = "flatpak run one.ablaze.floorp";
+      command = "flatpak run org.astian.midori";
     }
     let applicationDir = "~/.local/share/applications";
     let desktopFile = PathUtils.join(
       applicationDir,
-      `floorp-${ssb.name}-${ssb.id}.desktop`
+      `midori-${ssb.name}-${ssb.id}.desktop`
     );
     await IOUtils.write(
       desktopFile,
@@ -76,14 +76,14 @@ Icon=${iconFile.path}`
       let applicationDir = "~/.local/share/applications";
       let desktopFile = PathUtils.join(
         applicationDir,
-        `floorp-${ssb.name}-${ssb.id}.desktop`
+        `midori-${ssb.name}-${ssb.id}.desktop`
       );
       await IOUtils.remove(desktopFile);
     } catch (e) {
       console.error(e);
     }
 
-    let icon = `~/.local/share/icons/Floorp_Web_Apps/${ssb.name}.png`;
+    let icon = `~/.local/share/icons/Midori_Web_Apps/${ssb.name}.png`;
     try {
       await IOUtils.remove(icon, {
         recursive: true,

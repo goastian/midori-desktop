@@ -175,7 +175,7 @@ gFloorpObservePreference("floorp.navbar.bottom", function (event) {
     SessionStore.promiseInitialized.then(() => {
       document
         .querySelector(".urlbarView")
-        .after(document.getElementById("urlbar-input-container"));
+        .after(document.querySelector(".urlbar-input-container"));
     });
   } else {
     document.getElementById("floorp-navvarcss")?.remove();
@@ -186,7 +186,7 @@ gFloorpObservePreference("floorp.navbar.bottom", function (event) {
         .appendChild(document.getElementById("nav-bar"));
       document
         .querySelector(".urlbarView")
-        .before(document.getElementById("urlbar-input-container"));
+        .before(document.querySelector(".urlbar-input-container"));
       if (
         !Services.prefs.getBoolPref("floorp.bookmarks.fakestatus.mode", false)
       ) {

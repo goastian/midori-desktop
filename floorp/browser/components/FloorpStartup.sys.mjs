@@ -49,6 +49,27 @@ const isMainBrowser = env.get("MOZ_BROWSER_TOOLBOX_PORT") === "";
   prefs.setBoolPref("alerts.useSystemBackend", isNativeNotificationEnabled);
 }
 
+{
+  let workspacesFile = FileUtils.File(
+    PathUtils.join(
+      Services.dirsvc.get("ProfD", Ci.nsIFile).path,
+      "Workspaces.json",
+    ),
+  );
+
+  if (workspacesFile.exists()) {
+    // Copy the file to Workspaces folder
+    let workspacesDir = FileUtils.File(
+      PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "Workspaces"),
+    );
+    if (!workspacesDir.exists()) {
+      workspacesDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+    }
+    workspacesFile.copyTo(workspacesDir, "Workspaces.json");
+    workspacesFile.remove(false);
+  }
+}
+
 export async function onFinalUIStartup() {
   Services.obs.removeObserver(onFinalUIStartup, "final-ui-startup");
   let { BrowserManagerSidebar } = ChromeUtils.importESModule(

@@ -9,11 +9,11 @@ DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
 
 
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"] += [
+FINAL_TARGET_FILES.features["midori-system@astian.org"] += [
     "manifest.json",
 ]
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"] += [
+FINAL_TARGET_FILES.features["midori-system@astian.org"] += [
     "download-notification.js",
     "ua_data.js",
     "update.js",
@@ -21,7 +21,7 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"] += [
     "webcompat_useragent.js",
 ]
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["API"] += [
+FINAL_TARGET_FILES.features["midori-system@astian.org"]["API"] += [
     "API/aboutConfigPrefs.js",
     "API/aboutConfigPrefs.json",
     "API/BrowserInfo.js",
@@ -38,7 +38,7 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["API"] += [
     "API/sidebar.json",
 ]
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["icons"] += [
+FINAL_TARGET_FILES.features["midori-system@astian.org"]["icons"] += [
     "icons/failed.png",
     "icons/floorp.png",
     "icons/LICENSE",
@@ -46,12 +46,12 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["icons"] += [
     "icons/link-48.png",
 ]
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["gesturefy"] += [
+FINAL_TARGET_FILES.features["midori-system@astian.org"]["gesturefy"] += [
     "gesturefy/background.js",
     "gesturefy/gesturefy.js",
 ]
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["webcompat"] += [
+FINAL_TARGET_FILES.features["midori-system@astian.org"]["webcompat"] += [
     "webcompat/bug-1004-youtube-com.js",
     "webcompat/bug-894-twitter-com.css",
 ]

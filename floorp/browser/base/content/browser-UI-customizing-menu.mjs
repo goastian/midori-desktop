@@ -87,3 +87,5 @@ export const gFloorpCustomizeMode = {
     Services.prefs.setBoolPref("floorp.hide.unifiedExtensionsButtton", enabled);
   },
 };
+
+gFloorpCustomizeMode.init();

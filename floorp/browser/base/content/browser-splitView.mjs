@@ -10,6 +10,16 @@
 export class SplitView {
   constructor() {
     this._data = [];
+    this._syncData = {
+      sync: false,
+      options: {
+        flexType: "flex",
+        reverse: false,
+        method: "row",
+        syncMode: true,
+      },
+      syncTab: null,
+    };
     this.currentView = -1;
     this._tabBrowserPanel = null;
     this.__modifierElement = null;
@@ -27,6 +37,13 @@ export class SplitView {
    */
   handleTabClose(event) {
     const tab = event.target;
+
+    if (this._syncData.syncTab === tab) {
+      this._syncData.syncTab = null;
+      this._syncData.sync = false;
+      this.hideSplitViewManager();
+    }
+
     const groupIndex = this._data.findIndex(group => group.tabs.includes(tab));
     if (groupIndex < 0) {
       return;
@@ -111,6 +128,7 @@ export class SplitView {
     const element = window.MozXULElement.parseXULToFragment(`
       <menuseparator/>
         <menuitem id="context_splittabs" data-l10n-id="floorp-split-view-open-menu" oncommand="gSplitView.contextSplitTabs();"/>
+        <menuitem id="context_split_fixedtab" data-l10n-id="floorp-split-view-fixed-menu" oncommand="gSplitView.splitToFixedTab();"/>
       <menuseparator/>
     `);
     document.getElementById("context_closeDuplicateTabs").after(element);
@@ -264,12 +282,16 @@ export class SplitView {
     const mainPopup = document.getElementById("mainPopupSet");
     mainPopup?.addEventListener("popupshowing", () => {
       const elem = document.getElementById("context_splittabs");
+      const excludeSyncedDataList = this._data.filter(
+        group => group.syncMode !== true
+      );
+
       elem.disabled =
         window.gBrowser.selectedTab === window.TabContextMenu.contextTab ||
-        this._data.some(group =>
+        excludeSyncedDataList.some(group =>
           group.tabs.includes(window.TabContextMenu.contextTab)
         ) ||
-        this._data.some(group =>
+        excludeSyncedDataList.some(group =>
           group.tabs.includes(window.gBrowser.selectedTab)
         );
 
@@ -307,6 +329,13 @@ export class SplitView {
     this.splitTabs(tab);
   }
 
+  splitToFixedTab() {
+    const tab = window.TabContextMenu.contextTab;
+    this._syncData.syncTab = tab;
+    this._syncData.sync = true;
+    this.updateSplitView(window.gBrowser.selectedTab);
+  }
+
   /**
    * Splits the selected tabs.
    */
@@ -339,6 +368,8 @@ export class SplitView {
     const tab = window.gBrowser.getTabForBrowser(browser);
     if (tab) {
       this.updateSplitView(tab);
+      // Need to set the docShellIsActive to true for switching the unsplit tab.
+      tab.linkedBrowser.docShellIsActive = true;
     }
   }
 
@@ -353,8 +384,9 @@ export class SplitView {
     }
     const existingSplitTab = tabs.find(tab => tab.splitView);
     if (existingSplitTab) {
-      const groupIndex = this._data.findIndex(group =>
-        group.tabs.includes(existingSplitTab)
+      const groupIndex = this._data.findIndex(
+        group =>
+          group.tabs.includes(existingSplitTab) && group.syncMode !== true
       );
       if (groupIndex >= 0) {
         this.updateSplitView(existingSplitTab);
@@ -378,9 +410,20 @@ export class SplitView {
    * @param {string} method - The type of split view.
    */
   updateSplitView(tab, reverse = null, method = null) {
+    // If current view is sync's view, before update view, we should remove the sync view.
+    const syncIndex = this._data.findIndex(group => group.syncMode === true);
+    if (syncIndex >= 0) {
+      this._syncData.options = {
+        ...this._data[syncIndex],
+        reverse: reverse === null ? this._data[syncIndex].reverse : reverse,
+        method: method === null ? this._data[syncIndex].method : method,
+      };
+      this.removeGroup(syncIndex);
+    }
+
     const splitData = this._data.find(group => group.tabs.includes(tab));
     const index = this._data.indexOf(splitData);
-    const newSplitData = {
+    let newSplitData = {
       ...splitData,
       // Default configuration
       method: method === null ? splitData?.method ?? "row" : method,
@@ -395,9 +438,17 @@ export class SplitView {
       if (this.currentView >= 0) {
         this.deactivateSplitView();
       }
-      if (!splitData) {
+      if (!splitData && !this._syncData.sync) {
         return;
       }
+
+      // Sync split view
+      newSplitData = {
+        ...this._syncData.options,
+        tabs: [this._syncData.syncTab, tab],
+      };
+      // Push temporarily sync view data.
+      this._data.push(newSplitData);
     }
     if (index >= 0) {
       this._data[index] = newSplitData;
@@ -409,7 +460,7 @@ export class SplitView {
    * Deactivates the split view.
    */
   deactivateSplitView() {
-    for (const tab of this._data[this.currentView].tabs) {
+    for (const tab of window.gBrowser.tabs) {
       const container = tab.linkedBrowser.closest(".browserSidebarContainer");
       this.resetContainerStyle(container);
       container.removeEventListener("click", this.handleTabClick);
@@ -519,7 +570,7 @@ export class SplitView {
     const tab = window.gBrowser.tabs.find(
       t => t.linkedBrowser.closest(".browserSidebarContainer") === container
     );
-    if (tab) {
+    if (tab && tab !== this._syncData.syncTab) {
       window.gBrowser.selectedTab = tab;
     }
   };
@@ -583,25 +634,16 @@ export class SplitView {
    */
   unsplitCurrentView() {
     const currentTab = window.gBrowser.selectedTab;
-    const tabs = this._data[this.currentView].tabs;
+    let tabs = this._data[this.currentView].tabs;
+    if (this._data[this.currentView].syncMode) {
+      this._syncData.syncTab = null;
+      this._syncData.sync = false;
+      tabs = [currentTab];
+    }
     for (const tab of tabs) {
       this.handleTabClose({ target: tab, forUnsplit: true });
     }
     window.gBrowser.selectedTab = currentTab;
     this.hideSplitViewManager();
-  }
-
-  /**
-   * @description opens a new tab and switches to it.
-   * @param {string} url - The url to open
-   * @param {object} options - The options for the tab
-   * @returns {tab} The tab that was opened
-   */
-  openAndSwitchToTab(url, options) {
-    const parentWindow = window.ownerGlobal.parent;
-    const targetWindow = parentWindow || window;
-    const tab = targetWindow.gBrowser.addTrustedTab(url, options);
-    targetWindow.gBrowser.selectedTab = tab;
-    return tab;
   }
 }

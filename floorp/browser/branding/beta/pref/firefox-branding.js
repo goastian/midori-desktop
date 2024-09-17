@@ -6,12 +6,12 @@
 
 pref(
   "startup.homepage_override_url",
-  "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/",
+  "https://astian.org/midori-en/",
 );
 pref("startup.homepage_welcome_url", "about:setup");
 pref(
   "startup.homepage_welcome_url.additional",
-  "https://docs.ablaze.one/floorp_privacy_policy/",
+  "https://astian.org/astian-privacy-policies/",
 );
 // Interval: Time between checks for a new version (in seconds)
 pref("app.update.interval", 43200); // 12 hours

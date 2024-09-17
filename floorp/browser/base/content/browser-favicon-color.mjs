@@ -2,6 +2,7 @@
 
 const gFloorpFaviconColor = {
   initialized: false,
+  interval: null,
   init() {
     if (this.initialized) {
       return;
@@ -124,9 +125,16 @@ const gFloorpFaviconColor = {
     return Number(mostFrequentValue);
   },
 
+  getTextColor(backgroundColor) {
+    const rgb = backgroundColor.match(/\d+/g);
+    const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+
+    return brightness >= 128 ? "black" : "white";
+  },
+
   setFaviconColorToTitlebar() {
     const base64Image = document.querySelector(
-      '.tab-icon-image[selected="true"]'
+      ".tab-icon-image[selected]"
     )?.src;
     const base64ImageWithoutHeader = base64Image?.split(",")[1];
 
@@ -139,28 +147,25 @@ const gFloorpFaviconColor = {
         }
 
         let elem = document.createElement("style");
-        let textColor =
-          result.averageColor - 0x222222 > 0xffffff / 2 ? "#000000" : "#ffffff";
+        let textColor = gFloorpFaviconColor.getTextColor(result.averageColor);
         let styleSheet = `
           :root {
               --floorp-tab-panel-bg-color: ${result.averageColor};
               --floorp-tab-panel-fg-color: ${textColor};
-  
               --floorp-navigator-toolbox-bg-color: var(--floorp-tab-panel-bg-color);
               --floorp-tab-label-fg-color: var(--floorp-tab-panel-fg-color);
               --floorp-tabs-icons-fg-color: var(--floorp-tab-panel-fg-color);
           }
-        
+
           #browser #TabsToolbar,
-          #navigator-toolbox:not(:-moz-lwtheme),
-          #navigator-toolbox:-moz-lwtheme {
+           :root:is(:not([lwtheme]), :not(:-moz-lwtheme)) #navigator-toolbox[id],
+          #navigator-toolbox[id] {
             background-color: var(--floorp-navigator-toolbox-bg-color) !important;
           }
-  
-          .tab-label:not([selected="true"]) {
+          .tab-label:not([selected]) {
             color: var(--floorp-tab-label-fg-color) !important;
           }
-  
+
           .tab-icon-stack > * , #TabsToolbar-customization-target > *, #tabs-newtab-button, .titlebar-color > * {
             color: var(--floorp-tabs-icons-fg-color) !important;
             fill: var(--floorp-tabs-icons-fg-color) !important;
@@ -184,6 +189,10 @@ const gFloorpFaviconColor = {
     document.addEventListener("floorpOnLocationChangeEvent", function () {
       gFloorpFaviconColor.setFaviconColorToTitlebar();
     });
+
+    this.interval = setInterval(() => {
+      gFloorpFaviconColor.setFaviconColorToTitlebar();
+    }, 1000);
   },
 
   disableFaviconColorToTitlebar() {
@@ -195,6 +204,8 @@ const gFloorpFaviconColor = {
     document.removeEventListener("floorpOnLocationChangeEvent", function () {
       gFloorpFaviconColor.setFaviconColorToTitlebar();
     });
+
+    clearInterval(this.interval);
   },
 };
 

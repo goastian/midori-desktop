@@ -23,21 +23,24 @@ setTitle();
 let bsbObject = {};
 let panelId = "";
 let newPanel = false;
+let userContextId = -1;
 
 function onLoad() {
   bsbObject = JSON.parse(
     // biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
     Services.prefs.getStringPref(`floorp.browser.sidebar2.data`, undefined)
   );
-  const paramsTemp = window.arguments[0] || {};
   let params = {};
-  if (window.arguments[0].id ?? "" != "") {
+  if (window.arguments[0].id ?? false) {
     params = window.arguments[0];
-  } else if (window.arguments[0].wrappedJSObject.id ?? "" !== "") {
+  } else if (window.arguments[0].wrappedJSObject.id ?? false) {
     params = window.arguments[0].wrappedJSObject;
   }
+
   newPanel = params.new;
   panelId = params.id;
+  userContextId = params.userContext ?? -1;
+
   if (!newPanel) {
     Services.obs.notifyObservers(
       { eventType: "mouseOver", id: `BSB-${panelId}` },
@@ -50,9 +53,6 @@ function onLoad() {
   const panelWidth = newPanel ? 0 : bsbObject.data[panelId].width ?? 0;
 
   document.addEventListener("dialogaccept", setPref);
-
-  const panelUserContext =
-    params.userContext ?? (newPanel ? -1 : bsbObject.data[panelId].usercontext);
 
   for (const elem in BrowserManagerSidebar.STATIC_SIDEBAR_DATA) {
     const floorpWebpanelMenuitem = document.createXULElement("menuitem");
@@ -84,20 +84,13 @@ function onLoad() {
     document.querySelector(".URLBox").value = url;
   }
 
-  setTimeout(setBox, 500);
+  setTimeout(() => setBox(userContextId), 500);
 
   document.querySelector("#userAgentCheck").checked = panelUserAgent;
   document.querySelector("#widthBox").value = panelWidth;
 
-  let container_label = -1;
   const container_list = document.querySelector("#userContextPopup");
-  const container_list_base = document.querySelector("#userContext");
   let menuitem = document.createXULElement("menuitem");
-  container_list_base.value = 0;
-  container_list_base.setAttribute(
-    "data-l10n-id",
-    "floorp-no-workspace-container"
-  );
   menuitem.value = 0;
   menuitem.setAttribute("flex", 1);
   menuitem.setAttribute("data-l10n-id", "floorp-no-workspace-container");
@@ -110,25 +103,17 @@ function onLoad() {
     const containerName = ContextualIdentityService.getUserContextLabel(
       elem.userContextId
     );
-    if (panelUserContext === elem.userContextId) {
-      container_label = ContextualIdentityService.getUserContextLabel(
-        elem.userContextId
-      );
-      container_list_base.value = elem.userContextId;
-    }
     menuitem.setAttribute("label", containerName);
     container_list.appendChild(menuitem);
   }
-  if (container_label === -1) {
-    container_label = document
-      .getElementById("browserBundle")
-      .getString("userContextNone.label");
+
+  if (userContextId != -1) {
+    document.querySelector("#userContext").value = userContextId;
   }
-  container_list.parentElement.setAttribute("label", container_label);
 
   // Sidebar panel extensions
-  const { AddonManager } = ChromeUtils.import(
-    "resource://gre/modules/AddonManager.jsm"
+  const { AddonManager } = ChromeUtils.importESModule(
+    "resource://gre/modules/AddonManager.sys.mjs"
   );
   const haveSidebarPanelExtensionsObjPref =
     "floorp.extensions.webextensions.sidebar-action";
@@ -191,19 +176,6 @@ function setPref() {
   const userAgent = document.querySelector("#userAgentCheck").checked;
   const width = Number(document.querySelector("#widthBox").value);
 
-  console.log(
-    "page: ",
-    page,
-    "url: ",
-    url,
-    "container: ",
-    container,
-    "userAgent: ",
-    userAgent,
-    "width: ",
-    width
-  );
-
   const dataObject = {};
   if (page != 0) {
     dataObject.url = document.querySelector("#pageSelect").value;
@@ -235,13 +207,15 @@ function setPref() {
   );
 }
 
-function setBox() {
+function setBox(userContextId) {
   const style =
     document.querySelector("#pageSelect").value == 0 ? "" : "hidden";
   const elems = document.querySelectorAll(".invisible");
   for (const elem of elems) {
     elem.style.visibility = style;
   }
+
+  document.querySelector("#userContext").value = userContextId;
 }
 
 function onunload() {

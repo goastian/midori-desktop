@@ -151,7 +151,7 @@ OutFile "helper.exe"
 !endif
 ShowUnInstDetails nevershow
 
-!define URLUninstallSurvey "https://astian.org/feedback"
+!define URLUninstallSurvey "https://qsurvey.mozilla.com/s3/FF-Desktop-Post-Uninstall?channel=${UpdateChannel}&version=${AppVersion}&osversion="
 
 ; Support for the profile refresh feature
 !define URLProfileRefreshHelp "https://support.mozilla.org/kb/refresh-firefox-reset-add-ons-and-settings"
@@ -242,7 +242,7 @@ Function un.UninstallServiceIfNotUsed
   ; Figure out the number of subkeys
   StrCpy $0 0
   ${Do}
-    EnumRegKey $1 HKLM "Software\Astian\MaintenanceService" $0
+    EnumRegKey $1 HKLM "Software\Mozilla\MaintenanceService" $0
     ${If} "$1" == ""
       ${ExitDo}
     ${EndIf}
@@ -447,8 +447,8 @@ Section "Uninstall"
   ${EndIf}
 
   SetShellVarContext current  ; Set SHCTX to HKCU
-  ${un.RegCleanMain} "Software\Astian"
-  ${un.RegCleanPrefs} "Software\Astian\${AppName}"
+  ${un.RegCleanMain} "Software\Mozilla"
+  ${un.RegCleanPrefs} "Software\Mozilla\${AppName}"
   ${un.RegCleanUninstall}
   ${un.DeleteShortcuts}
 
@@ -466,52 +466,53 @@ Section "Uninstall"
   ${EndIf}
 
   ; Clean up old maintenance service logs
-  ${un.CleanMaintenanceServiceLogs} "Astian\Midori"
+  ${un.CleanMaintenanceServiceLogs} "Mozilla\Firefox"
 
   ; Remove any app model id's stored in the registry for this install path
-  DeleteRegValue HKCU "Software\Astian\${AppName}\TaskBarIDs" "$INSTDIR"
-  DeleteRegValue HKLM "Software\Astian\${AppName}\TaskBarIDs" "$INSTDIR"
+  DeleteRegValue HKCU "Software\Mozilla\${AppName}\TaskBarIDs" "$INSTDIR"
+  DeleteRegValue HKLM "Software\Mozilla\${AppName}\TaskBarIDs" "$INSTDIR"
 
   ClearErrors
-  WriteRegStr HKLM "Software\Astian" "${BrandShortName}InstallerTest" "Write Test"
+  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
     StrCpy $TmpVal "HKCU" ; used primarily for logging
   ${Else}
     SetShellVarContext all  ; Set SHCTX to HKLM
-    DeleteRegValue HKLM "Software\Astian" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM" ; used primarily for logging
-    ${un.RegCleanMain} "Software\Astian"
+    ${un.RegCleanMain} "Software\Mozilla"
     ${un.RegCleanUninstall}
     ${un.DeleteShortcuts}
     ${un.SetAppLSPCategories}
   ${EndIf}
 
-  ${un.RegCleanAppHandler} "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanAppHandler} "MidoriPDF-$AppUserModelID"
-  ${un.RegCleanAppHandler} "MidoriURL-$AppUserModelID"
+  ${un.RegCleanAppHandler} "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanAppHandler} "FirefoxPDF-$AppUserModelID"
+  ${un.RegCleanAppHandler} "FirefoxURL-$AppUserModelID"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
   ${un.RegCleanProtocolHandler} "mailto"
-  ${un.RegCleanFileHandler}  ".htm"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".html"  "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".shtml" "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xht"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xhtml" "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".oga"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogg"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogv"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".webm"  "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".svg"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".webp"  "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".avif"  "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".jxl"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".pdf"   "MidoriPDF-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".oga"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogg"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogv"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".svg"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webp"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".avif"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".jxl"   "FirefoxHTML-$AppUserModelID"
+
+  ${un.RegCleanFileHandler}  ".pdf"   "FirefoxPDF-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
-  ${un.GetSecondInstallPath} "Software\Astian" $R9
+  ${un.GetSecondInstallPath} "Software\Mozilla" $R9
   ${If} $R9 == "false"
     SetShellVarContext current  ; Set SHCTX to HKCU
-    ${un.GetSecondInstallPath} "Software\Astian" $R9
+    ${un.GetSecondInstallPath} "Software\Mozilla" $R9
   ${EndIf}
 
   DeleteRegKey HKLM "Software\Clients\StartMenuInternet\${AppRegName}-$AppUserModelID"
@@ -532,22 +533,22 @@ Section "Uninstall"
 
   ; Remove old protocol handler and StartMenuInternet keys without install path
   ; hashes, but only if they're for this installation.  We've never supported
-  ; bare MidoriPDF.
-  ReadRegStr $0 HKLM "Software\Classes\MidoriHTML\DefaultIcon" ""
+  ; bare FirefoxPDF.
+  ReadRegStr $0 HKLM "Software\Classes\FirefoxHTML\DefaultIcon" ""
   StrCpy $0 $0 -2
   ${If} $0 == "$INSTDIR\${FileMainEXE}"
-    DeleteRegKey HKLM "Software\Classes\MidoriHTML"
-    DeleteRegKey HKLM "Software\Classes\MidoriURL"
+    DeleteRegKey HKLM "Software\Classes\FirefoxHTML"
+    DeleteRegKey HKLM "Software\Classes\FirefoxURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKLM "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
-  ReadRegStr $0 HKCU "Software\Classes\MidoriHTML\DefaultIcon" ""
+  ReadRegStr $0 HKCU "Software\Classes\FirefoxHTML\DefaultIcon" ""
   StrCpy $0 $0 -2
   ${If} $0 == "$INSTDIR\${FileMainEXE}"
-    DeleteRegKey HKCU "Software\Classes\MidoriHTML"
-    DeleteRegKey HKCU "Software\Classes\MidoriURL"
+    DeleteRegKey HKCU "Software\Classes\FirefoxHTML"
+    DeleteRegKey HKCU "Software\Classes\FirefoxURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKCU "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKCU "Software\RegisteredApplications" "$R9"
@@ -723,7 +724,7 @@ Section "Uninstall"
   ; subsequently deleted after checking. If the value is found during startup
   ; the browser will offer to Reset Firefox. We use the UpdateChannel to match
   ; uninstalls of Firefox-release with reinstalls of Firefox-release, for example.
-  WriteRegStr HKCU "Software\Astian\Midori" "Uninstalled-${UpdateChannel}" "True"
+  WriteRegStr HKCU "Software\Mozilla\Firefox" "Uninstalled-${UpdateChannel}" "True"
 
 !ifdef MOZ_MAINTENANCE_SERVICE
   ; Get the path the allowed cert is at and remove it
@@ -1051,7 +1052,7 @@ Function un.onInit
   ${un.UninstallUnOnInitCommon}
 
   ; setup the application model id registration value
-  ${un.InitHashAppModelId} "$INSTDIR" "Software\Astian\${AppName}\TaskBarIDs"
+  ${un.InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
 
   ; Find a default profile for this install.
   SetShellVarContext current

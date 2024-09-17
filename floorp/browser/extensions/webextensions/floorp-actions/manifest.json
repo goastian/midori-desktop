@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
-  "name": "Floorp Actions",
-  "description": "Controls Floorp future from Gesturefy",
+  "name": "Midori Actions",
+  "description": "Controls Midori future from Gesturefy",
   "version": "1.0",
-  "homepage_url": "https://floorp.app",
+  "homepage_url": "https://astian.org/midori-browser",
   "background": {
     "scripts": ["background.js"]
   },
@@ -27,7 +27,7 @@
   },
   "applications": {
     "gecko": {
-      "id": "floorp-actions@floorp.ablaze.one"
+      "id": "midori-actions@astian.org"
     }
   }
 }

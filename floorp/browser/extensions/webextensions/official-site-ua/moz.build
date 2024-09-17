@@ -8,13 +8,13 @@ DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]
 DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
 
 
-FINAL_TARGET_FILES.features["official-site-ua@floorp.ablaze.one"] += [
+FINAL_TARGET_FILES.features["official-site-ua@astian.org"] += [
     "background.js",
     "link-48.png",
     "manifest.json",
 ]
 
-FINAL_TARGET_FILES.features["official-site-ua@floorp.ablaze.one"]["APIs"] += [
+FINAL_TARGET_FILES.features["official-site-ua@astian.org"]["APIs"] += [
     "APIs/BrowserInfo.js",
     "APIs/BrowserInfo.json",
 ]

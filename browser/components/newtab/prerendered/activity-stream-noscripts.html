@@ -6,10 +6,6 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; object-src 'none'; script-src resource: chrome:; connect-src https:; img-src https: data: blob: chrome: resource: file:; style-src 'unsafe-inline';"
-    />
     <meta name="color-scheme" content="light dark" />
     <title data-l10n-id="newtab-page-title"></title>
     <link
@@ -32,6 +28,22 @@
       rel="stylesheet"
       href="chrome://activity-stream/content/css/activity-stream.css"
     />
+    <!-- Matomo -->
+<script nonce="938479237498237">
+  var _paq = window._paq = window._paq || [];
+  /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  (function() {
+    var u="https://analytics.astian.org/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '1']);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+<noscript><p><img src="https://analytics.astian.org/matomo.php?idsite=1&amp;rec=1" style="border:0;" alt="" /></p></noscript>
+<!-- End Matomo Code -->
   </head>
   <body class="activity-stream">
     <div id="root"></div>
