@@ -25,7 +25,7 @@
     ・
     <a href="https://astian.org/midori-en">Blog & Release Notes</a>
     ・
-    <a href="https://astian.org/community">Official Support Site & Send feedback</a>
+    <a href="https://help.astian.org">Official Support Site & Send feedback</a>
   </p>
 </div>
 
