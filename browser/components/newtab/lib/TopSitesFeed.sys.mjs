@@ -730,16 +730,16 @@ export class TopSitesFeed {
         },
         {
           "id": 4,
-          "name": "Trip",
-          "url": "https://www.trip.com/?Allianceid=4479273&SID=57814702&trip_sub1=astian-midori&trip_sub3=D180532",
-          "image_url": "https://astian.org/wp-content/uploads/2024/02/trip.webp",
+          "name": "Stake US",
+          "url": "https://stake.us/?c=L0OhuV83",
+          "image_url": "https://astian.org/wp-content/uploads/2024/10/Untitled-200-x-200-px.png",
           "image_size": 200,
         },
         {
           "id": 5,
-          "name": "Hotels",
-          "url": "https://www.hotels.com/affiliate/Ya3mgrV",
-          "image_url": "https://astian.org/wp-content/uploads/2024/03/hotels.png",
+          "name": "Stake",
+          "url": "https://stake.com/?c=L0OhuV83",
+          "image_url": "https://astian.org/wp-content/uploads/2024/10/Untitled-design-42.png",
           "image_size": 200,
         },
         {
