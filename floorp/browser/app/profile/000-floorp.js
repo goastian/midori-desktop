@@ -310,7 +310,7 @@ pref("userContent.page.dark_mode", true);
 /*-----------------------------------------------------------------------------------all.js の設定-----------------------------------------------------------------------------------*/
 
 pref("extensions.htmlaboutaddons.recommendations.enabled", false, locked);
-pref("datareporting.policy.dataSubmissionEnable", false, locked);
+pref("datareporting.policy.dataSubmissionEnabled", false, locked);
 pref("datareporting.healthreport.uploadEnabled", false, locked);
 
 /*-----------------------------------------------------------------------------以下、Photon の既定の設定-----------------------------------------------------------------------------*/
