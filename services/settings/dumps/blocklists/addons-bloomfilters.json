@@ -1,6 +1,19 @@
 {
   "data": [
     {
+      "stash": {
+        "blocked": [
+          "{24d9b7cb-cd34-4cba-8074-643b154723fe}:1.0"
+        ],
+        "unblocked": []
+      },
+      "schema": 1727375761731,
+      "key_format": "{guid}:{version}",
+      "stash_time": 1727894105152,
+      "id": "c49c9b7a-bfd6-430d-b5e1-f5a77a6d2770",
+      "last_modified": 1727894160916
+    },
+    {
       "schema": 1724351845855,
       "attachment": {
         "hash": "ee70e50e8c808399c10883d9ea525638dccf93570b6d855c7586cd15142eddec",
@@ -16,5 +29,5 @@
       "last_modified": 1724351846412
     }
   ],
-  "timestamp": 1724351846412
+  "timestamp": 1727894160916
 }
