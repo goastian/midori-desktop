@@ -164,6 +164,7 @@ export var ClipboardContextMenu = {
 
     let menupopup = aChromeDoc.createXULElement("menupopup");
     menupopup.id = this.MENU_POPUP_ID;
+    menupopup.setAttribute("tabspecific", "true");
     menupopup.appendChild(menuitem);
     return menupopup;
   },
