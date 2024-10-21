@@ -76,7 +76,7 @@ export class CustomShortcutKey {
     );
   }
   private startHandleShortcut(_window: Window) {
-    _window.addEventListener("keydown", (ev) => {
+    _window.addEventListener("keydown", (ev: any) => {
       if (this.disable_csk) {
         //console.log("disable-csk");
         return;
