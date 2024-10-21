@@ -451,7 +451,7 @@ BSB-header-links {
 }
 
 .csks-box-item {
-  padding: 10px 0px 0px 0px;
+  padding: 15px 0px 0px 0px;
 }
 
 .csks-box-item {
@@ -531,4 +531,19 @@ BSB-header-links {
 
 #workspace-warning {
   margin-top: 10px;
+}
+
+.csks-error-message {
+  color: red;
+  display: none;
+}
+
+.csk-error {
+  border: red 1px solid;
+  outline: none !important;
+}
+
+label:has(+ .csk-error) {
+  display: block;
+  margin-bottom: -16px;
 }

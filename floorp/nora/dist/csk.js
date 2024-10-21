@@ -1,8 +1,9 @@
-import { c as createSignal, a as createEffect, z as zCSKData, b as checkIsSystemShortcut, d as createElement, i as insertNode, s as setProp, e as createComponent, F as For, f as csk_category, g as insert, h as commands, j as effect, S as Show, r as render } from "./assets/utils.js";
+import { c as createSignal, a as createEffect, z as zCSKData, b as checkIsSystemShortcut, d as createElement, i as insertNode, s as setProp, e as effect, f as createComponent, F as For, g as csk_category, h as insert, j as commands, S as Show, r as render } from "./assets/utils.js";
 const [editingStatus, setEditingStatus] = createSignal(
   null
 );
 const [currentFocus, setCurrentFocus] = createSignal(null);
+const [focusElement, setFocusElement] = createSignal(null);
 createEffect(() => {
   Services.obs.notifyObservers(
     {},
@@ -43,6 +44,7 @@ createEffect(() => {
 });
 function initSetKey() {
   document.addEventListener("keydown", (ev) => {
+    var _a;
     const key = ev.key;
     const alt = ev.altKey;
     const ctrl = ev.ctrlKey;
@@ -77,6 +79,7 @@ function initSetKey() {
       if (["Control", "Alt", "Meta", "Shift"].filter((k) => key.includes(k)).length === 0) {
         if (checkIsSystemShortcut(ev)) {
           console.warn(`This Event is registered in System: ${ev}`);
+          (_a = focusElement()) == null ? void 0 : _a.classList.add("csk-error");
           return;
         }
         if (shift && !(alt || ctrl || meta) && key) {
@@ -107,9 +110,25 @@ const CustomShortcutKeyPage = () => {
     insertNode(_el$, _el$3);
     insertNode(_el$, _el$4);
     setProp(_el$2, "data-l10n-id", "floorp-CSK-title");
-    setProp(_el$3, "class", "indent tip-caption");
+    setProp(_el$3, "class", "indent tip-caption needreboot");
     setProp(_el$3, "data-l10n-id", "floorp-CSK-description");
     setProp(_el$4, "data-l10n-id", "disable-fx-actions");
+    setProp(_el$4, "onClick", (ev) => {
+      Services.prefs.setBoolPref("floorp.custom.shortcutkeysAndActions.remove.fx.actions", ev.currentTarget.checked);
+      if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+        (async () => {
+          let userConfirm = await confirmRestartPrompt(null);
+          if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+            Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+          }
+        })();
+      } else {
+        window.setTimeout(function() {
+          Services.startup.quit(Services.startup.eAttemptQuit | Services.startup.eRestart);
+        }, 500);
+      }
+    });
+    effect((_$p) => setProp(_el$4, "checked", Services.prefs.getBoolPref("floorp.custom.shortcutkeysAndActions.remove.fx.actions", false), _$p));
     return _el$;
   })(), createComponent(For, {
     each: csk_category,
@@ -125,7 +144,7 @@ const CustomShortcutKeyPage = () => {
           return Object.entries(commands);
         },
         children: ([key, value]) => value.type === category2 ? (() => {
-          var _el$7 = createElement("div"), _el$8 = createElement("label"), _el$9 = createElement("input");
+          var _el$7 = createElement("div"), _el$8 = createElement("label"), _el$9 = createElement("div"), _el$10 = createElement("label"), _el$11 = createElement("input");
           insertNode(_el$7, _el$8);
           insertNode(_el$7, _el$9);
           setProp(_el$7, "class", "csks-box-item");
@@ -136,29 +155,45 @@ const CustomShortcutKeyPage = () => {
             "flex-grow": "1"
           });
           insert(_el$8, key);
-          setProp(_el$9, "onFocus", (ev) => {
-            setCurrentFocus(key);
+          insertNode(_el$9, _el$10);
+          insertNode(_el$9, _el$11);
+          setProp(_el$9, "style", {
+            display: "flex",
+            "flex-direction": "column-reverse",
+            "justify-content": "right",
+            "align-content": "end",
+            "align-items": "end"
           });
-          setProp(_el$9, "onBlur", (ev) => {
+          setProp(_el$10, "class", "csks-error-message");
+          setProp(_el$10, "data-l10n-id", "floorp-CSK-error");
+          setProp(_el$11, "onFocus", (ev) => {
+            var _a;
+            if (focusElement() === ev.currentTarget) {
+              return;
+            }
+            (_a = focusElement()) == null ? void 0 : _a.classList.remove("csk-error");
+            setCurrentFocus(key);
+            setFocusElement(ev.currentTarget);
+          });
+          setProp(_el$11, "onBlur", (ev) => {
             setEditingStatus(null);
             if (currentFocus() === key) {
               setCurrentFocus(null);
             }
           });
-          setProp(_el$9, "readonly", true);
-          setProp(_el$9, "placeholder", "Type a shortcut");
-          setProp(_el$9, "style", {
+          setProp(_el$11, "readonly", true);
+          setProp(_el$11, "placeholder", "Type a shortcut");
+          setProp(_el$11, "style", {
             "border-radius": "4px",
             color: "inherit",
             padding: "6px 10px",
             "background-color": "transparent !important",
-            border: "1px solid var(--input-border-color) !important",
             transition: "all .2s ease-in-out !important"
           });
           effect((_p$) => {
             var _v$ = "floorp-custom-actions-" + key.replace("floorp-", "").replace("gecko-", ""), _v$2 = currentFocus() === key && editingStatus() !== null ? editingStatus() : cskDatumToString(cskData(), key);
             _v$ !== _p$.e && (_p$.e = setProp(_el$8, "data-l10n-id", _v$, _p$.e));
-            _v$2 !== _p$.t && (_p$.t = setProp(_el$9, "value", _v$2, _p$.t));
+            _v$2 !== _p$.t && (_p$.t = setProp(_el$11, "value", _v$2, _p$.t));
             return _p$;
           }, {
             e: void 0,

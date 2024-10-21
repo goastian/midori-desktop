@@ -18,6 +18,7 @@ export const [editingStatus, setEditingStatus] = createSignal<string | null>(
 export const [currentFocus, setCurrentFocus] = createSignal<
   keyof typeof commands | null
 >(null);
+export const [focusElement, setFocusElement] = createSignal<HTMLElement | null>(null);
 
 createEffect(() => {
   //console.log(currentFocus() !== null);
@@ -113,8 +114,11 @@ export function initSetKey() {
       ) {
         if (checkIsSystemShortcut(ev)) {
           console.warn(`This Event is registered in System: ${ev}`);
+          // Show error message to Element
+          focusElement()?.classList.add("csk-error");
           return;
         }
+        
         if (shift&&!(alt||ctrl||meta)&&key){console.warn("Shift + [key] is not permitted");return;}
         setCSKData({
           ...cskData(),
