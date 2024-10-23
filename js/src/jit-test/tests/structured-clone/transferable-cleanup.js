@@ -161,6 +161,7 @@ function testMultiWithDeserializeReadTransferErrorHelper(g, BASE, desc) {
     } catch (e) {
         assertEq(e.message.includes("invalid transferable"), true);
     }
+
     try {
         // This fails without logging anything, since the re-transfer will be caught
         // by looking at its header before calling any callbacks.
@@ -168,6 +169,7 @@ function testMultiWithDeserializeReadTransferErrorHelper(g, BASE, desc) {
     } catch (e) {
         assertEq(e.message.includes("cannot transfer twice"), true);
     }
+
     s = null;
     gc();
     printTrace(arguments.callee.name, g, BASE, obj.log, "deserialize");

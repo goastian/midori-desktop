@@ -625,6 +625,7 @@ class DebuggerImmediateRunnable final : public WorkerThreadRunnable {
                             bool aDispatchResult) override {
     // Silence bad assertions.
   }
+
   // Make as MOZ_CAN_RUN_SCRIPT_BOUNDARY for calling mHandler->Call();
   // Since WorkerRunnable::WorkerRun has not to be MOZ_CAN_RUN_SCRIPT, but
   // DebuggerImmediateRunnable is a special case that must to call the function

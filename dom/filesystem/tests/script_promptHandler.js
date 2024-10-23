@@ -40,7 +40,7 @@ async function dialogObserver(subj) {
   let dialog = subj.document.querySelector("dialog");
   let acceptButton = dialog.getButton("accept");
   await waitForButtonEnabledState(acceptButton);
-  
+
   subj.document.querySelector("dialog").acceptDialog();
   sendAsyncMessage("promptAccepted");
 }

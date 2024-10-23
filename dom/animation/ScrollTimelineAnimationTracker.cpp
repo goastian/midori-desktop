@@ -15,10 +15,8 @@ NS_IMPL_CYCLE_COLLECTION(ScrollTimelineAnimationTracker, mPendingSet, mDocument)
 void ScrollTimelineAnimationTracker::TriggerPendingAnimations() {
   for (RefPtr<dom::Animation>& animation :
        ToTArray<AutoTArray<RefPtr<dom::Animation>, 32>>(mPendingSet)) {
-
     MOZ_ASSERT(animation->GetTimeline() &&
                !animation->GetTimeline()->IsMonotonicallyIncreasing());
-
     // FIXME: Trigger now may not be correct because the spec says:
     // If a user agent determines that animation is immediately ready, it may
     // schedule the task (i.e. ResumeAt()) as a microtask such that it runs at
@@ -38,7 +36,6 @@ void ScrollTimelineAnimationTracker::TriggerPendingAnimations() {
       // inactive, and this also matches the current spec definition.
       continue;
     }
-
     mPendingSet.Remove(animation);
   }
 }

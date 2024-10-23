@@ -20,7 +20,7 @@ const r = (dir: string) => {
 function binPath(platform: "windows-x64"): string {
   switch (platform) {
     case "windows-x64": {
-      return "obj-x86_64-pc-windows-msvc/dist/bin/floorp.exe";
+      return "obj-x86_64-pc-windows-msvc/dist/bin/midori.exe";
     }
   }
 }

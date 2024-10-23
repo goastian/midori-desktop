@@ -78,7 +78,7 @@ Converter.prototype = {
         "JSONViewer doesn't support multipart responses.",
         Cr.NS_ERROR_FAILURE
       );
-  }
+    }
     return "text/html";
   },
 
