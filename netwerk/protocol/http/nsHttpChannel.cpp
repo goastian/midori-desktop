@@ -650,6 +650,7 @@ static bool canUseHTTPSRRonNetwork(bool& aTRREnabled) {
   }
 
   aTRREnabled = false;
+
   if (nsCOMPtr<nsIDNSService> dns = mozilla::components::DNS::Service()) {
     nsIDNSService::ResolverMode mode;
     // If the browser is currently using TRR/DoH, then it can
@@ -664,11 +665,11 @@ static bool canUseHTTPSRRonNetwork(bool& aTRREnabled) {
         aTRREnabled = true;
       }
       if (aTRREnabled) {
-          return true;
+        return true;
       }
-      return true;
     }
   }
+
   if (RefPtr<NetworkConnectivityService> ncs =
           NetworkConnectivityService::GetSingleton()) {
     nsINetworkConnectivityService::ConnectivityState state;

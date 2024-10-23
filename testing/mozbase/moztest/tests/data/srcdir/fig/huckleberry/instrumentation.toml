@@ -1,4 +1,0 @@
-[DEFAULT]
-
-["src/TestInstrumentationB.java"]
-subsuite = "browser"

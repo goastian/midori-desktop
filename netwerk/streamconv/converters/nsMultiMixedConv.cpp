@@ -859,11 +859,7 @@ nsresult nsMultiMixedConv::SendStart() {
   if (!mRootContentDisposition.IsEmpty()) {
     mPartChannel->SetContentDisposition(mRootContentDisposition);
   } else {
-    if (!mRootContentDisposition.IsEmpty()) {
-    mPartChannel->SetContentDisposition(mRootContentDisposition);
-  } else {
     mPartChannel->SetContentDisposition(mContentDisposition);
-  }
   }
 
   // Each part of a multipart/replace response can be used

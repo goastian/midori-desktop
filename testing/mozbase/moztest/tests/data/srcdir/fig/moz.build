@@ -1,4 +1,0 @@
-ANDROID_INSTRUMENTATION_MANIFESTS += [
-    "grape/instrumentation.toml",
-    "huckleberry/instrumentation.toml",
-]
