@@ -1,0 +1,41 @@
+<html class="reftest-wait">
+<svg width="400" height="400">
+  <g id="g">
+    <circle cx="300" cy="300" r="40" style="fill: red;"></circle>
+  </g>
+</svg>
+
+<script>
+const g = document.getElementById("g")
+
+let tx = -108213.2;
+let ty = -108213.2;
+let k = 399;
+
+let stepSize = 1;
+
+let num = 0;
+let numMs = 100;
+
+const move = () => {
+  stepSize = -1 * stepSize;
+  tx += 0.0001 * stepSize;
+  ty += 0.0001 * stepSize;
+  g.setAttribute("transform", `translate(${tx},${ty}) scale(${k})`)
+  window.setTimeout(move, numMs);
+  num++;
+  if (num == 5) {
+  	document.documentElement.className = "";
+  }
+  if (num == 100 && navigator.appVersion.includes("Android")) {
+    // Android doesn't get a chance to paint and finish the reftest if another
+    // paint gets queued if we tweak the transfer, so if its taking a long time
+    // increase the timeout, this timeout value still reproduced the bug when
+    // test was landed.
+    numMs = 200;
+  }
+}
+
+move();
+</script>
+</html>

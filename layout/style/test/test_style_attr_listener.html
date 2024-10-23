@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test for Bug 1460295</title>
+    <script src="/tests/SimpleTest/SimpleTest.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+  </head>
+  <body>
+    <div></div>
+    <script>
+      let div = document.querySelector("div");
+      let count = 0;
+      div.addEventListener("DOMAttrModified", function () {
+        count++;
+      });
+      div.style.color = "green";
+      is(count, 0, "No DOMAttrModified event should be triggered");
+    </script>
+  </body>
+</html>
