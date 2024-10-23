@@ -1,0 +1,886 @@
+# This Source Code Form is subject to the terms of the Mozilla Public↩
+# License, v. 2.0. If a copy of the MPL was not distributed with this↩
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.↩
+
+# Adding a new metric? We have docs for that!↩
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html↩
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Firefox :: Translation'
+
+translations:
+  requests_count:
+    type: counter
+    description: >
+      The count of translation requests.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: 139
+
+  request_count:
+    type: labeled_counter
+    labels:
+      - full_page
+      - select
+    description: >
+      The count of translation requests, along with their type.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900432
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900432
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+
+  error_rate:
+    type: rate
+    description: >
+      The rate of failed translations requests.
+    denominator_metric: translations.requests_count
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  error:
+    type: event
+    description: >
+      The specific translations error that caused a full_page translation failure.
+    extra_keys:
+      flow_id: &flow_id
+        type: string
+        description: A uuid to relate events associated with the current panel session.
+      reason:
+        type: string
+        description: The reason for the error.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841366
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841366#c11
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  translation_request:
+    type: event
+    description: >
+      Triggers when a full-page translation request is sent.
+    extra_keys:
+      flow_id: *flow_id
+      from_language: &from_language
+        type: string
+        description: The language being translated from.
+      to_language: &to_language
+        type: string
+        description: The language being translated to.
+      document_language: &document_language
+        type: string
+        description: The detected BCP-47 language tag of the document.
+      top_preferred_language: &top_preferred_language
+        type: string
+        description: The top preferred language for this user.
+      request_target:
+        type: string
+        description: >
+          The target of the translation request, whether it is
+          "full_page" or "select".
+      source_text_code_units:
+        type: quantity
+        description: The length of the source text to be translated in code units.
+      source_text_word_count:
+        type: quantity
+        description: The length of the source text to be translated in words.
+      auto_translate:
+        type: boolean
+        description: >
+          True if this translation was triggered automatically
+          due to configured always-translate-language settings.
+          False if this translation was triggered manually.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836381
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841366
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1847150
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836381#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841366#c11
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428#c16
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1847150#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319#c6
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  restore_page:
+    type: event
+    description: >
+      Triggers when the a restore-page event is triggered.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+# The following metrics pertain to the full-page translations panel, however the the name "panel"
+# is retained (instead of "fullPageTranslationsPanel") for legacy reasons dating back to when this
+# was first implemented and the full-page translations panel was the only translations panel.
+translations.panel:
+  open:
+    type: event
+    description: >
+      Triggers when the full-page translations panel is opened.
+    extra_keys:
+      flow_id: *flow_id
+      auto_show:
+        type: boolean
+        description: Whether the panel was opened automatically or manually by the user.
+      view_name:
+        type: string
+        description: The type of view shown in the panel.
+      opened_from:
+        type: string
+        description: The method by which the full-page translations panel was opened.
+      document_language: *document_language
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1835502
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841366
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1847150
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1835502#c7
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841366#c11
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428#c16
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1847150#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  close:
+    type: event
+    description: >
+      Triggers when full-page translations panel is closed.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  open_from_language_menu:
+    type: event
+    description: >
+      Triggers when the from-language dropdown is opened in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  change_from_language:
+    type: event
+    description: >
+      Triggers when the from-language selected value is changed.
+    extra_keys:
+      flow_id: *flow_id
+      language: &language
+        type: string
+        description: >
+          - The BCP47 language tag.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  close_from_language_menu:
+    type: event
+    description: >
+      Triggers when the from-language dropdown is closed in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  open_to_language_menu:
+    type: event
+    description: >
+      Triggers when the from-language dropdown is opened in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  change_to_language:
+    type: event
+    description: >
+      Triggers when the to-language selected value is changed.
+    extra_keys:
+      flow_id: *flow_id
+      language: *language
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  close_to_language_menu:
+    type: event
+    description: >
+      Triggers when the from-language dropdown is closed in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  open_settings_menu:
+    type: event
+    description: >
+      Triggers when the settings menu is opened in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  close_settings_menu:
+    type: event
+    description: >
+      Triggers when the settings menu is closed in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  cancel_button:
+    type: event
+    description: >
+      Triggers when the cancel button is invoked in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  change_source_language_button:
+    type: event
+    description: >
+      Triggers when the change-source-language button is invoked in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  dismiss_error_button:
+    type: event
+    description: >
+      Triggers when the dismiss-error button is invoked in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  restore_page_button:
+    type: event
+    description: >
+      Triggers when the restore-page button is invoked in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  translate_button:
+    type: event
+    description: >
+      Triggers when the translate button is invoked in the full-page translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  always_offer_translations:
+    type: event
+    description: >
+      Triggers when the always-offer-translations menuitem is invoked in the full-page translations panel seeings.
+    extra_keys:
+      flow_id: *flow_id
+      toggled_on:
+        type: boolean
+        description: >
+          - Whether the setting was toggled on or off.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1842646
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1842646
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  always_translate_language:
+    type: event
+    description: >
+      Triggers when the always-translate-language menuitem is invoked in the full-page translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+      language: *language
+      toggled_on:
+        type: boolean
+        description: >
+          - Whether the setting was toggled on or off for this language.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  never_translate_language:
+    type: event
+    description: >
+      Triggers when the never-translate-language menuitem is invoked in the full-page translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+      language: *language
+      toggled_on:
+        type: boolean
+        description: >
+          - Whether the setting was toggled on or off for this language.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  never_translate_site:
+    type: event
+    description: >
+      Triggers when the never-translate-site menuitem is invoked in the full-page translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+      toggled_on:
+        type: boolean
+        description: >
+          - Whether the setting was toggled on or off for this site.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  manage_languages:
+    type: event
+    description: >
+      Triggers when the manage-languages menuitem is invoked in the full-page translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  about_translations:
+    type: event
+    description: >
+      Triggers when the about-translations menuitem is invoked in the full-page translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  learn_more:
+    type: event
+    description: >
+      Triggers when the learn-more link is invoked in the full-page translations panel first interaction.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+translations.select_translations_panel:
+  open:
+    type: event
+    description: >
+      Triggers when the select translations panel is opened.
+    extra_keys:
+      flow_id: *flow_id
+      document_language: *document_language
+      from_language: *from_language
+      to_language: *to_language
+      top_preferred_language: *top_preferred_language
+      text_source:
+        type: string
+        description: The source that the text was pulled from, either "selection" or "hyperlink".
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903393
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903393
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  close:
+    type: event
+    description: >
+      Triggers when the select translations panel is closed.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  cancel_button:
+    type: event
+    description: >
+      Triggers when the cancel button is invoked in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  copy_button:
+    type: event
+    description: >
+      Triggers when the copy button is invoked in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  done_button:
+    type: event
+    description: >
+      Triggers when the done button is invoked in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  translate_button:
+    type: event
+    description: >
+      Triggers when the translate button is invoked in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+      from_language: *from_language
+      to_language: *to_language
+      detected_language: &detected_language
+        type: string
+        description: The detected language of the selected text to be translated.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903392
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903392
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  translate_full_page_button:
+    type: event
+    description: >
+      Triggers when the translate-full-page button is invoked in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  try_again_button:
+    type: event
+    description: >
+      Triggers when the try-again button is invoked in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  change_from_language:
+    type: event
+    description: >
+      Triggers when the from-language selected value is changed.
+    extra_keys:
+      flow_id: *flow_id
+      language: *language
+      document_language: *language
+      previous_language:
+        type: string
+        description: >
+          - The BCP47 language tag of the previously selected language.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903391
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903391
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  change_to_language:
+    type: event
+    description: >
+      Triggers when the to-language selected value is changed.
+    extra_keys:
+      flow_id: *flow_id
+      language: *language
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903391
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1903391
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  open_settings_menu:
+    type: event
+    description: >
+      Triggers when the settings menu is opened in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  translation_settings:
+    type: event
+    description: >
+      Triggers when the translation-settings menuitem is invoked in the select translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  about_translations:
+    type: event
+    description: >
+      Triggers when the about-translations menuitem is invoked in the select translations panel settings.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  initialization_failure_message:
+    type: event
+    description: >
+      Triggers when the initialization-failure message is shown in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  translation_failure_message:
+    type: event
+    description: >
+      Triggers when the translation-failure message is shown in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+      from_language: *from_language
+      to_language: *to_language
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  unsupported_language_message:
+    type: event
+    description: >
+      Triggers when the unsupported-language message is shown in the select translations panel.
+    extra_keys:
+      flow_id: *flow_id
+      document_language: *document_language
+      detected_language: *detected_language
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never

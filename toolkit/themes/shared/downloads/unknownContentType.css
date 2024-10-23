@@ -1,0 +1,52 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@media (-moz-platform: macos) {
+  #unknownContentType {
+    font: menu;
+  }
+
+  description {
+    font-weight: bold;
+  }
+}
+
+#type {
+  -moz-user-focus: normal;
+  user-select: text;
+  flex: 1;
+  margin: 0;
+  &:focus-visible {
+    outline: var(--focus-outline);
+  }
+}
+
+#from {
+  margin-top: 1px;
+}
+
+#location {
+  font-weight: bold;
+}
+
+#contentTypeImage {
+  height: 16px;
+  width: 16px;
+  margin: 0;
+  margin-inline-end: 5px;
+}
+
+.small-indent {
+  margin-inline: 15px;
+}
+
+.small-indent label {
+  margin-inline-start: 0;
+}
+
+#source,
+#location {
+  margin: 0;
+  contain: inline-size;
+}

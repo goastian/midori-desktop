@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "prefs": {
+      "description": "The prefs to set",
+      "type": "object",
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "properties": {
+            "branch": {
+              "description": "The branch the pref should be set on.",
+              "type": "string",
+              "enum": ["user", "default"]
+            },
+            "value": {
+              "description": "The value of the pref. Set to null to clear prefs.",
+              "type": ["string", "integer", "boolean", "null"]
+            }
+          },
+          "required": ["branch", "value"],
+          "allOf": [
+            {
+              "description": "Prevent clearing the default branch",
+              "if": {
+                "properties": {
+                  "branch": {
+                    "const": "default"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "type": ["string", "integer", "boolean"]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "required": ["prefs"],
+  "additionalProperties": false
+}

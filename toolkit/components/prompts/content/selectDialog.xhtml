@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!DOCTYPE window>
+
+<window
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+>
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <html:link
+      rel="stylesheet"
+      href="chrome://global/content/selectDialog.css"
+    />
+  </linkset>
+
+  <dialog>
+    <script src="chrome://global/content/selectDialog.js" />
+    <keyset id="dialogKeys" />
+    <vbox id="selectContainer">
+      <description id="info.txt" />
+      <vbox>
+        <richlistbox id="list" class="theme-listbox" style="height: 8em" />
+      </vbox>
+    </vbox>
+  </dialog>
+</window>

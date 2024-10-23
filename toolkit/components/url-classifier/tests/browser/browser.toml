@@ -1,0 +1,7 @@
+[DEFAULT]
+support-files = [
+  "page.html",
+  "raptor.jpg",
+]
+
+["browser_emailtracking_telemetry.js"]

@@ -1,0 +1,117 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=1486258
+-->
+<head>
+  <meta charset="utf-8">
+  <title>Test for Bug 1486258</title>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="chrome://global/skin"/>
+  <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
+</head>
+<body>
+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1486258">Mozilla Bug 1486258</a>
+<p id="display"></p>
+<div id="content" style="display: none">
+
+</div>
+<pre id="test">
+</pre>
+
+<script type="text/javascript">
+/* global SpecialPowers, content */
+
+const { BrowserTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/BrowserTestUtils.sys.mjs"
+);
+
+const gOrigAvailableLocales = Services.locale.availableLocales;
+const gOrigRequestedLocales = Services.locale.requestedLocales;
+
+const kDoNotSpoof = 1;
+const kSpoofEnglish = 2;
+
+async function runTest(locale) {
+  return BrowserTestUtils.withNewTab("https://example.com/", browser => {
+    return SpecialPowers.spawn(browser, [locale], _locale => {
+      let locale = JSON.stringify(_locale);
+      return content.eval(`({
+        locale: new Intl.PluralRules(${locale}).resolvedOptions().locale,
+        weekday: new Date(0).toLocaleString(${locale}, {weekday: "long"}),
+        currency: Number(1000).toLocaleString(${locale}, {currency: "USD"}),
+      })`);
+    });
+  });
+}
+
+async function runSpoofTest(spoof) {
+  ok(spoof == kDoNotSpoof ||
+     spoof == kSpoofEnglish, "check supported parameter");
+
+  await SpecialPowers.pushPrefEnv({
+    "set": [
+      ["privacy.spoof_english", spoof],
+    ],
+  });
+
+  let results = await runTest(undefined);
+
+  await SpecialPowers.popPrefEnv();
+
+  return results;
+}
+
+async function setupLocale(locale) {
+  Services.locale.availableLocales = [locale];
+  Services.locale.requestedLocales = [locale];
+}
+
+async function clearLocale() {
+  Services.locale.availableLocales = gOrigAvailableLocales;
+  Services.locale.requestedLocales = gOrigRequestedLocales;
+}
+
+(async function() {
+  SimpleTest.waitForExplicitFinish();
+
+  // 1. preliminary for spoof test
+  await SpecialPowers.pushPrefEnv({
+    "set": [
+      ["privacy.resistFingerprinting", true],
+    ],
+  });
+
+  // 2. log English/German results
+  let enResults = await runTest("en-US");
+  is(enResults.locale, "en-US", "default locale");
+
+  let deResults = await runTest("de-DE");
+  is(deResults.locale, "de-DE", "default locale");
+
+  // 3. set system locale to German
+  await setupLocale("de-DE");
+
+  // 4. log non-spoofed results
+  let nonSpoofedResults = await runSpoofTest(kDoNotSpoof);
+
+  // 5. log spoofed results
+  let spoofedResults = await runSpoofTest(kSpoofEnglish);
+
+  // 6. compare spoofed/non-spoofed results
+  for (let key in enResults) {
+    isnot(enResults[key], deResults[key], "compare en/de result: " + key);
+    is(nonSpoofedResults[key], deResults[key], "compare non-spoofed result: " + key);
+    is(spoofedResults[key], enResults[key], "compare spoofed result: " + key);
+  }
+
+  // 7. restore default locale
+  await clearLocale();
+
+  SimpleTest.finish();
+})();
+
+</script>
+
+</body>
+</html>

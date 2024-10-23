@@ -1,0 +1,50 @@
+[DEFAULT]
+head = "head_satchel.js"
+tags = "condprof"
+skip-if = ["os == 'android'"]
+support-files = [
+  "asyncformhistory_expire.sqlite",
+  "formhistory_1000.sqlite",
+  "formhistory_CORRUPT.sqlite",
+  "formhistory_apitest.sqlite",
+  "formhistory_autocomplete.sqlite",
+  "formhistory_v3.sqlite",
+  "formhistory_v3v4.sqlite",
+  "formhistory_v999a.sqlite",
+  "formhistory_v999b.sqlite",
+]
+
+["test_async_expire.js"]
+lineno = "17"
+
+["test_db_access_denied.js"]
+skip-if = ["os != 'linux'"] # simulates insufficiant file permissions
+lineno = "20"
+
+["test_db_corrupt.js"]
+lineno = "24"
+
+["test_db_update_v4.js"]
+lineno = "27"
+
+["test_db_update_v4b.js"]
+lineno = "30"
+
+["test_db_update_v5.js"]
+skip-if = ["condprof"]  # Bug 1769154 - not supported
+lineno = "33"
+
+["test_db_update_v999a.js"]
+lineno = "37"
+
+["test_db_update_v999b.js"]
+lineno = "40"
+
+["test_history_api.js"]
+lineno = "43"
+
+["test_history_sources.js"]
+lineno = "46"
+
+["test_notify.js"]
+lineno = "49"

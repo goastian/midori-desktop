@@ -1,0 +1,64 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* ===== button.css =====================================================
+  == Styles used by the XUL button element.
+  ======================================================================= */
+
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+/* :::::::::: button :::::::::: */
+
+button {
+  margin: 1px 5px 2px;
+  min-width: 6.3em;
+  color: ButtonText;
+  background-color: ButtonFace;
+  text-shadow: none;
+  border: 1px solid ThreeDLightShadow;
+  padding: 2px 3px;
+
+  &:where(:hover) {
+    background-color: -moz-buttonhoverface;
+    color: -moz-buttonhovertext;
+  }
+
+  &:where(:hover:active) {
+    background-color: -moz-buttonactiveface;
+    color: -moz-buttonactivetext;
+  }
+
+  &:focus-visible {
+    outline: var(--default-focusring);
+    outline-offset: calc(-1 * var(--default-focusring-width) - 2px);
+    @media (prefers-color-scheme: dark) {
+      outline: 1px auto;
+      outline-offset: initial;
+    }
+  }
+
+  &:where([disabled="true"]) {
+    color: GrayText;
+    background-color: ButtonFace;
+  }
+
+  &.plain {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+
+.button-text {
+  margin: 0;
+  text-align: center;
+}
+
+/* ::::: menu buttons ::::: */
+
+.button-menu-dropmarker {
+  appearance: none;
+  content: url("chrome://global/skin/icons/arrow-down-12.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+}

@@ -1,0 +1,469 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Core :: Privacy: Anti-Tracking'
+
+cookie.banners:
+  normal_window_service_mode:
+    type: labeled_boolean
+    description: >
+      The pref value of the cookie banner service mode for normal windows.
+    bugs:
+      - https://bugzilla.mozilla.org/1797081
+      - https://bugzilla.mozilla.org/1804259
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1797081#c3
+    notification_emails:
+      - tihuang@mozilla.com
+      - pbz@mozilla.com
+    expires: never
+    labels:
+      - disabled
+      - reject
+      - reject_or_accept
+      - invalid
+    telemetry_mirror: COOKIE_BANNERS_NORMAL_WINDOW_SERVICE_MODE
+  private_window_service_mode:
+    type: labeled_boolean
+    description: >
+      The pref value of the cookie banner service mode for private windows.
+    bugs:
+      - https://bugzilla.mozilla.org/1797081
+      - https://bugzilla.mozilla.org/1804259
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1797081#c3
+    notification_emails:
+      - tihuang@mozilla.com
+      - pbz@mozilla.com
+    expires: never
+    labels:
+      - disabled
+      - reject
+      - reject_or_accept
+      - invalid
+    telemetry_mirror: COOKIE_BANNERS_PRIVATE_WINDOW_SERVICE_MODE
+  service_detect_only:
+    type: boolean
+    description: >
+      Tracks the value of the cookiebanners.service.detectOnly pref.
+    bugs:
+      - https://bugzilla.mozilla.org/1809700
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1809700#c3
+    notification_emails:
+      - tihuang@mozilla.com
+      - pbz@mozilla.com
+    expires: never
+    telemetry_mirror: COOKIE_BANNERS_SERVICE_DETECT_ONLY
+  rule_lookup_by_load:
+    type: labeled_counter
+    description: >
+      Counts the number of hit/miss of cookie banner rule lookups for every
+      load. We collect three types of counters, including counters for overall
+      rule lookup, counters for cookie rule lookup and counters for click rule
+      lookup. We also divide the counter by top-level loads and iframe loads.
+    bugs:
+      - https://bugzilla.mozilla.org/1797073
+      - https://bugzilla.mozilla.org/1804259
+      - https://bugzilla.mozilla.org/1827765
+      - https://bugzilla.mozilla.org/1850874
+      - https://bugzilla.mozilla.org/1861317
+      - https://bugzilla.mozilla.org/1892152
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1797073#c6
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1827765#c9
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1850874#c7
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861317#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892152#c6
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tihuang@mozilla.com
+      - pbz@mozilla.com
+    expires: 134
+    labels:
+      - top_hit
+      - top_hit_opt_in
+      - top_hit_opt_out
+      - top_miss
+      - iframe_hit
+      - iframe_hit_opt_in
+      - iframe_hit_opt_out
+      - iframe_miss
+      - top_cookie_hit
+      - top_cookie_hit_opt_in
+      - top_cookie_hit_opt_out
+      - top_cookie_miss
+      - iframe_cookie_hit
+      - iframe_cookie_hit_opt_in
+      - iframe_cookie_hit_opt_out
+      - iframe_cookie_miss
+      - top_click_hit
+      - top_click_hit_opt_in
+      - top_click_hit_opt_out
+      - top_click_miss
+      - iframe_click_hit
+      - iframe_click_hit_opt_in
+      - iframe_click_hit_opt_out
+      - iframe_click_miss
+    telemetry_mirror: COOKIE_BANNERS_RULE_LOOKUP_BY_LOAD
+  rule_lookup_by_domain:
+    type: labeled_counter
+    description: >
+      Counts the number of hit/miss of cookie banner rule lookups for domain.
+      We collect three types of counters, including counters for overall
+      rule lookup, counters for cookie rule lookup and counters for click rule
+      lookup. We also divide the counter by top-level loads and iframe loads.
+      For each domain, we will only collect once.
+    bugs:
+      - https://bugzilla.mozilla.org/1797073
+      - https://bugzilla.mozilla.org/1804259
+      - https://bugzilla.mozilla.org/1827765
+      - https://bugzilla.mozilla.org/1850874
+      - https://bugzilla.mozilla.org/1861317
+      - https://bugzilla.mozilla.org/1892152
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1797073#c6
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1827765#c9
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1850874#c7
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861317#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892152#c6
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tihuang@mozilla.com
+      - pbz@mozilla.com
+    expires: 134
+    labels:
+      - top_hit
+      - top_hit_opt_in
+      - top_hit_opt_out
+      - top_miss
+      - iframe_hit
+      - iframe_hit_opt_in
+      - iframe_hit_opt_out
+      - iframe_miss
+      - top_cookie_hit
+      - top_cookie_hit_opt_in
+      - top_cookie_hit_opt_out
+      - top_cookie_miss
+      - iframe_cookie_hit
+      - iframe_cookie_hit_opt_in
+      - iframe_cookie_hit_opt_out
+      - iframe_cookie_miss
+      - top_click_hit
+      - top_click_hit_opt_in
+      - top_click_hit_opt_out
+      - top_click_miss
+      - iframe_click_hit
+      - iframe_click_hit_opt_in
+      - iframe_click_hit_opt_out
+      - iframe_click_miss
+    telemetry_mirror: COOKIE_BANNERS_RULE_LOOKUP_BY_DOMAIN
+  reload:
+    type: event
+    description: >
+      Recorded when the top-level page is reloaded. We use this event metric to
+      know whether or not the reloading domain has cookie banner rule.
+    bugs:
+      - https://bugzilla.mozilla.org/1797079
+      - https://bugzilla.mozilla.org/1827765
+      - https://bugzilla.mozilla.org/1850874
+      - https://bugzilla.mozilla.org/1861317
+      - https://bugzilla.mozilla.org/1892152
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1797079#c6
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1827765#c9
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1850874#c7
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861317#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892152#c6
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      no_rule:
+        description: There is no cookie banner rule for the reloading domain.
+        type: boolean
+      has_cookie_rule:
+        description: There is a matching cookie rule for the reloading domain.
+        type: boolean
+      has_click_rule:
+        description: There is a matching click rule for the reloading domain.
+        type: boolean
+    telemetry_mirror: Cookie_banner_Reload_Browser
+  cookie_injection_fail:
+    type: counter
+    description: >
+      Counts how often the cookie banner is still shown even if we have injected
+      cookies.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128#c10
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+  google_gdpr_choice_cookie:
+    type: labeled_string
+    description: >
+      Records the GDPR choice on Google Search based on the "SOCS" cookie of the
+      Google Search domains. The value could be "Accept", "Reject" or "Custom".
+      We use the label to record different choices on different Google domains.
+      We only collect this if the default search engine is Google.
+    bugs:
+      - https://bugzilla.mozilla.org/1874741
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1874741#c10
+    data_sensitivity:
+      - stored_content
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: never
+  google_gdpr_choice_cookie_event:
+    type: event
+    description: >
+      Recorded whenever a GDPR choice is made on a Google Search page. We assess
+      the "SOCS" cookie to know the GDPR choice.
+    bugs:
+      - https://bugzilla.mozilla.org/1874741
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1874741#c10
+    data_sensitivity:
+      - stored_content
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: never
+    extra_keys:
+      search_domain:
+        description: The Google search domain where the GDPR choice was made.
+        type: string
+      choice:
+        description: >
+          The GDPR choice. The value could be "Accept", "Reject" or "Custom".
+        type: string
+      region:
+        description: >
+          The region where the GDPR consent is made. This is based on the IP
+          location.
+        type: string
+  google_gdpr_choice_cookie_event_pbm:
+    type: event
+    description: >
+      Recorded whenever a GDPR choice is made on a Google Search page on private
+      browsing windows. We assess the "SOCS" cookie to know the GDPR choice.
+    bugs:
+      - https://bugzilla.mozilla.org/1874741
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1874741#c10
+    data_sensitivity:
+      - stored_content
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: never
+    extra_keys:
+      choice:
+        description: >
+          The GDPR choice. The value could be "Accept", "Reject" or "Custom".
+        type: string
+
+cookie.banners.click:
+  # TODO: consider moving this out of "click". It also records cookie injection.
+  result:
+    type: labeled_counter
+    description: >
+      Given a matching cookie banner rule, how often do we handle or fail to
+      handle cookie banners, labelled by reason. The 'success' and 'fail'
+      counters count the total numbers independently of the reason counters.
+      Counters are incremented after the content window has been destroyed. This
+      metric additionally reports cookie injections after which we didn't see a
+      banner as "success_cookie_injected".
+    bugs:
+      - https://bugzilla.mozilla.org/1797078
+      - https://bugzilla.mozilla.org/1804259
+      - https://bugzilla.mozilla.org/1821738
+      - https://bugzilla.mozilla.org/1827765
+      - https://bugzilla.mozilla.org/1850874
+      - https://bugzilla.mozilla.org/1861317
+      - https://bugzilla.mozilla.org/1892152
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1797078#c6
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1827765#c9
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1850874#c7
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861317#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892152#c6
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+    labels:
+      - success
+      - success_cookie_injected
+      - success_dom_content_loaded
+      - success_mutation_pre_load
+      - success_mutation_post_load
+      - fail
+      - fail_banner_not_found
+      - fail_banner_not_visible
+      - fail_button_not_found
+      - fail_no_rule_for_mode
+      - fail_actor_destroyed
+    telemetry_mirror: COOKIE_BANNERS_CLICK_RESULT
+  query_selector_run_count_per_window_top_level:
+    type: custom_distribution
+    bucket_count: 20
+    range_max: 2500
+    histogram_type: exponential
+    description: >
+      How often a query selector is run during the lifetime of a top-level
+      content window.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1871200#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+  query_selector_run_count_per_window_frame:
+    type: custom_distribution
+    bucket_count: 20
+    range_max: 2500
+    histogram_type: exponential
+    description: >
+      How often a query selector is run during the lifetime of a sub-frame
+      content window.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1871200#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+  query_selector_run_duration_per_window_top_level:
+    type: custom_distribution
+    bucket_count: 8
+    range_max: 30000000
+    histogram_type: exponential
+    description: >
+      Total time spent (in microseconds) on running querySelector for the
+      lifetime of a top-level content window.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1871200#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+  query_selector_run_duration_per_window_frame:
+    type: custom_distribution
+    bucket_count: 8
+    range_max: 30000000
+    histogram_type: exponential
+    description: >
+      Total time spent (in microseconds) on running querySelector for the
+      lifetime of a sub-frame content window.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1855495#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1871200#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+cookie.banners.cmp:
+  ratio_handled_by_cmp_rule:
+    type: rate
+    description: >
+      The proportion of cookie banners handled by CMP rules within the total
+      number of cases handled, including those handled by site-specific rules.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128#c10
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+  detected_cmp:
+    type: labeled_counter
+    description: >
+      Counts how often a specific cmp has been detected by our cookie banner
+      handling.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128#c10
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+  result:
+    type: labeled_counter
+    description: >
+      Given a matching CMP rule, how often do we handle or fail to handle cookie
+      banners, labelled by reason. The 'success' and 'fail' counters count the
+      total numbers independently of the reason counters. Counters are
+      incremented after the content window has been destroyed.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1813128#c10
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1892154#c6
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - pbz@mozilla.com
+      - tihuang@mozilla.com
+    expires: 134
+    labels:
+      - success
+      - success_dom_content_loaded
+      - success_mutation_pre_load
+      - success_mutation_post_load
+      - fail
+      - fail_banner_not_found
+      - fail_banner_not_visible
+      - fail_button_not_found
+      - fail_no_rule_for_mode
+      - fail_actor_destroyed

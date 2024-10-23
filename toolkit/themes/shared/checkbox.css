@@ -1,0 +1,106 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+@namespace html url("http://www.w3.org/1999/xhtml");
+
+checkbox {
+  align-items: center;
+  margin: 4px 2px;
+
+  &[disabled="true"][native] {
+    color: GrayText;
+  }
+
+  &[disabled="true"]:not([native]) > .checkbox-label-box {
+    opacity: 0.4;
+  }
+}
+
+.checkbox-icon {
+  margin-inline-end: 2px;
+
+  &:not([src]) {
+    display: none;
+  }
+}
+
+.checkbox-label {
+  margin: 1px 0;
+}
+
+/* ::::: checkmark image ::::: */
+
+.checkbox-check {
+  appearance: auto;
+  -moz-default-appearance: checkbox;
+  margin-inline-end: var(--checkbox-margin-inline);
+
+  &:not([native]) {
+    -moz-theme: non-native;
+    width: var(--checkbox-size);
+    height: var(--checkbox-size);
+  }
+
+  checkbox:focus-visible > & {
+    outline-style: auto;
+  }
+}
+
+.checkbox-label[native] {
+  margin: 0;
+}
+
+.checkbox-check[native] {
+  align-items: center;
+
+  @media (-moz-platform: windows) {
+    width: 13px;
+    height: 13px;
+    margin-inline-end: 5px;
+  }
+
+  @media (-moz-platform: linux) {
+    margin: 2px;
+    margin-inline-end: 4px;
+  }
+
+  @media (-moz-platform: macos) {
+    width: 1.3em;
+    height: 1.3em;
+    margin-block: 1px 0;
+    margin-inline: 1px 3px;
+    /* vertical-align tells native theming where to snap to. However, this doesn't
+     * always work reliably because of bug 503833. */
+    vertical-align: top;
+  }
+}
+
+@media (-moz-platform: windows) {
+  checkbox:where([native]) {
+    margin: 2px 4px;
+    padding-block: 1px;
+    padding-inline: 4px 2px;
+  }
+}
+
+@media (-moz-platform: macos) {
+  checkbox:where([native]) {
+    margin: 4px 2px;
+  }
+
+  .checkbox-label[native] {
+    margin: 1px 0;
+  }
+}
+
+@media (-moz-platform: linux) {
+  checkbox:where([native]) {
+    margin: 2px 4px;
+
+    &:focus-visible > .checkbox-label-box {
+      outline: var(--focus-outline);
+    }
+  }
+}

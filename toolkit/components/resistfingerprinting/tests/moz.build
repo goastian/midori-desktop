@@ -1,0 +1,9 @@
+MOCHITEST_CHROME_MANIFESTS += [
+    "chrome/chrome.toml",
+]
+
+BROWSER_CHROME_MANIFESTS += [
+    "browser/browser.toml",
+]
+
+TEST_DIRS += ["gtest"]

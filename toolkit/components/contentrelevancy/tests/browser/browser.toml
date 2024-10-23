@@ -1,0 +1,7 @@
+[DEFAULT]
+prefs = [
+  "toolkit.contentRelevancy.enabled=false",
+]
+
+["browser_contentrelevancy_nimbus.js"]
+lineno = "6"

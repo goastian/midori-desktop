@@ -1,0 +1,10 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+toolkit.jar:
+  content/global/reader/aboutReader.html             (content/aboutReader.html)
+  content/global/reader/color-input.css              (color-input.css)
+  content/global/reader/color-input.mjs              (color-input.mjs)
+  content/global/reader/moz-slider.css               (moz-slider.css)
+  content/global/reader/moz-slider.mjs               (moz-slider.mjs)

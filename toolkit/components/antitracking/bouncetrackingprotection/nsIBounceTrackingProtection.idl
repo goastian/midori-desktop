@@ -1,0 +1,57 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsIBounceTrackingMapEntry.idl"
+
+[scriptable, uuid(4866F748-29DA-4C10-8EAA-ED2F7851E6B1)]
+interface nsIBounceTrackingProtection : nsISupports {
+    // Reset the global bounce tracking state, including the maps for tracking
+    // bounce tracker candidates and user activation.
+    void clearAll();
+
+    // Clear bounce tracking state for a specific site host and OriginAttributes pair.
+    [implicit_jscontext]
+    void clearBySiteHostAndOA(in ACString aSiteHost, in jsval originAttributes);
+
+    // Clear bounce tracking state for a specific site host for all OriginAttributes.
+    void clearBySiteHost(in ACString aSiteHost);
+
+    // Clear bounce tracking state for a specific time range.
+    void clearByTimeRange(in PRTime aFrom, in PRTime aTo);
+
+    // Clear bounce tracking state for the given origin attributes.
+    void clearByOriginAttributesPattern(in AString aPattern);
+
+    // Trigger the bounce tracking timer algorithm that clears state for
+    // classified bounce trackers.
+    [implicit_jscontext]
+    Promise testRunPurgeBounceTrackers();
+
+    // Clear expired user activation flags. Expiry is set via pref
+    // "privacy.bounceTrackingProtection.bounceTrackingActivationLifetimeSec".
+    void testClearExpiredUserActivations();
+
+    // Getters and setters for user activation and bounce tracker state.
+    // These are used for testing purposes only.
+    // State is keyed by OriginAttributes.
+
+    [implicit_jscontext]
+    Array<nsIBounceTrackingMapEntry> testGetBounceTrackerCandidateHosts(in jsval originAttributes);
+
+    [implicit_jscontext]
+    Array<nsIBounceTrackingMapEntry> testGetUserActivationHosts(in jsval originAttributes);
+
+    [implicit_jscontext]
+    void testAddBounceTrackerCandidate(in jsval originAttributes, in ACString aSiteHost, in PRTime aBounceTime);
+
+    [implicit_jscontext]
+    void testAddUserActivation(in jsval originAttributes, in ACString aSiteHost, in PRTime aActivationTime);
+
+    // Test helper to trigger user activation import from the permission
+    // manager. Will only import if the pref
+    // privacy.bounceTrackingProtection.hasMigratedUserActivationData is set to
+    // false.
+    void testMaybeMigrateUserInteractionPermissions();
+};

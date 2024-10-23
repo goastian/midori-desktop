@@ -1,0 +1,236 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+SPHINX_TREES["/toolkit/components/glean"] = "docs"
+
+# Needed so that we can include IPC things.
+include("/ipc/chromium/chromium-config.mozbuild")
+
+FINAL_LIBRARY = "xul"
+
+EXPORTS.mozilla += [
+    "ipc/FOGIPC.h",
+]
+
+EXPORTS.mozilla.glean += [
+    "!GleanMetrics.h",
+    "!GleanPings.h",
+]
+
+EXPORTS.mozilla.glean.bindings += [
+    "!EventGIFFTMap.h",
+    "!GleanJSMetricsLookup.h",
+    "!GleanJSPingsLookup.h",
+    "!HistogramGIFFTMap.h",
+    "!ScalarGIFFTMap.h",
+    "bindings/Category.h",
+    "bindings/Glean.h",
+    "bindings/GleanMetric.h",
+    "bindings/GleanPings.h",
+    "bindings/MetricTypes.h",
+    "bindings/private/Boolean.h",
+    "bindings/private/Common.h",
+    "bindings/private/Counter.h",
+    "bindings/private/CustomDistribution.h",
+    "bindings/private/Datetime.h",
+    "bindings/private/Denominator.h",
+    "bindings/private/DistributionData.h",
+    "bindings/private/Event.h",
+    "bindings/private/Labeled.h",
+    "bindings/private/MemoryDistribution.h",
+    "bindings/private/Numerator.h",
+    "bindings/private/Object.h",
+    "bindings/private/Ping.h",
+    "bindings/private/Quantity.h",
+    "bindings/private/Rate.h",
+    "bindings/private/String.h",
+    "bindings/private/StringList.h",
+    "bindings/private/Text.h",
+    "bindings/private/Timespan.h",
+    "bindings/private/TimingDistribution.h",
+    "bindings/private/Url.h",
+    "bindings/private/Uuid.h",
+]
+
+EXPORTS.mozilla.glean.bindings.jog += [
+    "bindings/jog/JOG.h",
+]
+
+if CONFIG["COMPILE_ENVIRONMENT"]:
+    EXPORTS.mozilla.glean += [
+        "!fog_ffi_generated.h",
+    ]
+
+    EXPORTS.mozilla.glean.bindings.jog += [
+        "!jog_ffi_generated.h",
+    ]
+
+    CbindgenHeader("fog_ffi_generated.h", inputs=["/toolkit/components/glean"])
+    CbindgenHeader(
+        "jog_ffi_generated.h", inputs=["/toolkit/components/glean/bindings/jog"]
+    )
+
+UNIFIED_SOURCES += [
+    "bindings/Category.cpp",
+    "bindings/Glean.cpp",
+    "bindings/GleanMetric.cpp",
+    "bindings/GleanPings.cpp",
+    "bindings/jog/JOG.cpp",
+    "bindings/private/Boolean.cpp",
+    "bindings/private/Common.cpp",
+    "bindings/private/Counter.cpp",
+    "bindings/private/CustomDistribution.cpp",
+    "bindings/private/Datetime.cpp",
+    "bindings/private/Denominator.cpp",
+    "bindings/private/Event.cpp",
+    "bindings/private/Labeled.cpp",
+    "bindings/private/MemoryDistribution.cpp",
+    "bindings/private/Numerator.cpp",
+    "bindings/private/Object.cpp",
+    "bindings/private/Ping.cpp",
+    "bindings/private/Quantity.cpp",
+    "bindings/private/Rate.cpp",
+    "bindings/private/String.cpp",
+    "bindings/private/StringList.cpp",
+    "bindings/private/Text.cpp",
+    "bindings/private/Timespan.cpp",
+    "bindings/private/TimingDistribution.cpp",
+    "bindings/private/Url.cpp",
+    "bindings/private/Uuid.cpp",
+    "ipc/FOGIPC.cpp",
+    "ipc/Support.cpp",
+]
+
+SOURCES += [
+    "!EventExtraGIFFTMaps.cpp",
+    "!GleanJSMetricsLookup.cpp",
+    "!GleanJSPingsLookup.cpp",
+]
+
+# Provides us the list of dependent metrics|pings.yaml.
+include("metrics_index.py")
+
+# Allow defining metrics/pings/tags elsewhere (like for Thunderbird).
+if CONFIG["MOZ_GLEAN_EXTRA_METRICS_FILES"]:
+    metrics_yamls.extend(CONFIG["MOZ_GLEAN_EXTRA_METRICS_FILES"])
+    metrics_yamls = sorted(metrics_yamls)
+
+if CONFIG["MOZ_GLEAN_EXTRA_PINGS_FILES"]:
+    pings_yamls.extend(CONFIG["MOZ_GLEAN_EXTRA_PINGS_FILES"])
+    pings_yamls = sorted(pings_yamls)
+
+if CONFIG["MOZ_GLEAN_EXTRA_TAGS_FILES"]:
+    tags_yamls.extend(CONFIG["MOZ_GLEAN_EXTRA_TAGS_FILES"])
+    tags_yamls = sorted(tags_yamls)
+
+# GeneratedFile's `inputs` are relative to our dir.
+# The yamls arrays are relative to topsrcdir, so we need to transform:
+metrics_yamls = ["../../../" + x for x in metrics_yamls]
+pings_yamls = ["../../../" + x for x in pings_yamls]
+tags_yamls = ["../../../" + x for x in tags_yamls]
+
+GeneratedFile(
+    "GleanMetrics.h",
+    "GleanJSMetricsLookup.h",
+    "GleanJSMetricsLookup.cpp",
+    "api/src/metrics.rs",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    flags=[
+        CONFIG["MOZ_APP_VERSION"],
+        "GleanJSMetricsLookup.h",
+        "GleanJSMetricsLookup.cpp",
+        "api/src/metrics.rs",
+    ],
+    inputs=metrics_yamls + tags_yamls,
+)
+
+GeneratedFile(
+    "GleanPings.h",
+    "GleanJSPingsLookup.h",
+    "GleanJSPingsLookup.cpp",
+    "api/src/pings.rs",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    flags=[
+        CONFIG["MOZ_APP_VERSION"],
+        "GleanJSPingsLookup.h",
+        "GleanJSPingsLookup.cpp",
+        "api/src/pings.rs",
+    ],
+    inputs=pings_yamls + tags_yamls,
+)
+
+# Glean Interface For Firefox Telemetry Maps from Glean MetricId to Telemetry ProbeId
+# We split it one map per header to avoid unused function warnings on build.
+GeneratedFile(
+    "EventGIFFTMap.h",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    entry_point="gifft_map",
+    flags=[CONFIG["MOZ_APP_VERSION"], "Event"],
+    inputs=metrics_yamls + tags_yamls,
+)
+
+GeneratedFile(
+    "HistogramGIFFTMap.h",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    entry_point="gifft_map",
+    flags=[CONFIG["MOZ_APP_VERSION"], "Histogram"],
+    inputs=metrics_yamls + tags_yamls,
+)
+
+GeneratedFile(
+    "ScalarGIFFTMap.h",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    entry_point="gifft_map",
+    flags=[CONFIG["MOZ_APP_VERSION"], "Scalar"],
+    inputs=metrics_yamls + tags_yamls,
+)
+
+# JOG provides both the Rust factory for building runtime-registered metrics
+# and pings _and_ the YAML file used at runtime to register those metrics and
+# pings for Artifact Builds.
+# The factory lives inside the `fog` crate to avoid a circular dependency.
+GeneratedFile(
+    "api/src/factory.rs",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    entry_point="jog_factory",
+    flags=[CONFIG["MOZ_APP_VERSION"]],
+    inputs=pings_yamls + metrics_yamls + tags_yamls,
+)
+
+# Only generate jogfile.json in Artifact Builds since
+# its presence triggers main-thread I/O.
+if CONFIG["MOZ_ARTIFACT_BUILDS"]:
+    GeneratedFile(
+        "jogfile.json",
+        script="build_scripts/glean_parser_ext/run_glean_parser.py",
+        entry_point="jog_file",
+        flags=[CONFIG["MOZ_APP_VERSION"]],
+        inputs=pings_yamls + metrics_yamls + tags_yamls,
+    )
+    # Once generated, it needs to be placed in GreD so it can be found.
+    FINAL_TARGET_FILES += ["!jogfile.json"]
+
+# OHTTP support requires the fog_control crate know which pings wish to be sent
+# using OHTTP. fog_control has no access to the firefox_on_glean crate, so it
+# needs its own codegen.
+GeneratedFile(
+    "src/ohttp_pings.rs",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    entry_point="ohttp_pings",
+    flags=[CONFIG["MOZ_APP_VERSION"]],
+    inputs=pings_yamls + tags_yamls,
+)
+
+DIRS += [
+    "tests",  # Must be in DIRS, not TEST_DIRS or python-test won't find it.
+    "xpcom",
+]
+
+with Files("docs/**"):
+    SCHEDULES.exclusive = ["docs"]
+
+with Files("**"):
+    BUG_COMPONENT = ("Toolkit", "Telemetry")

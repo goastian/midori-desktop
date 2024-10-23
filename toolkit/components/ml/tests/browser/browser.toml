@@ -1,0 +1,15 @@
+[DEFAULT]
+run-if = ["nightly_build"] # Bug 1890946 - enable the inference engine in release
+support-files = [
+  "head.js",
+  "data/**/*.*"
+]
+
+["browser_ml_cache.js"]
+lineno = "7"
+
+["browser_ml_engine.js"]
+lineno = "10"
+
+["browser_ml_utils.js"]
+lineno = "13"

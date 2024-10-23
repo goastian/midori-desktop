@@ -1,0 +1,110 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@import url("chrome://global/skin/menu-shared.css");
+
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+/* Internal content */
+
+.menu-text,
+.menu-iconic-text,
+.menu-accel,
+.menu-iconic-accel {
+  margin: 0;
+}
+
+.menu-iconic-icon {
+  height: 16px;
+  margin-block: -2px;
+  margin-inline-end: 6px;
+  /* Empty icons shouldn't take up room, so we need to compensate
+   * the 6px margin-end with a negative margin-start.
+   */
+  margin-inline-start: -6px;
+}
+
+/* menuitems with icons */
+.menuitem-iconic > .menu-iconic-left > .menu-iconic-icon,
+.menu-iconic > .menu-iconic-left > .menu-iconic-icon,
+menuitem[image] > .menu-iconic-left > .menu-iconic-icon {
+  margin-inline-start: 0;
+  width: 16px;
+}
+
+/* menu/menuitems in menubar */
+
+menubar > menu {
+  appearance: none;
+  padding-block: 2px;
+  padding-inline: 7px 5px;
+  margin: 1px 0;
+}
+
+menubar > menu[_moz-menuactive="true"] {
+  color: inherit;
+  background-color: transparent;
+}
+
+menubar > menu[_moz-menuactive="true"][open="true"] {
+  color: -moz-menuhovertext;
+  background-color: -moz-menuhover;
+}
+
+/* Internal content  */
+
+.menubar-left {
+  margin: 0 2px;
+}
+
+.menubar-text {
+  margin: 0 1px;
+}
+
+/* menu/menuitems in popups */
+
+menupopup > menu,
+menupopup > menuitem,
+menupopup > menucaption {
+  max-width: 42em;
+}
+
+/* menu/menuitems in menulist popups */
+
+menulist > menupopup {
+  font: inherit;
+  color: FieldText;
+}
+
+menulist > menupopup > menuitem,
+menulist > menupopup > menucaption,
+menulist > menupopup > menu {
+  max-width: none;
+}
+
+/* checked menuitems */
+
+menupopup[needsgutter] {
+  /* although only menuitems may be checked, apply this to
+     menus and menucaptions as well to maintain alignment */
+  > menu,
+  > menuitem,
+  > menucaption {
+    padding-inline-start: 0;
+
+    &::before {
+      content: '\2713'; /* a checkmark */
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 0;
+      visibility: hidden;
+      padding-inline: 4px;
+      font-weight: bold;
+    }
+  }
+
+  > menuitem:is([checked="true"], [selected="true"])::before {
+    visibility: inherit;
+  }
+}

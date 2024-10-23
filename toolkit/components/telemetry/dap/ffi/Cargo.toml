@@ -1,0 +1,14 @@
+[package]
+name = "dap_ffi"
+version = "0.1.0"
+edition = "2021"
+authors = [
+	"Simon Friedberger <simon@mozilla.com>",
+]
+license = "MPL-2.0"
+
+[dependencies]
+prio = {version = "0.16.2", default-features = false }
+thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
+rand = "0.8"
+log = "0.4"

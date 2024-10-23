@@ -1,0 +1,875 @@
+"use strict";
+
+ChromeUtils.defineESModuleGetters(this, {
+  ExtensionPreferencesManager:
+    "resource://gre/modules/ExtensionPreferencesManager.sys.mjs",
+});
+
+AddonTestUtils.init(this);
+AddonTestUtils.overrideCertDB();
+
+AddonTestUtils.createAppInfo(
+  "xpcshell@tests.mozilla.org",
+  "XPCShell",
+  "42",
+  "42"
+);
+
+Services.prefs.setBoolPref("extensions.eventPages.enabled", true);
+// Set minimum idle timeout for testing
+Services.prefs.setIntPref("extensions.background.idle.timeout", 0);
+
+// Expected rejection from the test cases defined in this file.
+PromiseTestUtils.allowMatchingRejectionsGlobally(/expected-test-rejection/);
+PromiseTestUtils.allowMatchingRejectionsGlobally(
+  /Actor 'Conduits' destroyed before query 'RunListener' was resolved/
+);
+
+add_setup(async () => {
+  await AddonTestUtils.promiseStartupManager();
+});
+
+add_task(async function test_eventpage_idle() {
+  const { GleanCustomDistribution } = globalThis;
+
+  resetTelemetryData();
+
+  assertHistogramEmpty(WEBEXT_EVENTPAGE_RUNNING_TIME_MS);
+  assertKeyedHistogramEmpty(WEBEXT_EVENTPAGE_RUNNING_TIME_MS_BY_ADDONID);
+  assertHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT);
+  assertKeyedHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID);
+  assertGleanMetricsNoSamples({
+    metricId: "eventPageRunningTime",
+    gleanMetric: Glean.extensionsTiming.eventPageRunningTime,
+    gleanMetricConstructor: GleanCustomDistribution,
+  });
+  assertGleanLabeledCounterEmpty({
+    metricId: "eventPageIdleResult",
+    gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+    gleanMetricLabels: GLEAN_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+  });
+
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      permissions: ["browserSettings"],
+      background: { persistent: false },
+    },
+    background() {
+      browser.browserSettings.allowPopupsForUserEvents.onChange.addListener(
+        () => {
+          browser.test.sendMessage("allowPopupsForUserEvents");
+        }
+      );
+      browser.runtime.onSuspend.addListener(async () => {
+        let setting =
+          await browser.browserSettings.allowPopupsForUserEvents.get({});
+        browser.test.sendMessage("suspended", setting);
+      });
+    },
+  });
+  await extension.startup();
+  assertPersistentListeners(
+    extension,
+    "browserSettings",
+    "allowPopupsForUserEvents",
+    {
+      primed: false,
+    }
+  );
+
+  info(`test idle timeout after startup`);
+  await extension.awaitMessage("suspended");
+  await promiseExtensionEvent(extension, "shutdown-background-script");
+  assertPersistentListeners(
+    extension,
+    "browserSettings",
+    "allowPopupsForUserEvents",
+    {
+      primed: true,
+    }
+  );
+  ExtensionPreferencesManager.setSetting(
+    extension.id,
+    "allowPopupsForUserEvents",
+    "click"
+  );
+  await extension.awaitMessage("allowPopupsForUserEvents");
+  ok(true, "allowPopupsForUserEvents.onChange fired");
+
+  // again after the event is fired
+  info(`test idle timeout after wakeup`);
+  let setting = await extension.awaitMessage("suspended");
+  equal(setting.value, true, "verify simple async wait works in onSuspend");
+
+  await promiseExtensionEvent(extension, "shutdown-background-script");
+  assertPersistentListeners(
+    extension,
+    "browserSettings",
+    "allowPopupsForUserEvents",
+    {
+      primed: true,
+    }
+  );
+  ExtensionPreferencesManager.setSetting(
+    extension.id,
+    "allowPopupsForUserEvents",
+    false
+  );
+  await extension.awaitMessage("allowPopupsForUserEvents");
+  ok(true, "allowPopupsForUserEvents.onChange fired");
+
+  const { id } = extension;
+  await extension.unload();
+
+  info("Verify eventpage telemetry recorded");
+
+  assertHistogramSnapshot(
+    WEBEXT_EVENTPAGE_RUNNING_TIME_MS,
+    {
+      keyed: false,
+      processSnapshot: snapshot => snapshot.sum > 0,
+      expectedValue: true,
+    },
+    `Expect stored values in the eventpage running time non-keyed histogram snapshot`
+  );
+
+  assertHistogramSnapshot(
+    WEBEXT_EVENTPAGE_RUNNING_TIME_MS_BY_ADDONID,
+    {
+      keyed: true,
+      processSnapshot: snapshot => snapshot[id]?.sum > 0,
+      expectedValue: true,
+    },
+    `Expect stored values for addon with id ${id} in the eventpage running time keyed histogram snapshot`
+  );
+
+  assertHistogramCategoryNotEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT, {
+    category: "suspend",
+    categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+  });
+  assertGleanLabeledCounterNotEmpty({
+    metricId: "eventPageIdleResult",
+    gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+    expectedNotEmptyLabels: ["suspend"],
+  });
+
+  assertHistogramCategoryNotEmpty(
+    WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID,
+    {
+      keyed: true,
+      key: id,
+      category: "suspend",
+      categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    }
+  );
+
+  Assert.greater(
+    Glean.extensionsTiming.eventPageRunningTime.testGetValue()?.sum,
+    0,
+    `Expect stored values in the eventPageRunningTime Glean metric`
+  );
+});
+
+add_task(
+  { pref_set: [["extensions.background.idle.timeout", 500]] },
+  async function test_eventpage_runtime_parentApiCall_resets_timeout() {
+    resetTelemetryData();
+
+    assertHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT);
+    assertKeyedHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID);
+    assertGleanLabeledCounterEmpty({
+      metricId: "eventPageIdleResult",
+      gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+      gleanMetricLabels: GLEAN_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    });
+
+    let extension = ExtensionTestUtils.loadExtension({
+      useAddonManager: "permanent",
+      manifest: {
+        background: { persistent: false },
+      },
+      async background() {
+        let start = Date.now();
+
+        browser.runtime.onSuspend.addListener(() => {
+          browser.test.sendMessage("done", Date.now() - start);
+        });
+
+        browser.runtime.getBrowserInfo();
+        // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+        setTimeout(() => browser.runtime.getBrowserInfo(), 50);
+      },
+    });
+
+    await extension.startup();
+    let [, resetData] = await promiseExtensionEvent(
+      extension,
+      "background-script-reset-idle"
+    );
+
+    equal(resetData.reason, "parentapicall", "Got the expected idle reset.");
+
+    await promiseExtensionEvent(extension, "shutdown-background-script");
+
+    let time = await extension.awaitMessage("done");
+    Assert.greater(time, 100, `Background script suspended after ${time}ms.`);
+
+    // Disabled because the telemetry is too chatty, see bug 1868960.
+    // assertHistogramCategoryNotEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT, {
+    //   category: "reset_parentapicall",
+    //   categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    // });
+
+    // assertHistogramCategoryNotEmpty(
+    //   WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID,
+    //   {
+    //     keyed: true,
+    //     key: extension.id,
+    //     category: "reset_parentapicall",
+    //     categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    //   }
+    // );
+
+    // assertGleanLabeledCounterNotEmpty({
+    //   metricId: "eventPageIdleResult",
+    //   gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+    //   expectedNotEmptyLabels: ["reset_parentapicall"],
+    // });
+
+    await extension.unload();
+  }
+);
+
+add_task(
+  { pref_set: [["extensions.background.idle.timeout", 500]] },
+  async function test_extension_page_reset_idle() {
+    let extension = ExtensionTestUtils.loadExtension({
+      useAddonManager: "permanent",
+      manifest: {
+        background: { persistent: false },
+        permissions: ["storage"],
+      },
+      background() {
+        browser.test.log("background script start");
+        browser.runtime.onSuspend.addListener(() => {
+          browser.test.sendMessage("suspended");
+        });
+        browser.test.sendMessage("ready");
+      },
+      files: {
+        "page.html": "<meta charset=utf-8><script src=page.js></script>",
+        async "page.js"() {
+          await browser.runtime.getBrowserInfo();
+          browser.test.sendMessage("page-done");
+        },
+        "unrelated_page.html":
+          "<meta charset=utf-8><script src=unrelated_page.js></script>",
+        "unrelated_page.js"() {
+          browser.storage.session.onChanged.addListener(() => {
+            browser.test.sendMessage("unrelated_page-done");
+          });
+          browser.test.onMessage.addListener(msg => {
+            browser.test.assertEq("test_message", msg, "Expected message");
+            browser.test.sendMessage("test_message_ack");
+          });
+          browser.test.log("Triggering event unrelated to event page");
+          browser.storage.session.set({ x: 1 });
+        },
+      },
+    });
+
+    await extension.startup();
+
+    // Need to set up the listener as early as possible.
+    let closed = promiseExtensionEvent(extension, "shutdown-background-script");
+
+    await extension.awaitMessage("ready");
+    info("Background script ready.");
+
+    // TODO bug 1905504: Remove gotIdle/expectingIdle when we stop triggering
+    // idle resets from events in non-background context.
+    let gotIdle = false;
+    let expectingIdle = false;
+    // TODO bug 1905504: Change next "on" back to "once" and remove eslint
+    // suppression along with removing the gotIdle/expectingIdle variables.
+    // eslint-disable-next-line mozilla/balanced-listeners
+    extension.extension.on("background-script-reset-idle", () => {
+      if (expectingIdle) {
+        gotIdle = true;
+        return;
+      }
+      ok(false, "background-script-reset-idle emitted from an extension page.");
+    });
+
+    let page = await ExtensionTestUtils.loadContentPage(
+      extension.extension.baseURI.resolve("page.html")
+    );
+    await extension.awaitMessage("page-done");
+    info("Test page loaded.");
+
+    await closed;
+    await extension.awaitMessage("suspended");
+
+    ok(true, "API call from extension page did not reset idle timeout.");
+
+    await page.close();
+
+    expectingIdle = true;
+    const page2 = await ExtensionTestUtils.loadContentPage(
+      extension.extension.baseURI.resolve("unrelated_page.html")
+    );
+    await extension.awaitMessage("unrelated_page-done");
+    ok(gotIdle, "Got idle for event from unrelated page (due to bug 1905504)");
+
+    gotIdle = false;
+    extension.sendMessage("test_message");
+    await extension.awaitMessage("test_message_ack");
+    ok(gotIdle, "Got idle for triggering test.onMessage (due to bug 1905504)");
+
+    await page2.close();
+    await extension.unload();
+  }
+);
+
+add_task(async function test_persistent_background_reset_idle() {
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      background: { persistent: true },
+    },
+    background() {
+      browser.test.onMessage.addListener(async () => {
+        await browser.runtime.getBrowserInfo();
+        browser.test.sendMessage("done");
+      });
+      browser.test.sendMessage("ready");
+    },
+  });
+
+  await extension.startup();
+  await extension.awaitMessage("ready");
+
+  extension.extension.once("background-script-reset-idle", () => {
+    ok(false, "background-script-reset-idle from persistent background page.");
+  });
+
+  extension.sendMessage("call-parent-api");
+  ok(true, "API call from persistent background did not reset idle timeout.");
+
+  await extension.awaitMessage("done");
+  await extension.unload();
+});
+
+add_task(
+  { pref_set: [["extensions.webextensions.runtime.timeout", 500]] },
+  async function test_eventpage_runtime_onSuspend_timeout() {
+    let extension = ExtensionTestUtils.loadExtension({
+      useAddonManager: "permanent",
+      manifest: {
+        background: { persistent: false },
+      },
+      background() {
+        browser.runtime.onSuspend.addListener(() => {
+          // return a promise that never resolves
+          return new Promise(() => {});
+        });
+      },
+    });
+    await extension.startup();
+    await promiseExtensionEvent(extension, "shutdown-background-script");
+    ok(true, "onSuspend did not block background shutdown");
+    await extension.unload();
+  }
+);
+
+add_task(
+  { pref_set: [["extensions.webextensions.runtime.timeout", 500]] },
+  async function test_eventpage_runtime_onSuspend_reject() {
+    let extension = ExtensionTestUtils.loadExtension({
+      useAddonManager: "permanent",
+      manifest: {
+        background: { persistent: false },
+      },
+      background() {
+        browser.runtime.onSuspend.addListener(() => {
+          // Raise an error to test error handling in onSuspend
+          return Promise.reject("testing reject");
+        });
+      },
+    });
+    await extension.startup();
+    await promiseExtensionEvent(extension, "shutdown-background-script");
+    ok(true, "onSuspend did not block background shutdown");
+    await extension.unload();
+  }
+);
+
+add_task(
+  { pref_set: [["extensions.webextensions.runtime.timeout", 1000]] },
+  async function test_eventpage_runtime_onSuspend_canceled() {
+    resetTelemetryData();
+
+    assertHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT);
+    assertKeyedHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID);
+    assertGleanLabeledCounterEmpty({
+      metricId: "eventPageIdleResult",
+      gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+      gleanMetricLabels: GLEAN_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    });
+
+    let extension = ExtensionTestUtils.loadExtension({
+      useAddonManager: "permanent",
+      manifest: {
+        permissions: ["browserSettings"],
+        background: { persistent: false },
+      },
+      background() {
+        let resolveSuspend;
+        browser.browserSettings.allowPopupsForUserEvents.onChange.addListener(
+          () => {
+            browser.test.sendMessage("allowPopupsForUserEvents");
+          }
+        );
+        browser.runtime.onSuspend.addListener(() => {
+          browser.test.sendMessage("suspending");
+          return new Promise(resolve => {
+            resolveSuspend = resolve;
+          });
+        });
+        browser.runtime.onSuspendCanceled.addListener(() => {
+          browser.test.sendMessage("suspendCanceled");
+        });
+        browser.test.onMessage.addListener(() => {
+          resolveSuspend();
+        });
+      },
+    });
+    await extension.startup();
+    await extension.awaitMessage("suspending");
+    // While suspending, cause an event
+    ExtensionPreferencesManager.setSetting(
+      extension.id,
+      "allowPopupsForUserEvents",
+      "click"
+    );
+    extension.sendMessage("resolveSuspend");
+    await extension.awaitMessage("allowPopupsForUserEvents");
+    await extension.awaitMessage("suspendCanceled");
+    ok(true, "event caused suspend-canceled");
+
+    // Disabled because the telemetry is too chatty, see bug 1868960.
+    // assertHistogramCategoryNotEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT, {
+    //   category: "reset_event",
+    //   categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    // });
+    // assertGleanLabeledCounterNotEmpty({
+    //   metricId: "eventPageIdleResult",
+    //   gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+    //   expectedNotEmptyLabels: ["reset_event"],
+    // });
+
+    // assertHistogramCategoryNotEmpty(
+    //   WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID,
+    //   {
+    //     keyed: true,
+    //     key: extension.id,
+    //     category: "reset_event",
+    //     categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    //   }
+    // );
+
+    await extension.awaitMessage("suspending");
+    await promiseExtensionEvent(extension, "shutdown-background-script");
+    await extension.unload();
+  }
+);
+
+add_task(async function test_terminateBackground_after_extension_hasShutdown() {
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      background: { persistent: false },
+    },
+    async background() {
+      browser.runtime.onSuspend.addListener(() => {
+        browser.test.fail(
+          `runtime.onSuspend listener should have not been called`
+        );
+      });
+
+      // Call an API method implemented in the parent process (to be sure runtime.onSuspend
+      // listener is going to be fully registered from a parent process perspective by the
+      // time we will send the "bg-ready" test message).
+      await browser.runtime.getBrowserInfo();
+
+      browser.test.sendMessage("bg-ready");
+    },
+  });
+
+  await extension.startup();
+  await extension.awaitMessage("bg-ready");
+
+  // Fake suspending event page on idle while the extension was being shutdown by manually
+  // setting the hasShutdown flag to true on the Extension class instance object.
+  extension.extension.hasShutdown = true;
+  await extension.terminateBackground();
+  extension.extension.hasShutdown = false;
+
+  await extension.unload();
+});
+
+add_task(async function test_wakeupBackground_after_extension_hasShutdown() {
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      background: { persistent: false },
+    },
+    async background() {
+      browser.test.sendMessage("bg-ready");
+    },
+  });
+
+  await extension.startup();
+  await extension.awaitMessage("bg-ready");
+  await extension.terminateBackground();
+
+  // Fake suspending event page on idle while the extension was being shutdown by manually
+  // setting the hasShutdown flag to true on the Extension class instance object.
+  extension.extension.hasShutdown = true;
+  await Assert.rejects(
+    extension.wakeupBackground(),
+    /wakeupBackground called while the extension was already shutting down/,
+    "Got the expected rejection when wakeupBackground is called after extension shutdown"
+  );
+  extension.extension.hasShutdown = false;
+
+  await extension.unload();
+});
+
+async function testSuspendShutdownRace({ manifest_version }) {
+  const extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      manifest_version,
+      background: manifest_version === 2 ? { persistent: false } : {},
+      permissions: ["webRequest", "webRequestBlocking"],
+      host_permissions: ["*://example.com/*"],
+      granted_host_permissions: true,
+    },
+    // Define an empty background script.
+    background() {},
+  });
+
+  await extension.startup();
+  await extension.extension.promiseBackgroundStarted();
+  const promiseTerminateBackground = extension.extension.terminateBackground();
+  // Wait one tick to leave to terminateBackground async method time to get
+  // past the first check that returns earlier if extension.hasShutdown is true.
+  await Promise.resolve();
+  const promiseUnload = extension.unload();
+
+  await promiseUnload;
+  try {
+    await promiseTerminateBackground;
+    ok(true, "extension.terminateBackground should not have been rejected");
+  } catch (err) {
+    ok(
+      false,
+      `extension.terminateBackground should not have been rejected: ${err} :: ${err.stack}`
+    );
+  }
+}
+
+add_task(function test_mv2_suspend_shutdown_race() {
+  return testSuspendShutdownRace({ manifest_version: 2 });
+});
+
+add_task(
+  {
+    pref_set: [["extensions.manifestV3.enabled", true]],
+  },
+  function test_mv3_suspend_shutdown_race() {
+    return testSuspendShutdownRace({ manifest_version: 3 });
+  }
+);
+
+function createPendingListenerTestExtension() {
+  return ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      permissions: ["browserSettings"],
+      background: { persistent: false },
+    },
+    background() {
+      let idx = 0;
+      browser.browserSettings.allowPopupsForUserEvents.onChange.addListener(
+        async () => {
+          const currIdx = idx++;
+          await new Promise((resolve, reject) => {
+            browser.test.onMessage.addListener(msg => {
+              switch (`${msg}-${currIdx}`) {
+                case "unblock-promise-0":
+                  resolve();
+                  browser.test.sendMessage("allowPopupsForUserEvents:resolved");
+                  break;
+                case "unblock-promise-1":
+                  reject(new Error("expected-test-rejection"));
+                  browser.test.sendMessage("allowPopupsForUserEvents:rejected");
+                  break;
+                default:
+                  browser.test.fail(`Unexpected test message: ${msg}`);
+              }
+            });
+            browser.test.sendMessage("allowPopupsForUserEvents:awaiting");
+          });
+        }
+      );
+
+      browser.runtime.onSuspend.addListener(() => {
+        // Raise an error to test error handling in onSuspend
+        return browser.test.sendMessage("runtime-on-suspend");
+      });
+
+      browser.test.sendMessage("bg-script-ready");
+    },
+  });
+}
+
+add_task(
+  { pref_set: [["extensions.background.idle.timeout", 500]] },
+  async function test_eventpage_idle_reset_on_async_listener_unresolved() {
+    resetTelemetryData();
+
+    assertHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT);
+    assertKeyedHistogramEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID);
+    assertGleanLabeledCounterEmpty({
+      metricId: "eventPageIdleResult",
+      gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+      gleanMetricLabels: GLEAN_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    });
+
+    let extension = createPendingListenerTestExtension();
+    await extension.startup();
+    await extension.awaitMessage("bg-script-ready");
+
+    info("Trigger the first API event listener call");
+    ExtensionPreferencesManager.setSetting(
+      extension.id,
+      "allowPopupsForUserEvents",
+      "click"
+    );
+
+    await extension.awaitMessage("allowPopupsForUserEvents:awaiting");
+
+    info("Trigger the second API event listener call");
+    ExtensionPreferencesManager.setSetting(
+      extension.id,
+      "allowPopupsForUserEvents",
+      "click"
+    );
+
+    await extension.awaitMessage("allowPopupsForUserEvents:awaiting");
+
+    info("Wait for suspend on idle to be reset");
+    const [, resetIdleData] = await promiseExtensionEvent(
+      extension,
+      "background-script-reset-idle"
+    );
+
+    Assert.deepEqual(
+      resetIdleData,
+      {
+        reason: "listeners",
+        pendingListeners: 2,
+      },
+      "Got the expected idle reset reason and pendingListeners count"
+    );
+
+    assertHistogramCategoryNotEmpty(WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT, {
+      category: "reset_listeners",
+      categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+    });
+
+    assertGleanLabeledCounter({
+      metricId: "eventPageIdleResult",
+      gleanMetric: Glean.extensionsCounters.eventPageIdleResult,
+      gleanMetricLabels: GLEAN_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+      ignoreNonExpectedLabels: true, // Only check values on the labels listed below.
+      expectedLabelsValue: {
+        reset_listeners: 1,
+      },
+    });
+
+    assertHistogramCategoryNotEmpty(
+      WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT_BY_ADDONID,
+      {
+        keyed: true,
+        key: extension.id,
+        category: "reset_listeners",
+        categories: HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+      }
+    );
+
+    info(
+      "Resolve the async listener pending on a promise and expect the event page to suspend after the idle timeout"
+    );
+    extension.sendMessage("unblock-promise");
+    // Expect the two promises to be resolved and rejected respectively.
+    await extension.awaitMessage("allowPopupsForUserEvents:resolved");
+    await extension.awaitMessage("allowPopupsForUserEvents:rejected");
+
+    info("Await for the runtime.onSuspend event to be emitted");
+    await extension.awaitMessage("runtime-on-suspend");
+    await extension.unload();
+  }
+);
+
+add_task(
+  { pref_set: [["extensions.background.idle.timeout", 500]] },
+  async function test_pending_async_listeners_promises_rejected_on_shutdown() {
+    let extension = createPendingListenerTestExtension();
+    await extension.startup();
+    await extension.awaitMessage("bg-script-ready");
+
+    info("Trigger the API event listener call");
+    ExtensionPreferencesManager.setSetting(
+      extension.id,
+      "allowPopupsForUserEvents",
+      "click"
+    );
+
+    await extension.awaitMessage("allowPopupsForUserEvents:awaiting");
+
+    const { runListenerPromises } = extension.extension.backgroundContext;
+    equal(
+      runListenerPromises.size,
+      1,
+      "Got the expected number of pending runListener promises"
+    );
+
+    const pendingPromise = Array.from(runListenerPromises)[0];
+
+    // Shutdown the extension while there is still a pending promises being tracked
+    // to verify they gets rejected as expected when the background page browser element
+    // is going to be destroyed.
+    await extension.unload();
+
+    await Assert.rejects(
+      pendingPromise,
+      /Actor 'Conduits' destroyed before query 'RunListener' was resolved/,
+      "Previously pending runListener promise rejected with the expected error"
+    );
+
+    equal(
+      runListenerPromises.size,
+      0,
+      "Expect no remaining pending runListener promises"
+    );
+  }
+);
+
+add_task(
+  { pref_set: [["extensions.background.idle.timeout", 500]] },
+  async function test_eventpage_idle_reset_once_on_pending_async_listeners() {
+    let extension = createPendingListenerTestExtension();
+    await extension.startup();
+    await extension.awaitMessage("bg-script-ready");
+
+    info("Trigger the API event listener call");
+    ExtensionPreferencesManager.setSetting(
+      extension.id,
+      "allowPopupsForUserEvents",
+      "click"
+    );
+
+    await extension.awaitMessage("allowPopupsForUserEvents:awaiting");
+
+    info("Wait for suspend on the first idle timeout to be reset");
+    const [, resetIdleData] = await promiseExtensionEvent(
+      extension,
+      "background-script-reset-idle"
+    );
+
+    Assert.deepEqual(
+      resetIdleData,
+      {
+        reason: "listeners",
+        pendingListeners: 1,
+      },
+      "Got the expected idle reset reason and pendingListeners count"
+    );
+
+    info(
+      "Await for the runtime.onSuspend event to be emitted on the second idle timeout hit"
+    );
+    // We expect this part of the test to trigger a uncaught rejection for the
+    // "Actor 'Conduits' destroyed before query 'RunListener' was resolved" error,
+    // due to the listener left purposely pending in this test
+    // and so that expected rejection is ignored using PromiseTestUtils in the preamble
+    // of this test file.
+    await extension.awaitMessage("runtime-on-suspend");
+    await extension.unload();
+  }
+);
+
+// Verify that the background stays stopped and does not somehow reactivate any
+// background idleManager timers when already stopped.
+add_task(async function test_reset_idle_while_stopped_is_ignored() {
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      browser_specific_settings: { gecko: { id: "ext@id" } },
+      manifest_version: 3,
+    },
+    background() {
+      browser.test.sendMessage("wakey");
+    },
+  });
+  await extension.startup();
+  await extension.awaitMessage("wakey");
+  await extension.terminateBackground();
+
+  let { messages } = await promiseConsoleOutput(() => {
+    extension.extension.emit("background-script-reset-idle", {
+      reason: "simulate reset",
+    });
+  });
+  AddonTestUtils.checkMessages(messages, {
+    expected: [
+      {
+        message:
+          /Background keepalive reset with reason "simulate reset" failed for ext@id, state stopped\./,
+      },
+    ],
+  });
+
+  let { messages: messages2 } = await promiseConsoleOutput(() => {
+    extension.extension.emit("background-script-idle-waituntil", {
+      promise: Promise.resolve(),
+      reason: "simulate waitUntil",
+    });
+  });
+  AddonTestUtils.checkMessages(messages2, {
+    expected: [
+      {
+        message:
+          /Background keepalive with reason "simulate waitUntil" failed for ext@id, state stopped\./,
+      },
+    ],
+  });
+
+  let { messages: messages3 } = await promiseConsoleOutput(async () => {
+    // Calling extension.extension.terminateBackground() to make sure that we
+    // are testing the internal method instead of the test-specific wrapper.
+    await extension.extension.terminateBackground();
+  });
+  AddonTestUtils.checkMessages(messages3, {
+    expected: [
+      {
+        message:
+          /Cannot terminate background of ext@id because it was already stopped\./,
+      },
+    ],
+  });
+
+  await extension.unload();
+});

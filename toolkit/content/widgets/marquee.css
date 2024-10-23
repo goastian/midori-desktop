@@ -1,0 +1,20 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+slot {
+  display: block;
+  will-change: translate;
+}
+
+/* Disable the animation on contenteditable */
+:host(:read-write) > slot {
+  translate: none !important;
+}
+
+/* When printing or when the user doesn't want movement, we disable scrolling */
+@media print, (prefers-reduced-motion) {
+  slot {
+    translate: none !important;
+  }
+}

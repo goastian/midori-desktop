@@ -1,0 +1,64 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+with Files("**"):
+    BUG_COMPONENT = ("Toolkit", "Form Manager")
+
+MOCHITEST_MANIFESTS += ["test/mochitest.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]
+BROWSER_CHROME_MANIFESTS += ["test/browser/browser.toml"]
+
+XPIDL_SOURCES += [
+    "nsIFormFillController.idl",
+]
+
+XPIDL_MODULE = "satchel"
+
+SOURCES += [
+    "nsFormFillController.cpp",
+]
+
+LOCAL_INCLUDES += [
+    "../build",
+]
+
+JAR_MANIFESTS += ["jar.mn"]
+
+DIRS += [
+    "megalist",
+]
+
+EXTRA_JS_MODULES += [
+    "FillHelpers.sys.mjs",
+    "FormHistory.sys.mjs",
+    "FormHistoryAutoComplete.sys.mjs",
+    "FormHistoryStartup.sys.mjs",
+    "FormScenarios.sys.mjs",
+    "integrations/FirefoxRelay.sys.mjs",
+    "integrations/FirefoxRelayTelemetry.mjs",
+    "integrations/FirefoxRelayUtils.sys.mjs",
+    "integrations/WebAuthnFeature.sys.mjs",
+    "SignUpFormRuleset.sys.mjs",
+]
+
+XPCOM_MANIFESTS += [
+    "components.conf",
+]
+
+TESTING_JS_MODULES += [
+    "test/FormHistoryTestUtils.sys.mjs",
+]
+
+include("/ipc/chromium/chromium-config.mozbuild")
+
+FINAL_TARGET_FILES.actors += [
+    "FormHandlerChild.sys.mjs",
+    "FormHandlerParent.sys.mjs",
+    "FormHistoryChild.sys.mjs",
+    "FormHistoryParent.sys.mjs",
+]
+
+FINAL_LIBRARY = "xul"

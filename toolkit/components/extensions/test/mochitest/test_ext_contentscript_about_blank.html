@@ -1,0 +1,421 @@
+<!doctype html>
+<html>
+<head>
+  <title>Test content script match_about_blank option</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/ExtensionTestUtils.js"></script>
+  <script src="head.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body>
+
+<script type="text/javascript">
+"use strict";
+
+// Tests that match_about_blank matches at the expected URLs:
+// - about:blank and about:srcdoc (as documented)
+// - javascript:-URL (loaded in about:blank document)
+// - blob: (not documented, not supported by Chrome, legacy behavior)
+add_task(async function test_contentscript_about_blank() {
+  const manifest = {
+    content_scripts: [
+      {
+        match_about_blank: true,
+        matches: [
+          "*://mochi.test/*/file_with_about_blank.html",
+          "https://example.com/*/file_with_about_blank.html",
+        ],
+        all_frames: true,
+        css: ["all.css"],
+        js: ["all.js"],
+      }, {
+        matches: ["*://mochi.test/*/file_with_about_blank.html"],
+        css: ["mochi_without.css"],
+        js: ["mochi_without.js"],
+        all_frames: true,
+      }, {
+        match_about_blank: true,
+        matches: ["*://mochi.test/*/file_with_about_blank.html"],
+        css: ["mochi_with.css"],
+        js: ["mochi_with.js"],
+        all_frames: true,
+      },
+    ],
+  };
+
+  const files = {
+    "all.js": function() {
+      browser.runtime.sendMessage("all");
+    },
+    "all.css": `
+      body { color: red; }
+    `,
+    "mochi_without.js": function() {
+      browser.runtime.sendMessage("mochi_without");
+    },
+    "mochi_without.css": `
+      body { background: yellow; }
+    `,
+    "mochi_with.js": function() {
+      browser.runtime.sendMessage("mochi_with");
+    },
+    "mochi_with.css": `
+      body { text-align: right; }
+    `,
+  };
+
+  function background() {
+    browser.runtime.onMessage.addListener((script, {url}) => {
+      // In this test, we only load http(s):-URLs at the top level.
+      const kind = url.startsWith("http") ? "top" : url;
+      browser.test.sendMessage("script", [script, kind, url]);
+      browser.test.sendMessage(`${script}:${kind}`);
+    });
+  }
+
+  const PATH = "tests/toolkit/components/extensions/test/mochitest/file_with_about_blank.html";
+  const extension = ExtensionTestUtils.loadExtension({manifest, files, background});
+  await extension.startup();
+
+  let count = 0;
+  extension.onMessage("script", script => {
+    info(`script ran: ${script}`);
+    count++;
+  });
+
+  let win = window.open("https://example.com/" + PATH);
+  await Promise.all([
+    extension.awaitMessage("all:top"),
+    extension.awaitMessage("all:about:blank"),
+    extension.awaitMessage("all:about:srcdoc"),
+  ]);
+  is(count, 3, "exactly 3 scripts ran");
+  win.close();
+
+  win = window.open("http://mochi.test:8888/" + PATH);
+  await Promise.all([
+    extension.awaitMessage("all:top"),
+    extension.awaitMessage("all:about:blank"),
+    extension.awaitMessage("all:about:srcdoc"),
+    extension.awaitMessage("mochi_without:top"),
+    extension.awaitMessage("mochi_with:top"),
+    extension.awaitMessage("mochi_with:about:blank"),
+    extension.awaitMessage("mochi_with:about:srcdoc"),
+  ]);
+
+  let style = win.getComputedStyle(win.document.body);
+  is(style.color, "rgb(255, 0, 0)", "top window text color is red");
+  is(style.backgroundColor, "rgb(255, 255, 0)", "top window background is yellow");
+  is(style.textAlign, "right", "top window text is right-aligned");
+
+  let a_b = win.document.getElementById("a_b");
+  style = a_b.contentWindow.getComputedStyle(a_b.contentDocument.body);
+  is(style.color, "rgb(255, 0, 0)", "about:blank iframe text color is red");
+  is(style.backgroundColor, "rgba(0, 0, 0, 0)", "about:blank iframe background is transparent");
+  is(style.textAlign, "right", "about:blank text is right-aligned");
+
+  is(count, 10, "exactly 7 more scripts ran");
+  count = 0;
+  // win.close(); not called because we want to create a blob:-URL associated
+  // with that document's principal, and also test other loads associated with
+  // that principal.
+  const winDocumentURL = win.document.URL;
+  const htmlCode = win.document.documentElement.outerHTML;
+
+  {
+    info(`Testing about:blank toplevel popup from ${winDocumentURL}`);
+    let blankWin = win.window.open("about:blank");
+    await Promise.all([
+      extension.awaitMessage("all:about:blank"),
+      extension.awaitMessage("mochi_with:about:blank"),
+    ]);
+    blankWin.close();
+    is(count, 2, "exactly 2 more scripts ran for toplevel about:blank");
+    count = 0;
+  }
+
+  {
+    info(`Testing javascript:-toplevel popup from ${winDocumentURL}`);
+    let jsWin = win.window.open(`javascript:'<iframe srcdoc="x"></iframe>'`);
+    await Promise.all([
+      // javascript:-URLs are loaded in an about:blank document.
+      extension.awaitMessage("all:about:blank"),
+      extension.awaitMessage("mochi_with:about:blank"),
+      extension.awaitMessage("all:about:srcdoc"),
+      extension.awaitMessage("mochi_with:about:srcdoc"),
+    ]);
+    jsWin.close();
+    is(count, 4, "exactly 4 more scripts ran for javascript:-URL with frame");
+    count = 0;
+  }
+
+  const blob = new Blob([ htmlCode ], { type: "text/html" });
+  const blobUrl = win.URL.createObjectURL(blob);
+  info(`Opening blob:-URL: ${blobUrl} from ${win.document.URL}`);
+
+  let blobWin = window.open(blobUrl);
+  // blob:-URLs should not have content scripts because
+  // match_origin_as_fallback is not set.
+  await Promise.all([
+    extension.awaitMessage("all:about:blank"),
+    extension.awaitMessage("all:about:srcdoc"),
+    extension.awaitMessage("mochi_with:about:blank"),
+    extension.awaitMessage("mochi_with:about:srcdoc"),
+  ]);
+  is(count, 4, "exactly 4 more scripts ran for blob:-URL");
+  count = 0;
+
+  // Test coverage for execution on blob:-URLs is at
+  // toolkit/components/extensions/test/mochitest/test_ext_contentscript_blob.html
+
+  blobWin.close();
+  win.close();
+
+  await extension.unload();
+});
+
+async function top_level_about_blank({
+  legacyBehavior = false,
+  run_at = "document_end",
+} = {}) {
+  const content_scripts = [
+    {
+      match_about_blank: true,
+      matches: ["*://*/*"],
+      js: ["1.matches_any_url_and_blank.js"],
+      run_at,
+    },
+    {
+      // Note: interestingly, if one only wants to match top-level about:blank
+      // in Firefox, this would be a way to do so:
+      match_about_blank: true,
+      matches: ["*://*/*"],
+      exclude_matches: ["<all_urls>"],
+      exclude_globs: ["*"],
+      js: ["2.does_not_care_about_exclude_matches_globs.js"],
+      run_at,
+    },
+    {
+      match_about_blank: true,
+      matches: ["*://*/*"],
+      include_globs: ["*"],
+      js: ["3.should_not_run_because_include_globs_is_set.js"],
+      run_at,
+    },
+    {
+      matches: ["*://*/*"],
+      js: ["4.should_not_run_because_no_matchAboutBlank.js"],
+      run_at,
+    },
+    {
+      match_about_blank: true,
+      matches: ["*://non.matching.example/*"],
+      js: ["5.should_not_run_because_matches_does_not_match_all_urls.js"],
+      run_at,
+    },
+  ];
+  const files = {
+    "get_seenScripts.js": () => {
+      globalThis.seenScripts ??= [];
+      globalThis.seenScripts.push("get_seenScripts.js");
+      return globalThis.seenScripts;
+    },
+  };
+  function makeJsFile(filename) {
+    files[filename] = `
+      dump("Running ${filename} at " + location + ", origin " + origin + "\\n");
+      globalThis.seenScripts ??= [];
+      globalThis.seenScripts.push("${filename}");
+    `;
+
+    if (filename === "2.does_not_care_about_exclude_matches_globs.js") {
+      files[filename] += `
+        // In an initial document, readyState = "uninitialized".
+        dump("${filename} ran at readyState " + document.readyState + "\\n");
+        browser.test.sendMessage("seen_content_script");
+      `;
+    }
+  }
+  for (let { js } of content_scripts) {
+    for (let filename of js) {
+      makeJsFile(filename);
+    }
+  }
+
+  // Send an explicit test message in the last script which is expected to only
+  // be injected if the legacy behavior pref is set to true, if this is sent
+  // when running the test for the new expected behavior then hitting this message
+  // will trigger an additional explicit test failure due to the non handled
+  // "legacy-matching-script:executed" test message, on the contrary when
+  // the test is executed for the legacy matchAboutBlank behavior the test
+  // will await for that message explicitly to avoid intermittent failures.
+  files["5.should_not_run_because_matches_does_not_match_all_urls.js"] += `
+    browser.test.sendMessage("legacy-matching-script:executed");
+  `;
+
+  function background() {
+    let tabId;
+    browser.test.onMessage.addListener(async (msg, expected, description) => {
+      if (msg === "openAboutBlankTab") {
+        const tab = await browser.tabs.create({ url: "about:blank" });
+        tabId = tab.id;
+        browser.test.sendMessage("openAboutBlankTab_done");
+        return;
+      }
+      if (msg === "closeAboutBlankTab") {
+        await browser.tabs.remove(tabId);
+        browser.test.sendMessage("closeAboutBlankTab_done");
+        return;
+      }
+      browser.test.assertEq("seenScripts_check", msg, "Checking seenScripts");
+      try {
+        browser.test.log("Checking seen content scripts");
+        let [ seenScripts ] = await browser.tabs.executeScript(
+          tabId,
+          {
+            matchAboutBlank: true,
+            file: "get_seenScripts.js",
+          }
+        );
+        browser.test.assertDeepEq(expected, seenScripts.sort(), description);
+      } catch (e) {
+        browser.test.assertDeepEq(expected, { error: e.message }, description);
+      }
+      browser.test.sendMessage("seenScripts_check_done");
+    });
+    browser.browserAction.onClicked.addListener(tab => {
+      browser.test.assertTrue(tab.active, "Active tab should be clicked");
+      browser.test.assertEq(tabId, tab.id, "tabId should match");
+      // Upon click, activeTab should be granted, so just return control.
+      browser.test.sendMessage("got_activeTab");
+    });
+  }
+
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      content_scripts,
+      browser_action: {},
+      permissions: ["activeTab"],
+    },
+    files,
+    background,
+  });
+
+  async function openAboutBlankTab() {
+    extension.sendMessage("openAboutBlankTab");
+    await extension.awaitMessage("openAboutBlankTab_done");
+  }
+  async function closeAboutBlankTab() {
+    extension.sendMessage("closeAboutBlankTab");
+    await extension.awaitMessage("closeAboutBlankTab_done");
+  }
+  async function checkSeenScripts(expected, description) {
+    extension.sendMessage("seenScripts_check", expected, description);
+    await extension.awaitMessage("seenScripts_check_done");
+  }
+
+  // TODO bug 1856071: Remove this pref setter when the pref is removed.
+  // This pref should be set to false by default, but we still explicitly
+  // set pref value to:
+  // (1) cover the legacy behavior
+  // (2) in case that is not the default anymore (e.g. if we had to uplift a
+  // patch to temporarily bring back the legacy behavior before have remove pref
+  // and support for the legacy behavior).
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.script_about_blank_without_permission", legacyBehavior]],
+  });
+
+  // TODO bug 1856071: Remove this entire block when the pref is removed.
+  if (legacyBehavior) {
+    // Start of "Testing legacy behavior".
+    await extension.startup();
+    await openAboutBlankTab();
+
+    // Await explicitly for the last content script that we expect to be
+    // matching the top level about:blank page while running on legacy
+    // behavior, otherwise we hit an intermittent failure due to the
+    // get_seenScript.js being executed before any of the other
+    // content scripts.
+    await extension.awaitMessage("legacy-matching-script:executed");
+
+    // Legacy behavior: tabs.executeScript works in top-level about:blank
+    // without granted activeTab.
+    await checkSeenScripts(
+      [
+        "1.matches_any_url_and_blank.js",
+        "2.does_not_care_about_exclude_matches_globs.js",
+        // While the standard behavior is to only run scripts on top-level
+        // null-principal about:blank when matches[] matches "all urls", the
+        // legacy behavior was to do so for any script that declared
+        // match_about_blank:true, independent of matches[].
+        "3.should_not_run_because_include_globs_is_set.js",
+        "5.should_not_run_because_matches_does_not_match_all_urls.js",
+        "get_seenScripts.js",
+      ],
+      "Any content script with match_about_blank:true should (legacy behavior)"
+    );
+
+    // We should receive only one such message; if we get more, odds are that we
+    // unexpectedly executed in the initial about:blank that preceeds the final
+    // about:blank (which is not supported - bug 1415539), or that we executed
+    // in an unrelated about:blank document (as seen in bug 1901894).
+    await extension.awaitMessage("seen_content_script");
+
+    await closeAboutBlankTab();
+    await extension.unload();
+    await SpecialPowers.popPrefEnv();
+    return;
+    // End of "Testing legacy behavior".
+  }
+
+  await extension.startup();
+  await openAboutBlankTab();
+
+  info("Testing tabs.executeScript without activeTab/host permissions");
+  await checkSeenScripts(
+    { error: "Missing host permission for the tab" },
+    "tabs.executeScript without activeTab shouldn't match top-level about:blank"
+  );
+
+  info("Unlocking activeTab permission");
+  await AppTestDelegate.clickBrowserAction(window, extension);
+  await extension.awaitMessage("got_activeTab");
+
+  info("Retrieving result with tabs.executeScript with activeTab");
+  await checkSeenScripts(
+    [
+      "1.matches_any_url_and_blank.js",
+      "2.does_not_care_about_exclude_matches_globs.js",
+      "get_seenScripts.js",
+    ],
+    "Only content content scripts that match all URLs and matchAboutBlank should run"
+  );
+
+  // We should receive only one such message; if we get more, odds are that we
+  // unexpectedly executed in the initial about:blank that preceeds the final
+  // about:blank (which is not supported - bug 1415539), or that we executed
+  // in an unrelated about:blank document (as seen in bug 1901894).
+  await extension.awaitMessage("seen_content_script");
+
+  await closeAboutBlankTab();
+  await extension.unload();
+  // TODO bug 1856071: Remove this popPrefEnv call when the pref is removed.
+  await SpecialPowers.popPrefEnv();
+}
+
+add_task(async function test_toplevel_aboutblank_at_document_start() {
+  await top_level_about_blank({ run_at: "document_start" });
+});
+
+add_task(async function test_toplevel_aboutblank_match_with_permissions() {
+  await top_level_about_blank({ legacyBehavior: false });
+});
+
+add_task(async function test_toplevel_aboutblank_match_without_permissions() {
+  await top_level_about_blank({ legacyBehavior: true });
+});
+
+</script>
+
+</body>
+</html>

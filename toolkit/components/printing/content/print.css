@@ -1,0 +1,270 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:root {
+  font: menu;
+}
+
+:root,
+body {
+  height: 100vh;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+*[hidden] {
+  display: none !important;
+}
+
+.section-block {
+  margin: var(--space-large);
+
+  .block-label {
+    display: block;
+    margin-bottom: var(--space-small);
+  }
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 1.8em;
+  margin-block: var(--space-xxsmall);
+
+  &.cols-2 {
+    flex-direction: row;
+    align-items: center;
+
+    #scale &,
+    #more-settings-options > & {
+      /* The margin-block of the checkboxes/radiobuttons
+         already provide the needed vertical spacing. */
+      margin-block: 0;
+    }
+  }
+}
+
+hr {
+  margin: 0 var(--space-small);
+}
+
+.header-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex: 0 1 auto;
+  padding: var(--space-small) var(--space-large);
+
+  > h2 {
+    margin: 0;
+    line-height: 1;
+  }
+}
+
+#sheet-count {
+  font: message-box;
+  padding-block: var(--space-xsmall);
+  margin: 0;
+
+  &[loading],
+  body[invalid] & {
+    visibility: hidden;
+  }
+}
+
+#print {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+
+  body[loading] & {
+    visibility: hidden;
+  }
+}
+
+.body-container {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+select {
+  margin: 0;
+  width: 100%;
+
+  &:not([size], [multiple])[iconic] {
+    padding-inline-start: calc(8px + 16px + 4px); /* spacing before image + image width + spacing after image */
+    background-size: auto 12px, 16px;
+    background-position: right 19px center, left 8px center;
+
+    &:dir(rtl) {
+      background-position-x: left 19px, right 8px;
+    }
+  }
+}
+
+#printer-picker {
+  background-image: url("chrome://global/skin/icons/arrow-down-12.svg"), url("chrome://global/skin/icons/print.svg");
+
+  &[output="pdf"] {
+    background-image: url("chrome://global/skin/icons/arrow-down-12.svg"), url("chrome://global/skin/icons/page-portrait.svg");
+  }
+}
+
+input:is([type="number"], [type="text"]) {
+  padding: var(--space-xxsmall);
+  padding-inline-start: var(--space-small);
+}
+
+input[type="number"] {
+  box-sizing: content-box;
+  min-height: unset;
+  padding: 0;
+  padding-inline-start: var(--space-small);
+  margin: 0;
+  height: 1.5em;
+  width: 4em;
+}
+
+input:is([type="checkbox"], [type="radio"]):disabled + label,
+input[type="radio"]:disabled + span > label {
+  opacity: 0.5;
+}
+
+#custom-range {
+  margin: 0;
+  margin-top: var(--space-xsmall);
+  width: 100%;
+}
+
+#percent-scale {
+  margin-inline-start: var(--space-xsmall);
+
+  &:disabled {
+    /* Let clicks on the disabled input select the radio button */
+    pointer-events: none;
+  }
+}
+
+.toggle-group-label {
+  padding: var(--space-xsmall) var(--space-small);
+
+  #landscape + &::before {
+    content: url("chrome://global/skin/icons/page-landscape.svg");
+  }
+
+  #portrait + &::before {
+    content: url("chrome://global/skin/icons/page-portrait.svg");
+  }
+}
+
+#more-settings {
+  > summary {
+    list-style: none;
+    display: flex;
+    cursor: pointer;
+    align-items: center;
+
+    > .twisty {
+      background-image: url("chrome://global/skin/icons/arrow-down-12.svg");
+      background-repeat: no-repeat;
+      background-position: center;
+      -moz-context-properties: fill;
+      fill: currentColor;
+      width: 12px;
+      height: 12px;
+    }
+
+    > .label {
+      flex-grow: 1;
+    }
+  }
+
+  &[open] > summary > .twisty {
+    background-image: url("chrome://global/skin/icons/arrow-up-12.svg");
+  }
+}
+
+.vertical-margins,
+.horizontal-margins {
+  display: flex;
+  gap: var(--space-large);
+  margin-block: var(--space-xsmall);
+
+  > .margin-pair {
+    width: calc(50% - (2 * var(--space-xsmall))); /* Half minus the gap */
+
+    > .margin-descriptor {
+      display: block;
+      text-align: center;
+      margin-top: var(--space-xxsmall);
+    }
+
+    > .margin-input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+  }
+}
+
+.horizontal-margins:dir(rtl) {
+  /* Swap between the left and right margin inputs to match their position
+   * in the form to their physical location they represent. */
+  flex-direction: row-reverse;
+}
+
+#open-dialog-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-xsmall);
+
+  &::after {
+    display: block;
+    flex-shrink: 0;
+    content: "";
+    background: url(chrome://global/skin/icons/open-in-new.svg) no-repeat center;
+    background-size: 12px;
+    -moz-context-properties: fill;
+    fill: currentColor;
+    width: 12px;
+    height: 12px;
+  }
+
+  &:dir(rtl)::after {
+    transform: scaleX(-1);
+  }
+}
+
+.footer-container {
+  flex: 0 1 auto;
+}
+
+#print-progress {
+  background-image: image-set(
+    url("chrome://global/skin/icons/loading.png"),
+    url("chrome://global/skin/icons/loading@2x.png") 2x
+  );
+  background-repeat: no-repeat;
+  background-size: var(--size-item-small);
+  background-position: left center;
+  padding-inline-start: calc(var(--size-item-small) + var(--space-xsmall));
+
+  &:dir(rtl) {
+    background-position-x: right;
+  }
+}
+
+.error-message {
+  color: var(--text-color-error);
+  margin-top: var(--space-xsmall);
+}

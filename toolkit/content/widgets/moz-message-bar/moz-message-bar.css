@@ -1,0 +1,173 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:host {
+  /* Icon */
+  --message-bar-icon-color: var(--icon-color-information);
+  --message-bar-icon-size: var(--size-item-small);
+  --message-bar-icon-close-url: url("chrome://global/skin/icons/close.svg");
+
+  /* Container */
+  --message-bar-container-min-height: var(--size-item-large);
+
+  /* Border */
+  --message-bar-border-color: color-mix(in srgb, currentColor 9%, transparent);
+  --message-bar-border-radius: var(--border-radius-small);
+  --message-bar-border-width: var(--border-width);
+
+  /* Text */
+  --message-bar-text-color: var(--text-color);
+  --message-bar-text-line-height: 1.5em;
+
+  /* Background */
+  --message-bar-background-color: var(--background-color-information);
+
+  background-color: var(--message-bar-background-color);
+  border: var(--message-bar-border-width) solid var(--message-bar-border-color);
+  border-radius: var(--message-bar-border-radius);
+  color: var(--message-bar-text-color);
+  text-align: start;
+}
+
+@media (prefers-contrast) {
+  :host {
+    --message-bar-border-color: var(--border-color);
+  }
+}
+
+/* Make the host to behave as a block by default, but allow hidden to hide it. */
+:host(:not([hidden])) {
+  display: block;
+}
+
+/* MozMessageBar layout */
+
+.container {
+  display: flex;
+  gap: 8px;
+  min-height: var(--message-bar-container-min-height);
+  padding-inline: 16px 8px;
+  padding-block: 8px;
+}
+
+.content {
+  display: flex;
+  flex-grow: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-inline-start: 24px;
+}
+
+.text-container {
+  display: flex;
+  gap: 4px 8px;
+  padding-block: calc((var(--message-bar-container-min-height) - var(--message-bar-text-line-height)) / 2);
+}
+
+.text-content {
+  display: inline-flex;
+  gap: 4px 8px;
+  flex-wrap: wrap;
+  word-break: break-word;
+  line-height: var(--message-bar-text-line-height);
+}
+
+/* MozMessageBar icon style */
+
+.icon-container {
+  height: var(--message-bar-text-line-height);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-inline-start: -24px;
+}
+
+.icon {
+  width: var(--message-bar-icon-size);
+  height: var(--message-bar-icon-size);
+  flex-shrink: 0;
+  appearance: none;
+  -moz-context-properties: fill, stroke;
+  fill: currentColor;
+  stroke: currentColor;
+  color: var(--message-bar-icon-color);
+}
+
+/* MozMessageBar heading style */
+
+.heading {
+  font-weight: 600;
+}
+
+/* MozMessageBar message style */
+
+.message {
+  margin-inline-end: 4px;
+}
+
+/* MozMessageBar link style */
+
+.link {
+  display: inline-block;
+}
+
+.link ::slotted(a) {
+  margin-inline-end: 4px;
+}
+
+/* MozMessageBar actions style */
+
+.actions {
+  display: none;
+}
+
+.actions.active {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.actions ::slotted(button) {
+  /* Enforce micro-button width. */
+  min-width: fit-content !important;
+
+  margin: 0 !important;
+  padding: 4px 16px !important;
+}
+
+/* Close icon styles */
+
+moz-button::part(button) {
+  background-image: var(--message-bar-icon-close-url);
+}
+
+@media not (prefers-contrast) {
+  /* MozMessageBar colors by message type */
+  /* Colors from: https://www.figma.com/file/zd3B9UyknB2XNZNdrYLm2W/Outreachy?type=design&node-id=59-1921&mode=design&t=ZYS4e6pAbAlXGvun-4 */
+
+  :host([type=warning]) {
+    --message-bar-background-color: var(--background-color-warning);
+
+    .icon {
+      --message-bar-icon-color: var(--icon-color-warning);
+    }
+  }
+
+  :host([type=success]) {
+    --message-bar-background-color: var(--background-color-success);
+
+    .icon {
+      --message-bar-icon-color: var(--icon-color-success);
+    }
+  }
+
+  :host([type=error]),
+  :host([type=critical]) {
+    --message-bar-background-color: var(--background-color-critical);
+
+    .icon {
+      --message-bar-icon-color: var(--icon-color-critical);
+    }
+  }
+}

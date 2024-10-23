@@ -1,0 +1,334 @@
+# This Source Code Form is subject to the terms of the Mozilla Public↩
+# License, v. 2.0. If a copy of the MPL was not distributed with this↩
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.↩
+
+# Adding a new metric? We have docs for that!↩
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html↩
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Firefox :: PDF Viewer'
+
+
+pdfjs:
+  editing:
+    type: labeled_counter
+    labels:
+      - ink
+      - freetext
+      - stamp
+      - save
+      - print
+    description: >
+      Counts the number of times some PDF editing features are used.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1782254
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1782254#c4
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - cdenizet@mozilla.com
+      - mcastelluccio@mozilla.com
+    expires: never
+  stamp:
+    type: labeled_counter
+    labels:
+      - inserted_image
+      - alt_text_save
+      - alt_text_cancel
+      - alt_text_tooltip
+      - alt_text_edit
+      - alt_text_description
+      - alt_text_decorative
+      - alt_text_keyboard
+    description: >
+      Counts the number of times some PDF editing features are used.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1853960
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1853960#c1
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - cdenizet@mozilla.com
+      - mcastelluccio@mozilla.com
+    expires: never
+  buttons:
+    type: labeled_counter
+    labels:
+      - presentation_mode
+      - presentation_mode_keyboard
+      - view_bookmark
+      - first_page
+      - last_page
+      - page_rotate_cw
+      - page_rotate_ccw
+      - cursor_select_tool
+      - cursor_hand_tool
+      - scroll_page
+      - scroll_vertical
+      - scroll_horizontal
+      - scroll_wrapped
+      - spread_none
+      - spread_odd
+      - spread_even
+      - document_properties
+    description: >
+      Counts the number of times some actions are executed in the PDF viewer.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1789883
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1789883#2
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - cdenizet@mozilla.com
+      - mcastelluccio@mozilla.com
+    expires: never
+  geckoview:
+    type: labeled_counter
+    labels:
+      - download_tapped
+      - open_in_app_tapped
+      - open_in_app_just_once
+      - open_in_app_always
+      - download_failed
+      - download_succeeded
+      - save_as_pdf_tapped
+    description: >
+      Counts the number of times some actions are executed in the PDF viewer.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1829216
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1829216#2
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - cdenizet@mozilla.com
+      - mcastelluccio@mozilla.com
+    expires: never
+  used:
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566882
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566882#c2
+    description: >
+      How many times PDF Viewer was used.
+    expires: never
+    type: counter
+    notification_emails:
+      - cdenizet@mozilla.com
+      - mcastelluccio@mozilla.com
+  time_to_view:
+    type: custom_distribution
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566882
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566882#c2
+    description: >
+      Time spent to display first page in PDF Viewer (ms).
+    expires: never
+    range_min: 1
+    range_max: 10000
+    bucket_count: 50
+    histogram_type: exponential
+    unit: ms
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - cdenizet@mozilla.com
+      - mcastelluccio@mozilla.com
+pdfjs.editing.highlight:
+    kind:
+      type: labeled_counter
+      labels:
+        - free_highlight
+        - highlight
+      description: >
+        Counts the number of times a given kind is used to highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    method:
+      type: labeled_counter
+      labels:
+        - context_menu
+        - main_toolbar
+        - floating_button
+      description: >
+        Counts the number of times a given method is used to highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    color:
+      type: labeled_counter
+      labels:
+        - yellow
+        - green
+        - blue
+        - pink
+        - red
+      description: >
+        Counts the number of times a given color is used to highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    color_changed:
+      type: counter
+      description: >
+        Counts the number of times the user changes the color of a highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    number_of_colors:
+      type: labeled_counter
+      labels:
+        - one
+        - two
+        - three
+        - four
+        - five
+      description: >
+        Counts the number of different colors used to highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    thickness:
+      type: custom_distribution
+      range_min: 8
+      range_max: 24
+      bucket_count: 17
+      histogram_type: linear
+      unit: pixels
+      description: >
+        The thickness used to draw a free highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    thickness_changed:
+      type: counter
+      description: >
+        Counts the number of times the user changes the thickness of a free highlight.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    save:
+      type: counter
+      description: >
+        Counts the number of times the user saves a PDF with highlights.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    print:
+      type: counter
+      description: >
+        Counts the number of times the user prints a PDF with highlights.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    edited:
+      type: counter
+      description: >
+        Counts the number of times the user edits highlights.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    deleted:
+      type: counter
+      description: >
+        Counts the number of times the user deletes highlights.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never
+
+    toggle_visibility:
+      type: counter
+      description: >
+        Counts the number of times the user toggles the visibility of highlights.
+      bugs:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437
+      data_reviews:
+        - https://bugzilla.mozilla.org/show_bug.cgi?id=1866437#c1
+      data_sensitivity:
+        - interaction
+      notification_emails:
+        - pdfjs-team@mozilla.com
+      expires: never

@@ -1,0 +1,47 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#ifndef mozilla_nsclickrule_h__
+#define mozilla_nsclickrule_h__
+
+#include "nsIClickRule.h"
+#include "nsICookieBannerRule.h"
+#include "nsString.h"
+
+namespace mozilla {
+
+class nsClickRule final : public nsIClickRule {
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSICLICKRULE
+
+  explicit nsClickRule(nsICookieBannerRule* aCookieBannerRule,
+                       const nsACString& aPresence,
+                       const bool aSkipPresenceVisibilityCheck,
+                       const nsIClickRule::RunContext aRunContext,
+                       const nsACString& aHide, const nsACString& aOptOut,
+                       const nsACString& aOptIn)
+      : mCookieBannerRule(aCookieBannerRule),
+        mPresence(aPresence),
+        mSkipPresenceVisibilityCheck(aSkipPresenceVisibilityCheck),
+        mRunContext(aRunContext),
+        mHide(aHide),
+        mOptOut(aOptOut),
+        mOptIn(aOptIn) {}
+
+ private:
+  ~nsClickRule() = default;
+
+  // The reference to the cookie banner rule that holds this clicking rule.
+  nsICookieBannerRule* mCookieBannerRule;
+  nsCString mPresence;
+  bool mSkipPresenceVisibilityCheck;
+  nsIClickRule::RunContext mRunContext;
+  nsCString mHide;
+  nsCString mOptOut;
+  nsCString mOptIn;
+};
+
+}  // namespace mozilla
+
+#endif  // mozilla_nsclickrule_h__

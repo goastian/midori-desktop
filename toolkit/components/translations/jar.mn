@@ -1,0 +1,18 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+toolkit.jar:
+    content/global/translations/bergamot-translator.js        (bergamot-translator/bergamot-translator.js)
+    content/global/translations/translations-document.sys.mjs (content/translations-document.sys.mjs)
+    content/global/translations/translations-engine.html      (content/translations-engine.html)
+    content/global/translations/translations-engine.sys.mjs   (content/translations-engine.sys.mjs)
+    content/global/translations/translations-engine.worker.js (content/translations-engine.worker.js)
+    content/global/translations/translations.html             (content/translations.html)
+    content/global/translations/translations.css              (content/translations.css)
+    content/global/translations/translations.mjs              (content/translations.mjs)
+    content/global/translations/Translator.mjs                (content/Translator.mjs)
+    content/global/translations/TranslationsTelemetry.sys.mjs (TranslationsTelemetry.sys.mjs)
+
+    # Uncomment this line to test a local build of Bergamot. It will automatically be loaded in.
+    # content/global/translations/bergamot-translator-worker.wasm   (bergamot-translator/thirdparty/build-wasm/bergamot-translator-worker.wasm)

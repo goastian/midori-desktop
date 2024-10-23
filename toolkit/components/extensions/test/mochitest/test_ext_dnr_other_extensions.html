@@ -1,0 +1,290 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>DNR and tabs.create from other extension</title>
+  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/ExtensionTestUtils.js"></script>
+  <script type="text/javascript" src="head.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css">
+</head>
+<body>
+<script>
+"use strict";
+
+
+// While most DNR tests are xpcshell tests, this one is a mochitest because the
+// tabs.create API does not work in a xpcshell test.
+
+add_setup(async () => {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["extensions.manifestV3.enabled", true],
+      ["extensions.dnr.enabled", true],
+    ],
+  });
+});
+
+
+add_task(async function tabs_create_can_be_redirected_by_other_dnr_extension() {
+  let dnrExtension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["declarativeNetRequestWithHostAccess"],
+      // redirect action requires host permissions:
+      host_permissions: ["*://example.com/*"],
+    },
+    async background() {
+      await browser.declarativeNetRequest.updateSessionRules({
+        addRules: [
+          {
+            id: 1,
+            condition: {
+              resourceTypes: ["main_frame"],
+              urlFilter: "?dnr_redir_me_pls",
+            },
+            action: {
+              type: "redirect",
+              redirect: {
+                transform: {
+                  query: "?dnr_redir_target"
+                },
+              },
+            },
+          },
+        ],
+      });
+      browser.test.sendMessage("dnr_registered");
+    },
+  });
+  await dnrExtension.startup();
+  await dnrExtension.awaitMessage("dnr_registered");
+
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["webNavigation"],
+    },
+    async background() {
+      async function createTabAndGetFinalUrl(url) {
+        let navigationDonePromise = new Promise(resolve => {
+          browser.webNavigation.onDOMContentLoaded.addListener(
+            function listener(details) {
+              browser.webNavigation.onDOMContentLoaded.removeListener(listener);
+              resolve(details);
+            },
+            // All input URLs and redirection targets match this URL filter:
+            { url: [{ queryPrefix: "dnr_redir_" }] }
+          );
+        });
+        const tab = await browser.tabs.create({ url });
+        browser.test.log(`Waiting for navigation done, starting from ${url}`);
+        const result = await navigationDonePromise;
+        browser.test.assertEq(
+          tab.id,
+          result.tabId,
+          `Observed load completion for navigation tab with initial URL ${url}`
+        );
+        await browser.tabs.remove(tab.id);
+        return result.url;
+      }
+
+      browser.test.assertEq(
+        "https://example.com/?dnr_redir_target",
+        await createTabAndGetFinalUrl("https://example.com/?dnr_redir_me_pls"),
+        "DNR rule from other extension should have redirected the navigation"
+      );
+
+      browser.test.assertEq(
+        "https://example.org/?dnr_redir_me_pls",
+        await createTabAndGetFinalUrl("https://example.org/?dnr_redir_me_pls"),
+        "DNR redirect ignored for URLs without host permission"
+      );
+      browser.test.sendMessage("done");
+    }
+  });
+  await extension.startup();
+  await extension.awaitMessage("done");
+
+  await dnrExtension.unload();
+  await extension.unload();
+});
+
+add_task(async function test_tabs_create_request_domainType() {
+  function promiseHttpOnStopRequest(url, msg = `request ${url}`) {
+    const chromeScript = SpecialPowers.loadChromeScript(() => {
+      /* global addMessageListener, sendAsyncMessage */
+      addMessageListener("promiseHttpOnStopRequest", ([url, msg]) => {
+        const {TestUtils} = ChromeUtils.importESModule(
+          "resource://testing-common/TestUtils.sys.mjs"
+        );
+        TestUtils.topicObserved("http-on-stop-request", s => {
+          const chan = s.QueryInterface(Ci.nsIHttpChannel);
+          return chan.URI.spec === url;
+        }).then(([chan]) => {
+            if (!chan.canceled) {
+              const { responseStatus } = chan;
+              info(
+                `Got http-on-stop-request for ${msg}, responseStatus ${responseStatus}`
+              );
+              return { responseStatus };
+            }
+            let blockingReason = chan.loadInfo.requestBlockingReason;
+            info(
+              `Got http-on-stop-request for ${msg}, blockingReason ${blockingReason}`
+            );
+            let addonId;
+            try {
+              const props = chan.QueryInterface(Ci.nsIPropertyBag);
+              addonId = props.getProperty("cancelledByExtension");
+            } catch (err) {
+              // Channel may not have a property bag and chan.QueryInterface.
+            }
+            return { addonId, blockingReason };
+          }).then(res => {
+            sendAsyncMessage("promiseHttpOnStopRequest:resolve", res);
+          });
+      });
+    });
+    const deferred = Promise.withResolvers();
+    chromeScript.addMessageListener("promiseHttpOnStopRequest:resolve", deferred.resolve);
+    chromeScript.sendAsyncMessage("promiseHttpOnStopRequest", [url, msg]);
+
+    return deferred.promise;
+  }
+
+  let dnrExtension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["declarativeNetRequest"],
+    },
+    async background() {
+      const {id} = browser.runtime;
+      let tab;
+      browser.test.onMessage.addListener(async msg => {
+        switch (msg) {
+          case "create_tab":
+            tab = await browser.tabs.create({
+              url: `https://example.com/?try_to_block_me&fromAddon=${id}`
+            });
+            break;
+          case "remove_tab":
+            await browser.tabs.remove(tab.id);
+            break;
+          default:
+            browser.test.fail(`Got unexpected test message ${msg}`);
+        }
+        browser.test.sendMessage(`${msg}:done`);
+      });
+      await browser.declarativeNetRequest.updateSessionRules({
+        addRules: [
+          {
+            id: 1,
+            condition: {
+              resourceTypes: ["main_frame"],
+              urlFilter: "?try_to_block_me",
+              domainType: "thirdParty"
+            },
+            action: {
+              type: "block",
+            },
+          },
+        ],
+      });
+      browser.test.sendMessage("bg:ready");
+    },
+  });
+
+  let tabExtension = ExtensionTestUtils.loadExtension({
+    background() {
+      const {id} = browser.runtime;
+      let tab;
+      browser.test.onMessage.addListener(async msg => {
+        switch (msg) {
+          case "create_tab":
+            tab = await browser.tabs.create({
+              url: `https://example.com/?try_to_block_me&fromAddon=${id}`
+            });
+            break;
+          case "remove_tab":
+            await browser.tabs.remove(tab.id);
+            break;
+          default:
+            browser.test.fail(`Got unexpected test message ${msg}`);
+        }
+        browser.test.sendMessage(`${msg}:done`);
+      });
+      browser.test.sendMessage("bg:ready");
+    }
+  });
+
+  info("Test tabs.create originated from the same DNR extension");
+  await dnrExtension.startup();
+  await dnrExtension.awaitMessage("bg:ready");
+
+  {
+    const promiseStopRequest = promiseHttpOnStopRequest(
+      `https://example.com/?try_to_block_me&fromAddon=${dnrExtension.id}`
+    );
+    dnrExtension.sendMessage("create_tab")
+    await dnrExtension.awaitMessage("create_tab:done");
+    const result = await promiseStopRequest;
+    isDeeply(
+      result,
+      {
+        addonId: dnrExtension.id,
+        blockingReason: SpecialPowers.Ci.nsILoadInfo.BLOCKING_REASON_EXTENSION_WEBREQUEST,
+      },
+      "Expect tabs.create originated from DNR extension to be blocked"
+    );
+    dnrExtension.sendMessage("remove_tab")
+    await dnrExtension.awaitMessage("remove_tab:done");
+  }
+
+  info("Test tabs.create originated from another extension");
+  await tabExtension.startup();
+  await tabExtension.awaitMessage("bg:ready");
+
+  {
+    const promiseStopRequest = promiseHttpOnStopRequest(
+      `https://example.com/?try_to_block_me&fromAddon=${tabExtension.id}`
+    );
+    tabExtension.sendMessage("create_tab")
+    await tabExtension.awaitMessage("create_tab:done");
+    const result = await promiseStopRequest;
+    isDeeply(
+      result,
+      {
+        addonId: dnrExtension.id,
+        blockingReason: SpecialPowers.Ci.nsILoadInfo.BLOCKING_REASON_EXTENSION_WEBREQUEST,
+      },
+      "Expect tabs.create originated from other extension to be blocked"
+    );
+    tabExtension.sendMessage("remove_tab")
+    await tabExtension.awaitMessage("remove_tab:done");
+  }
+
+  info("Test tab created by the user through the Browser");
+
+  {
+    const promiseStopRequest = promiseHttpOnStopRequest(
+      `https://example.com/?try_to_block_me&fromUser`
+    );
+    // TODO: use AppTestDelegate.openNewForegroundTab once Bug 1900831 is fixed.
+    const newWin = window.open(`https://example.com/?try_to_block_me&fromUser`);
+    const result = await promiseStopRequest;
+    isDeeply(
+      result,
+      {
+        addonId: dnrExtension.id,
+        blockingReason: SpecialPowers.Ci.nsILoadInfo.BLOCKING_REASON_EXTENSION_WEBREQUEST,
+      },
+      "Expect tab created by the user to be blocked"
+    );
+    newWin.close();
+  }
+
+  await dnrExtension.unload();
+  await tabExtension.unload();
+});
+
+</script>
+</body>
+</html>

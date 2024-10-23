@@ -1,0 +1,97 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+SPHINX_TREES["default-browser-agent"] = "docs"
+
+JAR_MANIFESTS += ["jar.mn"]
+
+DIRS += ["proxy"]
+
+UNIFIED_SOURCES += [
+    "Cache.cpp",
+    "common.cpp",
+    "DefaultAgent.cpp",
+    "DefaultBrowser.cpp",
+    "DefaultPDF.cpp",
+    "EventLog.cpp",
+    "Notification.cpp",
+    "Policy.cpp",
+    "Registry.cpp",
+    "ScheduledTask.cpp",
+    "ScheduledTaskRemove.cpp",
+    "SetDefaultBrowser.cpp",
+    "Telemetry.cpp",
+    "UtfConvert.cpp",
+    "WindowsMutex.cpp",
+]
+
+EXPORTS.mozilla += [
+    "DefaultAgent.h",
+    "WindowsMutex.h",
+]
+
+USE_LIBS += [
+    "jsoncpp",
+]
+
+LOCAL_INCLUDES += [
+    "/browser/components/shell/",
+    "/other-licenses/nsis/Contrib/CityHash/cityhash",
+    "/toolkit/components/jsoncpp/include",
+]
+
+OS_LIBS += [
+    "advapi32",
+    "bcrypt",
+    "comsupp",
+    "crypt32",
+    "kernel32",
+    "netapi32",
+    "ole32",
+    "oleaut32",
+    "rpcrt4",
+    "shell32",
+    "shlwapi",
+    "taskschd",
+    "userenv",
+    "wininet",
+    "ws2_32",
+    "ntdll",
+]
+
+XPIDL_SOURCES += [
+    "nsIDefaultAgent.idl",
+    "nsIWindowsMutex.idl",
+]
+
+XPIDL_MODULE = "default-agent"
+
+XPCOM_MANIFESTS += [
+    "components.conf",
+]
+
+XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
+
+# If defines are added to this list that are required by the Cache,
+# SetDefaultBrowser, or their dependencies (Registry, EventLog, common),
+# tests/gtest/moz.build will need to be updated as well.
+for var in ("MOZ_APP_BASENAME", "MOZ_APP_DISPLAYNAME", "MOZ_APP_VENDOR"):
+    DEFINES[var] = '"%s"' % CONFIG[var]
+
+DEFINES["UNICODE"] = True
+DEFINES["_UNICODE"] = True
+
+FINAL_LIBRARY = "xul"
+
+if CONFIG["ENABLE_TESTS"]:
+    DIRS += ["tests/gtest"]
+
+with Files("**"):
+    BUG_COMPONENT = ("Toolkit", "Default Browser Agent")
+
+EXTRA_JS_MODULES.backgroundtasks += [
+    "BackgroundTask_defaultagent.sys.mjs",
+]
