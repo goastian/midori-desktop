@@ -1,0 +1,687 @@
+dnl -*- Mode: Autoconf; tab-width: 4; indent-tabs-mode: nil; -*-
+dnl vi: set tabstop=4 shiftwidth=4 expandtab syntax=m4:
+dnl This Source Code Form is subject to the terms of the Mozilla Public
+dnl License, v. 2.0. If a copy of the MPL was not distributed with this
+dnl file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+dnl Process this file with autoconf to produce a configure script.
+dnl ========================================================
+AC_PREREQ(2.13)
+AC_INIT(js/src/jsapi.h)
+AC_CONFIG_AUX_DIR(${srcdir}/build/autoconf)
+AC_CANONICAL_SYSTEM
+
+dnl ========================================================
+dnl =
+dnl = Don't change the following lines. Doing so breaks:
+dnl =
+dnl = CFLAGS="-foo" ./configure
+dnl =
+dnl ========================================================
+CFLAGS="${CFLAGS=}"
+CPPFLAGS="${CPPFLAGS=}"
+CXXFLAGS="${CXXFLAGS=}"
+LDFLAGS="${LDFLAGS=}"
+HOST_CFLAGS="${HOST_CFLAGS=}"
+HOST_CXXFLAGS="${HOST_CXXFLAGS=}"
+HOST_LDFLAGS="${HOST_LDFLAGS=}"
+
+dnl Propagate extra android flags
+dnl =============================
+case "$target" in
+*-android*|*-linuxandroid*)
+    LDFLAGS="$ANDROID_LDFLAGS $LDFLAGS"
+    CFLAGS="$ANDROID_CFLAGS $CFLAGS"
+    CXXFLAGS="$ANDROID_CXXFLAGS $CXXFLAGS"
+    ASFLAGS="$ANDROID_ASFLAGS -DANDROID $ASFLAGS"
+    ;;
+esac
+
+
+dnl Set the minimum version of toolkit libs used by mozilla
+dnl ========================================================
+W32API_VERSION=3.14
+
+LDFLAGS="$LDFLAGS $LINKER_LDFLAGS $PACK_REL_RELOC_FLAGS"
+HOST_LDFLAGS="$HOST_LDFLAGS $HOST_LINKER_LDFLAGS"
+
+if test -z "$JS_STANDALONE"; then
+  autoconfmk=autoconf-js.mk
+fi
+AC_SUBST(autoconfmk)
+
+jsconfdefs=$_objdir/js/src/js-confdefs.h
+
+dnl ========================================================
+dnl Checks for compilers.
+dnl ========================================================
+
+if test "$COMPILE_ENVIRONMENT"; then
+
+# This prevents mingw from adding .exe when generating executable. Internal use
+# only.
+ac_exeext=.out
+
+# Note:
+#   In Mozilla, we use the names $target, $host and $build incorrectly, but are
+#   too far gone to back out now. See Bug 475488:
+#     - When we say $target, we mean $host, that is, the system on which
+#       Mozilla will be run.
+#     - When we say $host, we mean $build, that is, the system on which Mozilla
+#       is built.
+#     - $target (in its correct usage) is for compilers who generate code for a
+#       different platform than $host, so it would not be used by Mozilla.
+if test "$target" != "$host"; then
+    MOZ_CROSS_COMPILER
+else
+    AC_PROG_CC
+    AC_PROG_CXX
+fi
+
+dnl Special win32 checks
+dnl ========================================================
+
+WINVER=0A00
+
+case "$target" in
+*-mingw*)
+    if test "$GCC" != "yes"; then
+        # Check to see if we are really running in a msvc environemnt
+        _WIN32_MSVC=1
+
+        # Make sure compilers are valid
+        CXXFLAGS="$CXXFLAGS -TP"
+        # _CRT_SECURE_NO_WARNINGS disables warnings about using MSVC-specific
+        # secure CRT functions.
+        CXXFLAGS="$CXXFLAGS -D_CRT_SECURE_NO_WARNINGS"
+        AC_LANG_SAVE
+        AC_LANG_C
+        AC_TRY_COMPILE([#include <stdio.h>],
+            [ printf("Hello World\n"); ],,
+            AC_MSG_ERROR([\$(CC) test failed.  You must have MS VC++ in your path to build.]) )
+
+        AC_LANG_CPLUSPLUS
+        AC_TRY_COMPILE([#include <new.h>],
+            [ unsigned *test = new unsigned(42); ],,
+            AC_MSG_ERROR([\$(CXX) test failed.  You must have MS VC++ in your path to build.]) )
+        AC_LANG_RESTORE
+
+        AC_DEFINE(_CRT_SECURE_NO_WARNINGS)
+        AC_DEFINE(_CRT_NONSTDC_NO_WARNINGS)
+
+        MSVC_C_RUNTIME_DLL=vcruntime140.dll
+        if test "$TARGET_CPU" != "x86"; then
+            MSVC_C_RUNTIME_1_DLL=vcruntime140_1.dll
+        fi
+        MSVC_CXX_RUNTIME_DLL=msvcp140.dll
+
+        # -Zc:sizedDealloc- disables C++14 global sized deallocation (see bug 1160146)
+        CXXFLAGS="$CXXFLAGS -Zc:sizedDealloc-"
+
+        AC_SUBST(MSVC_C_RUNTIME_DLL)
+        AC_SUBST(MSVC_C_RUNTIME_1_DLL)
+        AC_SUBST(MSVC_CXX_RUNTIME_DLL)
+
+        CFLAGS="$CFLAGS -D_HAS_EXCEPTIONS=0"
+        CXXFLAGS="$CXXFLAGS -D_HAS_EXCEPTIONS=0"
+    else
+        # Check w32api version
+        _W32API_MAJOR_VERSION=`echo $W32API_VERSION | $AWK -F\. '{ print $1 }'`
+        _W32API_MINOR_VERSION=`echo $W32API_VERSION | $AWK -F\. '{ print $2 }'`
+        AC_MSG_CHECKING([for w32api version >= $W32API_VERSION])
+        AC_TRY_COMPILE([#include <w32api.h>],
+            #if (__W32API_MAJOR_VERSION < $_W32API_MAJOR_VERSION) || \
+                (__W32API_MAJOR_VERSION == $_W32API_MAJOR_VERSION && \
+                 __W32API_MINOR_VERSION < $_W32API_MINOR_VERSION)
+                #error "test failed."
+            #endif
+            , [ res=yes ], [ res=no ])
+        AC_MSG_RESULT([$res])
+        if test "$res" != "yes"; then
+            AC_MSG_ERROR([w32api version $W32API_VERSION or higher required.])
+        fi
+    fi
+
+    AC_DEFINE(_USE_MATH_DEFINES) # Otherwise Windows' math.h doesn't #define M_PI.
+
+    AC_DEFINE_UNQUOTED(WINVER,0x$WINVER)
+    AC_DEFINE_UNQUOTED(_WIN32_WINNT,0x$WINVER)
+    AC_DEFINE_UNQUOTED(_WIN32_IE,0x0A00)
+
+    ;;
+esac
+
+if test -n "$_WIN32_MSVC"; then
+    SKIP_PATH_CHECKS=1
+    SKIP_COMPILER_CHECKS=1
+    SKIP_LIBRARY_CHECKS=1
+fi
+
+fi # COMPILE_ENVIRONMENT
+
+dnl ========================================================
+dnl set the defaults first
+dnl ========================================================
+MOZ_FIX_LINK_PATHS="-Wl,-rpath-link,${DIST}/bin -Wl,-rpath-link,${prefix}/lib"
+
+dnl Configure platform-specific CPU architecture compiler options.
+dnl ==============================================================
+MOZ_ARCH_OPTS
+
+MOZ_CONFIG_SANITIZE
+
+dnl ========================================================
+dnl GNU specific defaults
+dnl ========================================================
+if test "$CC_TYPE" != clang-cl ; then
+    DSO_LDOPTS='-shared'
+    if test "$GCC_USE_GNU_LD"; then
+        # Some tools like ASan use a runtime library that is only
+        # linked against executables, so we must allow undefined
+        # symbols for shared objects in some cases.
+        if test -z "$MOZ_ASAN$MOZ_MSAN$MOZ_UBSAN$MOZ_TSAN$FUZZING_INTERFACES"; then
+            # Don't allow undefined symbols in libraries
+            DSO_LDOPTS="$DSO_LDOPTS -Wl,-z,defs"
+        fi
+    fi
+
+    if test "$OS_ARCH" != "WINNT"; then
+        DSO_PIC_CFLAGS='-fPIC'
+        ASFLAGS="$ASFLAGS -fPIC"
+    fi
+
+    _DEFINES_CFLAGS="-include $jsconfdefs -DMOZILLA_CLIENT"
+fi
+
+if test "$CC_TYPE" != clang-cl ; then
+    _DEFINES_CXXFLAGS="-DMOZILLA_CLIENT -include $jsconfdefs"
+fi
+
+dnl ========================================================
+dnl System overrides of the defaults for host
+dnl ========================================================
+case "$host" in
+*mingw*)
+    if test "$HOST_CC_TYPE" = clang-cl; then
+        HOST_CFLAGS="$HOST_CFLAGS"
+    else
+        HOST_CFLAGS="$HOST_CFLAGS -mwindows"
+    fi
+    HOST_CFLAGS="$HOST_CFLAGS -DXP_WIN -DWIN32 -D_WIN32 -D_CRT_SECURE_NO_WARNINGS"
+    HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O2}"
+    HOST_BIN_SUFFIX=.exe
+
+    case "${host_cpu}" in
+    i*86)
+        if test "$HOST_CC_TYPE" = clang-cl; then
+            HOST_LDFLAGS="$HOST_LDFLAGS -MACHINE:X86"
+        fi
+        ;;
+    x86_64)
+        if test "$HOST_CC_TYPE" = clang-cl; then
+            HOST_LDFLAGS="$HOST_LDFLAGS -MACHINE:X64"
+        fi
+        HOST_CFLAGS="$HOST_CFLAGS -D_AMD64_"
+        ;;
+    esac
+    ;;
+
+*-darwin*)
+    HOST_CFLAGS="$HOST_CFLAGS -DXP_UNIX -DXP_MACOSX"
+    HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O3}"
+    ;;
+
+*-linux*|*-kfreebsd*-gnu|*-gnu*)
+    HOST_CFLAGS="$HOST_CFLAGS -DXP_UNIX"
+    HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O3}"
+    ;;
+
+*)
+    HOST_CFLAGS="$HOST_CFLAGS -DXP_UNIX"
+    HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O2}"
+    ;;
+esac
+
+dnl ========================================================
+dnl System overrides of the defaults for target
+dnl ========================================================
+
+MOZ_OPTIMIZE_LDFLAGS="${_COMPILATION_OPTIMIZE_LDFLAGS} ${MOZ_OPTIMIZE_FLAGS}"
+
+case "$target" in
+*-darwin*)
+    MOZ_OPTIMIZE_FLAGS="-O3"
+    DSO_LDOPTS=''
+    MOZ_FIX_LINK_PATHS=
+    ;;
+
+*-android*|*-linuxandroid*)
+    MOZ_OPTIMIZE_FLAGS="-O3"
+    if test "$CC_TYPE" == gcc ; then
+       MOZ_OPTIMIZE_FLAGS="-fno-reorder-functions $MOZ_OPTIMIZE_FLAGS"
+    fi
+    ;;
+
+*-*linux*)
+    MOZ_PGO_OPTIMIZE_FLAGS="-O3"
+    MOZ_OPTIMIZE_FLAGS="-O3"
+
+    case "${target_cpu}" in
+    alpha*)
+    	CFLAGS="$CFLAGS -mieee"
+    	CXXFLAGS="$CXXFLAGS -mieee"
+    ;;
+    esac
+    ;;
+
+*-mingw*)
+    DSO_PIC_CFLAGS=
+    if test "$CC_TYPE" != clang-cl ; then
+        # != clang-cl will match gcc and clang
+        if test "$CC_TYPE" = gcc ; then
+            AC_MSG_ERROR(Firefox cannot be built with mingw-gcc and requires a mingw-clang toolchain to work)
+        fi
+
+        DSO_LDOPTS='-shared'
+        MOZ_FIX_LINK_PATHS=
+
+        # Silence problematic clang warnings
+        CXXFLAGS="$CXXFLAGS -Wno-incompatible-ms-struct"
+        LDFLAGS="$LDFLAGS -Wl,--no-insert-timestamp"
+
+        MOZ_OPTIMIZE_FLAGS="-O2"
+
+        WIN32_CONSOLE_EXE_LDFLAGS=-mconsole
+        WIN32_GUI_EXE_LDFLAGS=-mwindows
+    else
+        TARGET_COMPILER_ABI=msvc
+        WIN32_SUBSYSTEM_VERSION=10.0
+        WIN32_CONSOLE_EXE_LDFLAGS=-SUBSYSTEM:CONSOLE,$WIN32_SUBSYSTEM_VERSION
+        WIN32_GUI_EXE_LDFLAGS=-SUBSYSTEM:WINDOWS,$WIN32_SUBSYSTEM_VERSION
+        DSO_LDOPTS=-SUBSYSTEM:WINDOWS,$WIN32_SUBSYSTEM_VERSION
+        _DEFINES_CFLAGS="-FI $jsconfdefs -DMOZILLA_CLIENT"
+        _DEFINES_CXXFLAGS="-FI $jsconfdefs -DMOZILLA_CLIENT"
+        CFLAGS="$CFLAGS -Gy -Zc:inline"
+        CXXFLAGS="$CXXFLAGS -Gy -Zc:inline"
+        if test "$TARGET_CPU" = "x86";then
+          dnl VS2012+ defaults to -arch:SSE2. We want to target nothing
+          dnl more recent, so set that explicitly here unless another
+          dnl target arch has already been set.
+          changequote(,)
+          if test -z `echo $CFLAGS | grep -i [-/]arch:` ; then
+            CFLAGS="$CFLAGS -arch:SSE2"
+          fi
+          if test -z `echo $CXXFLAGS | grep -i [-/]arch:` ; then
+            CXXFLAGS="$CXXFLAGS -arch:SSE2"
+          fi
+          changequote([,])
+        fi
+        dnl VS2013+ supports -Gw for better linker optimizations.
+        dnl http://blogs.msdn.com/b/vcblog/archive/2013/09/11/introducing-gw-compiler-switch.aspx
+        dnl Disabled on ASan because it causes false-positive ODR violations.
+        if test -z "$MOZ_ASAN"; then
+            CFLAGS="$CFLAGS -Gw"
+            CXXFLAGS="$CXXFLAGS -Gw"
+        else
+            # String tail merging doesn't play nice with ASan's ODR checker.
+            LDFLAGS="$LDFLAGS -opt:nolldtailmerge"
+        fi
+        MOZ_DEBUG_LDFLAGS='-DEBUG'
+        if test "$HOST_OS_ARCH" != "WINNT"; then
+          # %_PDB% is a special signal to emit only the PDB basename. This
+          # avoids problems in Windows tools that don't like forward-slashes.
+          MOZ_DEBUG_LDFLAGS="$MOZ_DEBUG_LDFLAGS -PDBALTPATH:%_PDB%"
+        fi
+        MOZ_OPTIMIZE_FLAGS="-O2"
+        MOZ_FIX_LINK_PATHS=
+        LDFLAGS="$LDFLAGS -LARGEADDRESSAWARE"
+    fi
+    AC_DEFINE(HAVE__MSIZE)
+    AC_DEFINE(WIN32_LEAN_AND_MEAN)
+    dnl See http://support.microsoft.com/kb/143208 to use STL
+    AC_DEFINE(NOMINMAX)
+    BIN_SUFFIX='.exe'
+
+    case "$host_os" in
+    cygwin*|msvc*|mks*)
+        AC_MSG_ERROR([Using a Cygwin build environment is unsupported. Configure cannot check for presence of necessary headers. Please upgrade to MozillaBuild; see https://developer.mozilla.org/en/Windows_Build_Prerequisites.])
+        ;;
+    esac
+
+    case "$target" in
+    i*86-*)
+        if test "$CC_TYPE" != clang-cl ; then
+            CFLAGS="$CFLAGS -mstackrealign"
+            CXXFLAGS="$CXXFLAGS -mstackrealign"
+            LDFLAGS="$LDFLAGS -Wl,--large-address-aware"
+        else
+            DSO_LDOPTS="$DSO_LDOPTS -MACHINE:X86"
+            LDFLAGS="$LDFLAGS -SAFESEH"
+        fi
+
+    	AC_DEFINE(_X86_)
+	;;
+    x86_64-*)
+        if test -n "$_WIN32_MSVC"; then
+            DSO_LDOPTS="$DSO_LDOPTS -MACHINE:X64"
+        fi
+        AC_DEFINE(_AMD64_)
+        ;;
+    aarch64-*)
+        if test -n "$_WIN32_MSVC"; then
+            DSO_LDOPTS="$DSO_LDOPTS -MACHINE:ARM64"
+        fi
+        AC_DEFINE(_ARM64_)
+        ;;
+    *)
+    	AC_DEFINE(_CPU_ARCH_NOT_DEFINED)
+	;;
+    esac
+    ;;
+
+*-netbsd*)
+    CFLAGS="$CFLAGS -Dunix"
+    CXXFLAGS="$CXXFLAGS -Dunix"
+    if $CC -E - -dM </dev/null | grep __ELF__ >/dev/null; then
+        DSO_PIC_CFLAGS='-fPIC -DPIC'
+        DSO_LDOPTS='-shared'
+        MOZ_PROGRAM_LDFLAGS="$MOZ_PROGRAM_LDFLAGS -Wl,--export-dynamic"
+    else
+    	DSO_PIC_CFLAGS='-fPIC -DPIC'
+    	DSO_LDOPTS='-shared'
+    fi
+    # This will fail on a.out systems prior to 1.5.1_ALPHA.
+    if test "$LIBRUNPATH"; then
+	DSO_LDOPTS="-Wl,-R$LIBRUNPATH $DSO_LDOPTS"
+    fi
+    ;;
+
+*-openbsd*)
+    DSO_PIC_CFLAGS='-fPIC'
+    DSO_LDOPTS='-shared -fPIC'
+    if test "$LIBRUNPATH"; then
+	DSO_LDOPTS="-R$LIBRUNPATH $DSO_LDOPTS"
+    fi
+    ;;
+
+*-solaris*)
+    MOZ_FIX_LINK_PATHS="-L${DIST}/bin"
+    ;;
+
+*-wasi*)
+    CXXFLAGS="$CXXFLAGS -mthread-model single"
+    MOZ_FIX_LINK_PATHS=
+    ;;
+
+esac
+
+CFLAGS="$CFLAGS $DSO_PIC_CFLAGS"
+CXXFLAGS="$CXXFLAGS $DSO_PIC_CFLAGS"
+
+if test -z "$MOZ_OPTIMIZE_FLAGS"; then
+	MOZ_OPTIMIZE_FLAGS="-O"
+fi
+
+if test -z "$COMPILE_ENVIRONMENT"; then
+    SKIP_COMPILER_CHECKS=1
+    SKIP_LIBRARY_CHECKS=1
+fi
+
+if test -n "$COMPILE_ENVIRONMENT"; then
+    MOZ_COMPILER_OPTS
+fi
+
+if test -z "$SKIP_COMPILER_CHECKS"; then
+
+dnl ========================================================
+dnl Put your C++ language/feature checks below
+dnl ========================================================
+AC_LANG_CPLUSPLUS
+
+ARM_ABI_PREFIX=
+if test "$CC_TYPE" != clang-cl ; then
+  if test "$TARGET_CPU" = "arm" ; then
+    AC_CACHE_CHECK(for ARM EABI,
+        ac_cv_gcc_arm_eabi,
+        [AC_TRY_COMPILE([],
+                        [
+#if defined(__ARM_EABI__)
+  return 0;
+#else
+#error Not ARM EABI.
+#endif
+                        ],
+                        ac_cv_gcc_arm_eabi="yes",
+                        ac_cv_gcc_arm_eabi="no")])
+    if test "$ac_cv_gcc_arm_eabi" = "yes"; then
+        HAVE_ARM_EABI=1
+        ARM_ABI_PREFIX=eabi-
+    else
+        ARM_ABI_PREFIX=oabi-
+    fi
+  fi
+
+  TARGET_COMPILER_ABI="${TARGET_COMPILER_ABI-${ARM_ABI_PREFIX}gcc3}"
+fi
+
+dnl End of C++ language/feature checks
+AC_LANG_C
+
+fi # ! SKIP_COMPILER_CHECKS
+
+TARGET_XPCOM_ABI=
+if test -n "${TARGET_CPU}" -a -n "${TARGET_COMPILER_ABI}"; then
+    TARGET_XPCOM_ABI="${TARGET_CPU}-${TARGET_COMPILER_ABI}"
+fi
+
+dnl We can't run TRY_COMPILE tests on Windows, so hard-code some
+dnl features that Windows actually does support.
+
+if test -n "$SKIP_COMPILER_CHECKS"; then
+   AC_DEFINE(HAVE_FORCEINLINE)
+fi # SKIP_COMPILER_CHECKS
+
+dnl Mozilla specific options
+dnl ========================================================
+dnl The macros used for command line options
+dnl are defined in build/autoconf/altoptions.m4.
+
+dnl ========================================================
+dnl = Enable code optimization. ON by default.
+dnl ========================================================
+
+# Use value from moz.configure if one is defined. Else use our computed
+# value.
+if test -n "${MOZ_CONFIGURE_OPTIMIZE_FLAGS}"; then
+    MOZ_OPTIMIZE_FLAGS=${MOZ_CONFIGURE_OPTIMIZE_FLAGS}
+fi
+
+if test "$COMPILE_ENVIRONMENT"; then
+if test -n "$MOZ_OPTIMIZE"; then
+    AC_MSG_CHECKING([for valid optimization flags])
+    _SAVE_CFLAGS=$CFLAGS
+    CFLAGS="$CFLAGS $MOZ_OPTIMIZE_FLAGS"
+    AC_TRY_COMPILE([#include <stdio.h>],
+        [printf("Hello World\n");],
+        _results=yes,
+        _results=no)
+    AC_MSG_RESULT([$_results])
+    if test "$_results" = "no"; then
+        AC_MSG_ERROR([These compiler flags are invalid: $MOZ_OPTIMIZE_FLAGS])
+    fi
+    CFLAGS=$_SAVE_CFLAGS
+    if test -n "$MOZ_LTO" -a "$CC_TYPE" = clang ; then
+        # When using llvm-based LTO, non numeric optimization levels are
+        # not supported by the linker, so force the linker to use -O2 (
+        # which doesn't influence the level compilation units are actually
+        # compiled at).
+        case " $MOZ_OPTIMIZE_FLAGS " in
+        *\ -Os\ *|*\ -Oz\ *)
+            MOZ_OPTIMIZE_LDFLAGS="$MOZ_OPTIMIZE_LDFLAGS -O2"
+            ;;
+        esac
+    fi
+fi
+fi # COMPILE_ENVIRONMENT
+
+AC_SUBST_LIST(MOZ_OPTIMIZE_FLAGS)
+AC_SUBST_LIST(MOZ_OPTIMIZE_LDFLAGS)
+AC_SUBST_LIST(MOZ_PGO_OPTIMIZE_FLAGS)
+
+dnl ========================================================
+dnl = Enable jemalloc
+dnl ========================================================
+
+if test "$JS_STANDALONE" -a -z "$MOZ_MEMORY"; then
+  MOZ_GLUE_IN_PROGRAM=
+else
+  case "${OS_TARGET}" in
+  Android|WINNT|Darwin)
+    MOZ_GLUE_IN_PROGRAM=
+    ;;
+  *)
+    dnl On !Android !Windows !OSX, we only want to link executables against mozglue
+    MOZ_GLUE_IN_PROGRAM=1
+    AC_DEFINE(MOZ_GLUE_IN_PROGRAM)
+    ;;
+  esac
+fi
+
+AC_SUBST(MOZ_GLUE_IN_PROGRAM)
+
+dnl ========================================================
+dnl instruments
+dnl ========================================================
+if test -n "$MOZ_INSTRUMENTS"; then
+    LIBS="$LIBS -framework CoreFoundation"
+fi
+
+dnl ========================================================
+dnl = Enable using the clang plugin to build
+dnl ========================================================
+
+if test -n "$COMPILE_ENVIRONMENT"; then
+MOZ_CONFIG_CLANG_PLUGIN
+fi # COMPILE_ENVIRONMENT
+
+dnl ========================================================
+dnl =
+dnl = Maintainer debug option (no --enable equivalent)
+dnl =
+dnl ========================================================
+
+AC_SUBST_LIST(ASFLAGS)
+AC_SUBST_LIST(MOZ_DEBUG_LDFLAGS)
+
+AC_SUBST_LIST(MOZ_FIX_LINK_PATHS)
+
+AC_SUBST(MOZ_POST_PROGRAM_COMMAND)
+
+AC_SUBST(MOZ_APP_DISPLAYNAME)
+
+AC_SUBST(MOZ_PKG_SPECIAL)
+
+dnl Echo the CFLAGS to remove extra whitespace.
+CFLAGS=`echo \
+	$_COMPILATION_CFLAGS \
+	$CFLAGS`
+
+CXXFLAGS=`echo \
+	$_COMPILATION_CXXFLAGS \
+	$CXXFLAGS`
+
+ASFLAGS=`echo \
+    $_COMPILATION_ASFLAGS \
+    $ASFLAGS`
+
+COMPILE_CFLAGS=`echo \
+    $_DEFINES_CFLAGS \
+    $COMPILE_CFLAGS`
+
+COMPILE_CXXFLAGS=`echo \
+    $_DEFINES_CXXFLAGS \
+    $COMPILE_CXXFLAGS`
+
+HOST_CFLAGS=`echo \
+    $_COMPILATION_HOST_CFLAGS \
+    $HOST_CFLAGS`
+
+HOST_CXXFLAGS=`echo \
+    $_COMPILATION_HOST_CXXFLAGS \
+    $HOST_CXXFLAGS`
+
+LDFLAGS=`echo \
+    $LDFLAGS \
+    $_COMPILATION_LDFLAGS`
+
+HOST_LDFLAGS=`echo \
+    $HOST_LDFLAGS \
+    $_COMPILATION_HOST_LDFLAGS`
+
+OS_CFLAGS="$CFLAGS"
+OS_CXXFLAGS="$CXXFLAGS"
+OS_CPPFLAGS="$CPPFLAGS"
+OS_COMPILE_CFLAGS="$COMPILE_CFLAGS"
+OS_COMPILE_CXXFLAGS="$COMPILE_CXXFLAGS"
+OS_LDFLAGS="$LDFLAGS"
+OS_LIBS="$LIBS"
+AC_SUBST_LIST(OS_CFLAGS)
+AC_SUBST_LIST(OS_CXXFLAGS)
+AC_SUBST_LIST(OS_CPPFLAGS)
+AC_SUBST_LIST(OS_COMPILE_CFLAGS)
+AC_SUBST_LIST(OS_COMPILE_CXXFLAGS)
+AC_SUBST_LIST(OS_LDFLAGS)
+AC_SUBST(OS_LIBS)
+
+AC_SUBST(HOST_CC)
+AC_SUBST(HOST_CXX)
+AC_SUBST_LIST(HOST_CFLAGS)
+AC_SUBST_LIST(HOST_CPPFLAGS)
+AC_SUBST_LIST(HOST_CXXFLAGS)
+AC_SUBST(HOST_LDFLAGS)
+AC_SUBST_LIST(HOST_OPTIMIZE_FLAGS)
+AC_SUBST(HOST_BIN_SUFFIX)
+
+AC_SUBST(TARGET_XPCOM_ABI)
+
+AC_SUBST(DSO_LDOPTS)
+AC_SUBST(BIN_SUFFIX)
+AC_SUBST(USE_N32)
+AC_SUBST(WIN32_CONSOLE_EXE_LDFLAGS)
+AC_SUBST(WIN32_GUI_EXE_LDFLAGS)
+
+dnl Set various defines and substitutions
+dnl ========================================================
+
+AC_SUBST(MOZ_DEV_EDITION)
+if test -n "$MOZ_DEV_EDITION"; then
+    AC_DEFINE(MOZ_DEV_EDITION)
+fi
+
+dnl ========================================================
+dnl JavaScript shell
+dnl ========================================================
+
+if test -n "$JS_STANDALONE"; then
+JS_LIBRARY_NAME="mozjs-$MOZILLA_SYMBOLVERSION"
+else
+JS_LIBRARY_NAME="mozjs"
+fi
+JS_CONFIG_LIBS="$NSPR_LIBS $LIBS"
+if test "$CC_TYPE" != clang-cl ; then
+JS_CONFIG_MOZ_JS_LIBS='-L${libdir} -l${JS_LIBRARY_NAME}'
+else
+JS_CONFIG_MOZ_JS_LIBS='${libdir}/${JS_LIBRARY_NAME}.lib'
+fi
+AC_SUBST(JS_LIBRARY_NAME)
+AC_SUBST(JS_CONFIG_MOZ_JS_LIBS)
+AC_SUBST(JS_CONFIG_LIBS)
+
+# Avoid using obsolete NSPR features
+AC_DEFINE(NO_NSPR_10_SUPPORT)
+
+dnl Spit out some output
+dnl ========================================================
+MOZ_CREATE_CONFIG_STATUS()
+
+rm -fr confdefs* $ac_clean_files
