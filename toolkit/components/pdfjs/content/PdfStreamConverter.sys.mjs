@@ -889,7 +889,7 @@ PdfStreamConverter.prototype = {
         Cr.NS_ERROR_NOT_IMPLEMENTED
       );
     }
-    
+
     const HTML = "text/html";
     let channelURI = aChannel?.URI;
     // We can be invoked for application/octet-stream; check if we want the

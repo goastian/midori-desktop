@@ -1,5 +1,0 @@
-[DEFAULT]
-
-["include:client/manifest.toml"]
-
-["include:unit/manifest.toml"]
