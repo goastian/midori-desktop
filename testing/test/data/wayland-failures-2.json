@@ -1,0 +1,60 @@
+{
+  "browser/components/sessionstore/test/browser.toml": {
+    "label": {
+      "test-linux1804-64-qr/opt-mochitest-browser-chrome-spi-nw-5": {
+        "duration_median": 1778154,
+        "duration_total": 5334462,
+        "durations": {
+          "X7r1q2xWSu-2bRAofEfeBw": 1778154,
+          "Y7r1q2xWSu-2bRAofEfeBw": 1778154,
+          "Z7r1q2xWSu-2bRAofEfeBw": 1778154
+        },
+        "opt": false,
+        "path": {
+          "browser/components/sessionstore/test/browser_closed_tabs_windows.js": {
+            "classification": "disable_recommended",
+            "runs": {
+              "X7r1q2xWSu-2bRAofEfeBw": {
+                "result": false
+              },
+              "Y7r1q2xWSu-2bRAofEfeBw": {
+                "result": false
+              },
+              "Z7r1q2xWSu-2bRAofEfeBw": {
+                "result": false
+              }
+            },
+            "runs_failed": 3,
+            "runs_total": 3
+          },
+          "browser/components/sessionstore/test/browser_firefoxView_selected_restore.js": {
+            "classification": "secondary",
+            "runs": {
+              "X7r1q2xWSu-2bRAofEfeBw": {
+                "result": false
+              },
+              "Y7r1q2xWSu-2bRAofEfeBw": {
+                "result": false
+              },
+              "Z7r1q2xWSu-2bRAofEfeBw": {
+                "result": false
+              }
+            },
+            "runs_failed": 3,
+            "runs_total": 3
+          }
+        },
+        "sum_by_label": {
+          "disable_manifest": 0,
+          "disable_recommended": 1,
+          "disable_too_long": 0,
+          "intermittent": 0,
+          "secondary": 1,
+          "success": 0,
+          "unknown": 0
+        }
+      }
+    },
+    "wpt": false
+  }
+}

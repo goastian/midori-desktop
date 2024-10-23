@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>fetchpriority</title>
+</head>
+<body>
+<script>
+  const resource_url = new URL('../resources/dummy.css', location);
+  onload = function() {
+    const kData = [
+      {
+        request_info: new Request(`${resource_url}?1`, {priority: 'low'}),
+        request_init: {priority: 'low'}
+      },
+      {
+        request_info: new Request(`${resource_url}?2`, {priority: 'low'}),
+        request_init: {priority: 'high'}
+      },
+      {
+        request_info: new Request(`${resource_url}?3`, {priority: 'low'}),
+        request_init: {priority: 'auto'}
+      },
+      {
+        request_info: new Request(`${resource_url}?4`, {priority: 'low'})
+      },
+      {
+        request_info: new Request(`${resource_url}?5`, {priority: 'high'}),
+        request_init: {priority: 'low'}
+      },
+      {
+        request_info: new Request(`${resource_url}?6`, {priority: 'high'}),
+        request_init: {priority: 'high'}
+      },
+      {
+        request_info: new Request(`${resource_url}?7`, {priority: 'high'}),
+        request_init: {priority: 'auto'}
+      },
+      {
+        request_info: new Request(`${resource_url}?8`, {priority: 'high'})
+      },
+      {
+        request_info: new Request(`${resource_url}?9`, {priority: 'auto'}),
+        request_init: {priority: 'low'}
+      },
+      {
+        request_info: new Request(`${resource_url}?10`, {priority: 'auto'}),
+        request_init: {priority: 'high'}
+      },
+      {
+        request_info: new Request(`${resource_url}?11`, {priority: 'auto'}),
+        request_init: {priority: 'auto'}
+      },
+      {
+        request_info: new Request(`${resource_url}?12`, {priority: 'auto'}),
+      },
+      {
+        request_info: `${resource_url}?13`,
+        request_init: {priority: 'low'}
+      },
+      {
+        request_info: `${resource_url}?14`,
+        request_init: {priority: 'high'}
+      },
+      {
+        request_info: `${resource_url}?15`,
+        request_init: {priority: 'auto'}
+      },
+      {
+        request_info: `${resource_url}?16`,
+        request_init: {}
+      },
+    ];
+    for (const data of kData) {
+        const response = fetch(data.request_info, data.request_init);
+        opener.postMessage("ChildLoaded", "*");
+    }
+  }
+</script>
+</body>
+</html>

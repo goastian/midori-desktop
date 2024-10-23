@@ -1,0 +1,36 @@
+{
+  "browser/base/content/test/performance/browser.toml": {
+    "label": {
+      "test-windows11-64-2009-qr/opt-mochitest-browser-chrome-3": {
+        "duration_median": 63094,
+        "duration_total": 63094,
+        "durations": {
+          "dwOJ8M9ERSmk6oI2KXg6hg": 63094
+        },
+        "opt": false,
+        "path": {
+          "browser/base/content/test/performance/browser_startup.js": {
+            "classification": "unknown",
+            "runs": {
+              "dwOJ8M9ERSmk6oI2KXg6hg": {
+                "result": false
+              }
+            },
+            "runs_failed": 1,
+            "runs_total": 1
+          }
+        },
+        "sum_by_label": {
+          "disable_manifest": 0,
+          "disable_recommended": 0,
+          "disable_too_long": 0,
+          "intermittent": 0,
+          "secondary": 0,
+          "success": 0,
+          "unknown": 1
+        }
+      }
+    },
+    "wpt": false
+  }
+}

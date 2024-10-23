@@ -1,0 +1,4 @@
+[DEFAULT]
+skip-if = [
+  "os = 'win'",
+]

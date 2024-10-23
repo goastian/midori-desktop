@@ -1,0 +1,41 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<iframe style="border: 0; padding: 0; width: 100.75px; height: 100.75px" srcdoc="<html style='width: 100vw; height: 100vh'>"></iframe>
+<script>
+onload = function() {
+  test(() => {
+    assert_equals(window.devicePixelRatio, 1, `precondition: ${window.innerWidth}x${window.innerHeight}`);
+
+    // So that the 100.75 is fractional css pixel, but whole dev pixels, and representable in app units.
+    SpecialPowers.setFullZoom(window, 4);
+
+    let win = document.querySelector("iframe").contentWindow;
+    const rounded = 101;
+    const truncated = 100;
+    const raw = 100.75;
+
+    const rect = win.document.documentElement.getBoundingClientRect();
+    assert_equals(rect.height, raw);
+    assert_equals(rect.width, raw);
+
+    switch (SpecialPowers.getIntPref("dom.innerSize.rounding")) {
+      case 1:
+        assert_equals(win.innerWidth, rounded);
+        assert_equals(win.innerHeight, rounded);
+        break;
+      case 2:
+        assert_equals(win.innerWidth, truncated);
+        assert_equals(win.innerHeight, truncated);
+        break;
+      default:
+        assert_equals(win.innerWidth, raw);
+        assert_equals(win.innerHeight, raw);
+        break;
+    }
+
+    SpecialPowers.setFullZoom(window, 1);
+  })
+};
+</script>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test mpadded</title>
+    <link rel="help" href="https://bugzilla.mozilla.org/show_bug.cgi?id=685628">
+    <link rel="match" href="mpadded-pseudo-units-004-ref.html">
+    <meta name="assert" content="pseudo unit specified in mpadded@width does not affect the height/depth">
+  </head>
+  <body>
+    <math>
+      <!--with fixed width, height + depth should not depend on the characters-->
+      <mpadded mathbackground="red" width="100width">
+        <mphantom>
+          <mtext>&#x1D692;<!-- Mathematical Monospace Small I --></mtext>
+        </mphantom>
+      </mpadded>
+    </math>
+  </body>
+</html>

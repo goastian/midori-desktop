@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Maximal size for a horizontal arrow stretched by scaling</title>
+    <link rel="help" href="https://bugzilla.mozilla.org/show_bug.cgi?id=414277">
+    <link rel="match" href="scale-stretchy-003-ref.html">
+    <meta name="assert" content="Verify maximal height of horizontal operator stretched by scaling.">
+  </head>
+  <body>
+    <!-- This assumes that the system fonts do not provide a way to draw a
+         bigger U+21DB RIGHTWARDS TRIPLE ARROW and that preference
+         `mathml.scale_stretchy_operators` is enabled, so that we exercise
+         stretching of largeop using a scale. This test may still pass if
+         stretching is not performed via a scale though. -->
+    <table style="position: absolute;">
+      <tr align="center">
+        <td><div style="width: 200px; height: 5px; background: black"/></td>
+      </tr>
+      <tr align="center">
+        <td>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <munder accentunder="false">
+              <mspace width="100px" height="5px" style="background: yellow"/>
+              <mo style="color: blue;">⇛</mo>
+            </munder>
+          </math>
+        </td>
+      </tr>
+    </table>
+    <!-- The red rect is slightly wider than the target size so it should
+         completely cover the operator. -->
+    <table style="position: absolute;">
+      <tr align="center">
+        <td><div style="width: 200px; height: 5px; background: black"/></td>
+      </tr>
+      <tr align="center">
+        <td>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <munder accentunder="false">
+              <mspace width="100px" height="5px" style="background: yellow"/>
+              <mspace width="110px" height="25px" depth="25px"
+                      style="background: red;"/>
+            </munder>
+          </math>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

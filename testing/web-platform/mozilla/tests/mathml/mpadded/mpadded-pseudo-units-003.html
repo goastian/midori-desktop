@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test mpadded</title>
+    <link rel="help" href="https://bugzilla.mozilla.org/show_bug.cgi?id=685628">
+    <link rel="match" href="mpadded-pseudo-units-003-ref.html">
+    <meta name="assert" content="width pseudo unit in mpadded@height refers to logical (not ink) metrics.">
+  </head>
+  <body>
+    <math>
+      <!--height in term of width should not depend on the characters-->
+      <mpadded mathbackground="red" height="100width" depth="0">
+        <mphantom>
+          <mtext>&#x1D692;<!-- Mathematical Monospace Small I --></mtext>
+        </mphantom>
+      </mpadded>
+    </math>
+  </body>
+</html>

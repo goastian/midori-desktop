@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>italic correction for subscripts</title>
+    <meta charset="utf-8"/>
+    <link rel="help" href="https://bugzilla.mozilla.org/show_bug.cgi?id=945254">
+    <link rel="help" href="https://w3c.github.io/mathml-core/#dfn-italic-correction">
+    <script src="/resources/testharness.js"></script>
+    <script src="/resources/testharnessreport.js"></script>
+    <script type="text/javascript">
+      function verifyItalicCorrections()
+      {
+        var epsilon = 2;
+        for (var i = 0; i < 8; i += 2) {
+          var sub = document.getElementById("s" + i);
+          var sup = document.getElementById("s" + (i+1));
+          var italicCorrection =
+           sup.getBoundingClientRect().left - sub.getBoundingClientRect().left;
+          assert_greater_than(italicCorrection, epsilon);
+        }
+      }
+
+      promise_test(() => {
+        return new Promise(resolve => {
+          window.addEventListener("load", resolve);
+        }).then(verifyItalicCorrections);
+      }, "Italic correction of base is used to place subscripts.");
+    </script>
+    <style>
+      math { font-size: 50px; }
+    </style>
+  </head>
+  <body>
+
+    <div>
+      <math>
+        <msubsup>
+          <mi mathbackground="#5f5">f</mi>
+          <mspace id="s0" width="50px" height="50px" mathbackground="blue"/>
+          <mspace id="s1" width="50px" height="50px" mathbackground="blue"/>
+        </msubsup>
+      </math>
+    </div>
+
+    <br/>
+
+    <div>
+      <math>
+        <mmultiscripts>
+          <mi mathbackground="#5f5">f</mi>
+          <mspace id="s2" width="50px" height="50px" mathbackground="blue"/>
+          <mspace id="s3" width="50px" height="50px" mathbackground="blue"/>
+          <mspace id="s4" width="50px" height="50px" mathbackground="blue"/>
+          <mspace id="s5" width="50px" height="50px" mathbackground="blue"/>
+          <mspace id="s6" width="50px" height="50px" mathbackground="blue"/>
+          <mspace id="s7" width="50px" height="50px" mathbackground="blue"/>
+        </mmultiscripts>
+      </math>
+    </div>
+
+  </body>
+</html>

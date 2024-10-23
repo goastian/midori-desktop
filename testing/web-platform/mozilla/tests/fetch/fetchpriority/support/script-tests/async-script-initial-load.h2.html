@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>fetchpriority</title>
+  <script async src="../resources/dummy.js?1" fetchpriority="low"></script>
+  <script async src="../resources/dummy.js?2" fetchpriority="high"></script>
+  <script async src="../resources/dummy.js?3" fetchpriority="auto"></script>
+  <script async src="../resources/dummy.js?4"></script>
+</head>
+<body>
+  <svg><script async href="../resources/dummy.js?5" fetchpriority="low"></script></svg>
+  <svg><script async href="../resources/dummy.js?6" fetchpriority="high"></script></svg>
+  <svg><script async href="../resources/dummy.js?7" fetchpriority="auto"></script></svg>
+  <svg><script async href="../resources/dummy.js?8"></script></svg>
+<script>
+  onload = function() {
+    opener.postMessage("ChildLoaded", "*");
+  }
+</script>
+</body>
+</html>
