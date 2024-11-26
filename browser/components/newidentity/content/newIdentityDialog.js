@@ -10,10 +10,8 @@
   
   document.addEventListener("DOMContentLoaded", () => {
     const dialog = document.getElementById("newIdentityDialog");
-  
+
     const accept = dialog.getButton("accept");
     document.l10n.setAttributes(accept, "new-identity-dialog-confirm");
     accept.classList.add("danger-button");
   });
-  
-  
