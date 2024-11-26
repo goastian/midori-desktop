@@ -1,0 +1,23 @@
+{
+    "manifest_version": 3,
+    "name": "Astian Cloud",
+    "version": "1.0",
+    "description": "Download files with more security and privacy in our Astian Cloud storage service, with download persistence.",
+    "permissions": [
+      "storage",
+      "tabs",
+      "webNavigation",
+      "<all_urls>"
+    ],
+    "action": {
+      "default_popup": "popup/popup.html"
+    },
+    "background": {
+      "scripts": ["background.js"]
+    },
+    "applications": {
+        "gecko": {
+         "id": "astian-cloud@astian.org"
+       }
+     }
+  }
