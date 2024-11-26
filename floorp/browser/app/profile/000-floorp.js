@@ -225,6 +225,8 @@ pref("extensions.pocket.enabled", false);
 // Disable ads
 
 pref("browser.vpn_promo.enabled", false)
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled", false)
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.relayEnabled", false)
 pref("browser.contentblocking.report.show_mobile_app", false)
 
 pref("network.trr.mode", 2);
