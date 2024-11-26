@@ -1519,7 +1519,10 @@ pref("browser.bookmarks.editDialog.maxRecentFolders", 7);
 
   pref("browser.taskbar.lists.legacyBackend", false);
 
-  pref("browser.taskbar.lists.enabled", true);
+// Log levels
+  pref("browser.new_identity.log_level", "Info");
+
+  pref("browser.taskbar.lists.enabled", false);
   pref("browser.taskbar.lists.frequent.enabled", true);
   pref("browser.taskbar.lists.recent.enabled", false);
   pref("browser.taskbar.lists.maxListItemCount", 7);
