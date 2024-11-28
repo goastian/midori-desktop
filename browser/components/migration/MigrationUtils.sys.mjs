@@ -523,8 +523,8 @@ class MigrationUtils {
         .getApplicationDescription("http");
       key = APP_DESC_TO_KEY[browserDesc] || "";
       // Handle devedition, as well as "FirefoxNightly" on OS X.
-      if (!key && browserDesc.startsWith("Floorp")) {
-        key = "floorp";
+      if (!key && browserDesc.startsWith("Midori")) {
+        key = "midori";
       }
     } catch (ex) {
       console.error("Could not detect default browser: ", ex);
