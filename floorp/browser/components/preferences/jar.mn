@@ -11,7 +11,6 @@ floorp.jar:
    content/preferences/csk.js
    content/preferences/downloads.js
    content/preferences/design.js
-   content/preferences/notes.js
    content/preferences/userjs.js
    content/preferences/workspaces.js
    content/preferences/ssb.js

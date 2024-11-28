@@ -80,79 +80,9 @@ export const gFloorpPreferences = {
       this.backupFloorpNotes();
     }
 
-    //Backup Limit is 10.
-    this.getAllBackupedNotes().then(content => {
-      const backupLimit = 10;
-      const dataKeys = Object.keys(content.data);
-
-      if (dataKeys.length > backupLimit) {
-        const sortedKeys = dataKeys.sort((a, b) => b - a);
-        const deleteKeys = sortedKeys.slice(backupLimit);
-
-        deleteKeys.forEach(key => {
-          delete content.data[key];
-        });
-
-        const jsonToStr = JSON.stringify(content).slice(0, -2) + ",";
-        const filePath = PathUtils.join(
-          Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-          "floorp_notes_backup.json"
-        );
-        IOUtils.writeUTF8(filePath, jsonToStr);
-      }
-    });
-
     /*------------------------------------- user.js -------------------------------------*/
     this.applyUserJSCustomize();
     this.initialized = true;
-  },
-
-  async backupFloorpNotes() {
-    const memos = Services.prefs
-      .getCharPref(this.FLOORP_NOTES_PREF)
-      .slice(1, -1);
-    const time = new Date().getTime();
-    const backup = { [time]: memos };
-    const jsonToStr = JSON.stringify(backup).slice(1, -1);
-    Services.prefs.setCharPref(this.FLOORP_NOTES_LATEST_BACKUP_TIME_PREF, time);
-
-    try {
-      IOUtils.exists(
-        PathUtils.join(
-          Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-          "floorp_notes_backup.json"
-        )
-      ).then(data => {
-        if (!data) {
-          const backupFilePath = PathUtils.join(
-            Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-            "floorp_notes_backup.json"
-          );
-          IOUtils.writeUTF8(backupFilePath, `{"data":{${jsonToStr},`);
-        } else {
-          const backupFilePath = PathUtils.join(
-            Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-            "floorp_notes_backup.json"
-          );
-          IOUtils.readUTF8(backupFilePath).then(content => {
-            const appText = `${content}${jsonToStr},`;
-            IOUtils.writeUTF8(backupFilePath, appText);
-          });
-        }
-      });
-    } catch (e) {}
-  },
-
-  getAllBackupedNotes() {
-    const filePath = PathUtils.join(
-      Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-      "floorp_notes_backup.json"
-    );
-    const content = IOUtils.readUTF8(filePath).then(fileContent => {
-      const result = fileContent.slice(0, -1) + "}}";
-      return JSON.parse(result);
-    });
-    return content;
   },
 
   async applyUserJSCustomize() {
