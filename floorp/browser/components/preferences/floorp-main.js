@@ -16,7 +16,6 @@ Preferences.addAll([
   { id: "floorp.openLinkInExternal.enabled", type: "bool" },
   { id: "floorp.openLinkInExternal.browserId", type: "string" },
   { id: "floorp.browser.tabs.openNewTabPosition", type: "int" },
-  { id: "services.sync.prefs.sync.floorp.browser.note.memos", type: "bool" },
   { id: "floorp.browser.workspace.tab.enabled", type: "bool" },
   { id: "floorp.tabscroll.reverse", type: "bool" },
   { id: "floorp.tabscroll.wrap", type: "bool" },
@@ -76,12 +75,6 @@ window.addEventListener(
         elem.value = Services.prefs.getIntPref(prefName, undefined);
       });
     }
-
-    document
-      .getElementById("backUpNotesOption")
-      .addEventListener("click", function () {
-        window.location.href = "about:preferences#notes";
-      });
 
     document
       .getElementById("userjsOptionsButton")

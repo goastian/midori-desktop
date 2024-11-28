@@ -15,14 +15,6 @@ export const gFloorpPreferences = {
     return Services.prefs.getIntPref("floorp.chrome.theme.mode");
   },
 
-  get FLOORP_NOTES_LATEST_BACKUP_TIME_PREF() {
-    return "floorp.browser.note.backup.latest.time";
-  },
-
-  get FLOORP_NOTES_PREF() {
-    return "floorp.browser.note.memos";
-  },
-
   get BROWSER_SETED_USERAGENT() {
     return Services.prefs.getIntPref(this.BROWSER_SETED_USERAGENT_PREF);
   },
@@ -74,10 +66,6 @@ export const gFloorpPreferences = {
         gFloorpPreferences.GENERAL_USERAGENT_OVERRIDE_PREF
       );
       Services.prefs.clearUserPref(this.BROWSER_SETED_USERAGENT_PREF);
-    }
-
-    if (!Services.prefs.prefHasUserValue(this.FLOORP_NOTES_PREF)) {
-      this.backupFloorpNotes();
     }
 
     /*------------------------------------- user.js -------------------------------------*/
