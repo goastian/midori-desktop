@@ -231,8 +231,11 @@ pref("browser.contentblocking.report.show_mobile_app", false)
 
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
 pref("network.trr.default_provider_uri", "https://dns.nextdns.io/fc53cb/");
-pref("doh-rollout.provider-list", "[{\"UIName\":\"Astian\",\"autoDefault\":false,\"canonicalName\":\"\",\"id\":\"astian\",\"last_modified\":0,\"schema\":0,\"uri\":\"https://dns.nextdns.io/fc53cb\"},{\"UIName\":\"Astian (Ad-blocking)\",\"autoDefault\":true,\"canonicalName\":\"\",\"id\":\"astian\",\"last_modified\":0,\"schema\":0,\"uri\":\"https://adblock.dns.mullvad.net/dns-query\"}]");
 pref("network.trr.mode", 3);
+pref("doh-rollout.provider-list", "[{\"UIName\":\"Astian\",\"autoDefault\":false,\"canonicalName\":\"\",\"id\":\"astian\",\"last_modified\":0,\"schema\":0,\"uri\":\"https://dns.nextdns.io/fc53cb\"},{\"UIName\":\"Astian (Ad-blocking)\",\"autoDefault\":true,\"canonicalName\":\"\",\"id\":\"astian\",\"last_modified\":0,\"schema\":0,\"uri\":\"https://adblock.dns.mullvad.net/dns-query\"}]");
+//Audit DoH heuristics
+pref("doh-rollout.disable-heuristics", true);
+
 
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
