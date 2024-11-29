@@ -259,7 +259,8 @@ let ShellServiceInternal = {
       ) {
         if (this._shouldSetDefaultPDFHandler()) {
           lazy.log.info("Setting Firefox as default PDF handler");
-          extraFileExtensions.push(".pdf", "FirefoxPDF");
+          extraFileExtensions.push(".pdf", "MidoriPDF");
+
         } else {
           lazy.log.info("Not setting Firefox as default PDF handler");
         }
@@ -302,7 +303,7 @@ let ShellServiceInternal = {
       try {
         this.defaultAgent.setDefaultExtensionHandlersUserChoice(aumi, [
           ".pdf",
-          "FirefoxPDF",
+          "MidoriPDF",
         ]);
       } catch (err) {
         telemetryResult = "ErrOther";

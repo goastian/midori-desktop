@@ -342,10 +342,13 @@ nsWindowsShellService::CheckAllProgIDsExist(bool* aResult) {
 
     *aResult = result;
   } else {
-    *aResult =
-        CheckProgIDExists(FormatProgID(L"FirefoxURL", aumid.get()).get()) &&
-        CheckProgIDExists(FormatProgID(L"FirefoxHTML", aumid.get()).get()) &&
-        CheckProgIDExists(FormatProgID(L"FirefoxPDF", aumid.get()).get());
+    *aResult = CheckProgIDExists(
+                   FormatProgID(L"MidoriURL", aumid.get()).get()) &&
+               CheckProgIDExists(
+                   FormatProgID(L"MidoriHTML", aumid.get()).get()) &&
+               CheckProgIDExists(
+                   FormatProgID(L"MidoriPDF", aumid.get()).get());
+
   }
 
   return NS_OK;
