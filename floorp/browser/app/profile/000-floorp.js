@@ -229,8 +229,10 @@ pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled", false)
 pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.relayEnabled", false)
 pref("browser.contentblocking.report.show_mobile_app", false)
 
-pref("network.trr.mode", 2);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
+pref("network.trr.default_provider_uri", "https://dns.nextdns.io/fc53cb/");
+pref("doh-rollout.provider-list", "[{\"UIName\":\"Astian\",\"autoDefault\":false,\"canonicalName\":\"\",\"id\":\"astian\",\"last_modified\":0,\"schema\":0,\"uri\":\"https://dns.nextdns.io/fc53cb\"},{\"UIName\":\"Astian (Ad-blocking)\",\"autoDefault\":true,\"canonicalName\":\"\",\"id\":\"astian\",\"last_modified\":0,\"schema\":0,\"uri\":\"https://adblock.dns.mullvad.net/dns-query\"}]");
+pref("network.trr.mode", 3);
 
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
