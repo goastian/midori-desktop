@@ -2044,7 +2044,6 @@ void gfxDWriteFontList::AddSubstitute(const nsCString& substituteName,
 
     }
   }
-  return NS_OK;
 }
 
 struct FontSubstitution {
