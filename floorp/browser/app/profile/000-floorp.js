@@ -236,6 +236,10 @@ pref("doh-rollout.provider-list", "[{\"UIName\":\"Astian\",\"autoDefault\":false
 //Audit DoH heuristics
 pref("doh-rollout.disable-heuristics", true);
 
+// Empty clipboard content from private windows on exit
+pref("browser.privatebrowsing.preserveClipboard", false);
+
+
 
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
