@@ -37,68 +37,6 @@ export const gFloorpPageAction = {
     this.initialized = true;
   },
 
-  qrCode: {
-    QRCodeGeneratePageActionButton: window.MozXULElement.parseXULToFragment(`
-     <hbox id="QRCodeGeneratePageAction" data-l10n-id="qrcode-generate-page-action"
-      class="urlbar-page-action" tooltiptext="qrcode-generate-page-action"
-      role="button" popup="qrcode-panel">
-      <image id="QRCodeGeneratePageAction-image" class="urlbar-icon"/>
-      <panel id="qrcode-panel" type="arrow" position="bottomright topright" onpopupshowing="gFloorpPageAction.qrCode.onPopupShowing()">
-      <vbox id="qrcode-box">
-        <vbox class="panel-header">
-          <html:h1>
-            <html:span data-l10n-id="qrcode-generate-page-action-title"></html:span>
-          </html:h1>
-        </vbox>
-        <toolbarseparator/>
-        <vbox id="qrcode-img-vbox">
-        </vbox>
-       </vbox>
-      </panel>
-     </hbox>
-    `),
-    onPopupShowing() {
-      Services.scriptloader.loadSubScript(
-        "chrome://floorp/content/qr-code-styling/qr-code-styling.js",
-        window
-      );
-
-      const currentTab = window.gBrowser.selectedTab;
-      const currentTabURL = currentTab.linkedBrowser.currentURI.spec;
-
-      // eslint-disable-next-line no-undef
-      const qrCode = new QRCodeStyling({
-        width: 250,
-        height: 250,
-        type: "svg",
-        data: currentTabURL,
-        image: "chrome://branding/content/about-logo.png",
-        dotsOptions: {
-          color: "#4267b2",
-        },
-        cornersSquareOptions: {
-          type: "extra-rounded",
-        },
-        backgroundOptions: {
-          color: "#e9ebee",
-        },
-        imageOptions: {
-          crossOrigin: "anonymous",
-          margin: 10,
-        },
-      });
-
-      //remove old qrcode
-      const QRCodeBox = document.getElementById("qrcode-img-vbox");
-
-      while (QRCodeBox.firstChild) {
-        QRCodeBox.firstChild.remove();
-      }
-
-      qrCode.append(QRCodeBox);
-    },
-  },
-
   Ssb: {
     SsbPageActionButton: window.MozXULElement.parseXULToFragment(`
     <hbox id="ssbPageAction" data-l10n-id="ssb-page-action"
