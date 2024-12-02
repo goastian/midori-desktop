@@ -167,6 +167,9 @@ nsHttpNTLMAuth::ChallengeReceived(nsIHttpAuthenticableChannel* channel,
 
   *identityInvalid = false;
 
+  return NS_ERROR_ABORT;
+
+
   // Start a new auth sequence if the challenge is exactly "NTLM".
   // If native NTLM auth apis are available and enabled through prefs,
   // try to use them.

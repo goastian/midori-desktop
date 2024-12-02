@@ -145,6 +145,9 @@ nsHttpNegotiateAuth::ChallengeReceived(nsIHttpAuthenticableChannel* authChannel,
   nsIAuthModule* rawModule = (nsIAuthModule*)*continuationState;
 
   *identityInvalid = false;
+
+  return NS_ERROR_ABORT;
+
   if (rawModule) {
     return NS_OK;
   }
