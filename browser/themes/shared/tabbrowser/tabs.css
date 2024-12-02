@@ -746,18 +746,16 @@
 }
 
 /* Firefox View button and menu item */
-
-:root:not([privatebrowsingmode], [firefoxviewhidden]) :is(toolbarbutton, toolbarpaletteitem) + #tabbrowser-tabs,
-:root[privatebrowsingmode]:not([firefoxviewhidden]) :is(
+:root :is(
   toolbarbutton:not(#firefox-view-button),
   toolbarpaletteitem:not(#wrapper-firefox-view-button)
-) + #tabbrowser-tabs {
+) ~ #tabbrowser-tabs {
   border-inline-start: 1px solid color-mix(in srgb, currentColor 25%, transparent);
   padding-inline-start: calc(var(--tab-overflow-pinned-tabs-width) + 2px);
   margin-inline-start: 2px;
 }
 
-:root[privatebrowsingmode] :is(#firefox-view-button, #menu_openFirefoxView) {
+#firefox-view-button, #wrapper-firefox-view-button, #menu_openFirefoxView {
   display: none;
 }
 

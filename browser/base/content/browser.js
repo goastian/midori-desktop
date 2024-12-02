@@ -8089,6 +8089,11 @@ var FirefoxViewHandler = {
     }
   },
   openTab(section) {
+    if (AppConstants.BASE_BROWSER_VERSION) {
+      // about:firefoxview is disabled.
+      return;
+    }
+
     if (!CustomizableUI.getPlacementOfWidget(this.BUTTON_ID)) {
       CustomizableUI.addWidgetToArea(
         this.BUTTON_ID,
