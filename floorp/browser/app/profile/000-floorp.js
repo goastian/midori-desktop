@@ -120,7 +120,7 @@ pref("floorp.browser.workspace.container.userContextId", 0);
 pref("floorp.browser.workspaces.disabledBySystem", true);
 
 //タブバーの背景色
-pref("floorp.titlebar.favicon.color", false);
+pref("floorp.titlebar.favicon.color", true);
 
 // カスタムショートカットキー
 pref("floorp.custom.shortcutkeysAndActions", '[{"actionName":"togglePanel","key":"","keyCode":"VK_F2","modifiers":""}]');
