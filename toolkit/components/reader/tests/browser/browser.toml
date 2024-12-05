@@ -37,6 +37,9 @@ support-files = ["readerModeRandom.sjs"]
 ["browser_readerMode_colorSchemePref.js"]
 support-files = ["readerModeArticle.html"]
 
+["browser_readerMode_customColorScheme.js"]
+support-files = ["readerModeArticle.html"]
+
 ["browser_readerMode_hidden_nodes.js"]
 support-files = ["readerModeArticleHiddenNodes.html"]
 
@@ -57,6 +60,9 @@ support-files = [
 ]
 
 ["browser_readerMode_refresh.js"]
+skip-if = [
+   "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1776032
+]
 support-files = [
   "readerModeArticleShort.html",
   "readerModeArticleTextPlain.txt",

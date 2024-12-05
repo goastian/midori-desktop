@@ -44,11 +44,16 @@ support-files = [
 ["browser_sma_pin_firefox.js"]
 
 ["browser_sma_pin_private_firefox.js"]
-skip-if = ["os != 'win'"]
+run-if = ["os == 'win' && !msix"] # Bug 1911343
+
+["browser_sma_pin_start_menu.js"]
+run-if = ["os == 'win' && msix"]
+
+["browser_sma_set_bookmarks_toolbar_visibility.js"]
 
 ["browser_sma_set_prefs.js"]
 
 ["browser_sma_show_firefox_accounts.js"]
 
 ["browser_sma_show_migration_wizard.js"]
-skip-if = ["apple_catalina && debug"] # Bug 1837646
+skip-if = ["os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug"] # Bug 1837646
