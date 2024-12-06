@@ -945,12 +945,11 @@ pref("browser.tabs.tooltipsShowPidAndActiveness", true);
 pref("browser.tabs.tooltipsShowPidAndActiveness", false);
 #endif
 
-#ifdef NIGHTLY_BUILD
 pref("browser.tabs.hoverPreview.enabled", true);
-#else
-pref("browser.tabs.hoverPreview.enabled", false);
-#endif
 pref("browser.tabs.hoverPreview.showThumbnails", true);
+
+pref("browser.tabs.groups.enabled", true);
+pref("browser.tabs.groups.dragOverThresholdPercent", 20);
 
 pref("browser.tabs.firefox-view.logLevel", "Warn");
 
