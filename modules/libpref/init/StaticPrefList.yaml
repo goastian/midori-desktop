@@ -12630,7 +12630,7 @@
 # Use platform DNS APIs (where available) to resolve HTTPS queries
 - name: network.dns.native_https_query
   type: RelaxedAtomicBool
-#if defined(EARLY_BETA_OR_EARLIER) && !defined(XP_MACOSX)
+#if !defined(XP_MACOSX)
   value: true
 #else
   value: false
@@ -13198,6 +13198,13 @@
 - name: network.http.http2.enabled.deps
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+# When true, Firefox will send Extensivle prioritization scheme
+# PRIORITY_UPDATE frames.
+- name: network.http.http2.priority_updates
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 # This pref controls whether to send the
