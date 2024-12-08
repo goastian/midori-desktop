@@ -111,6 +111,7 @@ export const BrowserManagerSidebar = {
     "https://calendar.astian.org",
     "https://astiango.co",
     "https://astian.org/astian-vpn/invite/",
+    "https://vpn.astian.org",
   ],
   prefsUpdate() {
     const defaultPref = { data: {}, index: [] };
