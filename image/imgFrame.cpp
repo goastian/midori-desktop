@@ -145,8 +145,7 @@ imgFrame::~imgFrame() {
 nsresult imgFrame::InitForDecoder(const nsIntSize& aImageSize,
                                   SurfaceFormat aFormat, bool aNonPremult,
                                   const Maybe<AnimationParams>& aAnimParams,
-                                  bool aShouldRecycle,
-                                  uint32_t* aImageDataLength) {
+                                  bool aShouldRecycle) {
   // Assert for properties that should be verified by decoders,
   // warn for properties related to bad content.
   if (!SurfaceCache::IsLegalSize(aImageSize)) {
@@ -218,15 +217,10 @@ nsresult imgFrame::InitForDecoder(const nsIntSize& aImageSize,
     }
   }
 
-  if (aImageDataLength) {
-    *aImageDataLength = GetImageDataLength();
-  }
-
   return NS_OK;
 }
 
-nsresult imgFrame::InitForDecoderRecycle(const AnimationParams& aAnimParams,
-                                         uint32_t* aImageDataLength) {
+nsresult imgFrame::InitForDecoderRecycle(const AnimationParams& aAnimParams) {
   // We want to recycle this frame, but there is no guarantee that consumers are
   // done with it in a timely manner. Let's ensure they are done with it first.
   MonitorAutoLock lock(mMonitor);
@@ -292,10 +286,6 @@ nsresult imgFrame::InitForDecoderRecycle(const AnimationParams& aAnimParams,
   mBlendMethod = aAnimParams.mBlendMethod;
   mDisposalMethod = aAnimParams.mDisposalMethod;
   mDirtyRect = GetRect();
-
-  if (aImageDataLength) {
-    *aImageDataLength = GetImageDataLength();
-  }
 
   return NS_OK;
 }
@@ -401,10 +391,7 @@ nsresult imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
 
 DrawableFrameRef imgFrame::DrawableRef() { return DrawableFrameRef(this); }
 
-RawAccessFrameRef imgFrame::RawAccessRef(
-    gfx::DataSourceSurface::MapType aMapType) {
-  return RawAccessFrameRef(this, aMapType);
-}
+RawAccessFrameRef imgFrame::RawAccessRef() { return RawAccessFrameRef(this); }
 
 imgFrame::SurfaceWithFormat imgFrame::SurfaceForDrawing(
     bool aDoPartialDecode, bool aDoTile, ImageRegion& aRegion,
@@ -597,6 +584,36 @@ uint32_t imgFrame::GetImageBytesPerRow() const {
 
 uint32_t imgFrame::GetImageDataLength() const {
   return GetImageBytesPerRow() * mImageSize.height;
+}
+
+void imgFrame::GetImageData(uint8_t** aData, uint32_t* aLength) const {
+  MonitorAutoLock lock(mMonitor);
+  GetImageDataInternal(aData, aLength);
+}
+
+void imgFrame::GetImageDataInternal(uint8_t** aData, uint32_t* aLength) const {
+  mMonitor.AssertCurrentThreadOwns();
+  MOZ_ASSERT(mRawSurface);
+
+  if (mRawSurface) {
+    // TODO: This is okay for now because we only realloc shared surfaces on
+    // the main thread after decoding has finished, but if animations want to
+    // read frame data off the main thread, we will need to reconsider this.
+    *aData = mRawSurface->GetData();
+    MOZ_ASSERT(*aData,
+               "mRawSurface is non-null, but GetData is null in GetImageData");
+  } else {
+    *aData = nullptr;
+  }
+
+  *aLength = GetImageDataLength();
+}
+
+uint8_t* imgFrame::GetImageData() const {
+  uint8_t* data;
+  uint32_t length;
+  GetImageData(&data, &length);
+  return data;
 }
 
 void imgFrame::FinalizeSurface() {

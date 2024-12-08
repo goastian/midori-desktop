@@ -55,8 +55,7 @@ class imgFrame {
   nsresult InitForDecoder(const nsIntSize& aImageSize, SurfaceFormat aFormat,
                           bool aNonPremult,
                           const Maybe<AnimationParams>& aAnimParams,
-                          bool aShouldRecycle,
-                          uint32_t* aImageDataLength = nullptr);
+                          bool aShouldRecycle);
 
   /**
    * Reinitialize this imgFrame with the new parameters, but otherwise retain
@@ -66,8 +65,7 @@ class imgFrame {
    * given an IDecoderFrameRecycler object which may yield a recycled imgFrame
    * that was discarded to save memory.
    */
-  nsresult InitForDecoderRecycle(const AnimationParams& aAnimParams,
-                                 uint32_t* aImageDataLength = nullptr);
+  nsresult InitForDecoderRecycle(const AnimationParams& aAnimParams);
 
   /**
    * Initialize this imgFrame with a new surface and draw the provided
@@ -92,8 +90,7 @@ class imgFrame {
   /**
    * Create a RawAccessFrameRef for the frame.
    */
-  RawAccessFrameRef RawAccessRef(
-      gfx::DataSourceSurface::MapType aMapType = gfx::DataSourceSurface::READ);
+  RawAccessFrameRef RawAccessRef();
 
   bool Draw(gfxContext* aContext, const ImageRegion& aRegion,
             SamplingFilter aSamplingFilter, uint32_t aImageFlags,
@@ -163,6 +160,8 @@ class imgFrame {
   BlendMethod GetBlendMethod() const { return mBlendMethod; }
   DisposalMethod GetDisposalMethod() const { return mDisposalMethod; }
   bool FormatHasAlpha() const { return mFormat == SurfaceFormat::OS_RGBA; }
+  void GetImageData(uint8_t** aData, uint32_t* length) const;
+  uint8_t* GetImageData() const;
 
   const IntRect& GetDirtyRect() const { return mDirtyRect; }
   void SetDirtyRect(const IntRect& aDirtyRect) { mDirtyRect = aDirtyRect; }
@@ -187,6 +186,7 @@ class imgFrame {
 
   bool AreAllPixelsWritten() const MOZ_REQUIRES(mMonitor);
   nsresult ImageUpdatedInternal(const nsIntRect& aUpdateRect);
+  void GetImageDataInternal(uint8_t** aData, uint32_t* length) const;
   uint32_t GetImageBytesPerRow() const;
   uint32_t GetImageDataLength() const;
   void FinalizeSurfaceInternal();
@@ -356,25 +356,13 @@ class DrawableFrameRef final {
  */
 class RawAccessFrameRef final {
  public:
-  RawAccessFrameRef() = default;
+  RawAccessFrameRef() : mData(nullptr) {}
 
-  explicit RawAccessFrameRef(imgFrame* aFrame,
-                             gfx::DataSourceSurface::MapType aMapType)
-      : mFrame(aFrame) {
+  explicit RawAccessFrameRef(imgFrame* aFrame)
+      : mFrame(aFrame), mData(nullptr) {
     MOZ_ASSERT(mFrame, "Need a frame");
 
-    // Note that we do not use ScopedMap here because it holds a strong
-    // reference to the underlying surface. This affects the reuse logic for
-    // recycling in imgFrame::InitForDecoderRecycle.
-    {
-      MonitorAutoLock lock(mFrame->mMonitor);
-      gfx::DataSourceSurface::MappedSurface map;
-      if (mFrame->mRawSurface && mFrame->mRawSurface->Map(aMapType, &map)) {
-        MOZ_ASSERT(map.mData);
-        mData = map.mData;
-      }
-    }
-
+    mData = mFrame->GetImageData();
     if (!mData) {
       mFrame = nullptr;
     }
@@ -385,15 +373,11 @@ class RawAccessFrameRef final {
     aOther.mData = nullptr;
   }
 
-  ~RawAccessFrameRef() { reset(); }
+  ~RawAccessFrameRef() = default;
 
   RawAccessFrameRef& operator=(RawAccessFrameRef&& aOther) {
     MOZ_ASSERT(this != &aOther, "Self-moves are prohibited");
 
-    if (mFrame) {
-      MonitorAutoLock lock(mFrame->mMonitor);
-      mFrame->mRawSurface->Unmap();
-    }
     mFrame = std::move(aOther.mFrame);
     mData = aOther.mData;
     aOther.mData = nullptr;
@@ -417,10 +401,6 @@ class RawAccessFrameRef final {
   const imgFrame* get() const { return mFrame; }
 
   void reset() {
-    if (mFrame) {
-      MonitorAutoLock lock(mFrame->mMonitor);
-      mFrame->mRawSurface->Unmap();
-    }
     mFrame = nullptr;
     mData = nullptr;
   }
@@ -432,7 +412,7 @@ class RawAccessFrameRef final {
   RawAccessFrameRef& operator=(const RawAccessFrameRef& aOther) = delete;
 
   RefPtr<imgFrame> mFrame;
-  uint8_t* mData = nullptr;
+  uint8_t* mData;
 };
 
 }  // namespace image

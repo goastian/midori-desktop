@@ -759,7 +759,8 @@ TEST_F(ImageAnimationFrameBuffer, RecyclingResetBeforeComplete) {
   while (!buffer.Recycle().empty()) {
     gfx::IntRect recycleRect;
     RawAccessFrameRef frameRef = buffer.RecycleFrame(recycleRect);
-    EXPECT_FALSE(frameRef);
+    EXPECT_TRUE(frameRef);
+    EXPECT_FALSE(ReinitForRecycle(frameRef));
   }
 
   // Reinsert the first two frames as recyclable and reset again.
@@ -828,7 +829,8 @@ TEST_F(ImageAnimationFrameBuffer, RecyclingRect) {
   gfx::IntRect recycleRect;
   EXPECT_FALSE(buffer.Recycle().empty());
   RawAccessFrameRef frameRef = buffer.RecycleFrame(recycleRect);
-  EXPECT_FALSE(frameRef);
+  EXPECT_TRUE(frameRef);
+  EXPECT_FALSE(ReinitForRecycle(frameRef));
   EXPECT_TRUE(buffer.Recycle().empty());
 
   // Insert a recyclable partial frame. Its dirty rect shouldn't matter since
@@ -840,7 +842,8 @@ TEST_F(ImageAnimationFrameBuffer, RecyclingRect) {
   VerifyAdvance(buffer, 5, true);
   EXPECT_FALSE(buffer.Recycle().empty());
   frameRef = buffer.RecycleFrame(recycleRect);
-  EXPECT_FALSE(frameRef);
+  EXPECT_TRUE(frameRef);
+  EXPECT_FALSE(ReinitForRecycle(frameRef));
   EXPECT_TRUE(buffer.Recycle().empty());
 
   // Insert a recyclable partial frame. Its dirty rect should match the recycle
