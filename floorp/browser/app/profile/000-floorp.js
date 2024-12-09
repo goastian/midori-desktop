@@ -163,9 +163,6 @@ pref("floorp.browser.workspace.showWorkspaceName", true);
 // Extension
 pref("floorp.extensions.allowPrivateBrowsingByDefault.is.enabled", false);
 
-// AstianGO Search
-pref("floorp.browser.floorpSearch.enabled", false);
-
 /*----------------------------------------------------------------------------------------------------------------------------------*/
 
 //ブックマークツールバー
