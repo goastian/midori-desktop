@@ -46,7 +46,7 @@ export const LinuxSupport = {
 
     let command = Services.dirsvc.get("XREExeF",Ci.nsIFile).path;
     if (FileUtils.File("/.flatpak-info").exists()) {
-      command = "flatpak run org.astian.midori";
+      command = "flatpak run io.astian.midori";
     }
     let applicationDir = "~/.local/share/applications";
     let desktopFile = PathUtils.join(
