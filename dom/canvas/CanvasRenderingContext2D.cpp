@@ -6,7 +6,6 @@
 #include "CanvasRenderingContext2D.h"
 
 #include "mozilla/gfx/Helpers.h"
-#include "nsCSSValue.h"
 #include "nsXULElement.h"
 
 #include "nsMathUtils.h"
@@ -2586,8 +2585,14 @@ static already_AddRefed<StyleLockedDeclarationBlock> CreateDeclarationForServo(
     return nullptr;
   }
 
+  // From canvas spec, force to set line-height property to 'normal' font
+  // property.
   if (aProperty == eCSSProperty_font) {
-    Servo_DeclarationBlock_SanitizeForCanvas(servoDeclarations);
+    const nsCString normalString = "normal"_ns;
+    Servo_DeclarationBlock_SetPropertyById(
+        servoDeclarations, eCSSProperty_line_height, &normalString, false,
+        env.mUrlExtraData, StyleParsingMode::DEFAULT, env.mCompatMode,
+        env.mLoader, env.mRuleType, {});
   }
 
   return servoDeclarations.forget();
@@ -2652,9 +2657,12 @@ static already_AddRefed<const ComputedStyle> GetFontStyleForServo(
   // The font-size component must be converted to CSS px for reserialization,
   // so we update the declarations with the value from the computed style.
   if (!sc->StyleFont()->mFont.family.is_system_font) {
-    float px = sc->StyleFont()->mFont.size.ToCSSPixels();
-    Servo_DeclarationBlock_SetLengthValue(declarations, eCSSProperty_font_size,
-                                          px, eCSSUnit_Pixel);
+    nsAutoCString computedFontSize;
+    sc->GetComputedPropertyValue(eCSSProperty_font_size, computedFontSize);
+    Servo_DeclarationBlock_SetPropertyById(
+        declarations, eCSSProperty_font_size, &computedFontSize, false, nullptr,
+        StyleParsingMode::DEFAULT, eCompatibility_FullStandards, nullptr,
+        StyleCssRuleType::Style, {});
   }
 
   // The font getter is required to be reserialized based on what we
