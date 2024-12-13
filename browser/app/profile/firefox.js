@@ -1548,7 +1548,7 @@ pref("services.sync.prefs.sync.app.shield.optoutstudies.enabled", true);
 // uncompromised Sync-connected devices.
 pref("services.sync.prefs.sync.browser.contentblocking.category", true);
 pref("services.sync.prefs.sync.browser.contentblocking.features.strict", true);
-pref("services.sync.prefs.sync.browser.crashReports.unsubmittedCheck.autoSubmit2", true);
+pref("services.sync.prefs.sync.browser.crashReports.unsubmittedCheck.autoSubmit2", false);
 pref("services.sync.prefs.sync.browser.ctrlTab.sortByRecentlyUsed", true);
 pref("services.sync.prefs.sync.browser.discovery.enabled", true);
 pref("services.sync.prefs.sync.browser.download.useDownloadDir", true);
@@ -1711,18 +1711,14 @@ pref("browser.newtabpage.activity-stream.weather.query", "");
 pref("browser.newtabpage.activity-stream.weather.locationSearchEnabled", false);
 pref("browser.newtabpage.activity-stream.weather.display", "simple");
 // List of regions that get weather by default.
-#ifdef NIGHTLY_BUILD
-  pref("browser.newtabpage.activity-stream.discoverystream.region-weather-config", "US,CA");
-#else
-  pref("browser.newtabpage.activity-stream.discoverystream.region-weather-config", "");
-#endif
+
+pref("browser.newtabpage.activity-stream.discoverystream.region-weather-config", "US,CA,CO,RU,ES,BR,PT,MX,FR,IT,IR,JA");
+
 
 // Preference to enable wallpaper selection in the Customize Menu of new tab page
-#ifdef NIGHTLY_BUILD
-  pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", true);
-#else
-  pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", false);
-#endif
+
+pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", true);
+pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", false);
 pref("browser.newtabpage.activity-stream.newtabWallpapers.v2.enabled", false);
 
 // Current new tab page background images.
@@ -2084,9 +2080,7 @@ pref("privacy.trackingprotection.cryptomining.enabled", true);
 pref("browser.contentblocking.database.enabled", true);
 
 // Enable URL query stripping in Nightly.
-#ifdef NIGHTLY_BUILD
 pref("privacy.query_stripping.enabled", true);
-#endif
 
 // Enable Strip on Share by default on desktop
 pref("privacy.query_stripping.strip_on_share.enabled", true);
@@ -2308,7 +2302,7 @@ pref("browser.tabs.remote.warmup.maxTabs", 3);
 pref("browser.tabs.remote.warmup.unloadDelayMs", 2000);
 
 // For the about:tabcrashed page
-pref("browser.tabs.crashReporting.sendReport", true);
+pref("browser.tabs.crashReporting.sendReport", false);
 pref("browser.tabs.crashReporting.includeURL", false);
 
 // If true, unprivileged extensions may use experimental APIs on
@@ -2428,10 +2422,6 @@ pref("signon.relatedRealms.enabled", false);
 pref("signon.showAutoCompleteFooter", true);
 pref("signon.showAutoCompleteImport", "import");
 pref("signon.suggestImportCount", 3);
-
-// Space separated list of URLS that are allowed to send objects (instead of
-// only strings) through webchannels. Bug 1275612 tracks removing this pref and capability.
-pref("webchannel.allowObject.urlWhitelist", "https://content.cdn.mozilla.net https://install.mozilla.org");
 
 // Whether or not the browser should scan for unsubmitted
 // crash reports, and then show a notification for submitting
