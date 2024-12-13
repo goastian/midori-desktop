@@ -634,6 +634,22 @@
   font-weight: bold;
 }
 
+/* Tab Groups */
+tab-group {
+  border-bottom: 2px solid var(--tab-group-color);
+}
+.tab-group-label {
+  background-color: var(--tab-group-color);
+  border-radius: var(--tab-border-radius);
+  box-sizing: content-box;
+  min-height: 1em;
+  max-width: 10em;
+  /* TODO: pick the right text color depending on group color */
+  color: white;
+  margin: auto 0;
+  padding: 2px;
+}
+
 /* Tab Overflow */
 
 #tabbrowser-arrowscrollbox {
