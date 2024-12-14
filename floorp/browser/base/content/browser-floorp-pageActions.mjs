@@ -26,7 +26,6 @@ export const gFloorpPageAction = {
     window.SessionStore.promiseInitialized.then(() => {
       document
         .getElementById("star-button-box")
-        .before(gFloorpPageAction.qrCode.QRCodeGeneratePageActionButton);
 
       if (Services.prefs.getBoolPref("floorp.browser.ssb.enabled")) {
         document
