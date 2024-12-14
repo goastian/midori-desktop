@@ -105,11 +105,9 @@ export const BrowserManagerSidebar = {
 
   DEFAULT_WEBPANEL: [
     "https://cloud.astian.org",
-    "https://flow.astian.org",
     "https://notes.astian.org",
     "https://contacts.astian.org",
     "https://calendar.astian.org",
-    "https://astiango.co",
     "https://astian.org/astian-vpn/invite/",
     "https://vpn.astian.org",
     "https://maps.astian.org",
