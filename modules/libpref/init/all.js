@@ -1158,11 +1158,11 @@ pref("network.http.response.timeout", 300);
 // If NOT connecting via a proxy, then
 // a new connection will only be attempted if the number of active persistent
 // connections to the server is less then max-persistent-connections-per-server.
-pref("network.http.max-persistent-connections-per-server", 6);
+pref("network.http.max-persistent-connections-per-server", 12);
 
 // Number of connections that we can open beyond the standard parallelism limit defined
 // by max-persistent-connections-per-server/-proxy to handle urgent-start marked requests
-pref("network.http.max-urgent-start-excessive-connections-per-host", 3);
+pref("network.http.max-urgent-start-excessive-connections-per-host", 6);
 
 // If connecting via a proxy, then a
 // new connection will only be attempted if the number of active persistent
@@ -1445,7 +1445,7 @@ pref("network.dns.resolver-thread-extra-idle-time-seconds", 60);
 
 // enables the prefetch service (i.e., prefetching of <link rel="next"> and
 // <link rel="prefetch"> URLs).
-pref("network.prefetch-next", true);
+pref("network.prefetch-next", false);
 
 // The following prefs pertain to the negotiate-auth extension (see bug 17578),
 // which provides transparent Kerberos or NTLM authentication using the SPNEGO
@@ -3322,7 +3322,7 @@ pref("extensions.webextensions.default-content-security-policy", "script-src 'se
 pref("extensions.webextensions.default-content-security-policy.v3", "script-src 'self'; upgrade-insecure-requests;");
 
 
-pref("network.buffer.cache.count", 24);
+pref("network.buffer.cache.count", 240);
 pref("network.buffer.cache.size",  32768);
 
 // Web Notification
@@ -3688,10 +3688,10 @@ pref("reader.line_height", 4);
 pref("reader.improved_text_menu.enabled", false);
 
 // The default character spacing in reader mode (1-9)
-pref("reader.character_spacing", 0);
+pref("reader.character_spacing", "");
 
 // The default word spacing in reader mode (1-9)
-pref("reader.word_spacing", 0);
+pref("reader.word_spacing", "");
 
 // The default text alignment direction in reader mode
 pref("reader.text_alignment", "start");
