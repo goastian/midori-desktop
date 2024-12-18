@@ -755,10 +755,7 @@ impl CalcNode {
         allowed_units: CalcUnits,
     ) -> Result<Self, ParseError<'i>> {
         let mut sum = SmallVec::<[CalcNode; 1]>::new();
-        let rhs = Self::parse_product(context, input, allowed_units)?;
-        if sum.last_mut().unwrap().try_sum_in_place(&rhs).is_err() {
-            sum.push(rhs);
-        }
+        sum.push(Self::parse_product(context, input, allowed_units)?);
 
         loop {
             let start = input.state();
@@ -774,9 +771,7 @@ impl CalcNode {
                         Token::Delim('-') => {
                             let mut rhs = Self::parse_product(context, input, allowed_units)?;
                             rhs.negate();
-                            if sum.last_mut().unwrap().try_sum_in_place(&rhs).is_err() {
-                                sum.push(rhs);
-                            }
+                            sum.push(rhs);
                         },
                         _ => {
                             input.reset(&start);
