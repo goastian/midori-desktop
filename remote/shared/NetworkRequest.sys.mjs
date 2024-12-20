@@ -128,6 +128,20 @@ export class NetworkRequest {
     this.#rawHeaders = rawHeaders || "";
   }
 
+    /**
+   * Clear a request header from the request's headers list.
+   *
+   * @param {string} name
+   *     The header's name.
+   */
+    clearRequestHeader(name) {
+      this.#channel.setRequestHeader(
+        name, // aName
+        "", // aValue="" as an empty value
+        false // aMerge=false to force clearing the header
+      );
+    }
+
   /**
    * Retrieve the Fetch timings for the NetworkRequest.
    *
@@ -244,9 +258,14 @@ export class NetworkRequest {
    *     The header's name.
    * @param {string} value
    *     The header's value.
+      * @param {object} options
+   * @param {boolean} options.merge
+   *     True if the value should be merged with the existing value, false if it
+   *     should override it. Defaults to false.
    */
-  setRequestHeader(name, value) {
-    this.#channel.setRequestHeader(name, value, false);
+  setRequestHeader(name, value, options) {
+    const { merge = false } = options;
+    this.#channel.setRequestHeader(name, value, merge);
   }
 
   /**
