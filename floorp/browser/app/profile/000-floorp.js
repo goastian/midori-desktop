@@ -18,6 +18,9 @@ pref("enable.floorp.update", true);
 
 pref("floorp.chrome.theme.mode", -1);
 
+pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.section.topstories", false);
+
 //ブラウザーUIのカスタマイズ設定
 pref("floorp.bookmarks.bar.focus.mode", false);//フォーカスした際にブックマークバーを展開
 pref("floorp.disable.fullscreen.notification", false);//フルスクリーン通知を無効化
@@ -35,7 +38,7 @@ pref("floorp.enable.auto.restart", false);
 
 pref("browser.disable.nt.image.gb", false);// 画像を表示しない
 
-pref("floorp.enable.dualtheme", false); //デュアルテーマの有効・無効 
+pref("floorp.enable.dualtheme", false); //デュアルテーマの有効・無効
 pref("floorp.dualtheme.theme", "[]"); //デュアルテーマのリスト
 
 pref("floorp.download.notification", 4); //ダウンロード通知
@@ -218,6 +221,8 @@ pref("services.blocklist.update_enabled",	true);
 
 //Pocket機能を無効化*/
 pref("extensions.pocket.enabled", false);
+pref("browser.newtabpage.activity-stream.feeds.system.topstories", true);
+p
 
 // Disable ads
 
@@ -265,6 +270,8 @@ pref("dom.private-attribution.submission.enabled", false, locked);
 
 //Firefox調査を無効化
 pref("app.shield.optoutstudies.enabled", false, locked);
+
+pref("midori.urlbar.centered", true);
 
 //拡張機能の推奨を削除
 pref("browser.discovery.enabled", false);
