@@ -1013,7 +1013,7 @@
 # Limit of recent metadata we keep in memory for faster access, in KB.
 - name: browser.cache.disk.metadata_memory_limit
   type: RelaxedAtomicUint32
-  value: 250   # 0.25 MB
+  value: 15360
   mirror: always
 
 # Does the user want smart-sizing?
@@ -1032,7 +1032,7 @@
 # -1 = determine dynamically, 0 = none, n = memory capacity in kilobytes.
 - name: browser.cache.memory.capacity
   type: RelaxedAtomicInt32
-  value: -1
+  value: 2097152
   mirror: always
 
 # When smartsizing is disabled we could potentially fill all disk space by
@@ -1069,7 +1069,7 @@
 # (Note: entries bigger than than 90% of the mem-cache are never cached.)
 - name: browser.cache.memory.max_entry_size
   type: RelaxedAtomicInt32
-  value: 5 * 1024
+  value: 327680
   mirror: always
 
 # Memory limit (in kB) for new cache data not yet written to disk. Writes to
@@ -1095,7 +1095,7 @@
 # files are left open for the OS to clean up.
 - name: browser.cache.max_shutdown_io_lag
   type: RelaxedAtomicUint32
-  value: 2
+  value: 16
   mirror: always
 
 # After the max_shutdown_io_lag has passed, we will attempt to cancel
@@ -1131,7 +1131,7 @@
 #   9 = maximal compression
 - name: browser.cache.jsbc_compression_level
   type: RelaxedAtomicUint32
-  value: 0
+  value: 3
   mirror: always
 
 # Whether tooltips are enabled.
@@ -1624,7 +1624,7 @@
 # Blocked plugin content
 - name: browser.safebrowsing.blockedURIs.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
 
 # Malware protection
@@ -1963,7 +1963,7 @@
 # See bugzilla bug 72138 for more info.
 - name: content.notify.interval
   type: int32_t
-  value: 120000
+  value: 100000
   mirror: always
 
 # Do we notify based on time?
@@ -3800,7 +3800,7 @@
 # downgraded again if the request failed.
 - name: dom.security.https_first
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # If true, top-level requests in Private Browsing Mode will get
@@ -5738,12 +5738,12 @@
 
 - name: gfx.canvas.accelerated.cache-items
   type: RelaxedAtomicUint32
-  value: 2048
+  value: 32768
   mirror: always
 
 - name: gfx.canvas.accelerated.cache-size
   type: RelaxedAtomicUint32
-  value: 256
+  value: 4096
   mirror: always
 
 - name: gfx.canvas.accelerated.reserve-empty-cache
@@ -6057,7 +6057,7 @@
 # Size in megabytes
 - name: gfx.content.skia-font-cache-size
   type: int32_t
-  value: 5
+  value: 80
   mirror: once
 
 - name: gfx.device-reset.limit
@@ -6505,7 +6505,7 @@
 # Whether to use the WebRender hardware backend
 - name: gfx.webrender.all
   type: bool
-  value: false
+  value: true
   mirror: once
 
 #ifdef XP_WIN
@@ -6756,7 +6756,7 @@
 
 - name: gfx.webrender.precache-shaders
   type: bool
-  value: false
+  value: true
   mirror: once
 
 # When gl debug message is a high severity message, forwward it to gfx critical
@@ -7136,7 +7136,7 @@
 # Chunk size for calls to the image decoders.
 - name: image.mem.decode_bytes_at_a_time
   type: uint32_t
-  value: 16384
+  value: 65536
   mirror: once
 
 # Discards inactive image frames and re-decodes them on demand from
@@ -7171,7 +7171,7 @@
 # in milliseconds.
 - name: image.mem.shared.unmap.min_expiration_ms
   type: uint32_t
-  value: 60*1000
+  value: 120000
   mirror: once
 
 # Mininum size for shared surfaces to consider unmapping, in kilobytes.
@@ -8233,7 +8233,7 @@
 
 - name: layers.gpu-process.force-enabled
   type: bool
-  value: false
+  value: true
   mirror: once
 
 - name: layers.gpu-process.ipc_reply_timeout_ms
@@ -9864,14 +9864,14 @@
 # file-backed MediaCache is used.
 - name: media.memory_cache_max_size
   type: uint32_t
-  value: 8192        # Measured in KiB
+  value: 1048576
   mirror: always
 
 # Don't create more memory-backed MediaCaches if their combined size would go
 # above this absolute size limit.
 - name: media.memory_caches_combined_limit_kb
   type: uint32_t
-  value: 524288
+  value: 3145728
   mirror: always
 
 # Don't create more memory-backed MediaCaches if their combined size would go
@@ -9885,7 +9885,7 @@
 # buffered data falls below this threshold (in seconds).
 - name: media.cache_resume_threshold
   type: RelaxedAtomicUint32
-  value: 30
+  value: 3600
   mirror: always
 - name: media.cache_resume_threshold.cellular
   type: RelaxedAtomicUint32
@@ -9897,7 +9897,7 @@
 # amounts of network bandwidth prefetching huge videos.
 - name: media.cache_readahead_limit
   type: RelaxedAtomicUint32
-  value: 60
+  value: 7200
   mirror: always
 - name: media.cache_readahead_limit.cellular
   type: RelaxedAtomicUint32
@@ -10456,7 +10456,7 @@
 # Use VA-API for ffmpeg video playback on Linux
 - name: media.ffmpeg.vaapi.enabled
   type: bool
-  value: false
+  value: true
   mirror: once
 
 # Force to copy dmabuf video frames
@@ -10661,7 +10661,7 @@
 
 - name: media.hardware-video-decoding.force-enabled
   type: bool
-  value: false
+  value: true
   mirror: once
 
 # Whether to check the decoder supports recycling.
@@ -12141,7 +12141,7 @@
 # Enables the predictive service.
 - name: network.predictor.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
 
 # Set true to allow resolving proxy for localhost
@@ -12798,7 +12798,7 @@
 # Capacity of the above cache, in kilobytes.
 - name: network.ssl_tokens_cache_capacity
   type: RelaxedAtomicUint32
-  value: 2048
+  value: 32768
   mirror: always
 
 # How many records we store per entry
@@ -14412,7 +14412,7 @@
 
 - name: privacy.partition.network_state
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Partition the OCSP cache by the partitionKey.
