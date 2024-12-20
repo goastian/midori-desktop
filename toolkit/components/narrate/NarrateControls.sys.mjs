@@ -16,10 +16,19 @@ export function NarrateControls(win, languagePromise) {
 
   win.addEventListener("unload", this);
 
+  let improvedTextMenuEnabled = Services.prefs.getBoolPref(
+    "reader.improved_text_menu.enabled",
+    false
+  );
+
   // Append content style sheet in document head
   let style = win.document.createElement("link");
   style.rel = "stylesheet";
-  style.href = "chrome://global/skin/narrate.css";
+  if (improvedTextMenuEnabled) {
+    style.href = "chrome://global/skin/narrate-improved.css";
+  } else {
+    style.href = "chrome://global/skin/narrate.css";
+  }
   win.document.head.appendChild(style);
 
   let elemL10nMap = {
@@ -53,6 +62,13 @@ export function NarrateControls(win, languagePromise) {
   dropdownList.className = "dropdown-popup";
   dropdown.appendChild(dropdownList);
 
+  if (improvedTextMenuEnabled) {
+    let narrateHeader = win.document.createElement("h2");
+    narrateHeader.id = "narrate-header";
+    narrateHeader.textContent = gStrings.GetStringFromName("read-aloud-header");
+    dropdownList.appendChild(narrateHeader);
+  }
+
   let narrateControl = win.document.createElement("div");
   narrateControl.className = "narrate-row narrate-control";
   dropdownList.appendChild(narrateControl);
@@ -60,6 +76,18 @@ export function NarrateControls(win, languagePromise) {
   let narrateRate = win.document.createElement("div");
   narrateRate.className = "narrate-row narrate-rate";
   dropdownList.appendChild(narrateRate);
+
+  let selectLabel = "";
+  if (improvedTextMenuEnabled) {
+    let hr = win.document.createElement("hr");
+    let voiceHeader = win.document.createElement("h2");
+    voiceHeader.id = "narrate-header";
+    voiceHeader.textContent = gStrings.GetStringFromName("select-voice-header");
+    dropdownList.appendChild(hr);
+    dropdownList.appendChild(voiceHeader);
+  } else {
+    selectLabel = gStrings.GetStringFromName("selectvoicelabel");
+  }
 
   let narrateVoices = win.document.createElement("div");
   narrateVoices.className = "narrate-row narrate-voices";
@@ -149,7 +177,6 @@ export function NarrateControls(win, languagePromise) {
   this.narrator = new Narrator(win, languagePromise);
 
   let branch = Services.prefs.getBranch("narrate.");
-  let selectLabel = gStrings.GetStringFromName("selectvoicelabel");
   this.voiceSelect = new VoiceSelect(win, selectLabel);
   this.voiceSelect.element.addEventListener("change", this);
   this.voiceSelect.element.classList.add("voice-select");
@@ -159,6 +186,7 @@ export function NarrateControls(win, languagePromise) {
     .appendChild(this.voiceSelect.element);
 
   dropdown.addEventListener("click", this, true);
+  dropdown.addEventListener("keydown", this, true);
 
   let rateRange = dropdown.querySelector(".narrate-rate > input");
   rateRange.addEventListener("change", this);
@@ -185,6 +213,15 @@ NarrateControls.prototype = {
       case "click":
         this._onButtonClick(evt);
         break;
+        case "keydown": {
+          let popup = this._doc.querySelector(
+            ".narrate-dropdown > .dropdown-popup"
+          );
+          if (evt.key === "Tab" && popup.contains(evt.target)) {
+            this._handleFocus(evt);
+          }
+          break;
+        }
       case "voiceschanged":
         this._setupVoices();
         break;
@@ -400,5 +437,30 @@ NarrateControls.prototype = {
 
   get voice() {
     return this.voiceSelect.value;
+  },
+
+  _handleFocus(e) {
+    let classList = e.target.classList;
+
+    let narrateDropdown = this._doc.querySelector(".narrate-dropdown");
+    if (!e.shiftKey) {
+      if (classList.contains("option") || classList.contains("select-toggle")) {
+        e.preventDefault();
+      } else {
+        return;
+      }
+      if (narrateDropdown.classList.contains("speaking")) {
+        let skipPrevious = this._doc.querySelector(".narrate-skip-previous");
+        skipPrevious.focus();
+      } else {
+        let startStop = this._doc.querySelector(".narrate-start-stop");
+        startStop.focus();
+      }
+    }
+    let firstFocusableButton = narrateDropdown.querySelector("button:enabled");
+    if (e.target === firstFocusableButton) {
+      e.preventDefault();
+      narrateDropdown.querySelector(".select-toggle").focus();
+    }
   },
 };
