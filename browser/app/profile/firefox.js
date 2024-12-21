@@ -1851,7 +1851,7 @@ pref("browser.newtabpage.activity-stream.logowordmark.alwaysVisible", true);
 pref("browser.newtabpage.activity-stream.hideTopSitesWithSearchParam", "mfadid=adm");
 
 // Separate about welcome
-pref("browser.aboutwelcome.enabled", false);
+pref("browser.aboutwelcome.enabled", true);
 // Used to set multistage welcome UX
 pref("browser.aboutwelcome.screens", "");
 // Used to enable window modal onboarding
