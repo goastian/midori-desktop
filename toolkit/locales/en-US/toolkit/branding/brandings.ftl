@@ -15,17 +15,17 @@
 ## https://mozilla-l10n.github.io/styleguides/mozilla_general/#brands-copyright-and-trademark
 
 -facebook-container-brand-name = Facebook Container
--monitor-brand-name = Firefox Monitor
+-monitor-brand-name = Midori Monitor
 -monitor-brand-short-name = Monitor
 -mozmonitor-brand-name = Mozilla Monitor
 -pocket-brand-name = Pocket
--send-brand-name = Firefox Send
--screenshots-brand-name = Firefox Screenshots
+-send-brand-name = Midori Send
+-screenshots-brand-name = Midori Screenshots
 -mozilla-vpn-brand-name = Mozilla VPN
--profiler-brand-name = Firefox Profiler
--translations-brand-name = Firefox Translations
--focus-brand-name = Firefox Focus
--relay-brand-name = Firefox Relay
+-profiler-brand-name = Midori Profiler
+-translations-brand-name = Midori Translations
+-focus-brand-name = Midori Focus
+-relay-brand-name = Midori Relay
 -relay-brand-short-name = Relay
 -fakespot-brand-name = Fakespot
 
@@ -37,12 +37,12 @@
 
 # “Suggest” can be localized, “Firefox” must be treated as a brand
 # and kept in English.
--firefox-suggest-brand-name = Firefox Suggest
+-firefox-suggest-brand-name = Midori Suggest
 
 # ”Home" can be localized, “Firefox” must be treated as a brand
 # and kept in English.
--firefox-home-brand-name = Firefox Home
+-firefox-home-brand-name = Midori Home
 
 # View" can be localized, “Firefox” must be treated as a brand
 # and kept in English.
--firefoxview-brand-name = Firefox View
+-firefoxview-brand-name = Midori View
