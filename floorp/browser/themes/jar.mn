@@ -268,10 +268,6 @@ floorp.jar:
   skin/classic/design-images/floorp-fluerial-dark.jpg             (design-images/floorp-fluerial-dark.jpg)
   skin/classic/design-images/floorp-fluerial-white.jpg            (design-images/floorp-fluerial-white.jpg)
 
-# Floorp Notes
-  skin/classic/icons/notes.png                                    (icons/notes.png)
-  skin/classic/icons/notes-bms.svg                                (icons/notes-bms.svg)
-
 # Workspace
   skin/classic/icons/workspace-floorp.png                         (icons/workspace-floorp.png)
 
