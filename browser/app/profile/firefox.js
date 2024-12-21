@@ -1706,7 +1706,7 @@ pref("browser.newtabpage.activity-stream.weather.locationSearchEnabled", false);
 pref("browser.newtabpage.activity-stream.weather.display", "simple");
 // List of regions that get weather by default.
 
-pref("browser.newtabpage.activity-stream.discoverystream.region-weather-config", "US,CA,CO,RU,ES,BR,PT,MX,FR,IT,IR,JA");
+pref("browser.newtabpage.activity-stream.discoverystream.region-weather-config", "US,CA,CO,RU,ES,BR,PT,MX,FR,IT,IR,JA,GE,IN,UK,CH");
 
 
 // Preference to enable wallpaper selection in the Customize Menu of new tab page
