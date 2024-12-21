@@ -1700,7 +1700,7 @@ pref("browser.partnerlink.campaign.topsites", "amzn_2020_a1");
 pref("browser.newtab.preload", true);
 
 // Weather widget for newtab
-pref("browser.newtabpage.activity-stream.showWeather", true);
+pref("browser.newtabpage.activity-stream.showWeather", false);
 pref("browser.newtabpage.activity-stream.weather.query", "");
 pref("browser.newtabpage.activity-stream.weather.locationSearchEnabled", false);
 pref("browser.newtabpage.activity-stream.weather.display", "simple");
@@ -2538,16 +2538,16 @@ pref("browser.privatebrowsing.felt-privacy-v1", false);
 // This pref will surface existing Firefox Account information
 // as a button next to the hamburger menu. It allows
 // quick access to sign-in and manage your Firefox Account.
-pref("identity.fxaccounts.toolbar.enabled", true);
+pref("identity.fxaccounts.toolbar.enabled", false);
 pref("identity.fxaccounts.toolbar.accessed", false);
-pref("identity.fxaccounts.toolbar.defaultVisible", true);
+pref("identity.fxaccounts.toolbar.defaultVisible", false);
 
 // Prefs to control Firefox Account panels that shows call to actions
 // for other supported Mozilla products
-pref("identity.fxaccounts.toolbar.pxiToolbarEnabled", true);
-pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled", true);
-pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.relayEnabled", true);
-pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.vpnEnabled", true);
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled", false);
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled", false);
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.relayEnabled", false);
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.vpnEnabled", false);
 
 // Toolbox preferences
 pref("devtools.toolbox.footer.height", 250);
