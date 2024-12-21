@@ -16,16 +16,12 @@
   fill-opacity: var(--urlbar-icon-fill-opacity);
 }
 
-#urlbar.searchButton > .urlbar-input-container > #identity-box[pageproxystate="invalid"],
-#identity-box[pageproxystate="invalid"] > #identity-permission-box,
-#identity-box[pageproxystate="invalid"] > #notification-popup-box,
-#identity-box[pageproxystate="invalid"] #identity-icon-label {
-  display: none;
-}
-
-#urlbar:not(.searchButton) > .urlbar-input-container > #identity-box[pageproxystate="invalid"] {
-  pointer-events: none;
-  -moz-user-focus: ignore;
+#identity-box[pageproxystate="invalid"] {
+  > #identity-permission-box,
+  > #notification-popup-box,
+  #identity-icon-label {
+    display: none;
+  }
 }
 
 .identity-box-button:hover:not([open=true]),
