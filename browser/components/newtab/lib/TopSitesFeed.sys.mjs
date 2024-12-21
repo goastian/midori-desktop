@@ -594,7 +594,7 @@ export class TopSitesFeed {
 
     let hasContileTiles = false;
     if (contileEnabled) {
-      let contilePositionIndex = 1;
+      let contilePositionIndex = 3;
       let sponsorsList = [
         {
           "id": 0,
