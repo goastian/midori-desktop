@@ -2789,6 +2789,11 @@ void CanonicalBrowsingContext::SetContainerFeaturePolicy(
   mContainerFeaturePolicyInfo = std::move(aContainerFeaturePolicyInfo);
 }
 
+already_AddRefed<CanonicalBrowsingContext>
+CanonicalBrowsingContext::GetCrossGroupOpener() const {
+  return Get(mCrossGroupOpenerId);
+}
+
 void CanonicalBrowsingContext::SetCrossGroupOpenerId(uint64_t aOpenerId) {
   MOZ_DIAGNOSTIC_ASSERT(IsTopContent());
   MOZ_DIAGNOSTIC_ASSERT(mCrossGroupOpenerId == 0,
@@ -2797,7 +2802,7 @@ void CanonicalBrowsingContext::SetCrossGroupOpenerId(uint64_t aOpenerId) {
 }
 
 void CanonicalBrowsingContext::SetCrossGroupOpener(
-    CanonicalBrowsingContext& aCrossGroupOpener, ErrorResult& aRv) {
+    CanonicalBrowsingContext* aCrossGroupOpener, ErrorResult& aRv) {
   if (!IsTopContent()) {
     aRv.ThrowNotAllowedError(
         "Can only set crossGroupOpener on toplevel content");
@@ -2808,7 +2813,12 @@ void CanonicalBrowsingContext::SetCrossGroupOpener(
     return;
   }
 
-  SetCrossGroupOpenerId(aCrossGroupOpener.Id());
+  if (!aCrossGroupOpener) {
+    aRv.ThrowNotAllowedError("Can't set crossGroupOpener to null");
+    return;
+  }
+
+  SetCrossGroupOpenerId(aCrossGroupOpener->Id());
 }
 
 auto CanonicalBrowsingContext::FindUnloadingHost(uint64_t aChildID)
