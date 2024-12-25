@@ -10,7 +10,7 @@
 <br />
 <div align="center">
   <a href="https://gitlab.com/midori-web/midori-desktop">
-    <img src="https://astian.org/wp-content/uploads/2023/09/Midori-Claro-ImagoTipo-300x84.png" alt="Logo" width="300" height="84">
+    <img src="https://astian.org/wp-content/uploads/2024/12/midori-compuesto.png" alt="Logo" width="320" height="105">
   </a>
 
   <h3 align="center">Midori Browser </h3>
