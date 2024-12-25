@@ -342,12 +342,11 @@ nsWindowsShellService::CheckAllProgIDsExist(bool* aResult) {
 
     *aResult = result;
   } else {
-    *aResult = CheckProgIDExists(
-                   FormatProgID(L"MidoriURL", aumid.get()).get()) &&
-               CheckProgIDExists(
-                   FormatProgID(L"MidoriHTML", aumid.get()).get()) &&
-               CheckProgIDExists(
-                   FormatProgID(L"MidoriPDF", aumid.get()).get());
+    *aResult =
+        CheckProgIDExists(FormatProgID(L"MidoriURL", aumid.get()).get()) &&
+        CheckProgIDExists(FormatProgID(L"MidoriHTML", aumid.get()).get()) &&
+        CheckProgIDExists(FormatProgID(L"MidoriPDF", aumid.get()).get());
+
 
   }
 
