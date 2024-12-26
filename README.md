@@ -1,6 +1,6 @@
 ## Welcome to Midori Browser Github Repository 👋
 
-[![CircleCI](https://circleci.com/gh/midori-browser/core.svg?style=svg)](https://circleci.com/gh/midori-browser/core)
+[![build result](https://build.opensuse.org/projects/home:astian-inc/packages/midori-browser/badge.svg?type=default)](https://build.opensuse.org/package/show/home:astian-inc/midori-browser)
 [![Telegram](https://img.shields.io/badge/Telegram-Chat-gray.svg?style=flat&logo=telegram&colorA=5583a4&logoColor=fff)](https://t.me/midoriweb)
 [![Twitter](https://img.shields.io/twitter/follow/midoriweb.svg?style=social&label=Follow)](https://twitter.com/grupoastian)
 [![Donate](https://img.shields.io/badge/Stripe-Donate-gray.svg?style=flat&logo=stripe&colorA=0071bb&logoColor=fff)](https://donate.stripe.com/00g6s675Xawl6ZO9AH)
@@ -10,7 +10,7 @@
 <br />
 <div align="center">
   <a href="https://gitlab.com/midori-web/midori-desktop">
-    <img src="https://astian.org/wp-content/uploads/2023/09/Midori-Claro-ImagoTipo-300x84.png" alt="Logo" width="300" height="84">
+    <img src="https://astian.org/wp-content/uploads/2024/12/midori-compuesto.png" alt="Logo" width="320" height="105">
   </a>
 
   <h3 align="center">Midori Browser </h3>
