@@ -20,7 +20,7 @@
      win.document.getElementById("tab-preview-panel"),
      "shown"
    );
-   EventUtils.synthesizeMouseAtCenter(tab, { type: "mouseover" }, win);
+   EventUtils.synthesizeMouse(tab, 1, 1, { type: "mouseover" }, win);
    return previewShown;
  }
  
@@ -450,15 +450,20 @@
    const previewComponent = gBrowser.tabContainer.previewPanel;
    sinon.spy(previewComponent, "activate");
  
-   const newTabMenu = document.getElementById("new-tab-button-popup");
-   const newTabButton = document.getElementById("tabs-newtab-button");
-   let newTabMenuShown = BrowserTestUtils.waitForPopupEvent(newTabMenu, "shown");
+   const contentAreaContextMenu = document.getElementById(
+     "contentAreaContextMenu"
+   );
+   const contextMenuShown = BrowserTestUtils.waitForPopupEvent(
+     contentAreaContextMenu,
+     "shown"
+   );
+ 
    EventUtils.synthesizeMouseAtCenter(
-     newTabButton,
+     document.documentElement,
      { type: "contextmenu" },
      window
    );
-   await newTabMenuShown;
+   await contextMenuShown;
  
    EventUtils.synthesizeMouseAtCenter(tab, { type: "mouseover" }, window);
  
@@ -467,7 +472,7 @@
    });
    Assert.equal(previewComponent._panel.state, "closed", "");
  
-   newTabMenu.hidePopup();
+   contentAreaContextMenu.hidePopup();
    BrowserTestUtils.removeTab(tab);
    sinon.restore();
  
@@ -501,33 +506,33 @@
    EventUtils.synthesizeMouseAtCenter(tab, { type: "mouseover" }, window);
  
    await BrowserTestUtils.waitForCondition(() => {
-    return previewComponent.activate.calledOnce;
+     return previewComponent.activate.calledOnce;
    });
    Assert.equal(previewComponent._panel.state, "closed", "");
-
-
-  // Reset state: close the app menu popup and move the mouse off the tab
-  const tabs = window.document.getElementById("tabbrowser-tabs");
-  EventUtils.synthesizeMouse(
-    tabs,
-    0,
-    tabs.outerHeight + 1,
-    {
-      type: "mouseout",
-    },
-    window
-  );
-  const popupHidingEvent = BrowserTestUtils.waitForEvent(
-    appMenuPopup,
-    "popuphiding"
-  );
  
+   // Reset state: close the app menu popup and move the mouse off the tab
+   const tabs = window.document.getElementById("tabbrowser-tabs");
+   EventUtils.synthesizeMouse(
+     tabs,
+     0,
+     tabs.outerHeight + 1,
+     {
+       type: "mouseout",
+     },
+     window
+   );
+ 
+   const popupHidingEvent = BrowserTestUtils.waitForEvent(
+     appMenuPopup,
+     "popuphiding"
+   );
    appMenuPopup.hidePopup();
    await popupHidingEvent;
+ 
    // Attempt to open the tab preview immediately after the popup hiding event
    await openPreview(tab);
    Assert.equal(previewComponent._panel.state, "open", "");
-
+ 
    BrowserTestUtils.removeTab(tab);
    sinon.restore();
  
@@ -536,35 +541,138 @@
      type: "mouseover",
    });
  });
-
- /**
- * Quickly moving the mouse off and back on to the tab strip should
- * not reset the delay
- */
-add_task(async function zeroDelayTests() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["ui.tooltip.delay_ms", 1000]],
-  });
-  const tabUrl =
-    "data:text/html,<html><head><title>First New Tab</title></head><body>Hello</body></html>";
-  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, tabUrl);
-  await openPreview(tab);
-  await closePreviews();
-  let resolved = false;
-  let openPreviewPromise = openPreview(tab).then(() => {
-    resolved = true;
-  });
-  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
-  let timeoutPromise = new Promise(resolve => setTimeout(resolve, 300));
-  await Promise.race([openPreviewPromise, timeoutPromise]);
-  Assert.ok(resolved, "Zero delay is set immediately after leaving tab strip");
-  await closePreviews();
-  BrowserTestUtils.removeTab(tab);
-  await SpecialPowers.popPrefEnv();
-});
  
  /**
-  * The panel should be configured to roll up on wheel events iff
+  * Ensure that the panel does not open when other panels are active or are in the process of being activated,
+  * when THP is being called for the first time (lazy-loaded)
+  */
+ add_task(async function panelSuppressionOnPanelLazyLoadTests() {
+   // This needs to be done in a new window to ensure that
+   // the previewPanel is being loaded for the first time
+   let fgWindow = await BrowserTestUtils.openNewBrowserWindow();
+   let fgTab = fgWindow.gBrowser.tabs[0];
+ 
+   // The `openPopup` API appears to not be working for this panel,
+   // but it can be triggered by firing a click event on the associated button.
+   const appMenuButton = fgWindow.document.getElementById("PanelUI-menu-button");
+   const appMenuPopup = fgWindow.document.getElementById("appMenu-popup");
+   appMenuButton.click();
+ 
+   EventUtils.synthesizeMouseAtCenter(fgTab, { type: "mouseover" }, fgWindow);
+ 
+   await BrowserTestUtils.waitForCondition(() => {
+     // Sometimes the tests run slower than the test browser -- it's not always possible
+     // to catch the panel in its opening state, so we have to check for both states.
+     return (
+       (appMenuPopup.getAttribute("animating") === "true" ||
+         appMenuPopup.getAttribute("panelopen") === "true") &&
+       fgWindow.gBrowser.tabContainer.previewPanel !== null
+     );
+   });
+   const previewComponent = fgWindow.gBrowser.tabContainer.previewPanel;
+ 
+   // We can't spy on the previewComponent and check for calls to `activate` like in other tests,
+   // since we can't guarantee that the spy will be set up before the call is made.
+   // Therefore the only realiable way to test that the popup isn't open is to reach in and check
+   // that it is in a disabled state.
+   Assert.equal(previewComponent._isDisabled(), true, "");
+ 
+   // Reset state: close the app menu popup and move the mouse off the tab
+   const tabs = fgWindow.document.getElementById("tabbrowser-tabs");
+   EventUtils.synthesizeMouse(
+     tabs,
+     0,
+     tabs.outerHeight + 1,
+     {
+       type: "mouseout",
+     },
+     fgWindow
+   );
+ 
+   const popupHidingEvent = BrowserTestUtils.waitForEvent(
+     appMenuPopup,
+     "popuphiding"
+   );
+   appMenuPopup.hidePopup();
+   await popupHidingEvent;
+ 
+   BrowserTestUtils.removeTab(fgTab);
+ 
+   // Move the mouse outside of the tab strip.
+   await BrowserTestUtils.closeWindow(fgWindow);
+   EventUtils.synthesizeMouseAtCenter(document.documentElement, {
+     type: "mouseover",
+   });
+ });
+ 
+ /**
+  * preview should be hidden if it is showing when the URLBar receives input
+  */
+ add_task(async function urlBarInputTests() {
+   const previewElement = document.getElementById("tab-preview-panel");
+   const tab1 = await BrowserTestUtils.openNewForegroundTab(
+     gBrowser,
+     "about:blank"
+   );
+ 
+   await openPreview(tab1);
+   gURLBar.focus();
+   Assert.equal(previewElement.state, "open", "Preview is open");
+ 
+   let previewHidden = BrowserTestUtils.waitForEvent(
+     previewElement,
+     "popuphidden"
+   );
+   EventUtils.sendChar("q", window);
+   await previewHidden;
+ 
+   Assert.equal(previewElement.state, "closed", "Preview is closed");
+   await closePreviews();
+   await openPreview(tab1);
+   Assert.equal(previewElement.state, "open", "Preview is open");
+ 
+   previewHidden = BrowserTestUtils.waitForEvent(previewElement, "popuphidden");
+   EventUtils.sendChar("q", window);
+   await previewHidden;
+   Assert.equal(previewElement.state, "closed", "Preview is closed");
+ 
+   BrowserTestUtils.removeTab(tab1);
+ });
+ 
+ /**
+  * Quickly moving the mouse off and back on to the tab strip should
+  * not reset the delay
+  */
+ add_task(async function zeroDelayTests() {
+   await SpecialPowers.pushPrefEnv({
+     set: [["ui.tooltip.delay_ms", 1000]],
+   });
+ 
+   const tabUrl =
+     "data:text/html,<html><head><title>First New Tab</title></head><body>Hello</body></html>";
+   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, tabUrl);
+ 
+   await openPreview(tab);
+   await closePreviews();
+ 
+   let resolved = false;
+   let openPreviewPromise = openPreview(tab).then(() => {
+     resolved = true;
+   });
+   // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+   let timeoutPromise = new Promise(resolve => setTimeout(resolve, 300));
+   await Promise.race([openPreviewPromise, timeoutPromise]);
+ 
+   Assert.ok(resolved, "Zero delay is set immediately after leaving tab strip");
+ 
+   await closePreviews();
+   BrowserTestUtils.removeTab(tab);
+ 
+   await SpecialPowers.popPrefEnv();
+ });
+ 
+ /**
+  * The panel should be configured to roll up on wheel events if
   * the tab strip is overflowing.
   */
  add_task(async function wheelTests() {
@@ -579,9 +687,14 @@ add_task(async function zeroDelayTests() {
      "Panel does not have rolluponmousewheel when no overflow"
    );
  
-   await BrowserTestUtils.overflowTabs(registerCleanupFunction, window, {
+   let scrollOverflowEvent = BrowserTestUtils.waitForEvent(
+     document.getElementById("tabbrowser-arrowscrollbox"),
+     "overflow"
+   );
+   BrowserTestUtils.overflowTabs(registerCleanupFunction, window, {
      overflowAtStart: false,
    });
+   await scrollOverflowEvent;
    await openPreview(tab1);
  
    Assert.equal(
@@ -601,3 +714,4 @@ add_task(async function zeroDelayTests() {
      type: "mouseover",
    });
  });
+ 
