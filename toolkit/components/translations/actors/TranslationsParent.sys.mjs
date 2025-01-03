@@ -1036,15 +1036,6 @@ export class TranslationsParent extends JSWindowActorParent {
   static #languagePairs = null;
 
   /**
-   * Clears the cached list of language pairs, notifying observers that the
-   * available language pairs have changed.
-   */
-  static #clearCachedLanguagePairs() {
-    TranslationsParent.#languagePairs = null;
-    Services.obs.notifyObservers(null, "translations:language-pairs-changed");
-  }
-
-  /**
    * Get the list of translation pairs supported by the translations engine.
    *
    * @returns {Promise<Array<LanguagePair>>}
@@ -1064,7 +1055,7 @@ export class TranslationsParent extends JSWindowActorParent {
           return Array.from(languagePairMap.values());
         });
       TranslationsParent.#languagePairs.catch(() => {
-        TranslationsParent.#clearCachedLanguagePairs();
+        TranslationsParent.#languagePairs = null;
       });
     }
     return TranslationsParent.#languagePairs;
@@ -1162,130 +1153,11 @@ export class TranslationsParent extends JSWindowActorParent {
   }
 
   /**
-   * Handles records that were deleted in a Remote Settings "sync" event by
-   * attempting to delete any previously downloaded attachments that are
-   * associated with the deleted records.
-   *
-   * @param {RemoteSettingsClient} client
-   *  - The Remote Settings client for which to handle deleted records.
-   * @param {TranslationModelRecord[]} deletedRecords
-   *  - The list of records that were deleted from the client's database.
-   */
-  static async #handleDeletedRecords(client, deletedRecords) {
-    // Attempt to delete any downloaded attachments that are associated with deleted records.
-    const failedDeletions = [];
-    await Promise.all(
-      deletedRecords.map(async record => {
-        try {
-          if (await client.attachments.isDownloaded(record)) {
-            await client.attachments.deleteDownloaded(record);
-          }
-        } catch (error) {
-          failedDeletions.push({ record, error });
-        }
-      })
-    );
-
-    // Report deletion failures if any occurred.
-    if (failedDeletions.length) {
-      lazy.console.warn(
-        'Remote Settings "sync" event failed to delete attachments for deleted records.'
-      );
-      for (const { record, error } of failedDeletions) {
-        lazy.console.error(
-          `Failed to delete attachment for deleted record ${record.name}: ${error}`
-        );
-      }
-    }
-  }
-
-  /**
-   * Handles records that were updated in a Remote Settings "sync" event by
-   * attempting to delete any previously downloaded attachments that are
-   * associated with the old record versions, then downloading attachments
-   * that are associated with the new record versions.
-   *
-   * @param {RemoteSettingsClient} client
-   *  - The Remote Settings client for which to handle updated records.
-   * @param {{old: TranslationModelRecord, new: TranslationModelRecord}[]} updatedRecords
-   *  - The list of records that were updated in the client's database.
-   */
-  static async #handleUpdatedRecords(client, updatedRecords) {
-    // Gather any updated records whose attachments were previously downloaded.
-    const recordsWithAttachmentsToReplace = [];
-    for (const {
-      old: recordBeforeUpdate,
-      new: recordAfterUpdate,
-    } of updatedRecords) {
-      if (await client.attachments.isDownloaded(recordBeforeUpdate)) {
-        recordsWithAttachmentsToReplace.push({
-          recordBeforeUpdate,
-          recordAfterUpdate,
-        });
-      }
-    }
-
-    // Attempt to delete all of the attachments for the old versions of the updated records.
-    const failedDeletions = [];
-    await Promise.all(
-      recordsWithAttachmentsToReplace.map(async ({ recordBeforeUpdate }) => {
-        try {
-          await client.attachments.deleteDownloaded(recordBeforeUpdate);
-        } catch (error) {
-          failedDeletions.push({ record: recordBeforeUpdate, error });
-        }
-      })
-    );
-
-    // Report deletion failures if any occurred.
-    if (failedDeletions.length) {
-      lazy.console.warn(
-        'Remote Settings "sync" event failed to delete old record attachments for updated records.'
-      );
-      for (const { record, error } of failedDeletions) {
-        lazy.console.error(
-          `Failed to delete old attachment for updated record ${record.name}: ${error.reason}`
-        );
-      }
-    }
-
-    // Attempt to download all of the attachments for the new versions of the updated records.
-    const failedDownloads = [];
-    await Promise.all(
-      recordsWithAttachmentsToReplace.map(async ({ recordAfterUpdate }) => {
-        try {
-          await client.attachments.download(recordAfterUpdate);
-        } catch (error) {
-          failedDownloads.push({ record: recordAfterUpdate, error });
-        }
-      })
-    );
-
-    // Report deletion failures if any occurred.
-    if (failedDownloads.length) {
-      lazy.console.warn(
-        'Remote Settings "sync" event failed to download new record attachments for updated records.'
-      );
-      for (const { record, error } of failedDeletions) {
-        lazy.console.error(
-          `Failed to download new attachment for updated record ${record.name}: ${error.reason}`
-        );
-      }
-    }
-  }
-
-  /**
-   * Handles the "sync" event for the Translations Models Remote Settings collection.
-   * This is called whenever models are created, updated, or deleted from the Remote Settings database.
-   *
-   * @param {object} event - The sync event.
-   * @param {object} event.data - The data associated with the sync event.
+   * @param {object} event
+   * @param {object} event.data
    * @param {TranslationModelRecord[]} event.data.created
-   *  - The list of Remote Settings records that were created in the sync event.
-   * @param {{old: TranslationModelRecord, new: TranslationModelRecord}[]} event.data.updated
-   *  - The list of Remote Settings records that were updated in the sync event.
+   * @param {TranslationModelRecord[]} event.data.updated
    * @param {TranslationModelRecord[]} event.data.deleted
-   *  - The list of Remote Settings records that were deleted in the sync event.
    */
   static async #handleTranslationsModelsSync({
     data: { created, updated, deleted },
@@ -1293,18 +1165,14 @@ export class TranslationsParent extends JSWindowActorParent {
     const client = TranslationsParent.#translationModelsRemoteClient;
     if (!client) {
       lazy.console.error(
-        "Translations models client was not present when receiving a sync event."
+        "Translations client was not present when receiving a sync event."
       );
       return;
     }
 
-    // Invalidate cached data.
-    TranslationsParent.#clearCachedLanguagePairs();
-    TranslationsParent.#translationModelRecords = null;
-
     // Language model attachments will only be downloaded when they are used.
     lazy.console.log(
-      `Remote Settings "sync" event for language-model records`,
+      `Remote Settings "sync" event for remote language models `,
       {
         created,
         updated,
@@ -1312,59 +1180,30 @@ export class TranslationsParent extends JSWindowActorParent {
       }
     );
 
-    if (deleted.length) {
-      await TranslationsParent.#handleDeletedRecords(client, deleted);
+    const records = await TranslationsParent.#getTranslationModelRecords();
+
+    // Remove all the deleted records.
+    for (const record of deleted) {
+      await client.attachments.deleteDownloaded(record);
+      records.delete(record.id);
     }
 
-    if (updated.length) {
-      await TranslationsParent.#handleUpdatedRecords(client, updated);
+    // Pre-emptively remove the old downloads, and set the new updated record.
+    for (const { old: oldRecord, new: newRecord } of updated) {
+      await client.attachments.deleteDownloaded(oldRecord);
+      // The language pairs should be the same on the update, but use the old
+      // record just in case.
+      records.delete(oldRecord.id);
+      records.set(newRecord.id, newRecord);
     }
 
-    // There is nothing to do for created records, since they will not have any previously downloaded attachments.
-  }
-
-  /**
-   * Handles the "sync" event for the Translations WASM Remote Settings collection.
-   * This is called whenever models are created, updated, or deleted from the Remote Settings database.
-   *
-   * @param {object} event - The sync event.
-   * @param {object} event.data - The data associated with the sync event.
-   * @param {TranslationModelRecord[]} event.data.created
-   *  - The list of Remote Settings records that were created in the sync event.
-   * @param {{old: TranslationModelRecord, new: TranslationModelRecord}[]} event.data.updated
-   *  - The list of Remote Settings records that were updated in the sync event.
-   * @param {TranslationModelRecord[]} event.data.deleted
-   *  - The list of Remote Settings records that were deleted in the sync event.
-   */
-  static async #handleTranslationsWasmSync({
-    data: { created, updated, deleted },
-  }) {
-    const client = TranslationsParent.#translationsWasmRemoteClient;
-    if (!client) {
-      lazy.console.error(
-        "Translations WASM client was not present when receiving a sync event."
-      );
-      return;
+    // Add the new records, but don't download any attachments.
+    for (const record of created) {
+      records.set(record.id, record);
     }
-
-    lazy.console.log(`Remote Settings "sync" event for WASM records`, {
-      created,
-      updated,
-      deleted,
-    });
 
     // Invalidate cached data.
-    TranslationsParent.#bergamotWasmRecord = null;
-
-    if (deleted.length) {
-      await TranslationsParent.#handleDeletedRecords(client, deleted);
-    }
-
-    if (updated.length) {
-      await TranslationsParent.#handleUpdatedRecords(client, updated);
-    }
-
-    // There is nothing to do for created records, since they will not have any previously downloaded attachments.
+    TranslationsParent.#languagePairs = null;
   }
 
   /**
@@ -1381,7 +1220,6 @@ export class TranslationsParent extends JSWindowActorParent {
     const client = lazy.RemoteSettings("translations-models");
     TranslationsParent.#translationModelsRemoteClient = client;
     client.on("sync", TranslationsParent.#handleTranslationsModelsSync);
-
     return client;
   }
 
@@ -1636,8 +1474,28 @@ export class TranslationsParent extends JSWindowActorParent {
 
     /** @type {RemoteSettingsClient} */
     const client = lazy.RemoteSettings("translations-wasm");
+
     TranslationsParent.#translationsWasmRemoteClient = client;
-    client.on("sync", TranslationsParent.#handleTranslationsWasmSync);
+
+    client.on("sync", async ({ data: { created, updated, deleted } }) => {
+      lazy.console.log(`"sync" event for remote bergamot wasm `, {
+        created,
+        updated,
+        deleted,
+      });
+
+      // Remove all the deleted records.
+      for (const record of deleted) {
+        await client.attachments.deleteDownloaded(record);
+      }
+
+      // Remove any updated records, and download the new ones.
+      for (const { old: oldRecord } of updated) {
+        await client.attachments.deleteDownloaded(oldRecord);
+      }
+
+      // Do nothing for the created records.
+    });
 
     return client;
   }
@@ -1762,22 +1620,47 @@ export class TranslationsParent extends JSWindowActorParent {
 
   /**
    * Deletes language files that match a language.
+   * Note, this call doesn't have directionality because it is checking and deleting files
+   * for both sides of the pair that are not involved in a pivot.
    *
-   * @param {string} language The BCP 47 language tag.
+   * @param {string} languageA The BCP 47 language tag.
+   * @param {string} languageB The BCP 47 language tag.
+   * @param {boolean} deletePivots When true, the request may delete files that could be used for another language's pivot to complete a translation.
+   *                               When false, the request will not delete files that could be used in another language's pivot.
    */
-  static async deleteLanguageFiles(language) {
+  static async deleteLanguageFilesToAndFromPair(
+    languageA,
+    languageB,
+    deletePivots
+  ) {
     const client = TranslationsParent.#getTranslationModelsRemoteClient();
-    const isForDeletion = true;
     return Promise.all(
       Array.from(
-        await TranslationsParent.getRecordsForTranslatingToAndFromAppLanguage(
-          language,
-          isForDeletion
+        await TranslationsParent.getRecordsForTranslatingToAndFromPair(
+          languageA,
+          languageB,
+          deletePivots
         )
       ).map(record => {
         lazy.console.log("Deleting record", record);
         return client.attachments.deleteDownloaded(record);
       })
+    );
+  }
+
+  /**
+   * Deletes language files that match a language.
+   * This function operates based on the current app language.
+   *
+   * @param {string} language The BCP 47 language tag.
+   */
+  static async deleteLanguageFiles(language) {
+    const appLanguage = new Intl.Locale(Services.locale.appLocaleAsBCP47)
+      .language;
+    return TranslationsParent.deleteLanguageFilesToAndFromPair(
+      language,
+      appLanguage,
+      /* deletePivots */ false
     );
   }
 
@@ -1792,7 +1675,8 @@ export class TranslationsParent extends JSWindowActorParent {
     const queue = [];
 
     for (const record of await TranslationsParent.getRecordsForTranslatingToAndFromAppLanguage(
-      language
+      language,
+      /* includePivotRecords */ true
     )) {
       const download = () => {
         lazy.console.log("Downloading record", record.name, record.id);
@@ -1844,6 +1728,104 @@ export class TranslationsParent extends JSWindowActorParent {
   }
 
   /**
+   * Delete all language model files not a part of a complete language package. Also known as
+   * the language model "cache" in the UI.
+   *
+   * Usage is to clean up language models that may be lingering in the file system and are not
+   * a part of a downloaded language model package.
+   *
+   * For example, this deletes models that were acquired via a translation on-the-fly, not
+   * the complete package of language models for a language that has both directions.
+   *
+   * A complete language package for this function is considered both directions, when available,
+   * for example, en->es (downloaded) and es->en (downloaded) is complete and nothing will be deleted.
+   *
+   * When the language is not symmetric, for example nn->en (downloaded), then this is also considered a
+   * complete package and not subject to deletion. (Note, in this example, en->nn is not available.)
+   *
+   * This will delete a downloaded model set when it is incomplete, for example en->es (downloaded) and es->en
+   * (not-downloaded) will delete en->es to clear the lingering one-sided package.
+   *
+   * @returns {Set<string>}  Directional language pairs in the form of "fromLang,toLang" that indicates translation pairs that were deleted.
+   */
+  static async deleteCachedLanguageFiles() {
+    const languagePairs = await TranslationsParent.getLanguagePairs();
+
+    const deletionRequest = [];
+    let deletedPairs = new Set();
+
+    for (const { fromLang, toLang } of languagePairs) {
+      const { downloadedPairs, nonDownloadedPairs } =
+        await TranslationsParent.getDownloadedFileStatusToAndFromPair(
+          fromLang,
+          toLang
+        );
+
+      if (downloadedPairs.size && nonDownloadedPairs.size) {
+        // It is possible that additional pairs are listed, but in general,
+        // this should be parallel with deletion requests.
+        downloadedPairs.forEach(langPair => deletedPairs.add(langPair));
+        deletionRequest.push(
+          TranslationsParent.deleteLanguageFilesToAndFromPair(
+            fromLang,
+            toLang,
+            /* deletePivots */ false
+          )
+        );
+      }
+    }
+    await Promise.all(deletionRequest);
+
+    return deletedPairs;
+  }
+
+  /**
+   * Contains information about what files are downloaded between a language pair.
+   * Note, this call doesn't have directionality because it is checking both sides of the pair.
+   *
+   * @param {string} languageA The BCP 47 language tag.
+   * @param {string} languageB The BCP 47 language tag.
+   *
+   * @returns {object} status The status between the pairs.
+   * @returns {Set<string>} status.downloadedPairs A set of strings that has directionality about what side
+   *                                                is downloaded, in the format "fromLang,toLang".
+   * @returns {Set<string>} status.nonDownloadedPairs A set of strings that has directionality about what side
+   *                                                   is not downloaded, in the format "fromLang,toLang". It is possible to have files both in nonDownloadedFiles
+   *                                                   and downloadedFiles in the case of incomplete downloads.
+   */
+
+  static async getDownloadedFileStatusToAndFromPair(languageA, languageB) {
+    const client = TranslationsParent.#getTranslationModelsRemoteClient();
+    let downloadedPairs = new Set();
+    let nonDownloadedPairs = new Set();
+
+    for (const record of await TranslationsParent.getRecordsForTranslatingToAndFromPair(
+      languageA,
+      languageB,
+      /* includePivotRecords */ true
+    )) {
+      let isDownloaded = false;
+      if (TranslationsParent.isInAutomation()) {
+        isDownloaded = record.attachment.isDownloaded;
+      } else {
+        isDownloaded = await client.attachments.isDownloaded(record);
+      }
+
+      if (isDownloaded) {
+        downloadedPairs.add(
+          TranslationsParent.languagePairKey(record.fromLang, record.toLang)
+        );
+      } else {
+        nonDownloadedPairs.add(
+          TranslationsParent.languagePairKey(record.fromLang, record.toLang)
+        );
+      }
+    }
+
+    return { downloadedPairs, nonDownloadedPairs };
+  }
+
+  /**
    * Only returns true if all language files are present for a requested language.
    * It's possible only half the files exist for a pivot translation into another
    * language, or there was a download error, and we're still missing some files.
@@ -1854,7 +1836,7 @@ export class TranslationsParent extends JSWindowActorParent {
     const client = TranslationsParent.#getTranslationModelsRemoteClient();
     for (const record of await TranslationsParent.getRecordsForTranslatingToAndFromAppLanguage(
       requestedLanguage,
-      true
+      /* includePivotRecords */ true
     )) {
       if (!(await client.attachments.isDownloaded(record))) {
         return false;
@@ -1865,27 +1847,30 @@ export class TranslationsParent extends JSWindowActorParent {
   }
 
   /**
-   * Get the necessary files for translating to and from the app language and a
-   * requested language. This may require the files for a pivot language translation
+   * Get the necessary files for translating between two given languages.
+   * This may require the files for a pivot language translation
    * if there is no language model for a direct translation.
+   * Note, this call doesn't have directionality because it is checking both sides of the pair.
    *
-   * @param {string} requestedLanguage The BCP 47 language tag.
-   * @param {boolean} isForDeletion - Return a more restrictive set of languages, as
-   *                  these files are marked for deletion. We don't want to remove
-   *                  files that are needed for some other language's pivot translation.
+   * @param {string} languageA The BCP 47 language tag.
+   * @param {string} languageB The BCP 47 language tag.
+   * @param {boolean} includePivotRecords - When true, this will include a list of records with any required pivots.
+   *                                        An example using true would be to determine which files to download to complete a translation.
+   *                                        When false, this will not include the list of pivot records to achieve a translations.
+   *                                        An example using false would be to determine which  records to delete, but wanting to be
+   *                                        cautions to avoid deleting model files used by another language.
    * @returns {Set<TranslationModelRecord>}
    */
-  static async getRecordsForTranslatingToAndFromAppLanguage(
-    requestedLanguage,
-    isForDeletion = false
+  static async getRecordsForTranslatingToAndFromPair(
+    languageA,
+    languageB,
+    includePivotRecords
   ) {
     const records = await TranslationsParent.#getTranslationModelRecords();
-    const appLanguage = new Intl.Locale(Services.locale.appLocaleAsBCP47)
-      .language;
 
     let matchedRecords = new Set();
 
-    if (requestedLanguage === appLanguage) {
+    if (languageA === languageB) {
       // There are no records if the requested language and app language are the same.
       return matchedRecords;
     }
@@ -1903,31 +1888,58 @@ export class TranslationsParent extends JSWindowActorParent {
 
     if (
       // Is there a direct translation?
-      !addLanguagePair(requestedLanguage, appLanguage)
+      !addLanguagePair(languageA, languageB)
     ) {
       // This is no direct translation, get the pivot files.
-      addLanguagePair(requestedLanguage, PIVOT_LANGUAGE);
-      // These files may be required for other pivot translations, so don't remove
+      addLanguagePair(languageA, PIVOT_LANGUAGE);
+      // These files may be required for other pivot translations, so don't list
       // them if we are deleting records.
-      if (!isForDeletion) {
-        addLanguagePair(PIVOT_LANGUAGE, appLanguage);
+      if (includePivotRecords) {
+        addLanguagePair(PIVOT_LANGUAGE, languageB);
       }
     }
 
     if (
       // Is there a direct translation?
-      !addLanguagePair(appLanguage, requestedLanguage)
+      !addLanguagePair(languageB, languageA)
     ) {
       // This is no direct translation, get the pivot files.
-      addLanguagePair(PIVOT_LANGUAGE, requestedLanguage);
-      // These files may be required for other pivot translations, so don't remove
+      addLanguagePair(PIVOT_LANGUAGE, languageA);
+      // These files may be required for other pivot translations, so don't list
       // them if we are deleting records.
-      if (!isForDeletion) {
-        addLanguagePair(appLanguage, PIVOT_LANGUAGE);
+      if (includePivotRecords) {
+        addLanguagePair(languageB, PIVOT_LANGUAGE);
       }
     }
 
     return matchedRecords;
+  }
+
+  /**
+   * Get the necessary files for translating to and from the app language and a
+   * requested language. This may require the files for a pivot language translation
+   * if there is no language model for a direct translation.
+   *
+   * @param {string} requestedLanguage The BCP 47 language tag.
+   * @param {boolean} includePivotRecords - When true, this will include a list of records with any required pivots.
+   *                                        An example using true would be to determine which files to download to complete a translation.
+   *                                        When false, this will not include the list of pivot records to achieve a translations.
+   *                                        An example using false would be to determine which  records to delete, but wanting to be
+   *                                        cautions to avoid deleting model files used by another language.
+   * @returns {Set<TranslationModelRecord>}
+   */
+  static async getRecordsForTranslatingToAndFromAppLanguage(
+    requestedLanguage,
+    includePivotRecords
+  ) {
+    const appLanguage = new Intl.Locale(Services.locale.appLocaleAsBCP47)
+      .language;
+
+    return TranslationsParent.getRecordsForTranslatingToAndFromPair(
+      requestedLanguage,
+      appLanguage,
+      includePivotRecords
+    );
   }
 
   /**
@@ -2155,10 +2167,6 @@ export class TranslationsParent extends JSWindowActorParent {
       "sync",
       TranslationsParent.#handleTranslationsModelsSync
     );
-    translationsWasmRemoteClient.on(
-      "sync",
-      TranslationsParent.#handleTranslationsWasmSync
-    );
   }
 
   /**
@@ -2174,8 +2182,8 @@ export class TranslationsParent extends JSWindowActorParent {
     TranslationsParent.#translationsWasmRemoteClient = null;
 
     // Derived data.
-    TranslationsParent.#clearCachedLanguagePairs();
     TranslationsParent.#preferredLanguages = null;
+    TranslationsParent.#languagePairs = null;
     TranslationsParent.#isTranslationsEngineSupported = null;
   }
 
@@ -2190,10 +2198,6 @@ export class TranslationsParent extends JSWindowActorParent {
     TranslationsParent.#translationModelsRemoteClient.off(
       "sync",
       TranslationsParent.#handleTranslationsModelsSync
-    );
-    TranslationsParent.#translationsWasmRemoteClient.off(
-      "sync",
-      TranslationsParent.#handleTranslationsWasmSync
     );
 
     TranslationsParent.#isTranslationsEngineMocked = false;
@@ -2410,12 +2414,9 @@ export class TranslationsParent extends JSWindowActorParent {
    * is supported when translating to that language.
    */
   static async getTopPreferredSupportedToLang() {
-    for (const langTag of TranslationsParent.getPreferredLanguages()) {
-      if (await TranslationsParent.isSupportedAsToLang(langTag)) {
-        return langTag;
-      }
-    }
-    return PIVOT_LANGUAGE;
+    return TranslationsParent.getPreferredLanguages().find(
+      async langTag => await TranslationsParent.isSupportedAsToLang(langTag)
+    );
   }
 
   /**
@@ -2884,33 +2885,29 @@ export class TranslationsParent extends JSWindowActorParent {
  * Validate some simple Wasm that uses a SIMD operation.
  */
 function detectSimdSupport() {
-  try {
-    return WebAssembly.validate(
-      new Uint8Array(
-        // ```
-        // ;; Detect SIMD support.
-        // ;; Compile by running: wat2wasm --enable-all simd-detect.wat
-        //
-        // (module
-        //   (func (result v128)
-        //     i32.const 0
-        //     i8x16.splat
-        //     i8x16.popcnt
-        //   )
-        // )
-        // ```
+  return WebAssembly.validate(
+    new Uint8Array(
+      // ```
+      // ;; Detect SIMD support.
+      // ;; Compile by running: wat2wasm --enable-all simd-detect.wat
+      //
+      // (module
+      //   (func (result v128)
+      //     i32.const 0
+      //     i8x16.splat
+      //     i8x16.popcnt
+      //   )
+      // )
+      // ```
 
-        // prettier-ignore
-        [
+      // prettier-ignore
+      [
         0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60, 0x00,
         0x01, 0x7b, 0x03, 0x02, 0x01, 0x00, 0x0a, 0x0a, 0x01, 0x08, 0x00, 0x41, 0x00,
         0xfd, 0x0f, 0xfd, 0x62, 0x0b
       ]
-      )
-    );
-  } catch {
-    return false;
-  }
+    )
+  );
 }
 
 /**
