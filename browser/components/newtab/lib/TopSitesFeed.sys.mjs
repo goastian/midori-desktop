@@ -598,7 +598,7 @@ export class TopSitesFeed {
       let sponsorsList = [
         {
           "id": 0,
-          "name": "Flights",
+          "name": "Skyscanner",
           "url": "https://skyscanner.pxf.io/c/5319441/1789305/13416",
           "image_url": "https://astian.org/wp-content/uploads/2024/04/skyscanner2_1_.webp",
           "image_size": 200,
@@ -626,16 +626,16 @@ export class TopSitesFeed {
         },
         {
           "id": 4,
-          "name": "Stake US",
-          "url": "https://stake.us/?c=L0OhuV83",
-          "image_url": "https://astian.org/wp-content/uploads/2024/10/stakeus.png",
+          "name": "Temu",
+          "url": "https://temu.to/k/uqpjcv2274n",
+          "image_url": "https://astian.org/wp-content/uploads/2024/12/temu.png",
           "image_size": 200,
         },
         {
           "id": 5,
-          "name": "Stake",
-          "url": "https://shorturl.at/wYL6A",
-          "image_url": "https://astian.org/wp-content/uploads/2024/10/stakecom.png",
+          "name": "Expedia",
+          "url": "https://expedia.com/affiliate/4IrIf7g",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
         {
