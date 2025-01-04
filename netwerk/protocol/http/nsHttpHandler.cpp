@@ -863,13 +863,13 @@ void nsHttpHandler::BuildUserAgent() {
   mUserAgent += '/';
   mUserAgent += mProductSub;
 
-  bool isMidori = mAppName.EqualsLiteral("Midori");
-  if (isMidori || mCompatFirefoxEnabled) {
+  bool isFirefox = mAppName.EqualsLiteral("Firefox");
+  if (isFirefox || mCompatFirefoxEnabled) {
     // "Firefox/x.y" (compatibility) app token
     mUserAgent += ' ';
     mUserAgent += mCompatFirefox;
   }
-  if (!isMidori) {
+  if (!isFirefox) {
     // App portion
     mUserAgent += ' ';
     mUserAgent += mAppName;
