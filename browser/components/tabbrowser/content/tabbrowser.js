@@ -2900,6 +2900,7 @@
       group.color = color;
       group.label = label;
       this.tabContainer.appendChild(group);
+      return group;
     },
 
     _determineURIToLoad(uriString, createLazyBrowser) {
@@ -5367,6 +5368,20 @@
       var evt = document.createEvent("UIEvents");
       evt.initUIEvent("TabMove", true, false, window, oldPosition);
       aTab.dispatchEvent(evt);
+    },
+
+    moveTabToGroup(aTab, aGroup) {
+      if (aTab.pinned) {
+        return;
+      }
+      if (aTab.group && aTab.group.id === aGroup.id) {
+        return;
+      }
+      let wasFocused = document.activeElement == this.selectedTab;
+      aGroup.appendChild(aTab);
+      // pass -1 to oldPosition because a move occurred even if position
+      // hasn't changed
+      this._updateAfterMoveTabTo(aTab, -1, wasFocused);
     },
 
     moveTabForward() {
