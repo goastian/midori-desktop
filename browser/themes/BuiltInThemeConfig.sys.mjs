@@ -18,7 +18,7 @@
  * @param {string} [collection]
  *  The collection id that the theme is a part of. Optional.
  */
-export const BuiltInThemeConfig = new Map([
+export const BuiltInThemeConfig = new Map() || new Map([
   [
     "firefox-compact-light@mozilla.org",
     {
