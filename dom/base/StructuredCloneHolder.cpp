@@ -389,6 +389,7 @@ void StructuredCloneHolder::Read(nsIGlobalObject* aGlobal, JSContext* aCx,
   auto errorMessageGuard = MakeScopeExit([&] { mErrorMessage.Truncate(); });
   mGlobal = aGlobal;
 
+  if (!StructuredCloneHolderBase::Read(aCx, aValue, aCloneDataPolicy)) {  
     mTransferredPorts.Clear();
     JS_ClearPendingException(aCx);
     aRv.ThrowDataCloneError(mErrorMessage);
