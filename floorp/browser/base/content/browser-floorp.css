@@ -752,3 +752,7 @@ tabpanels > [split="true"] {
 :root[BookmarksToolbarOverlapsBrowser] {
   --bookmarks-toolbar-overlapping-browser-height: unset !important;
 }
+/* Hide root certification issue notification bar */
+[value="INFOBAR_ROOTCA_IR2_IW2_EN_ONLY_RELEASE"] {
+  display: none;
+}
