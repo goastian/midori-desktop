@@ -13,7 +13,7 @@ interface nsIEnterprisePolicies : nsISupports
   const short ACTIVE        = 1;
   const short FAILED        = 2;
 
-  readonly attribute short status;
+  readonly attribute boolean isEnterprise;
 
   boolean isAllowed(in ACString feature);
 
