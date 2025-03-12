@@ -511,6 +511,7 @@ void ScreenCapturerSck::OnNewIOSurface(IOSurfaceRef io_surface, NSDictionary* at
   CGRect contentRect = {};
   CGRect boundingRect = {};
   CGRect overlayRect = {};
+  SCFrameStatus status = SCFrameStatusStopped;
   const auto* dirty_rects = (NSArray*)attachment[SCStreamFrameInfoDirtyRects];
   if (auto factor = (NSNumber *)attachment[SCStreamFrameInfoScaleFactor]) {
     scaleFactor = [factor floatValue];
@@ -534,6 +535,23 @@ void ScreenCapturerSck::OnNewIOSurface(IOSurfaceRef io_surface, NSDictionary* at
         overlayRect = CGRect();
       }
     }
+  }
+
+  if (auto statusNr = (NSNumber *)attachment[SCStreamFrameInfoStatus]) {
+    status = (SCFrameStatus)[statusNr integerValue];
+  }
+
+  switch (status) {
+    case SCFrameStatusBlank:
+    case SCFrameStatusIdle:
+    case SCFrameStatusSuspended:
+    case SCFrameStatusStopped:
+      // No new frame. Ignore.
+      return;
+    case SCFrameStatusComplete:
+    case SCFrameStatusStarted:
+      // New frame. Process it.
+      break;
   }
 
 
