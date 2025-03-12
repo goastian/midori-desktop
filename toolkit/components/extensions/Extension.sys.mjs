@@ -1585,6 +1585,17 @@ export class ExtensionData {
     );
   }
 
+  // AMO enforces a maximum length of 45 on the name since at least 2017, via
+  // https://github.com/mozilla/addons-linter/blame/c4507688899aaafe29c522f1b1aec94b78b8a095/src/schema/updates/manifest.json#L111
+  // added in https://github.com/mozilla/addons-linter/pull/1169
+  // To avoid breaking add-ons that do not go through AMO (e.g. temporarily
+  // loaded extensions), we enforce the limit by truncating and warning if
+  // needed, instead enforcing a maxLength on "name" in schemas/manifest.json.
+  //
+  // We set the limit to 75, which is a safe limit that matches the CWS,
+  // see https://bugzilla.mozilla.org/show_bug.cgi?id=1939087#c5
+  static EXT_NAME_MAX_LEN = 75;
+
   async initializeAddonTypeAndID() {
     if (this.type) {
       // Already initialized.
@@ -1712,6 +1723,14 @@ export class ExtensionData {
       if (strict_max_version?.length) {
         manifest.applications.gecko.strict_max_version = strict_max_version;
       }
+    }
+
+    if (manifest.name.length > ExtensionData.EXT_NAME_MAX_LEN) {
+      // Truncate and warn - see comment in EXT_NAME_MAX_LEN.
+      manifest.name = manifest.name.slice(0, ExtensionData.EXT_NAME_MAX_LEN);
+      this.manifestWarning(
+        `Warning processing "name": must be shorter than ${ExtensionData.EXT_NAME_MAX_LEN}`
+      );
     }
 
     if (
@@ -2374,7 +2393,7 @@ export class ExtensionData {
 
       // Privileged extensions may request access to "about:"-URLs, such as
       // about:reader.
-      let match = /^([a-z\-*]+):\/\/([^/]*)\/|^about:/.exec(permission);
+      let match = /^([a-z*]+):\/\/([^/]*)\/|^about:/.exec(permission);
       if (!match) {
         throw new Error(`Unparseable host permission ${permission}`);
       }
@@ -3742,18 +3761,6 @@ export class Extension extends ExtensionData {
     // Allow other extensions to access static themes in private browsing windows
     // (See Bug 1790115).
     if (this.type === "theme") {
-      this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
-    }
-
-
-    // Floorp Injections
-    // We automatically add permissions to "Gesturefy" and "uBlock Origin" extensions.
-    // However, User check the "Allow this extension to run in Private Windows" option on installed prompt.
-    if(this.id=="uBlock0@raymondhill.net" || this.id=="{506e023c-7f2b-40a3-8066-bc5deb40aebe}"){
-      lazy.ExtensionPermissions.add(this.id, {
-        permissions: [PRIVATE_ALLOWED_PERMISSION],
-        origins: [],
-      });
       this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
     }
 
