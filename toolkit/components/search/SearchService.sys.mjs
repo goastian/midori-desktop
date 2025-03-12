@@ -2649,6 +2649,38 @@ export class SearchService {
 					id: "astiango@search.mozilla.org"
 				},
 			},
+			{
+				aliases: ["Qwant", "qwant"],
+				classification: "general",
+				name: "Qwant",
+				urls: {
+					search: {
+						base: "https://www.qwant.com/",
+						searchTermParamName: "q",
+					},
+				},
+				identifier: "qwant",
+				webExtension: {
+					locale: "default",
+					id: "qwant@search.mozilla.org",
+				},
+			},
+      {
+				aliases: ["Startpage", "st"],
+				classification: "general",
+				name: "Startpage",
+				urls: {
+					search: {
+						base: "https://www.startpage.com/do/dsearch",
+						searchTermParamName: "query",
+					},
+				},
+				identifier: "startpage",
+				webExtension: {
+					locale: "default",
+					id: "startpage@search.mozilla.org",
+				},
+			},
       {
 				aliases: ["duckduckgo", "ddg"],
 				classification: "general",
@@ -2681,120 +2713,6 @@ export class SearchService {
 				webExtension: {
 					locale: "default",
 					id: "ddg@search.mozilla.org",
-				},
-			},
-      {
-				aliases: ["google"],
-				classification: "general",
-				name: "Google",
-				partnerCode: "midori-b-e",
-				urls: {
-					search: {
-						base: "https://www.google.com/search",
-						params: [
-							{
-								name: "client",
-								value: "{partnerCode}",
-							},
-							{
-								experimentConfig: "google_channel_row",
-								name: "channel",
-							},
-						],
-						searchTermParamName: "q",
-					},
-					suggestions: {
-						base: "https://www.google.com/complete/search",
-						params: [
-							{
-								name: "client",
-								value: "midori",
-							},
-							{
-								experimentConfig: "search_rich_suggestions",
-								name: "channel",
-							},
-						],
-						searchTermParamName: "q",
-					},
-					trending: {
-						base: "https://www.google.com/complete/search",
-						method: "GET",
-						params: [
-							{
-								name: "client",
-								value: "midori",
-							},
-							{
-								name: "channel",
-								value: "ftr",
-							},
-						],
-						searchTermParamName: "q",
-					},
-				},
-				identifier: "google",
-				webExtension: {
-					locale: "default",
-					id: "google@search.mozilla.org",
-				},
-			},
-      {
-				aliases: ["Bing"],
-				classification: "general",
-				name: "Bing",
-				urls: {
-					search: {
-						base: "https://www.bing.com/search",
-						searchTermParamName: "pc=MOZI&q",
-            "params": [
-              {
-                "name": "form",
-                "condition": "purpose",
-                "purpose": "contextmenu",
-                "value": "MOZCON"
-              },
-              {
-                "name": "form",
-                "condition": "purpose",
-                "purpose": "searchbar",
-                "value": "MOZSBR"
-              },
-              {
-                "name": "form",
-                "condition": "purpose",
-                "purpose": "homepage",
-                "value": "MOZSPG"
-              },
-              {
-                "name": "form",
-                "condition": "purpose",
-                "purpose": "keyword",
-                "value": "MOZLBR"
-              },
-              {
-                "name": "form",
-                "condition": "purpose",
-                "purpose": "newtab",
-                "value": "MOZTSB"
-              }
-            ],
-					},
-          suggestions: {
-						base: "https://www.bing.com/osjson.aspx",
-						params: [
-							{
-								name: "form",
-								value: "OSDJAS",
-							},
-						],
-						searchTermParamName: "query",
-					},
-				},
-				identifier: "bing",
-				webExtension: {
-					locale: "default",
-					id: "bing@search.mozilla.org"
 				},
 			},
 		];
