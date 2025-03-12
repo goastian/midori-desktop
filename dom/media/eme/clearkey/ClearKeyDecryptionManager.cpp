@@ -167,7 +167,10 @@ void ClearKeyDecryptor::InitKey(const Key& aKey) { mKey = aKey; }
 Status ClearKeyDecryptor::Decrypt(uint8_t* aBuffer, uint32_t aBufferSize,
                                   const CryptoMetaData& aMetadata) {
   CK_LOGD("ClearKeyDecryptor::Decrypt");
-  // If the sample is split up into multiple encrypted subsamples, we need to
+  if (aBufferSize == 0) {
+    // Nothing to decrypt.
+    return Status::kSuccess;
+  }
   // stitch them into one continuous buffer for decryption.
   std::vector<uint8_t> tmp(aBufferSize);
   static_assert(sizeof(uintptr_t) == sizeof(uint8_t*),
