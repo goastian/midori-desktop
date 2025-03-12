@@ -8,38 +8,44 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef MODULES_DESKTOP_CAPTURE_MAC_DESKTOP_FRAME_IOSURFACE_H_
-#define MODULES_DESKTOP_CAPTURE_MAC_DESKTOP_FRAME_IOSURFACE_H_
-
-#include <CoreGraphics/CoreGraphics.h>
-#include <IOSurface/IOSurface.h>
-
-#include <memory>
-
-#include "modules/desktop_capture/desktop_frame.h"
-#include "sdk/objc/helpers/scoped_cftyperef.h"
-
-namespace webrtc {
-
-class DesktopFrameIOSurface final : public DesktopFrame {
- public:
-  // Lock an IOSurfaceRef containing a snapshot of a display. Return NULL if
-  // failed to lock.
-  static std::unique_ptr<DesktopFrameIOSurface> Wrap(
-      rtc::ScopedCFTypeRef<IOSurfaceRef> io_surface);
-
-  ~DesktopFrameIOSurface() override;
-
-  DesktopFrameIOSurface(const DesktopFrameIOSurface&) = delete;
-  DesktopFrameIOSurface& operator=(const DesktopFrameIOSurface&) = delete;
-
- private:
-  // This constructor expects `io_surface` to hold a non-null IOSurfaceRef.
-  explicit DesktopFrameIOSurface(rtc::ScopedCFTypeRef<IOSurfaceRef> io_surface);
-
-  const rtc::ScopedCFTypeRef<IOSurfaceRef> io_surface_;
-};
-
-}  // namespace webrtc
-
-#endif  // MODULES_DESKTOP_CAPTURE_MAC_DESKTOP_FRAME_IOSURFACE_H_
+ #ifndef MODULES_DESKTOP_CAPTURE_MAC_DESKTOP_FRAME_IOSURFACE_H_
+ #define MODULES_DESKTOP_CAPTURE_MAC_DESKTOP_FRAME_IOSURFACE_H_
+ 
+ #include <CoreGraphics/CoreGraphics.h>
+ #include <IOSurface/IOSurface.h>
+ 
+ #include <memory>
+ 
+ #include "modules/desktop_capture/desktop_frame.h"
+ #include "sdk/objc/helpers/scoped_cftyperef.h"
+ 
+ namespace webrtc {
+ 
+ class DesktopFrameIOSurface final : public DesktopFrame {
+  public:
+   // Lock an IOSurfaceRef containing a snapshot of a display. Return NULL if
+   // failed to lock.
+   static std::unique_ptr<DesktopFrameIOSurface> Wrap(
+       rtc::ScopedCFTypeRef<IOSurfaceRef> io_surface, CGRect rect = {});
+ 
+   ~DesktopFrameIOSurface() override;
+ 
+   DesktopFrameIOSurface(const DesktopFrameIOSurface&) = delete;
+   DesktopFrameIOSurface& operator=(const DesktopFrameIOSurface&) = delete;
+ 
+  private:
+   // This constructor expects `io_surface` to hold a non-null IOSurfaceRef.
+   DesktopFrameIOSurface(
+       rtc::ScopedCFTypeRef<IOSurfaceRef> io_surface,
+       uint8_t* data,
+       int32_t width,
+       int32_t height,
+       int32_t stride);
+ 
+   const rtc::ScopedCFTypeRef<IOSurfaceRef> io_surface_;
+ };
+ 
+ }  // namespace webrtc
+ 
+ #endif  // MODULES_DESKTOP_CAPTURE_MAC_DESKTOP_FRAME_IOSURFACE_H_
+ 
