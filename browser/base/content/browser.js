@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- var { XPCOMUtils } = ChromeUtils.importESModule(
+var { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
 var { AppConstants } = ChromeUtils.importESModule(
@@ -249,6 +249,11 @@ XPCOMUtils.defineLazyScriptGetter(
 );
 XPCOMUtils.defineLazyScriptGetter(
   this,
+  ["NewIdentityButton"],
+  "chrome://browser/content/newidentity.js"
+);
+XPCOMUtils.defineLazyScriptGetter(
+  this,
   "gEditItemOverlay",
   "chrome://browser/content/places/editBookmark.js"
 );
@@ -403,17 +408,13 @@ ChromeUtils.defineLazyGetter(this, "ReferrerInfo", () =>
 
 // High priority notification bars shown at the top of the window.
 ChromeUtils.defineLazyGetter(this, "gNotificationBox", () => {
-  let securityDelayMS = Services.prefs.getIntPref(
-    "security.notification_enable_delay"
-  );
-
   return new MozElements.NotificationBox(element => {
     element.classList.add("global-notificationbox");
     element.setAttribute("notificationside", "top");
     element.setAttribute("prepend-notifications", true);
     const tabNotifications = document.getElementById("tab-notification-deck");
     gNavToolbox.insertBefore(element, tabNotifications);
-  }, securityDelayMS);
+  });
 });
 
 ChromeUtils.defineLazyGetter(this, "InlineSpellCheckerUI", () => {
@@ -1696,7 +1697,7 @@ function UpdateUrlbarSearchSplitterState() {
   var urlbar = document.getElementById("urlbar-container");
   var searchbar = document.getElementById("search-container");
 
-  if (document.documentElement.getAttribute("customizing") == "true") {
+  if (document.documentElement.hasAttribute("customizing")) {
     if (splitter) {
       splitter.remove();
     }
@@ -3545,6 +3546,16 @@ var XULBrowserWindow = {
   onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags, aIsSimulated) {
     var location = aLocationURI ? aLocationURI.spec : "";
 
+    // Floorp Injections
+    window.gFloorpOnLocationChange.onLocationChange(
+      aWebProgress,
+      aRequest,
+      aLocationURI,
+      aFlags,
+      aIsSimulated
+    );
+    // End Floorp Injections
+
     UpdateBackForwardCommands(gBrowser.webNavigation);
 
     Services.obs.notifyObservers(
@@ -3682,6 +3693,8 @@ var XULBrowserWindow = {
 
     AboutReaderParent.updateReaderButton(gBrowser.selectedBrowser);
     TranslationsParent.onLocationChange(gBrowser.selectedBrowser);
+
+    gSplitView.onLocationChange(gBrowser.selectedBrowser);
 
     PictureInPicture.updateUrlbarToggle(gBrowser.selectedBrowser);
 
@@ -8076,6 +8089,11 @@ var FirefoxViewHandler = {
     }
   },
   openTab(section) {
+    if (AppConstants.BASE_BROWSER_VERSION) {
+      // about:firefoxview is disabled.
+      return;
+    }
+
     if (!CustomizableUI.getPlacementOfWidget(this.BUTTON_ID)) {
       CustomizableUI.addWidgetToArea(
         this.BUTTON_ID,

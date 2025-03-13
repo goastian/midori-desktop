@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- {
+{
   // start private scope for gBrowser
   /**
    * A set of known icons to use for internal pages. These are hardcoded so we can
@@ -121,12 +121,6 @@
         "_allowTransparentBrowser",
         "browser.tabs.allow_transparent_browser",
         false
-      );
-      XPCOMUtils.defineLazyPreferenceGetter(
-        this,
-        "_notificationEnableDelay",
-        "security.notification_enable_delay",
-        500
       );
 
       if (AppConstants.MOZ_CRASHREPORTER) {
@@ -976,7 +970,7 @@
           if (browser == this.selectedBrowser) {
             this._updateVisibleNotificationBox(browser);
           }
-        }, this._notificationEnableDelay);
+        });
       }
       return browser._notificationBox;
     },
@@ -2820,9 +2814,7 @@
           // but we were opened from another browser, set the cross group
           // opener ID:
           if (openerBrowser && !openWindowInfo) {
-            b.browsingContext.setCrossGroupOpener(
-              openerBrowser.browsingContext
-            );
+            b.browsingContext.crossGroupOpener = openerBrowser.browsingContext;
           }
         }
       } catch (e) {
@@ -2900,6 +2892,15 @@
         this.selectedTab = t;
       }
       return t;
+    },
+
+    addTabGroup(color, label = "") {
+      let group = document.createXULElement("tab-group", { is: "tab-group" });
+      group.id = `${Date.now()}-${Math.round(Math.random() * 100)}`;
+      group.color = color;
+      group.label = label;
+      this.tabContainer.appendChild(group);
+      return group;
     },
 
     _determineURIToLoad(uriString, createLazyBrowser) {
@@ -3205,6 +3206,32 @@
         let tab;
         let tabWasReused = false;
 
+
+        // Floorp Injections
+        if (tabData.floorpDisableHistory) {
+          continue;
+        }
+
+        let floorpWorkspaceId,
+          floorpLastShowWorkspaceId,
+          floorpWorkspace,
+          floorpSSB;
+
+
+        floorpWorkspaceId = tabData.floorpWorkspaceId;
+        floorpLastShowWorkspaceId = tabData.floorpLastShowWorkspaceId;
+        floorpWorkspace = tabData.floorpWorkspace
+          ? tabData.floorpWorkspace
+          : Services.prefs
+              .getStringPref("floorp.browser.workspace.all")
+              .split(",")[0];
+        floorpSSB = tabData.floorpSSB;
+
+        if (floorpSSB) {
+          window.close();
+        }
+        // End Floorp Injections
+
         // Re-use existing selected tab if possible to avoid the overhead of
         // selecting a new tab.
         if (
@@ -3214,6 +3241,32 @@
         ) {
           tabWasReused = true;
           tab = this.selectedTab;
+
+          // Floorp Injections
+          tab.setAttribute("floorpWorkspace", floorpWorkspace);
+          let { WorkspacesService } = ChromeUtils.importESModule(
+            "resource://floorp/WorkspacesService.mjs"
+          );
+
+          if (floorpWorkspaceId) {
+            tab.setAttribute(
+              WorkspacesService.workspacesTabAttributionId,
+              floorpWorkspaceId
+            );
+          }
+
+          if (floorpLastShowWorkspaceId) {
+            tab.setAttribute(
+              WorkspacesService.workspaceLastShowId,
+              floorpLastShowWorkspaceId
+            );
+          }
+
+          if (floorpSSB) {
+            tab.setAttribute("floorpSSB", floorpSSB);
+          }
+          // End Floorp Injections
+
           if (!tabData.pinned) {
             this.unpinTab(tab);
           } else {
@@ -3262,6 +3315,29 @@
             skipLoad: true,
             preferredRemoteType,
           });
+
+
+          // Floorp Injections
+          tab.setAttribute("floorpWorkspace", floorpWorkspace);
+
+          let { WorkspacesService } = ChromeUtils.importESModule(
+            "resource://floorp/WorkspacesService.mjs"
+          );
+
+          if (floorpWorkspaceId) {
+            tab.setAttribute(
+              WorkspacesService.workspacesTabAttributionId,
+              floorpWorkspaceId
+            );
+          }
+
+          if (floorpLastShowWorkspaceId) {
+            tab.setAttribute(
+              WorkspacesService.workspaceLastShowId,
+              floorpLastShowWorkspaceId
+            );
+          }
+          // End Floorp Injections
 
           if (select) {
             tabToSelect = tab;
@@ -4164,6 +4240,15 @@
         aTab,
         this
       );
+
+      // Floorp Injections
+      // Force to close & Make do not save history of the tab.
+      try {
+        this._endRemoveTab(aTab);
+      } catch (e) {
+        console.warn(e);
+      }
+      // End of Floorp Injections
     },
 
     _hasBeforeUnload(aTab) {
@@ -5283,6 +5368,20 @@
       var evt = document.createEvent("UIEvents");
       evt.initUIEvent("TabMove", true, false, window, oldPosition);
       aTab.dispatchEvent(evt);
+    },
+
+    moveTabToGroup(aTab, aGroup) {
+      if (aTab.pinned) {
+        return;
+      }
+      if (aTab.group && aTab.group.id === aGroup.id) {
+        return;
+      }
+      let wasFocused = document.activeElement == this.selectedTab;
+      aGroup.appendChild(aTab);
+      // pass -1 to oldPosition because a move occurred even if position
+      // hasn't changed
+      this._updateAfterMoveTabTo(aTab, -1, wasFocused);
     },
 
     moveTabForward() {
