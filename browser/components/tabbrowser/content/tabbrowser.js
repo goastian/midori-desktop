@@ -122,6 +122,12 @@
         "browser.tabs.allow_transparent_browser",
         false
       );
+      XPCOMUtils.defineLazyPreferenceGetter(
+        this,
+        "showPidAndActiveness",
+        "browser.tabs.tooltipsShowPidAndActiveness",
+        false
+      );
 
       if (AppConstants.MOZ_CRASHREPORTER) {
         ChromeUtils.defineESModuleGetters(this, {
@@ -6017,12 +6023,7 @@
       if (includeLabel) {
         labelArray.push(tab._fullLabel || tab.getAttribute("label"));
       }
-      if (
-        Services.prefs.getBoolPref(
-          "browser.tabs.tooltipsShowPidAndActiveness",
-          false
-        )
-      ) {
+      if (this.showPidAndActiveness) {
         const pids = this.getTabPids(tab);
         if (pids.length) {
           let pidLabel = pids.length > 1 ? "pids" : "pid";

@@ -55,12 +55,6 @@ export default class TabHoverPreviewPanel {
       "browser.tabs.hoverPreview.showThumbnails",
       false
     );
-    XPCOMUtils.defineLazyPreferenceGetter(
-      this,
-      "_prefShowPidAndActiveness",
-      "browser.tabs.tooltipsShowPidAndActiveness",
-      false
-    );
     this._panelOpener = new TabPreviewPanelTimedFunction(
       () => {
         this._panel.openPopup(this._tab, POPUP_OPTIONS);
@@ -192,7 +186,7 @@ export default class TabHoverPreviewPanel {
     this._panel.querySelector(".tab-preview-uri").textContent =
       this._displayURI;
 
-    if (this._prefShowPidAndActiveness) {
+      if (this._win.gBrowser.showPidAndActiveness) {
       this._panel.querySelector(".tab-preview-pid").textContent =
         this._displayPids;
       this._panel.querySelector(".tab-preview-activeness").textContent =
