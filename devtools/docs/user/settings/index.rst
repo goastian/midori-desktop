@@ -69,7 +69,7 @@ This enables you to choose one of two themes.
     :alt: Light theme for DevTools
     :class: border
 
-- A dark theme (the default on `Firefox Developer Edition <https://www.mozilla.org/en-US/firefox/developer/>`_):
+- A dark theme (the default on `Midori Browser Devs <https://www.mozilla.org/en-US/firefox/developer/>`_):
 
   .. image:: theme-dark.png
     :alt: Dark theme for DevTools

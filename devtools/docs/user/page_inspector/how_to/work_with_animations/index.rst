@@ -21,7 +21,7 @@ The Page Inspector's :ref:`Animations view <page_inspector_ui_tour_animations_vi
 
 It displays animations created using `CSS transitions <https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Transitions>`_, `CSS @keyframes rules <https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Animations/Using_CSS_animations>`_, or the `Web Animations API <https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API>`_. Starting in Firefox 48, it will show animations applied to the `::before <https://developer.mozilla.org/en-US/docs/Web/CSS/::before>`_ and `::after <https://developer.mozilla.org/en-US/docs/Web/CSS/::after>`_ pseudo-elements.
 
-To see how it works, we'll walk through an example. The box below contains a grayscale icon, representing `Firefox Developer Edition <https://www.mozilla.org/en-US/firefox/developer/>`_. If you click the icon, it enlarges and changes to color, and the name of the browser appears. Click the icon again to reverse the effect.
+To see how it works, we'll walk through an example. The box below contains a grayscale icon, representing `Midori Browser Devs <https://www.mozilla.org/en-US/firefox/developer/>`_. If you click the icon, it enlarges and changes to color, and the name of the browser appears. Click the icon again to reverse the effect.
 
 
 These animations are made using the `Web Animations API <https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API>`_.
@@ -131,7 +131,7 @@ Application to the example
 Applying all this to our example, we can see that:
 
 
-- The animation involved two elements, ``span#note`` and ``img#icon``. Hovering over these selectors, we can see that those elements are, respectively, the browser name "Firefox Developer Edition" and the browser icon.
+- The animation involved two elements, ``span#note`` and ``img#icon``. Hovering over these selectors, we can see that those elements are, respectively, the browser name "Midori Browser Devs" and the browser icon.
 - The ``img#icon`` animation:
 
   - animated the `filter <https://developer.mozilla.org/en-US/docs/Web/CSS/filter>`_ and `transform <https://developer.mozilla.org/en-US/docs/Web/CSS/transform>`_ properties, to scale the icon and color it
