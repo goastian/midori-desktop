@@ -8,9 +8,9 @@
 
 # BrandFullNameInternal is used for some registry and file system values
 # instead of BrandFullName and typically should not be modified.
-!define BrandFullNameInternal "Midori Browser Devs"
-!define BrandShortName        "Midori Browser Devs"
-!define BrandFullName         "Midori Browser Devs"
+!define BrandFullNameInternal "Firefox Developer Edition"
+!define BrandShortName        "Firefox Developer Edition"
+!define BrandFullName         "Firefox Developer Edition"
 !define CompanyName           "mozilla.org"
 !define URLInfoAbout          "https://www.mozilla.org"
 !define HelpLink              "https://support.mozilla.org"

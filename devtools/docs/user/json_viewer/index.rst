@@ -4,7 +4,7 @@ JSON viewer
 
 The JSON viewer is new in Firefox 44.
 
-Before Firefox 53, the JSON viewer is enabled by default only in Midori Browser Devs and Firefox Nightly. To enable this feature in other release channels, set the ```devtools.jsonview.enabled``` preference to ```true```.
+Before Firefox 53, the JSON viewer is enabled by default only in Firefox Developer Edition and Firefox Nightly. To enable this feature in other release channels, set the ```devtools.jsonview.enabled``` preference to ```true```.
 
 From Firefox 53 onwards, the JSON viewer is also enabled by default in Beta and the normal release version of Firefox.
 

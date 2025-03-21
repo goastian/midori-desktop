@@ -17,9 +17,9 @@
 ## https://mozilla-l10n.github.io/styleguides/mozilla_general/#brands-copyright-and-trademark
 
 -brand-shorter-name = Firefox
--brand-short-name = Midori Browser Devs
--brand-shortcut-name = Midori Browser Devs
--brand-full-name = Midori Browser Devs
+-brand-short-name = Firefox Developer Edition
+-brand-shortcut-name = Firefox Developer Edition
+-brand-full-name = Firefox Developer Edition
 # This brand name can be used in messages where the product name needs to
 # remain unchanged across different versions (Nightly, Beta, etc.).
 -brand-product-name = Firefox

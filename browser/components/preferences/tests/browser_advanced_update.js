@@ -45,21 +45,21 @@ const mockUpdateManager = {
 
   _updates: [
     {
-      name: "Midori Browser Devs 49.0a2",
+      name: "Firefox Developer Edition 49.0a2",
       statusText: "The Update was successfully installed",
       buildID: "20160728004010",
       installDate: 1469763105156,
       detailsURL: "https://www.mozilla.org/firefox/aurora/",
     },
     {
-      name: "Midori Browser Devs 43.0a2",
+      name: "Firefox Developer Edition 43.0a2",
       statusText: "The Update was successfully installed",
       buildID: "20150929004011",
       installDate: 1443585886224,
       detailsURL: "https://www.mozilla.org/firefox/aurora/",
     },
     {
-      name: "Midori Browser Devs 42.0a2",
+      name: "Firefox Developer Edition 42.0a2",
       statusText: "The Update was successfully installed",
       buildID: "20150920004018",
       installDate: 1442818147544,

@@ -9,11 +9,11 @@ When migrating from Firebug to the Firefox Developer Tools, you may wonder where
 
 .. rst-class:: center
 
-  For the latest developer tools and features, try Midori Browser Devs.
+  For the latest developer tools and features, try Firefox Developer Edition.
 
 .. raw:: html
 
-  <a href="https://www.mozilla.org/en-US/firefox/developer/" style="width: 280px; display: block; margin-left: auto; margin-right: auto; padding: 10px; text-align: center; border-radius: 4px; background-color: #81BC2E; white-space: nowrap; color: white; text-shadow: 0px 1px 0px rgba(0, 0, 0, 0.25); box-shadow: 0px 1px 0px 0px rgba(0, 0, 0, 0.2), 0px -1px 0px 0px rgba(0, 0, 0, 0.3) inset;">Download Midori Browser Devs</a>
+  <a href="https://www.mozilla.org/en-US/firefox/developer/" style="width: 280px; display: block; margin-left: auto; margin-right: auto; padding: 10px; text-align: center; border-radius: 4px; background-color: #81BC2E; white-space: nowrap; color: white; text-shadow: 0px 1px 0px rgba(0, 0, 0, 0.25); box-shadow: 0px 1px 0px 0px rgba(0, 0, 0, 0.2), 0px -1px 0px 0px rgba(0, 0, 0, 0.3) inset;">Download Firefox Developer Edition</a>
 
 
 General

@@ -61,7 +61,7 @@ of those properties:
 
     - default: Self-builds of Firefox, or possibly some self-distributed versions.
     - nightly: Firefox Nightly builds.
-    - aurora: Midori Browser Devs.
+    - aurora: Firefox Developer Edition.
     - beta: Firefox Beta.
     - release: The main Firefox release channel.
     - esr: The ESR Channel. This will also match versions of Firefox where the

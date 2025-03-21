@@ -3,7 +3,7 @@ Firefox Branding
 
 Firefox has multiple different sets of "branding" that are used to hold channel-specific things such as:
 * Logos and other iconography
-* Product names (eg: "Mozilla Firefox", "Midori Browser Devs")
+* Product names (eg: "Mozilla Firefox", "Firefox Developer Edition")
 * Channel-specific preferences (eg: ``app.update.interval``)
 
 Brandings are stored in the `branding subdirectory <https://searchfox.org/mozilla-central/source/browser/branding>`_ and map to builds as follows:

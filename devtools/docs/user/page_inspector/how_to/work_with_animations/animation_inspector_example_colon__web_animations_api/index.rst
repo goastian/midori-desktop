@@ -15,7 +15,7 @@ HTML Content
 
   <div class="channel">
     <img src="developer.png" id="icon"/>
-    <span id="note">Midori Browser Devs</span>
+    <span id="note">Firefox Developer Edition</span>
   </div>
 
 

@@ -198,9 +198,9 @@ These developer tools are also built into Firefox. Unlike the "Core Tools" above
 
 .. rst-class:: center
 
-  For the latest developer tools and features, try Midori Browser Devs.
+  For the latest developer tools and features, try Firefox Developer Edition.
 
-  `Download Midori Browser Devs <https://www.mozilla.org/en-US/firefox/developer/>`_
+  `Download Firefox Developer Edition <https://www.mozilla.org/en-US/firefox/developer/>`_
 
 
 

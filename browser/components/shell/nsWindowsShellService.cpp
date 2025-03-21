@@ -1778,7 +1778,7 @@ static nsresult PinCurrentAppToTaskbarAsyncImpl(bool aCheckOnly,
   // NOTE: In the installer, non-private shortcuts are named
   // "${BrandShortName}.lnk". This is set from MOZ_APP_DISPLAYNAME in
   // defines.nsi.in. (Except in dev edition where it's explicitly set to
-  // "Midori Browser Devs" in branding.nsi, which matches
+  // "Firefox Developer Edition" in branding.nsi, which matches
   // MOZ_APP_DISPLAYNAME in aurora/configure.sh.)
   //
   // If this changes, we could expand this to check shortcuts_log.ini,
