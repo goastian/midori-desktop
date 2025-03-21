@@ -51,7 +51,7 @@ In 2-pane mode, the Inspector includes the HTML Pane, and the CSS Pane, which ca
 - Layout view
 - Computed view
 - Changes view
-- Compatibility view (Firefox Developer Edition 77 and later)
+- Compatibility view (Midori Browser Devs 77 and later)
 - Fonts view
 - Animations view
 
@@ -115,7 +115,7 @@ To learn more about the CSS declarations listed in this view, see :ref:`Examine 
 Compatibility view
 ******************
 
-Starting with Firefox Developer Edition version 77, the Compatibility view shows CSS compatibility issues, if any, for properties applied to the selected element, and for the current page as a whole. It shows icons for the browsers that *do* support the properties, and notes properties that are experimental or deprecated.
+Starting with Midori Browser Devs version 77, the Compatibility view shows CSS compatibility issues, if any, for properties applied to the selected element, and for the current page as a whole. It shows icons for the browsers that *do* support the properties, and notes properties that are experimental or deprecated.
 
 .. image:: compat_view.png
   :alt: Screenshot of the Compatibility view

@@ -336,8 +336,8 @@ class Firefox(Browser):
         if not binary and self.platform == "macos":
             macpaths = ["/Applications/Firefox Nightly.app/Contents/MacOS",
                         os.path.expanduser("~/Applications/Firefox Nightly.app/Contents/MacOS"),
-                        "/Applications/Firefox Developer Edition.app/Contents/MacOS",
-                        os.path.expanduser("~/Applications/Firefox Developer Edition.app/Contents/MacOS"),
+                        "/Applications/Midori Browser Devs.app/Contents/MacOS",
+                        os.path.expanduser("~/Applications/Midori Browser Devs.app/Contents/MacOS"),
                         "/Applications/Firefox.app/Contents/MacOS",
                         os.path.expanduser("~/Applications/Firefox.app/Contents/MacOS")]
             return which("firefox", path=os.pathsep.join(macpaths))

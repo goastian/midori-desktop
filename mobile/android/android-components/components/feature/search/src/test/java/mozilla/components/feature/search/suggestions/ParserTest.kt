@@ -50,10 +50,10 @@ class ParserTest {
 
     @Test
     fun `can parse a response from Bing`() {
-        val json = "[\"firefox\",[\"firefox\",\"firefox download\",\"firefox for windows 10\",\"firefox browser\",\"firefox quantum\",\"firefox esr\",\"firefox 64-bit\",\"firefox mozilla\",\"firefox nightly\",\"firefox update\",\"firefox install\",\"firefox focus\",\"firefox beta\",\"firefox developer edition\",\"firefox portable\",\"firefox add-ons\"]]"
+        val json = "[\"firefox\",[\"firefox\",\"firefox download\",\"firefox for windows 10\",\"firefox browser\",\"firefox quantum\",\"firefox esr\",\"firefox 64-bit\",\"firefox mozilla\",\"firefox nightly\",\"firefox update\",\"firefox install\",\"firefox focus\",\"firefox beta\",\"Midori Browser Devs\",\"firefox portable\",\"firefox add-ons\"]]"
 
         val results = defaultResponseParser(json)
-        val expectedResults = listOf("firefox", "firefox download", "firefox for windows 10", "firefox browser", "firefox quantum", "firefox esr", "firefox 64-bit", "firefox mozilla", "firefox nightly", "firefox update", "firefox install", "firefox focus", "firefox beta", "firefox developer edition", "firefox portable", "firefox add-ons")
+        val expectedResults = listOf("firefox", "firefox download", "firefox for windows 10", "firefox browser", "firefox quantum", "firefox esr", "firefox 64-bit", "firefox mozilla", "firefox nightly", "firefox update", "firefox install", "firefox focus", "firefox beta", "Midori Browser Devs", "firefox portable", "firefox add-ons")
         assertEquals(expectedResults, results)
     }
 
@@ -86,10 +86,10 @@ class ParserTest {
 
     @Test
     fun `can parse a response from Naver`() {
-        val json = "[\"firefox\",[\"firefox\",\"Mozilla Firefox\",\"firefox add-on to detect vulnerable websites\",\"firefox ak\",\"firefox as gaeilge\",\"firefox developer edition\",\"firefox down\",\"firefox for dummies\",\"firefox for mac\",\"firefox for mobile\"],[],[\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=Mozilla+Firefox\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+add-on+to+detect+vulnerable+websites\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+ak\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+as+gaeilge\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+developer+edition\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+down\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+for+dummies\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+for+mac\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+for+mobile\"]]"
+        val json = "[\"firefox\",[\"firefox\",\"Mozilla Firefox\",\"firefox add-on to detect vulnerable websites\",\"firefox ak\",\"firefox as gaeilge\",\"Midori Browser Devs\",\"firefox down\",\"firefox for dummies\",\"firefox for mac\",\"firefox for mobile\"],[],[\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=Mozilla+Firefox\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+add-on+to+detect+vulnerable+websites\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+ak\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+as+gaeilge\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+developer+edition\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+down\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+for+dummies\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+for+mac\",\"http://search.naver.com/search.naver?where=nexearch&sm=osp_sug&ie=utf8&query=firefox+for+mobile\"]]"
 
         val results = defaultResponseParser(json)
-        val expectedResults = listOf("firefox", "Mozilla Firefox", "firefox add-on to detect vulnerable websites", "firefox ak", "firefox as gaeilge", "firefox developer edition", "firefox down", "firefox for dummies", "firefox for mac", "firefox for mobile")
+        val expectedResults = listOf("firefox", "Mozilla Firefox", "firefox add-on to detect vulnerable websites", "firefox ak", "firefox as gaeilge", "Midori Browser Devs", "firefox down", "firefox for dummies", "firefox for mac", "firefox for mobile")
         assertEquals(expectedResults, results)
     }
 

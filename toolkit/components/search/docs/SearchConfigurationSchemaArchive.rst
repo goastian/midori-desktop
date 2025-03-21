@@ -296,7 +296,7 @@ to just those channels. The current known channels are:
 
     - default: Self-builds of Firefox, or possibly some self-distributed versions.
     - nightly: Firefox Nightly builds.
-    - aurora: Firefox Developer Edition
+    - aurora: Midori Browser Devs
     - beta: Firefox Beta
     - release: The main Firefox release channel.
     - esr: The ESR Channel. This will also match versions of Firefox where the
