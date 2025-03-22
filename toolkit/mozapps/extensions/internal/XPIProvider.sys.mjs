@@ -118,6 +118,16 @@ const STARTUP_MTIME_SCOPES = [
 const NOTIFICATION_FLUSH_PERMISSIONS = "flush-pending-permissions";
 const XPI_PERMISSION = "install";
 
+// This preference name is from UpdateTimerManager.sys.mjs; it stores the
+// timestamp (seconds) of the last periodic signature check.
+const PREF_LAST_SIGNATURE_CHECK_TIME =
+  "app.update.lastUpdateTime.xpi-signature-verification";
+const PREF_LAST_SIGNATURE_CHECKPOINT = "extensions.signatureCheckpoint";
+// SIGNATURE_CHECKPOINT should be incremented whenever an implementation change
+// happens that affects the validity of add-on signatures of already-installed
+// add-ons. This forces all add-on signatures to be verified again.
+const XPI_SIGNATURE_CHECKPOINT = 1;
+
 const XPI_SIGNATURE_CHECK_PERIOD = 24 * 60 * 60;
 
 const DB_SCHEMA = 36;
@@ -476,7 +486,7 @@ class XPIState {
 
     // Builds prior to be 1512436 did not include the rootURI property.
     // If we're updating from such a build, add that property now.
-    if (this.file) {
+    if (!("rootURI" in this) && this.file) {
       this.rootURI = getURIForResourceInFile(this.file, "").spec;
     }
 
@@ -489,10 +499,7 @@ class XPIState {
       saved.currentModifiedTime != this.lastModifiedTime
     ) {
       this.lastModifiedTime = saved.currentModifiedTime;
-    } else if (
-      saved.currentModifiedTime === null &&
-      (!this.file || !this.file.exists())
-    ) {
+    } else if (saved.currentModifiedTime === null) {
       this.missing = true;
     }
   }
@@ -1463,7 +1470,6 @@ var XPIStates = {
 
       if (shouldRestoreLocationData && oldState[loc.name]) {
         loc.restore(oldState[loc.name]);
-        changed = changed || loc.path != oldState[loc.name].path;
       }
       changed = changed || loc.changed;
 
@@ -2732,6 +2738,23 @@ export var XPIProvider = {
 
       AddonManagerPrivate.recordTimestamp("XPI_startup_end");
 
+      if (
+        Services.prefs.getIntPref(PREF_LAST_SIGNATURE_CHECKPOINT, 0) !==
+        XPI_SIGNATURE_CHECKPOINT
+      ) {
+        Services.prefs.setIntPref(
+          PREF_LAST_SIGNATURE_CHECKPOINT,
+          XPI_SIGNATURE_CHECKPOINT
+        );
+        if (aAppChanged !== undefined) {
+          XPIExports.XPIDatabase.verifySignatures();
+
+          // Mark timer as fired so that timerManager won't also retrigger the
+          // same validation for the next XPI_SIGNATURE_CHECKPOINT seconds.
+          const NOW_SECS = Math.round(Date.now() / 1000);
+          Services.prefs.setIntPref(PREF_LAST_SIGNATURE_CHECK_TIME, NOW_SECS);
+        }
+      }
       lazy.timerManager.registerTimer(
         "xpi-signature-verification",
         () => {
