@@ -88,11 +88,13 @@ interface XSLTProcessor {
      * the processor use the default-value for all parameters as specified in
      * the stylesheet.
      */
+    [Throws]
     undefined clearParameters();
 
     /**
      * Remove all parameters and stylesheets from this XSLTProcessor.
      */
+    [Throws]
     undefined reset();
 
     /**
@@ -110,3 +112,4 @@ interface XSLTProcessor {
     [ChromeOnly, NeedsCallerType]
     attribute unsigned long flags;
 };
+
