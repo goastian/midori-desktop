@@ -326,7 +326,8 @@
    return mParamNamespaceMap.mapNamespace(pre, aNamespace);
  }
  
- class txXSLTParamContext : public txIParseContext, public txIEvalContext {
+ class MOZ_STACK_CLASS txXSLTParamContext : public txIParseContext,
+                                            public txIEvalContext {
   public:
    txXSLTParamContext(txNamespaceMap* aResolver, const txXPathNode& aContext,
                       txResultRecycler* aRecycler)
@@ -385,7 +386,7 @@
    uint16_t resultType;
    if (!aSelect.IsVoid()) {
      // Set up context
-     UniquePtr<txXPathNode> contextNode(
+     Maybe<txXPathNode> contextNode(
          txXPathNativeNode::createXPathNode(aContext));
      NS_ENSURE_TRUE(contextNode, NS_ERROR_OUT_OF_MEMORY);
  
@@ -553,7 +554,10 @@
      return nullptr;
    }
  
-   mSource = &aSource;
+   mSource = aSource.CloneNode(true, aRv);
+   if (aRv.Failed()) {
+     return nullptr;
+   }
  
    nsCOMPtr<Document> doc;
    rv = TransformToDoc(getter_AddRefs(doc), true);
@@ -652,8 +656,7 @@
  
  nsresult txMozillaXSLTProcessor::TransformToDoc(Document** aResult,
                                                  bool aCreateDataDocument) {
-   UniquePtr<txXPathNode> sourceNode(
-       txXPathNativeNode::createXPathNode(mSource));
+   Maybe<txXPathNode> sourceNode(txXPathNativeNode::createXPathNode(mSource));
    if (!sourceNode) {
      return NS_ERROR_OUT_OF_MEMORY;
    }
@@ -721,7 +724,7 @@
  }
  
  already_AddRefed<DocumentFragment> txMozillaXSLTProcessor::TransformToFragment(
-     nsINode& aSource, Document& aOutput, ErrorResult& aRv) {
+     nsINode& aSource, bool aCloneSource, Document& aOutput, ErrorResult& aRv) {
    if (NS_WARN_IF(NS_FAILED(mCompileResult))) {
      aRv.Throw(mCompileResult);
      return nullptr;
@@ -741,8 +744,17 @@
      return nullptr;
    }
  
-   UniquePtr<txXPathNode> sourceNode(
-       txXPathNativeNode::createXPathNode(&aSource));
+   nsCOMPtr<nsINode> source;
+   if (aCloneSource) {
+     source = aSource.CloneNode(true, aRv);
+     if (aRv.Failed()) {
+       return nullptr;
+     }
+   } else {
+     source = &aSource;
+   }
+ 
+   Maybe<txXPathNode> sourceNode(txXPathNativeNode::createXPathNode(source));
    if (!sourceNode) {
      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
      return nullptr;
@@ -1049,7 +1061,7 @@
  
    NS_ENSURE_TRUE(mStylesheetDocument, NS_ERROR_NOT_INITIALIZED);
  
-   nsINode* style = mEmbeddedStylesheetRoot;
+   nsCOMPtr<nsINode> style = mEmbeddedStylesheetRoot;
    if (!style) {
      style = mStylesheetDocument;
    }
@@ -1173,7 +1185,7 @@
  
    if (aUnionValue.IsNode()) {
      nsINode& node = aUnionValue.GetAsNode();
-     UniquePtr<txXPathNode> xpathNode(txXPathNativeNode::createXPathNode(&node));
+     Maybe<txXPathNode> xpathNode(txXPathNativeNode::createXPathNode(&node));
      if (!xpathNode) {
        return NS_ERROR_FAILURE;
      }
@@ -1187,13 +1199,13 @@
      const Sequence<OwningNonNull<nsINode>>& values =
          aUnionValue.GetAsNodeSequence();
      for (const auto& node : values) {
-       UniquePtr<txXPathNode> xpathNode(
+       Maybe<txXPathNode> xpathNode(
            txXPathNativeNode::createXPathNode(node.get()));
        if (!xpathNode) {
          return NS_ERROR_FAILURE;
        }
  
-       nodeSet->append(*xpathNode);
+       nodeSet->append(xpathNode.extract());
      }
      nodeSet.forget(aValue);
      return NS_OK;
@@ -1230,4 +1242,5 @@
    // we'll hold the XPathResult alive.
    return xpathResult.GetExprResult(aValue);
  }
+ 
  
