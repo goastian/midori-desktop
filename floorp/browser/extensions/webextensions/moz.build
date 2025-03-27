@@ -8,7 +8,6 @@ DIST_SUBDIR = "browser"
 export("DIST_SUBDIR")
 
 DIRS += [
-    "astian-cloud",
     "floorp-actions",
     "multirow-tabs",
     "official-site-ua",
