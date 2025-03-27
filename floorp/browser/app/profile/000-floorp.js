@@ -86,7 +86,7 @@ pref("app.feedback.baseURL", "https://astian.org/feedback/");
 // 多段タブ
 pref("floorp.tabbar.style",0);
 pref("floorp.browser.tabs.verticaltab", false);
-pref("floorp.verticaltab.show.newtab.button" , false);
+pref("floorp.verticaltab.show.newtab.button" , true);
 pref("floorp.enable.multitab", false);
 pref("floorp.browser.tabbar.multirow.max.enabled", true);
 pref("floorp.browser.tabbar.multirow.newtab-inside.enabled", false);
