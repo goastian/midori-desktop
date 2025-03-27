@@ -16,6 +16,7 @@
 #? ref https://github.com/actions/runner/issues/1483
 #? and in bash, space between [ and value is important like [ ${{}} ]
 on:
+  workflow_dispatch:
   workflow_call:
     inputs:
       disable-updater:
