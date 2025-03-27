@@ -10,5 +10,4 @@ DIRS += [
     "webcompat",
     "report-site-issue",
     "pictureinpicture",
-    "search-detection",
 ]
