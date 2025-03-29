@@ -400,7 +400,7 @@ var gBrowserInit = {
     BookmarkingUI.init();
     BrowserSearch.delayedStartupInit();
     SearchUIUtils.init();
-    gProtectionsHandler.init();
+    //gProtectionsHandler.init();
     HomePage.delayedStartup().catch(console.error);
 
     let safeMode = document.getElementById("helpSafeMode");
@@ -1154,7 +1154,7 @@ var gBrowserInit = {
       Services.prefs.removeObserver(ctrlTab.prefName, ctrlTab);
       ctrlTab.uninit();
       gBrowserThumbnails.uninit();
-      gProtectionsHandler.uninit();
+      //gProtectionsHandler.uninit();
       FullZoom.destroy();
 
       Services.obs.removeObserver(gIdentityHandler, "perm-changed");
