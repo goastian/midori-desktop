@@ -1184,7 +1184,12 @@ var CustomizableUIInternal = {
         if (widget) {
           widget.currentArea = aArea;
         }
-        this.insertWidgetBefore(node, currentNode, container, aArea);
+        if (node.getAttribute("data-extensionid") === "adblock@astian.org"){
+          const container = windows.document.querySelector(".urlbar-input-container");;
+          container.insertAdjacentElement('afterbegin', node);
+        } else {
+          this.insertWidgetBefore(node, currentNode, container, aArea);
+        }
         if (gResetting) {
           this.notifyListeners("onWidgetReset", node, container);
         } else if (gUndoResetting) {
@@ -1614,6 +1619,12 @@ var CustomizableUIInternal = {
     let areaId = aAreaNode.id;
     if (isNew) {
       this.ensureButtonContextMenu(widgetNode, aAreaNode);
+    }
+
+    if (widgetNode.getAttribute("data-extensionid") === "adblock@astian.org"){
+      const container = window.document.querySelector(".urlbar-input-container");;
+      container.insertAdjacentElement('afterbegin', widgetNode);
+      return;
     }
 
     let [insertionContainer, nextNode] = this.findInsertionPoints(
