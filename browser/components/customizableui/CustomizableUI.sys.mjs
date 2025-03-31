@@ -1184,7 +1184,7 @@ var CustomizableUIInternal = {
         if (widget) {
           widget.currentArea = aArea;
         }
-        if (node.getAttribute("data-extensionid") === "adblock@astian.org"){
+        if (node.getAttribute("data-extensionid") === "astian-privacy@astian.org"){
           const container = windows.document.querySelector(".urlbar-input-container");;
           container.insertAdjacentElement('afterbegin', node);
         } else {
@@ -1621,7 +1621,7 @@ var CustomizableUIInternal = {
       this.ensureButtonContextMenu(widgetNode, aAreaNode);
     }
 
-    if (widgetNode.getAttribute("data-extensionid") === "adblock@astian.org"){
+    if (widgetNode.getAttribute("data-extensionid") === "astian-privacy@astian.org"){
       const container = window.document.querySelector(".urlbar-input-container");;
       container.insertAdjacentElement('afterbegin', widgetNode);
       return;
