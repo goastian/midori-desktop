@@ -461,7 +461,6 @@ const rollouts = [
       "browser/extensions/formautofill/**",
       "browser/extensions/pictureinpicture/**",
       "browser/extensions/report-site-issue/test/browser/head.js",
-      "browser/extensions/search-detection/extension/background.js",
       "browser/extensions/screenshots/**",
       "browser/extensions/webcompat/**",
       "browser/fxr/content/permissions.js",
