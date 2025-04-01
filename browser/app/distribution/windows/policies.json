@@ -3,8 +3,8 @@
         "DisableFirefoxStudies": true,
         "DisableTelemetry": true,
         "NoDefaultBookmarks": true,
-        "OverridePostUpdatePage": "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/", 
-        "OverrideFirstRunPage": " https://floorp.ablaze.one/welcome/ | https://blog.ablaze.one/category/ablaze/ablaze-project/floorp | https://blog.ablaze.one/1932/2022-06-22/",
+        "OverridePostUpdatePage": "https://astian.org/midori-en/midori-11-5-2-privacy-security-faster-browsing/", 
+        "OverrideFirstRunPage": " https://astian.org/midori-browser/welcome/ | https://astian.org/midori-en | https://astian.org/blog",
         "Extensions": {
             "installation_mode": "force_installed",
             "Install": [
