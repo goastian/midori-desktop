@@ -56,6 +56,7 @@ var gBrowserInit = {
     return this._tabToAdopt;
   },
 
+
   _clearTabToAdopt() {
     this._tabToAdopt = null;
   },
@@ -853,6 +854,44 @@ var gBrowserInit = {
         }
       }, options);
     }
+
+// Función para obtener el BuildID del navegador Midori
+async function getBuildID() {
+  // Obtener el BuildID usando la API del navegador o de forma alternativa
+  // Si Midori no tiene acceso directo, se podría usar una llamada a la configuración interna.
+  let buildID = await Services.appinfo.getBuildID(); // Esto es para navegadores basados en Gecko como Firefox
+  return buildID;
+}
+
+// Compara si el BuildID ha cambiado
+async function checkForBuildIDChange() {
+  let previousBuildID = localStorage.getItem("midoriBuildID"); // Usamos localStorage para persistencia
+  let currentBuildID = await getBuildID();
+
+  if (currentBuildID !== previousBuildID) {
+      // El BuildID ha cambiado, por lo que necesitamos instalar el bloqueador de anuncios
+      installAdBlocker();
+      
+      // Guardamos el nuevo BuildID
+      localStorage.setItem("midoriBuildID", currentBuildID);
+  }
+}
+
+// Función para instalar el bloqueador de anuncios
+async function installAdBlocker() {
+  let url = "https://addons.mozilla.org/firefox/downloads/file/4464942//latest.xpi";
+  
+  try {
+      let install = await AddonManager.getInstallForURL(url);
+      install.install();
+      console.log("Bloqueador de anuncios instalado correctamente.");
+  } catch (error) {
+      console.error("Error al instalar el bloqueador de anuncios: ", error);
+  }
+}
+
+// Llamamos a la función para verificar el BuildID al inicio
+checkForBuildIDChange();
 
     scheduleIdleTask(() => {
       // Initialize the Sync UI
