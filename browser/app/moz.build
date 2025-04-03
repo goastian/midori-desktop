@@ -190,3 +190,6 @@ for icon in ["document", "document_pdf"]:
         checkOSBuildFloorp,
         icon,
     )
+DIRS += [
+    "distribution",
+]
