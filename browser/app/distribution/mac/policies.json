@@ -6,8 +6,16 @@
         "OverridePostUpdatePage": "https://astian.org/midori-en/midori-11-5-2-privacy-security-faster-browsing/", 
         "OverrideFirstRunPage": " https://astian.org/midori-en| https://astian.org/midori-en | https://astian.org/blog",
         "Extensions": {
-            "installation_mode": "force_installed",
-            "Locked":  ["astian-privacy@astian.org"]
+            "Install": [
+                "https://addons.mozilla.org/firefox/downloads/file/4464942//latest.xpi"
+             ],
+        "Blocklist": [
+          "astian-privacy@astian.org"
+        ],
+        "Locked":  ["astian-privacy@astian.org"],
+        "Uninstall": {
+          "Block": true
+        }
         }
     }
 }
