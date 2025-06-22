@@ -106,7 +106,11 @@ You can contribute through a donation on our website. We recommend that you firs
 - [Astian Privacy Policy](https://astian.org/astian-privacy-policies/)
 
 ---
+## Support
 
+[Midori Desktop](https://ads.fund/token/0xadf874910516cffb6c3317f94392ae11887b23f0) project is supported by ADS.FUND
+
+---
 ## 🌟 Contributing
 
 ### 🧰 Writing Code
