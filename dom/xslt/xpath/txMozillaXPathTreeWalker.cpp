@@ -134,7 +134,7 @@
  
    const nsAttrName* name;
    uint32_t i;
-   for (i = 0; (name = element->GetAttrNameAt(i)); ++i) {
+  for (i = 0; element->GetAttrNameAt(i, &name); ++i) {
      if (name->Equals(aLocalName, aNSID)) {
        mPosition.mIndex = i;
  
