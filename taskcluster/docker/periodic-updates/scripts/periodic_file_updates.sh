@@ -68,8 +68,8 @@ REMOTE_SETTINGS_DIR="/services/settings/dumps"
 REMOTE_SETTINGS_UPDATED=false
 
 DO_SUFFIX_LIST=false
-GITHUB_SUFFIX_URL="https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat"
-GITHUB_SUFFIX_LOCAL="public_suffix_list.dat"
+PUBLIC_SUFFIX_URL="https://publicsuffix.org/list/public_suffix_list.dat"
+PUBLIC_SUFFIX_LOCAL="public_suffix_list.dat"
 HG_SUFFIX_LOCAL="effective_tld_names.dat"
 HG_SUFFIX_PATH="/netwerk/dns/${HG_SUFFIX_LOCAL}"
 SUFFIX_LIST_UPDATED=false
@@ -274,16 +274,16 @@ function compare_suffix_lists {
   HG_SUFFIX_URL="${HGREPO}/raw-file/default/${HG_SUFFIX_PATH}"
   cd "${BASEDIR}"
 
-  echo "INFO: ${WGET} -O ${GITHUB_SUFFIX_LOCAL} ${GITHUB_SUFFIX_URL}"
-  rm -f "${GITHUB_SUFFIX_LOCAL}"
-  ${WGET} -O "${GITHUB_SUFFIX_LOCAL}" "${GITHUB_SUFFIX_URL}"
+  echo "INFO: ${WGET} -O ${PUBLIC_SUFFIX_LOCAL} ${PUBLIC_SUFFIX_URL}"
+  rm -f "${PUBLIC_SUFFIX_LOCAL}"
+  ${WGET} -O "${PUBLIC_SUFFIX_LOCAL}" "${PUBLIC_SUFFIX_URL}"
 
   echo "INFO: ${WGET} -O ${HG_SUFFIX_LOCAL} ${HG_SUFFIX_URL}"
   rm -f "${HG_SUFFIX_LOCAL}"
   ${WGET} -O "${HG_SUFFIX_LOCAL}" "${HG_SUFFIX_URL}"
 
-  echo "INFO: diffing in-tree suffix list against the suffix list from AMO..."
-  ${DIFF} ${GITHUB_SUFFIX_LOCAL} ${HG_SUFFIX_LOCAL} | tee "${SUFFIX_LIST_DIFF_ARTIFACT}"
+  echo "INFO: diffing in-tree suffix list against the suffix list from publicsuffix.org"
+  ${DIFF} ${PUBLIC_SUFFIX_LOCAL} ${HG_SUFFIX_LOCAL} | tee "${SUFFIX_LIST_DIFF_ARTIFACT}"
   if [ -s "${SUFFIX_LIST_DIFF_ARTIFACT}" ]
   then
     return 0
@@ -343,6 +343,17 @@ function compare_remote_settings_files {
       done
     fi
     # NOTE: The downloaded data is not validated. xpcshell should be used for that.
+    
+    # bug 1959683: remote settings update can add untracked search-config-icons
+    # It is not safe to take these (see https://bugzilla.mozilla.org/show_bug.cgi?id=1873448)
+    # If they are around as untracked files when `arc diff` runs, that command will fail.
+    # (We explicitly don't want to use `arc diff --allow-untracked` to avoid accidentally
+    # missing files from other updates - we'd rather the job fail.)
+    if [ "${USE_GIT}" == "true" ]; then
+      ${GIT} -C "${TOPSRCDIR}" clean -f -d services/settings/dumps/main/search-config-icons
+    else
+      ${HG} --cwd "${TOPSRCDIR}" purge services/settings/dumps/main/search-config-icons
+    fi
   done
 
   echo "INFO: diffing old/new remote settings dumps..."
@@ -441,7 +452,7 @@ function stage_remote_settings_files {
 
 function stage_tld_suffix_files {
   cd "${BASEDIR}"
-  cp -a "${GITHUB_SUFFIX_LOCAL}" "${REPODIR}/${HG_SUFFIX_PATH}"
+  cp -a "${PUBLIC_SUFFIX_LOCAL}" "${REPODIR}/${HG_SUFFIX_PATH}"
 }
 
 function stage_mobile_experiments_files {
