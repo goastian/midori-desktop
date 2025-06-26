@@ -13,6 +13,10 @@ SOURCES += [
     "workmonitor.cpp",
 ]
 
+UNIFIED_SOURCES += [
+    "/mfbt/Poison.cpp",
+]
+
 USE_LIBS += [
     "updatecommon",
 ]
@@ -26,6 +30,7 @@ DEFINES["NS_NO_XPCOM"] = True
 
 # Pick up nsWindowsRestart.cpp
 LOCAL_INCLUDES += [
+    "/mfbt/",
     "/toolkit/mozapps/update/common",
     "/toolkit/xre",
 ]
