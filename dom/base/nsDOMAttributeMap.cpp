@@ -295,7 +295,7 @@ Attr* nsDOMAttributeMap::IndexedGetter(uint32_t aIndex, bool& aFound) {
   aFound = false;
   NS_ENSURE_TRUE(mContent, nullptr);
 
-  const nsAttrName* name;More actions
+  const nsAttrName* name;
   if (!mContent->GetAttrNameAt(aIndex, &name)) {
     return nullptr;
   }
