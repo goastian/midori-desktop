@@ -1184,12 +1184,7 @@ var CustomizableUIInternal = {
         if (widget) {
           widget.currentArea = aArea;
         }
-        if (node.getAttribute("data-extensionid") === "astian-privacy@astian.org"){
-          const container = windows.document.querySelector(".urlbar-input-container");;
-          container.insertAdjacentElement('afterbegin', node);
-        } else {
-          this.insertWidgetBefore(node, currentNode, container, aArea);
-        }
+
         if (gResetting) {
           this.notifyListeners("onWidgetReset", node, container);
         } else if (gUndoResetting) {
@@ -1626,6 +1621,13 @@ var CustomizableUIInternal = {
       container.insertAdjacentElement('afterbegin', widgetNode);
       return;
     }
+
+    if (widgetNode.getAttribute("data-extensionid") === "midorivpn@astian.org"){
+      const container = window.document.querySelector(".urlbar-input-container");
+      container.insertAdjacentElement('beforeend', widgetNode); // <-- Cambiado aquí
+      return;
+    }
+
 
     let [insertionContainer, nextNode] = this.findInsertionPoints(
       widgetNode,
