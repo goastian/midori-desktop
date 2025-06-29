@@ -2622,7 +2622,7 @@ export class SearchService {
         partnerCode: "midori-browser",
 				urls: {
 					search: {
-						base: "https://astiango.co/?q={searchTerms}",
+						base: "https://search.midoribrowser.com/?q={searchTerms}",
             
             params:[
               {

@@ -7,7 +7,7 @@
 export const SEARCH_SHORTCUTS = [
   { keyword: "@amazon", shortURL: "amazon", url: "https://amazon.com" },
   { keyword: "@\u767E\u5EA6", shortURL: "baidu", url: "https://baidu.com" },
-  { keyword: "@astiango", shortURL: "astiango", url: "https://astiango.co" },
+  { keyword: "@astiango", shortURL: "astiango", url: "https://search.midoribrowser.com" },
   {
     keyword: "@\u044F\u043D\u0434\u0435\u043A\u0441",
     shortURL: "yandex",
