@@ -1,6 +1,6 @@
 [DEFAULT]
 scheme = "https"
-prefs = ["identity.fxaccounts.enabled=true"]
+prefs = ["identity.fxaccounts.enabled=false"]
 support-files = ["aboutlogins_common.js"]
 
 ["test_confirm_delete_dialog.html"]
