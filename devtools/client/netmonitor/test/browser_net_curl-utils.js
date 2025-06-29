@@ -353,6 +353,14 @@ function testEscapeStringWin() {
     '"query=evil"^\r\n\r\n""^\r\n\r\n"cmd"" /c timeout /t 3 & calc.exe"^\r\n\r\n""^\r\n\r\n""',
     "The evil command is escaped properly"
   );
+
+
+  const str = "EvilHeader: &calc.exe&";
+  is(
+    CurlUtils.escapeStringPosix(str),
+    "'EvilHeader: ^&calc.exe^&'",
+    "The evil command is escaped properly"
+  );
 }
 
 async function createCurlData(selected, getLongString, requestData) {
