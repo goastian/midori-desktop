@@ -211,7 +211,7 @@ LOCAL_INCLUDES += [
     "/netwerk/url-classifier",
 ]
 
-DEFINES["MOZ_APP_UA_NAME"] = f'"Midori"'
+DEFINES["MOZ_APP_UA_NAME"] = f'"Firefox"'
 
 if CONFIG["MOZ_AUTH_EXTENSION"]:
     LOCAL_INCLUDES += [
