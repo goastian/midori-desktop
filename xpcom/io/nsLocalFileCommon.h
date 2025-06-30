@@ -9,7 +9,7 @@
 
 #ifdef MOZ_ESR
 extern const char* const sExecutableExts[110];
-#elseAdd commentMore actions
+#else
 extern const char* const sExecutableExts[111];
 #endif
 

@@ -121,7 +121,7 @@ support-files = [
   "file_svg_object_attachment.html",
   "file_svg_attachment.svg",
   "file_svg_attachment.svg^headers^",
-  "file_html_object_attachment.html",Add commentMore actions
+  "file_html_object_attachment.html",
   "file_html_attachment.html",
   "file_html_attachment.html^headers^",
 ]

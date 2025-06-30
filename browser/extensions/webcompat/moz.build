@@ -203,7 +203,7 @@ XPCOM_MANIFESTS += [
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "tests/browser/browser.toml",Add commentMore actions
+    "tests/browser/browser.toml",
     "tests/browser/browser_uuid_migration.toml",
 ]
 
