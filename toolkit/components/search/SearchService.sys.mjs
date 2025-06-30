@@ -2622,14 +2622,8 @@ export class SearchService {
         partnerCode: "midori-browser",
 				urls: {
 					search: {
-						base: "https://search.midoribrowser.com/?q={searchTerms}",
-            
-            params:[
-              {
-                name: "client",
-                value: "{partnerCode}",
-              },
-            ],
+						base: "https://search.midoribrowser.com/search?{searchTerms}",            
+
 						searchTermParamName: "q",
 					},
           suggestions: {
