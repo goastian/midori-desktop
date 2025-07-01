@@ -1622,12 +1622,6 @@ var CustomizableUIInternal = {
       return;
     }
 
-    if (widgetNode.getAttribute("data-extensionid") === "midorivpn@astian.org"){
-      const container = window.document.querySelector(".urlbar-input-container");
-      container.insertAdjacentElement('beforeend', widgetNode); // <-- Cambiado aquí
-      return;
-    }
-
 
     let [insertionContainer, nextNode] = this.findInsertionPoints(
       widgetNode,
