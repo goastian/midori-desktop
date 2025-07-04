@@ -5,21 +5,24 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1303957
 -->
 <head>
   <meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Test for Bug 1303957</title>
   <script src="/tests/SimpleTest/EventUtils.js"></script>
   <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body>
-<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1303957">Mozilla Bug 1303957</a>
-<p id="display"></p>
+<!-- DO NOT PUT any text before the test target to avoid fractional coordinates! -->
 <div id="target0" style="width: 50px; height: 50px; background: green"></div>
 <script type="text/javascript">
 /** Test for Bug 1303957 **/
 SimpleTest.waitForExplicitFinish();
 
 SimpleTest.waitForFocus(async () => {
-  await SpecialPowers.pushPrefEnv({"set": [["dom.events.coalesce.mousemove", true]]});
+  await SpecialPowers.pushPrefEnv({"set": [
+    ["dom.events.coalesce.mousemove", true],
+    ["test.events.async.enabled", true],
+  ]});
 
   const target0 = window.document.getElementById("target0");
   const utils = SpecialPowers.getDOMWindowUtils(window);
@@ -33,8 +36,27 @@ SimpleTest.waitForFocus(async () => {
       ok(length >= 1, "Coalesced events should >= 1, got " + length);
 
       let rect = target0.getBoundingClientRect();
-      let prevOffsetX = 0;
-      let prevOffsetY = 0;
+      let prevOffsetX = undefined;
+      let prevOffsetY = undefined;
+
+      function isExpectedOffset(aNewOffset, aPrevOffset) {
+        if (aPrevOffset === undefined) {
+          const roundedOffset = 5 * Math.max(Math.round(aNewOffset / 5), 1);
+          return aNewOffset >= roundedOffset - 1 && aNewOffset <= roundedOffset + 1;
+        }
+        let candidateOffset = aPrevOffset + 5;
+        const toleranceError = navigator.userAgent.includes("Android") ? 0.31 : 0.1;
+        while (candidateOffset < 25) {
+          if (
+            aNewOffset >= candidateOffset - toleranceError &&
+            aNewOffset <= candidateOffset + toleranceError
+          ) {
+            return true;
+          }
+          candidateOffset += 5;
+        }
+        return false;
+      }
 
       for (let i = 0; i < length; ++i) {
         let coalescedEvent = ev.getCoalescedEvents()[i];
@@ -48,14 +70,21 @@ SimpleTest.waitForFocus(async () => {
         is(coalescedEvent.eventPhase, Event.NONE, "getCoalescedEvents()[" + i + "].eventPhase");
         is(coalescedEvent.cancelable, false, "getCoalescedEvents()[" + i + "].cancelable");
         is(coalescedEvent.bubbles, false, "getCoalescedEvents()[" + i + "].bubbles");
+        is(coalescedEvent.buttons, 0, `getCoalescedEvents()[${i}].buttons should be 0`);
+        is(coalescedEvent.pressure, 0, `getCoalescedEvents()[${i}].pressure should be 0 when buttons is 0`);
 
-        ok(coalescedEvent.offsetX >= prevOffsetX, "getCoalescedEvents()[" + i + "].offsetX = " + coalescedEvent.offsetX);
-        ok(coalescedEvent.offsetX == 5 || coalescedEvent.offsetX == 10 ||
-            coalescedEvent.offsetX == 15 || coalescedEvent.offsetX == 20, "expected offsetX");
-
-        ok(coalescedEvent.offsetY >= prevOffsetY, "getCoalescedEvents()[" + i + "].offsetY = " + coalescedEvent.offsetY);
-        ok(coalescedEvent.offsetY == 5 || coalescedEvent.offsetY == 10 ||
-            coalescedEvent.offsetY == 15 || coalescedEvent.offsetY == 20, "expected offsetY");
+        ok(
+          isExpectedOffset(coalescedEvent.offsetX, prevOffsetX),
+          `getCoalescedEvents()[${i}].offsetX (${
+            coalescedEvent.offsetX
+          }) should be 5 * n + previous offsetX (${prevOffsetX})`
+        );
+        ok(
+          isExpectedOffset(coalescedEvent.offsetY, prevOffsetY),
+          `getCoalescedEvents()[${i}].offsetY (${
+            coalescedEvent.offsetY
+          }) should be 5 * n + previous offsetY (${prevOffsetY})`
+        );
 
         prevOffsetX = coalescedEvent.offsetX;
         prevOffsetY = coalescedEvent.offsetY;
@@ -70,11 +99,19 @@ SimpleTest.waitForFocus(async () => {
     }, { once: true });
   });
 
-  info("Synthesizing native mouse moves....");
-  await promiseNativeMouseEvent({ type: "mousemove", target: target0, offsetX: 5, offsetY: 5 });
-  await promiseNativeMouseEvent({ type: "mousemove", target: target0, offsetX: 10, offsetY: 10 });
-  await promiseNativeMouseEvent({ type: "mousemove", target: target0, offsetX: 15, offsetY: 15 });
-  await promiseNativeMouseEvent({ type: "mousemove", target: target0, offsetX: 20, offsetY: 20 });
+  info(`mozInnerScreen={${SpecialPowers.wrap(window).mozInnerScreenX}, ${SpecialPowers.wrap(window).mozInnerScreenY}}`);
+  info(`devicePixelRatio=${window.devicePixelRatio}`);
+  try {
+    info(`top.mozInnerScreen={${SpecialPowers.wrap(window.top).mozInnerScreenX}, ${SpecialPowers.wrap(window.top).mozInnerScreenY}}`);
+    info(`top.getResolution()=${SpecialPowers.wrap(window.top).windowUtils.getResolution()}`);
+  } catch (e) {}
+  info(`target0.getBoundingClientRect()={${target0.getBoundingClientRect().x}, ${target0.getBoundingClientRect().y}}`);
+
+  info("Synthesizing mouse moves....");
+  synthesizeMouse(target0, 5, 5, {type: "mousemove"});
+  synthesizeMouse(target0, 10, 10, {type: "mousemove"});
+  synthesizeMouse(target0, 15, 15, {type: "mousemove"});
+  synthesizeMouse(target0, 20, 20, {type: "mousemove"});
   utils.restoreNormalRefresh();
   await waitForPointerMove;
 
@@ -82,8 +119,8 @@ SimpleTest.waitForFocus(async () => {
     SimpleTest.finish();
   }, { once: true });
 
-  info("Synthesizing a native click....");
-  synthesizeNativeMouseEvent({ type: "click", target: target0, offsetX: 20, offsetY: 20 });
+  info("Synthesizing a click....");
+  synthesizeMouse(target0, 20, 20, {});
 });
 
 </script>

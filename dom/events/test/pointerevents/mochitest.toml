@@ -62,8 +62,12 @@ support-files = ["!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js
 
 ["test_getCoalescedEvents.html"]
 skip-if = [
-  "os == 'android'",  # Bug 1312791
-  "display == 'wayland' && os_version == '22.04'",  # Bug 1856971
+  "xorigin", # Bug 1953695, Bug 1958029
+]
+
+["test_getCoalescedEvents_during_button_press.html"]
+skip-if = [
+  "xorigin", # Bug 1953695, Bug 1958029
 ]
 
 ["test_getCoalescedEvents_touch.html"]
@@ -71,6 +75,7 @@ skip-if = [
   "os == 'android'",  # Bug 1312791
   "verify && os == 'win'",  # Bug 1659744
   "win11_2009", # Bug 1781388
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && opt", # Bug 1781388
 ]
 support-files = ["!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js"]
 
@@ -89,9 +94,28 @@ skip-if = [
 ]
 
 ["test_pointermove_drag_scrollbar.html"]
-skip-if = ["os == 'android'"]  # scrollbar not showed on mobile
+skip-if = [
+  "os == 'android'", # scrollbar not showed on mobile
+]
 
 ["test_pointermove_isPrimary_subsequent_pens.html"]
+
+["test_pointerrawupdate_event_count.html"]
+scheme = "https"
+skip-if = [
+  "os == 'android'", # Bug 1312791
+  "xorigin", # Bug 1958029
+]
+
+["test_pointerrawupdate_event_count_touch.html"]
+scheme = "https"
+skip-if = [
+  "os == 'android'",  # Bug 1312791
+  "verify && os == 'win'",  # Bug 1659744
+  "win11_2009", # Bug 1781388
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && opt", # Bug 1781388
+]
+support-files = ["!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js"]
 
 ["test_remove_frame_when_got_pointer_capture.html"]
 
@@ -115,13 +139,6 @@ support-files = [
   "wpt/pointerevent_attributes_nohover_pointers-manual.html",
   "wpt/resources/pointerevent_attributes_hoverable_pointers-iframe.html",
 ]
-skip-if = [
-  "http3",
-  "http2",
-]
-
-["test_wpt_pointerevent_boundary_events_in_capturing-manual.html"]
-support-files = ["wpt/pointerevent_boundary_events_in_capturing-manual.html"]
 skip-if = [
   "http3",
   "http2",
@@ -178,13 +195,6 @@ skip-if = [
 
 ["test_wpt_pointerevent_pointerout_pen-manual.html"]
 support-files = ["wpt/pointerevent_pointerout_pen-manual.html"]
-skip-if = [
-  "http3",
-  "http2",
-]
-
-["test_wpt_pointerevent_releasepointercapture_events_to_original_target-manual.html"]
-support-files = ["wpt/pointerevent_releasepointercapture_events_to_original_target-manual.html"]
 skip-if = [
   "http3",
   "http2",
