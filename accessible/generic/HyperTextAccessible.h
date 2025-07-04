@@ -144,9 +144,6 @@ class HyperTextAccessible : public AccessibleWrap,
    * Get/set caret offset, if no caret then -1.
    */
   virtual int32_t CaretOffset() const override;
-  virtual void SetCaretOffset(int32_t aOffset) override;
-
-  virtual int32_t CaretLineNumber() override;
 
   /**
    * Return the caret rect and the widget containing the caret within this
@@ -156,11 +153,6 @@ class HyperTextAccessible : public AccessibleWrap,
    * @return      the caret rect
    */
   mozilla::LayoutDeviceIntRect GetCaretRect(nsIWidget** aWidget);
-
-  /**
-   * Return true if caret is at end of line.
-   */
-  bool IsCaretAtEndOfLine() const;
 
   virtual int32_t SelectionCount() override;
 
@@ -222,10 +214,6 @@ class HyperTextAccessible : public AccessibleWrap,
    */
   void GetSelectionDOMRanges(SelectionType aSelectionType,
                              nsTArray<nsRange*>* aRanges);
-
-  // TODO: annotate this with `MOZ_CAN_RUN_SCRIPT` instead.
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult SetSelectionRange(int32_t aStartPos,
-                                                         int32_t aEndPos);
 
   // Helpers
 

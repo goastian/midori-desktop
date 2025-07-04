@@ -86,6 +86,9 @@ addAccessibleTask(
   <!-- True HTML5 search box -->
   <input type="search" id="htmlSearch" />
 
+  <!-- Password input -->
+  <input type="password" id="password" />
+
   <!-- A button morphed into a toggle via ARIA -->
   <button id="toggle" aria-pressed="false"></button>
 
@@ -208,6 +211,9 @@ addAccessibleTask(
     // True HTML5 search field
     testRoleAndSubRole(accDoc, "htmlSearch", "AXTextField", "AXSearchField");
 
+    // Password input
+    testRoleAndSubRole(accDoc, "password", "AXTextField", "AXSecureTextField");
+
     // A button morphed into a toggle by ARIA
     testRoleAndSubRole(accDoc, "toggle", "AXCheckBox", "AXToggle");
 
@@ -216,9 +222,9 @@ addAccessibleTask(
 
     // Other elements
     testRoleAndSubRole(accDoc, "deletion", "AXGroup", "AXDeleteStyleGroup");
-    testRoleAndSubRole(accDoc, "dl", "AXList", "AXDescriptionList");
+    testRoleAndSubRole(accDoc, "dl", "AXList", "AXDefinitionList");
     testRoleAndSubRole(accDoc, "dt", "AXGroup", "AXTerm");
-    testRoleAndSubRole(accDoc, "dd", "AXGroup", "AXDescription");
+    testRoleAndSubRole(accDoc, "dd", "AXGroup", "AXDefinition");
     testRoleAndSubRole(accDoc, "hr", "AXSplitter", "AXContentSeparator");
     testRoleAndSubRole(accDoc, "insertion", "AXGroup", "AXInsertStyleGroup");
     testRoleAndSubRole(

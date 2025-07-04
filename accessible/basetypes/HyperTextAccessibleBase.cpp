@@ -248,11 +248,6 @@ LayoutDeviceIntRect HyperTextAccessibleBase::TextBounds(int32_t aStartOffset,
     return LayoutDeviceIntRect();
   }
 
-  // Here's where things get complicated. We can't simply query the first
-  // and last character, and union their bounds. They might reside on different
-  // lines, and a simple union may yield an incorrect width. We
-  // should use the length of the longest spanned line for our width.
-
   TextLeafPoint startPoint =
       ToTextLeafPoint(static_cast<int32_t>(startOffset), false);
   TextLeafPoint endPoint =
@@ -260,14 +255,6 @@ LayoutDeviceIntRect HyperTextAccessibleBase::TextBounds(int32_t aStartOffset,
   if (!endPoint) {
     // The caller provided an invalid offset.
     return LayoutDeviceIntRect();
-  }
-
-  // Step backwards from the point returned by ToTextLeafPoint above.
-  // For our purposes, `endPoint` should be inclusive.
-  endPoint =
-      endPoint.FindBoundary(nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
-  if (endPoint < startPoint) {
-    return result;
   }
 
   if (endPoint == startPoint) {
@@ -307,24 +294,12 @@ int32_t HyperTextAccessibleBase::OffsetAtPoint(int32_t aX, int32_t aY,
   }
 
   TextLeafPoint startPoint = ToTextLeafPoint(0, false);
-  // As with TextBounds, we walk to the very end of the text contained in this
-  // hypertext and then step backwards to make our endPoint inclusive.
+  // Walk to the very end of the text contained in this hypertext in order to
+  // hit test it in its entirety.
   TextLeafPoint endPoint =
       ToTextLeafPoint(static_cast<int32_t>(CharacterCount()), true);
-  endPoint =
-      endPoint.FindBoundary(nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
-  TextLeafPoint point = startPoint;
-  // XXX: We should create a TextLeafRange object for this hypertext and move
-  // this search inside the TextLeafRange class.
-  // If there are no characters in this container, we might have moved endPoint
-  // before startPoint. In that case, we shouldn't try to move further forward,
-  // as that might result in an infinite loop.
-  if (startPoint <= endPoint) {
-    for (; !point.ContainsPoint(coords.x, coords.y) && point != endPoint;
-         point =
-             point.FindBoundary(nsIAccessibleText::BOUNDARY_CHAR, eDirNext)) {
-    }
-  }
+  TextLeafRange range{startPoint, endPoint};
+  TextLeafPoint point = range.TextLeafPointAtScreenPoint(coords.x, coords.y);
   if (!point.ContainsPoint(coords.x, coords.y)) {
     LayoutDeviceIntRect startRect = startPoint.CharBounds();
     if (coords.x < startRect.x || coords.y < startRect.y) {
@@ -404,9 +379,11 @@ void HyperTextAccessibleBase::AdjustOriginIfEndBoundary(
       aBoundaryType != nsIAccessibleText::BOUNDARY_WORD_END) {
     return;
   }
-  TextLeafPoint actualOrig =
-      aOrigin.IsCaret() ? aOrigin.ActualizeCaret(/* aAdjustAtEndOfLine */ false)
-                        : aOrigin;
+  TextLeafPoint actualOrig = aOrigin;
+  // We explicitly care about the character at this offset. We don't want
+  // FindBoundary to behave differently even if this is the insertion point at
+  // the end of a line.
+  actualOrig.mIsEndOfLineInsertionPoint = false;
   if (aBoundaryType == nsIAccessibleText::BOUNDARY_LINE_END) {
     if (!actualOrig.IsLineFeedChar()) {
       return;
@@ -420,7 +397,7 @@ void HyperTextAccessibleBase::AdjustOriginIfEndBoundary(
       // boundary. Also, if the caret is at the end of a line, our tests expect
       // the word after the caret, not the word before. The reason for that
       // is a mystery lost to history. We can do that by explicitly using the
-      // actualized caret without adjusting for end of line.
+      // caret without adjusting for end of line.
       aOrigin = actualOrig;
       return;
     }
@@ -513,7 +490,7 @@ void HyperTextAccessibleBase::TextAtOffset(int32_t aOffset,
   if (aBoundaryType == nsIAccessibleText::BOUNDARY_CHAR) {
     if (aOffset == nsIAccessibleText::TEXT_OFFSET_CARET) {
       TextLeafPoint caret = TextLeafPoint::GetCaret(Acc());
-      if (caret.IsCaretAtEndOfLine()) {
+      if (caret.mIsEndOfLineInsertionPoint) {
         // The caret is at the end of the line. Return no character.
         *aStartOffset = *aEndOffset = static_cast<int32_t>(adjustedOffset);
         return;
@@ -581,7 +558,7 @@ void HyperTextAccessibleBase::TextAfterOffset(
 
   if (aBoundaryType == nsIAccessibleText::BOUNDARY_CHAR) {
     if (aOffset == nsIAccessibleText::TEXT_OFFSET_CARET && adjustedOffset > 0 &&
-        TextLeafPoint::GetCaret(Acc()).IsCaretAtEndOfLine()) {
+        TextLeafPoint::GetCaret(Acc()).mIsEndOfLineInsertionPoint) {
       --adjustedOffset;
     }
     uint32_t count = CharacterCount();
@@ -624,8 +601,7 @@ void HyperTextAccessibleBase::TextAfterOffset(
 }
 
 int32_t HyperTextAccessibleBase::CaretOffset() const {
-  TextLeafPoint point = TextLeafPoint::GetCaret(const_cast<Accessible*>(Acc()))
-                            .ActualizeCaret(/* aAdjustAtEndOfLine */ false);
+  TextLeafPoint point = TextLeafPoint::GetCaret(const_cast<Accessible*>(Acc()));
   if (point.mOffset == 0 && point.mAcc == Acc()) {
     // If a text box is empty, there will be no children, so point.mAcc will be
     // this HyperText.
@@ -640,9 +616,18 @@ int32_t HyperTextAccessibleBase::CaretOffset() const {
   return htOffset;
 }
 
+void HyperTextAccessibleBase::SetCaretOffset(int32_t aOffset) {
+  TextLeafPoint point = ToTextLeafPoint(aOffset);
+  TextLeafRange range(point, point);
+  if (!range) {
+    NS_ERROR("Wrong in offset");
+    return;
+  }
+  range.SetSelection(TextLeafRange::kRemoveAllExistingSelectedRanges);
+}
+
 int32_t HyperTextAccessibleBase::CaretLineNumber() {
-  TextLeafPoint point = TextLeafPoint::GetCaret(const_cast<Accessible*>(Acc()))
-                            .ActualizeCaret(/* aAdjustAtEndOfLine */ false);
+  TextLeafPoint point = TextLeafPoint::GetCaret(const_cast<Accessible*>(Acc()));
   if (point.mOffset == 0 && point.mAcc == Acc()) {
     MOZ_ASSERT(CharacterCount() == 0);
     // If a text box is empty, there will be no children, so point.mAcc will be
@@ -764,16 +749,49 @@ already_AddRefed<AccAttributes> HyperTextAccessibleBase::TextAttributes(
 void HyperTextAccessibleBase::CroppedSelectionRanges(
     nsTArray<TextRange>& aRanges) const {
   SelectionRanges(&aRanges);
-  const Accessible* acc = Acc();
-  aRanges.RemoveElementsBy([acc](auto& range) {
+  Accessible* acc = const_cast<Accessible*>(Acc());
+
+  size_t startIndex = 0;
+  size_t endIndex = aRanges.Length();
+  // If this is the document, it contains all ranges, so there's no need to
+  // search for overlapping ranges.
+  if (!acc->IsDoc()) {
+    // Find overlapping ranges. We use binary searches here, which is far more
+    // efficient than cropping every range in the list.
+    // Find the first range that ends after acc starts.
+    TextPoint thisPoint = TextPoint(acc, 0);
+    startIndex =
+        UpperBound(aRanges, 0, aRanges.Length(), [&](const TextRange& range) {
+          return thisPoint.Compare(range.EndPoint());
+        });
+    // Find the first range that starts after acc ends. This will be the first
+    // non-overlapping range after startIndex; i.e. the exclusive end of our
+    // desired span.
+    thisPoint = TextPoint(acc, CharacterCount());
+    endIndex = UpperBound(aRanges, startIndex, aRanges.Length(),
+                          [&](const TextRange& range) {
+                            return thisPoint.Compare(range.StartPoint());
+                          });
+  }
+
+  // Exclude ranges that don't overlap acc.
+  size_t nextIndex = 0;
+  aRanges.RemoveElementsBy([&](TextRange& range) {
+    // Set index to the index of range. Increment nextIndex ready for the next
+    // iteration.
+    size_t index = nextIndex++;
     if (range.StartPoint() == range.EndPoint()) {
       return true;  // Collapsed, so remove this range.
     }
-    // If this is the document, it contains all ranges, so there's no need to
-    // crop.
-    if (!acc->IsDoc()) {
-      // If we fail to crop, the range is outside acc, so remove it.
-      return !range.Crop(const_cast<Accessible*>(acc));
+    // Remove (return true for) ranges that aren't between startIndex
+    // (inclusive) and endIndex (exclusive).
+    if (index < startIndex || index >= endIndex) {
+      return true;
+    }
+    // The first and last ranges might extend beyond acc, so crop them.
+    if (index == startIndex || index == endIndex - 1) {
+      DebugOnly<bool> cropped = range.Crop(const_cast<Accessible*>(acc));
+      MOZ_ASSERT(cropped, "range should overlap and thus crop successfully");
     }
     return false;
   });

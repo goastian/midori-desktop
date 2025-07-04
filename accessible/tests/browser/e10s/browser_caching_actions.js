@@ -24,6 +24,7 @@ const gActionDescrMap = {
 };
 
 async function testActions(browser, docAcc, id, expectedActions, domEvents) {
+  info(`Testing element ${id}`);
   const acc = findAccessibleChildByID(docAcc, id);
   is(acc.actionCount, expectedActions.length, "Correct action count");
 
@@ -54,7 +55,6 @@ async function testActions(browser, docAcc, id, expectedActions, domEvents) {
           const listener = e => {
             if (e.target.id == _id) {
               content.removeEventListener(evtName, listener);
-              content.evtPromise = null;
               resolve(42);
             }
           };
@@ -68,6 +68,7 @@ async function testActions(browser, docAcc, id, expectedActions, domEvents) {
 
   let eventFired = await invokeContentTask(browser, [], async () => {
     await content.evtPromise;
+    content.evtPromise = null;
     return true;
   });
 
@@ -76,16 +77,16 @@ async function testActions(browser, docAcc, id, expectedActions, domEvents) {
 
 addAccessibleTask(
   `<ul>
-    <li id="li_clickable1" onclick="">Clickable list item</li>
-    <li id="li_clickable2" onmousedown="">Clickable list item</li>
-    <li id="li_clickable3" onmouseup="">Clickable list item</li>
+    <li id="li_clickable1" data-event="click">Clickable list item</li>
+    <li id="li_clickable2" data-event="mousedown">Clickable list item</li>
+    <li id="li_clickable3" data-event="mouseup">Clickable list item</li>
   </ul>
 
-  <img id="onclick_img" onclick=""
+  <img id="onclick_img" data-event="click"
         src="http://example.com/a11y/accessible/tests/mochitest/moz.png">
 
   <a id="link1" href="#">linkable textleaf accessible</a>
-  <div id="link2" onclick="">linkable textleaf accessible</div>
+  <div id="link2" data-event="click">linkable textleaf accessible</div>
 
   <a id="link3" href="#">
     <img id="link3img" alt="image in link"
@@ -95,13 +96,13 @@ addAccessibleTask(
   <a href="about:mozilla" id="link4" target="_blank" rel="opener">
     <img src="../moz.png" id="link4img">
   </a>
-  <a id="link5" onmousedown="">
+  <a id="link5" data-event="mousedown">
     <img src="../moz.png" id="link5img">
   </a>
-  <a id="link6" onclick="">
+  <a id="link6" data-event="click">
     <img src="../moz.png" id="link6img">
   </a>
-  <a id="link7" onmouseup="">
+  <a id="link7" data-event="mouseup">
     <img src="../moz.png" id="link7img">
   </a>
 
@@ -112,7 +113,15 @@ addAccessibleTask(
     <input name="in2" id="TextBox_t2" type="text" maxlength="17">
   </div>
 
-  <div onclick=""><p id="p_in_clickable_div">p in clickable div</p></div>
+  <div data-event="click"><p id="p_in_clickable_div">p in clickable div</p></div>
+
+  <img id="map_img" usemap="#map" src="http://example.com/a11y/accessible/tests/mochitest/moz.png" alt="map_img">
+  <map name="map">
+    <!-- These coords are deliberately small so that the area does not include
+      the center of the image.
+      -->
+    <area id="area" href="#" shape="rect" coords="0,0,2,2" alt="area">
+  </map>
   `,
   async function (browser, docAcc) {
     is(docAcc.actionCount, 0, "Doc should not have any actions");
@@ -140,11 +149,10 @@ addAccessibleTask(
     await _testActions("link7img", ["clickAncestor"], gClickEvents);
     await _testActions("label1", ["click"], gClickEvents);
     await _testActions("p_in_clickable_div", ["clickAncestor"], gClickEvents);
+    await _testActions("area", ["jump"], gClickEvents);
 
     await invokeContentTask(browser, [], () => {
-      content.document
-        .getElementById("li_clickable1")
-        .removeAttribute("onclick");
+      content.document.getElementById("li_clickable1").onclick = null;
     });
 
     let acc = findAccessibleChildByID(docAcc, "li_clickable1");
@@ -185,7 +193,7 @@ addAccessibleTask(
 
     // Remove 'onclick' from image with 'longdesc'
     await invokeContentTask(browser, [], () => {
-      content.document.getElementById("onclick_img").removeAttribute("onclick");
+      content.document.getElementById("onclick_img").onclick = null;
     });
     acc = findAccessibleChildByID(docAcc, "onclick_img");
     await untilCacheIs(() => acc.actionCount, 1, "img has 1 actions");
@@ -239,6 +247,13 @@ addAccessibleTask(
     topLevel: true,
     iframe: true,
     remoteIframe: true,
+    contentSetup: async function contentSetup() {
+      // Attach dummy event handlers here, because inline event handler attributes
+      // will be blocked in the chrome context.
+      for (const el of content.document.querySelectorAll("[data-event]")) {
+        el["on" + el.dataset.event] = () => {};
+      }
+    },
   }
 );
 

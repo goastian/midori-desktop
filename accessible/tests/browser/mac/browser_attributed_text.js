@@ -52,14 +52,74 @@ addAccessibleTask(
 
     Assert.deepEqual(attributesList, [
       // string, fg color, bg color, underline, underline color, heading level, font size, link id, misspelled
-      ["hello ", "#000000", "#ffffff", null, null, 1, 32, null, null],
-      ["world", "#0000ee", "#ffffff", 1, "#0000ee", 1, 32, "a1", null],
-      ["this ", "#000000", "#ffffff", null, null, null, 16, null, null],
-      ["is", "#ff0000", "#ffff00", null, null, null, 16, null, 1],
-      [" ", "#000000", "#ffffff", null, null, null, 16, null, null],
-      ["a", "#000000", "#ffffff", 1, "#008000", null, 16, null, null],
-      [" ", "#000000", "#ffffff", null, null, null, 16, null, null],
-      ["test", "#0000ee", "#ffffff", 1, "#0000ee", null, 16, "a2", null],
+      [
+        "hello ",
+        "#000000",
+        "#ffffff",
+        undefined,
+        undefined,
+        1,
+        32,
+        null,
+        undefined,
+      ],
+      ["world", "#0000ee", "#ffffff", 1, "#0000ee", 1, 32, "a1", undefined],
+      [
+        "this ",
+        "#000000",
+        "#ffffff",
+        undefined,
+        undefined,
+        undefined,
+        16,
+        null,
+        undefined,
+      ],
+      [
+        "is",
+        "#ff0000",
+        "#ffff00",
+        undefined,
+        undefined,
+        undefined,
+        16,
+        null,
+        1,
+      ],
+      [
+        " ",
+        "#000000",
+        "#ffffff",
+        undefined,
+        undefined,
+        undefined,
+        16,
+        null,
+        undefined,
+      ],
+      ["a", "#000000", "#ffffff", 1, "#008000", undefined, 16, null, undefined],
+      [
+        " ",
+        "#000000",
+        "#ffffff",
+        undefined,
+        undefined,
+        undefined,
+        16,
+        null,
+        undefined,
+      ],
+      [
+        "test",
+        "#0000ee",
+        "#ffffff",
+        1,
+        "#0000ee",
+        undefined,
+        16,
+        "a2",
+        undefined,
+      ],
     ]);
 
     // Test different NSRange parameters for AXAttributedStringForRange
@@ -161,5 +221,58 @@ addAccessibleTask(
       "Button text attribute run has correct attachment"
     );
     is(text, `hello  world${kEmbedChar}`, "Unattributed string is correct");
+  }
+);
+
+// Test text fragment.
+addAccessibleTask(
+  `This is a test.`,
+  async (browser, accDoc) => {
+    const macDoc = accDoc.nativeInterface.QueryInterface(
+      Ci.nsIAccessibleMacInterface
+    );
+    const range = macDoc.getParameterizedAttributeValue(
+      "AXTextMarkerRangeForUnorderedTextMarkers",
+      [
+        macDoc.getAttributeValue("AXStartTextMarker"),
+        macDoc.getAttributeValue("AXEndTextMarker"),
+      ]
+    );
+    const attributedText = macDoc.getParameterizedAttributeValue(
+      "AXAttributedStringForTextMarkerRange",
+      range
+    );
+    is(attributedText.length, 3);
+    ok(!attributedText[0].AXHighlight);
+    ok(attributedText[1].AXHighlight);
+    is(attributedText[1].string, "test");
+    ok(!attributedText[2].AXHighlight);
+  },
+  { urlSuffix: "#:~:text=test" }
+);
+
+// Test the <mark> element.
+addAccessibleTask(
+  `This is a <mark>test</mark>.`,
+  async function testMark(browser, accDoc) {
+    const macDoc = accDoc.nativeInterface.QueryInterface(
+      Ci.nsIAccessibleMacInterface
+    );
+    const range = macDoc.getParameterizedAttributeValue(
+      "AXTextMarkerRangeForUnorderedTextMarkers",
+      [
+        macDoc.getAttributeValue("AXStartTextMarker"),
+        macDoc.getAttributeValue("AXEndTextMarker"),
+      ]
+    );
+    const attributedText = macDoc.getParameterizedAttributeValue(
+      "AXAttributedStringForTextMarkerRange",
+      range
+    );
+    is(attributedText.length, 3);
+    ok(!attributedText[0].AXHighlight);
+    ok(attributedText[1].AXHighlight);
+    is(attributedText[1].string, "test");
+    ok(!attributedText[2].AXHighlight);
   }
 );

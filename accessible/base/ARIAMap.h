@@ -10,6 +10,7 @@
 
 #include "ARIAStateMap.h"
 #include "mozilla/a11y/AccTypes.h"
+#include "mozilla/a11y/DocAccessible.h"
 #include "mozilla/a11y/Role.h"
 
 #include "nsAtom.h"
@@ -123,6 +124,11 @@ const uint8_t ATTR_GLOBAL = 0x1 << 3;
  * Indicates that the attribute should have an integer value.
  */
 const uint8_t ATTR_VALINT = 0x1 << 4;
+
+/**
+ * Indicates that the attribute can have reflected elements.
+ */
+const uint8_t ATTR_REFLECT_ELEMENTS = 0x1 << 5;
 
 ////////////////////////////////////////////////////////////////////////////////
 // State map entry
@@ -300,9 +306,24 @@ uint64_t UniversalStatesFor(dom::Element* aElement);
 uint8_t AttrCharacteristicsFor(nsAtom* aAtom);
 
 /**
- * Return true if the element has defined aria-hidden.
+ * Return true if the element has defined aria-hidden
+ * and should not be ignored per ShouldIgnoreARIAHidden.
  */
-bool HasDefinedARIAHidden(nsIContent* aContent);
+bool IsValidARIAHidden(nsIContent* aContent);
+
+/**
+ * This function calls into the function above. It verifies the validity
+ * of any `aria-hidden` specified on the given Doc Accessible's
+ * mContent, as well as on the root element of mContent's owner
+ * doc.
+ */
+bool IsValidARIAHidden(DocAccessible* aDocAcc);
+
+/**
+ * Return true if the element should render its subtree
+ * regardless of the presence of aria-hidden.
+ */
+bool ShouldIgnoreARIAHidden(nsIContent* aContent);
 
 /**
  * Get the role map entry for a given ARIA role.
@@ -344,6 +365,26 @@ class AttrIterator {
   uint32_t mAttrCount;
   RefPtr<nsAtom> mAttrAtom;
   uint8_t mAttrCharacteristics;
+};
+
+class AttrWithCharacteristicsIterator {
+ public:
+  explicit AttrWithCharacteristicsIterator(uint8_t aCharacteristics)
+      : mIdx(-1), mCharacteristics(aCharacteristics) {}
+
+  bool Next();
+
+  nsStaticAtom* AttrName() const;
+
+ private:
+  AttrWithCharacteristicsIterator() = delete;
+  AttrWithCharacteristicsIterator(const AttrWithCharacteristicsIterator&) =
+      delete;
+  AttrWithCharacteristicsIterator& operator=(
+      const AttrWithCharacteristicsIterator&) = delete;
+
+  int32_t mIdx;
+  uint8_t mCharacteristics;
 };
 
 }  // namespace aria

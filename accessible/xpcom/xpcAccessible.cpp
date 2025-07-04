@@ -173,13 +173,8 @@ xpcAccessible::GetId(nsAString& aID) {
     return NS_ERROR_FAILURE;
   }
 
-  RemoteAccessible* proxy = IntlGeneric()->AsRemote();
-  if (!proxy) {
-    return NS_ERROR_FAILURE;
-  }
-
   nsString id;
-  proxy->DOMNodeID(id);
+  IntlGeneric()->DOMNodeID(id);
   aID.Assign(id);
 
   return NS_OK;
@@ -308,13 +303,15 @@ xpcAccessible::GetAttributes(nsIPersistentProperties** aAttributes) {
   NS_ENSURE_ARG_POINTER(aAttributes);
   *aAttributes = nullptr;
 
-  if (!IntlGeneric()) {
+  Accessible* acc = IntlGeneric();
+  if (!acc) {
     return NS_ERROR_FAILURE;
   }
 
   RefPtr<nsPersistentProperties> props = new nsPersistentProperties();
 
-  RefPtr<AccAttributes> attributes = IntlGeneric()->Attributes();
+  RefPtr<AccAttributes> attributes = acc->Attributes();
+  nsAccUtils::SetAccGroupAttrs(attributes, acc);
 
   nsAutoString unused;
   for (auto iter : *attributes) {

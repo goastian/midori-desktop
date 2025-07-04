@@ -41,6 +41,7 @@ def web_socket_transfer_data(request):
         try:
             import a11y_setup
 
+            a11y_setup.setup()
             cleanNamespace = a11y_setup.__dict__
             setupExc = None
         except Exception:
@@ -61,6 +62,7 @@ def web_socket_transfer_data(request):
             return
         if code == "__reset__":
             namespace = cleanNamespace.copy()
+            send("return", None)
             continue
 
         if setupExc:

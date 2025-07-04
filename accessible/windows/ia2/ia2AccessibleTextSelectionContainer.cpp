@@ -53,38 +53,33 @@ ia2AccessibleTextSelectionContainer::get_selections(
 STDMETHODIMP
 ia2AccessibleTextSelectionContainer::setSelections(
     long nSelections, IA2TextSelection* selections) {
-  if (nSelections < 0 || (nSelections > 0 && !selections)) {
+  if (nSelections < 0 || !selections) {
     return E_INVALIDARG;
   }
   HyperTextAccessibleBase* text = TextAcc();
   if (!text) {
     return CO_E_OBJNOTCONNECTED;
   }
+  if (nSelections == 0) {
+    text->RemoveFromSelection(TextLeafRange::kRemoveAllExistingSelectedRanges);
+    return S_OK;
+  }
   // Build and validate new selection ranges.
   AutoTArray<TextLeafRange, 1> newRanges;
   newRanges.SetCapacity(nSelections);
   for (long r = 0; r < nSelections; ++r) {
-    TextLeafRange range(GetTextLeafPointFrom(selections[r].startObj,
-                                             selections[r].startOffset, false),
-                        GetTextLeafPointFrom(selections[r].endObj,
-                                             selections[r].endOffset, true));
+    TextLeafRange range(
+        GetTextLeafPointFrom(selections[r].startObj, selections[r].startOffset),
+        GetTextLeafPointFrom(selections[r].endObj, selections[r].endOffset));
     if (!range) {
       return E_INVALIDARG;
     }
     newRanges.AppendElement(range);
   }
-  // Get the number of existing selections. We use SelectionRanges rather than
-  // SelectionCount because SelectionCount is restricted to this Accessible,
-  // whereas we want all selections within the control/document.
-  AutoTArray<TextRange, 1> oldRanges;
-  text->SelectionRanges(&oldRanges);
   // Set the new selections.
-  for (long r = 0; r < nSelections; ++r) {
+  newRanges[0].SetSelection(TextLeafRange::kRemoveAllExistingSelectedRanges);
+  for (long r = 1; r < nSelections; ++r) {
     newRanges[r].SetSelection(r);
-  }
-  // Remove any remaining old selections if there were more than nSelections.
-  for (long r = nSelections; r < static_cast<long>(oldRanges.Length()); ++r) {
-    text->RemoveFromSelection(r);
   }
   return S_OK;
 }
@@ -110,7 +105,7 @@ RefPtr<IAccessibleText> ia2AccessibleTextSelectionContainer::GetIATextFrom(
 
 /* static */
 TextLeafPoint ia2AccessibleTextSelectionContainer::GetTextLeafPointFrom(
-    IAccessibleText* aText, long aOffset, bool aDescendToEnd) {
+    IAccessibleText* aText, long aOffset) {
   if (!aText) {
     return TextLeafPoint();
   }
@@ -122,5 +117,5 @@ TextLeafPoint ia2AccessibleTextSelectionContainer::GetTextLeafPointFrom(
   if (!hyp) {
     return TextLeafPoint();
   }
-  return hyp->ToTextLeafPoint(aOffset, aDescendToEnd);
+  return hyp->ToTextLeafPoint(aOffset);
 }

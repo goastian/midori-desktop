@@ -14,6 +14,7 @@
 #include "mozilla/a11y/LocalAccessible.h"
 #include "mozilla/BinarySearch.h"
 #include "mozilla/Casting.h"
+#include "mozilla/dom/AbstractRange.h"
 #include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/PresShell.h"
@@ -23,17 +24,18 @@
 #include "mozilla/TextEditor.h"
 #include "nsAccUtils.h"
 #include "nsBlockFrame.h"
+#include "nsFocusManager.h"
 #include "nsFrameSelection.h"
 #include "nsIAccessiblePivot.h"
 #include "nsILineIterator.h"
 #include "nsINode.h"
-#include "nsRange.h"
 #include "nsStyleStructInlines.h"
 #include "nsTArray.h"
 #include "nsTextFrame.h"
 #include "nsUnicharUtils.h"
 #include "Pivot.h"
 #include "TextAttrs.h"
+#include "TextRange.h"
 
 using mozilla::intl::WordBreaker;
 using FindWordOptions = mozilla::intl::WordBreaker::FindWordOptions;
@@ -225,7 +227,8 @@ static bool AreFramesOnDifferentLines(nsIFrame* aFrame1, nsIFrame* aFrame2) {
     }
     found = false;
     nsBlockInFlowLineIterator it2(block, lineFrame2, &found);
-    return !found || it1.GetLine() != it2.GetLine();
+    return !found || it1.GetLineList() != it2.GetLineList() ||
+           it1.GetLine() != it2.GetLine();
   }
   AutoAssertNoDomMutations guard;
   nsILineIterator* it = block1->GetLineIterator();
@@ -436,27 +439,26 @@ class BlockRule : public PivotRule {
 };
 
 /**
- * Find spelling error DOM ranges overlapping the requested LocalAccessible and
- * offsets. This includes ranges that begin or end outside of the given
- * LocalAccessible. Note that the offset arguments are rendered offsets, but
- * because the returned ranges are DOM ranges, those offsets are content
- * offsets. See the documentation for dom::Selection::GetRangesForIntervalArray
- * for information about the aAllowAdjacent argument.
+ * Find DOM ranges which map to text attributes overlapping the requested
+ * LocalAccessible and offsets. This includes ranges that begin or end outside
+ * of the given LocalAccessible. Note that the offset arguments are rendered
+ * offsets, but because the returned ranges are DOM ranges, those offsets are
+ * content offsets. See the documentation for
+ * dom::Selection::GetRangesForIntervalArray for information about the
+ * aAllowAdjacent argument.
  */
-static nsTArray<nsRange*> FindDOMSpellingErrors(LocalAccessible* aAcc,
-                                                int32_t aRenderedStart,
-                                                int32_t aRenderedEnd,
-                                                bool aAllowAdjacent = false) {
+static nsTArray<std::pair<nsTArray<dom::AbstractRange*>, nsStaticAtom*>>
+FindDOMTextOffsetAttributes(LocalAccessible* aAcc, int32_t aRenderedStart,
+                            int32_t aRenderedEnd, bool aAllowAdjacent = false) {
+  nsTArray<std::pair<nsTArray<dom::AbstractRange*>, nsStaticAtom*>> result;
   if (!aAcc->IsTextLeaf() || !aAcc->HasOwnContent()) {
-    return {};
+    return result;
   }
   nsIFrame* frame = aAcc->GetFrame();
   RefPtr<nsFrameSelection> frameSel =
       frame ? frame->GetFrameSelection() : nullptr;
-  dom::Selection* domSel =
-      frameSel ? frameSel->GetSelection(SelectionType::eSpellCheck) : nullptr;
-  if (!domSel) {
-    return {};
+  if (!frameSel) {
+    return result;
   }
   nsINode* node = aAcc->GetNode();
   uint32_t contentStart = RenderedToContentOffset(aAcc, aRenderedStart);
@@ -464,10 +466,52 @@ static nsTArray<nsRange*> FindDOMSpellingErrors(LocalAccessible* aAcc,
       aRenderedEnd == nsIAccessibleText::TEXT_OFFSET_END_OF_TEXT
           ? dom::CharacterData::FromNode(node)->TextLength()
           : RenderedToContentOffset(aAcc, aRenderedEnd);
-  nsTArray<nsRange*> domRanges;
-  domSel->GetDynamicRangesForIntervalArray(node, contentStart, node, contentEnd,
-                                           aAllowAdjacent, &domRanges);
-  return domRanges;
+  const std::pair<mozilla::SelectionType, nsStaticAtom*>
+      kSelectionTypesToAttributes[] = {
+          {SelectionType::eSpellCheck, nsGkAtoms::spelling},
+          {SelectionType::eTargetText, nsGkAtoms::mark},
+      };
+  size_t highlightCount = frameSel->HighlightSelectionCount();
+  result.SetCapacity(std::size(kSelectionTypesToAttributes) + highlightCount);
+
+  auto appendRanges = [&](dom::Selection* aDomSel, nsStaticAtom* aAttr) {
+    nsTArray<dom::AbstractRange*> domRanges;
+    aDomSel->GetAbstractRangesForIntervalArray(
+        node, contentStart, node, contentEnd, aAllowAdjacent, &domRanges);
+    if (!domRanges.IsEmpty()) {
+      result.AppendElement(std::make_pair(std::move(domRanges), aAttr));
+    }
+  };
+
+  for (auto [selType, attr] : kSelectionTypesToAttributes) {
+    dom::Selection* domSel = frameSel->GetSelection(selType);
+    if (!domSel) {
+      continue;
+    }
+    appendRanges(domSel, attr);
+  }
+
+  for (size_t h = 0; h < highlightCount; ++h) {
+    RefPtr<dom::Selection> domSel = frameSel->HighlightSelection(h);
+    MOZ_ASSERT(domSel);
+    nsStaticAtom* attr = nullptr;
+    MOZ_ASSERT(domSel->HighlightSelectionData().mHighlight);
+    switch (domSel->HighlightSelectionData().mHighlight->Type()) {
+      case dom::HighlightType::Highlight:
+        attr = nsGkAtoms::mark;
+        break;
+      case dom::HighlightType::Spelling_error:
+        attr = nsGkAtoms::spelling;
+        break;
+      case dom::HighlightType::Grammar_error:
+        attr = nsGkAtoms::grammar;
+        break;
+    }
+    MOZ_ASSERT(attr);
+    appendRanges(domSel, attr);
+  }
+
+  return result;
 }
 
 /**
@@ -489,11 +533,10 @@ static dom::Selection* GetDOMSelection(const nsIContent* aStartContent,
     return nullptr;
   }
 
-  return startFrameSel ? startFrameSel->GetSelection(SelectionType::eNormal)
-                       : nullptr;
+  return startFrameSel ? &startFrameSel->NormalSelection() : nullptr;
 }
 
-std::pair<nsIContent*, int32_t> TextLeafPoint::ToDOMPoint(
+std::pair<nsIContent*, uint32_t> TextLeafPoint::ToDOMPoint(
     bool aIncludeGenerated) const {
   if (!(*this) || !mAcc->IsLocal()) {
     MOZ_ASSERT_UNREACHABLE("Invalid point");
@@ -530,26 +573,41 @@ std::pair<nsIContent*, int32_t> TextLeafPoint::ToDOMPoint(
     }
   }
 
-  if (!mAcc->IsTextLeaf() && !mAcc->IsHTMLBr() && !mAcc->HasChildren()) {
-    // If this is not a text leaf it can be an empty editable container,
-    // whitespace, or an empty doc. In any case, the offset inside should be 0.
-    MOZ_ASSERT(mOffset == 0);
-
-    if (RefPtr<TextControlElement> textControlElement =
-            TextControlElement::FromNodeOrNull(content)) {
-      // This is an empty input, use the shadow root's element.
-      if (RefPtr<TextEditor> textEditor = textControlElement->GetTextEditor()) {
-        if (textEditor->IsEmpty()) {
-          MOZ_ASSERT(mOffset == 0);
-          return {textEditor->GetRoot(), 0};
-        }
-      }
-    }
-
-    return {content, 0};
+  if (mAcc->IsTextLeaf()) {
+    // For text nodes, DOM uses a character offset within the node.
+    return {content, RenderedToContentOffset(mAcc->AsLocal(), mOffset)};
   }
 
-  return {content, RenderedToContentOffset(mAcc->AsLocal(), mOffset)};
+  if (!mAcc->IsHyperText()) {
+    // For non-text nodes (e.g. images), DOM points use the child index within
+    // the parent. mOffset could be 0 (for the start of the node) or 1 (for the
+    // end of the node). mOffset could be 1 if this is the last Accessible in a
+    // container and the point is at the end of the container.
+    MOZ_ASSERT(mOffset == 0 || mOffset == 1);
+    nsIContent* parent = content->GetParent();
+    MOZ_ASSERT(parent);
+    // ComputeIndexOf() could return Nothing if this is an anonymous child.
+    if (auto childIndex = parent->ComputeIndexOf(content)) {
+      return {parent, mOffset == 0 ? *childIndex : *childIndex + 1};
+    }
+  }
+
+  // This could be an empty editable container, whitespace or an empty doc. In
+  // any case, the offset inside should be 0.
+  MOZ_ASSERT(mOffset == 0);
+
+  if (RefPtr<TextControlElement> textControlElement =
+          TextControlElement::FromNodeOrNull(content)) {
+    // This is an empty input, use the shadow root's element.
+    if (RefPtr<TextEditor> textEditor = textControlElement->GetTextEditor()) {
+      if (textEditor->IsEmpty()) {
+        MOZ_ASSERT(mOffset == 0);
+        return {textEditor->GetRoot(), 0};
+      }
+    }
+  }
+
+  return {content, 0};
 }
 
 static bool IsLineBreakContinuation(nsTextFrame* aContinuation) {
@@ -995,69 +1053,100 @@ TextLeafPoint TextLeafPoint::FindNextWordStartSameAcc(
   return TextLeafPoint(mAcc, wordStart);
 }
 
-bool TextLeafPoint::IsCaretAtEndOfLine() const {
-  MOZ_ASSERT(IsCaret());
-  if (LocalAccessible* acc = mAcc->AsLocal()) {
-    HyperTextAccessible* ht = HyperTextFor(acc);
-    if (!ht) {
-      return false;
-    }
-    // Use HyperTextAccessible::IsCaretAtEndOfLine. Eventually, we'll want to
-    // move that code into TextLeafPoint, but existing code depends on it living
-    // in HyperTextAccessible (including caret events).
-    return ht->IsCaretAtEndOfLine();
-  }
-  return mAcc->AsRemote()->Document()->IsCaretAtEndOfLine();
-}
-
-TextLeafPoint TextLeafPoint::ActualizeCaret(bool aAdjustAtEndOfLine) const {
-  MOZ_ASSERT(IsCaret());
-  HyperTextAccessibleBase* ht;
-  int32_t htOffset;
-  if (LocalAccessible* acc = mAcc->AsLocal()) {
+/* static */
+TextLeafPoint TextLeafPoint::GetCaret(Accessible* aAcc) {
+  if (LocalAccessible* localAcc = aAcc->AsLocal()) {
     // Use HyperTextAccessible::CaretOffset. Eventually, we'll want to move
     // that code into TextLeafPoint, but existing code depends on it living in
     // HyperTextAccessible (including caret events).
-    ht = HyperTextFor(acc);
+    HyperTextAccessible* ht = HyperTextFor(localAcc);
     if (!ht) {
       return TextLeafPoint();
     }
-    htOffset = ht->CaretOffset();
+    int32_t htOffset = ht->CaretOffset();
     if (htOffset == -1) {
       return TextLeafPoint();
     }
-  } else {
-    // Ideally, we'd cache the caret as a leaf, but our events are based on
-    // HyperText for now.
-    std::tie(ht, htOffset) = mAcc->AsRemote()->Document()->GetCaret();
-    if (!ht) {
-      return TextLeafPoint();
+    TextLeafPoint point = ht->ToTextLeafPoint(htOffset);
+    if (!point) {
+      // Bug 1905021: This happens in the wild, but we don't understand why.
+      // ToTextLeafPoint should only fail if the HyperText offset is invalid,
+      // but CaretOffset shouldn't return an invalid offset.
+      MOZ_ASSERT_UNREACHABLE(
+          "Got HyperText CaretOffset but ToTextLeafPoint failed");
+      return point;
     }
+    nsIFrame* frame = ht->GetFrame();
+    RefPtr<nsFrameSelection> sel = frame ? frame->GetFrameSelection() : nullptr;
+    if (sel && sel->GetHint() == CaretAssociationHint::Before) {
+      // CaretAssociationHint::Before can mean that the caret is at the end of
+      // a line. However, this can also occur in a few other situations:
+      // 1. The caret is before the start of a node in the middle of a line.
+      // This happens when moving the cursor forward to a new node.
+      // 2. The user clicks the mouse on a character other than the first in a
+      // node.
+      // 3. The caret is somewhere other than the start of a line and the user
+      // presses down or up arrow to move by line.
+      if (point.mOffset <
+          static_cast<int32_t>(nsAccUtils::TextLength(point.mAcc))) {
+        // The caret is at the end of a line if the point is at the start of a
+        // line but not at the start of a paragraph.
+        point.mIsEndOfLineInsertionPoint =
+            point.FindPrevLineStartSameLocalAcc(/* aIncludeOrigin */ true) ==
+                point &&
+            !point.IsParagraphStart();
+      } else {
+        // This is the end of a node. CaretAssociationHint::Before is only used
+        // at the end of a node if the caret is at the end of a line.
+        point.mIsEndOfLineInsertionPoint = true;
+      }
+    }
+    return point;
   }
-  if (aAdjustAtEndOfLine && htOffset > 0 && IsCaretAtEndOfLine()) {
-    // It is the same character offset when the caret is visually at the very
-    // end of a line or the start of a new line (soft line break). Getting text
-    // at the line should provide the line with the visual caret. Otherwise,
-    // screen readers will announce the wrong line as the user presses up or
-    // down arrow and land at the end of a line.
-    --htOffset;
+
+  // Ideally, we'd cache the caret as a leaf, but our events are based on
+  // HyperText for now.
+  DocAccessibleParent* remoteDoc = aAcc->AsRemote()->Document();
+  auto [ht, htOffset] = remoteDoc->GetCaret();
+  if (!ht) {
+    return TextLeafPoint();
   }
-  return ht->ToTextLeafPoint(htOffset);
+  TextLeafPoint point = ht->ToTextLeafPoint(htOffset);
+  point.mIsEndOfLineInsertionPoint = remoteDoc->IsCaretAtEndOfLine();
+  return point;
+}
+
+TextLeafPoint TextLeafPoint::AdjustEndOfLine() const {
+  MOZ_ASSERT(mIsEndOfLineInsertionPoint);
+  // Use the last character on the line so that we search for word and line
+  // boundaries on the current line, not the next line.
+  return TextLeafPoint(mAcc, mOffset)
+      .FindBoundary(nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
 }
 
 TextLeafPoint TextLeafPoint::FindBoundary(AccessibleTextBoundary aBoundaryType,
                                           nsDirection aDirection,
                                           BoundaryFlags aFlags) const {
-  if (IsCaret()) {
+  if (mIsEndOfLineInsertionPoint) {
+    // In this block, we deliberately don't propagate mIsEndOfLineInsertionPoint
+    // to derived points because otherwise, a call to FindBoundary on the
+    // returned point would also return the same point.
     if (aBoundaryType == nsIAccessibleText::BOUNDARY_CHAR ||
         aBoundaryType == nsIAccessibleText::BOUNDARY_CLUSTER) {
-      if (IsCaretAtEndOfLine()) {
-        // The caret is at the end of the line. Return no character.
-        return ActualizeCaret(/* aAdjustAtEndOfLine */ false);
+      if (aDirection == eDirNext || (aDirection == eDirPrevious &&
+                                     aFlags & BoundaryFlags::eIncludeOrigin)) {
+        // The caller wants the current or next character/cluster. Return no
+        // character, since otherwise, this would move past the first character
+        // on the next line.
+        return TextLeafPoint(mAcc, mOffset);
       }
+      // The caller wants the previous character/cluster. Return that as normal.
+      return TextLeafPoint(mAcc, mOffset)
+          .FindBoundary(aBoundaryType, aDirection, aFlags);
     }
-    return ActualizeCaret().FindBoundary(
-        aBoundaryType, aDirection, aFlags & BoundaryFlags::eIncludeOrigin);
+    // For any other boundary, we need to start on this line, not the next, even
+    // though mOffset refers to the next.
+    return AdjustEndOfLine().FindBoundary(aBoundaryType, aDirection, aFlags);
   }
 
   bool inEditableAndStopInIt = (aFlags & BoundaryFlags::eStopInEditable) &&
@@ -1429,146 +1518,208 @@ TextLeafPoint TextLeafPoint::FindClusterSameAcc(nsDirection aDirection,
   return TextLeafPoint();
 }
 
-bool TextLeafPoint::IsInSpellingError() const {
+void TextLeafPoint::AddTextOffsetAttributes(AccAttributes* aAttrs) const {
+  auto expose = [aAttrs](nsAtom* aAttr) {
+    if (aAttr == nsGkAtoms::spelling || aAttr == nsGkAtoms::grammar) {
+      // XXX We don't correctly handle exposure of overlapping spelling and
+      // grammar errors. See bug 1944217. For now, we expose the one we most
+      // recently encountered.
+      aAttrs->SetAttribute(nsGkAtoms::invalid, aAttr);
+    } else if (aAttr == nsGkAtoms::mark) {
+      aAttrs->SetAttribute(aAttr, true);
+    }
+  };
+
   if (LocalAccessible* acc = mAcc->AsLocal()) {
-    auto domRanges = FindDOMSpellingErrors(acc, mOffset, mOffset + 1);
-    // If there is a spelling error overlapping this character, we're in a
-    // spelling error.
-    return !domRanges.IsEmpty();
+    auto ranges = FindDOMTextOffsetAttributes(acc, mOffset, mOffset + 1);
+    for (auto& [domRanges, attr] : ranges) {
+      MOZ_ASSERT(domRanges.Length() >= 1);
+      expose(attr);
+    }
+    return;
   }
 
   RemoteAccessible* acc = mAcc->AsRemote();
   MOZ_ASSERT(acc);
+  if (RequestDomainsIfInactive(CacheDomain::TextOffsetAttributes)) {
+    return;
+  }
   if (!acc->mCachedFields) {
-    return false;
+    return;
   }
-  auto spellingErrors = acc->mCachedFields->GetAttribute<nsTArray<int32_t>>(
-      CacheKey::SpellingErrors);
-  if (!spellingErrors) {
-    return false;
+  auto offsetAttrs =
+      acc->mCachedFields->GetAttribute<nsTArray<TextOffsetAttribute>>(
+          CacheKey::TextOffsetAttributes);
+  if (!offsetAttrs) {
+    return;
   }
-  size_t index;
-  const bool foundOrigin = BinarySearch(
-      *spellingErrors, 0, spellingErrors->Length(), mOffset, &index);
-  // In spellingErrors, even indices are start offsets, odd indices are end
-  // offsets.
-  const bool foundStart = index % 2 == 0;
-  if (foundOrigin) {
-    // mOffset is a spelling error boundary. If it's a start offset, we're in a
-    // spelling error.
-    return foundStart;
+  // offsetAttrs is sorted by mStartOffset, but ranges can overlap each other.
+  // Thus, we must check all ranges with an encompassing start offset.
+  for (const TextOffsetAttribute& range : *offsetAttrs) {
+    if (range.mStartOffset > mOffset) {
+      // offsetAttrs is sorted by mStartOffset. Therefor, there aren't any
+      // ranges of interest after this.
+      break;
+    }
+    if (range.mEndOffset != TextOffsetAttribute::kOutsideLeaf &&
+        range.mEndOffset <= mOffset) {
+      // range ends inside mAcc but before mOffset, so it doesn't encompass us.
+      continue;
+    }
+    // mOffset is within range.
+    expose(range.mAttribute);
   }
-  // index points at the next spelling error boundary after mOffset.
-  if (index == 0) {
-    return false;  // No spelling errors before mOffset.
-  }
-  if (foundStart) {
-    // We're not in a spelling error because it starts after mOffset.
-    return false;
-  }
-  // A spelling error ends after mOffset.
-  return true;
 }
 
-TextLeafPoint TextLeafPoint::FindSpellingErrorSameAcc(
+TextLeafPoint TextLeafPoint::FindTextOffsetAttributeSameAcc(
     nsDirection aDirection, bool aIncludeOrigin) const {
   if (!aIncludeOrigin && mOffset == 0 && aDirection == eDirPrevious) {
     return TextLeafPoint();
   }
   if (LocalAccessible* acc = mAcc->AsLocal()) {
-    // We want to find both start and end points, so we pass true for
-    // aAllowAdjacent.
-    auto domRanges =
-        aDirection == eDirNext
-            ? FindDOMSpellingErrors(acc, mOffset,
-                                    nsIAccessibleText::TEXT_OFFSET_END_OF_TEXT,
-                                    /* aAllowAdjacent */ true)
-            : FindDOMSpellingErrors(acc, 0, mOffset,
-                                    /* aAllowAdjacent */ true);
     nsINode* node = acc->GetNode();
+    // There are multiple selection types. The ranges for each selection type
+    // are sorted, but the ranges aren't sorted between selection types.
+    // Therefore, we need to look for the closest matching offset in each
+    // selection type. We keep track of that in the dest variable as we check
+    // each selection type.
+    int32_t dest = -1;
     if (aDirection == eDirNext) {
-      for (nsRange* domRange : domRanges) {
-        if (domRange->GetStartContainer() == node) {
-          int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
-              acc, static_cast<int32_t>(domRange->StartOffset())));
-          if ((aIncludeOrigin && matchOffset == mOffset) ||
-              matchOffset > mOffset) {
-            return TextLeafPoint(mAcc, matchOffset);
+      // We want to find both start and end points, so we pass true for
+      // aAllowAdjacent.
+      auto ranges = FindDOMTextOffsetAttributes(
+          acc, mOffset, nsIAccessibleText::TEXT_OFFSET_END_OF_TEXT,
+          /* aAllowAdjacent */ true);
+      for (auto& [domRanges, attr] : ranges) {
+        for (dom::AbstractRange* domRange : domRanges) {
+          if (domRange->GetStartContainer() == node) {
+            int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
+                acc, static_cast<int32_t>(domRange->StartOffset())));
+            if (aIncludeOrigin && matchOffset == mOffset) {
+              return *this;
+            }
+            if (matchOffset > mOffset) {
+              if (dest == -1 || matchOffset <= dest) {
+                dest = matchOffset;
+              }
+              // ranges is sorted by start, so there can't be a closer range
+              // offset after this. This is the only case where we can break
+              // out of the loop. In the cases below, we must keep iterating
+              // because the end offsets aren't sorted.
+              break;
+            }
           }
-        }
-        if (domRange->GetEndContainer() == node) {
-          int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
-              acc, static_cast<int32_t>(domRange->EndOffset())));
-          if ((aIncludeOrigin && matchOffset == mOffset) ||
-              matchOffset > mOffset) {
-            return TextLeafPoint(mAcc, matchOffset);
+          if (domRange->GetEndContainer() == node) {
+            int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
+                acc, static_cast<int32_t>(domRange->EndOffset())));
+            if (aIncludeOrigin && matchOffset == mOffset) {
+              return *this;
+            }
+            if (matchOffset > mOffset && (dest == -1 || matchOffset <= dest)) {
+              dest = matchOffset;
+            }
           }
         }
       }
     } else {
-      for (nsRange* domRange : Reversed(domRanges)) {
-        if (domRange->GetEndContainer() == node) {
-          int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
-              acc, static_cast<int32_t>(domRange->EndOffset())));
-          if ((aIncludeOrigin && matchOffset == mOffset) ||
-              matchOffset < mOffset) {
-            return TextLeafPoint(mAcc, matchOffset);
+      auto ranges = FindDOMTextOffsetAttributes(acc, 0, mOffset,
+                                                /* aAllowAdjacent */ true);
+      for (auto& [domRanges, attr] : ranges) {
+        for (dom::AbstractRange* domRange : Reversed(domRanges)) {
+          if (domRange->GetEndContainer() == node) {
+            int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
+                acc, static_cast<int32_t>(domRange->EndOffset())));
+            if (aIncludeOrigin && matchOffset == mOffset) {
+              return *this;
+            }
+            if (matchOffset < mOffset && (dest == -1 || matchOffset >= dest)) {
+              dest = matchOffset;
+            }
           }
-        }
-        if (domRange->GetStartContainer() == node) {
-          int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
-              acc, static_cast<int32_t>(domRange->StartOffset())));
-          if ((aIncludeOrigin && matchOffset == mOffset) ||
-              matchOffset < mOffset) {
-            return TextLeafPoint(mAcc, matchOffset);
+          if (domRange->GetStartContainer() == node) {
+            int32_t matchOffset = static_cast<int32_t>(ContentToRenderedOffset(
+                acc, static_cast<int32_t>(domRange->StartOffset())));
+            if (aIncludeOrigin && matchOffset == mOffset) {
+              return *this;
+            }
+            if (matchOffset < mOffset && (dest == -1 || matchOffset >= dest)) {
+              dest = matchOffset;
+            }
           }
         }
       }
     }
-    return TextLeafPoint();
+    if (dest == -1) {
+      return TextLeafPoint();
+    }
+    return TextLeafPoint(mAcc, dest);
   }
 
   RemoteAccessible* acc = mAcc->AsRemote();
   MOZ_ASSERT(acc);
+  if (RequestDomainsIfInactive(CacheDomain::TextOffsetAttributes)) {
+    return TextLeafPoint();
+  }
   if (!acc->mCachedFields) {
     return TextLeafPoint();
   }
-  auto spellingErrors = acc->mCachedFields->GetAttribute<nsTArray<int32_t>>(
-      CacheKey::SpellingErrors);
-  if (!spellingErrors) {
+  auto offsetAttrs =
+      acc->mCachedFields->GetAttribute<nsTArray<TextOffsetAttribute>>(
+          CacheKey::TextOffsetAttributes);
+  if (!offsetAttrs) {
     return TextLeafPoint();
   }
-  size_t index;
-  if (BinarySearch(*spellingErrors, 0, spellingErrors->Length(), mOffset,
-                   &index)) {
-    // mOffset is in spellingErrors.
-    if (aIncludeOrigin) {
+  // offsetAttrs is sorted by mStartOffset, but ranges can overlap each other.
+  // Therefore, we must consider all ranges with an encompassing start offset.
+  // An earlier range might end after a later range, so we keep track of the
+  // closest offset in the dest variable and adjust that as we iterate.
+  int32_t dest = -1;
+  for (const TextOffsetAttribute& range : *offsetAttrs) {
+    // Although range end offsets are exclusive, we must still treat them as a
+    // boundary, since the end of a range still means a change in text
+    // attributes and text offset attribute ranges do not have to be adjacent.
+    if (aIncludeOrigin &&
+        (range.mStartOffset == mOffset || range.mEndOffset == mOffset)) {
       return *this;
     }
     if (aDirection == eDirNext) {
-      // We don't want the origin, so move to the next spelling error boundary
-      // after mOffset.
-      ++index;
+      if (range.mStartOffset > mOffset) {
+        if (dest == -1 || range.mStartOffset < dest) {
+          // range.mStartOffset is the closest offset we've seen thus far.
+          dest = range.mStartOffset;
+        }
+        // offsetAttrs is sorted by mStartOffset, so there can't be a closer
+        // range offset after this.
+        break;
+      }
+      if (range.mEndOffset > mOffset &&
+          (dest == -1 || range.mEndOffset < dest)) {
+        // range.mEndOffset is the closest offset we've seen thus far.
+        dest = range.mEndOffset;
+      }
+    } else {
+      if (range.mEndOffset != TextOffsetAttribute::kOutsideLeaf &&
+          range.mEndOffset < mOffset && range.mEndOffset > dest) {
+        // range.mEndOffset is the closest offset we've seen thus far.
+        dest = range.mEndOffset;
+      }
+      if (range.mStartOffset >= mOffset) {
+        // offsetAttrs is sorted by mStartOffset, so any range hereafter is in
+        // the wrong direction.
+        break;
+      }
+      if (range.mStartOffset != TextOffsetAttribute::kOutsideLeaf &&
+          range.mStartOffset > dest) {
+        // range.mStartOffset is the closest offset we've seen thus far.
+        dest = range.mStartOffset;
+      }
     }
   }
-  // index points at the next spelling error boundary after mOffset.
-  if (aDirection == eDirNext) {
-    if (spellingErrors->Length() == index) {
-      return TextLeafPoint();  // No spelling error boundary after us.
-    }
-    return TextLeafPoint(mAcc, (*spellingErrors)[index]);
-  }
-  if (index == 0) {
-    return TextLeafPoint();  // No spelling error boundary before us.
-  }
-  // Decrement index so it points at a spelling error boundary before mOffset.
-  --index;
-  if ((*spellingErrors)[index] == -1) {
-    MOZ_ASSERT(index == 0);
-    // A spelling error starts before mAcc.
+  if (dest == -1) {
+    // There's no boundary in the requested direction.
     return TextLeafPoint();
   }
-  return TextLeafPoint(mAcc, (*spellingErrors)[index]);
+  return TextLeafPoint(mAcc, dest);
 }
 
 TextLeafPoint TextLeafPoint::NeighborLeafPoint(
@@ -1637,44 +1788,47 @@ LayoutDeviceIntRect TextLeafPoint::ComputeBoundsFromFrame() const {
 }
 
 /* static */
-nsTArray<int32_t> TextLeafPoint::GetSpellingErrorOffsets(
+nsTArray<TextOffsetAttribute> TextLeafPoint::GetTextOffsetAttributes(
     LocalAccessible* aAcc) {
   nsINode* node = aAcc->GetNode();
-  auto domRanges = FindDOMSpellingErrors(
+  auto ranges = FindDOMTextOffsetAttributes(
       aAcc, 0, nsIAccessibleText::TEXT_OFFSET_END_OF_TEXT);
-  // Our offsets array will contain two offsets for each range: one for the
-  // start, one for the end. That is, the array is of the form:
-  // [r1start, r1end, r2start, r2end, ...]
-  nsTArray<int32_t> offsets(domRanges.Length() * 2);
-  for (nsRange* domRange : domRanges) {
-    if (domRange->GetStartContainer() == node) {
-      offsets.AppendElement(static_cast<int32_t>(ContentToRenderedOffset(
-          aAcc, static_cast<int32_t>(domRange->StartOffset()))));
-    } else {
-      // This range overlaps aAcc, but starts before it.
-      // This can only happen for the first range.
-      MOZ_ASSERT(domRange == *domRanges.begin() && offsets.IsEmpty());
-      // Using -1 here means this won't be treated as the start of a spelling
-      // error range, while still indicating that we're within a spelling error.
-      offsets.AppendElement(-1);
-    }
-    if (domRange->GetEndContainer() == node) {
-      offsets.AppendElement(static_cast<int32_t>(ContentToRenderedOffset(
-          aAcc, static_cast<int32_t>(domRange->EndOffset()))));
-    } else {
-      // This range overlaps aAcc, but ends after it.
-      // This can only happen for the last range.
-      MOZ_ASSERT(domRange == *domRanges.rbegin());
-      // We don't append -1 here because this would just make things harder for
-      // a binary search.
+  size_t capacity = 0;
+  for (auto& [domRanges, attr] : ranges) {
+    capacity += domRanges.Length();
+  }
+  nsTArray<TextOffsetAttribute> offsets(capacity);
+  for (auto& [domRanges, attr] : ranges) {
+    for (dom::AbstractRange* domRange : domRanges) {
+      TextOffsetAttribute& data = *offsets.AppendElement();
+      data.mAttribute = attr;
+      if (domRange->GetStartContainer() == node) {
+        data.mStartOffset = static_cast<int32_t>(ContentToRenderedOffset(
+            aAcc, static_cast<int32_t>(domRange->StartOffset())));
+      } else {
+        // This range overlaps aAcc, but starts before it.
+        // This can only happen for the first range.
+        MOZ_ASSERT(domRange == *domRanges.begin());
+        data.mStartOffset = TextOffsetAttribute::kOutsideLeaf;
+      }
+      if (domRange->GetEndContainer() == node) {
+        data.mEndOffset = static_cast<int32_t>(ContentToRenderedOffset(
+            aAcc, static_cast<int32_t>(domRange->EndOffset())));
+      } else {
+        // This range overlaps aAcc, but ends after it.
+        // This can only happen for the last range.
+        MOZ_ASSERT(domRange == *domRanges.rbegin());
+        data.mEndOffset = TextOffsetAttribute::kOutsideLeaf;
+      }
     }
   }
+  offsets.Sort();
   return offsets;
 }
 
 /* static */
-void TextLeafPoint::UpdateCachedSpellingError(dom::Document* aDocument,
-                                              const nsRange& aRange) {
+void TextLeafPoint::UpdateCachedTextOffsetAttributes(
+    dom::Document* aDocument, const dom::AbstractRange& aRange) {
   DocAccessible* docAcc = GetExistingDocAccessible(aDocument);
   if (!docAcc) {
     return;
@@ -1686,7 +1840,8 @@ void TextLeafPoint::UpdateCachedSpellingError(dom::Document* aDocument,
   }
   for (Accessible* acc = startAcc; acc; acc = NextLeaf(acc)) {
     if (acc->IsTextLeaf()) {
-      docAcc->QueueCacheUpdate(acc->AsLocal(), CacheDomain::Spelling);
+      docAcc->QueueCacheUpdate(acc->AsLocal(),
+                               CacheDomain::TextOffsetAttributes);
     }
     if (acc == endAcc) {
       // Subtle: We check this here rather than in the loop condition because
@@ -1709,9 +1864,8 @@ already_AddRefed<AccAttributes> TextLeafPoint::GetTextAttributesLocalAcc(
   MOZ_ASSERT(hyperAcc);
   RefPtr<AccAttributes> attributes = new AccAttributes();
   if (hyperAcc) {
-    TextAttrsMgr mgr(hyperAcc, aIncludeDefaults, acc,
-                     acc ? acc->IndexInParent() : -1);
-    mgr.GetAttributes(attributes, nullptr, nullptr);
+    TextAttrsMgr mgr(hyperAcc, aIncludeDefaults, acc);
+    mgr.GetAttributes(attributes);
   }
   return attributes.forget();
 }
@@ -1738,25 +1892,28 @@ already_AddRefed<AccAttributes> TextLeafPoint::GetTextAttributes(
       thisAttrs->CopyTo(attrs);
     }
   }
-  if (IsInSpellingError()) {
-    attrs->SetAttribute(nsGkAtoms::invalid, nsGkAtoms::spelling);
-  }
+  AddTextOffsetAttributes(attrs);
   return attrs.forget();
 }
 
 TextLeafPoint TextLeafPoint::FindTextAttrsStart(nsDirection aDirection,
                                                 bool aIncludeOrigin) const {
-  if (IsCaret()) {
-    return ActualizeCaret().FindTextAttrsStart(aDirection, aIncludeOrigin);
+  if (mIsEndOfLineInsertionPoint) {
+    return AdjustEndOfLine().FindTextAttrsStart(aDirection, aIncludeOrigin);
   }
   const bool isRemote = mAcc->IsRemote();
-  RefPtr<const AccAttributes> lastAttrs =
-      isRemote ? mAcc->AsRemote()->GetCachedTextAttributes()
-               : GetTextAttributesLocalAcc();
+  RefPtr<const AccAttributes> lastAttrs;
+  if (mAcc->IsText()) {
+    lastAttrs = isRemote ? mAcc->AsRemote()->GetCachedTextAttributes()
+                         : GetTextAttributesLocalAcc();
+  }
   if (aIncludeOrigin && aDirection == eDirNext && mOffset == 0) {
+    if (!mAcc->IsText()) {
+      // Anything other than text breaks an attrs run.
+      return *this;
+    }
     // Even when searching forward, the only way to know whether the origin is
     // the start of a text attrs run is to compare with the previous sibling.
-    // Anything other than text breaks an attrs run.
     TextLeafPoint point;
     point.mAcc = mAcc->PrevSibling();
     if (!point.mAcc || !point.mAcc->IsText()) {
@@ -1772,12 +1929,35 @@ TextLeafPoint TextLeafPoint::FindTextAttrsStart(nsDirection aDirection,
     }
   }
   TextLeafPoint lastPoint = *this;
+  // If we're at the start of the container and searching for a previous start,
+  // start the search from the previous leaf. Otherwise, we'll miss the previous
+  // start.
+  const bool shouldTraversePrevLeaf = [&]() {
+    const bool shouldTraverse =
+        !aIncludeOrigin && aDirection == eDirPrevious && mOffset == 0;
+    Accessible* prevSibling = mAcc->PrevSibling();
+    if (prevSibling) {
+      return shouldTraverse && !prevSibling->IsText();
+    }
+    return shouldTraverse;
+  }();
+  if (shouldTraversePrevLeaf) {
+    // Go to the previous leaf and start the search from there, if it exists.
+    Accessible* prevLeaf = PrevLeaf(mAcc);
+    if (!prevLeaf) {
+      return *this;
+    }
+    lastPoint = TextLeafPoint(
+        prevLeaf, static_cast<int32_t>(nsAccUtils::TextLength(prevLeaf)));
+  }
+  // This loop searches within a container (that is, it only looks at siblings).
+  // We might cross containers before or after this loop, but not within it.
   for (;;) {
-    if (TextLeafPoint spelling = lastPoint.FindSpellingErrorSameAcc(
+    if (TextLeafPoint offsetAttr = lastPoint.FindTextOffsetAttributeSameAcc(
             aDirection, aIncludeOrigin && lastPoint.mAcc == mAcc)) {
-      // A spelling error starts or ends somewhere in the Accessible we're
+      // An offset attribute starts or ends somewhere in the Accessible we're
       // considering. This causes an attribute change, so return that point.
-      return spelling;
+      return offsetAttr;
     }
     TextLeafPoint point;
     point.mAcc = aDirection == eDirNext ? lastPoint.mAcc->NextSibling()
@@ -1788,57 +1968,101 @@ TextLeafPoint TextLeafPoint::FindTextAttrsStart(nsDirection aDirection,
     RefPtr<const AccAttributes> attrs =
         isRemote ? point.mAcc->AsRemote()->GetCachedTextAttributes()
                  : point.GetTextAttributesLocalAcc();
-    if (attrs && lastAttrs && !attrs->Equal(lastAttrs)) {
-      // The attributes change here. If we're moving forward, we want to
-      // return this point. If we're moving backward, we've now moved before
-      // the start of the attrs run containing the origin, so return that start
-      // point; i.e. the start of the last Accessible we hit.
-      if (aDirection == eDirPrevious) {
-        point = lastPoint;
-        point.mOffset = 0;
+    if (!lastAttrs || (attrs && !attrs->Equal(lastAttrs))) {
+      // The attributes change here. If we're moving forward, we want to return
+      // this point.
+      if (aDirection == eDirNext) {
+        return point;
       }
-      if (!aIncludeOrigin && point == *this) {
-        MOZ_ASSERT(aDirection == eDirPrevious);
-        // The origin is the start of an attrs run, but the caller doesn't want
-        // the origin included.
-        continue;
+
+      // Otherwise, we're moving backward and we've now moved before the start
+      // point of the current text attributes run.
+      const auto attrsStart = TextLeafPoint(lastPoint.mAcc, 0);
+
+      // Return the current text attributes run start point if:
+      //   1. The caller wants this function to include the origin in the
+      //   search (aIncludeOrigin implies that we must return the first text
+      //   attributes run start point that we find, even if that point is the
+      //   origin)
+      //   2. Our search did not begin on the text attributes run start point
+      if (aIncludeOrigin || attrsStart != *this) {
+        return attrsStart;
       }
-      return point;
+
+      // Otherwise, the origin was the attributes run start point and the caller
+      // wants this function to ignore it in its search. Keep searching.
     }
     lastPoint = point;
     if (aDirection == eDirPrevious) {
-      // On the next iteration, we want to search for spelling errors from the
+      // On the next iteration, we want to search for offset attributes from the
       // end of this Accessible.
       lastPoint.mOffset =
           static_cast<int32_t>(nsAccUtils::TextLength(point.mAcc));
     }
     lastAttrs = attrs;
   }
-  // We couldn't move any further. Use the start/end.
+
+  // We couldn't move any further in this container.
+  if (aDirection == eDirPrevious) {
+    // Treat the start of a container as a format boundary.
+    return TextLeafPoint(lastPoint.mAcc, 0);
+  }
+  // If we're at the end of the container then we have to use the start of the
+  // next leaf.
+  Accessible* nextLeaf = NextLeaf(lastPoint.mAcc);
+  if (nextLeaf) {
+    return TextLeafPoint(nextLeaf, 0);
+  }
+  // If there's no next leaf, then fall back to the end of the last point.
   return TextLeafPoint(
       lastPoint.mAcc,
-      aDirection == eDirPrevious
-          ? 0
-          : static_cast<int32_t>(nsAccUtils::TextLength(lastPoint.mAcc)));
+      static_cast<int32_t>(nsAccUtils::TextLength(lastPoint.mAcc)));
 }
 
 LayoutDeviceIntRect TextLeafPoint::CharBounds() {
-  if (mAcc && !mAcc->IsText()) {
-    // If we're dealing with an empty container, return the
-    // accessible's non-text bounds.
-    return mAcc->Bounds();
-  }
-
-  if (!mAcc || (mAcc->IsRemote() && !mAcc->AsRemote()->mCachedFields)) {
+  if (!mAcc) {
     return LayoutDeviceIntRect();
   }
 
-  if (LocalAccessible* local = mAcc->AsLocal()) {
-    if (!local->IsTextLeaf() || nsAccUtils::TextLength(local) == 0) {
-      // Empty content, use our own bounds to at least get x,y coordinates
-      return local->Bounds();
+  if (mAcc->IsHTMLBr()) {
+    // HTML <br> elements don't provide character bounds, but do provide text (a
+    // line feed). They also have 0 width and/or height, depending on the
+    // doctype and writing mode. Expose minimum 1 x 1 so clients treat it as an
+    // actual rectangle; e.g. when the caret is positioned on a <br>.
+    LayoutDeviceIntRect bounds = mAcc->Bounds();
+    if (bounds.width == 0) {
+      bounds.width = 1;
     }
+    if (bounds.height == 0) {
+      bounds.height = 1;
+    }
+    return bounds;
+  }
 
+  if (!mAcc->IsTextLeaf()) {
+    // This could be an empty container. Alternatively, it could be a list
+    // bullet,which does provide text but doesn't support character bounds. In
+    // either case, return the Accessible's bounds.
+    return mAcc->Bounds();
+  }
+
+  auto maybeAdjustLineFeedBounds = [this](LayoutDeviceIntRect& aBounds) {
+    if (!IsLineFeedChar()) {
+      return;
+    }
+    // Line feeds have a 0 width or height, depending on the writing mode.
+    // Use 1 instead so that clients treat it as an actual rectangle; e.g. when
+    // displaying the caret when it is positioned on a line feed.
+    MOZ_ASSERT(aBounds.IsZeroArea());
+    if (aBounds.width == 0) {
+      aBounds.width = 1;
+    }
+    if (aBounds.height == 0) {
+      aBounds.height = 1;
+    }
+  };
+
+  if (LocalAccessible* local = mAcc->AsLocal()) {
     if (mOffset >= 0 &&
         static_cast<uint32_t>(mOffset) >= nsAccUtils::TextLength(local)) {
       // It's valid for a caller to query the length because the caret might be
@@ -1865,13 +2089,26 @@ LayoutDeviceIntRect TextLeafPoint::CharBounds() {
     bounds.MoveBy(-orgRectPixels.X(), -orgRectPixels.Y());
     bounds.ScaleRoundOut(presContext->PresShell()->GetResolution());
     bounds.MoveBy(orgRectPixels.X(), orgRectPixels.Y());
+    maybeAdjustLineFeedBounds(bounds);
     return bounds;
   }
 
+  if (RequestDomainsIfInactive(CacheDomain::TextBounds)) {
+    return LayoutDeviceIntRect();
+  }
   RemoteAccessible* remote = mAcc->AsRemote();
+  if (!remote->mCachedFields) {
+    return LayoutDeviceIntRect();
+  }
+
   nsRect charBounds = remote->GetCachedCharRect(mOffset);
-  if (!charBounds.IsEmpty()) {
-    return remote->BoundsWithOffset(Some(charBounds));
+  // A character can have 0 width, but we still want its other coordinates.
+  // Thus, we explicitly test for an all-0 rect here to determine whether this
+  // is a valid char rect, rather than using IsZeroArea or IsEmpty.
+  if (!charBounds.IsEqualRect(0, 0, 0, 0)) {
+    LayoutDeviceIntRect bounds = remote->BoundsWithOffset(Some(charBounds));
+    maybeAdjustLineFeedBounds(bounds);
+    return bounds;
   }
 
   return LayoutDeviceIntRect();
@@ -1915,40 +2152,67 @@ bool TextLeafRange::Crop(Accessible* aContainer) {
 }
 
 LayoutDeviceIntRect TextLeafRange::Bounds() const {
-  if (mEnd == mStart || mEnd < mStart) {
-    return LayoutDeviceIntRect();
+  // We can't simply query the first and last character, and union their bounds.
+  // They might reside on different lines, so a simple union may yield an
+  // incorrect width. We should use the length of the longest spanned line for
+  // our width. To achieve this, walk all the lines and union them into the
+  // result rectangle.
+  LayoutDeviceIntRect result = TextLeafPoint{mStart}.CharBounds();
+  const bool succeeded = WalkLineRects(
+      [&result](TextLeafRange aLine, LayoutDeviceIntRect aLineRect) {
+        result.UnionRect(result, aLineRect);
+      });
+
+  if (!succeeded) {
+    return {};
   }
-
-  bool locatedFinalLine = false;
-  TextLeafPoint currPoint = mStart;
-  LayoutDeviceIntRect result = currPoint.CharBounds();
-
-  // Union the first and last chars of each line to create a line rect. Then,
-  // union the lines together.
-  while (!locatedFinalLine) {
-    // Fetch the last point in the current line by getting the
-    // start of the next line and going back one char. We don't
-    // use BOUNDARY_LINE_END here because it is equivalent to LINE_START when
-    // the line doesn't end with a line feed character.
-    TextLeafPoint lineStartPoint = currPoint.FindBoundary(
-        nsIAccessibleText::BOUNDARY_LINE_START, eDirNext);
-    TextLeafPoint lastPointInLine = lineStartPoint.FindBoundary(
-        nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
-    // If currPoint is the end of the document, lineStartPoint will be equal
-    // to currPoint and we would be in an endless loop.
-    if (lineStartPoint == currPoint || mEnd <= lastPointInLine) {
-      lastPointInLine = mEnd;
-      locatedFinalLine = true;
-    }
-
-    LayoutDeviceIntRect currLine = currPoint.CharBounds();
-    currLine.UnionRect(currLine, lastPointInLine.CharBounds());
-    result.UnionRect(result, currLine);
-
-    currPoint = lineStartPoint;
-  }
-
   return result;
+}
+
+nsTArray<LayoutDeviceIntRect> TextLeafRange::LineRects() const {
+  // Get the bounds of the content so we can restrict our lines to just the
+  // text visible within the bounds of the document.
+  Maybe<LayoutDeviceIntRect> contentBounds;
+  if (Accessible* doc = nsAccUtils::DocumentFor(mStart.mAcc)) {
+    contentBounds.emplace(doc->Bounds());
+  }
+
+  nsTArray<LayoutDeviceIntRect> lineRects;
+  WalkLineRects([&lineRects, &contentBounds](TextLeafRange aLine,
+                                             LayoutDeviceIntRect aLineRect) {
+    // Clip the bounds to the bounds of the content area.
+    bool boundsVisible = true;
+    if (contentBounds.isSome()) {
+      boundsVisible = aLineRect.IntersectRect(aLineRect, *contentBounds);
+    }
+    if (boundsVisible) {
+      lineRects.AppendElement(aLineRect);
+    }
+  });
+
+  return lineRects;
+}
+
+TextLeafPoint TextLeafRange::TextLeafPointAtScreenPoint(int32_t aX,
+                                                        int32_t aY) const {
+  // Step backwards one character to make the endPoint inclusive. This means we
+  // can use operator!= when comparing against endPoint below (which is very
+  // fast), rather than operator< (which might be significantly slower).
+  const TextLeafPoint endPoint =
+      mEnd.FindBoundary(nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
+
+  // If there are no characters in this container, we might have moved endPoint
+  // before mStart. In that case, we shouldn't try to move farther forward, as
+  // that might result in an infinite loop.
+  TextLeafPoint point = mStart;
+  if (mStart <= endPoint) {
+    for (; !point.ContainsPoint(aX, aY) && point != endPoint;
+         point =
+             point.FindBoundary(nsIAccessibleText::BOUNDARY_CHAR, eDirNext)) {
+    }
+  }
+
+  return point;
 }
 
 bool TextLeafRange::SetSelection(int32_t aSelectionNum) const {
@@ -1973,7 +2237,6 @@ bool TextLeafRange::SetSelection(int32_t aSelectionNum) const {
       !reversed ? mStart.ToDOMPoint(false) : mEnd.ToDOMPoint(false);
   auto [endContent, endContentOffset] =
       !reversed ? mEnd.ToDOMPoint(false) : mStart.ToDOMPoint(false);
-
   if (!startContent || !endContent) {
     return false;
   }
@@ -1983,9 +2246,52 @@ bool TextLeafRange::SetSelection(int32_t aSelectionNum) const {
     return false;
   }
 
-  uint32_t rangeCount = domSel->RangeCount();
+  HyperTextAccessible* hyp = nullptr;
+  if (mStart.mAcc->IsHyperText()) {
+    hyp = mStart.mAcc->AsLocal()->AsHyperText();
+  } else {
+    Accessible* parent = mStart.mAcc->Parent();
+    if (parent) {
+      hyp = parent->AsLocal()->AsHyperText();
+      // Note that hyp will still be null here if the parent is not a HyperText.
+      // That's okay.
+    }
+  }
+
+  // Before setting the selection range, we need to ensure that the editor
+  // is initialized. (See bug 804927.)
+  // Otherwise, it's possible that lazy editor initialization will override
+  // the selection we set here and leave the caret at the end of the text.
+  // By calling GetEditor here, we ensure that editor initialization is
+  // completed before we set the selection.
+  RefPtr<EditorBase> editor;
+  if (hyp) {
+    editor = hyp->GetEditor();
+  }
+
+  // XXX isFocusable will be false if mStart is not a direct child of the
+  // contentEditable. However, contentEditables generally don't mess with
+  // selection when they are focused. This has also been our behavior for a very
+  // long time.
+  const bool isFocusable = hyp && hyp->InteractiveState() & states::FOCUSABLE;
+  // If the Accessible is focusable, focus it before setting the selection to
+  // override the control's own selection changes on focus if any; e.g. inputs
+  // that do select all on focus. This also ensures that the user can interact
+  // with wherever they've moved the caret. See bug 524115.
+  if (isFocusable) {
+    hyp->TakeFocus();
+  }
+
+  uint32_t rangeCount = 0;
+  if (aSelectionNum == kRemoveAllExistingSelectedRanges) {
+    domSel->RemoveAllRanges(IgnoreErrors());
+  } else {
+    rangeCount = domSel->RangeCount();
+  }
   RefPtr<nsRange> domRange = nullptr;
-  if (aSelectionNum == static_cast<int32_t>(rangeCount) || aSelectionNum < 0) {
+  const bool newRange =
+      aSelectionNum == static_cast<int32_t>(rangeCount) || aSelectionNum < 0;
+  if (newRange) {
     domRange = nsRange::Create(startContent);
   } else {
     domRange = domSel->GetRangeAt(AssertedCast<uint32_t>(aSelectionNum));
@@ -1999,21 +2305,66 @@ bool TextLeafRange::SetSelection(int32_t aSelectionNum) const {
 
   // If this is not a new range, notify selection listeners that the existing
   // selection range has changed. Otherwise, just add the new range.
-  if (aSelectionNum != static_cast<int32_t>(rangeCount)) {
+  if (!newRange) {
     domSel->RemoveRangeAndUnselectFramesAndNotifyListeners(*domRange,
                                                            IgnoreErrors());
   }
 
   IgnoredErrorResult err;
   domSel->AddRangeAndSelectFramesAndNotifyListeners(*domRange, err);
-  if (!err.Failed()) {
-    // Changing the direction of the selection assures that the caret
-    // will be at the logical end of the selection.
-    domSel->SetDirection(reversed ? eDirPrevious : eDirNext);
-    return true;
+  if (err.Failed()) {
+    return false;
   }
 
-  return false;
+  // Changing the direction of the selection assures that the caret
+  // will be at the logical end of the selection.
+  domSel->SetDirection(reversed ? eDirPrevious : eDirNext);
+
+  // Make sure the selection is visible. See bug 1170242.
+  domSel->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
+                         ScrollAxis(), ScrollAxis(),
+                         ScrollFlags::ScrollOverflowHidden);
+
+  if (mStart == mEnd && !isFocusable) {
+    // We're moving the caret. Notify nsFocusManager so that the focus position
+    // is correct. See bug 546068.
+    if (nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager()) {
+      MOZ_ASSERT(mStart.mAcc->AsLocal()->Document());
+      dom::Document* domDoc =
+          mStart.mAcc->AsLocal()->Document()->DocumentNode();
+      MOZ_ASSERT(domDoc);
+      nsCOMPtr<nsPIDOMWindowOuter> window = domDoc->GetWindow();
+      RefPtr<dom::Element> result;
+      DOMFocusManager->MoveFocus(
+          window, nullptr, nsIFocusManager::MOVEFOCUS_CARET,
+          nsIFocusManager::FLAG_BYMOVEFOCUS, getter_AddRefs(result));
+    }
+  }
+  return true;
+}
+
+/* static */
+void TextLeafRange::GetSelection(Accessible* aAcc,
+                                 nsTArray<TextLeafRange>& aRanges) {
+  // Use HyperTextAccessibleBase::SelectionRanges. Eventually, we'll want to
+  // move that code into TextLeafPoint, but events and caching are based on
+  // HyperText offsets for now.
+  HyperTextAccessibleBase* hyp = aAcc->AsHyperTextBase();
+  if (!hyp) {
+    return;
+  }
+  AutoTArray<TextRange, 1> hypRanges;
+  hyp->CroppedSelectionRanges(hypRanges);
+  aRanges.SetCapacity(hypRanges.Length());
+  for (TextRange& hypRange : hypRanges) {
+    TextLeafPoint start =
+        hypRange.StartContainer()->AsHyperTextBase()->ToTextLeafPoint(
+            hypRange.StartOffset());
+    TextLeafPoint end =
+        hypRange.EndContainer()->AsHyperTextBase()->ToTextLeafPoint(
+            hypRange.EndOffset());
+    aRanges.EmplaceBack(start, end);
+  }
 }
 
 void TextLeafRange::ScrollIntoView(uint32_t aScrollType) const {
@@ -2050,6 +2401,66 @@ void TextLeafRange::ScrollIntoView(uint32_t aScrollType) const {
 
   nsCoreUtils::ScrollSubstringTo(mStart.mAcc->AsLocal()->GetFrame(), domRange,
                                  aScrollType);
+}
+
+nsTArray<TextLeafRange> TextLeafRange::VisibleLines(
+    Accessible* aContainer) const {
+  MOZ_ASSERT(aContainer);
+  // We want to restrict our lines to those visible within aContainer.
+  LayoutDeviceIntRect containerBounds = aContainer->Bounds();
+  nsTArray<TextLeafRange> lines;
+  WalkLineRects([&lines, &containerBounds](TextLeafRange aLine,
+                                           LayoutDeviceIntRect aLineRect) {
+    // XXX This doesn't correctly handle lines that are scrolled out where the
+    // scroll container is a descendant of aContainer. Such lines might
+    // intersect with containerBounds, but the scroll container could be a
+    // descendant of aContainer and should thus exclude this line. See bug
+    // 1945010 for more details.
+    if (aLineRect.Intersects(containerBounds)) {
+      lines.AppendElement(aLine);
+    }
+  });
+  return lines;
+}
+
+bool TextLeafRange::WalkLineRects(LineRectCallback aCallback) const {
+  if (mEnd <= mStart) {
+    return false;
+  }
+
+  bool locatedFinalLine = false;
+  TextLeafPoint currPoint = mStart;
+
+  // Union the first and last chars of each line to create a line rect.
+  while (!locatedFinalLine) {
+    TextLeafPoint nextLineStartPoint = currPoint.FindBoundary(
+        nsIAccessibleText::BOUNDARY_LINE_START, eDirNext);
+    // If currPoint is at the end of the document, nextLineStartPoint will be
+    // equal to currPoint. However, this can only happen if mEnd is also the end
+    // of the document.
+    MOZ_ASSERT(nextLineStartPoint != currPoint || nextLineStartPoint == mEnd);
+    if (mEnd <= nextLineStartPoint) {
+      // nextLineStart is past the end of the range. Constrain this last line to
+      // the end of the range.
+      nextLineStartPoint = mEnd;
+      locatedFinalLine = true;
+    }
+    // Fetch the last point in the current line by going back one char from the
+    // start of the next line.
+    TextLeafPoint lastPointInLine = nextLineStartPoint.FindBoundary(
+        nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
+    MOZ_ASSERT(currPoint <= lastPointInLine);
+
+    LayoutDeviceIntRect currLineRect = currPoint.CharBounds();
+    currLineRect.UnionRect(currLineRect, lastPointInLine.CharBounds());
+    // The range we pass must include the last character and range ends are
+    // exclusive, hence the use of nextLineStartPoint.
+    TextLeafRange currLine = TextLeafRange(currPoint, nextLineStartPoint);
+    aCallback(currLine, currLineRect);
+
+    currPoint = nextLineStartPoint;
+  }
+  return true;
 }
 
 TextLeafRange::Iterator TextLeafRange::Iterator::BeginIterator(

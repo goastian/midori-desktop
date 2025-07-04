@@ -138,9 +138,8 @@ bool ImageAccessible::DoAction(uint8_t aIndex) const {
   nsCOMPtr<nsIURI> uri = GetLongDescURI();
   if (!uri) return false;
 
-  nsAutoCString utf8spec;
-  uri->GetSpec(utf8spec);
-  NS_ConvertUTF8toUTF16 spec(utf8spec);
+  nsAutoCString spec;
+  uri->GetSpec(spec);
 
   dom::Document* document = mContent->OwnerDoc();
   nsCOMPtr<nsPIDOMWindowOuter> piWindow = document->GetWindow();
@@ -197,7 +196,8 @@ already_AddRefed<nsIURI> ImageAccessible::GetLongDescURI() const {
 
   DocAccessible* document = Document();
   if (document) {
-    IDRefsIterator iter(document, mContent, nsGkAtoms::aria_describedby);
+    AssociatedElementsIterator iter(document, mContent,
+                                    nsGkAtoms::aria_describedby);
     while (nsIContent* target = iter.NextElem()) {
       if ((target->IsHTMLElement(nsGkAtoms::a) ||
            target->IsHTMLElement(nsGkAtoms::area)) &&

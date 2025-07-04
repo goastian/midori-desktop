@@ -54,7 +54,7 @@ void HTMLFormAccessible::DOMAttributeChanged(int32_t aNameSpaceID,
     for (uint32_t i = 0; i < length; i++) {
       if (LocalAccessible* acc = mDoc->GetAccessible(controls->Item(i))) {
         if (acc->IsTextField() && !acc->IsPassword()) {
-          if (!acc->Elm()->HasAttr(nsGkAtoms::list_) &&
+          if (!acc->Elm()->HasAttr(nsGkAtoms::list) &&
               !acc->Elm()->AttrValueIs(kNameSpaceID_None,
                                        nsGkAtoms::autocomplete, nsGkAtoms::OFF,
                                        eIgnoreCase)) {
@@ -117,8 +117,7 @@ Relation HTMLRadioButtonAccessible::ComputeGroupAttributes(
 
   RefPtr<nsContentList> inputElms;
 
-  nsCOMPtr<nsIFormControl> formControlNode(do_QueryInterface(mContent));
-  if (dom::Element* formElm = formControlNode->GetForm()) {
+  if (dom::Element* formElm = nsIFormControl::FromNode(mContent)->GetForm()) {
     inputElms = NS_GetContentList(formElm, namespaceId, tagName);
   } else {
     inputElms = NS_GetContentList(mContent->OwnerDoc(), namespaceId, tagName);
@@ -172,6 +171,30 @@ bool HTMLButtonAccessible::HasPrimaryAction() const { return true; }
 
 void HTMLButtonAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName) {
   if (aIndex == eAction_Click) aName.AssignLiteral("press");
+}
+
+void HTMLButtonAccessible::Value(nsString& aValue) const {
+  if (HTMLInputElement* input = HTMLInputElement::FromNode(mContent)) {
+    if (input->IsInputColor()) {
+      nsAutoString value;
+      input->GetValue(value, CallerType::NonSystem);
+      Maybe<nscolor> maybeColor = HTMLInputElement::ParseSimpleColor(value);
+      if (maybeColor) {
+        const nscolor& color = maybeColor.ref();
+        Decimal r(static_cast<int>(NS_GET_R(color) / 2.55f)),
+            g(static_cast<int>(NS_GET_G(color) / 2.55f)),
+            b(static_cast<int>(NS_GET_B(color) / 2.55f));
+        nsAutoString rs(NS_ConvertUTF8toUTF16(r.toString()));
+        nsAutoString gs(NS_ConvertUTF8toUTF16(g.toString()));
+        nsAutoString bs(NS_ConvertUTF8toUTF16(b.toString()));
+        Accessible::TranslateString(u"inputColorValue"_ns, aValue,
+                                    {rs, gs, bs});
+        return;
+      }
+    }
+  }
+
+  HyperTextAccessible::Value(aValue);
 }
 
 uint64_t HTMLButtonAccessible::NativeState() const {
@@ -266,8 +289,15 @@ role HTMLTextFieldAccessible::NativeRole() const {
   if (mType == eHTMLTextPasswordFieldType) {
     return roles::PASSWORD_TEXT;
   }
-  if (mContent->AsElement()->HasAttr(nsGkAtoms::list_)) {
+  dom::Element* el = mContent->AsElement();
+  if (el->HasAttr(nsGkAtoms::list)) {
     return roles::EDITCOMBOBOX;
+  }
+  if (const nsAttrValue* attr = el->GetParsedAttr(nsGkAtoms::type)) {
+    RefPtr<nsAtom> inputType = attr->GetAsAtom();
+    if (inputType == nsGkAtoms::search) {
+      return roles::SEARCHBOX;
+    }
   }
   return roles::ENTRY;
 }
@@ -313,12 +343,10 @@ ENameValueFlag HTMLTextFieldAccessible::Name(nsString& aName) const {
 
 void HTMLTextFieldAccessible::Value(nsString& aValue) const {
   aValue.Truncate();
-  if (NativeState() & states::PROTECTED) {  // Don't return password text!
-    return;
-  }
 
   HTMLTextAreaElement* textArea = HTMLTextAreaElement::FromNode(mContent);
   if (textArea) {
+    MOZ_ASSERT(!(NativeState() & states::PROTECTED));
     textArea->GetValue(aValue);
     return;
   }
@@ -328,11 +356,18 @@ void HTMLTextFieldAccessible::Value(nsString& aValue) const {
     // Pass NonSystem as the caller type, to be safe.  We don't expect to have a
     // file input here.
     input->GetValue(aValue, CallerType::NonSystem);
+
+    if (NativeState() & states::PROTECTED) {  // Don't return password text!
+      const char16_t mask = TextEditor::PasswordMask();
+      for (size_t i = 0; i < aValue.Length(); i++) {
+        aValue.SetCharAt(mask, i);
+      }
+    }
   }
 }
 
 bool HTMLTextFieldAccessible::AttributeChangesState(nsAtom* aAttribute) {
-  if (aAttribute == nsGkAtoms::readonly || aAttribute == nsGkAtoms::list_ ||
+  if (aAttribute == nsGkAtoms::readonly || aAttribute == nsGkAtoms::list ||
       aAttribute == nsGkAtoms::autocomplete) {
     return true;
   }
@@ -353,7 +388,8 @@ uint64_t HTMLTextFieldAccessible::NativeState() const {
   state |= states::EDITABLE;
 
   // can be focusable, focused, protected. readonly, unavailable, selected
-  if (mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
+  if (mContent->IsHTMLElement(nsGkAtoms::input) &&
+      mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
                                          nsGkAtoms::password, eIgnoreCase)) {
     state |= states::PROTECTED;
   }
@@ -373,7 +409,7 @@ uint64_t HTMLTextFieldAccessible::NativeState() const {
   }
 
   // Expose autocomplete state if it has associated autocomplete list.
-  if (mContent->AsElement()->HasAttr(nsGkAtoms::list_)) {
+  if (mContent->AsElement()->HasAttr(nsGkAtoms::list)) {
     return state | states::SUPPORTS_AUTOCOMPLETION | states::HASPOPUP;
   }
 

@@ -6,8 +6,38 @@
 
 /* import-globals-from ../../mochitest/role.js */
 loadScripts({ name: "role.js", dir: MOCHITESTS_DIR });
+/* import-globals-from ../../mochitest/states.js */
+loadScripts({ name: "states.js", dir: MOCHITESTS_DIR });
 
-async function testContainer1(browser, accDoc) {
+requestLongerTimeout(2);
+
+function invokeSetAriaOwns(
+  browser,
+  id,
+  children = null,
+  elementReflection = false
+) {
+  if (!elementReflection) {
+    return invokeSetAttribute(browser, id, "aria-owns", children);
+  }
+
+  return invokeContentTask(
+    browser,
+    [id, children],
+    (contentId, contentChildrenIds) => {
+      let elm = content.document.getElementById(contentId);
+      if (contentChildrenIds) {
+        elm.ariaOwnsElements = contentChildrenIds
+          .split(" ")
+          .map(childId => content.document.getElementById(childId));
+      } else {
+        elm.ariaOwnsElements = null;
+      }
+    }
+  );
+}
+
+async function testContainer1(browser, accDoc, elementReflection = false) {
   const id = "t1_container";
   const docID = getAccessibleDOMNodeID(accDoc);
   const acc = findAccessibleChildByID(accDoc, id);
@@ -21,7 +51,12 @@ async function testContainer1(browser, accDoc) {
 
   /* ================ Change ARIA owns ====================================== */
   let onReorder = waitForEvent(EVENT_REORDER, id);
-  await invokeSetAttribute(browser, id, "aria-owns", "t1_button t1_subdiv");
+  await invokeSetAriaOwns(
+    browser,
+    id,
+    "t1_button t1_subdiv",
+    elementReflection
+  );
   await onReorder;
 
   // children are swapped again, button and subdiv are appended to
@@ -37,7 +72,7 @@ async function testContainer1(browser, accDoc) {
 
   /* ================ Remove ARIA owns ====================================== */
   onReorder = waitForEvent(EVENT_REORDER, id);
-  await invokeSetAttribute(browser, id, "aria-owns");
+  await invokeSetAriaOwns(browser, id, null, elementReflection);
   await onReorder;
 
   // children follow the DOM order
@@ -48,7 +83,12 @@ async function testContainer1(browser, accDoc) {
 
   /* ================ Set ARIA owns ========================================= */
   onReorder = waitForEvent(EVENT_REORDER, id);
-  await invokeSetAttribute(browser, id, "aria-owns", "t1_button t1_subdiv");
+  await invokeSetAriaOwns(
+    browser,
+    id,
+    "t1_button t1_subdiv",
+    elementReflection
+  );
   await onReorder;
 
   // children are swapped again, button and subdiv are appended to
@@ -180,7 +220,7 @@ async function removeContainer(browser, accDoc) {
   testAccessibleTree(acc, tree);
 }
 
-async function stealAndRecacheChildren(browser, accDoc) {
+async function stealAndRecacheChildren(browser, accDoc, elementReflection) {
   const id1 = "t3_container1";
   const id2 = "t3_container2";
   const acc1 = findAccessibleChildByID(accDoc, id1);
@@ -188,7 +228,7 @@ async function stealAndRecacheChildren(browser, accDoc) {
 
   /* ================ Attempt to steal from other ARIA owns ================= */
   let onReorder = waitForEvent(EVENT_REORDER, id2);
-  await invokeSetAttribute(browser, id2, "aria-owns", "t3_child");
+  await invokeSetAriaOwns(browser, id2, "t3_child", elementReflection);
   await invokeContentTask(browser, [id2], id => {
     let div = content.document.createElement("div");
     div.setAttribute("role", "radio");
@@ -228,7 +268,7 @@ async function showHiddenElement(browser, accDoc) {
   testAccessibleTree(acc, tree);
 }
 
-async function rearrangeARIAOwns(browser, accDoc) {
+async function rearrangeARIAOwns(browser, accDoc, elementReflection) {
   const id = "t5_container";
   const acc = findAccessibleChildByID(accDoc, id);
   const tests = [
@@ -244,7 +284,7 @@ async function rearrangeARIAOwns(browser, accDoc) {
 
   for (let { val, roleList } of tests) {
     let onReorder = waitForEvent(EVENT_REORDER, id);
-    await invokeSetAttribute(browser, id, "aria-owns", val);
+    await invokeSetAriaOwns(browser, id, val, elementReflection);
     await onReorder;
 
     let tree = { SECTION: [] };
@@ -288,6 +328,19 @@ addAccessibleTask(
     await stealAndRecacheChildren(browser, accDoc);
     await showHiddenElement(browser, accDoc);
     await rearrangeARIAOwns(browser, accDoc);
+    await removeNotARIAOwnedEl(browser, accDoc);
+  },
+  { iframe: true, remoteIframe: true }
+);
+
+addAccessibleTask(
+  "e10s/doc_treeupdate_ariaowns.html",
+  async function (browser, accDoc) {
+    await testContainer1(browser, accDoc, true);
+    await removeContainer(browser, accDoc);
+    await stealAndRecacheChildren(browser, accDoc, true);
+    await showHiddenElement(browser, accDoc);
+    await rearrangeARIAOwns(browser, accDoc, true);
     await removeNotARIAOwnedEl(browser, accDoc);
   },
   { iframe: true, remoteIframe: true }
@@ -454,4 +507,232 @@ addAccessibleTask(
     });
   },
   { chrome: false, iframe: true, remoteIframe: true }
+);
+
+/**
+ * Test relation defaults via element internals
+ */
+addAccessibleTask(
+  `
+
+  <div role="listbox">
+    <div role="listitem" id="l1"></div>
+    <div role="listitem" id="l2"></div>
+    <div role="listitem" id="l3"></div>
+  </div>
+  <custom-listbox id="listbox"></custom-listbox>
+  <div role="listbox">
+    <div role="listitem" id="l4"></div>
+  </div>
+
+<script>
+customElements.define("custom-listbox",
+  class extends HTMLElement {
+    constructor() {
+      super();
+      this.tabIndex = "0"
+      this._internals = this.attachInternals();
+      this._internals.role = "listbox";
+      this._internals.ariaOwnsElements = Array.from(this.previousElementSibling.children)
+    }
+  }
+);
+</script>`,
+  async function (browser, accDoc) {
+    let listbox = findAccessibleChildByID(accDoc, "listbox");
+    is(listbox.children.length, 3, "got children");
+    let onReorder = waitForEvent(EVENT_REORDER, "listbox");
+    invokeSetAriaOwns(browser, "listbox", "l4");
+    await onReorder;
+  }
+);
+
+/**
+ * Test insertion of relocated by ID child after initial load
+ */
+addAccessibleTask(
+  `<div id='a' aria-owns='b'></div>`,
+  async function (browser, accDoc) {
+    const a = findAccessibleChildByID(accDoc, "a");
+    is(a.children.length, 0, "'a' has no children");
+    const waitFor = {
+      expected: [
+        [EVENT_SHOW, "b"],
+        [EVENT_INNER_REORDER, a],
+        [EVENT_REORDER, accDoc],
+      ],
+    };
+    await contentSpawnMutation(browser, waitFor, function () {
+      const b = content.document.createElement("div");
+      b.id = "b";
+      content.document.body.appendChild(b);
+    });
+    is(getAccessibleDOMNodeID(a.firstChild), "b", "'a' owns relocated child");
+  }
+);
+
+/**
+ * Test insertion of relocated by child element reflection after initial load
+ */
+addAccessibleTask(`<div id='a'></div>`, async function (browser, accDoc) {
+  const a = findAccessibleChildByID(accDoc, "a");
+  is(a.children.length, 0, "'a' has no children");
+
+  // Create div and add it to a's ariaOwnsElements.
+  // The refresh ticks called in contentSpawnMutation
+  // will cause a relocation to be scheduled and performed.
+  // Nothing will happen because 'b' is not parented yet.
+  let waitFor = {
+    unexpected: [
+      [EVENT_SHOW, "b"],
+      [EVENT_INNER_REORDER, a],
+      [EVENT_REORDER, accDoc],
+    ],
+  };
+  await contentSpawnMutation(browser, waitFor, function () {
+    content.b = content.document.createElement("div");
+    content.b.id = "b";
+    content.document.getElementById("a").ariaOwnsElements = [content.b];
+  });
+
+  // Parent 'b'. It should relocate into 'a'.
+  waitFor = {
+    expected: [
+      [EVENT_SHOW, "b"],
+      [EVENT_INNER_REORDER, a],
+      [EVENT_REORDER, accDoc],
+    ],
+  };
+  await contentSpawnMutation(browser, waitFor, function () {
+    content.document.body.appendChild(content.b);
+  });
+  is(getAccessibleDOMNodeID(a.firstChild), "b", "'a' owns relocated child");
+});
+
+/*
+ * Test to assure that aria-owned elements are not relocated into an editable subtree.
+ */
+addAccessibleTask(
+  `
+  <button id="btn">World</button>
+  <div contentEditable="true" id="textbox" role="textbox">
+    <p id="p" aria-owns="btn">Hello</p>
+  </div>
+  `,
+  async function (browser, accDoc) {
+    const p = findAccessibleChildByID(accDoc, "p");
+    const textbox = findAccessibleChildByID(accDoc, "textbox");
+
+    testStates(textbox, 0, EXT_STATE_EDITABLE, 0, 0);
+    isnot(getAccessibleDOMNodeID(p.lastChild), "btn", "'p' owns relocated btn");
+    is(textbox.value, "Hello");
+
+    let expectedEvents = Promise.all([
+      waitForStateChange(textbox, EXT_STATE_EDITABLE, false, true),
+      waitForEvent(EVENT_INNER_REORDER, p),
+    ]);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("textbox").contentEditable = false;
+    });
+    await expectedEvents;
+    is(getAccessibleDOMNodeID(p.lastChild), "btn", "'p' owns relocated btn");
+    is(textbox.value, "Hello World");
+
+    expectedEvents = Promise.all([
+      waitForStateChange(textbox, EXT_STATE_EDITABLE, true, true),
+      waitForEvent(EVENT_INNER_REORDER, p),
+    ]);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("textbox").contentEditable = true;
+    });
+    await expectedEvents;
+    isnot(getAccessibleDOMNodeID(p.lastChild), "btn", "'p' owns relocated btn");
+    is(textbox.value, "Hello");
+  }
+);
+
+/*
+ * Test to ensure that aria-owned elements are not relocated out of editable subtree.
+ */
+addAccessibleTask(
+  `
+  <div contentEditable="true" id="textbox" role="textbox">
+    <button id="btn">World</button>
+  </div>
+  <p id="p" aria-owns="btn">Hello</p>
+  <p id="p2" aria-owns="textbox"></p>
+  `,
+  async function (browser, accDoc) {
+    const p = findAccessibleChildByID(accDoc, "p");
+    const textbox = findAccessibleChildByID(accDoc, "textbox");
+    testStates(textbox, 0, EXT_STATE_EDITABLE, 0, 0);
+
+    is(
+      getAccessibleDOMNodeID(textbox.parent),
+      "p2",
+      "editable root can be relocated"
+    );
+    isnot(
+      getAccessibleDOMNodeID(p.lastChild),
+      "btn",
+      "editable element cannot be relocated"
+    );
+    is(textbox.value, "World");
+
+    let expectedEvents = Promise.all([
+      waitForStateChange(textbox, EXT_STATE_EDITABLE, false, true),
+      waitForEvent(EVENT_REORDER, p),
+    ]);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("textbox").contentEditable = false;
+    });
+    await expectedEvents;
+    is(
+      getAccessibleDOMNodeID(p.lastChild),
+      "btn",
+      "'p' owns readonly relocated btn"
+    );
+    is(textbox.value, "");
+    is(
+      getAccessibleDOMNodeID(textbox.parent),
+      "p2",
+      "textbox is still relocated"
+    );
+  }
+);
+
+addAccessibleTask(
+  `
+  <div id="box" role="combobox"
+         aria-owns="listbox"
+         aria-expanded="true"
+         aria-haspopup="listbox"
+         aria-autocomplete="list"
+         contenteditable="true"></div>
+  <ul role="listbox" id="listbox">
+    <li role="option">apple</li>
+    <li role="option">peach</li>
+  </ul>
+`,
+  async (browser, accDoc) => {
+    const combobox = findAccessibleChildByID(accDoc, "box");
+    const listbox = findAccessibleChildByID(accDoc, "listbox");
+
+    testStates(combobox, 0, EXT_STATE_EDITABLE, 0, 0);
+    is(combobox.childCount, 0, "combobox has no children");
+    await testCachedRelation(combobox, RELATION_CONTROLLER_FOR, [listbox]);
+    await testCachedRelation(listbox, RELATION_CONTROLLED_BY, [combobox]);
+
+    let expectedEvents = Promise.all([
+      waitForStateChange(combobox, EXT_STATE_EDITABLE, false, true),
+      waitForEvent(EVENT_REORDER, accDoc),
+    ]);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("box").contentEditable = false;
+    });
+    await expectedEvents;
+    await testCachedRelation(combobox, RELATION_CONTROLLER_FOR, []);
+    await testCachedRelation(listbox, RELATION_CONTROLLED_BY, []);
+    is(combobox.childCount, 1, "combobox has listbox");
+  }
 );

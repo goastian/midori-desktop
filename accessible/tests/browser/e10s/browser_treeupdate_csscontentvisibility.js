@@ -42,18 +42,7 @@ const snippet = `
     <div id="hidden-subtree-2">D</div>
     <div id="shadow-host"></div>
   </div>
-  <script>
-    const host = document.querySelector("#shadow-host");
-    const shadowRoot = host.attachShadow({ mode: "open" });
-    shadowRoot.innerHTML = "<div id='shadowDiv'>E</div>";
-  </script>
   `;
-
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["layout.css.content-visibility.enabled", true]],
-  });
-});
 
 async function setContentVisibility(browser, value) {
   let mutationPromise = waitForEvent(EVENT_REORDER, "target");
@@ -85,5 +74,15 @@ addAccessibleTask(
     await setContentVisibility(browser, "hidden");
     testAccessibleTree(target, { SECTION: [] });
   },
-  { iframe: true, remoteIframe: true, chrome: true }
+  {
+    iframe: true,
+    remoteIframe: true,
+    chrome: true,
+
+    contentSetup: async function contentSetup() {
+      const host = content.document.querySelector("#shadow-host");
+      const shadowRoot = host.attachShadow({ mode: "open" });
+      shadowRoot.innerHTML = "<div id='shadowDiv'>E</div>";
+    },
+  }
 );

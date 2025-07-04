@@ -7,6 +7,7 @@
 #include "ARIAMap.h"
 #include "CachedTableAccessible.h"
 #include "RemoteAccessible.h"
+#include "mozilla/a11y/CacheConstants.h"
 #include "mozilla/a11y/DocAccessibleParent.h"
 #include "mozilla/a11y/DocManager.h"
 #include "mozilla/a11y/Platform.h"
@@ -42,6 +43,13 @@
 namespace mozilla {
 namespace a11y {
 
+// Domain sets we need commonly for functions in this file.
+static constexpr uint64_t kNecessaryBoundsDomains =
+    CacheDomain::Bounds | CacheDomain::TransformMatrix | CacheDomain::Style |
+    CacheDomain::ScrollPosition | CacheDomain::APZ;
+static constexpr uint64_t kNecessaryStateDomains =
+    CacheDomain::State | CacheDomain::Viewport;
+
 void RemoteAccessible::Shutdown() {
   MOZ_DIAGNOSTIC_ASSERT(!IsDoc());
   xpcAccessibleDocument* xpcDoc =
@@ -75,6 +83,7 @@ void RemoteAccessible::Shutdown() {
 
   mChildren.Clear();
   ProxyDestroyed(static_cast<RemoteAccessible*>(this));
+  // mDoc owns this RemoteAccessible, so RemoveAccessible deletes this.
   mDoc->RemoveAccessible(static_cast<RemoteAccessible*>(this));
 }
 
@@ -82,6 +91,7 @@ void RemoteAccessible::SetChildDoc(DocAccessibleParent* aChildDoc) {
   MOZ_ASSERT(aChildDoc);
   MOZ_ASSERT(mChildren.Length() == 0);
   mChildren.AppendElement(aChildDoc);
+  aChildDoc->mIndexInParent = 0;
 }
 
 void RemoteAccessible::ClearChildDoc(DocAccessibleParent* aChildDoc) {
@@ -149,37 +159,26 @@ LocalAccessible* RemoteAccessible::OuterDocOfRemoteBrowser() const {
 }
 
 void RemoteAccessible::SetParent(RemoteAccessible* aParent) {
+  MOZ_ASSERT(!IsDoc() || !AsDoc()->IsTopLevel(),
+             "Top level doc should not have remote parent");
+  MOZ_ASSERT(!IsDoc() || !aParent || !aParent->IsDoc(),
+             "Doc can't be direct parent of another doc");
+  MOZ_ASSERT(!IsDoc() || !aParent || aParent->IsOuterDoc(),
+             "Doc's parent must be OuterDoc");
+  mParent = aParent;
   if (!aParent) {
-    mParent = kNoParent;
-  } else {
-    MOZ_ASSERT(!IsDoc() || !aParent->IsDoc());
-    mParent = aParent->ID();
+    mIndexInParent = -1;
   }
 }
 
 RemoteAccessible* RemoteAccessible::RemoteParent() const {
-  if (mParent == kNoParent) {
-    return nullptr;
-  }
-
-  // if we are not a document then are parent is another proxy in the same
-  // document.  That means we can just ask our document for the proxy with our
-  // parent id.
-  if (!IsDoc()) {
-    return Document()->GetAccessible(mParent);
-  }
-
-  // If we are a top level document then our parent is not a proxy.
-  if (AsDoc()->IsTopLevel()) {
-    return nullptr;
-  }
-
-  // Finally if we are a non top level document then our parent id is for a
-  // proxy in our parent document so get the proxy from there.
-  DocAccessibleParent* parentDoc = AsDoc()->ParentDoc();
-  MOZ_ASSERT(parentDoc);
-  MOZ_ASSERT(mParent);
-  return parentDoc->GetAccessible(mParent);
+  MOZ_ASSERT(!IsDoc() || !AsDoc()->IsTopLevel() || !mParent,
+             "Top level doc should not have RemoteParent");
+  MOZ_ASSERT(!IsDoc() || !mParent || mParent->mDoc != mDoc,
+             "Doc's parent should be in another doc");
+  MOZ_ASSERT(!IsDoc() || !mParent || mParent->IsOuterDoc(),
+             "Doc's parent should be in another doc");
+  return mParent;
 }
 
 void RemoteAccessible::ApplyCache(CacheUpdateType aUpdateType,
@@ -227,6 +226,12 @@ void RemoteAccessible::ApplyCache(CacheUpdateType aUpdateType,
 }
 
 ENameValueFlag RemoteAccessible::Name(nsString& aName) const {
+  if (RequestDomainsIfInactive(CacheDomain::NameAndDescription |
+                               CacheDomain::Text)) {
+    aName.SetIsVoid(true);
+    return eNameOK;
+  }
+
   ENameValueFlag nameFlag = eNameOK;
   if (mCachedFields) {
     if (IsText()) {
@@ -250,6 +255,10 @@ ENameValueFlag RemoteAccessible::Name(nsString& aName) const {
 }
 
 void RemoteAccessible::Description(nsString& aDescription) const {
+  if (RequestDomainsIfInactive(CacheDomain::NameAndDescription)) {
+    return;
+  }
+
   if (mCachedFields) {
     mCachedFields->GetAttribute(CacheKey::Description, aDescription);
     VERIFY_CACHE(CacheDomain::NameAndDescription);
@@ -257,6 +266,15 @@ void RemoteAccessible::Description(nsString& aDescription) const {
 }
 
 void RemoteAccessible::Value(nsString& aValue) const {
+  if (RequestDomainsIfInactive(
+          CacheDomain::Value |    // CurValue, etc.
+          CacheDomain::Actions |  // ActionAncestor (HasPrimaryAction)
+          CacheDomain::State |    // GetSelectedItem
+          CacheDomain::Viewport   // GetSelectedItem
+          )) {
+    return;
+  }
+
   if (mCachedFields) {
     if (mCachedFields->HasAttribute(CacheKey::TextValue)) {
       mCachedFields->GetAttribute(CacheKey::TextValue, aValue);
@@ -305,6 +323,10 @@ void RemoteAccessible::Value(nsString& aValue) const {
 }
 
 double RemoteAccessible::CurValue() const {
+  if (RequestDomainsIfInactive(CacheDomain::Value)) {
+    return UnspecifiedNaN<double>();
+  }
+
   if (mCachedFields) {
     if (auto value =
             mCachedFields->GetAttribute<double>(CacheKey::NumericValue)) {
@@ -317,6 +339,10 @@ double RemoteAccessible::CurValue() const {
 }
 
 double RemoteAccessible::MinValue() const {
+  if (RequestDomainsIfInactive(CacheDomain::Value)) {
+    return UnspecifiedNaN<double>();
+  }
+
   if (mCachedFields) {
     if (auto min = mCachedFields->GetAttribute<double>(CacheKey::MinValue)) {
       VERIFY_CACHE(CacheDomain::Value);
@@ -328,6 +354,10 @@ double RemoteAccessible::MinValue() const {
 }
 
 double RemoteAccessible::MaxValue() const {
+  if (RequestDomainsIfInactive(CacheDomain::Value)) {
+    return UnspecifiedNaN<double>();
+  }
+
   if (mCachedFields) {
     if (auto max = mCachedFields->GetAttribute<double>(CacheKey::MaxValue)) {
       VERIFY_CACHE(CacheDomain::Value);
@@ -339,6 +369,10 @@ double RemoteAccessible::MaxValue() const {
 }
 
 double RemoteAccessible::Step() const {
+  if (RequestDomainsIfInactive(CacheDomain::Value)) {
+    return UnspecifiedNaN<double>();
+  }
+
   if (mCachedFields) {
     if (auto step = mCachedFields->GetAttribute<double>(CacheKey::Step)) {
       VERIFY_CACHE(CacheDomain::Value);
@@ -350,6 +384,13 @@ double RemoteAccessible::Step() const {
 }
 
 bool RemoteAccessible::SetCurValue(double aValue) {
+  if (RequestDomainsIfInactive(CacheDomain::Value |   // MinValue, MaxValue
+                               CacheDomain::State |   // State
+                               CacheDomain::Viewport  // State
+                               )) {
+    return false;
+  }
+
   if (!HasNumericValue() || IsProgress()) {
     return false;
   }
@@ -374,6 +415,9 @@ bool RemoteAccessible::SetCurValue(double aValue) {
 }
 
 bool RemoteAccessible::ContainsPoint(int32_t aX, int32_t aY) {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::TextBounds |  // GetCachedTextLines
+                        kNecessaryBoundsDomains);
+
   if (!BoundsWithOffset(Nothing(), true).Contains(aX, aY)) {
     return false;
   }
@@ -443,7 +487,14 @@ bool RemoteAccessible::ContainsPoint(int32_t aX, int32_t aY) {
     MOZ_ASSERT(lineEnd >= lineStart);
     nsRect lineRect = GetCachedCharRect(lineStart);
     if (lineEnd > lineStart) {
-      lineRect.UnionRect(lineRect, GetCachedCharRect(lineEnd));
+      nsRect lineEndRect = GetCachedCharRect(lineEnd);
+      if (lineEndRect.IsEmpty() && lineEnd - 1 > lineStart) {
+        // The line feed character at the end of a line in pre-formatted text
+        // doesn't have a useful rect. Use the previous character. Otherwise,
+        // lineRect won't span the line of text and we'll miss characters.
+        lineEndRect = GetCachedCharRect(lineEnd - 1);
+      }
+      lineRect.UnionRect(lineRect, lineEndRect);
     }
     if (BoundsWithOffset(Some(lineRect), true).Contains(aX, aY)) {
       return true;
@@ -454,6 +505,8 @@ bool RemoteAccessible::ContainsPoint(int32_t aX, int32_t aY) {
 }
 
 RemoteAccessible* RemoteAccessible::DoFuzzyHittesting() {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Bounds);
+
   uint32_t childCount = ChildCount();
   if (!childCount) {
     return nullptr;
@@ -508,6 +561,13 @@ RemoteAccessible* RemoteAccessible::DoFuzzyHittesting() {
 
 Accessible* RemoteAccessible::ChildAtPoint(
     int32_t aX, int32_t aY, LocalAccessible::EWhichChildAtPoint aWhichChild) {
+  if (RequestDomainsIfInactive(
+          kNecessaryBoundsDomains |
+          CacheDomain::TextBounds  // GetCachedTextLines (via ContainsPoint)
+          )) {
+    return nullptr;
+  }
+
   // Elements that are partially on-screen should have their bounds masked by
   // their containing scroll area so hittesting yields results that are
   // consistent with the content's visual representation. Pass this value to
@@ -640,6 +700,7 @@ Maybe<nsRect> RemoteAccessible::RetrieveCachedBounds() const {
     return Nothing();
   }
 
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Bounds);
   Maybe<const nsTArray<int32_t>&> maybeArray =
       mCachedFields->GetAttribute<nsTArray<int32_t>>(
           CacheKey::ParentRelativeBounds);
@@ -667,6 +728,7 @@ void RemoteAccessible::ApplyCrossDocOffset(nsRect& aBounds) const {
     return;
   }
 
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Bounds);
   Maybe<const nsTArray<int32_t>&> maybeOffset =
       parentAcc->mCachedFields->GetAttribute<nsTArray<int32_t>>(
           CacheKey::CrossDocOffset);
@@ -682,6 +744,8 @@ void RemoteAccessible::ApplyCrossDocOffset(nsRect& aBounds) const {
 }
 
 bool RemoteAccessible::ApplyTransform(nsRect& aCumulativeBounds) const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::TransformMatrix);
+
   // First, attempt to retrieve the transform from the cache.
   Maybe<const UniquePtr<gfx::Matrix4x4>&> maybeTransform =
       mCachedFields->GetAttribute<UniquePtr<gfx::Matrix4x4>>(
@@ -703,6 +767,7 @@ bool RemoteAccessible::ApplyTransform(nsRect& aCumulativeBounds) const {
 }
 
 bool RemoteAccessible::ApplyScrollOffset(nsRect& aBounds) const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::ScrollPosition);
   Maybe<const nsTArray<int32_t>&> maybeScrollPosition =
       mCachedFields->GetAttribute<nsTArray<int32_t>>(CacheKey::ScrollPosition);
 
@@ -726,7 +791,30 @@ bool RemoteAccessible::ApplyScrollOffset(nsRect& aBounds) const {
   return true;
 }
 
+void RemoteAccessible::ApplyVisualViewportOffset(nsRect& aBounds) const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::APZ);
+  MOZ_ASSERT(IsDoc(), "Attempting to get visual viewport data from non-doc?");
+  Maybe<const nsTArray<int32_t>&> maybeViewportOffset =
+      mCachedFields->GetAttribute<nsTArray<int32_t>>(
+          CacheKey::VisualViewportOffset);
+
+  if (!maybeViewportOffset || maybeViewportOffset->Length() != 2) {
+    return;
+  }
+  // Our retrieved value is in app units, so we don't need to do any
+  // unit conversion here.
+  const nsTArray<int32_t>& viewportOffset = *maybeViewportOffset;
+
+  // Like scroll position, this offset is an inverse representation: the
+  // further the visual viewport moves, the further the page content
+  // moves up/closer to the origin
+  aBounds.MoveBy(-viewportOffset[0], -viewportOffset[1]);
+}
+
 nsRect RemoteAccessible::BoundsInAppUnits() const {
+  if (RequestDomainsIfInactive(kNecessaryBoundsDomains)) {
+    return {};
+  }
   if (dom::CanonicalBrowsingContext* cbc = mDoc->GetBrowsingContext()->Top()) {
     if (dom::BrowserParent* bp = cbc->GetBrowserParent()) {
       DocAccessibleParent* topDoc = bp->GetTopLevelDocAccessible();
@@ -742,6 +830,7 @@ nsRect RemoteAccessible::BoundsInAppUnits() const {
 }
 
 bool RemoteAccessible::IsFixedPos() const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Style);
   MOZ_ASSERT(mCachedFields);
   if (auto maybePosition =
           mCachedFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::CssPosition)) {
@@ -752,6 +841,7 @@ bool RemoteAccessible::IsFixedPos() const {
 }
 
 bool RemoteAccessible::IsOverflowHidden() const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Style);
   MOZ_ASSERT(mCachedFields);
   if (auto maybeOverflow =
           mCachedFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::CSSOverflow)) {
@@ -762,6 +852,7 @@ bool RemoteAccessible::IsOverflowHidden() const {
 }
 
 bool RemoteAccessible::IsClipped() const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Bounds);
   MOZ_ASSERT(mCachedFields);
   if (mCachedFields->GetAttribute<bool>(CacheKey::IsClipped)) {
     return true;
@@ -772,6 +863,10 @@ bool RemoteAccessible::IsClipped() const {
 
 LayoutDeviceIntRect RemoteAccessible::BoundsWithOffset(
     Maybe<nsRect> aOffset, bool aBoundsAreForHittesting) const {
+  if (RequestDomainsIfInactive(kNecessaryBoundsDomains)) {
+    return LayoutDeviceIntRect{};
+  }
+
   Maybe<nsRect> maybeBounds = RetrieveCachedBounds();
   if (maybeBounds) {
     nsRect bounds = *maybeBounds;
@@ -813,6 +908,10 @@ LayoutDeviceIntRect RemoteAccessible::BoundsWithOffset(
         // things. We can't reliably query this value in the parent process,
         // so we retrieve it from the document's cache.
         if (remoteAcc->IsDoc()) {
+          // Apply our visual viewport offset, which is non-zero when
+          // pinch zoom has been applied. Do this before we scale by
+          // resolution as this offset is unscaled.
+          remoteAcc->ApplyVisualViewportOffset(bounds);
           // Apply the document's resolution to the bounds we've gathered
           // thus far. We do this before applying the document's offset
           // because document accs should not have their bounds scaled by
@@ -924,10 +1023,22 @@ LayoutDeviceIntRect RemoteAccessible::BoundsWithOffset(
 }
 
 LayoutDeviceIntRect RemoteAccessible::Bounds() const {
+  if (RequestDomainsIfInactive(kNecessaryBoundsDomains)) {
+    return {};
+  }
   return BoundsWithOffset(Nothing());
 }
 
 Relation RemoteAccessible::RelationByType(RelationType aType) const {
+  if (RequestDomainsIfInactive(
+          CacheDomain::Relations |          // relations info, DOMName attribute
+          CacheDomain::Value |              // Value
+          CacheDomain::DOMNodeIDAndClass |  // DOMNodeID
+          CacheDomain::GroupInfo            // GetOrCreateGroupInfo
+          )) {
+    return Relation();
+  }
+
   // We are able to handle some relations completely in the
   // parent process, without the help of the cache. Those
   // relations are enumerated here. Other relations, whose
@@ -1098,20 +1209,36 @@ Relation RemoteAccessible::RelationByType(RelationType aType) const {
   // the cached relations need to take precedence. For example, a <figure> with
   // both aria-labelledby and a <figcaption> must return two LABELLED_BY
   // targets: the aria-labelledby and then the <figcaption>.
-  if (aType == RelationType::LABELLED_BY && TagName() == nsGkAtoms::figure) {
+  auto AddChildWithTag = [this, &rel](nsAtom* aTarget) {
     uint32_t count = ChildCount();
     for (uint32_t c = 0; c < count; ++c) {
       RemoteAccessible* child = RemoteChildAt(c);
       MOZ_ASSERT(child);
-      if (child->TagName() == nsGkAtoms::figcaption) {
+      if (child->TagName() == aTarget) {
         rel.AppendTarget(child);
       }
     }
-  } else if (aType == RelationType::LABEL_FOR &&
-             TagName() == nsGkAtoms::figcaption) {
-    if (RemoteAccessible* parent = RemoteParent()) {
-      if (parent->TagName() == nsGkAtoms::figure) {
-        rel.AppendTarget(parent);
+  };
+  if (aType == RelationType::LABELLED_BY) {
+    auto tag = TagName();
+    if (tag == nsGkAtoms::figure) {
+      AddChildWithTag(nsGkAtoms::figcaption);
+    } else if (tag == nsGkAtoms::fieldset) {
+      AddChildWithTag(nsGkAtoms::legend);
+    }
+  } else if (aType == RelationType::LABEL_FOR) {
+    auto tag = TagName();
+    if (tag == nsGkAtoms::figcaption) {
+      if (RemoteAccessible* parent = RemoteParent()) {
+        if (parent->TagName() == nsGkAtoms::figure) {
+          rel.AppendTarget(parent);
+        }
+      }
+    } else if (tag == nsGkAtoms::legend) {
+      if (RemoteAccessible* parent = RemoteParent()) {
+        if (parent->TagName() == nsGkAtoms::fieldset) {
+          rel.AppendTarget(parent);
+        }
       }
     }
   }
@@ -1122,6 +1249,9 @@ Relation RemoteAccessible::RelationByType(RelationType aType) const {
 void RemoteAccessible::AppendTextTo(nsAString& aText, uint32_t aStartOffset,
                                     uint32_t aLength) {
   if (IsText()) {
+    if (RequestDomainsIfInactive(CacheDomain::Text)) {
+      return;
+    }
     if (mCachedFields) {
       if (auto text = mCachedFields->GetAttribute<nsString>(CacheKey::Text)) {
         aText.Append(Substring(*text, aStartOffset, aLength));
@@ -1148,7 +1278,10 @@ void RemoteAccessible::AppendTextTo(nsAString& aText, uint32_t aStartOffset,
 }
 
 nsTArray<bool> RemoteAccessible::PreProcessRelations(AccAttributes* aFields) {
-  nsTArray<bool> updateTracker(ArrayLength(kRelationTypeAtoms));
+  if (!DomainsAreActive(CacheDomain::Relations)) {
+    return {};
+  }
+  nsTArray<bool> updateTracker(std::size(kRelationTypeAtoms));
   for (auto const& data : kRelationTypeAtoms) {
     if (data.mValidTag) {
       // The relation we're currently processing only applies to particular
@@ -1187,6 +1320,7 @@ nsTArray<bool> RemoteAccessible::PreProcessRelations(AccAttributes* aFields) {
     if ((shouldAddNewImplicitRels ||
          aFields->GetAttribute<DeleteEntry>(relAtom)) &&
         mCachedFields) {
+      ASSERT_DOMAINS_ACTIVE(CacheDomain::Relations);
       if (auto maybeOldIDs =
               mCachedFields->GetAttribute<nsTArray<uint64_t>>(relAtom)) {
         for (uint64_t id : *maybeOldIDs) {
@@ -1219,8 +1353,11 @@ nsTArray<bool> RemoteAccessible::PreProcessRelations(AccAttributes* aFields) {
 }
 
 void RemoteAccessible::PostProcessRelations(const nsTArray<bool>& aToUpdate) {
+  if (!DomainsAreActive(CacheDomain::Relations)) {
+    return;
+  }
   size_t updateCount = aToUpdate.Length();
-  MOZ_ASSERT(updateCount == ArrayLength(kRelationTypeAtoms),
+  MOZ_ASSERT(updateCount == std::size(kRelationTypeAtoms),
              "Did not note update status for every relation type!");
   for (size_t i = 0; i < updateCount; i++) {
     if (aToUpdate.ElementAt(i)) {
@@ -1278,6 +1415,9 @@ void RemoteAccessible::PruneRelationsOnShutdown() {
 }
 
 uint32_t RemoteAccessible::GetCachedTextLength() {
+  if (RequestDomainsIfInactive(CacheDomain::Text)) {
+    return 0;
+  }
   MOZ_ASSERT(!HasChildren());
   if (!mCachedFields) {
     return 0;
@@ -1291,16 +1431,21 @@ uint32_t RemoteAccessible::GetCachedTextLength() {
 }
 
 Maybe<const nsTArray<int32_t>&> RemoteAccessible::GetCachedTextLines() {
+  if (RequestDomainsIfInactive(CacheDomain::TextBounds)) {
+    return Nothing();
+  }
+
   MOZ_ASSERT(!HasChildren());
   if (!mCachedFields) {
     return Nothing();
   }
-  VERIFY_CACHE(CacheDomain::Text);
+  VERIFY_CACHE(CacheDomain::TextBounds);
   return mCachedFields->GetAttribute<nsTArray<int32_t>>(
       CacheKey::TextLineStarts);
 }
 
 nsRect RemoteAccessible::GetCachedCharRect(int32_t aOffset) {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::TextBounds);
   MOZ_ASSERT(IsText());
   if (!mCachedFields) {
     return nsRect();
@@ -1324,6 +1469,9 @@ nsRect RemoteAccessible::GetCachedCharRect(int32_t aOffset) {
 }
 
 void RemoteAccessible::DOMNodeID(nsString& aID) const {
+  if (RequestDomainsIfInactive(CacheDomain::DOMNodeIDAndClass)) {
+    return;
+  }
   if (mCachedFields) {
     mCachedFields->GetAttribute(CacheKey::DOMNodeID, aID);
     VERIFY_CACHE(CacheDomain::DOMNodeIDAndClass);
@@ -1371,6 +1519,9 @@ void RemoteAccessible::ScrollSubstringToPoint(int32_t aStartOffset,
 }
 
 RefPtr<const AccAttributes> RemoteAccessible::GetCachedTextAttributes() {
+  if (RequestDomainsIfInactive(CacheDomain::Text)) {
+    return nullptr;
+  }
   MOZ_ASSERT(IsText() || IsHyperText());
   if (mCachedFields) {
     auto attrs = mCachedFields->GetAttributeRefPtr<AccAttributes>(
@@ -1382,6 +1533,9 @@ RefPtr<const AccAttributes> RemoteAccessible::GetCachedTextAttributes() {
 }
 
 already_AddRefed<AccAttributes> RemoteAccessible::DefaultTextAttributes() {
+  if (RequestDomainsIfInactive(CacheDomain::Text)) {
+    return nullptr;
+  }
   RefPtr<const AccAttributes> attrs = GetCachedTextAttributes();
   RefPtr<AccAttributes> result = new AccAttributes();
   if (attrs) {
@@ -1390,9 +1544,10 @@ already_AddRefed<AccAttributes> RemoteAccessible::DefaultTextAttributes() {
   return result.forget();
 }
 
-RefPtr<const AccAttributes> RemoteAccessible::GetCachedARIAAttributes() const {
+const AccAttributes* RemoteAccessible::GetCachedARIAAttributes() const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::ARIA);
   if (mCachedFields) {
-    auto attrs = mCachedFields->GetAttributeRefPtr<AccAttributes>(
+    auto attrs = mCachedFields->GetAttributeWeakPtr<AccAttributes>(
         CacheKey::ARIAAttributes);
     VERIFY_CACHE(CacheDomain::ARIA);
     return attrs;
@@ -1401,6 +1556,7 @@ RefPtr<const AccAttributes> RemoteAccessible::GetCachedARIAAttributes() const {
 }
 
 nsString RemoteAccessible::GetCachedHTMLNameAttribute() const {
+  ASSERT_DOMAINS_ACTIVE(CacheDomain::Relations);
   if (mCachedFields) {
     if (auto maybeName =
             mCachedFields->GetAttribute<nsString>(CacheKey::DOMName)) {
@@ -1411,6 +1567,13 @@ nsString RemoteAccessible::GetCachedHTMLNameAttribute() const {
 }
 
 uint64_t RemoteAccessible::State() {
+  if (RequestDomainsIfInactive(
+          CacheDomain::State |   // State attributes
+          CacheDomain::Style |   // for Opacity (via ApplyImplicitState)
+          CacheDomain::Viewport  // necessary to build mOnScreenAccessibles
+          )) {
+    return 0;
+  }
   uint64_t state = 0;
   if (mCachedFields) {
     if (auto rawState =
@@ -1481,6 +1644,21 @@ uint64_t RemoteAccessible::State() {
 
 already_AddRefed<AccAttributes> RemoteAccessible::Attributes() {
   RefPtr<AccAttributes> attributes = new AccAttributes();
+  if (RequestDomainsIfInactive(CacheDomain::ARIA |  // GetCachedARIAAttributes
+                               CacheDomain::NameAndDescription |  // Name
+                               CacheDomain::Text |                // Name
+                               CacheDomain::Value |               // Value
+                               CacheDomain::Actions |             // Value
+                               CacheDomain::Style |      // DisplayStyle
+                               CacheDomain::GroupInfo |  // GroupPosition
+                               CacheDomain::State |      // State
+                               CacheDomain::Viewport |   // State
+                               CacheDomain::Table |  // TableIsProbablyForLayout
+                               CacheDomain::DOMNodeIDAndClass  // DOMNodeID
+                               )) {
+    return attributes.forget();
+  }
+
   nsAccessibilityService* accService = GetAccService();
   if (!accService) {
     // The service can be shut down before RemoteAccessibles. If it is shut
@@ -1495,10 +1673,6 @@ already_AddRefed<AccAttributes> RemoteAccessible::Attributes() {
             mCachedFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::TagName)) {
       attributes->SetAttribute(nsGkAtoms::tag, *tag);
     }
-
-    GroupPos groupPos = GroupPosition();
-    nsAccUtils::SetAccGroupAttrs(attributes, groupPos.level, groupPos.setSize,
-                                 groupPos.posInSet);
 
     bool hierarchical = false;
     uint32_t itemCount = AccGroupInfo::TotalItemCount(this, &hierarchical);
@@ -1633,19 +1807,10 @@ nsAtom* RemoteAccessible::TagName() const {
   return nullptr;
 }
 
-already_AddRefed<nsAtom> RemoteAccessible::InputType() const {
-  if (mCachedFields) {
-    if (auto inputType =
-            mCachedFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::InputType)) {
-      RefPtr<nsAtom> result = *inputType;
-      return result.forget();
-    }
-  }
-
-  return nullptr;
-}
-
 already_AddRefed<nsAtom> RemoteAccessible::DisplayStyle() const {
+  if (RequestDomainsIfInactive(CacheDomain::Style)) {
+    return nullptr;
+  }
   if (mCachedFields) {
     if (auto display =
             mCachedFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::CSSDisplay)) {
@@ -1657,6 +1822,10 @@ already_AddRefed<nsAtom> RemoteAccessible::DisplayStyle() const {
 }
 
 float RemoteAccessible::Opacity() const {
+  if (RequestDomainsIfInactive(CacheDomain::Style)) {
+    return 1.0f;
+  }
+
   if (mCachedFields) {
     if (auto opacity = mCachedFields->GetAttribute<float>(CacheKey::Opacity)) {
       return *opacity;
@@ -1670,10 +1839,13 @@ void RemoteAccessible::LiveRegionAttributes(nsAString* aLive,
                                             nsAString* aRelevant,
                                             Maybe<bool>* aAtomic,
                                             nsAString* aBusy) const {
+  if (RequestDomainsIfInactive(CacheDomain::ARIA)) {
+    return;
+  }
   if (!mCachedFields) {
     return;
   }
-  RefPtr<const AccAttributes> attrs = GetCachedARIAAttributes();
+  auto attrs = GetCachedARIAAttributes();
   if (!attrs) {
     return;
   }
@@ -1695,6 +1867,10 @@ void RemoteAccessible::LiveRegionAttributes(nsAString* aLive,
 }
 
 Maybe<bool> RemoteAccessible::ARIASelected() const {
+  if (RequestDomainsIfInactive(CacheDomain::State)) {
+    return Nothing();
+  }
+
   if (mCachedFields) {
     return mCachedFields->GetAttribute<bool>(CacheKey::ARIASelected);
   }
@@ -1703,6 +1879,7 @@ Maybe<bool> RemoteAccessible::ARIASelected() const {
 
 nsAtom* RemoteAccessible::GetPrimaryAction() const {
   if (mCachedFields) {
+    ASSERT_DOMAINS_ACTIVE(CacheDomain::Actions);
     if (auto action = mCachedFields->GetAttribute<RefPtr<nsAtom>>(
             CacheKey::PrimaryAction)) {
       return *action;
@@ -1714,6 +1891,9 @@ nsAtom* RemoteAccessible::GetPrimaryAction() const {
 
 uint8_t RemoteAccessible::ActionCount() const {
   uint8_t actionCount = 0;
+  if (RequestDomainsIfInactive(CacheDomain::Actions)) {
+    return actionCount;
+  }
   if (mCachedFields) {
     if (HasPrimaryAction() || ActionAncestor()) {
       actionCount++;
@@ -1729,6 +1909,10 @@ uint8_t RemoteAccessible::ActionCount() const {
 }
 
 void RemoteAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName) {
+  if (RequestDomainsIfInactive(CacheDomain::Actions)) {
+    return;
+  }
+
   if (mCachedFields) {
     aName.Truncate();
     nsAtom* action = GetPrimaryAction();
@@ -1758,6 +1942,10 @@ void RemoteAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName) {
 }
 
 bool RemoteAccessible::DoAction(uint8_t aIndex) const {
+  if (RequestDomainsIfInactive(CacheDomain::Actions)) {
+    return false;
+  }
+
   if (ActionCount() < aIndex + 1) {
     return false;
   }
@@ -1767,6 +1955,10 @@ bool RemoteAccessible::DoAction(uint8_t aIndex) const {
 }
 
 KeyBinding RemoteAccessible::AccessKey() const {
+  if (RequestDomainsIfInactive(CacheDomain::Actions)) {
+    return {};
+  }
+
   if (mCachedFields) {
     if (auto value =
             mCachedFields->GetAttribute<uint64_t>(CacheKey::AccessKey)) {
@@ -1793,6 +1985,10 @@ bool RemoteAccessible::RemoveFromSelection(int32_t aSelectionNum) {
 
 void RemoteAccessible::ARIAGroupPosition(int32_t* aLevel, int32_t* aSetSize,
                                          int32_t* aPosInSet) const {
+  if (RequestDomainsIfInactive(CacheDomain::GroupInfo)) {
+    return;
+  }
+
   if (!mCachedFields) {
     return;
   }
@@ -1818,6 +2014,13 @@ void RemoteAccessible::ARIAGroupPosition(int32_t* aLevel, int32_t* aSetSize,
 }
 
 AccGroupInfo* RemoteAccessible::GetGroupInfo() const {
+  // Interpret a call to GetGroupInfo as a signal that the AT will want group
+  // info information. CacheKey::GroupInfo is not in CacheDomain::GroupInfo, so
+  // this isn't strictly necessary, but is likely helpful.
+  if (RequestDomainsIfInactive(CacheDomain::GroupInfo)) {
+    return nullptr;
+  }
+
   if (!mCachedFields) {
     return nullptr;
   }
@@ -1831,6 +2034,10 @@ AccGroupInfo* RemoteAccessible::GetGroupInfo() const {
 }
 
 AccGroupInfo* RemoteAccessible::GetOrCreateGroupInfo() {
+  if (RequestDomainsIfInactive(CacheDomain::GroupInfo)) {
+    return nullptr;
+  }
+
   AccGroupInfo* groupInfo = GetGroupInfo();
   if (groupInfo) {
     return groupInfo;
@@ -1856,6 +2063,13 @@ void RemoteAccessible::InvalidateGroupInfo() {
 
 void RemoteAccessible::GetPositionAndSetSize(int32_t* aPosInSet,
                                              int32_t* aSetSize) {
+  // Note: Required domains come from requirements of RelationByType.
+  if (RequestDomainsIfInactive(CacheDomain::Relations | CacheDomain::Value |
+                               CacheDomain::DOMNodeIDAndClass |
+                               CacheDomain::GroupInfo)) {
+    return;
+  }
+
   if (IsHTMLRadioButton()) {
     *aSetSize = 0;
     Relation rel = RelationByType(RelationType::MEMBER_OF);
@@ -1872,20 +2086,20 @@ void RemoteAccessible::GetPositionAndSetSize(int32_t* aPosInSet,
 }
 
 bool RemoteAccessible::HasPrimaryAction() const {
+  if (RequestDomainsIfInactive(CacheDomain::Actions)) {
+    return false;
+  }
   return mCachedFields && mCachedFields->HasAttribute(CacheKey::PrimaryAction);
 }
 
 void RemoteAccessible::TakeFocus() const {
   Unused << mDoc->SendTakeFocus(mID);
-  if (nsFocusManager* fm = nsFocusManager::GetFocusManager()) {
-    auto* bp = static_cast<dom::BrowserParent*>(mDoc->Manager());
-    MOZ_ASSERT(bp);
-    dom::Element* owner = bp->GetOwnerElement();
-    if (fm->GetFocusedElement() == owner) {
-      // This remote document tree is already focused. We don't need to do
-      // anything else.
-      return;
-    }
+  auto* bp = static_cast<dom::BrowserParent*>(mDoc->Manager());
+  MOZ_ASSERT(bp);
+  if (nsFocusManager::GetFocusedElementStatic() == bp->GetOwnerElement()) {
+    // This remote document tree is already focused. We don't need to do
+    // anything else.
+    return;
   }
   // Otherwise, we need to focus the <browser> or <iframe> element embedding the
   // remote document in the parent process. If `this` is in an OOP iframe, we
@@ -1925,6 +2139,9 @@ void RemoteAccessible::ScrollTo(uint32_t aHow) const {
 // SelectAccessible
 
 void RemoteAccessible::SelectedItems(nsTArray<Accessible*>* aItems) {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return;
+  }
   Pivot p = Pivot(this);
   PivotStateRule rule(states::SELECTED);
   for (Accessible* selected = p.First(rule); selected;
@@ -1934,6 +2151,9 @@ void RemoteAccessible::SelectedItems(nsTArray<Accessible*>* aItems) {
 }
 
 uint32_t RemoteAccessible::SelectedItemCount() {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return 0;
+  }
   uint32_t count = 0;
   Pivot p = Pivot(this);
   PivotStateRule rule(states::SELECTED);
@@ -1946,6 +2166,9 @@ uint32_t RemoteAccessible::SelectedItemCount() {
 }
 
 Accessible* RemoteAccessible::GetSelectedItem(uint32_t aIndex) {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return nullptr;
+  }
   uint32_t index = 0;
   Accessible* selected = nullptr;
   Pivot p = Pivot(this);
@@ -1959,6 +2182,9 @@ Accessible* RemoteAccessible::GetSelectedItem(uint32_t aIndex) {
 }
 
 bool RemoteAccessible::IsItemSelected(uint32_t aIndex) {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return false;
+  }
   uint32_t index = 0;
   Accessible* selectable = nullptr;
   Pivot p = Pivot(this);
@@ -1972,6 +2198,9 @@ bool RemoteAccessible::IsItemSelected(uint32_t aIndex) {
 }
 
 bool RemoteAccessible::AddItemToSelection(uint32_t aIndex) {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return false;
+  }
   uint32_t index = 0;
   Accessible* selectable = nullptr;
   Pivot p = Pivot(this);
@@ -1987,6 +2216,9 @@ bool RemoteAccessible::AddItemToSelection(uint32_t aIndex) {
 }
 
 bool RemoteAccessible::RemoveItemFromSelection(uint32_t aIndex) {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return false;
+  }
   uint32_t index = 0;
   Accessible* selectable = nullptr;
   Pivot p = Pivot(this);
@@ -2002,6 +2234,9 @@ bool RemoteAccessible::RemoveItemFromSelection(uint32_t aIndex) {
 }
 
 bool RemoteAccessible::SelectAll() {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return false;
+  }
   if ((State() & states::MULTISELECTABLE) == 0) {
     return false;
   }
@@ -2019,6 +2254,9 @@ bool RemoteAccessible::SelectAll() {
 }
 
 bool RemoteAccessible::UnselectAll() {
+  if (RequestDomainsIfInactive(kNecessaryStateDomains)) {
+    return false;
+  }
   if ((State() & states::MULTISELECTABLE) == 0) {
     return false;
   }
@@ -2058,6 +2296,9 @@ TableCellAccessible* RemoteAccessible::AsTableCell() {
 }
 
 bool RemoteAccessible::TableIsProbablyForLayout() {
+  if (RequestDomainsIfInactive(CacheDomain::Table)) {
+    return false;
+  }
   if (mCachedFields) {
     if (auto layoutGuess =
             mCachedFields->GetAttribute<bool>(CacheKey::TableLayoutGuess)) {
@@ -2084,12 +2325,11 @@ nsTArray<int32_t>& RemoteAccessible::GetCachedHyperTextOffsets() {
       CacheKey::HyperTextOffsets);
 }
 
-void RemoteAccessible::SetCaretOffset(int32_t aOffset) {
-  Unused << mDoc->SendSetCaretOffset(mID, aOffset);
-}
-
 Maybe<int32_t> RemoteAccessible::GetIntARIAAttr(nsAtom* aAttrName) const {
-  if (RefPtr<const AccAttributes> attrs = GetCachedARIAAttributes()) {
+  if (RequestDomainsIfInactive(CacheDomain::ARIA)) {
+    return Nothing();
+  }
+  if (auto attrs = GetCachedARIAAttributes()) {
     if (auto val = attrs->GetAttribute<int32_t>(aAttrName)) {
       return val;
     }
@@ -2097,7 +2337,23 @@ Maybe<int32_t> RemoteAccessible::GetIntARIAAttr(nsAtom* aAttrName) const {
   return Nothing();
 }
 
+bool RemoteAccessible::GetStringARIAAttr(nsAtom* aAttrName,
+                                         nsAString& aAttrValue) const {
+  if (RequestDomainsIfInactive(CacheDomain::ARIA)) {
+    return false;
+  }
+  if (auto attrs = GetCachedARIAAttributes()) {
+    return attrs->GetAttribute(aAttrName, aAttrValue);
+  }
+
+  return false;
+}
+
 void RemoteAccessible::Language(nsAString& aLocale) {
+  if (RequestDomainsIfInactive(CacheDomain::Text)) {
+    return;
+  }
+
   if (IsHyperText() || IsText()) {
     if (auto attrs = GetCachedTextAttributes()) {
       attrs->GetAttribute(nsGkAtoms::language, aLocale);

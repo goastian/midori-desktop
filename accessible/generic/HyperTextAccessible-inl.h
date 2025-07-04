@@ -18,13 +18,6 @@
 
 namespace mozilla::a11y {
 
-inline void HyperTextAccessible::SetCaretOffset(int32_t aOffset) {
-  SetSelectionRange(aOffset, aOffset);
-  // XXX: Force cache refresh until a good solution for AT emulation of user
-  // input is implemented (AccessFu caret movement).
-  SelectionMgr()->UpdateCaretOffset(this, aOffset);
-}
-
 inline already_AddRefed<nsFrameSelection> HyperTextAccessible::FrameSelection()
     const {
   nsIFrame* frame = GetFrame();
@@ -33,8 +26,7 @@ inline already_AddRefed<nsFrameSelection> HyperTextAccessible::FrameSelection()
 
 inline dom::Selection* HyperTextAccessible::DOMSelection() const {
   RefPtr<nsFrameSelection> frameSelection = FrameSelection();
-  return frameSelection ? frameSelection->GetSelection(SelectionType::eNormal)
-                        : nullptr;
+  return frameSelection ? &frameSelection->NormalSelection() : nullptr;
 }
 
 }  // namespace mozilla::a11y

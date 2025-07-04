@@ -19,16 +19,13 @@
 - (id)moxRequired;
 
 // override
-- (NSNumber*)moxInvalid;
+- (NSString*)moxInvalid;
 
 // override
 - (NSNumber*)moxInsertionPointLineNumber;
 
 // override
 - (NSString*)moxRole;
-
-// override
-- (NSString*)moxSubrole;
 
 // override
 - (NSNumber*)moxNumberOfCharacters;

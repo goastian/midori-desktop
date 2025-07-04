@@ -7,6 +7,7 @@
 
 import ctypes
 import os
+import threading
 from ctypes import POINTER, byref
 from ctypes.wintypes import BOOL, HWND, LPARAM, POINT  # noqa: F401
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from comtypes import COMError, IServiceProvider
 CHILDID_SELF = 0
 COWAIT_DEFAULT = 0
 EVENT_OBJECT_FOCUS = 0x8005
+EVENT_SYSTEM_SCROLLINGSTART = 0x12
 GA_ROOT = 2
 NAVRELATION_EMBEDS = 0x1009
 OBJID_CLIENT = -4
@@ -61,6 +63,18 @@ uiaClient = comtypes.CoCreateInstance(
     interface=uiaMod.IUIAutomation,
     clsctx=comtypes.CLSCTX_INPROC_SERVER,
 )
+
+_threadLocal = threading.local()
+
+
+def setup():
+    if getattr(_threadLocal, "isSetup", False):
+        return
+    # We can do most setup at module level. However, because modules are cached
+    # and pywebsocket3 can serve requests on any thread, we need to do setup for
+    # each new thread here.
+    comtypes.CoInitialize()
+    _threadLocal.isSetup = True
 
 
 def AccessibleObjectFromWindow(hwnd, objectID=OBJID_CLIENT):
@@ -226,7 +240,7 @@ class WaitForWinEvent:
             ctypes.oledll.ole32.CoWaitForMultipleHandles(
                 COWAIT_DEFAULT, TIMEOUT, 1, handles, ctypes.byref(index)
             )
-        except WindowsError as e:
+        except OSError as e:
             if e.winerror == RPC_S_CALLPENDING:
                 raise TimeoutError("Timeout before desired event received")
             raise
@@ -368,7 +382,7 @@ class WaitForUiaEvent(comtypes.COMObject):
             ctypes.oledll.ole32.CoWaitForMultipleHandles(
                 COWAIT_DEFAULT, TIMEOUT, 1, handles, ctypes.byref(index)
             )
-        except WindowsError as e:
+        except OSError as e:
             if e.winerror == RPC_S_CALLPENDING:
                 raise TimeoutError("Timeout before desired event received")
             raise

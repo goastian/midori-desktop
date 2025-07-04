@@ -7,32 +7,14 @@
 #ifndef A11Y_STATISTICS_H_
 #define A11Y_STATISTICS_H_
 
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/AccessibleMetrics.h"
 
 namespace mozilla {
 namespace a11y {
 namespace statistics {
 
-inline void A11yInitialized() {
-  Telemetry::Accumulate(Telemetry::A11Y_INSTANTIATED_FLAG, true);
-}
-
 inline void A11yConsumers(uint32_t aConsumer) {
-  Telemetry::Accumulate(Telemetry::A11Y_CONSUMERS, aConsumer);
-}
-
-/**
- * Report that ISimpleDOM* has been used.
- */
-inline void ISimpleDOMUsed() {
-  Telemetry::Accumulate(Telemetry::A11Y_ISIMPLEDOM_USAGE_FLAG, true);
-}
-
-/**
- * Report that IAccessibleTable has been used.
- */
-inline void IAccessibleTableUsed() {
-  Telemetry::Accumulate(Telemetry::A11Y_IATABLE_USAGE_FLAG, true);
+  glean::a11y::consumers.AccumulateSingleSample(aConsumer);
 }
 
 }  // namespace statistics

@@ -8,6 +8,7 @@
 #include "DocAccessible-inl.h"
 #include "HyperTextAccessible.h"
 #include "HyperTextAccessible-inl.h"
+#include "nsAccessibilityService.h"
 #include "nsAccUtils.h"
 #include "nsCoreUtils.h"
 #include "nsEventShell.h"
@@ -46,13 +47,6 @@ void SelectionManager::ClearControlSelectionListener() {
     mCurrCtrlNormalSel->RemoveSelectionListener(this);
     mCurrCtrlNormalSel = nullptr;
   }
-
-  // Remove 'this' registered as selection listener for the spellcheck
-  // selection.
-  if (mCurrCtrlSpellSel) {
-    mCurrCtrlSpellSel->RemoveSelectionListener(this);
-    mCurrCtrlSpellSel = nullptr;
-  }
 }
 
 void SelectionManager::SetControlSelectionListener(dom::Element* aFocusedElm) {
@@ -69,39 +63,25 @@ void SelectionManager::SetControlSelectionListener(dom::Element* aFocusedElm) {
   if (!frameSel) return;
 
   // Register 'this' as selection listener for the normal selection.
-  Selection* normalSel = frameSel->GetSelection(SelectionType::eNormal);
-  normalSel->AddSelectionListener(this);
-  mCurrCtrlNormalSel = normalSel;
-
-  // Register 'this' as selection listener for the spell check selection.
-  Selection* spellSel = frameSel->GetSelection(SelectionType::eSpellCheck);
-  spellSel->AddSelectionListener(this);
-  mCurrCtrlSpellSel = spellSel;
+  Selection& normalSel = frameSel->NormalSelection();
+  normalSel.AddSelectionListener(this);
+  mCurrCtrlNormalSel = &normalSel;
 }
 
 void SelectionManager::AddDocSelectionListener(PresShell* aPresShell) {
   const nsFrameSelection* frameSel = aPresShell->ConstFrameSelection();
 
   // Register 'this' as selection listener for the normal selection.
-  Selection* normalSel = frameSel->GetSelection(SelectionType::eNormal);
-  normalSel->AddSelectionListener(this);
-
-  // Register 'this' as selection listener for the spell check selection.
-  Selection* spellSel = frameSel->GetSelection(SelectionType::eSpellCheck);
-  spellSel->AddSelectionListener(this);
+  Selection& normalSel = frameSel->NormalSelection();
+  normalSel.AddSelectionListener(this);
 }
 
 void SelectionManager::RemoveDocSelectionListener(PresShell* aPresShell) {
   const nsFrameSelection* frameSel = aPresShell->ConstFrameSelection();
 
   // Remove 'this' registered as selection listener for the normal selection.
-  Selection* normalSel = frameSel->GetSelection(SelectionType::eNormal);
-  normalSel->RemoveSelectionListener(this);
-
-  // Remove 'this' registered as selection listener for the spellcheck
-  // selection.
-  Selection* spellSel = frameSel->GetSelection(SelectionType::eSpellCheck);
-  spellSel->RemoveSelectionListener(this);
+  Selection& normalSel = frameSel->NormalSelection();
+  normalSel.RemoveSelectionListener(this);
 
   if (mCurrCtrlNormalSel) {
     if (mCurrCtrlNormalSel->GetPresShell() == aPresShell) {
@@ -109,15 +89,6 @@ void SelectionManager::RemoveDocSelectionListener(PresShell* aPresShell) {
       // if we are removing listeners for its PresShell.
       mCurrCtrlNormalSel->RemoveSelectionListener(this);
       mCurrCtrlNormalSel = nullptr;
-    }
-  }
-
-  if (mCurrCtrlSpellSel) {
-    if (mCurrCtrlSpellSel->GetPresShell() == aPresShell) {
-      // Remove 'this' registered as selection listener for the spellcheck
-      // selection if we are removing listeners for its PresShell.
-      mCurrCtrlSpellSel->RemoveSelectionListener(this);
-      mCurrCtrlSpellSel = nullptr;
     }
   }
 }
@@ -157,9 +128,10 @@ void SelectionManager::ProcessTextSelChangeEvent(AccEvent* aEvent) {
                                              selection->FocusOffset());
   mAccWithCaret = caretCntr;
   if (mCaretOffset != -1) {
+    TextLeafPoint caret = TextLeafPoint::GetCaret(caretCntr);
     RefPtr<AccCaretMoveEvent> caretMoveEvent =
         new AccCaretMoveEvent(caretCntr, mCaretOffset, selection->IsCollapsed(),
-                              caretCntr->IsCaretAtEndOfLine(),
+                              caret.mIsEndOfLineInsertionPoint,
                               event->GetGranularity(), aEvent->FromUserInput());
     nsEventShell::FireEvent(caretMoveEvent);
   }
@@ -224,23 +196,45 @@ void SelectionManager::ProcessSelectionChanged(SelData* aSelData) {
     RefPtr<AccEvent> event = new AccTextSelChangeEvent(
         text, selection, aSelData->mReason, aSelData->mGranularity);
     text->Document()->FireDelayedEvent(event);
-
-  } else if (selection->GetType() == SelectionType::eSpellCheck) {
-    // XXX: fire an event for container accessible of the focus/anchor range
-    // of the spelcheck selection.
-    text->Document()->FireDelayedEvent(
-        nsIAccessibleEvent::EVENT_TEXT_ATTRIBUTE_CHANGED, text);
   }
 }
 
-void SelectionManager::SpellCheckRangeChanged(const nsRange& aRange) {
-  // Events are fired in SelectionManager::NotifySelectionChanged. This is only
-  // used to push cache updates.
-  if (IPCAccessibilityActive()) {
-    dom::Document* doc = aRange.GetStartContainer()->OwnerDoc();
-    MOZ_ASSERT(doc);
-    TextLeafPoint::UpdateCachedSpellingError(doc, aRange);
+/* static */
+bool SelectionManager::SelectionRangeChanged(SelectionType aType,
+                                             const dom::AbstractRange& aRange) {
+  if (aType != SelectionType::eSpellCheck &&
+      aType != SelectionType::eTargetText &&
+      aType != SelectionType::eHighlight) {
+    // We don't need to handle range changes for this selection type.
+    return false;
   }
+  if (!GetAccService()) {
+    return false;
+  }
+  nsINode* start = aRange.GetStartContainer();
+  if (!start) {
+    // This can happen when the document is being cleaned up.
+    return false;
+  }
+  dom::Document* doc = start->OwnerDoc();
+  MOZ_ASSERT(doc);
+  nsINode* node = aRange.GetClosestCommonInclusiveAncestor();
+  if (!node) {
+    // Bug 1954751: This can happen when a Selection is being garbage collected,
+    // but it's unclear exactly what other circumstances are involved.
+    return false;
+  }
+  HyperTextAccessible* acc = nsAccUtils::GetTextContainer(node);
+  if (!acc) {
+    return true;
+  }
+  MOZ_ASSERT(acc->Document());
+  acc->Document()->FireDelayedEvent(
+      nsIAccessibleEvent::EVENT_TEXT_ATTRIBUTE_CHANGED, acc);
+  if (IPCAccessibilityActive()) {
+    TextLeafPoint::UpdateCachedTextOffsetAttributes(doc, aRange);
+  }
+  return true;
 }
 
 SelectionManager::~SelectionManager() = default;

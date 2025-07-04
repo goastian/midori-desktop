@@ -14,9 +14,11 @@
 #include "States.h"
 
 #include "nsAttrName.h"
+#include "nsGenericHTMLElement.h"
 #include "nsWhitespaceTokenizer.h"
 
 #include "mozilla/BinarySearch.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 
 #include "nsUnicharUtils.h"
@@ -847,7 +849,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     states::LINKED
   },
   { // list
-    nsGkAtoms::list_,
+    nsGkAtoms::list,
     roles::LIST,
     kUseMapRole,
     eNoValue,
@@ -881,7 +883,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     states::READONLY
   },
   { // log
-    nsGkAtoms::log_,
+    nsGkAtoms::log,
     roles::NOTHING,
     kUseNativeRole,
     eNoValue,
@@ -1017,7 +1019,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     kNoReqStates
   },
   { // note
-    nsGkAtoms::note_,
+    nsGkAtoms::note,
     roles::NOTE,
     kUseMapRole,
     eNoValue,
@@ -1158,7 +1160,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
   },
   { // searchbox
     nsGkAtoms::searchbox,
-    roles::ENTRY,
+    roles::SEARCHBOX,
     kUseMapRole,
     eNoValue,
     eActivateAction,
@@ -1170,7 +1172,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eARIAReadonlyOrEditable
   },
   { // separator
-    nsGkAtoms::separator_,
+    nsGkAtoms::separator,
     roles::SEPARATOR,
     kUseMapRole,
     eHasValueMinMaxIfFocusable,
@@ -1451,33 +1453,33 @@ static const AttrCharacteristics gWAIUnivAttrMap[] = {
   {nsGkAtoms::aria_checked,           ATTR_BYPASSOBJ | ATTR_VALTOKEN               }, /* exposes checkable obj attr */
   {nsGkAtoms::aria_colcount,          ATTR_VALINT                                  },
   {nsGkAtoms::aria_colindex,          ATTR_VALINT                                  },
-  {nsGkAtoms::aria_controls,          ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_controls,          ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   {nsGkAtoms::aria_current,  ATTR_BYPASSOBJ_IF_FALSE | ATTR_VALTOKEN | ATTR_GLOBAL },
-  {nsGkAtoms::aria_describedby,       ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_describedby,       ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   // XXX Ideally, aria-description shouldn't expose a description object
   // attribute (i.e. it should have ATTR_BYPASSOBJ). However, until the
   // description-from attribute is implemented (bug 1726087), clients such as
   // NVDA depend on the description object attribute to work out whether the
   // accDescription originated from aria-description.
   {nsGkAtoms::aria_description,                                        ATTR_GLOBAL },
-  {nsGkAtoms::aria_details,           ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_details,           ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   {nsGkAtoms::aria_disabled,          ATTR_BYPASSOBJ | ATTR_VALTOKEN | ATTR_GLOBAL },
   {nsGkAtoms::aria_dropeffect,                         ATTR_VALTOKEN | ATTR_GLOBAL },
-  {nsGkAtoms::aria_errormessage,      ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_errormessage,      ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   {nsGkAtoms::aria_expanded,          ATTR_BYPASSOBJ | ATTR_VALTOKEN               },
-  {nsGkAtoms::aria_flowto,            ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_flowto,            ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   {nsGkAtoms::aria_grabbed,                            ATTR_VALTOKEN | ATTR_GLOBAL },
   {nsGkAtoms::aria_haspopup,          ATTR_BYPASSOBJ_IF_FALSE | ATTR_VALTOKEN | ATTR_GLOBAL },
   {nsGkAtoms::aria_hidden,            ATTR_BYPASSOBJ | ATTR_VALTOKEN | ATTR_GLOBAL }, /* handled special way */
   {nsGkAtoms::aria_invalid,           ATTR_BYPASSOBJ | ATTR_VALTOKEN | ATTR_GLOBAL },
   {nsGkAtoms::aria_label,             ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
-  {nsGkAtoms::aria_labelledby,        ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_labelledby,        ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   {nsGkAtoms::aria_level,             ATTR_BYPASSOBJ                               }, /* handled via groupPosition */
   {nsGkAtoms::aria_live,                               ATTR_VALTOKEN | ATTR_GLOBAL },
   {nsGkAtoms::aria_modal,             ATTR_BYPASSOBJ | ATTR_VALTOKEN | ATTR_GLOBAL },
   {nsGkAtoms::aria_multiline,         ATTR_BYPASSOBJ | ATTR_VALTOKEN               },
   {nsGkAtoms::aria_multiselectable,   ATTR_BYPASSOBJ | ATTR_VALTOKEN               },
-  {nsGkAtoms::aria_owns,              ATTR_BYPASSOBJ                 | ATTR_GLOBAL },
+  {nsGkAtoms::aria_owns,              ATTR_BYPASSOBJ                 | ATTR_GLOBAL | ATTR_REFLECT_ELEMENTS },
   {nsGkAtoms::aria_orientation,                        ATTR_VALTOKEN               },
   {nsGkAtoms::aria_posinset,          ATTR_BYPASSOBJ                               }, /* handled via groupPosition */
   {nsGkAtoms::aria_pressed,           ATTR_BYPASSOBJ | ATTR_VALTOKEN               },
@@ -1517,7 +1519,8 @@ uint8_t aria::GetFirstValidRoleMapIndexExcluding(
     // Skip any roles that we aren't interested in.
     bool shouldSkip = false;
     for (nsStaticAtom* atomRole : aRolesToSkip) {
-      if (role.Equals(atomRole->GetUTF16String())) {
+      if (role.Equals(atomRole->GetUTF16String(),
+                      nsCaseInsensitiveStringComparator)) {
         shouldSkip = true;
         break;
       }
@@ -1531,7 +1534,7 @@ uint8_t aria::GetFirstValidRoleMapIndexExcluding(
       return Compare(role, aEntry.ARIARoleString(),
                      nsCaseInsensitiveStringComparator);
     };
-    if (BinarySearchIf(sWAIRoleMaps, 0, ArrayLength(sWAIRoleMaps), comparator,
+    if (BinarySearchIf(sWAIRoleMaps, 0, std::size(sWAIRoleMaps), comparator,
                        &idx)) {
       return idx;
     }
@@ -1581,7 +1584,7 @@ bool aria::IsRoleMapIndexValid(uint8_t aRoleMapIndex) {
     case LANDMARK_ROLE_MAP_ENTRY_INDEX:
       return true;
   }
-  return aRoleMapIndex < ArrayLength(sWAIRoleMaps);
+  return aRoleMapIndex < std::size(sWAIRoleMaps);
 }
 
 uint64_t aria::UniversalStatesFor(mozilla::dom::Element* aElement) {
@@ -1593,7 +1596,7 @@ uint64_t aria::UniversalStatesFor(mozilla::dom::Element* aElement) {
 }
 
 uint8_t aria::AttrCharacteristicsFor(nsAtom* aAtom) {
-  for (uint32_t i = 0; i < ArrayLength(gWAIUnivAttrMap); i++) {
+  for (uint32_t i = 0; i < std::size(gWAIUnivAttrMap); i++) {
     if (gWAIUnivAttrMap[i].attributeName == aAtom) {
       return gWAIUnivAttrMap[i].characteristics;
     }
@@ -1602,11 +1605,43 @@ uint8_t aria::AttrCharacteristicsFor(nsAtom* aAtom) {
   return 0;
 }
 
-bool aria::HasDefinedARIAHidden(nsIContent* aContent) {
+bool aria::IsValidARIAHidden(nsIContent* aContent) {
   return aContent && aContent->IsElement() &&
          nsAccUtils::ARIAAttrValueIs(aContent->AsElement(),
                                      nsGkAtoms::aria_hidden, nsGkAtoms::_true,
-                                     eCaseMatters);
+                                     eCaseMatters) &&
+         !ShouldIgnoreARIAHidden(aContent);
+}
+
+bool aria::IsValidARIAHidden(DocAccessible* aDocAcc) {
+  nsCOMPtr<nsIContent> docContent = aDocAcc->GetContent();
+  // First, check if our Doc Accessible has aria-hidden set on its content
+  bool isValid = IsValidARIAHidden(docContent);
+
+  // If our Doc Accessible was created using an element other than the
+  // root element, we need to verify the validity of any aria-hidden on
+  // the root element as well.
+  auto* rootElement = aDocAcc->DocumentNode()->GetRootElement();
+  if (docContent != rootElement) {
+    isValid |= IsValidARIAHidden(rootElement);
+  }
+
+  return isValid;
+}
+
+bool aria::ShouldIgnoreARIAHidden(nsIContent* aContent) {
+  if (!aContent) {
+    return false;
+  }
+
+  dom::Document* doc = aContent->OwnerDoc();
+  bool isValidElementType = (aContent == doc->GetDocumentElement());
+
+  if (auto docBody = doc->GetBody()) {
+    isValidElementType |= (aContent == docBody->AsContent());
+  }
+
+  return isValidElementType && doc->IsTopLevelContentDocument();
 }
 
 const nsRoleMapEntry* aria::GetRoleMap(const nsStaticAtom* aAriaRole) {
@@ -1615,7 +1650,7 @@ const nsRoleMapEntry* aria::GetRoleMap(const nsStaticAtom* aAriaRole) {
     return Compare(role, aEntry.ARIARoleString());
   };
   size_t idx;
-  if (BinarySearchIf(sWAIRoleMaps, 0, ArrayLength(sWAIRoleMaps), comparator,
+  if (BinarySearchIf(sWAIRoleMaps, 0, std::size(sWAIRoleMaps), comparator,
                      &idx)) {
     return GetRoleMapFromIndex(idx);
   }
@@ -1736,4 +1771,23 @@ bool AttrIterator::ExposeAttr(AccAttributes* aTargetAttrs) const {
     return true;
   }
   return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AttrWithCharacteristicsIterator class
+bool AttrWithCharacteristicsIterator::Next() {
+  for (mIdx++; mIdx < static_cast<int32_t>(std::size(gWAIUnivAttrMap));
+       mIdx++) {
+    if (gWAIUnivAttrMap[mIdx].characteristics & mCharacteristics) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+nsStaticAtom* AttrWithCharacteristicsIterator::AttrName() const {
+  return mIdx >= 0
+             ? const_cast<nsStaticAtom*>(gWAIUnivAttrMap[mIdx].attributeName)
+             : nullptr;
 }

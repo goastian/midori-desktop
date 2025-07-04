@@ -8,7 +8,7 @@
 #include "mozilla/ToString.h"
 #include "nsAtom.h"
 
-using namespace mozilla::a11y;
+namespace mozilla::a11y {
 
 bool AccAttributes::GetAttribute(nsAtom* aAttrName,
                                  nsAString& aAttrValue) const {
@@ -70,7 +70,12 @@ void AccAttributes::StringFromValueAndName(nsAtom* aAttrName,
         aValueString.Assign(*val);
       },
       [&aValueString](const RefPtr<AccAttributes>& val) {
-        aValueString.Assign(u"AccAttributes{...}");
+        if (val) {
+          aValueString.AppendPrintf("AccAttributes: %s",
+                                    ToString(*val).c_str());
+        } else {
+          aValueString.AssignASCII("<null>");
+        }
       },
       [&aValueString](const uint64_t& val) { aValueString.AppendInt(val); },
       [&aValueString](const UniquePtr<AccGroupInfo>& val) {
@@ -86,6 +91,25 @@ void AccAttributes::StringFromValueAndName(nsAtom* aAttrName,
             aValueString.Append(u", ");
           }
           aValueString.AppendInt(val[len - 1]);
+        } else {
+          // The array is empty
+          NS_WARNING(
+              "Hmm, should we have used a DeleteEntry() for this instead?");
+          aValueString.Append(u"[ ]");
+        }
+      },
+      [&aValueString](const nsTArray<TextOffsetAttribute>& val) {
+        if (const size_t len = val.Length()) {
+          for (size_t i = 0; i < len - 1; i++) {
+            aValueString.AppendPrintf("(%d, %d, ", val[i].mStartOffset,
+                                      val[i].mEndOffset);
+            aValueString.Append(nsAtomString(val[i].mAttribute));
+            aValueString.Append(u"), ");
+          }
+          aValueString.AppendPrintf("(%d, %d, ", val[len - 1].mStartOffset,
+                                    val[len - 1].mEndOffset);
+          aValueString.Append(nsAtomString(val[len - 1].mAttribute));
+          aValueString += ')';
         } else {
           // The array is empty
           NS_WARNING(
@@ -193,6 +217,11 @@ void AccAttributes::CopyTo(AccAttributes* aDest) const {
           // We don't copy arrays.
           MOZ_ASSERT_UNREACHABLE(
               "Trying to copy an AccAttributes containing an array");
+        },
+        [](const nsTArray<TextOffsetAttribute>& val) {
+          // We don't copy arrays.
+          MOZ_ASSERT_UNREACHABLE(
+              "Trying to copy an AccAttributes containing an array");
         });
   }
 }
@@ -200,23 +229,7 @@ void AccAttributes::CopyTo(AccAttributes* aDest) const {
 #ifdef A11Y_LOG
 void AccAttributes::DebugPrint(const char* aPrefix,
                                const AccAttributes& aAttributes) {
-  nsAutoString prettyString;
-  prettyString.AssignLiteral("{\n");
-  for (const auto& iter : aAttributes) {
-    nsAutoString name;
-    iter.NameAsString(name);
-
-    nsAutoString value;
-    iter.ValueAsString(value);
-    prettyString.AppendLiteral("  ");
-    prettyString.Append(name);
-    prettyString.AppendLiteral(": ");
-    prettyString.Append(value);
-    prettyString.AppendLiteral("\n");
-  }
-
-  prettyString.AppendLiteral("}");
-  printf("%s %s\n", aPrefix, NS_ConvertUTF16toUTF8(prettyString).get());
+  printf("%s %s\n", aPrefix, ToString(aAttributes).c_str());
 }
 #endif
 
@@ -268,3 +281,26 @@ size_t AccAttributes::Entry::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) {
 
   return size;
 }
+
+std::ostream& operator<<(std::ostream& aStream,
+                         const AccAttributes& aAttributes) {
+  if (aAttributes.Count() == 0) {
+    aStream << "{ empty }";
+    return aStream;
+  }
+  aStream << "{\n";
+  nsAutoStringN<2> separator{};
+  nsAutoString scratch;
+  for (const AccAttributes::Entry entry : aAttributes) {
+    aStream << separator << "  ";
+    entry.NameAsString(scratch);
+    aStream << scratch << ": ";
+    entry.ValueAsString(scratch);
+    aStream << scratch;
+    separator.AssignASCII(",\n");
+  }
+  aStream << "\n}";
+  return aStream;
+}
+
+}  // namespace mozilla::a11y

@@ -5,10 +5,12 @@ support-files = [
   "!/accessible/tests/browser/shared-head.js",
   "!/accessible/tests/mochitest/*.js",
   "!/accessible/tests/mochitest/letters.gif",
+  "!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js",
 ]
-prefs = ["javascript.options.asyncstack_capture_debuggee_only=false"]
 
 ["browser_accessible_moved.js"]
+
+["browser_bounds_change.js"]
 
 ["browser_caret_rect.js"]
 

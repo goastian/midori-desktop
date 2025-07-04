@@ -5,12 +5,18 @@ support-files = [
   "!/accessible/tests/browser/shared-head.js",
   "!/accessible/tests/mochitest/*.js",
   "!/accessible/tests/mochitest/letters.gif",
+  "!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js",
 ]
-prefs = ["javascript.options.asyncstack_capture_debuggee_only=false"]
+
+["browser_test_APZ.js"]
 
 ["browser_test_browser.js"]
 
 ["browser_test_general.js"]
+skip-if = [
+  "os == 'mac' && os_version == '10.15' && debug", # Bug 1781926
+  "os == 'mac' && os_version == '14.70' && debug", # Bug 1781926
+]
 
 ["browser_test_scroll_hittest.js"]
 

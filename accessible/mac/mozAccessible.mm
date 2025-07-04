@@ -43,7 +43,6 @@ using namespace mozilla::a11y;
 @interface mozAccessible ()
 - (BOOL)providesLabelNotTitle;
 
-- (void)maybePostLiveRegionChanged;
 - (void)maybePostA11yUtilNotification;
 @end
 
@@ -122,6 +121,10 @@ using namespace mozilla::a11y;
 - (void)stateChanged:(uint64_t)state isEnabled:(BOOL)enabled {
   if (state == states::BUSY) {
     [self moxPostNotification:@"AXElementBusyChanged"];
+  }
+
+  if (state == states::EXPANDED) {
+    [self moxPostNotification:@"AXExpandedChanged"];
   }
 }
 
@@ -384,7 +387,7 @@ using namespace mozilla::a11y;
   // and are instructed by the ARIA map to use the native host role.
   roleAtom = [self ARIARole];
 
-  if (roleAtom == nsGkAtoms::log_) {
+  if (roleAtom == nsGkAtoms::log) {
     return @"AXApplicationLog";
   }
 
@@ -408,7 +411,7 @@ struct RoleDescrMap {
   const nsString description;
 };
 
-static const RoleDescrMap sRoleDescrMap[] = {
+MOZ_RUNINIT static const RoleDescrMap sRoleDescrMap[] = {
     {@"AXApplicationAlert", u"alert"_ns},
     {@"AXApplicationAlertDialog", u"alertDialog"_ns},
     {@"AXApplicationDialog", u"dialog"_ns},
@@ -465,7 +468,7 @@ struct RoleDescrComparator {
 
   if (subrole) {
     size_t idx = 0;
-    if (BinarySearchIf(sRoleDescrMap, 0, ArrayLength(sRoleDescrMap),
+    if (BinarySearchIf(sRoleDescrMap, 0, std::size(sRoleDescrMap),
                        RoleDescrComparator(subrole), &idx)) {
       return utils::LocalizedString(sRoleDescrMap[idx].description);
     }
@@ -493,8 +496,9 @@ struct RoleDescrComparator {
   }
 
   if (![self providesLabelNotTitle]) {
-    NSArray* relations = [self getRelationsByType:RelationType::LABELLED_BY];
-    if ([relations count] == 1) {
+    Relation rel = mGeckoAccessible->RelationByType(RelationType::LABELLED_BY);
+    if (rel.Next() && !rel.Next()) {
+      // A single label relation.
       return nil;
     }
   }
@@ -507,6 +511,12 @@ struct RoleDescrComparator {
 
   // In some special cases we provide the name in the label (AXDescription).
   if ([self providesLabelNotTitle]) {
+    return nil;
+  }
+
+  Relation rel = mGeckoAccessible->RelationByType(RelationType::LABELLED_BY);
+  if (rel.Next() && !rel.Next()) {
+    // A single label relation. Use AXUITitleElement instead of AXTitle
     return nil;
   }
 
@@ -581,6 +591,26 @@ struct RoleDescrComparator {
   }
 
   return @YES;
+}
+
+- (NSString*)moxInvalid {
+  // For controls that support text input, we will expose
+  // the string value of `aria-invalid` when it exists.
+  // See mozTextAccessible::moxInvalid for that work.
+  // Unfortunately, NSBools do not autoconvert to usable
+  // NSStrings, so we expose "true" and "false" manually.
+  return ([self stateWithMask:states::INVALID] != 0) ? @"true" : @"false";
+}
+
+- (NSArray*)moxErrorMessageElements {
+  if (![[self moxInvalid] isEqualToString:@"false"]) {
+    NSArray* relations = [self getRelationsByType:RelationType::ERRORMSG];
+    if ([relations count] > 0) {
+      return relations;
+    }
+  }
+
+  return nil;
 }
 
 - (NSNumber*)moxFocused {
@@ -757,6 +787,28 @@ struct RoleDescrComparator {
   return [self moxEditableAncestor];
 }
 
+- (NSString*)moxLanguage {
+  MOZ_ASSERT(mGeckoAccessible);
+
+  nsAutoString lang;
+  mGeckoAccessible->Language(lang);
+
+  return nsCocoaUtils::ToNSString(lang);
+}
+
+- (NSString*)moxKeyShortcutsValue {
+  MOZ_ASSERT(mGeckoAccessible);
+
+  nsAutoString shortcut;
+
+  if (!mGeckoAccessible->GetStringARIAAttr(nsGkAtoms::aria_keyshortcuts,
+                                           shortcut)) {
+    return nil;
+  }
+
+  return nsCocoaUtils::ToNSString(shortcut);
+}
+
 #ifndef RELEASE_OR_BETA
 - (NSString*)moxMozDebugDescription {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
@@ -856,17 +908,6 @@ struct RoleDescrComparator {
   return NO;
 }
 
-- (void)maybePostLiveRegionChanged {
-  id<MOXAccessible> liveRegion =
-      [self moxFindAncestor:^BOOL(id<MOXAccessible> moxAcc, BOOL* stop) {
-        return [moxAcc moxIsLiveRegion];
-      }];
-
-  if (liveRegion) {
-    [liveRegion moxPostNotification:@"AXLiveRegionChanged"];
-  }
-}
-
 - (void)maybePostA11yUtilNotification {
   MOZ_ASSERT(mGeckoAccessible);
   // Sometimes we use a special live region to make announcements to the user.
@@ -879,40 +920,43 @@ struct RoleDescrComparator {
   // a random acc with the same ID) by checking:
   //  - The gecko acc is local, our a11y-announcement lives in browser.xhtml
   //  - The ID of the gecko acc is "a11y-announcement"
-  //  - The native acc is a direct descendent of the root
-  if (mGeckoAccessible->IsLocal() &&
-      [[self moxDOMIdentifier] isEqualToString:@"a11y-announcement"] &&
-      [[self moxParent] isKindOfClass:[mozRootAccessible class]]) {
-    // Our actual announcement should be stored as a child of the alert,
-    // so we verify a child exists, and then query that child below.
-    NSArray* children = [self moxChildren];
-    MOZ_ASSERT([children count] == 1 && children[0],
-               "A11yUtil event received, but no announcement found?");
-
-    mozAccessible* announcement = children[0];
-    NSString* key;
-    if ([announcement providesLabelNotTitle]) {
-      key = [announcement moxLabel];
+  //  - The native acc is a direct descendent of the chrome window (ChildView in
+  //  a non-headless context, mozRootAccessible in a headless context).
+  DocAccessible* maybeRoot = mGeckoAccessible->IsLocal()
+                                 ? mGeckoAccessible->AsLocal()->Document()
+                                 : nullptr;
+  if (maybeRoot && maybeRoot->IsRoot() &&
+      [[self moxDOMIdentifier] isEqualToString:@"a11y-announcement"]) {
+    nsAutoString name;
+    // Our actual announcement should be stored as a child of the alert.
+    if (Accessible* announcement = mGeckoAccessible->FirstChild()) {
+      announcement->Name(name);
     } else {
-      key = [announcement moxTitle];
+      MOZ_ASSERT_UNREACHABLE(
+          "A11yUtil event received, but no announcement found?");
     }
 
     NSDictionary* info = @{
-      NSAccessibilityAnnouncementKey : key ? key : @(""),
-      NSAccessibilityPriorityKey : @(NSAccessibilityPriorityMedium)
+      NSAccessibilityAnnouncementKey : name.IsEmpty()
+          ? @("")
+          : nsCocoaUtils::ToNSString(name),
+      // High priority means VO will stop what it is currently speaking
+      // to speak our announcement.
+      NSAccessibilityPriorityKey : @(NSAccessibilityPriorityHigh)
     };
-
-    id window = [self moxWindow];
 
     // This sends events via nsIObserverService to be consumed by our
     // mochitests. Normally we'd fire these events through moxPostNotification
-    // which takes care of this, but because the window we fetch above isn't
-    // derrived from MOXAccessibleBase, we do this (and post the notification)
-    // manually.
+    // which takes care of this, but because NSApp isn't derived
+    // from MOXAccessibleBase, we do this (and post the notification) manually.
+    // We used to fire this on the window, but per Chrome and Safari these
+    // notifs get dropped if fired on any non-main window. We now fire on NSApp
+    // to avoid this.
     xpcAccessibleMacEvent::FireEvent(
-        window, NSAccessibilityAnnouncementRequestedNotification, info);
+        GetNativeFromGeckoAccessible(maybeRoot),
+        NSAccessibilityAnnouncementRequestedNotification, info);
     NSAccessibilityPostNotificationWithUserInfo(
-        window, NSAccessibilityAnnouncementRequestedNotification, info);
+        NSApp, NSAccessibilityAnnouncementRequestedNotification, info);
   }
 }
 
@@ -933,6 +977,7 @@ struct RoleDescrComparator {
                                inserted:(BOOL)isInserted
                             inContainer:(Accessible*)container
                                      at:(int32_t)start {
+  [self maybePostValidationErrorChanged];
 }
 
 - (void)handleAccessibleEvent:(uint32_t)eventType {
@@ -985,15 +1030,40 @@ struct RoleDescrComparator {
     case nsIAccessibleEvent::EVENT_LIVE_REGION_REMOVED:
       mIsLiveRegion = false;
       break;
-    case nsIAccessibleEvent::EVENT_REORDER:
-      [self maybePostLiveRegionChanged];
-      break;
-    case nsIAccessibleEvent::EVENT_NAME_CHANGE: {
+    case nsIAccessibleEvent::EVENT_NAME_CHANGE:
       if (![self providesLabelNotTitle]) {
         [self moxPostNotification:NSAccessibilityTitleChangedNotification];
       }
-      [self maybePostLiveRegionChanged];
       break;
+    case nsIAccessibleEvent::EVENT_LIVE_REGION_CHANGED:
+      MOZ_ASSERT(mIsLiveRegion);
+      [self moxPostNotification:@"AXLiveRegionChanged"];
+      break;
+    case nsIAccessibleEvent::EVENT_ERRORMESSAGE_CHANGED: {
+      // aria-errormessage was changed. If aria-invalid != "true", it means that
+      // VoiceOver should (a) expose a new message or (b) remove an
+      // old message
+      if (![[self moxInvalid] isEqualToString:@"false"]) {
+        [self moxPostNotification:@"AXValidationErrorChanged"];
+      }
+
+      break;
+    }
+  }
+}
+
+- (void)maybePostValidationErrorChanged {
+  NSArray* relations =
+      [self getRelationsByType:(mozilla::a11y::RelationType::ERRORMSG_FOR)];
+  if ([relations count] > 0) {
+    // only fire AXValidationErrorChanged if related node is not
+    // `aria-invalid="false"`
+    for (mozAccessible* related : relations) {
+      NSString* invalidStr = [related moxInvalid];
+      if (![invalidStr isEqualToString:@"false"]) {
+        [self moxPostNotification:@"AXValidationErrorChanged"];
+        break;
+      }
     }
   }
 }

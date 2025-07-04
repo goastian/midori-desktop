@@ -24,6 +24,7 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/ScrollContainerFrame.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/TouchEvents.h"
 #include "nsView.h"
 #include "nsGkAtoms.h"
@@ -115,6 +116,9 @@ void nsCoreUtils::DispatchClickEvent(XULTreeElement* aTree, int32_t aRowIndex,
   int32_t cnvdY = presContext->CSSPixelsToDevPixels(tcY + int32_t(rect.y) + 1) +
                   presContext->AppUnitsToDevPixels(offset.y);
 
+  // This isn't needed once bug 1924790 is fixed.
+  tcElm->OwnerDoc()->NotifyUserGestureActivation();
+
   // XUL is just desktop, so there is no real reason for senfing touch events.
   DispatchMouseEvent(eMouseDown, cnvdX, cnvdY, tcElm, tcFrame, presShell,
                      rootWidget);
@@ -127,8 +131,8 @@ void nsCoreUtils::DispatchMouseEvent(EventMessage aMessage, int32_t aX,
                                      int32_t aY, nsIContent* aContent,
                                      nsIFrame* aFrame, PresShell* aPresShell,
                                      nsIWidget* aRootWidget) {
-  WidgetMouseEvent event(true, aMessage, aRootWidget, WidgetMouseEvent::eReal,
-                         WidgetMouseEvent::eNormal);
+  MOZ_ASSERT(!IsPointerEventMessage(aMessage));
+  WidgetMouseEvent event(true, aMessage, aRootWidget, WidgetMouseEvent::eReal);
 
   event.mRefPoint = LayoutDeviceIntPoint(aX, aY);
 
@@ -245,8 +249,8 @@ nsresult nsCoreUtils::ScrollSubstringTo(nsIFrame* aFrame, nsRange* aRange,
   selection->AddRangeAndSelectFramesAndNotifyListeners(*aRange, IgnoreErrors());
 
   selection->ScrollIntoView(nsISelectionController::SELECTION_ANCHOR_REGION,
-                            aVertical, aHorizontal,
-                            Selection::SCROLL_SYNCHRONOUS);
+                            aVertical, aHorizontal, ScrollFlags::None,
+                            SelectionScrollMode::SyncNoFlush);
 
   selection->CollapseToStart(IgnoreErrors());
 
@@ -654,4 +658,20 @@ Element* nsCoreUtils::GetAriaActiveDescendantElement(Element* aElement) {
   }
 
   return nullptr;
+}
+
+bool nsCoreUtils::IsTrimmedWhitespaceBeforeHardLineBreak(nsIFrame* aFrame) {
+  if (!aFrame->GetRect().IsEmpty() ||
+      !aFrame->HasAnyStateBits(TEXT_END_OF_LINE)) {
+    return false;
+  }
+  // Normally, accessibility calls nsIFrame::GetRenderedText with
+  // TrailingWhitespace::NoTrim. Using TrailingWhitespace::Trim instead trims 0
+  // width whitespace before a hard line break, resulting in an empty string if
+  // that is all the frame contains. Note that TrailingWhitespace::Trim does
+  // *not* trim whitespace before a soft line break (wrapped line).
+  nsIFrame::RenderedText text = aFrame->GetRenderedText(
+      0, UINT32_MAX, nsIFrame::TextOffsetType::OffsetsInContentText,
+      nsIFrame::TrailingWhitespace::Trim);
+  return text.mString.IsEmpty();
 }

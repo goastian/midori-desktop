@@ -395,6 +395,73 @@ addAccessibleTask(
       kOk
     );
 
+    // BrowserTestUtils.synthesizeMouseAtPoint takes coordinates relative to the document.
+    const docX = {};
+    const docY = {};
+    docAcc.getBounds(docX, docY, {}, {});
+    let charX = {};
+    let charY = {};
+    textarea.getCharacterExtents(
+      0,
+      charX,
+      charY,
+      {},
+      {},
+      COORDTYPE_SCREEN_RELATIVE
+    );
+    caretMoved = waitForEvent(EVENT_TEXT_CARET_MOVED, textarea);
+    await BrowserTestUtils.synthesizeMouseAtPoint(
+      charX.value - docX.value,
+      charY.value - docY.value,
+      {},
+      docAcc.browsingContext
+    );
+    evt = await caretMoved;
+    is(textarea.caretOffset, 0, "Caret offset is 0 after click");
+    evt.QueryInterface(nsIAccessibleCaretMoveEvent);
+    ok(!evt.isAtEndOfLine, "Caret is not at end of line");
+    testTextAtOffset(
+      kCaretOffset,
+      BOUNDARY_CHAR,
+      "a",
+      0,
+      1,
+      textarea,
+      kOk,
+      kOk,
+      kOk
+    );
+    textarea.getCharacterExtents(
+      1,
+      charX,
+      charY,
+      {},
+      {},
+      COORDTYPE_SCREEN_RELATIVE
+    );
+    caretMoved = waitForEvent(EVENT_TEXT_CARET_MOVED, textarea);
+    await BrowserTestUtils.synthesizeMouseAtPoint(
+      charX.value - docX.value,
+      charY.value - docY.value,
+      {},
+      docAcc.browsingContext
+    );
+    evt = await caretMoved;
+    is(textarea.caretOffset, 1, "Caret offset is 1 after click");
+    evt.QueryInterface(nsIAccessibleCaretMoveEvent);
+    ok(!evt.isAtEndOfLine, "Caret is not at end of line");
+    testTextAtOffset(
+      kCaretOffset,
+      BOUNDARY_CHAR,
+      "b",
+      1,
+      2,
+      textarea,
+      kOk,
+      kOk,
+      kOk
+    );
+
     const empty = findAccessibleChildByID(docAcc, "empty", [nsIAccessibleText]);
     caretMoved = waitForEvent(EVENT_TEXT_CARET_MOVED, empty);
     empty.takeFocus();
@@ -503,4 +570,38 @@ addAccessibleTask(
     is(link.caretOffset, 0, "link caret correct");
   },
   { chrome: true, topLevel: true, iframe: true, remoteIframe: true }
+);
+
+/**
+ * Test setting the caret in a contentEditable which is aria-hidden. Arguably,
+ * we shouldn't fire caret events at all in this case, but really, this is just
+ * bad authoring and shouldn't happen. We just need to make sure that the
+ * offsets we do fire are at least valid so we don't trigger assertions or
+ * confuse clients.
+ */
+addAccessibleTask(
+  `
+<div contenteditable id="editable" aria-hidden="true">abcd</div>
+<p></p>
+  `,
+  async function testSetCaretInAriaHidden(browser, docAcc) {
+    info("Focusing editable");
+    let moved = waitForEvent(EVENT_TEXT_CARET_MOVED, docAcc);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("editable").focus();
+    });
+    let evt = await moved;
+    evt.QueryInterface(nsIAccessibleCaretMoveEvent);
+    is(evt.caretOffset, 0, "Caret event is for offset 0");
+
+    info("Setting caret in editable to c");
+    moved = waitForEvent(EVENT_TEXT_CARET_MOVED, docAcc);
+    await invokeContentTask(browser, [], () => {
+      const text = content.document.getElementById("editable").firstChild;
+      content.getSelection().setBaseAndExtent(text, 3, text, 3);
+    });
+    evt = await moved;
+    evt.QueryInterface(nsIAccessibleCaretMoveEvent);
+    is(evt.caretOffset, 0, "Caret event is for offset 0");
+  }
 );

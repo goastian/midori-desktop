@@ -427,6 +427,21 @@ static void AppendTextToAttributedString(
   [aAttributedString appendAttributedString:substr];
 }
 
+static RefPtr<AccAttributes> GetTextAttributes(TextLeafPoint aPoint) {
+  RefPtr<AccAttributes> attrs = aPoint.GetTextAttributes();
+  // Mac expects some object properties to be exposed as text attributes. We
+  // add these here rather than in utils::StringAttributesFromAccAttributes so
+  // we can use AccAttributes::Equal to determine whether we need to start a new
+  // run, rather than needing additional special case comparisons.
+  for (Accessible* ancestor = aPoint.mAcc->Parent();
+       ancestor && !ancestor->IsDoc(); ancestor = ancestor->Parent()) {
+    if (ancestor->Role() == roles::MARK) {
+      attrs->SetAttribute(nsGkAtoms::mark, true);
+    }
+  }
+  return attrs;
+}
+
 NSAttributedString* GeckoTextMarkerRange::AttributedText() const {
   NSMutableAttributedString* str =
       [[[NSMutableAttributedString alloc] init] autorelease];
@@ -449,47 +464,39 @@ NSAttributedString* GeckoTextMarkerRange::AttributedText() const {
           : mRange;
 
   nsAutoString text;
-  RefPtr<AccAttributes> currentRun = range.Start().GetTextAttributes();
-  Accessible* runAcc = range.Start().mAcc;
-  for (TextLeafRange segment : range) {
-    TextLeafPoint start = segment.Start();
-    TextLeafPoint attributesNext;
+  TextLeafPoint start = range.Start();
+  const TextLeafPoint stop = range.End();
+  RefPtr<AccAttributes> currentRun = GetTextAttributes(start);
+  Accessible* runAcc = start.mAcc;
+  do {
+    TextLeafPoint attributesNext = start.FindTextAttrsStart(eDirNext, false);
+    if (stop < attributesNext) {
+      attributesNext = stop;
+    }
     if (start.mAcc->IsMenuPopup() &&
         (start.mAcc->State() & states::COLLAPSED)) {
       // XXX: Menu collapsed XUL menu popups are in our tree and we need to skip
       // them.
+      start = attributesNext;
       continue;
     }
-    do {
-      if (start.mAcc->IsText()) {
-        attributesNext = start.FindTextAttrsStart(eDirNext, false);
-      } else {
-        // If this segment isn't a text leaf, but another kind of inline element
-        // like a control, just consider this full segment one "attributes run".
-        attributesNext = segment.End();
-      }
-      if (attributesNext == start) {
-        // XXX: FindTextAttrsStart should not return the same point.
-        break;
-      }
-      RefPtr<AccAttributes> attributes = start.GetTextAttributes();
-      if (!currentRun || !attributes || !attributes->Equal(currentRun)) {
-        // If currentRun is null this is a non-text control and we will
-        // append a run with no text or attributes, just an AXAttachment
-        // referencing this accessible.
-        AppendTextToAttributedString(str, runAcc, text, currentRun);
-        text.Truncate();
-        currentRun = attributes;
-        runAcc = start.mAcc;
-      }
-      TextLeafPoint end =
-          attributesNext < segment.End() ? attributesNext : segment.End();
-      start.mAcc->AppendTextTo(text, start.mOffset,
-                               end.mOffset - start.mOffset);
-      start = attributesNext;
-
-    } while (attributesNext < segment.End());
-  }
+    RefPtr<AccAttributes> attributes = GetTextAttributes(start);
+    if (!currentRun || !attributes || !attributes->Equal(currentRun)) {
+      // If currentRun is null this is a non-text control and we will
+      // append a run with no text or attributes, just an AXAttachment
+      // referencing this accessible.
+      AppendTextToAttributedString(str, runAcc, text, currentRun);
+      text.Truncate();
+      currentRun = attributes;
+      runAcc = start.mAcc;
+    }
+    for (TextLeafRange segment : TextLeafRange(start, attributesNext)) {
+      TextLeafPoint segStart = segment.Start();
+      segStart.mAcc->AppendTextTo(text, segStart.mOffset,
+                                  segment.End().mOffset - segStart.mOffset);
+    }
+    start = attributesNext;
+  } while (start != stop);
 
   if (!text.IsEmpty()) {
     AppendTextToAttributedString(str, runAcc, text, currentRun);

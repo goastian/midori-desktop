@@ -43,6 +43,13 @@ void nsAccUtils::SetAccGroupAttrs(AccAttributes* aAttributes, int32_t aLevel,
   }
 }
 
+void nsAccUtils::SetAccGroupAttrs(AccAttributes* aAttributes,
+                                  Accessible* aAcc) {
+  GroupPos groupPos = aAcc->GroupPosition();
+  nsAccUtils::SetAccGroupAttrs(aAttributes, groupPos.level, groupPos.setSize,
+                               groupPos.posInSet);
+}
+
 int32_t nsAccUtils::GetLevelForXULContainerItem(nsIContent* aContent) {
   nsCOMPtr<nsIDOMXULContainerItemElement> item =
       aContent->AsElement()->AsXULContainerItem();
@@ -84,6 +91,7 @@ void nsAccUtils::SetLiveContainerAttributes(AccAttributes* aAttributes,
       if (live.IsEmpty()) {
         // aria-live wasn't explicitly set. See if an aria-live value is implied
         // by an ARIA role or markup element.
+        MOZ_ASSERT(GetAccService());
         if (roleMap) {
           GetLiveAttrValue(roleMap->liveAttRule, live);
         } else if (nsStaticAtom* value = GetAccService()->MarkupAttribute(
@@ -151,7 +159,7 @@ nsStaticAtom* nsAccUtils::NormalizeARIAToken(const AttrArray* aAttrs,
 
   if (aAttr == nsGkAtoms::aria_current) {
     static AttrArray::AttrValuesArray tokens[] = {
-        nsGkAtoms::page, nsGkAtoms::step, nsGkAtoms::location_,
+        nsGkAtoms::page, nsGkAtoms::step, nsGkAtoms::location,
         nsGkAtoms::date, nsGkAtoms::time, nsGkAtoms::_true,
         nullptr};
     int32_t idx =
@@ -415,7 +423,8 @@ bool nsAccUtils::MustPrune(Accessible* aAccessible) {
   MOZ_ASSERT(aAccessible);
   roles::Role role = aAccessible->Role();
 
-  if (role == roles::SLIDER || role == roles::PROGRESSBAR) {
+  if (role == roles::SLIDER || role == roles::PROGRESSBAR ||
+      role == roles::METER) {
     // Always prune the tree for sliders and progressbars, as it doesn't make
     // sense for either to have descendants. Per the ARIA spec, children of
     // these elements are presentational. They also confuse NVDA.
@@ -448,8 +457,10 @@ void nsAccUtils::GetLiveRegionSetting(Accessible* aAcc, nsAString& aLive) {
   // by an ARIA role or markup element.
   if (const nsRoleMapEntry* roleMap = aAcc->ARIARoleMap()) {
     GetLiveAttrValue(roleMap->liveAttRule, aLive);
-  } else if (nsStaticAtom* value =
-                 GetAccService()->MarkupAttribute(aAcc, nsGkAtoms::aria_live)) {
+  } else if (nsStaticAtom* value = GetAccService()
+                                       ? GetAccService()->MarkupAttribute(
+                                             aAcc, nsGkAtoms::aria_live)
+                                       : nullptr) {
     value->ToString(aLive);
   }
 }
@@ -568,6 +579,22 @@ const nsAttrValue* nsAccUtils::GetARIAAttr(dom::Element* aElement,
   return defaults->GetAttr(aName, kNameSpaceID_None);
 }
 
+bool nsAccUtils::GetARIAElementsAttr(dom::Element* aElement, nsAtom* aName,
+                                     nsTArray<dom::Element*>& aElements) {
+  if (aElement->HasAttr(aName)) {
+    aElement->GetExplicitlySetAttrElements(aName, aElements);
+    return true;
+  }
+
+  if (auto* element = nsGenericHTMLElement::FromNode(aElement)) {
+    if (auto* internals = element->GetInternals()) {
+      return internals->GetAttrElements(aName, aElements);
+    }
+  }
+
+  return false;
+}
+
 bool nsAccUtils::ARIAAttrValueIs(dom::Element* aElement, const nsAtom* aName,
                                  const nsAString& aValue,
                                  nsCaseTreatment aCaseSensitive) {
@@ -613,4 +640,14 @@ int32_t nsAccUtils::FindARIAAttrValueIn(dom::Element* aElement,
                                       aCaseSensitive);
   }
   return index;
+}
+
+bool nsAccUtils::IsEditableARIACombobox(const LocalAccessible* aAccessible) {
+  const nsRoleMapEntry* roleMap = aAccessible->ARIARoleMap();
+  if (!roleMap || roleMap->role != roles::EDITCOMBOBOX) {
+    return false;
+  }
+
+  return aAccessible->IsTextField() ||
+         aAccessible->Elm()->State().HasState(dom::ElementState::READWRITE);
 }

@@ -7,12 +7,14 @@
 #include "ARIAMap.h"
 #include "nsAccUtils.h"
 #include "nsIURI.h"
+#include "Pivot.h"
 #include "Relation.h"
 #include "States.h"
 #include "mozilla/a11y/FocusManager.h"
 #include "mozilla/a11y/HyperTextAccessibleBase.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/Components.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "nsIStringBundle.h"
 
 #ifdef A11Y_LOG
@@ -76,6 +78,39 @@ bool Accessible::IsBefore(const Accessible* aAcc) const {
   return otherPos > 0;
 }
 
+const Accessible* Accessible::GetClosestCommonInclusiveAncestor(
+    const Accessible* aAcc) const {
+  if (aAcc == this) {
+    return this;
+  }
+
+  // Build the chain of parents.
+  const Accessible* thisAnc = this;
+  const Accessible* otherAnc = aAcc;
+  AutoTArray<const Accessible*, 30> thisAncs, otherAncs;
+  do {
+    thisAncs.AppendElement(thisAnc);
+    thisAnc = thisAnc->Parent();
+  } while (thisAnc);
+  do {
+    otherAncs.AppendElement(otherAnc);
+    otherAnc = otherAnc->Parent();
+  } while (otherAnc);
+
+  // Find where the parent chain differs.
+  size_t thisPos = thisAncs.Length(), otherPos = otherAncs.Length();
+  const Accessible* common = nullptr;
+  for (size_t len = std::min(thisPos, otherPos); len > 0; --len) {
+    const Accessible* thisChild = thisAncs.ElementAt(--thisPos);
+    const Accessible* otherChild = otherAncs.ElementAt(--otherPos);
+    if (thisChild != otherChild) {
+      break;
+    }
+    common = thisChild;
+  }
+  return common;
+}
+
 Accessible* Accessible::FocusedChild() {
   Accessible* doc = nsAccUtils::DocumentFor(this);
   Accessible* child = doc->FocusedChild();
@@ -133,7 +168,8 @@ bool Accessible::IsTextRole() {
                        roleMapEntry->role == roles::IMAGE_MAP ||
                        roleMapEntry->role == roles::SLIDER ||
                        roleMapEntry->role == roles::PROGRESSBAR ||
-                       roleMapEntry->role == roles::SEPARATOR)) {
+                       roleMapEntry->role == roles::SEPARATOR ||
+                       roleMapEntry->role == roles::METER)) {
     return false;
   }
 
@@ -418,16 +454,6 @@ already_AddRefed<nsIURI> Accessible::AnchorURIAt(uint32_t aAnchorIndex) const {
   return nullptr;
 }
 
-bool Accessible::IsSearchbox() const {
-  const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
-  if (roleMapEntry && roleMapEntry->Is(nsGkAtoms::searchbox)) {
-    return true;
-  }
-
-  RefPtr<nsAtom> inputType = InputType();
-  return inputType == nsGkAtoms::search;
-}
-
 #ifdef A11Y_LOG
 void Accessible::DebugDescription(nsCString& aDesc) const {
   aDesc.Truncate();
@@ -477,7 +503,8 @@ void Accessible::DebugPrint(const char* aPrefix,
 
 #endif
 
-void Accessible::TranslateString(const nsString& aKey, nsAString& aStringOut) {
+void Accessible::TranslateString(const nsString& aKey, nsAString& aStringOut,
+                                 const nsTArray<nsString>& aParams) {
   nsCOMPtr<nsIStringBundleService> stringBundleService =
       components::StringBundle::Service();
   if (!stringBundleService) return;
@@ -489,8 +516,14 @@ void Accessible::TranslateString(const nsString& aKey, nsAString& aStringOut) {
   if (!stringBundle) return;
 
   nsAutoString xsValue;
-  nsresult rv = stringBundle->GetStringFromName(
-      NS_ConvertUTF16toUTF8(aKey).get(), xsValue);
+  nsresult rv = NS_OK;
+  if (aParams.IsEmpty()) {
+    rv = stringBundle->GetStringFromName(NS_ConvertUTF16toUTF8(aKey).get(),
+                                         xsValue);
+  } else {
+    rv = stringBundle->FormatStringFromName(NS_ConvertUTF16toUTF8(aKey).get(),
+                                            aParams, xsValue);
+  }
   if (NS_SUCCEEDED(rv)) aStringOut.Assign(xsValue);
 }
 
@@ -592,9 +625,6 @@ nsStaticAtom* Accessible::ComputedARIARole() const {
     // map to a unique Gecko role.
     return roleMap->roleAtom;
   }
-  if (IsSearchbox()) {
-    return nsGkAtoms::searchbox;
-  }
   role geckoRole = Role();
   if (geckoRole == roles::LANDMARK) {
     // Landmark role from native markup; e.g. <main>, <nav>.
@@ -650,7 +680,16 @@ void Accessible::ApplyImplicitState(uint64_t& aState) const {
       }
     } else if (aState & states::FOCUSED) {
       Accessible* container = nsAccUtils::GetSelectableContainer(this, aState);
-      if (container && !(container->State() & states::MULTISELECTABLE)) {
+      AUTO_PROFILER_MARKER_TEXT(
+          "Accessible::ApplyImplicitState::ImplicitSelection", A11Y, {}, ""_ns);
+      auto HasExplicitSelection = [](Accessible* aAcc) {
+        Pivot p = Pivot(aAcc);
+        PivotARIASelectedRule rule;
+        return p.First(rule) != nullptr;
+      };
+
+      if (container && !(container->State() & states::MULTISELECTABLE) &&
+          !HasExplicitSelection(container)) {
         aState |= states::SELECTED;
       }
     }

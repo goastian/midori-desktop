@@ -98,11 +98,6 @@ class DocAccessibleParent : public RemoteAccessible,
   virtual mozilla::ipc::IPCResult RecvEvent(const uint64_t& aID,
                                             const uint32_t& aType) override;
 
-  virtual mozilla::ipc::IPCResult RecvShowEvent(
-      nsTArray<AccessibleData>&& aNewTree, const bool& aEventSuppressed,
-      const bool& aComplete, const bool& aFromUser) override;
-  virtual mozilla::ipc::IPCResult RecvHideEvent(const uint64_t& aRootID,
-                                                const bool& aFromUser) override;
   mozilla::ipc::IPCResult RecvStateChangeEvent(const uint64_t& aID,
                                                const uint64_t& aState,
                                                const bool& aEnabled) final;
@@ -113,10 +108,10 @@ class DocAccessibleParent : public RemoteAccessible,
       const bool& aIsAtEndOfLine, const int32_t& aGranularity,
       const bool& aFromUser) final;
 
-  virtual mozilla::ipc::IPCResult RecvTextChangeEvent(
-      const uint64_t& aID, const nsAString& aStr, const int32_t& aStart,
-      const uint32_t& aLen, const bool& aIsInsert,
-      const bool& aFromUser) override;
+  virtual mozilla::ipc::IPCResult RecvMutationEvents(
+      nsTArray<MutationEventData>&& aData) override;
+
+  virtual mozilla::ipc::IPCResult RecvRequestAckMutationEvents() override;
 
   virtual mozilla::ipc::IPCResult RecvFocusEvent(
       const uint64_t& aID, const LayoutDeviceIntRect& aCaretRect) override;
@@ -157,8 +152,11 @@ class DocAccessibleParent : public RemoteAccessible,
       NotNull<PDocAccessibleParent*> aChildDoc, const uint64_t& aID) override;
 
   void Unbind() {
-    if (DocAccessibleParent* parent = ParentDoc()) {
-      parent->RemoveChildDoc(this);
+    if (RemoteAccessible* parent = RemoteParent()) {
+      DocAccessibleParent* parentDoc = parent->Document();
+      parent->ClearChildDoc(this);
+      DebugOnly<bool> result = parentDoc->mChildDocs.RemoveElement(mActorID);
+      MOZ_ASSERT(result);
     }
 
     SetParent(nullptr);
@@ -173,7 +171,6 @@ class DocAccessibleParent : public RemoteAccessible,
    * of the document this object represents.
    */
   DocAccessibleParent* ParentDoc() const;
-  static const uint64_t kNoParentDoc = UINT64_MAX;
 
   /**
    * Called when a document in a content process notifies the main process of a
@@ -193,21 +190,6 @@ class DocAccessibleParent : public RemoteAccessible,
 
   void RemovePendingOOPChildDoc(dom::BrowserBridgeParent* aBridge) {
     mPendingOOPChildDocs.Remove(aBridge);
-  }
-
-  /*
-   * Called when the document in the content process this object represents
-   * notifies the main process a child document has been removed.
-   */
-  void RemoveChildDoc(DocAccessibleParent* aChildDoc) {
-    RemoteAccessible* parent = aChildDoc->RemoteParent();
-    MOZ_ASSERT(parent);
-    if (parent) {
-      aChildDoc->RemoteParent()->ClearChildDoc(aChildDoc);
-    }
-    DebugOnly<bool> result = mChildDocs.RemoveElement(aChildDoc->mActorID);
-    aChildDoc->mParentDoc = kNoParentDoc;
-    MOZ_ASSERT(result);
   }
 
   void RemoveAccessible(RemoteAccessible* aAccessible) {
@@ -356,8 +338,17 @@ class DocAccessibleParent : public RemoteAccessible,
    */
   void ShutdownOrPrepareForMove(RemoteAccessible* aAcc);
 
+  mozilla::ipc::IPCResult ProcessShowEvent(nsTArray<AccessibleData>&& aNewTree,
+                                           const bool& aEventSuppressed,
+                                           const bool& aComplete,
+                                           const bool& aFromUser);
+  mozilla::ipc::IPCResult ProcessHideEvent(const uint64_t& aRootID,
+                                           const bool& aFromUser);
+  mozilla::ipc::IPCResult ProcessTextChangeEvent(
+      const uint64_t& aID, const nsAString& aStr, const int32_t& aStart,
+      const uint32_t& aLen, const bool& aIsInsert, const bool& aFromUser);
+
   nsTArray<uint64_t> mChildDocs;
-  uint64_t mParentDoc;
 
 #if defined(XP_WIN)
   // The handle associated with the emulated window that contains this document

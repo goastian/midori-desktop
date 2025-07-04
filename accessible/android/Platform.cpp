@@ -19,7 +19,7 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
-static nsTHashMap<nsStringHashKey, nsString> sLocalizedStrings;
+MOZ_RUNINIT static nsTHashMap<nsStringHashKey, nsString> sLocalizedStrings;
 
 void a11y::PlatformInit() {
   nsresult rv = NS_OK;
@@ -162,7 +162,7 @@ void a11y::PlatformCaretMoveEvent(Accessible* aTarget, int32_t aOffset,
   if (!aTarget->IsDoc() && !aFromUser && !aIsSelectionCollapsed) {
     // Pivot to the caret's position if it has an expanded selection.
     // This is used mostly for find in page.
-    Accessible* leaf = TextLeafPoint::GetCaret(aTarget).ActualizeCaret().mAcc;
+    Accessible* leaf = TextLeafPoint::GetCaret(aTarget).mAcc;
     MOZ_ASSERT(leaf);
     if (leaf) {
       if (Accessible* result = AccessibleWrap::DoPivot(
@@ -231,4 +231,12 @@ bool a11y::LocalizeString(const nsAString& aToken, nsAString& aLocalized) {
   }
 
   return !!str;
+}
+
+uint64_t a11y::GetCacheDomainsForKnownClients(uint64_t aCacheDomains) {
+  Unused << aCacheDomains;
+
+  // XXX: Respond to clients such as TalkBack. For now, be safe and default to
+  // caching all domains.
+  return CacheDomain::All;
 }

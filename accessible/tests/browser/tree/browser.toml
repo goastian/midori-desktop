@@ -7,7 +7,7 @@ support-files = [
   "!/accessible/tests/mochitest/moz.png",
 ]
 prefs = [
-  "javascript.options.asyncstack_capture_debuggee_only=false",
+  "dom.viewTransitions.enabled=true",
   "layout.css.content.alt-text.enabled=true",
 ]
 
@@ -29,8 +29,18 @@ skip-if = [
 
 ["browser_link.js"]
 
+["browser_test_aria_hidden.js"]
+
+["browser_test_aria_hidden_iframe.js"]
+
+["browser_test_aria_hidden_svg.js"]
+
 ["browser_searchbar.js"]
+
+["browser_select.js"]
 
 ["browser_shadowdom.js"]
 
 ["browser_test_nsIAccessibleDocument_URL.js"]
+
+["browser_view_transition.js"]

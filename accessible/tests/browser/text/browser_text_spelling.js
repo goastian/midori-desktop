@@ -6,10 +6,7 @@
 
 /* import-globals-from ../../mochitest/text.js */
 /* import-globals-from ../../mochitest/attributes.js */
-loadScripts(
-  { name: "text.js", dir: MOCHITESTS_DIR },
-  { name: "attributes.js", dir: MOCHITESTS_DIR }
-);
+loadScripts({ name: "attributes.js", dir: MOCHITESTS_DIR });
 
 const boldAttrs = { "font-weight": "700" };
 
@@ -18,29 +15,7 @@ const boldAttrs = { "font-weight": "700" };
  * check if those ranges match the misspelled ranges in the accessible.
  */
 function misspelledRangesMatch(acc, ranges) {
-  let offset = 0;
-  let expectedRanges = [...ranges];
-  let charCount = acc.characterCount;
-  while (offset < charCount) {
-    let start = {};
-    let end = {};
-    let attributes = acc.getTextAttributes(false, offset, start, end);
-    offset = end.value;
-    try {
-      if (attributes.getStringProperty("invalid") == "spelling") {
-        let expected = expectedRanges.shift();
-        if (
-          !expected ||
-          expected[0] != start.value ||
-          expected[1] != end.value
-        ) {
-          return false;
-        }
-      }
-    } catch (err) {}
-  }
-
-  return !expectedRanges.length;
+  return textAttrRangesMatch(acc, ranges, { invalid: "spelling" });
 }
 
 /*

@@ -67,3 +67,59 @@ addAccessibleTask(
   },
   { iframe: true, remoteIframe: true }
 );
+
+/**
+ * Test whitespace before hard and soft line breaks.
+ */
+addAccessibleTask(
+  `
+<div id="hardContainer"><span>a</span> <span id="b" hidden>b</span></div>
+<div id="softContainer" style="width: 1ch; font-family: monospace;">
+  <span>c</span> <span>d</span>
+</div>
+  `,
+  async function testBeforeLineBreaks(browser, docAcc) {
+    const hardContainer = findAccessibleChildByID(docAcc, "hardContainer");
+    testAccessibleTree(hardContainer, {
+      role: ROLE_SECTION,
+      children: [{ role: ROLE_TEXT_LEAF, name: "a" }],
+    });
+
+    info("Showing b");
+    let reordered = waitForEvent(EVENT_REORDER, hardContainer);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("b").hidden = false;
+    });
+    await reordered;
+    testAccessibleTree(hardContainer, {
+      role: ROLE_SECTION,
+      children: [
+        { role: ROLE_TEXT_LEAF, name: "a" },
+        { role: ROLE_TEXT_LEAF, name: " " },
+        { role: ROLE_TEXT_LEAF, name: "b" },
+      ],
+    });
+
+    info("Hiding b");
+    reordered = waitForEvent(EVENT_REORDER, hardContainer);
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("b").hidden = true;
+    });
+    await reordered;
+    testAccessibleTree(hardContainer, {
+      role: ROLE_SECTION,
+      children: [{ role: ROLE_TEXT_LEAF, name: "a" }],
+    });
+
+    const softContainer = findAccessibleChildByID(docAcc, "softContainer");
+    testAccessibleTree(softContainer, {
+      role: ROLE_SECTION,
+      children: [
+        { role: ROLE_TEXT_LEAF, name: "c" },
+        { role: ROLE_TEXT_LEAF, name: " " },
+        { role: ROLE_TEXT_LEAF, name: "d" },
+      ],
+    });
+  },
+  { chrome: true, topLevel: true }
+);

@@ -6,16 +6,16 @@
 #ifndef mozilla_a11y_SelectionManager_h__
 #define mozilla_a11y_SelectionManager_h__
 
+#include "nsISelectionController.h"
 #include "nsISelectionListener.h"
 #include "mozilla/WeakPtr.h"
-
-class nsRange;
 
 namespace mozilla {
 
 class PresShell;
 
 namespace dom {
+class AbstractRange;
 class Element;
 class Selection;
 }  // namespace dom
@@ -95,27 +95,22 @@ class SelectionManager : public nsISelectionListener {
     return mAccWithCaret;
   }
 
-  /**
-   * Update caret offset when it doesn't go through a caret move event.
-   */
-  inline void UpdateCaretOffset(HyperTextAccessible* aItem, int32_t aOffset) {
-    mAccWithCaret = aItem;
-    mCaretOffset = aOffset;
-  }
-
   inline void ResetCaretOffset() {
     mCaretOffset = -1;
     mAccWithCaret = nullptr;
   }
 
   /**
-   * Called by mozInlineSpellChecker when a spell check range is added/removed.
-   * nsISelectionListener isn't sufficient for spelling errors, since it only
-   * tells us that there was a change, not which range changed. We don't want
-   * to unnecessarily push a cache update for all Accessibles in the entire
-   * selection.
+   * Called by DOM when a selection range is added/removed.
+   * We need this because nsISelectionListener isn't sufficient for spelling
+   * errors, etc., since it only tells us that there was a change, not which
+   * range changed. We don't want to unnecessarily push a cache update for all
+   * Accessibles in the entire selection.
+   * Returns false if these notifications aren't required for this selection
+   * type at this time.
    */
-  void SpellCheckRangeChanged(const nsRange& aRange);
+  static bool SelectionRangeChanged(SelectionType aType,
+                                    const dom::AbstractRange& aRange);
 
   ~SelectionManager();
 
@@ -132,7 +127,6 @@ class SelectionManager : public nsISelectionListener {
   int32_t mCaretOffset;
   HyperTextAccessible* mAccWithCaret;
   WeakPtr<dom::Selection> mCurrCtrlNormalSel;
-  WeakPtr<dom::Selection> mCurrCtrlSpellSel;
 };
 
 }  // namespace a11y

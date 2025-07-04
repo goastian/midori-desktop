@@ -109,6 +109,9 @@
 // AXEnabled
 - (NSNumber* _Nullable)moxEnabled;
 
+// AXErrorMessageElements
+- (NSArray* _Nullable)moxErrorMessageElements;
+
 // AXFocused
 - (NSNumber* _Nullable)moxFocused;
 
@@ -337,6 +340,12 @@
 
 // AXPlaceholderValue
 - (NSString* _Nullable)moxPlaceholderValue;
+
+// AXLanguage
+- (NSString* _Nullable)moxLanguage;
+
+// AXKeyShortcutsValue
+- (NSString* _Nullable)moxKeyShortcutsValue;
 
 // AXMozDebugDescription
 - (NSString* _Nullable)moxMozDebugDescription;

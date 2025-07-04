@@ -36,6 +36,7 @@ class nsAccUtils {
    */
   static void SetAccGroupAttrs(AccAttributes* aAttributes, int32_t aLevel,
                                int32_t aSetSize, int32_t aPosInSet);
+  static void SetAccGroupAttrs(AccAttributes* aAttributes, Accessible* aAcc);
 
   /**
    * Compute group level for nsIDOMXULContainerItemElement node.
@@ -288,6 +289,8 @@ class nsAccUtils {
                           nsAString& aResult);
   static const nsAttrValue* GetARIAAttr(dom::Element* aElement,
                                         const nsAtom* aName);
+  static bool GetARIAElementsAttr(dom::Element* aElement, nsAtom* aName,
+                                  nsTArray<dom::Element*>& aElements);
   static bool ARIAAttrValueIs(dom::Element* aElement, const nsAtom* aName,
                               const nsAString& aValue,
                               nsCaseTreatment aCaseSensitive);
@@ -298,6 +301,8 @@ class nsAccUtils {
                                      const nsAtom* aName,
                                      AttrArray::AttrValuesArray* aValues,
                                      nsCaseTreatment aCaseSensitive);
+
+  static bool IsEditableARIACombobox(const LocalAccessible* aAccessible);
 };
 
 }  // namespace a11y

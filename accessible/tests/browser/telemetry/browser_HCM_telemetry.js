@@ -13,11 +13,20 @@ const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
 
-registerCleanupFunction(() => {
-  reset();
-});
+registerCleanupFunction(reset);
 
-function reset() {
+function pushPref(name, val) {
+  return SpecialPowers.pushPrefEnv({ set: [[name, val]] });
+}
+
+function refresh() {
+  // These prefs get taken into account asynchronously.
+  return new Promise(r =>
+    requestAnimationFrame(() => requestAnimationFrame(r))
+  );
+}
+
+async function reset() {
   // This (manually) runs after every task in this test suite.
   // We have to add this in because the initial state of
   // `document_color_use` affects the initial state of
@@ -26,54 +35,22 @@ function reset() {
   // state changes.
   Services.prefs.clearUserPref("browser.display.document_color_use");
   Services.prefs.clearUserPref("browser.display.permit_backplate");
-  Services.prefs.clearUserPref("browser.display.use_system_colors");
   Services.prefs.clearUserPref("layout.css.always_underline_links");
-  Services.telemetry.clearEvents();
-  TelemetryTestUtils.assertNumberOfEvents(0);
   Services.prefs.clearUserPref("browser.display.foreground_color");
   Services.prefs.clearUserPref("browser.display.background_color");
-}
 
-async function openColorsDialog() {
-  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
-  const colorsButton =
-    gBrowser.selectedBrowser.contentDocument.getElementById("colors");
+  await refresh();
 
-  const dialogOpened = promiseLoadSubDialog(
-    "chrome://browser/content/preferences/dialogs/colors.xhtml"
-  );
-  colorsButton.doCommand();
-
-  return dialogOpened;
-}
-
-async function closeColorsDialog(dialogWin) {
-  const dialogClosed = BrowserTestUtils.waitForEvent(dialogWin, "unload");
-  const button = dialogWin.document
-    .getElementById("ColorsDialog")
-    .getButton("accept");
-  button.focus();
-  button.doCommand();
-  return dialogClosed;
+  Services.telemetry.clearEvents();
+  TelemetryTestUtils.assertNumberOfEvents(0);
 }
 
 function verifyBackplate(expectedValue) {
   TelemetryTestUtils.assertScalar(
-    TelemetryTestUtils.getProcessScalars("parent", false, true),
+    TelemetryTestUtils.getProcessScalars("parent", false, false),
     "a11y.backplate",
     expectedValue,
     "Backplate scalar is logged as " + expectedValue
-  );
-}
-
-function verifyUseSystemColors(expectedValue) {
-  const snapshot = TelemetryTestUtils.getProcessScalars("parent", false, false);
-  ok("a11y.use_system_colors" in snapshot, "System color usage was logged.");
-  TelemetryTestUtils.assertScalar(
-    snapshot,
-    "a11y.use_system_colors",
-    expectedValue,
-    "System colors scalar is logged as " + expectedValue
   );
 }
 
@@ -102,32 +79,28 @@ function testIsBlack(pref, snapshot) {
   is(snapshot[pref], 4278190080, "Scalar is logged as black");
 }
 
-async function setForegroundColor(color) {
+function setForegroundColor(color) {
   // Note: we set the foreground and background colors by modifying this pref
   // instead of setting the value attribute on the color input direclty.
   // This is because setting the value of the input with setAttribute
   // doesn't generate the correct event to save the new value to the prefs
   // store, so we have to do it ourselves.
-  Services.prefs.setStringPref("browser.display.foreground_color", color);
+  return pushPref("browser.display.foreground_color", color);
 }
 
 async function setBackgroundColor(color) {
-  Services.prefs.setStringPref("browser.display.background_color", color);
+  return pushPref("browser.display.background_color", color);
 }
 
 add_task(async function testInit() {
-  const dialogWin = await openColorsDialog();
-  const menulistHCM = dialogWin.document.getElementById("useDocumentColors");
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
+  const contrastControlRadios =
+    gBrowser.selectedBrowser.contentDocument.getElementById(
+      "contrastControlSettings"
+    );
   if (AppConstants.platform == "win") {
     is(
-      Services.prefs.getBoolPref("browser.display.use_system_colors"),
-      true,
-      "Use system colours pref is init'd correctly"
-    );
-    verifyUseSystemColors(true);
-
-    is(
-      menulistHCM.value,
+      contrastControlRadios.value,
       "0",
       "HCM menulist should be set to only with HCM theme on startup for windows"
     );
@@ -141,14 +114,7 @@ add_task(async function testInit() {
     );
   } else {
     is(
-      Services.prefs.getBoolPref("browser.display.use_system_colors"),
-      false,
-      "Use system colours pref is init'd correctly"
-    );
-    verifyUseSystemColors(false);
-
-    is(
-      menulistHCM.value,
+      contrastControlRadios.value,
       "1",
       "HCM menulist should be set to never on startup for non-windows platforms"
     );
@@ -160,8 +126,6 @@ add_task(async function testInit() {
       "always",
       false
     );
-
-    await closeColorsDialog(dialogWin);
 
     // We should not have logged any colors
     let snapshot = TelemetryTestUtils.getProcessScalars("parent", false, true);
@@ -189,21 +153,26 @@ add_task(async function testInit() {
     );
   }
 
-  reset();
+  await reset();
   gBrowser.removeCurrentTab();
 });
 
 add_task(async function testSetAlways() {
-  const dialogWin = await openColorsDialog();
-  const menulistHCM = dialogWin.document.getElementById("useDocumentColors");
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
+  const contrastControlRadios =
+    gBrowser.selectedBrowser.contentDocument.getElementById(
+      "contrastControlSettings"
+    );
 
-  menulistHCM.doCommand();
-  const newOption = dialogWin.document.getElementById("documentColorAlways");
+  const newOption =
+    gBrowser.selectedBrowser.contentDocument.getElementById(
+      "contrastSettingsOn"
+    );
   newOption.click();
 
-  is(menulistHCM.value, "2", "HCM menulist should be set to always");
+  is(contrastControlRadios.value, "2", "HCM menulist should be set to always");
 
-  await closeColorsDialog(dialogWin);
+  await refresh();
 
   // Verify correct initial value
   let snapshot = TelemetryTestUtils.getProcessScalars("parent", true, true);
@@ -214,42 +183,33 @@ add_task(async function testSetAlways() {
   testIsWhite("a11y.HCM_background", snapshot);
   testIsBlack("a11y.HCM_foreground", snapshot);
 
-  // If we change the colors, our probes update on non-windows platforms.
-  // On windows, useSystemColors is on by default, and so the values we set here
-  // will not be written to our telemetry probes, because they capture
-  // used colors, not the values of browser.foreground/background_color directly.
-
-  setBackgroundColor("#000000");
+  await setBackgroundColor("#000000");
   snapshot = TelemetryTestUtils.getProcessScalars("parent", false, true);
-  if (AppConstants.platform == "win") {
-    testIsWhite("a11y.HCM_background", snapshot);
-  } else {
-    testIsBlack("a11y.HCM_background", snapshot);
-  }
+  testIsBlack("a11y.HCM_background", snapshot);
 
-  setForegroundColor("#ffffff");
+  await setForegroundColor("#ffffff");
   snapshot = TelemetryTestUtils.getProcessScalars("parent", false, true);
-  if (AppConstants.platform == "win") {
-    testIsBlack("a11y.HCM_foreground", snapshot);
-  } else {
-    testIsWhite("a11y.HCM_foreground", snapshot);
-  }
+  testIsWhite("a11y.HCM_foreground", snapshot);
 
-  reset();
+  await reset();
   gBrowser.removeCurrentTab();
 });
 
 add_task(async function testSetDefault() {
-  const dialogWin = await openColorsDialog();
-  const menulistHCM = dialogWin.document.getElementById("useDocumentColors");
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
+  const contrastControlRadios =
+    gBrowser.selectedBrowser.contentDocument.getElementById(
+      "contrastControlSettings"
+    );
 
-  menulistHCM.doCommand();
-  const newOption = dialogWin.document.getElementById("documentColorAutomatic");
+  const newOption = gBrowser.selectedBrowser.contentDocument.getElementById(
+    "contrastSettingsAuto"
+  );
   newOption.click();
 
-  is(menulistHCM.value, "0", "HCM menulist should be set to default");
+  is(contrastControlRadios.value, "0", "HCM menulist should be set to default");
 
-  await closeColorsDialog(dialogWin);
+  await refresh();
 
   // Verify correct initial value
   TelemetryTestUtils.assertKeyedScalar(
@@ -284,21 +244,25 @@ add_task(async function testSetDefault() {
     "Background color shouldn't be present."
   );
 
-  reset();
+  await reset();
   gBrowser.removeCurrentTab();
 });
 
 add_task(async function testSetNever() {
-  const dialogWin = await openColorsDialog();
-  const menulistHCM = dialogWin.document.getElementById("useDocumentColors");
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
+  const contrastControlRadios =
+    gBrowser.selectedBrowser.contentDocument.getElementById(
+      "contrastControlSettings"
+    );
 
-  menulistHCM.doCommand();
-  const newOption = dialogWin.document.getElementById("documentColorNever");
+  const newOption = gBrowser.selectedBrowser.contentDocument.getElementById(
+    "contrastSettingsOff"
+  );
   newOption.click();
 
-  is(menulistHCM.value, "1", "HCM menulist should be set to never");
+  is(contrastControlRadios.value, "1", "HCM menulist should be set to never");
 
-  await closeColorsDialog(dialogWin);
+  await refresh();
 
   // Verify correct initial value
   TelemetryTestUtils.assertKeyedScalar(
@@ -333,7 +297,7 @@ add_task(async function testSetNever() {
     "Background color shouldn't be present."
   );
 
-  reset();
+  await reset();
   gBrowser.removeCurrentTab();
 });
 
@@ -344,37 +308,17 @@ add_task(async function testBackplate() {
     "Backplate is init'd to true"
   );
 
-  Services.prefs.setBoolPref("browser.display.permit_backplate", false);
+  await pushPref("browser.display.permit_backplate", false);
+
   // Verify correct recorded value
   verifyBackplate(false);
 
-  Services.prefs.setBoolPref("browser.display.permit_backplate", true);
+  await pushPref("browser.display.permit_backplate", true);
+
   // Verify correct recorded value
   verifyBackplate(true);
-});
 
-add_task(async function testSystemColors() {
-  let expectedInitVal = false;
-  if (AppConstants.platform == "win") {
-    expectedInitVal = true;
-  }
-
-  const dialogWin = await openColorsDialog();
-  const checkbox = dialogWin.document.getElementById("browserUseSystemColors");
-  checkbox.click();
-
-  is(
-    checkbox.checked,
-    !expectedInitVal,
-    "System colors checkbox should be modified"
-  );
-
-  await closeColorsDialog(dialogWin);
-
-  verifyUseSystemColors(!expectedInitVal);
-
-  reset();
-  gBrowser.removeCurrentTab();
+  await reset();
 });
 
 add_task(async function testAlwaysUnderlineLinks() {
@@ -402,6 +346,6 @@ add_task(async function testAlwaysUnderlineLinks() {
     "Always underline links pref reflects new value."
   );
   await verifyAlwaysUnderlineLinks(!expectedInitVal);
-  reset();
+  await reset();
   gBrowser.removeCurrentTab();
 });

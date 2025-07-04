@@ -6,6 +6,7 @@
 #ifndef __nsAccessibilityService_h__
 #define __nsAccessibilityService_h__
 
+#include "mozilla/a11y/CacheConstants.h"
 #include "mozilla/a11y/DocManager.h"
 #include "mozilla/a11y/FocusManager.h"
 #include "mozilla/a11y/Platform.h"
@@ -91,6 +92,23 @@ void PrefChanged(const char* aPref, void* aClosure);
  */
 EPlatformDisabledState ReadPlatformDisabledState();
 
+/**
+ * RAII class to prevent new cache domains from being requested. This is
+ * necessary in some cases when code for an OS accessibility API requires
+ * information in order to fire an event. We don't necessarily know that a
+ * client is even interested in that event, so requesting data that the client
+ * may never query doesn't make sense.
+ */
+class MOZ_RAII CacheDomainActivationBlocker {
+ public:
+  CacheDomainActivationBlocker();
+  ~CacheDomainActivationBlocker();
+
+ private:
+  // Used to manage re-entry.
+  static uint32_t sEntryCount;
+};
+
 }  // namespace a11y
 }  // namespace mozilla
 
@@ -102,6 +120,10 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
  public:
   typedef mozilla::a11y::LocalAccessible LocalAccessible;
   typedef mozilla::a11y::DocAccessible DocAccessible;
+
+  static const uint64_t kDefaultCacheDomains =
+      mozilla::a11y::CacheDomain::NameAndDescription |
+      mozilla::a11y::CacheDomain::State;
 
   // nsIListenerChangeListener
   NS_IMETHOD ListenersChanged(nsIArray* aEventChanges) override;
@@ -270,6 +292,15 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
   static bool ShouldCreateImgAccessible(mozilla::dom::Element* aElement,
                                         DocAccessible* aDocument);
 
+  /*
+   * Set the currently-active cache domains.
+   */
+  void SetCacheDomains(uint64_t aCacheDomains);
+
+  bool CacheDomainIsActive(uint64_t aCacheDomain) const {
+    return (gCacheDomains & aCacheDomain) != mozilla::a11y::CacheDomain::None;
+  }
+
   /**
    * Creates an accessible for the given DOM node.
    *
@@ -297,7 +328,7 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
     const mozilla::a11y::MarkupMapInfo* markupMap =
         GetMarkupMapInfoFor(aSource);
     if (markupMap) {
-      for (size_t i = 0; i < mozilla::ArrayLength(markupMap->attrs); i++) {
+      for (size_t i = 0; i < std::size(markupMap->attrs); i++) {
         const mozilla::a11y::MarkupAttrInfo* info = markupMap->attrs + i;
         if (info->name == aAtom) {
           return info->value;
@@ -331,6 +362,9 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
     ePlatformAPI = 1 << 2,
   };
 
+  static uint64_t GetActiveCacheDomains() { return gCacheDomains; }
+  bool ShouldAllowNewCacheDomains() { return mShouldAllowNewCacheDomains; }
+
 #if defined(ANDROID)
   static mozilla::Monitor& GetAndroidMonitor();
 #endif
@@ -346,7 +380,7 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
   /**
    * Initialize accessibility service.
    */
-  bool Init();
+  bool Init(uint64_t aCacheDomains = kDefaultCacheDomains);
 
   /**
    * Shutdowns accessibility service.
@@ -395,6 +429,15 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
    */
   static uint32_t gConsumers;
 
+  /**
+   * Contains the currently active cache domains.
+   */
+  static uint64_t gCacheDomains;
+  // True if requesting new cache domains should be allowed, false if this
+  // should be disallowed. This should only be changed by
+  // CacheDomainActivationBlocker.
+  bool mShouldAllowNewCacheDomains = true;
+
   // Can be weak because all atoms are known static
   using MarkupMap = nsTHashMap<nsAtom*, const mozilla::a11y::MarkupMapInfo*>;
   MarkupMap mHTMLMarkupMap;
@@ -420,8 +463,8 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
   nsTHashMap<nsAtom*, const mozilla::a11y::XULMarkupMapInfo*> mXULMarkupMap;
 
   friend nsAccessibilityService* GetAccService();
-  friend nsAccessibilityService* GetOrCreateAccService(uint32_t);
-  friend void MaybeShutdownAccService(uint32_t);
+  friend nsAccessibilityService* GetOrCreateAccService(uint32_t, uint64_t);
+  friend void MaybeShutdownAccService(uint32_t, bool);
   friend void mozilla::a11y::PrefChanged(const char*, void*);
   friend mozilla::a11y::FocusManager* mozilla::a11y::FocusMgr();
   friend mozilla::a11y::SelectionManager* mozilla::a11y::SelectionMgr();
@@ -429,6 +472,7 @@ class nsAccessibilityService final : public mozilla::a11y::DocManager,
   friend mozilla::a11y::xpcAccessibleApplication*
   mozilla::a11y::XPCApplicationAcc();
   friend class xpcAccessibilityService;
+  friend class mozilla::a11y::CacheDomainActivationBlocker;
 };
 
 /**
@@ -442,12 +486,18 @@ inline nsAccessibilityService* GetAccService() {
  * Return accessibility service instance; creating one if necessary.
  */
 nsAccessibilityService* GetOrCreateAccService(
-    uint32_t aNewConsumer = nsAccessibilityService::ePlatformAPI);
+    uint32_t aNewConsumer = nsAccessibilityService::ePlatformAPI,
+    uint64_t aCacheDomains = nsAccessibilityService::GetActiveCacheDomains());
 
 /**
  * Shutdown accessibility service if needed.
+ * @param aFormerConsumer The ServiceConsumer that is no longer using the
+ *        service.
+ * @param aAsync True to shut down the service asynchronously using a runnable.
+ *        This should be used to avoid reentry if this is called during the
+ *        shutdown of a document.
  */
-void MaybeShutdownAccService(uint32_t aFormerConsumer);
+void MaybeShutdownAccService(uint32_t aFormerConsumer, bool aAsync = false);
 
 /**
  * Return true if we're in a content process and not B2G.
@@ -500,6 +550,8 @@ static const char kEventTypeNames[][40] = {
     "live region added",         // EVENT_LIVE_REGION_ADDED
     "live region removed",       // EVENT_LIVE_REGION_REMOVED
     "inner reorder",             // EVENT_INNER_REORDER
+    "live region changed",       // EVENT_LIVE_REGION_CHANGED
+    "errormessage changed",      // EVENT_ERRORMESSAGE_CHANGED
 };
 
 #endif
