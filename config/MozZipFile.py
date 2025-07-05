@@ -6,8 +6,7 @@ import os
 import time
 import zipfile
 
-import six
-from mozbuild.lock import lock_file
+from filelock import SoftFileLock
 
 
 class ZipFile(zipfile.ZipFile):
@@ -19,8 +18,9 @@ class ZipFile(zipfile.ZipFile):
 
     def __init__(self, file, mode="r", compression=zipfile.ZIP_STORED, lock=False):
         if lock:
-            assert isinstance(file, six.text_type)
-            self.lockfile = lock_file(file + ".lck")
+            assert isinstance(file, str)
+            self.lockfile = SoftFileLock(file + ".lck")
+            self.lockfile.acquire()
         else:
             self.lockfile = None
 
@@ -105,7 +105,9 @@ class ZipFile(zipfile.ZipFile):
         if not self._remove:
             # we don't have anything special to do, let's just call base
             r = zipfile.ZipFile.close(self)
-            self.lockfile = None
+            if self.lockfile is not None:
+                self.lockfile.release()
+                self.lockfile = None
             return r
 
         if self.fp.mode != "r+b":
@@ -140,4 +142,6 @@ class ZipFile(zipfile.ZipFile):
             to_pos += length
         self.fp.truncate()
         zipfile.ZipFile.close(self)
-        self.lockfile = None
+        if self.lockfile is not None:
+            self.lockfile.release()
+            self.lockfile = None

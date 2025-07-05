@@ -308,6 +308,7 @@ system_headers = [
     "gdk-pixbuf/gdk-pixbuf.h",
     "Gestalt.h",
     "getopt.h",
+    "gio/gdesktopappinfo.h",
     "gio/gio.h",
     "glibconfig.h",
     "glib.h",
@@ -316,7 +317,6 @@ system_headers = [
     "gmodule.h",
     "gnome.h",
     "gnu/libc-version.h",
-    "gps.h",
     "grp.h",
     "gssapi_generic.h",
     "gssapi/gssapi_generic.h",
@@ -691,7 +691,7 @@ system_headers = [
     "prtrace.h",
     "prtypes.h",
     "prvrsion.h",
-    "prwin16.h",
+    "prwin.h",
     "psap.h",
     "Pt.h",
     "pthread.h",
@@ -771,6 +771,7 @@ system_headers = [
     "soundtouch/SoundTouch.h",
     "spawn.h",
     "sqlite3.h",
+    "sqlite3_static_ext.h",
     "sslerr.h",
     "ssl.h",
     "sslproto.h",
@@ -909,8 +910,8 @@ system_headers = [
     "TextView.h",
     "th/PCR_Th.h",
     "thread.h",
+    "threads.h",
     "ThreadManagerTests.h",
-    "Threads.h",
     "time.h",
     "Timer.h",
     "tlhelp32.h",
@@ -1016,7 +1017,6 @@ system_headers = [
     "opus/opus.h",
     "opus/opus_multistream.h",
     "ogg/ogg.h",
-    "theora/theoradec.h",
     "vpx/svc_context.h",
     "vpx/vp8.h",
     "vpx/vp8cx.h",
@@ -1030,7 +1030,9 @@ system_headers = [
     "aom/aom_image.h",
     "aom/aomdx.h",
     "aom/aomcx.h",
+    "aom/aom_codec.h",
     "aom/aom_decoder.h",
+    "aom/aom_encoder.h",
 ]
 
 if CONFIG["MOZ_X11"]:
@@ -1073,6 +1075,7 @@ if CONFIG["OS_TARGET"] == "Android":
         "android/api-level.h",
         "android/ashmem.h",
         "android_audio/AudioSystem.h",
+        "android/hardware_buffer.h",
         "android/log.h",
         "android/looper.h",
         "android/native_window.h",
@@ -1254,6 +1257,22 @@ if CONFIG["OS_TARGET"] == "Android":
         "vr/gvr/capi/include/gvr.h",
     ]
 
+if CONFIG["MOZ_SYSTEM_GBM"]:
+    system_headers += [
+        "gbm.h",
+    ]
+
+if CONFIG["MOZ_SYSTEM_LIBDRM"]:
+    system_headers += [
+        "drm.h",
+        "xf86drm.h",
+    ]
+
+if CONFIG["MOZ_SYSTEM_PIPEWIRE"]:
+    system_headers += [
+        "pipewire/pipewire.h",
+    ]
+
 if CONFIG["MOZ_JACK"]:
     system_headers += [
         "jack/jack.h",
@@ -1303,6 +1322,11 @@ else:
 if CONFIG["MOZ_ENABLE_LIBPROXY"]:
     system_headers += [
         "proxy.h",
+    ]
+
+if CONFIG["MOZ_SYSTEM_AV1"]:
+    system_headers += [
+        "dav1d/dav1d.h",
     ]
 
 if CONFIG["MOZ_SYSTEM_ICU"]:

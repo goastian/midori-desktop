@@ -50,6 +50,7 @@ ignored_js_src_dirs = [
     "js/src/gdb/",  # auxiliary stuff
     "js/src/vtune/",  # imported code
     "js/src/zydis/",  # imported code
+    "js/src/xsum/",  # imported code
 ]
 
 # We ignore #includes of these files, because they don't follow the usual rules.
@@ -60,12 +61,12 @@ included_inclnames_to_ignore = set(
         "double-conversion/double-conversion.h",  # strange MFBT case
         "javascript-trace.h",  # generated in $OBJDIR if HAVE_DTRACE is defined
         "frontend/ReservedWordsGenerated.h",  # generated in $OBJDIR
-        "frontend/smoosh_generated.h",  # generated in $OBJDIR
         "gc/StatsPhasesGenerated.h",  # generated in $OBJDIR
         "gc/StatsPhasesGenerated.inc",  # generated in $OBJDIR
         "jit/ABIFunctionTypeGenerated.h",  # generated in $OBJDIR"
         "jit/AtomicOperationsGenerated.h",  # generated in $OBJDIR
         "jit/CacheIROpsGenerated.h",  # generated in $OBJDIR
+        "jit/CacheIRAOTGenerated.h",  # generated in $OBJDIR
         "jit/LIROpsGenerated.h",  # generated in $OBJDIR
         "jit/MIROpsGenerated.h",  # generated in $OBJDIR
         "js/PrefsGenerated.h",  # generated in $OBJDIR
@@ -76,10 +77,21 @@ included_inclnames_to_ignore = set(
         "fdlibm.h",  # fdlibm
         "FuzzerDefs.h",  # included without a path
         "FuzzingInterface.h",  # included without a path
+        "diplomat_runtime.h",  # ICU4X
+        "ICU4XAnyCalendarKind.h",  # ICU4X
+        "ICU4XCalendar.h",  # ICU4X
+        "ICU4XDate.h",  # ICU4X
+        "ICU4XError.h",  # ICU4X
         "ICU4XGraphemeClusterSegmenter.h",  # ICU4X
+        "ICU4XIsoDate.h",  # ICU4X
+        "ICU4XIsoWeekday.h",  # ICU4X
         "ICU4XSentenceSegmenter.h",  # ICU4X
+        "ICU4XWeekCalculator.h",  # ICU4X
+        "ICU4XWeekOf.h",  # ICU4X
+        "ICU4XWeekRelativeUnit.h",  # ICU4X
         "ICU4XWordSegmenter.h",  # ICU4X
         "mozmemory.h",  # included without a path
+        "mozmemory_utils.h",  # included without a path
         "pratom.h",  # NSPR
         "prcvar.h",  # NSPR
         "prerror.h",  # NSPR
@@ -101,6 +113,8 @@ included_inclnames_to_ignore = set(
         "vtune/VTuneWrapper.h",  # VTune
         "wasm/WasmBuiltinModuleGenerated.h",  # generated in $OBJDIR"
         "zydis/ZydisAPI.h",  # Zydis
+        "xsum/xsum.h",  # xsum
+        "fmt/format.h",  # {fmt} main header
     ]
 )
 
@@ -132,11 +146,17 @@ oddly_ordered_inclnames = set(
         "psapi.h",  # Must be included after "util/WindowsWrapper.h" on Windows
         "machine/endian.h",  # Must be included after <sys/types.h> on BSD
         "process.h",  # Windows-specific
-        "winbase.h",  # Must precede other system headers(?)
-        "windef.h",  # Must precede other system headers(?)
-        "windows.h",  # Must precede other system headers(?)
+        "util/WindowsWrapper.h",  # Must precede other system headers(?)
     ]
 )
+
+# System headers which shouldn't be included directly, but instead use the
+# designated wrapper.
+wrapper_system_inclnames = {
+    "windows.h": "util/WindowsWrapper.h",
+    "windef.h": "util/WindowsWrapper.h",
+    "winbase.h": "util/WindowsWrapper.h",
+}
 
 # The files in tests/style/ contain code that fails this checking in various
 # ways.  Here is the output we expect.  If the actual output differs from
@@ -234,7 +254,7 @@ def error(filename, linenum, *lines):
     out("")
 
 
-class FileKind(object):
+class FileKind:
     C = 1
     CPP = 2
     INL_H = 3
@@ -416,7 +436,7 @@ def is_module_header(enclosing_inclname, header_inclname):
     return False
 
 
-class Include(object):
+class Include:
     """Important information for a single #include statement."""
 
     def __init__(self, include_prefix, inclname, line_suffix, linenum, is_system):
@@ -483,7 +503,7 @@ class Include(object):
         return self.include_prefix + self.quote() + self.line_suffix + "\n"
 
 
-class CppBlock(object):
+class CppBlock:
     """C preprocessor block: a whole file or a single #if/#elif/#else block.
 
     A #if/#endif block is the contents of a #if/#endif (or similar) section.
@@ -600,7 +620,7 @@ class CppBlock(object):
         return self.start + "".join(kid.to_source() for kid in self.kids) + self.end
 
 
-class OrdinaryCode(object):
+class OrdinaryCode:
     """A list of lines of code that aren't #include/#if/#else/#endif lines."""
 
     def __init__(self, lines=None):
@@ -699,6 +719,18 @@ def check_file(
                     'the #include "..." form',
                 )
 
+            # Check for system header which shouldn't be included directly.
+            if (
+                include.inclname in wrapper_system_inclnames
+                and wrapper_system_inclnames[include.inclname] != inclname
+            ):
+                wrapper_inclname = wrapper_system_inclnames[include.inclname]
+                error(
+                    filename,
+                    include.linenum,
+                    f"{include.quote()} should not be included directly, "
+                    f'instead use "{wrapper_inclname}"',
+                )
         else:
             msg = deprecated_inclnames.get(include.inclname)
             if msg:

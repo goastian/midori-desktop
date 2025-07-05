@@ -203,10 +203,8 @@ endif
 HOST_COBJS = $(addprefix host_,$(notdir $(HOST_CSRCS:.c=.$(OBJ_SUFFIX))))
 # HOST_CPPOBJS can have different extensions (eg: .cpp, .cc)
 HOST_CPPOBJS = $(addprefix host_,$(notdir $(addsuffix .$(OBJ_SUFFIX),$(basename $(HOST_CPPSRCS)))))
-HOST_CMOBJS = $(addprefix host_,$(notdir $(HOST_CMSRCS:.m=.$(OBJ_SUFFIX))))
-HOST_CMMOBJS = $(addprefix host_,$(notdir $(HOST_CMMSRCS:.mm=.$(OBJ_SUFFIX))))
 ifndef HOST_OBJS
-_HOST_OBJS = $(HOST_COBJS) $(HOST_CPPOBJS) $(HOST_CMOBJS) $(HOST_CMMOBJS)
+_HOST_OBJS = $(HOST_COBJS) $(HOST_CPPOBJS)
 HOST_OBJS = $(strip $(_HOST_OBJS))
 endif
 else
@@ -268,7 +266,7 @@ TAG_PROGRAM		= xargs etags -a
 # (moved this from config.mk so that config.mk can be included
 #  before the CPPSRCS are defined)
 #
-ifneq ($(HOST_CPPSRCS)$(HOST_CMMSRCS),)
+ifneq ($(HOST_CPPSRCS),)
 HOST_CPP_PROG_LINK	= 1
 endif
 
@@ -558,7 +556,7 @@ define src_objdep
 $(basename $3$(notdir $1)).$2: $1 $$(call mkdir_deps,$$(MDDEPDIR))
 endef
 $(foreach f,$(CSRCS) $(SSRCS) $(CPPSRCS) $(CMSRCS) $(CMMSRCS) $(ASFILES),$(eval $(call src_objdep,$(f),$(OBJ_SUFFIX))))
-$(foreach f,$(HOST_CSRCS) $(HOST_CPPSRCS) $(HOST_CMSRCS) $(HOST_CMMSRCS),$(eval $(call src_objdep,$(f),$(OBJ_SUFFIX),host_)))
+$(foreach f,$(HOST_CSRCS) $(HOST_CPPSRCS),$(eval $(call src_objdep,$(f),$(OBJ_SUFFIX),host_)))
 $(foreach f,$(WASM_CSRCS) $(WASM_CPPSRCS),$(eval $(call src_objdep,$(f),wasm)))
 
 # The Rust compiler only outputs library objects, and so we need different
@@ -580,18 +578,6 @@ $(HOST_CPPOBJS):
 	$(REPORT_BUILD_VERBOSE)
 	$(call BUILDSTATUS,OBJECT_FILE $@)
 	$(HOST_CXX) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CXXFLAGS) $(NSPR_CFLAGS) $<
-	$(call BUILDSTATUS,END_Object $@)
-
-$(HOST_CMOBJS):
-	$(REPORT_BUILD_VERBOSE)
-	$(call BUILDSTATUS,OBJECT_FILE $@)
-	$(HOST_CC) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CFLAGS) $(HOST_CMFLAGS) $(NSPR_CFLAGS) $<
-	$(call BUILDSTATUS,END_Object $@)
-
-$(HOST_CMMOBJS):
-	$(REPORT_BUILD_VERBOSE)
-	$(call BUILDSTATUS,OBJECT_FILE $@)
-	$(HOST_CXX) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CXXFLAGS) $(HOST_CMMFLAGS) $(NSPR_CFLAGS) $<
 	$(call BUILDSTATUS,END_Object $@)
 
 $(COBJS):
@@ -901,12 +887,29 @@ endif
 
 endif
 
+# Usage:
+# xpi_package_rule(package-name,directory-to-package,relative-target-directory,parent-rule)
+# where:
+#     - package-name is the name of the xpi package, without suffix
+#     - directory-to-package is the path to the directory to package
+#     - relative-target-directory is the path to the directory where
+#       the archive is generated, relative to directory-to-package
+#     - parent-rule is the name(s) of the rule(s) this rule should be added to
+define xpi_package_rule
+$$(abspath $(3))/$(1).xpi: $$(call mkdir_deps,$(3) $$(MDDEPDIR))
+	@echo 'Packaging $(1).xpi...'
+	$$(call py_action,zip $(1).xpi,-C $(2) $$@ '*' --dep-target $$@ --dep-file $$(MDDEPDIR)/$(1).d)
+
+$(4):: $$(abspath $(3))/$(1).xpi
+
+-include $$(MDDEPDIR)/$(1).d
+
+endef
+
 # When you move this out of the tools tier, please remove the corresponding
 # hacks in recursivemake.py that check if Makefile.in sets the variable.
 ifneq ($(XPI_PKGNAME),)
-tools realchrome::
-	@echo 'Packaging $(XPI_PKGNAME).xpi...'
-	$(call py_action,zip $(XPI_PKGNAME).xpi,-C $(FINAL_TARGET) ../$(XPI_PKGNAME).xpi '*')
+$(eval $(call xpi_package_rule,$(XPI_PKGNAME),$(FINAL_TARGET),$(FINAL_TARGET)/..,tools realchrome))
 endif
 
 #############################################################################

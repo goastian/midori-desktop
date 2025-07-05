@@ -9,6 +9,7 @@ from datetime import datetime
 
 import buildconfig
 from mozbuild.preprocessor import Preprocessor
+from variables import get_buildid
 
 TEMPLATE = """
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -79,7 +80,7 @@ def preprocess(path, defines):
     pp.context.update(defines)
     pp.out = io.StringIO()
     pp.do_filter("substitution")
-    pp.do_include(io.open(path, "r", encoding="latin1"))
+    pp.do_include(open(path, encoding="latin1"))
     pp.out.seek(0)
     return pp.out
 
@@ -93,12 +94,6 @@ def parse_module_ver(path, defines):
         entry, value = content.split("=", 1)
         result[entry.strip()] = value.strip()
     return result
-
-
-def get_buildid():
-    path = os.path.join(buildconfig.topobjdir, "buildid.h")
-    define, MOZ_BUILDID, buildid = io.open(path, "r", encoding="utf-8").read().split()
-    return buildid
 
 
 def last_winversion_segment(buildid, app_version_display):
@@ -270,9 +265,7 @@ def generate_module_rc(binary="", rcinclude=None):
         overrides = {}
 
     if rcinclude:
-        include = "// From included resource {}\n{}".format(
-            rcinclude, preprocess(rcinclude, defines).read()
-        )
+        include = f"// From included resource {rcinclude}\n{preprocess(rcinclude, defines).read()}"
     else:
         include = ""
 
@@ -308,9 +301,9 @@ def generate_module_rc(binary="", rcinclude=None):
         manifest_path = os.path.join(srcdir, binary + ".manifest")
         if os.path.exists(manifest_path):
             manifest_path = manifest_path.replace("\\", "\\\\")
-            data += '\n{} RT_MANIFEST "{}"\n'.format(manifest_id, manifest_path)
+            data += f'\n{manifest_id} RT_MANIFEST "{manifest_path}"\n'
 
-    with io.open("{}.rc".format(binary or "module"), "w", encoding="latin1") as fh:
+    with open("{}.rc".format(binary or "module"), "w", encoding="latin1") as fh:
         fh.write(data)
 
 

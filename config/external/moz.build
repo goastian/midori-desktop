@@ -31,7 +31,8 @@ DIRS += [
 external_dirs += ["modules/brotli"]
 external_dirs += ["modules/woff2"]
 
-external_dirs += ["modules/xz-embedded"]
+if CONFIG["MOZ_UPDATER"]:
+    external_dirs += ["modules/xz-embedded"]
 
 if CONFIG["MOZ_VORBIS"]:
     external_dirs += ["media/libvorbis"]
@@ -39,7 +40,7 @@ if CONFIG["MOZ_VORBIS"]:
 if not CONFIG["MOZ_SYSTEM_LIBVPX"]:
     external_dirs += ["media/libvpx"]
 
-if CONFIG["MOZ_AV1"]:
+if not CONFIG["MOZ_SYSTEM_AV1"]:
     external_dirs += ["media/libaom"]
     external_dirs += ["media/libdav1d"]
 
@@ -60,7 +61,6 @@ external_dirs += [
     "media/libnestegg",
     "media/libogg",
     "media/libopus",
-    "media/libtheora",
     "media/libspeex_resampler",
     "media/libsoundtouch",
     "media/mp4parse-rust",
